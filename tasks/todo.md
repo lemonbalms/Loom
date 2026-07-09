@@ -1,14 +1,17 @@
-# 0.10.0 dual-compat drop (pending R12)
+# Handoff for next session
 
-- [x] env LOOM-only (warn if FABLE_* set)
-- [x] slash /loom only
-- [x] sticky/relay LOOM env only
-- [x] keep invite/board/MCP strip/bin
-- [x] tests env + slash
-- [ ] R12 review
-- [ ] push
+Full context: **`HANDOFF.md`**  
+Workflow: **`docs/WORKFLOW.md`**
 
-## Next after R12
+## Current gate
 
-- L-5 when embed ships
-- Tauri (cargo)
+- PLAN **0.10.0** `pending-review`
+- **R12** dual-compat drop — requested in `docs/plan_review.md`
+- Code pushed: `fe4719d` on `lemonbalms/Loom`
+
+## Next
+
+1. R12 review → approve or 0.10.1 fixes
+2. Optional: remove `fable` bin alias
+3. L-5 (when pack embed ships)
+4. Tauri (needs cargo)

@@ -1,194 +1,174 @@
-# HANDOFF — Fable Advisor
+# HANDOFF — Loom (next session)
 
 **Date:** 2026-07-09  
-**Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
-**Audience:** next agent session (fresh context)  
-**Language:** user often replies in Korean (`진행해`, `리뷰해`, …) — follow that preference.
+**Workspace (local path):** `/Users/kyoungsiklee/projects/fable-advisor`  
+**GitHub:** https://github.com/lemonbalms/Loom (`origin` → `main`)  
+**Audience:** next agent (fresh context)  
+**Language:** user often Korean (`진행해`, `리뷰해`, `단계적으로 진행해`, …)
+
+---
+
+## One-line resume
+
+> `HANDOFF.md` + `docs/WORKFLOW.md` 읽고, **PLAN 0.10.0 R12 리뷰**부터 진행해. 승인되면 PLAN approved 처리 후 backlog(L-5 / Tauri / bin alias 제거 등).
 
 ---
 
 ## Goal
 
-Ship a **Mosaic-class multiplayer AI terminal**: room bus + offline handoff inbox + multi-agent CLI wrap (Claude/Codex/Grok), with plan-gated security fixes from `docs/plan_review.md`.
+**Loom** = Mosaic-class multiplayer AI terminal: rooms, presence, offline handoff inbox, sticky host, context pack, task board, MCP for Claude/Codex/Grok.
 
-**Immediate product goal after this handoff:** PLAN **v0.9.4 `approved`**. Product CLI is **`loom`**.  
-**Workflow rules:** `docs/WORKFLOW.md`. Next backlog: L-5 (when embed), dual-compat 0.10, Tauri.
-
-### Naming boundary (critical)
-
-| Name | Meaning |
-|------|---------|
-| **Loom** | **Product** (planned rename from Fable) — CLI/packages/docs after 0.9.0 |
-| **Fable** (today) | Current product name in code (`fable`, `@fable/*`, `~/.fable`) until rename ships |
-| **fable-advisor / Fable 5** | **Review agent / model** — not the product; do not rename with product |
-
-See `docs/RENAME_TO_LOOM.md` (status `draft`).
+North star: *connect your agents — and your teammates.*
 
 ---
 
-## Where we are (read this first)
+## Where we are (read first)
 
 | Item | Value |
 |------|--------|
-| **PLAN SSOT** | `docs/PLAN.md` **v0.9.4** — status **`approved`** |
-| **Workflow** | `docs/WORKFLOW.md` |
-| **CLI version** | `loom` / `VERSION = "0.9.4"` (`fable` alias still works) |
-| **Tests** | `bun test` green (see latest local run) |
-| **Git** | Workspace may **not** be a git repo (`fatal: not a git repository` observed). Do not assume `git status` works. |
-| **Tauri** | Deferred — **no cargo/rustc** in environment |
+| **Product CLI** | `loom` v**0.10.0** (`fable` bin **alias still exists**) |
+| **Packages** | `@loom/*` Bun monorepo |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.10.0** — status **`pending-review`** |
+| **Review gate** | **R12 requested** — dual-compat drop (env + slash) |
+| **Workflow rules** | **`docs/WORKFLOW.md`** (Plan → Review → Implement → Ship) |
+| **Deviations log** | `implementation-notes.md` |
+| **Tests** | last full run **132 pass / 0 fail** (`bun test`) |
+| **Git** | `main` tracking `origin/main`; latest push includes `fe4719d` (0.10.0) |
+| **Remote account** | GitHub auth: **lemonbalms** |
+| **Tauri** | **Blocked** — no `cargo` / `rustc` in env |
+| **Open blocking** | R12 review only (not a code bug — gate) |
 
-**Do not mark PLAN `approved` without review sign-off** (project rule). 0.8.1 already signed via R10 follow-up.
+### Naming (critical)
 
----
-
-## Current progress (shipped through 0.8.1)
-
-Work was done **incrementally** from plan reviews R5→R10 findings:
-
-| Plan | What shipped |
-|------|----------------|
-| 0.3.1 | H-5 fail-open refuse, H-6 Bearer/token split, M-5 timing-safe token, M-6 stale socket |
-| 0.4.x | Sticky host IPC (F-1/F-2/F-3) |
-| 0.5.x | Context pack (room-scoped, path allowlist) |
-| 0.6.x | Task board + atomic JSON locks (H-7/M-8/M-9) |
-| 0.7.x | Board snapshot share; M-10/11/12 trust; L-11 caps; L-12 lock pid ownership |
-| **0.8.0** | **M-7 per-peer rejoin secret** (code + docs + tests) |
-| **0.8.1** | **R10 M-13** run join fail-fast + onError; **L-15** sticky peerSecret save |
-
-### M-7 design (implemented)
-
-- First `create`/`join` for a `peer.id` → relay mints **`peerSecret`** (base64url, 24 random bytes via `generatePeerSecret()`).
-- Secret returned **only** on that peer’s `room.state.peerSecret` (not roster broadcast / not other peers).
-- Rejoin same `peer.id` requires `peer.secret` matching stored secret (**timing-safe** `secretsEqual` in `room.ts`).
-- Fail → `error.code = peer_auth_failed`.
-- Client persists `peerSecret` on `FableSession` with file mode **0600** (`saveSession`).
-- Sticky host / CLI reconnect paths pass `session.peerSecret`.
-
-**Residual (documented):** lost session file ⇒ cannot reclaim that peer id → join as **new** peer id.
+| Name | Meaning |
+|------|---------|
+| **Loom** | **Product** — CLI, packages, docs |
+| **fable-advisor / Fable 5** | **Review agent** — not the product |
+| **FABLE_*** / `/fable` | **Legacy** — env dual-read **removed in 0.10**; slash dual-accept **removed** |
 
 ---
 
-## Key files (M-7 and gate)
+## What just shipped (recent commits)
 
-| Path | Role |
-|------|------|
-| `packages/protocol/src/codes.ts` | `generatePeerSecret()` |
-| `packages/protocol/src/envelope.ts` | `ClientPeerSchema.secret?`, `room.state.peerSecret?` |
-| `packages/relay/src/room.ts` | `Member.secret`, `addPeer` auth, `roomStateEnvelope({ peerSecret })` |
-| `packages/relay/src/server.ts` | create/join → secret only on room.state to joiner |
-| `packages/host/src/session-store.ts` | `FableSession.peerSecret?`, mode 0600 |
-| `packages/host/src/relay-client.ts` | capture/send secret |
-| `packages/host/src/sticky-server.ts`, `room-ops.ts` | sticky rejoin with secret |
-| `packages/cli/src/index.ts` | join/create/listen/run; VERSION **0.8.1**; M-13 fail-fast |
-| `packages/host/src/relay-client.ts` | secret + `setReconnectPeerSecret` / onError |
-| `packages/host/src/sticky-server.ts` | L-15 saveSession peerSecret |
-| `apps/relay-cloud/README.md` | threat model table (0.8.0+) |
-| `docs/PROTOCOL.md` | Peer ownership (M-7) section |
-| `docs/PLAN.md` | **0.8.1** approved + risk register |
-| `docs/plan_review.md` | R10 closed via 0.8.1 follow-up |
-| `tasks/todo.md` | short checklist (synced) |
+| Commit | Version | Summary |
+|--------|---------|---------|
+| `fe4719d` | **0.10.0** | Drop `FABLE_*` env dual-read + `/fable` slash; keep data-path compat |
+| `e79dbcd` | docs | `docs/WORKFLOW.md` workflow rules |
+| `e15bf3a` | 0.9.4 | L-4 requestOnce FIFO waiter queue |
+| `9267af2` | 0.9.3 | L-14 shared timing-safe + L-16 caps as chars |
+| `fd37b01` | 0.9.2 | R11 Low branding + INSECURE warn |
+| `2351065` | 0.9.1 | R11 M-14/15/16 migration gate |
+| `891d7a5` | init | Initial Loom monorepo |
 
-### Tests touching M-7
+### 0.10.0 dual-compat drop (detail)
 
-- `packages/relay/src/auth.integration.test.ts` — `M-7 peer secret`
-- `packages/relay/src/server.integration.test.ts` — offline rejoin **with** `aliceSecret`
-- `packages/host/src/sticky-host.integration.test.ts` — session must include `peerSecret` from create
-- `packages/protocol/src/envelope.test.ts` — schema accepts secret fields
-- `packages/relay/src/room.test.ts` — `mustAdd` helper (must call `room.addPeer`, **not** recurse)
+**Removed (runtime):**
 
----
+- Env dual-read: only `LOOM_*` values used; if only `FABLE_*` set → **warn, do not use**
+- Slash: `/loom` only; `/fable …` → help (no dual-accept)
+- sticky-spawn writes `LOOM_SESSION` / `LOOM_PROFILE` only
+- Relay host/port/token from `LOOM_*` only
 
-## What worked
+**Kept (conservative — see implementation-notes):**
 
-1. **Plan SSOT + review gate loop:** implement finding → bump PLAN → `plan_review` → user says `진행해` for next backlog.
-2. **Thin M-7:** no mTLS/JWT; just server-minted secret + session file. Enough to close “token+invite takeover” for remote multiuser.
-3. **Room-scoped packs/boards** (not profile-scoped) — intentional multi-profile same machine share.
-4. **Sticky host first** (Phase 4.0a) before Tauri — UI blocked on Rust toolchain.
+- Join with legacy invite codes `FABLE-XXXX` (full-code match, no prefix rewrite)
+- Import `fable-board-snapshot` kind/label
+- MCP strip of legacy `mcp_servers.fable` tables
+- Root/`package.json` **`fable` bin alias** → same CLI entry
+
+Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/slash.ts`, `sticky-spawn.ts`, `relay` server/cli, `docs/PLAN.md` 0.10.0, `plan_review.md` R12 section.
 
 ---
 
-## What didn’t work / traps for the next agent
+## Immediate next steps (ordered)
 
-1. **`mustAdd` infinite recursion** in `room.test.ts`: a bulk rewrite turned the helper body into `mustAdd(...)` instead of `room.addPeer(...)` → stack overflow. If you regenerate helpers, **never** call the helper from itself.
-2. **Integration tests after M-7** must rejoin with secret from first `room.state`. Without it: timeout waiting for `room.state` (server sends `peer_auth_failed`).
-3. **Sticky host** fails to rejoin if session JSON lacks `peerSecret` after create (same root cause).
-4. **Do not default-inject PTY** — Phase 1.5 spike verdict is **no-go**; inject stays experimental/off.
-5. **Tauri** — do not burn time scaffolding if `cargo`/`rustc` missing; leave Product backlog.
-6. **Marking `approved` without review** — project forbids it; 0.8.1 was R10 follow-up close of M-13/L-15.
+### 1. Preferred — **R12 review** (gate)
 
----
+1. Read `docs/PLAN.md` (0.10.0 changelog) + R12 checklist in `docs/plan_review.md`.
+2. Code-verify dual-compat drop (env LOOM-only, slash, sticky, keep data-path).
+3. Write R12 findings **or** mark **approved** under `## Review R12`.
+4. If approved:
+   - PLAN header → `approved`
+   - Open blocking clear; decision log row
+5. If findings → PATCH 0.10.1, fix, re-check.
 
-## Open backlog (after 0.8.1)
+**Do not mark PLAN `approved` without R12 sign-off** (WORKFLOW rule). Author-close only if review text says “PATCH then approve” pattern.
 
-| ID | Sev | Notes |
-|----|-----|--------|
-| **Loom rename** | Product | `docs/RENAME_TO_LOOM.md` draft → PLAN 0.9.0 |
-| L-14 | Low | shared timing-safe util |
-| L-16 | Low | attachment cap chars wording |
-| L-4 | Low | `requestOnce` envelope-type matching / correlation id |
-| L-5 | Low | v2 pack embed TOCTOU re-resolve (only when embed ships) |
-| Tauri UI | Product | Needs Rust/cargo install first |
+### 2. After R12 approved
 
-Historical closed items (R7–R9 L/M/H) are in `docs/plan_review.md` and `docs/plan_review_archive.md` — do not re-open without cause.
+| Priority | Item | Notes |
+|----------|------|--------|
+| Optional | Remove `fable` bin alias | If R12 agrees |
+| Later | L-5 pack embed TOCTOU | Only when file-body embed ships (v1 is paths-only) |
+| Product | Tauri UI | Needs Rust toolchain install first |
+| Later | Wire `requestId` | Optional beyond L-4 FIFO waiters |
 
----
-
-## Next steps (copy-paste for next session)
-
-### A. Preferred first action — Loom rename (owner gate)
-
-1. Read `docs/RENAME_TO_LOOM.md`; get explicit owner approval.
-2. Implement as PLAN **0.9.0** Phase A→B (do not mix with other features).
-
-### B. Or Low backlog
-
-- **L-14** shared timing-safe util in `@fable/protocol`
-- **L-16** document attachment cap as chars
-- **L-4** `requestOnce` correlation id
-
-### C. Smoke before any code change
+### 3. Smoke commands
 
 ```bash
-cd /Users/kyoungsiklee/projects/fable-advisor
+cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
+bun install
 bun test
-bun run fable --version   # expect 0.8.1
+bun run loom --version    # expect 0.10.0
+git status -sb            # expect clean if no local edits
+git log -3 --oneline
 ```
 
 ---
 
-## Repo layout (quick)
+## Repo structure (quick)
 
 ```
 packages/
-  protocol/   # envelopes, sanitize, codes, relay-url
+  protocol/   # envelopes, codes, sanitize, env, timing-safe
   relay/      # Room, RelayServer, auth
-  host/       # session, sticky, pack, board, inject, slash
-  cli/        # fable entry
-  mcp-server/ # agent-facing MCP tools
-  adapters/   # claude/codex/grok MCP config writers
+  host/       # session, sticky, pack, board, slash, relay-client
+  adapters/   # claude/codex/grok/shell
+  mcp-server/ # MCP tools stdio
+  cli/        # loom entry, VERSION
 apps/relay-cloud/README.md
-docs/PLAN.md, plan_review.md, PROTOCOL.md, ARCHITECTURE.md
-tasks/todo.md
+docs/PLAN.md, WORKFLOW.md, plan_review.md, PROTOCOL.md, ARCHITECTURE.md
+implementation-notes.md   # Deviations
+HANDOFF.md                # this file
 ```
 
-Scripts (root `package.json`):
-
-- `bun test`
-- `bun run fable …`
-- `bun run dev:relay` / `relay:lan` (LAN needs `FABLE_RELAY_TOKEN`)
+Scripts: `bun test`, `bun run loom …`, `bun run dev:relay`, `relay:lan` (needs `LOOM_RELAY_TOKEN`).
 
 ---
 
 ## Workflow conventions (do not skip)
 
-**Full rules:** [`docs/WORKFLOW.md`](docs/WORKFLOW.md).
+Full text: **`docs/WORKFLOW.md`**.
 
-1. **PLAN is SSOT** — version + status + changelog for every non-trivial change.
-2. **Reviews** go in `docs/plan_review.md` with **target plan version**.
-3. **Implementation gate:** `approved` (or explicit pending-revision fixes).
-4. **User phrase `진행해`** = next gate step → test → docs → often commit/push.
-5. **Deviations** → `implementation-notes.md` (conservative choice).
-6. Prefer **minimal, root-cause fixes**; `bun test` green before done.
+1. **PLAN** = product plan SSOT (version + status + changelog).
+2. **plan_review.md** = R{n} results; target version in header.
+3. **implementation-notes.md** = plan deviations (conservative choice + continue).
+4. **`진행해`** = next gate step → implement → `bun test` → docs sync → often commit/push.
+5. Review needed: MINOR/security Med+/new surface; **not** required for pure Low if already approved pattern — but **0.10.0 is pending-review → R12 required**.
+6. Naming: Loom product ≠ Fable 5 reviewer.
+7. Ship remote: `https://github.com/lemonbalms/Loom.git` as **lemonbalms**.
+
+---
+
+## Security invariants (do not regress)
+
+- Peer string allowlist sanitize (ESC/CSI/OSC)
+- Timing-safe compare via `@loom/protocol` (`timingSafeStringEqual`)
+- M-7 peerSecret rejoin; session file mode 0600
+- H-5: non-loopback without token refuses; **no** dual-read of `*_INSECURE_OPEN`
+- H-6: Bearer preferred; no token in default WS URL
+- H-4: MCP upsert never duplicates tables; exact-anchor strip (no bare `loom` word wipe)
+- Home migrate: live sticky/relay PID → no `~/.fable`→`~/.loom` rename; use `loomDir()` everywhere (M-14)
+
+---
+
+## Traps
+
+1. **Hardcoding `~/.loom`** bypasses migration gate (M-14) — always `loomDir()`.
+2. **Invite prefix rewrite** `FABLE-X`→`LOOM-X` is forbidden (room collision).
+3. **PTY inject** default is no-go (Phase 1.5).
+4. **Tauri** without cargo = waste of time.
+5. Approving PLAN without R12 while status is `pending-review` violates gate.
 
 ---
 
@@ -196,14 +176,18 @@ Scripts (root `package.json`):
 
 | Done | Pending |
 |------|---------|
-| M-7 + R10 M-13/L-15 | Loom rename owner approval |
-| PLAN **0.8.1 approved** | L-14 / L-16 / L-4 backlog |
-| 116 tests green | Tauri (cargo) |
+| Loom rename 0.9.x + R11 closed | **R12 on 0.10.0** |
+| L-4 / L-14 / L-16 | R12 findings or approve |
+| WORKFLOW.md | Optional: drop `fable` bin |
+| 132 tests green (at 0.10.0 ship) | L-5, Tauri |
 
-**One-line resume prompt for next chat:**
+**Resume prompt (copy-paste):**
 
-> `HANDOFF.md` 읽고 PLAN 0.8.1 기준. 다음: `RENAME_TO_LOOM.md` 승인 후 0.9.0 구현, 또는 L-14/L-16.
+```
+HANDOFF.md와 docs/WORKFLOW.md 읽고 PLAN 0.10.0 R12 리뷰부터 진행해.
+승인되면 plan approved 처리하고 다음 backlog로.
+```
 
 ---
 
-*End of handoff. Update this file when the next session finishes a gate or changes direction.*
+*Update this file when the next session finishes a gate or changes direction.*
