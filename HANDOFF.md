@@ -58,8 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending) | **0.11.0** | PLAN draft M4.3b Tauri shell → R13 |
-| (pending) | **0.10.3** | Docs honesty (ADAPTERS Loom) + backlog hygiene; Tauri unblocked |
+| `5a5b356` | **0.11.0** / 0.10.3 | PLAN draft M4.3b Tauri shell (R13) + docs hygiene |
 | `c3d2de2` | **0.10.2** | Remove `fable`/`fable-mcp` bin aliases; CLI is `loom`/`loom-mcp` only |
 | `ae4f693` | **0.10.1** | M-17 env wiring + Codex `AGENTS.md`/`bun run status` |
 | `50d46c5` | docs | plan_review hygiene after 0.10.1 gate close |
