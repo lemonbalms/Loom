@@ -49,6 +49,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 | 2026-07-09 | R12 M-17 | Wired `envRelay*` into resolveRelayEndpoint / relay cli / loom relay | Prevent silent local join when only FABLE_RELAY_URL set | Done 0.10.1 |
 | 2026-07-09 | Codex entry | AGENTS.md + `bun run status` + systemHint line | Codex natively loads AGENTS.md | Done |
 | 2026-07-09 | plan_review hygiene | Deferred table open-only; R12 checklist marked as-reviewed @0.10.0 + follow-up table | Prevent “M-17 still open” false reads | Done |
+| 2026-07-09 | 0.10.2 bins | Removed `fable` / `fable-mcp` bins and root `fable` script | Product surface = loom only; kept invite/board/MCP strip | Done |
 
 ### Earlier waves (pointer only)
 

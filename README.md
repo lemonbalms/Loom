@@ -9,9 +9,9 @@ Several people join the same **Room**; each runs their own agent; work and conte
 
 | | |
 |--|--|
-| **CLI** | `loom` (legacy alias `fable` during transition) |
+| **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.10.1** (`approved`) |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.10.2** (`approved`) |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |
 | **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |

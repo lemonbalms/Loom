@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.10.1 approved**. 다음: L-5(embed 시) / Tauri / Owner 지시.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.10.2 approved**. 다음: L-5(embed 시) / Tauri / Owner 지시.
 
 ---
 
@@ -31,9 +31,9 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.10.1** (`fable` bin **alias still exists**) |
+| **Product CLI** | `loom` v**0.10.2** (no `fable` bin; use `bun run loom`) |
 | **Packages** | `@loom/*` Bun monorepo |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.10.1** — status **`approved`** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.10.2** — status **`approved`** |
 | **Review gate** | R12 closed (M-17 fixed in 0.10.1) |
 | **Workflow rules** | **`docs/WORKFLOW.md`** · session entry **`AGENTS.md`** (Codex) |
 | **Status script** | `bun run status` |
@@ -58,7 +58,9 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending push) | **0.10.1** | M-17 env wiring + Codex `AGENTS.md`/`bun run status` |
+| (pending push) | **0.10.2** | Remove `fable`/`fable-mcp` bin aliases; CLI is `loom`/`loom-mcp` only |
+| `ae4f693` | **0.10.1** | M-17 env wiring + Codex `AGENTS.md`/`bun run status` |
+| `50d46c5` | docs | plan_review hygiene after 0.10.1 gate close |
 | `fe4719d` | **0.10.0** | Drop `FABLE_*` env dual-read + `/fable` slash; keep data-path compat |
 | `e79dbcd` | docs | `docs/WORKFLOW.md` workflow rules |
 | `e15bf3a` | 0.9.4 | L-4 requestOnce FIFO waiter queue |
@@ -81,9 +83,9 @@ North star: *connect your agents — and your teammates.*
 - Join with legacy invite codes `FABLE-XXXX` (full-code match, no prefix rewrite)
 - Import `fable-board-snapshot` kind/label
 - MCP strip of legacy `mcp_servers.fable` tables
-- Root/`package.json` **`fable` bin alias** → same CLI entry
+- (0.10.2) **`fable` / `fable-mcp` bins removed** — CLI entry is `loom` / `loom-mcp` only
 
-Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/slash.ts`, `sticky-spawn.ts`, `relay` server/cli, `docs/PLAN.md` 0.10.0, `plan_review.md` R12 section.
+Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/slash.ts`, `sticky-spawn.ts`, `relay` server/cli, `docs/PLAN.md` 0.10.x, `plan_review.md` R12.
 
 ---
 
@@ -93,7 +95,6 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| Optional | Remove `fable` bin alias | Owner decision |
 | Later | L-5 pack embed TOCTOU | Only when file-body embed ships (v1 is paths-only) |
 | Product | Tauri UI | Needs Rust toolchain install first |
 | Later | Wire `requestId` | Optional beyond L-4 FIFO waiters |
@@ -172,9 +173,8 @@ Full text: **`docs/WORKFLOW.md`**.
 
 | Done | Pending |
 |------|---------|
-| Loom rename + R11/R12 + 0.10.1 | Optional: drop `fable` bin |
-| plan_review hygiene (R12 follow-up, Deferred open-only) | L-5 when embed |
-| Codex/Claude session entry + `bun run status` | Tauri (cargo) |
+| Loom rename + R11/R12 + 0.10.2 (no fable bin) | L-5 when embed |
+| plan_review hygiene + Codex entry + `bun run status` | Tauri (cargo) |
 
 **Resume prompt (copy-paste):**
 

@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "loom": "./src/index.ts",
-    "fable": "./src/index.ts"
+    "loom": "./src/index.ts"
   },
   "main": "./src/index.ts",
   "scripts": {

@@ -6,8 +6,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
-    "loom-mcp": "./src/stdio.ts",
-    "fable-mcp": "./src/stdio.ts"
+    "loom-mcp": "./src/stdio.ts"
   },
   "exports": {
     ".": "./src/index.ts"

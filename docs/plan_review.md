@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.10.1** `approved` — R12 M-17 closed; Codex session-entry (`AGENTS.md` + `bun run status`).  
+> **최신:** PLAN **v0.10.2** `approved` — `fable`/`fable-mcp` bin aliases removed; data-path legacy still kept.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
@@ -30,6 +30,7 @@ Done items live under **Recent follow-ups** only (not repeated here).
 | Finding | 처리 |
 |---------|------|
 | **R12 M-17** | **0.10.1** — envRelay* wired in resolveRelayEndpoint / relay cli / loom relay; L-17/L-18 tests |
+| **fable bin alias** | **0.10.2** — removed `fable` / `fable-mcp` bins; data-path legacy kept |
 | **R11 M-14/M-15/M-16** | **0.9.1** — loomDir() paths; sticky LOOM_* env; live-PID + FABLE- join tests (R12에서 소급 검증 완료) |
 | **R11 Low** residual branding | **0.9.2** — loom tips; WARNING scope; FABLE_RELAY_INSECURE_OPEN warn |
 | **R10 L-14 / L-16** | **0.9.3** — shared timingSafe in protocol; caps documented as chars |

@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.10.1** |
-| **Status** | **`approved`** — R12 M-17 env warn wiring + Codex session-entry support |
-| **Supersedes** | 0.10.0 |
+| **Version** | **0.10.2** |
+| **Status** | **`approved`** — remove `fable` / `fable-mcp` bin aliases |
+| **Supersedes** | 0.10.1 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙), `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,20 @@
 
 ### Changelog
 
-#### 0.10.1 — 2026-07-09 (`approved`)
+#### 0.10.2 — 2026-07-09 (`approved`)
+
+**Why:** Complete dual-compat cutover for **CLI entrypoints** — remove transitional `fable` / `fable-mcp` bins.
+
+| What | Why |
+|------|-----|
+| `@loom/cli` bin: `loom` only | Product surface is Loom |
+| `@loom/mcp-server` bin: `loom-mcp` only | Same |
+| Root script `fable` removed | Use `bun run loom` |
+| **Still keep:** `FABLE-` invites, `fable-board-snapshot` import, MCP strip of legacy fable tables | On-disk/wire data compat |
+
+No re-review required (documented Owner optional after R12; Low surface break for alias only).
+
+#### 0.10.1 — 2026-07-09 (`superseded` by 0.10.2; was `approved`)
 
 **Why:** R12 **M-17** — wire relay URL/host/port/token through `envLoom` so FABLE_* warns; Codex session-entry.
 
@@ -840,5 +853,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.10.0** dual-compat drop (env/slash) | 2026-07-09 | **0.10.0** |
 | Reviewer | Fable 5 | R12 **pending-revision** (M-17) | 2026-07-09 | 0.10.0 reviewed |
 | Plan author | implementation | **0.10.1** M-17 + Codex entry | 2026-07-09 | **0.10.1** |
+| Plan author | implementation | **0.10.2** remove fable bin aliases | 2026-07-09 | **0.10.2** |
 
-**구현 게이트:** dual-compat **0.10.1 approved**. Remaining: L-5 (embed), Tauri.
+**구현 게이트:** dual-compat runtime **0.10.x done** (bins removed 0.10.2). Remaining: L-5 (embed), Tauri.
