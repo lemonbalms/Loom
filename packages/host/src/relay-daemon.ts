@@ -6,15 +6,16 @@ import {
 } from "@loom/protocol";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { loomDir } from "./session-store";
 
+/** M-14: use resolveStateHomeDir via loomDir() — never hardcode ~/.loom */
 function pidPath(): string {
-  return join(homedir(), ".loom", "relay.pid");
+  return join(loomDir(), "relay.pid");
 }
 
-function fableDir(): string {
-  return join(homedir(), ".loom");
+function stateDir(): string {
+  return loomDir();
 }
 
 export async function isRelayUp(endpoint: RelayEndpoint): Promise<boolean> {
@@ -82,7 +83,7 @@ export async function ensureRelay(opts?: {
     };
   }
 
-  mkdirSync(fableDir(), { recursive: true });
+  mkdirSync(stateDir(), { recursive: true });
   const relayCli = resolveRelayCli();
   const proc = spawn({
     cmd: ["bun", "run", relayCli],

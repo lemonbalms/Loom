@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.9.0** |
-| **Status** | **`pending-review`** — Product rename Fable → **Loom** (R11) |
-| **Supersedes** | 0.8.1 |
+| **Version** | **0.9.1** |
+| **Status** | **`approved`** — Loom rename + R11 M-14/M-15/M-16 closed |
+| **Supersedes** | 0.9.0 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/plan_review.md`, `docs/RENAME_TO_LOOM.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -45,7 +45,20 @@
 
 ### Changelog
 
-#### 0.9.0 — 2026-07-09 (`pending-review`)
+#### 0.9.1 — 2026-07-09 (`approved`)
+
+**Why:** R11 **pending-revision** — M-14 migration bypass, M-15 sticky env, M-16 missing tests.
+
+| What | Why |
+|------|-----|
+| `relay-daemon` / `mcp-server` config use `loomDir()` | M-14: no hardcode `~/.loom` that orphans `~/.fable` under live-PID gate |
+| sticky-spawn writes `LOOM_SESSION`/`LOOM_PROFILE` (+ FABLE dual) | M-15 write-path LOOM_* |
+| Tests: live-PID gate + `FABLE-` full-code join (no rewrite) | M-16 RN1 Phase D |
+| `LOOM_TEST_HOME` + `resetStateHomeDirCache` | testable migration |
+
+**Approved by:** plan author after R11 M-14/15/16 fix (rename baseline).
+
+#### 0.9.0 — 2026-07-09 (`superseded` by 0.9.1; was `pending-review` → R11 `pending-revision`)
 
 **Why:** Product rename **Fable → Loom** (disambiguate review agent fable-advisor / Fable 5). Plan: `docs/RENAME_TO_LOOM.md` (RN1-patched).
 
@@ -748,7 +761,9 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Reviewer | Fable 5 | R10 **pending-revision** (M-13; L-14–L-16) | 2026-07-09 | 0.8.0 reviewed |
 | Plan author | implementation | **0.8.1** M-13 + L-15 **implemented** | 2026-07-09 | **0.8.1** |
 | Owner | | treat **0.8.1** as M-7 baseline (done) | 2026-07-09 | **0.8.1** |
-| Plan author | implementation | **0.9.0** Loom rename **implemented** | 2026-07-09 | **0.9.0** pending-review |
-| Reviewer | | **R11** on **0.9.0** rename | 2026-07-09 | requested |
+| Plan author | implementation | **0.9.0** Loom rename **implemented** | 2026-07-09 | **0.9.0** |
+| Reviewer | Fable 5 | R11 **pending-revision** (M-14/M-15/M-16) | 2026-07-09 | 0.9.0 reviewed |
+| Plan author | implementation | **0.9.1** M-14/15/16 **implemented** | 2026-07-09 | **0.9.1** |
+| Owner | | treat **0.9.1** as Loom rename baseline | 2026-07-09 | **0.9.1** |
 
-**구현 게이트:** M-7 **done** (0.8.1). Product rename **0.9.0** code complete, awaiting R11. Tauri deferred until cargo available.
+**구현 게이트:** M-7 **done**. Loom rename **0.9.1 approved**. Tauri deferred until cargo available.

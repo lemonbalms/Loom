@@ -51,12 +51,25 @@ const LOOM_DIR_NAME = ".loom";
 let homeDirResolved: string | null = null;
 let migrateMessagePrinted = false;
 
+/** Override home for tests (M-16). Absolute path; unset to use os.homedir(). */
+function stateRootHome(): string {
+  const override = process.env.LOOM_TEST_HOME;
+  if (override && override.length > 0) return override;
+  return homedir();
+}
+
 function legacyHomeDir(): string {
-  return join(homedir(), LEGACY_DIR_NAME);
+  return join(stateRootHome(), LEGACY_DIR_NAME);
 }
 
 function loomHomeDir(): string {
-  return join(homedir(), LOOM_DIR_NAME);
+  return join(stateRootHome(), LOOM_DIR_NAME);
+}
+
+/** Reset cached home resolution (tests only). */
+export function resetStateHomeDirCache(): void {
+  homeDirResolved = null;
+  migrateMessagePrinted = false;
 }
 
 /** Best-effort: is pid still running? */
@@ -174,9 +187,12 @@ export function resolveStateHomeDir(): string {
   } catch {
     try {
       copyTreeFiltered(legacy, loom);
-      // leave legacy in place if copy succeeded (safer than rm on partial)
+      // Prefer leave legacy if copy path was used (EXDEV); only remove when empty check ok
       try {
-        rmSync(legacy, { recursive: true, force: true });
+        const loomOk = existsSync(join(loom, "session.json")) || existsSync(loom);
+        if (loomOk) {
+          rmSync(legacy, { recursive: true, force: true });
+        }
       } catch {
         /* leave orphan .fable */
       }

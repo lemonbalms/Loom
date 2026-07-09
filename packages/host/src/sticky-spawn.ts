@@ -48,12 +48,18 @@ export async function startStickyHostProcess(): Promise<HostStartResult> {
   }
 
   const main = stickyMainPath();
+  const sp = sessionPath();
+  // M-15: write path LOOM_* (keep FABLE_* dual for one minor so old children still boot)
   const env: Record<string, string | undefined> = {
     ...process.env,
-    FABLE_SESSION: sessionPath(),
+    LOOM_SESSION: sp,
+    FABLE_SESSION: sp,
   };
   const profile = getActiveProfile();
-  if (profile) env.FABLE_PROFILE = profile;
+  if (profile) {
+    env.LOOM_PROFILE = profile;
+    env.FABLE_PROFILE = profile;
+  }
 
   const proc = spawn({
     cmd: ["bun", "run", main],

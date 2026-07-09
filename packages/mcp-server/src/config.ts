@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { loomDir } from "@loom/host";
 
 export function resolveMcpStdio(): string {
   const here = fileURLToPath(new URL(".", import.meta.url));
@@ -13,7 +13,8 @@ export function writeMcpConfig(opts?: {
   dir?: string;
   sessionEnv?: Record<string, string>;
 }): string {
-  const dir = opts?.dir ?? join(homedir(), ".loom");
+  // M-14: default dir via loomDir() (respects live-PID migration gate)
+  const dir = opts?.dir ?? loomDir();
   mkdirSync(dir, { recursive: true });
   const path = join(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
@@ -36,7 +37,7 @@ export function writeAgentHintFile(opts?: {
   agentId?: string;
   hint?: string;
 }): string {
-  const dir = opts?.dir ?? join(homedir(), ".loom");
+  const dir = opts?.dir ?? loomDir();
   mkdirSync(dir, { recursive: true });
   const path = join(dir, "AGENT_HINT.txt");
   const body =

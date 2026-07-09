@@ -489,8 +489,8 @@ export class RoomRegistry {
   private byId = new Map<string, Room>();
   private byCode = new Map<string, Room>();
 
-  create(name: string): Room {
-    const room = new Room(name);
+  create(name: string, inviteCode?: string): Room {
+    const room = new Room(name, inviteCode);
     this.byId.set(room.id, room);
     this.byCode.set(room.inviteCode.toUpperCase(), room);
     return room;

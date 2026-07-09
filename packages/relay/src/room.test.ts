@@ -194,5 +194,17 @@ describe("RoomRegistry", () => {
     const reg = new RoomRegistry();
     const room = reg.create("sprint");
     expect(reg.getByCode(room.inviteCode)).toBe(room);
+    expect(room.inviteCode).toMatch(/^LOOM-/);
+  });
+
+  test("M-16: legacy FABLE- full code lookup (no prefix rewrite)", () => {
+    const reg = new RoomRegistry();
+    const room = reg.create("legacy-room", "FABLE-7K2M");
+    expect(room.inviteCode).toBe("FABLE-7K2M");
+    // exact match + case fold only
+    expect(reg.getByCode("FABLE-7K2M")).toBe(room);
+    expect(reg.getByCode("fable-7k2m")).toBe(room);
+    // must NOT resolve via LOOM- rewrite of same body
+    expect(reg.getByCode("LOOM-7K2M")).toBeUndefined();
   });
 });

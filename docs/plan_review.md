@@ -1,7 +1,7 @@
-# Plan Review — Fable Advisor
+# Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.9.0** `pending-review` — product rename Fable→**Loom** (**R11 요청**).  
+> **최신:** PLAN **v0.9.1** `approved` — R11 M-14/M-15/M-16 closed; Loom rename baseline.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재.  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
@@ -22,13 +22,15 @@
 | L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships |
 | R10 L-14 | Low | `secretsEqual`이 `timingSafeTokenEqual` 복사본 (공유 유틸화 권장) | backlog |
 | R10 L-16 | Low | 256KB 캡이 실제로는 chars 단위 (byte 아님) | backlog |
+| R11 L | Low | `isManagedComment` WARNING 스코프, INSECURE 구 env 경고, 잔존 Fable 브랜딩 | backlog |
 | Product | — | Tauri UI | needs Rust/cargo |
-| Product | — | Rename Fable → **Loom** | **0.9.0 implemented** — **R11 review** |
 
 ### Recent follow-ups (closed / in review)
 
 | Finding | 처리 |
 |---------|------|
+| **R11 M-14/M-15/M-16** | **0.9.1** — loomDir() paths; sticky LOOM_* env; live-PID + FABLE- join tests |
+| **R11** Fable→Loom rename | **0.9.0** + **0.9.1** — **done** |
 | **R10 M-13** run silent join failure | **0.8.1** — join fail-fast + onError/error surface |
 | **R10 L-15** sticky peerSecret 미저장 | **0.8.1** — saveSession + setReconnectPeerSecret |
 | **R5/R9 M-7** peerId ownership | **0.8.0** + **0.8.1** — **done** (R10 core approved) |
@@ -44,7 +46,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
-| **R11** | v0.9.0 | **pending** | Loom rename — body below |
+| **R11** | v0.9.0 | pending-revision → **0.9.1 approved** | M-14/15/16 closed — body below |
 | **R10** | v0.8.0 | pending-revision → **0.8.1 approved** | M-7 core OK; M-13/L-15 closed — body below |
 | **R9** | v0.7.0 | pending-revision → **0.7.1 approved** | M-10/M-11/M-12 closed — body below |
 | **R8** | v0.6.0 | pending-revision → **0.6.1 approved** | H-7/M-8/M-9 closed — body below |
@@ -58,30 +60,65 @@
 
 ---
 
-## Review R11 — Plan v0.9.0 (**requested**)
+## Review R11 — Plan v0.9.0 (Fable → Loom rename)
 
-**검토 대상:** `docs/PLAN.md` **v0.9.0** + `docs/RENAME_TO_LOOM.md` — product Fable → Loom  
-**요청자:** plan author (implementation complete; 116 tests pass)  
-**날짜:** 2026-07-09  
-**결론:** _(awaiting reviewer)_
+**검토 대상:** `docs/PLAN.md` **v0.9.0** + `docs/RENAME_TO_LOOM.md`(RN1-patched) — product Fable → Loom 구현 diff
+**검토자:** Fable 5 — 코드 직접 확인 (Read/Grep; 이 세션은 셸 실행 불가 → `bun test`는 정적 검증으로 대체)
+**날짜:** 2026-07-09
+**결론:** **`pending-revision`** → **0.9.1 applied / Loom rename baseline approved** (M-14/M-15/M-16 closed)
 
-### Focus (RN1 security diffs)
+RN1 필수 5건의 핵심 로직은 모두 실제로 구현됐고(A1~A5 아래 근거), R2~R10 보안 불변식(sanitize, timing-safe, M-7, H-4, H-5)도 리네임 과정에서 손상 없이 보존됐다. 그러나 **live-PID gate를 사후에 무력화하는 하드코딩 `~/.loom` 경로 2곳(M-14)** — RN1 지적 1번이 막으려던 split-brain을 다른 경로로 재도입 — 과 sticky spawn의 레거시 env 기록(M-15), RN1이 요구한 신규 테스트 2종 누락(M-16)이 남아 승인 불가.
 
-| # | Item | Where |
-|---|------|--------|
-| 1 | Home migrate live-PID gate | `session-store.ts` `resolveStateHomeDir` |
-| 2 | No `FABLE_RELAY_INSECURE_OPEN` dual-read | `server.ts` / `cli.ts` relay |
-| 3 | MCP exact-anchor strip (no bare loom) | `user-mcp-config.ts` |
-| 4 | Invite mint `LOOM-`; no prefix rewrite | `codes.ts` / `getByCode` |
-| 5 | Slash dual `/loom`+`/fable`; LOOM HANDOFF banner | `slash.ts` / `format.ts` |
+### Checklist
 
-### Author self-check
+| # | 항목 | 판정 | 근거 |
+|---|------|------|------|
+| A1 | 홈 디렉터리 live-PID gate | **Partial** | `host/src/session-store.ts:141-190` — `~/.loom` 우선, legacy에 live PID(`*.host.json`·`relay.pid`, `collectLivePidsUnder`:73-113) 있으면 rename 중단+안내(:157-167), EXDEV copy는 `.lock`/`.tmp.*` 제외(:115-136). 단 `isPidAlive`는 재사용이 아닌 3번째 복제(:63-71, `sticky-meta.ts:80`과 중복)이고, **M-14가 gate를 우회**하며, gate 단위 테스트 부재(M-16) |
+| A2 | MCP dual-strip 정확 구문 앵커 | **Yes** | `adapters/src/user-mcp-config.ts:4-11` 정확 마커, `:11` `\[mcp_servers\.(?:fable\|loom)(?:\.\|])`, `isManagedComment`(:65-73) 정확 구문만 — bare `/loom/i` 없음. `# deadline looming` 보존 테스트 존재(`user-mcp-config.test.ts:137-148`). `hadLegacy` dual(:154-160). H-4 불변식 유지 |
+| A3 | Invite prefix 재작성 금지 | **Yes**(테스트만 미비) | mint `LOOM-`(`protocol/src/codes.ts:10`); join은 `registry.getByCode` 전체 코드 `toUpperCase()` 정확 일치(`relay/src/room.ts:503-505`, `server.ts:280`); rewrite 헬퍼 grep 0건. 단 `FABLE-` 코드 join 호환 테스트 없음(M-16) |
+| A4 | `INSECURE_OPEN` dual-read 제외 | **Yes** | `protocol/src/env.ts:36-39`, `relay/src/server.ts:76-79`, `relay/src/cli.ts:27-28` 모두 `LOOM_`만 인식; `FABLE_RELAY_INSECURE_OPEN` 읽기 grep 0건 — H-5 재발 없음. 단 계획 §4.1의 "구 env만 설정 시 강한 stderr 경고"는 미구현(Low, 무시 자체는 안전한 방향) |
+| A5 | Blast radius 3종 | **Yes** | `/loom`+`/fable` dual(`host/src/slash.ts:13`, 테스트 `slash.test.ts:13-15`); `[LOOM HANDOFF from …]`(`protocol/src/format.ts:23`, 테스트 갱신); `loomSystemHint` 본문 Loom 카피(`adapters/src/hints.ts:2-24`). 잔재: `shell.ts:41` 힌트에 "fable inbox…" 등(Low) |
+| B6 | sanitize.ts 무손상 | **Yes** | `protocol/src/sanitize.ts` — ESC/CSI/OSC skip, C0/C1, bidi, zero-width strip 전부 동일; 제품명 문자열 0건; `sanitizeHandoffForOutput`(M-9) 유지 |
+| B7 | timing-safe 비교 무손상 | **Yes** | `relay/src/room.ts:41-52` `secretsEqual`, `server.ts:43-55` `timingSafeTokenEqual` — 본문 R5/R10 하드닝 버전 그대로(길이 XOR + `crypto.timingSafeEqual`) |
+| B8 | M-7 peerSecret 무손상 | **Yes** | CSPRNG 24B(`codes.ts:32-35`); rejoin 시 secret 필수(`room.ts:131-139`); `peerSecret`은 join 소켓에만(`server.ts:275,321` — roster broadcast 미포함); 세션 0600(`session-store.ts:275-283`); L-15 sticky persist + `setReconnectPeerSecret`(`sticky-server.ts:77-85`, `relay-client.ts:48-53`) 유지 |
+| B9 | `@fable/`·`@loom/` 혼재 | **Yes(없음)** | `@fable/` grep 0건; 6개 package.json 전부 `@loom/*`; cli bin `loom`+`fable` alias, root `loom`+`fable` 스크립트 — 계획대로 |
+| B10 | 테스트 116 통과 | **미확인(실행 불가)/Partial** | 정적으로는 일관: 16개 파일 `test(` 118건(주장 116과 근사), `FABLE-` 하드코딩 assert 0건(잔존 2건은 CLI usage 텍스트), `envelope.test.ts:151` `/^LOOM-…/`, board·adapters 테스트 신규 이름 기준. 단 RN1 요구 테스트 2종 부재(M-16) — "RN1 tests 포함 green" 기준 미충족 |
 
-- `bun test` 116 pass; `loom v0.9.0`
-- `@loom/*` packages; `fable` bin alias kept
-- Legacy `FABLE_SESSION` dual-read; INSECURE_OPEN not dual-read
+### Findings
 
-**Please leave findings or mark approved.**
+| Sev | ID | Finding | Suggested change |
+|-----|----|---------|------------------|
+| **Med** | **M-14** | **하드코딩 `~/.loom`이 migration resolver를 우회** — `host/src/relay-daemon.ts:12-18,85,100`(pidPath/mkdir/pid write)과 `mcp-server/src/config.ts:16,39`(mcp.json/AGENT_HINT)가 `join(homedir(), ".loom")` 직접 사용. live-PID로 migration이 차단된 상태(state home=`~/.fable`)에서 `loom run`(cli `index.ts:1072` `writeMcpConfig`)이나 로컬 relay spawn이 `~/.loom`을 생성하면, 다음 프로세스의 `resolveStateHomeDir`가 `existsSync(loom)`(:147)에서 단락 → `~/.fable`은 영구히 미이관·무경고 방치(세션/보드/팩 고아화, "not in a room"). RN1 지적 1번의 acceptance("no split-brain") 위반 | 두 파일 모두 `loomDir()`/`resolveStateHomeDir()` 경유로 통일(mcp-server는 CLI가 dir를 넘기거나 helper를 protocol/host로 이동). 또는 `resolveStateHomeDir`가 "loom 존재 + legacy 존재 + 미이관" 상태를 감지해 경고/재시도 |
+| Med | **M-15** | sticky host spawn이 자식 env에 레거시 이름만 기록 — `host/src/sticky-spawn.ts:53,56` `FABLE_SESSION`/`FABLE_PROFILE`. 계획 §4.1 "write path는 LOOM_*만" 위반; 모든 sticky host가 deprecation 경고를 출력하고, 0.10에서 dual-read 제거 시 조용히 파손 | `LOOM_SESSION`/`LOOM_PROFILE`로 기록(전환기 양쪽 기록도 가) |
+| Med | **M-16** | RN1 Phase D 필수 테스트 2종 누락: (1) live-PID gate 단위 테스트(`session-store` 테스트 파일 자체가 없음), (2) `FABLE-` 전체 코드 join 호환 + "no prefix rewrite" 테스트(`room.test.ts:196`은 신규 mint 코드만) | 두 테스트 추가 후 `bun test` 결과 재보고 |
+| Low | | `isManagedComment`의 `/WARNING: legacy/i`(`user-mcp-config.ts:71`)가 fable/loom과 무관한 일반 구문 — 사용자 주석 `# WARNING: legacy config` 오삭제 가능 | `WARNING: legacy \[mcp_servers\.(fable\|loom)\]` 등으로 스코프 한정 |
+| Low | | §4.1 약속한 "구 `FABLE_RELAY_INSECURE_OPEN`만 설정 시 강한 stderr" 미구현(조용히 무시) | 기동 시 구 env 감지 → 1회 경고 출력 |
+| Low | | copy fallback이 검증 없이 legacy 삭제 — `session-store.ts:176-182` 주석("leave legacy in place")과 코드(`rmSync`) 모순; 계획은 "verified 후 제거" | 파일 수/크기 대조 후 삭제 또는 주석·정책 일치화 |
+| Low | | 잔존 Fable 브랜딩(기능 무관): `relay/server.ts:151` "Fable Relay", `cli/index.ts:129,133` usage의 `fable … join FABLE-XXXX`, `:613` "fable-board-snapshot" 메시지, `codex.ts:56`/`grok.ts:56` 헤더, `shell.ts:41` 힌트, `mcp-server/stdio.ts:210` serverInfo version `"0.7.3"` stale | 일괄 정리(0.9.1 PATCH 가) |
+
+### Decision notes
+
+보안 diff 3곳(B2 migration / B5 MCP strip / B3 invite)에 집중 검토한 결과, **B5·B3은 깨끗하고 B2만 문제** — 그것도 gate 로직 자체가 아니라 gate를 우회하는 인접 코드(M-14)다. 55파일 치환에도 sanitize/timing-safe/M-7 로직 본문은 바이트 단위로 무손상임을 확인했다.
+
+M-14는 RN1 High(#1)의 변종이므로 0.9.1 PATCH로 수정 후 재리뷰는 해당 diff만 보면 된다. M-15·M-16은 같은 PATCH에 동봉 가능.
+
+"116 pass" 주장은 이 세션 도구 제약으로 실행 검증 불가 — 정적 근거상 신빙성 있으나, 0.9.1 재리뷰 요청 시 `bun test` 출력 첨부 요망.
+
+**요약:** 리네임 자체는 성실하게 구현됐고 보안 회귀는 없다. 승인을 막는 것은 단 하나의 실질 결함 — `relay-daemon.ts:12-18`과 `mcp-server/config.ts:16,39`의 하드코딩 `~/.loom`이 migration 차단 상태에서 `~/.loom`을 조기 생성해 `session-store.ts:147`의 단락 조건을 트리거, `~/.fable` 상태를 무경고로 고아화한다(M-14). 여기에 `sticky-spawn.ts:53,56` 레거시 env 기록(M-15)과 RN1 필수 테스트 2종 누락(M-16)을 더해 **pending-revision**. 세 건 모두 소규모 PATCH로 해소 가능하다.
+
+관련 파일: `packages/host/src/{session-store,relay-daemon,sticky-spawn,sticky-meta}.ts`, `packages/mcp-server/src/config.ts`, `packages/adapters/src/user-mcp-config.ts`, `packages/relay/src/{room,server,cli}.ts`, `packages/protocol/src/{env,codes,sanitize,format}.ts`
+
+승인 시: `docs/PLAN.md` Version → **0.9.1** (PATCH) — M-14(migration 우회 경로 통일)/M-15(sticky spawn env)/M-16(누락 테스트 2종) 반영 후 rename을 `done`으로 표기.
+
+### R11 follow-up (0.9.1 — applied)
+
+| Finding | 처리 |
+|---------|------|
+| **M-14** | `relay-daemon.ts` + `mcp-server/config.ts` → `loomDir()` / `resolveStateHomeDir` |
+| **M-15** | `sticky-spawn.ts` writes `LOOM_SESSION`/`LOOM_PROFILE` (+ FABLE dual for transition) |
+| **M-16** | `session-store.test.ts` live-PID gate; `room.test.ts` FABLE- full-code lookup (no LOOM- rewrite) |
+| PLAN | **v0.9.1** `approved`; Loom rename **done** |
+| Tests | `bun test` **124 pass** |
 
 ---
 
