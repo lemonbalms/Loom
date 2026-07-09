@@ -20,7 +20,7 @@ import {
 } from "./sticky-meta";
 import type { StickyRpcRequest, StickyRpcResponse } from "./sticky-rpc";
 import { sanitizePeerText, sanitizeHandoffForOutput } from "@loom/protocol";
-import { timingSafeTokenEqual } from "@loom/relay";
+import { timingSafeTokenEqual } from "@loom/protocol";
 
 export type StickyServer = {
   meta: StickyHostMeta;

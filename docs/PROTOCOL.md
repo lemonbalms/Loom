@@ -84,3 +84,14 @@ Inbox entry status: `queued` → `notified` → `accepted` \| `claimed` (first-w
 ## Sanitize
 
 All peer-controlled strings use allowlist sanitize (printable + `\n\t`; strip ESC/CSI/OSC) before store/display.
+
+## Payload caps (L-11 / L-16)
+
+| Cap | Limit | Unit |
+|-----|-------|------|
+| Handoff body | 100_000 | JS string **chars** (not bytes) |
+| Attachment content | 256_000 | JS string **chars** |
+| Attachments per handoff | 32 | count |
+| Inbox entries per peer | 100 | count (trim oldest) |
+
+Zod + relay `resolveHandoff` enforce these. Docs previously said “256KB”; the implementation measures **character length**.

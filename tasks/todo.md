@@ -1,15 +1,13 @@
-# 0.9.2 R11 Low residual (done)
+# 0.9.3 L-14 + L-16 (done)
 
-- [x] Push 0.9.1 to origin
-- [x] User-facing Fable → Loom strings (CLI tips, adapters, sticky, relay banner)
-- [x] isManagedComment WARNING scope
-- [x] FABLE_RELAY_INSECURE_OPEN warn (no dual-read open)
-- [x] MCP version 0.9.2; PLAN/plan_review/implementation-notes
+- [x] timingSafeStringEqual in @loom/protocol; room/server/sticky use it
+- [x] Document attachment/body caps as chars (L-16)
+- [x] L-4 deferred (correlation id) — implementation-notes
+- [x] PLAN 0.9.3; tests; push
 
 ## Next backlog
 
-- L-14 shared timing-safe util
-- L-16 attachment cap “chars” wording
-- L-4 requestOnce correlation
+- L-4 requestOnce correlation id
+- L-5 pack embed TOCTOU (when embed ships)
 - Drop FABLE dual-compat (0.10)
 - Tauri (cargo)

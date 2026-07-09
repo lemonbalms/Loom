@@ -26,9 +26,14 @@ export const PeerInfoSchema = z.object({
 });
 export type PeerInfo = z.infer<typeof PeerInfoSchema>;
 
-/** L-11: hard caps for peer-supplied handoff payloads (relay memory / terminal safety). */
+/**
+ * L-11 / L-16: hard caps for peer-supplied handoff payloads (relay memory / terminal safety).
+ * Units are **UTF-16 code units (JS string length)**, not bytes.
+ * 256_000 chars ≈ up to ~512KB heap / ~1MB UTF-8 worst case — document as chars, not "256KB".
+ */
 export const MAX_ATTACHMENT_CONTENT_CHARS = 256_000;
 export const MAX_ATTACHMENTS_PER_HANDOFF = 32;
+/** Max handoff body length in JS string chars (not bytes). */
 export const MAX_HANDOFF_BODY_CHARS = 100_000;
 export const MAX_INBOX_ENTRIES_PER_PEER = 100;
 

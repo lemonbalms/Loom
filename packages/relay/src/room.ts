@@ -13,6 +13,7 @@ import {
   generateHandoffId,
   generateId,
   generatePeerSecret,
+  timingSafeStringEqual,
   sanitizePeerName,
   sanitizePeerText,
   MAX_INBOX_ENTRIES_PER_PEER,
@@ -37,19 +38,6 @@ type Member = {
 export type AddPeerResult =
   | { ok: true; peer: PeerInfo; secret: string; isNew: boolean }
   | { ok: false; code: "peer_auth_failed"; message: string };
-
-function secretsEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const ab = enc.encode(a);
-  const bb = enc.encode(b);
-  const len = Math.max(ab.length, bb.length, 1);
-  const pa = new Uint8Array(len);
-  const pb = new Uint8Array(len);
-  pa.set(ab);
-  pb.set(bb);
-  const lenMismatch = ab.length === bb.length ? 0 : 1;
-  return crypto.timingSafeEqual(pa, pb) && lenMismatch === 0;
-}
 
 export type HandoffRouteResult = {
   status: HandoffSendStatus;
@@ -129,7 +117,10 @@ export class Room {
     const displayName = sanitizePeerName(partial.displayName);
     const existing = this.members.get(partial.id);
     if (existing) {
-      if (!partial.secret || !secretsEqual(partial.secret, existing.secret)) {
+      if (
+        !partial.secret ||
+        !timingSafeStringEqual(partial.secret, existing.secret)
+      ) {
         return {
           ok: false,
           code: "peer_auth_failed",

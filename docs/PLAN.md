@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.9.2** |
-| **Status** | **`approved`** — R11 Low residual branding + insecure-env warn |
-| **Supersedes** | 0.9.1 |
+| **Version** | **0.9.3** |
+| **Status** | **`approved`** — L-14 shared timing-safe util + L-16 cap units (chars) |
+| **Supersedes** | 0.9.2 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/plan_review.md`, `docs/RENAME_TO_LOOM.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -45,7 +45,21 @@
 
 ### Changelog
 
-#### 0.9.2 — 2026-07-09 (`approved`)
+#### 0.9.3 — 2026-07-09 (`approved`)
+
+**Why:** Backlog **L-14** / **L-16** (R10 Low).
+
+| What | Why |
+|------|-----|
+| `timingSafeStringEqual` / `timingSafeTokenEqual` in `@loom/protocol` | Single compare impl for relay token + peer secret (L-14) |
+| room/server/sticky import shared util | No divergent copy drift |
+| Attachment/body caps documented as **chars** (JS string length), not bytes | L-16 honesty |
+
+**Not in 0.9.3:** L-4 `requestOnce` correlation id (needs careful concurrent-ack design; still backlog).
+
+No re-review required (Low backlog PATCH).
+
+#### 0.9.2 — 2026-07-09 (`superseded` by 0.9.3; was `approved`)
 
 **Why:** R11 Low residual — product-facing “Fable” strings, MCP WARNING scope, legacy INSECURE env warn.
 
@@ -138,7 +152,7 @@ Re-review not required (Low backlog PATCH).
 
 | What | Why |
 |------|-----|
-| Attachment content max **256KB**, max **32** attachments, body max **100KB** (zod + resolveHandoff slice) | DoS / memory |
+| Attachment content max **256_000 chars** (JS length, not bytes), max **32** attachments, body max **100_000 chars** | DoS / memory (L-11; units clarified L-16) |
 | Inbox max **100** entries/peer with trim | Bound growth |
 | Claim/accept **deletes** entry (no permanent claimed retention) | Repeated `--with-board` cannot pin memory |
 
@@ -718,7 +732,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | task board scope | **roomId** (local file; not multi-machine live) |
 | handoffId on tasks | traceability string only — **no** referential integrity after relay restart |
 | board snapshot merge | timestamps clamped to now; ISO only; foreign roomId needs force |
-| handoff attachment size | max 256KB content, 32 attachments, 100 inbox/peer; claim evicts |
+| handoff attachment size | max 256_000 **chars** content, 32 attachments, 100 inbox/peer; claim evicts (L-16) |
 
 ### Backlog (non-blocking)
 
@@ -779,5 +793,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.9.1** M-14/15/16 **implemented** | 2026-07-09 | **0.9.1** |
 | Owner | | treat **0.9.1** as Loom rename baseline | 2026-07-09 | **0.9.1** |
 | Plan author | implementation | **0.9.2** R11 Low residual branding | 2026-07-09 | **0.9.2** |
+| Plan author | implementation | **0.9.3** L-14 timing-safe share + L-16 chars | 2026-07-09 | **0.9.3** |
 
-**구현 게이트:** M-7 **done**. Loom rename **0.9.1+**; residual branding **0.9.2**. Tauri deferred until cargo available.
+**구현 게이트:** M-7 + Loom rename done. Low backlog L-14/L-16 closed in **0.9.3**. Remaining: L-4, L-5, Tauri.

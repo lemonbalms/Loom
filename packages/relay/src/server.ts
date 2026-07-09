@@ -8,8 +8,12 @@ import {
   sanitizePeerName,
   makeEnvelopeBase,
   nowIso,
+  timingSafeTokenEqual,
 } from "@loom/protocol";
 import { RoomRegistry, type SocketLike } from "./room";
+
+// L-14: re-export shared constant-time compare (impl lives in @loom/protocol)
+export { timingSafeTokenEqual };
 
 export type RelayServerOptions = {
   host?: string;
@@ -37,21 +41,6 @@ type ClientState = {
 export function isLoopbackHost(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
-}
-
-/** Constant-time string compare for shared secrets (M-5). */
-export function timingSafeTokenEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const ab = enc.encode(a);
-  const bb = enc.encode(b);
-  const len = Math.max(ab.length, bb.length, 1);
-  const pa = new Uint8Array(len);
-  const pb = new Uint8Array(len);
-  pa.set(ab);
-  pb.set(bb);
-  // XOR length mismatch into a byte so unequal lengths still take full compare time
-  const lenMismatch = ab.length === bb.length ? 0 : 1;
-  return crypto.timingSafeEqual(pa, pb) && lenMismatch === 0;
 }
 
 export class RelayServer {
