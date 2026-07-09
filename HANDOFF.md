@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.11.0 pending-revision** (R13). 다음: **0.11.1 PATCH** (M-18 board path, M-19 Rust RPC + session) → approve → desktop scaffold. 본구현 금지.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.11.1 approved**. 다음: **implement `apps/desktop`** (Status/Peers/Inbox; Rust invoke; textContent-only; no Board v1).
 
 ---
 
@@ -31,10 +31,10 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.10.3** (PLAN 0.11.0 draft; CLI bumps on implement) |
+| **Product CLI** | `loom` v**0.10.3** (bumps with desktop implement wave) |
 | **Packages** | `@loom/*` Bun monorepo |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.11.0** — status **`pending-revision`** (R13 M-18/M-19) |
-| **Review gate** | **R13 done** — Open **M-18, M-19**; next PLAN **0.11.1** then implement |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.11.1** — status **`approved`** (R13 closed) |
+| **Review gate** | Open blocking **none** — implement M4.3b shell |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -42,7 +42,7 @@ North star: *connect your agents — and your teammates.*
 | **Git** | `main` → `origin` https://github.com/lemonbalms/Loom.git |
 | **Remote account** | GitHub auth: **lemonbalms** |
 | **Tauri** | **Unblocked** — `cargo`/`rustc` 1.96 present; `@tauri-apps/cli` in root devDeps |
-| **Open blocking** | none |
+| **Open blocking** | none (R13 M-18/19/20 locked in 0.11.1) |
 
 ### Naming (critical)
 
@@ -58,7 +58,9 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| `5a5b356` | **0.11.0** / 0.10.3 | PLAN draft M4.3b Tauri shell (R13) + docs hygiene |
+| (pending) | **0.11.1** | R13 close: M-18 C, M-19 Rust invoke, M-20 textContent |
+| `539930e` | R13 | plan_review hygiene + first R13 body |
+| `5a5b356` | **0.11.0** / 0.10.3 | PLAN draft M4.3b Tauri shell |
 | `c3d2de2` | **0.10.2** | Remove `fable`/`fable-mcp` bin aliases; CLI is `loom`/`loom-mcp` only |
 | `ae4f693` | **0.10.1** | M-17 env wiring + Codex `AGENTS.md`/`bun run status` |
 | `50d46c5` | docs | plan_review hygiene after 0.10.1 gate close |
@@ -96,10 +98,10 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | **0.11.1** PLAN PATCH | Lock Board path (M-18) + Rust RPC/session (M-19); then author-close approve |
-| Later | L-5 pack embed TOCTOU | Only when file-body embed ships (v1 is paths-only) |
-| Later | Wire `requestId` | Optional beyond L-4 FIFO waiters |
-| Later | Live board CRDT | Not in Tauri v1 shell |
+| **Next** | **Implement `apps/desktop`** | PLAN 0.11.1: Status/Peers/Inbox; Rust invoke; textContent; no Board |
+| Later | Board UI | After shell; sticky board ops or explicit path |
+| Later | L-5 pack embed TOCTOU | When file-body embed ships |
+| Later | Wire `requestId` | Optional beyond L-4 FIFO |
 
 ### 2. Smoke commands
 

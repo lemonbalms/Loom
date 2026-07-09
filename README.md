@@ -11,7 +11,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.11.0** (`pending-revision` — R13 M-18/M-19) |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.11.1** (`approved` — implement Tauri shell next) |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |
 | **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |

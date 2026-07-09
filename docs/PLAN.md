@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.11.0** |
-| **Status** | **`pending-revision`** — R13 (M-18 board path, M-19 desktop↔sticky transport) |
-| **Supersedes** | 0.10.3 |
+| **Version** | **0.11.1** |
+| **Status** | **`approved`** — R13 M-18/M-19/M-20 locked (thin Tauri shell plan) |
+| **Supersedes** | 0.11.0 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,81 +46,86 @@
 
 ### Changelog
 
-#### 0.11.0 — 2026-07-09 (`pending-revision` — was `pending-review`)
+#### 0.11.1 — 2026-07-09 (`approved`)
 
-**Why:** Phase **M4.3b** — thin **Tauri desktop shell** so humans can see room presence / inbox / board without living in the CLI. Rust toolchain is available (unblocked in 0.10.3).
+**Why:** R13 **pending-revision** close — lock M-18 / M-19 / M-20 before any `apps/desktop` code.
 
-**R13 (2026-07-09):** `pending-revision` — see `docs/plan_review.md` R13.
+| Finding | Decision (locked) |
+|---------|-------------------|
+| **M-18** | **Option C** — **Board out of v1** shell. Views = Status / Peers / Inbox only. Board UI deferred (needs sticky board ops or explicit file path later). |
+| **M-19** | **Rust-side sticky RPC only** — Tauri `invoke` → Rust HTTP to `127.0.0.1` + Bearer. **No** webview `fetch` to sticky. **No** CORS on sticky required. |
+| **M-19** session | Resolve session file: `LOOM_SESSION` → profile via `LOOM_PROFILE` / `~/.loom/profiles/<name>.json` → default `~/.loom/session.json`. Meta = that path’s `*.host.json`. |
+| **M-19** / **L-24** token | Token + raw `*.host.json` **Rust only**. Webview never receives token or meta file contents; only invoke results (peers/inbox/status DTOs). |
+| **M-20** | Peer strings: **textContent / text binding only** — **no `innerHTML`**. `@loom/protocol` sanitize is **terminal ESC**, not HTML escape — do not treat sanitize as XSS fix. |
+| **L-25** | Acceptance host-absent cases split (below). |
+| L-22 | UNKNOWNS 0.11 filled from R13. |
+| L-23 | `GET /health` unauthenticated on loopback — **accepted** (ok:true only). |
 
-| ID | Sev | Required before implement |
-|----|-----|---------------------------|
-| **M-18** | Med | Board path: sticky ops **or** same-file read as CLI **or** drop Board from v1 |
-| **M-19** | Med | Rust-side sticky RPC only (no webview fetch/CORS); session/meta resolution order |
-| L-21–L-23 | Low | backlog OK (peer XSS escape, UNKNOWNS fill, /health docs) |
+No re-review required (R13 said PATCH then author-close). **Implement next** under this approved plan.
 
-Next PATCH expected: **0.11.1** then author-close `approved` (no full re-review if only M-18/M-19 locked).
-
-##### Scope (v1 shell — **in**)
+##### Scope (v1 shell — **in**) — supersedes 0.11.0 tables
 
 | What | Why |
 |------|-----|
-| `apps/desktop` Tauri **2** app (Rust shell + web UI) | Product desktop surface |
-| **Read + act** via existing **sticky host loopback RPC** (`POST /rpc` + Bearer from `*.host.json`) | No new wire protocol; reuse F-3 serialized RPC |
-| Views: **Status**, **Peers**, **Inbox** (list / claim / accept), **Board** (show + basic set/add if RPC covers) | Core human ops already on sticky RPC |
-| Require `loom host start` (or in-app prompt to start sticky) | Single long-lived WS; avoid second client fight |
-| Sanitize all peer strings before UI render (reuse `@loom/protocol` sanitize where possible; never raw ESC) | Terminal invariant → desktop invariant |
-| Loopback-only sticky RPC (no new non-loopback bind) | H-5 parity |
-| Dev: `bun run desktop` / `cargo tauri dev` documented | Contributor path |
+| `apps/desktop` Tauri **2** (Rust + web UI) | Product desktop surface |
+| Data via **sticky host** loopback `POST /rpc` only | No second WS join; reuse F-3 |
+| Transport: **Rust invoke → HTTP** (not webview fetch) | M-19; no sticky CORS |
+| Views: **Status**, **Peers**, **Inbox** (list / claim / accept) | Sticky RPC already covers |
+| Host required: CTA if missing / stale / unauthorized | L-25 |
+| Peer UI: textContent-only; optional terminal sanitize for ESC | M-20 |
+| Loopback sticky only; CSP default-deny | H-5 / XSS surface |
+| Dev: `bun run desktop` / `cargo tauri dev` | Contributors |
 
-##### Explicitly **out** of 0.11.0
+##### Explicitly **out** of 0.11.1 v1
 
 | Out | Why |
 |-----|-----|
-| Live multi-writer board CRDT / relay board | Separate later milestone |
-| Pack file-body embed (L-5) | Still paths-only |
-| Embedding coding-agent TUIs | PTY inject no-go (1.5 spike) |
-| Cloud relay / accounts | MVP local-first |
-| Force-host / multi-room window manager | Scope creep |
-| Auto-start relay on non-loopback without token | H-5 |
+| **Board UI / board sticky ops** | M-18 **C** — defer |
+| Live multi-writer board CRDT | Later |
+| Pack file-body embed (L-5) | Paths-only |
+| Agent TUI embed / PTY inject | Spike no-go |
+| Cloud relay / accounts | Local-first |
+| Webview holding host token or calling sticky HTTP | M-19 / L-24 |
 
-##### Architecture sketch
+##### Architecture sketch (locked)
 
 ```
-[ Tauri webview UI ]
-        │  invoke / fetch
-        ▼
-[ apps/desktop Rust commands ]
-        │  read sticky meta (token+port), HTTP POST loopback /rpc
-        ▼
-[ loom sticky host ] ──WS──► [ relay ]
-        │
-        └── same session as CLI / MCP
+[ Tauri webview ]  ──invoke only──►  [ Rust commands ]
+                                        │ read *.host.json (token never to JS)
+                                        │ HTTP POST 127.0.0.1:<port>/rpc + Bearer
+                                        ▼
+                                 [ loom sticky host ] ──WS──► [ relay ]
 ```
 
-- Prefer **fetch to sticky RPC** over re-implementing `RelayClient` in Rust.
-- If sticky not running: UI shows clear CTA (`loom host start`) — no silent second join that steals presence.
-
-##### Security checklist (review focus)
+##### Security checklist (locked)
 
 | Topic | Rule |
 |-------|------|
-| Host token | From sticky meta file (0600); never log; never ship in Share strings |
-| Bind | Sticky remains loopback; Tauri does not open a public server |
-| XSS | Peer displayName/body/task titles treated as untrusted text (escape HTML) |
-| Path attachments | Display only — no auto-open as FS (pack invariant) |
-| CSP | Tauri CSP default-deny; no remote script CDN |
+| Host token | Rust-only; 0600 meta; never log; never to webview |
+| Bind | Sticky loopback; desktop opens no public server |
+| XSS | textContent only; sanitize.ts ≠ HTML escape |
+| Path attachments | Display only |
+| CSP | default-deny; no remote script CDN |
 
 ##### Acceptance (v1)
 
-1. With room + `loom host start`, desktop shows peers with online/offline.  
-2. Incoming handoff appears in Inbox; claim/accept works and first-wins vs CLI.  
-3. Board show matches CLI for same roomId.  
-4. Without sticky host: no crash; actionable message.  
-5. `bun test` still green (desktop may add separate smoke later).
+1. Room + `loom host start` → desktop shows peers online/offline.  
+2. Inbox list + claim/accept; first-wins vs CLI.  
+3. **No Board view** in v1 (M-18 C).  
+4. Host problems — distinct CTAs: (a) no meta / host not running → start host; (b) stale pid / dead meta → clear+restart; (c) 401/refused → token/meta mismatch. No crash.  
+5. XSS: payload displayName/body containing `<img onerror=…>` renders as **text only** (automated or manual).  
+6. `bun test` green; desktop smoke optional separate.
 
 ##### Review impact
 
-**R13 required** (new product surface / MINOR). Status stays `pending-review` until R13.
+R13 closed by this PATCH. **Approved by** plan author after R13 required locks (0.8.1/0.10.1 pattern).
+
+#### 0.11.0 — 2026-07-09 (`superseded` by 0.11.1; was `pending-revision`)
+
+**Why:** Phase **M4.3b** draft — thin Tauri shell via sticky RPC.  
+**R13:** `pending-revision` (M-18/M-19/M-20) — resolved in **0.11.1**.
+
+Draft scope (Board “if RPC covers”, webview fetch wording) **superseded** — do not implement 0.11.0 tables.
 
 #### 0.10.3 — 2026-07-09 (`superseded` by 0.11.0; was `approved`)
 
@@ -857,7 +862,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | **M4.1 context pack** | **done** (0.5.0 R7 + 0.5.1 L-1–L-3) |
 | **M4.2 task board** | **done** (0.6.1 H-7/M-8/M-9) |
 | **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
-| M4.3b Tauri desktop shell | **0.11.0** `pending-review` — thin shell via sticky RPC |
+| M4.3b Tauri desktop shell | **0.11.1** `approved` — plan locked; implement `apps/desktop` next |
 
 ---
 
@@ -886,7 +891,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 |----|------|
 | L-4 | RelayClient wire-level `requestId` correlation (FIFO waiters done in 0.9.4; optional beyond sticky serialize) |
 | L-5 | v2 pack file-body embed: re-resolve allowlist at read time (v1 remains paths-only) |
-| M4.3b | Tauri desktop shell — **next product gate** (Rust toolchain present as of 0.10.3) |
+| M4.3b | Tauri desktop shell — **0.11.1 approved**; implement next (Board deferred M-18 C) |
 
 ---
 
@@ -948,5 +953,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.10.2** remove fable bin aliases | 2026-07-09 | **0.10.2** |
 | Plan author | implementation | **0.10.3** docs honesty + Tauri unblocked | 2026-07-09 | **0.10.3** |
 | Plan author | plan | **0.11.0** M4.3b Tauri shell draft | 2026-07-09 | **0.11.0** pending-review |
+| Reviewer | Fable 5 + implementer | R13 **pending-revision** (M-18/M-19/M-20) | 2026-07-09 | 0.11.0 reviewed |
+| Plan author | plan | **0.11.1** R13 locks (M-18 C, M-19 Rust, M-20 textContent) | 2026-07-09 | **0.11.1** `approved` |
 
-**구현 게이트:** **0.11.0 pending-review** — implement Tauri shell only after **R13 approved**. Deferred: L-5 embed, live board CRDT.
+**구현 게이트:** **0.11.1 approved** — implement thin Tauri shell (`apps/desktop`). CLI VERSION bumps with implement wave. Deferred: Board UI, L-5 embed, live board CRDT.
