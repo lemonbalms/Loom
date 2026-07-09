@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.10.2** |
-| **Status** | **`approved`** — remove `fable` / `fable-mcp` bin aliases |
-| **Supersedes** | 0.10.1 |
+| **Version** | **0.11.0** |
+| **Status** | **`pending-review`** — M4.3b Tauri desktop shell (thin v1) |
+| **Supersedes** | 0.10.3 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙), `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,87 @@
 
 ### Changelog
 
-#### 0.10.2 — 2026-07-09 (`approved`)
+#### 0.11.0 — 2026-07-09 (`pending-review`)
+
+**Why:** Phase **M4.3b** — thin **Tauri desktop shell** so humans can see room presence / inbox / board without living in the CLI. Rust toolchain is available (unblocked in 0.10.3).
+
+##### Scope (v1 shell — **in**)
+
+| What | Why |
+|------|-----|
+| `apps/desktop` Tauri **2** app (Rust shell + web UI) | Product desktop surface |
+| **Read + act** via existing **sticky host loopback RPC** (`POST /rpc` + Bearer from `*.host.json`) | No new wire protocol; reuse F-3 serialized RPC |
+| Views: **Status**, **Peers**, **Inbox** (list / claim / accept), **Board** (show + basic set/add if RPC covers) | Core human ops already on sticky RPC |
+| Require `loom host start` (or in-app prompt to start sticky) | Single long-lived WS; avoid second client fight |
+| Sanitize all peer strings before UI render (reuse `@loom/protocol` sanitize where possible; never raw ESC) | Terminal invariant → desktop invariant |
+| Loopback-only sticky RPC (no new non-loopback bind) | H-5 parity |
+| Dev: `bun run desktop` / `cargo tauri dev` documented | Contributor path |
+
+##### Explicitly **out** of 0.11.0
+
+| Out | Why |
+|-----|-----|
+| Live multi-writer board CRDT / relay board | Separate later milestone |
+| Pack file-body embed (L-5) | Still paths-only |
+| Embedding coding-agent TUIs | PTY inject no-go (1.5 spike) |
+| Cloud relay / accounts | MVP local-first |
+| Force-host / multi-room window manager | Scope creep |
+| Auto-start relay on non-loopback without token | H-5 |
+
+##### Architecture sketch
+
+```
+[ Tauri webview UI ]
+        │  invoke / fetch
+        ▼
+[ apps/desktop Rust commands ]
+        │  read sticky meta (token+port), HTTP POST loopback /rpc
+        ▼
+[ loom sticky host ] ──WS──► [ relay ]
+        │
+        └── same session as CLI / MCP
+```
+
+- Prefer **fetch to sticky RPC** over re-implementing `RelayClient` in Rust.
+- If sticky not running: UI shows clear CTA (`loom host start`) — no silent second join that steals presence.
+
+##### Security checklist (review focus)
+
+| Topic | Rule |
+|-------|------|
+| Host token | From sticky meta file (0600); never log; never ship in Share strings |
+| Bind | Sticky remains loopback; Tauri does not open a public server |
+| XSS | Peer displayName/body/task titles treated as untrusted text (escape HTML) |
+| Path attachments | Display only — no auto-open as FS (pack invariant) |
+| CSP | Tauri CSP default-deny; no remote script CDN |
+
+##### Acceptance (v1)
+
+1. With room + `loom host start`, desktop shows peers with online/offline.  
+2. Incoming handoff appears in Inbox; claim/accept works and first-wins vs CLI.  
+3. Board show matches CLI for same roomId.  
+4. Without sticky host: no crash; actionable message.  
+5. `bun test` still green (desktop may add separate smoke later).
+
+##### Review impact
+
+**R13 required** (new product surface / MINOR). Status stays `pending-review` until R13.
+
+#### 0.10.3 — 2026-07-09 (`superseded` by 0.11.0; was `approved`)
+
+**Why:** Docs honesty + backlog hygiene after dual-compat cutover; unlock next product gate (Tauri) now that Rust toolchain is present.
+
+| What | Why |
+|------|-----|
+| `docs/ADAPTERS.md` → Loom paths / `loom` CLI / `mcp_servers.loom` | User-facing docs still said `fable` / `.fable` / `FABLE_*` |
+| Open follow-ups defaults: bin `loom`, session `~/.loom` | Stale pre-rename defaults |
+| plan_review: close optional `fable` bin row; note L-19 residual only intentional legacy | 0.10.2 already removed bins |
+| HANDOFF: Tauri unblocked (`cargo`/`rustc` available) | Product next gate was wrongly still “no Rust” |
+| CLI / MCP VERSION **0.10.3** | PLAN ↔ runtime string parity |
+
+No re-review required (docs + status honesty only; no runtime surface change beyond version string).
+
+#### 0.10.2 — 2026-07-09 (`superseded` by 0.10.3; was `approved`)
 
 **Why:** Complete dual-compat cutover for **CLI entrypoints** — remove transitional `fable` / `fable-mcp` bins.
 
@@ -767,7 +847,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | **M4.1 context pack** | **done** (0.5.0 R7 + 0.5.1 L-1–L-3) |
 | **M4.2 task board** | **done** (0.6.1 H-7/M-8/M-9) |
 | **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
-| M4.3b Tauri / live remote board | later (Tauri needs Rust toolchain) |
+| M4.3b Tauri desktop shell | **0.11.0** `pending-review` — thin shell via sticky RPC |
 
 ---
 
@@ -775,9 +855,10 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 
 | 항목 | 기본값 |
 |------|--------|
-| bin | `fable` |
+| bin | `loom` (mcp: `loom-mcp`) |
 | port | `7842` |
-| session | `~/.fable/session.json` or profile path |
+| session | `~/.loom/session.json` or `~/.loom/profiles/<name>.json` |
+| state home | `~/.loom` (migrate from `~/.fable` when no live sticky/relay PID) |
 | inbox store | relay memory |
 | roster TTL | room process lifetime (MVP) |
 | PTY inject | off |
@@ -793,8 +874,9 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 
 | ID | Item |
 |----|------|
-| L-4 | RelayClient `requestOnce` correlation id (beyond sticky serialize) |
-| L-5 | v2 pack file-body embed: re-resolve allowlist at read time |
+| L-4 | RelayClient wire-level `requestId` correlation (FIFO waiters done in 0.9.4; optional beyond sticky serialize) |
+| L-5 | v2 pack file-body embed: re-resolve allowlist at read time (v1 remains paths-only) |
+| M4.3b | Tauri desktop shell — **next product gate** (Rust toolchain present as of 0.10.3) |
 
 ---
 
@@ -803,7 +885,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 - 서로 다른 에이전트/프로필로 Room 참가  
 - peers에서 online/offline 확인  
 - **상대가 offline이어도** handoff가 inbox에 쌓임  
-- 알림 또는 `check_handoffs` / `fable inbox`로 안전 수신  
+- 알림 또는 `check_handoffs` / `loom inbox`로 안전 수신  
 - sanitize된 출력만 터미널에 표시  
 - 원격: **토큰 없이 비루프백 바인드 거부**; 클라이언트는 Bearer(헤더) 우선; Share에 토큰 기본 미포함  
 - room context pack 로컬 관리 + opt-in handoff attach; path attachments are **not** auto-opened as FS  
@@ -854,5 +936,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Reviewer | Fable 5 | R12 **pending-revision** (M-17) | 2026-07-09 | 0.10.0 reviewed |
 | Plan author | implementation | **0.10.1** M-17 + Codex entry | 2026-07-09 | **0.10.1** |
 | Plan author | implementation | **0.10.2** remove fable bin aliases | 2026-07-09 | **0.10.2** |
+| Plan author | implementation | **0.10.3** docs honesty + Tauri unblocked | 2026-07-09 | **0.10.3** |
+| Plan author | plan | **0.11.0** M4.3b Tauri shell draft | 2026-07-09 | **0.11.0** pending-review |
 
-**구현 게이트:** dual-compat runtime **0.10.x done** (bins removed 0.10.2). Remaining: L-5 (embed), Tauri.
+**구현 게이트:** **0.11.0 pending-review** — implement Tauri shell only after **R13 approved**. Deferred: L-5 embed, live board CRDT.

@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.10.2 approved**. 다음: L-5(embed 시) / Tauri / Owner 지시.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.11.0 pending-review** (Tauri shell). 다음: **R13 리뷰** 후 구현 (또는 Owner 지시).
 
 ---
 
@@ -31,17 +31,17 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.10.2** (no `fable` bin; use `bun run loom`) |
+| **Product CLI** | `loom` v**0.10.3** (PLAN 0.11.0 draft; CLI bumps on implement) |
 | **Packages** | `@loom/*` Bun monorepo |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.10.2** — status **`approved`** |
-| **Review gate** | R12 closed (M-17 fixed in 0.10.1) |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.11.0** — status **`pending-review`** (M4.3b Tauri) |
+| **Review gate** | **R13 pending** — review 0.11.0 before desktop scaffold |
 | **Workflow rules** | **`docs/WORKFLOW.md`** · session entry **`AGENTS.md`** (Codex) |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
 | **Tests** | `bun test` green |
 | **Git** | `main` → `origin` https://github.com/lemonbalms/Loom.git |
 | **Remote account** | GitHub auth: **lemonbalms** |
-| **Tauri** | **Blocked** — no `cargo` / `rustc` in env |
+| **Tauri** | **Unblocked** — `cargo`/`rustc` 1.96 present; `@tauri-apps/cli` in root devDeps |
 | **Open blocking** | none |
 
 ### Naming (critical)
@@ -58,6 +58,8 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending) | **0.11.0** | PLAN draft M4.3b Tauri shell → R13 |
+| (pending) | **0.10.3** | Docs honesty (ADAPTERS Loom) + backlog hygiene; Tauri unblocked |
 | `c3d2de2` | **0.10.2** | Remove `fable`/`fable-mcp` bin aliases; CLI is `loom`/`loom-mcp` only |
 | `ae4f693` | **0.10.1** | M-17 env wiring + Codex `AGENTS.md`/`bun run status` |
 | `50d46c5` | docs | plan_review hygiene after 0.10.1 gate close |
@@ -95,9 +97,10 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
+| **Next** | **R13** review of PLAN **0.11.0** | Then implement `apps/desktop` sticky-RPC shell |
 | Later | L-5 pack embed TOCTOU | Only when file-body embed ships (v1 is paths-only) |
-| Product | Tauri UI | Needs Rust toolchain install first |
 | Later | Wire `requestId` | Optional beyond L-4 FIFO waiters |
+| Later | Live board CRDT | Not in Tauri v1 shell |
 
 ### 2. Smoke commands
 
@@ -105,8 +108,9 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
 bun install
 bun test
-bun run loom --version    # expect 0.10.1
+bun run loom --version    # expect 0.10.3
 bun run status            # PLAN/Open briefing (Codex/Claude/human)
+cargo --version && rustc --version   # Tauri prerequisite
 git status -sb
 git log -3 --oneline
 ```

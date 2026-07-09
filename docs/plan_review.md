@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.10.2** `approved` — `fable`/`fable-mcp` bin aliases removed; data-path legacy still kept.  
+> **최신:** PLAN **v0.11.0** `pending-review` — M4.3b Tauri desktop shell (thin v1 via sticky RPC). **R13 대기.**  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
@@ -18,10 +18,9 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships |
-| R12 L-19 | Low | 잔존 주석 브랜딩 | mostly closed 0.10.1 hygiene; optional sweep |
-| Product | — | Tauri UI | needs Rust/cargo |
-| Product | — | optional remove `fable` bin alias | Owner decision |
+| L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships (v1 paths-only) |
+| L-4 residual | Low | wire-level `requestId` beyond FIFO waiters | optional; 0.9.4 FIFO done |
+| Product | — | **M4.3b Tauri (0.11.0)** | **pending-review → R13** |
 
 Done items live under **Recent follow-ups** only (not repeated here).
 
@@ -29,8 +28,10 @@ Done items live under **Recent follow-ups** only (not repeated here).
 
 | Finding | 처리 |
 |---------|------|
-| **R12 M-17** | **0.10.1** — envRelay* wired in resolveRelayEndpoint / relay cli / loom relay; L-17/L-18 tests |
+| **docs honesty / defaults** | **0.10.3** — ADAPTERS Loom paths; open-follow-ups defaults; Tauri unblocked in HANDOFF |
+| **R12 L-19 residual branding** | **closed as residual-only** — intentional legacy (FABLE- invites, MCP strip, `FableSession` alias, env warn). No further code sweep required |
 | **fable bin alias** | **0.10.2** — removed `fable` / `fable-mcp` bins; data-path legacy kept |
+| **R12 M-17** | **0.10.1** — envRelay* wired in resolveRelayEndpoint / relay cli / loom relay; L-17/L-18 tests |
 | **R11 M-14/M-15/M-16** | **0.9.1** — loomDir() paths; sticky LOOM_* env; live-PID + FABLE- join tests (R12에서 소급 검증 완료) |
 | **R11 Low** residual branding | **0.9.2** — loom tips; WARNING scope; FABLE_RELAY_INSECURE_OPEN warn |
 | **R10 L-14 / L-16** | **0.9.3** — shared timingSafe in protocol; caps documented as chars |
@@ -51,6 +52,7 @@ Done items live under **Recent follow-ups** only (not repeated here).
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
+| **R13** | v0.11.0 | **pending** | Tauri shell — not written yet |
 | **R12** | v0.10.0 | pending-revision → **0.10.1 approved** | M-17 closed — body below |
 | **R11** | v0.9.0 | pending-revision → **0.9.1 approved** | M-14/15/16 closed — body below |
 | **R10** | v0.8.0 | pending-revision → **0.8.1 approved** | M-7 core OK; M-13/L-15 closed — body below |

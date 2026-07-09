@@ -1,13 +1,14 @@
-# 0.10.2 — fable bin removed (done)
+# Wave: 0.10.3 hygiene + 0.11.0 Tauri plan
 
-- [x] Remove `fable` / `fable-mcp` bins and root `fable` script
-- [x] Keep FABLE- invite, fable-board-snapshot, MCP strip
-- [x] PLAN 0.10.2 approved
+## Done this wave
 
-## Next (no blocking)
+- [x] 0.10.3 docs honesty (ADAPTERS, defaults, VERSION, HANDOFF Tauri unblocked)
+- [x] 0.11.0 PLAN draft — M4.3b Tauri thin shell via sticky RPC (`pending-review`)
 
-1. L-5 when pack embed ships
-2. Tauri (needs cargo/rustc)
-3. Owner-directed features
+## Next (do not implement desktop yet)
+
+1. **R13** — review PLAN v0.11.0 in `docs/plan_review.md`
+2. On approved → scaffold `apps/desktop` + sticky RPC views
+3. L-5 only when pack embed ships
 
 `bun run status` · HANDOFF.md · docs/WORKFLOW.md
