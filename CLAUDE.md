@@ -18,9 +18,10 @@ No separate CODEX.md required; keep AGENTS.md authoritative for both.
 
 ## Key paths
 
-- Workflow: `docs/WORKFLOW.md`
+- Workflow: `docs/WORKFLOW.md` (incl. **§3.5 Unknowns**)
 - Handoff: `HANDOFF.md`
 - Plan: `docs/PLAN.md`
 - Reviews: `docs/plan_review.md`
+- Unknowns: `docs/UNKNOWNS.md` (template; not PLAN SSOT)
 - Deviations: `implementation-notes.md`
 - Status script: `bun run status`

@@ -8,7 +8,7 @@
 | **Document** | `docs/WORKFLOW.md` |
 | **Status** | **active** |
 | **Last updated** | 2026-07-09 |
-| **Related** | `docs/PLAN.md`, `docs/plan_review.md`, `implementation-notes.md`, `HANDOFF.md`, `AGENTS.md` |
+| **Related** | `docs/PLAN.md`, `docs/plan_review.md`, `docs/UNKNOWNS.md`, `implementation-notes.md`, `HANDOFF.md`, `AGENTS.md` |
 
 ---
 
@@ -83,6 +83,7 @@
 | **`docs/plan_review_archive.md`** | 오래된 리뷰 본문 아카이브 |
 | **`docs/PROTOCOL.md`** | 와이어/프로토콜 |
 | **`docs/ARCHITECTURE.md`** | 패키지·데이터 플로우 |
+| **`docs/UNKNOWNS.md`** | 미지(지도≠영토) 템플릿·게이트별 짧은 표 — **PLAN 대체 금지** |
 | **`implementation-notes.md`** | 계획 이탈(**Deviations**) 실시간 로그 |
 | **`HANDOFF.md`** | 세션 간 인수인계 (상태 스냅샷) |
 | **`tasks/todo.md`** | 단기 체크리스트 (비-SSOT) |
@@ -96,6 +97,11 @@
 ## 3. 핵심 루프 (Plan → Review → Implement → Verify → Ship)
 
 ```
+┌─────────────┐
+│ 0. Unknowns │  MINOR/새 표면: 미지 표 (docs/UNKNOWNS.md) — §3.5
+│  (optional) │  Low PATCH: 스킵
+└──────┬──────┘
+       ▼
 ┌─────────────┐
 │ 1. Plan     │  PLAN version ↑, Status draft|pending-review, Changelog
 └──────┬──────┘
@@ -128,7 +134,71 @@
 
 1. 현재 게이트의 **다음 한 단계**를 실행한다 (리뷰 대기면 리뷰, 블로커면 수정, 백로그면 다음 Low 등).
 2. 한 웨이브가 끝나면 테스트 → 문서 동기화 → (관례상) 커밋·푸시까지 이어갈 수 있다.
-3. **새 MINOR/보안 Med+** 를 열 때는 먼저 PLAN을 올리고 리뷰 게이트를 탄다.
+3. **새 MINOR/보안 Med+** 를 열 때는 먼저 PLAN을 올리고 리뷰 게이트를 탄다.  
+   (가능하면 PLAN `pending-review` 전·또는 R{n} 직전에 **§3.5 Unknowns**.)
+
+---
+
+## 3.5 Unknowns — 지도 ≠ 영토
+
+에이전트 품질의 병목은 구현 속도가 아니라 **미지(unknowns) 해소**인 경우가 많다.
+
+| | |
+|--|--|
+| **지도** | PLAN, 프롬프트, 스킬, 컨텍스트 — 에이전트에게 준 것 |
+| **영토** | 코드베이스, 보안 불변식, 툴체인, 실제 UX 제약 |
+| **미지** | 지도와 영토의 간극 — 여기서 에이전트가 “추측 결정”을 함 |
+
+미지를 **고치기 비싸지기 전에** 값싸게 드러낸다.  
+상세 템플릿·게이트별 표: **`docs/UNKNOWNS.md`** (에세이 복붙 금지, 짧은 표만).
+
+**이름:** 이 절은 작업 **방법론**이다. 제품 = **Loom**, 리뷰 에이전트 = **Fable 5** — 혼동 금지.
+
+### 언제 의무 / 스킵
+
+| 상황 | Unknowns 패스 |
+|------|----------------|
+| Low PATCH, 문서 hygiene, 버전 문자열 | **스킵** |
+| Med finding 수정 (범위가 리뷰에 명확) | **스킵 가능** (선택: 1문단 blindspot) |
+| 새 MINOR / 새 제품 표면 (Tauri, 프로토콜, 호환 제거) | **필수** — PLAN `pending-review` 전 또는 R{n} 직전 |
+| 낯선 모듈·도메인 첫 터치 | **권장** |
+
+### 4분면 (MINOR 착수 시 5분)
+
+| 분면 | 질문 | 어디에 남기나 |
+|------|------|----------------|
+| **Known knowns** | 이번 웨이브에서 확정된 것 | PLAN What / in 표 |
+| **Known unknowns** | 모르는 줄 아는 것 | `docs/UNKNOWNS.md` 또는 PLAN Open questions |
+| **Unknown knowns** | 보면 알 암묵 기준 (취향·UX) | 목업/스파이크 반응으로 언어화 |
+| **Unknown unknowns** | 아예 안 떠올린 것 | Blindspot pass → UNKNOWNS |
+
+### 기법 라우팅
+
+| 증상 | 기법 | 산출물 |
+|------|------|--------|
+| 모듈/도메인을 모름 | **Blindspot** | 함정 목록 + 더 나은 프롬프트 질문 |
+| “보면 알겠는데 말로 못 함” | **프로토타입/목업** | `docs/spikes/` 또는 임시 HTML (**앱 본구현 금지**) |
+| 결정이 갈림 | **인터뷰** (한 질문씩; 아키텍처 영향 우선) | 결정 표 → PLAN 반영 |
+| 원하는 동작이 남의 코드에 있음 | **Reference** | 경로 + 재구현 시맨틱 |
+| 구현 직전 | **Plan** (바뀔 결정 앞세움) | 데이터/타입/UX 먼저; 기계적 리팩터 하단 |
+| 계획 이탈 | **Deviations** | `implementation-notes.md` (현행 §6.2) |
+| 머지 전 Owner 이해 | **Quiz** (선택) | 짧은 퀴즈 |
+| 리뷰 지지 | **Pitch** (선택) | `plan_review` Decision notes 보강 |
+
+html-effectiveness 등 외부 스킬(`blindspot`, `interview`, `plan`, `quiz`…)이 있으면 **같은 순서로** 써도 된다.  
+**플러그인 없이도** 이 절 + `docs/UNKNOWNS.md`만으로 동작해야 한다 (Codex/기타 에이전트).
+
+### 금지
+
+- `UNKNOWNS.md`로 **PLAN status / SSOT를 대체**하지 말 것  
+- Blindspot 결과만으로 **본구현을 시작**하지 말 것 (먼저 PLAN in/out)  
+- 모든 PATCH에 4분면 **강제 금지**  
+- 방법론 문서를 `FABLE_*.md` 등 **제품 인접 이름**으로 두지 말 것  
+
+### R{n} 리뷰 시 한 줄 (MINOR)
+
+- [ ] Known unknowns가 PLAN in/out 또는 Open questions / UNKNOWNS에 반영됐는가  
+- [ ] 보안 표면에 닿는 unknown unknowns가 finding으로 올라왔는가 (해당 시)
 
 ---
 
@@ -295,6 +365,10 @@ blocking 없을 때 기본 순서:
 |-----------|----------------|
 | **진행해 / 단계적으로 진행해** | 현재 게이트 다음 단계 실행 → 테스트 → 문서 동기화 → (관례) 커밋·푸시 |
 | **리뷰해 / plan_review 피드백** | 코드·PLAN 대조 메타/실질 리뷰; 필요 시 findings 제안 (파일 수정은 요청 범위에 따름) |
+| **미지 / blindspot / 블라인드** | 코드베이스 스캔 → 4분면 표 + 관련 unknown unknowns (§3.5, `docs/UNKNOWNS.md`) |
+| **인터뷰해** | 아키텍처를 바꿀 질문을 **한 번에 1개** (우선순위: 분기 큰 것) |
+| **목업 / 프로토타입** | 앱 본코드 안 건드리고 HTML/`docs/spikes/` 만 |
+| **퀴즈** | 최근 diff/웨이브 이해 퀴즈 (머지 전 Owner용, 선택) |
 | **커밋하고 푸시해** | status clean 확인 후 commit + push |
 | **핸드오프 작성** | `HANDOFF.md` 갱신 |
 | 계획 이탈 발생 | Deviations 기록 후 계속 |
@@ -327,6 +401,7 @@ blocking 없을 때 기본 순서:
 | 날짜 | 내용 |
 |------|------|
 | 2026-07-09 | 초안 — 0.9.x 시리즈에서 확정된 Plan/Review/Implement/Ship 관례 성문화 |
+| 2026-07-09 | **§3.5 Unknowns** — 지도≠영토; `docs/UNKNOWNS.md`; 치트시트 미지/인터뷰/목업/퀴즈 |
 | 2026-07-09 | §0 세션 진입 의식 + `AGENTS.md` / `CLAUDE.md` 연동 |
 
 ---

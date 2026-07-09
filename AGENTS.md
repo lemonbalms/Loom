@@ -15,11 +15,12 @@ On the **first turn of a new session** (or when the user says “이어서”, �
 | # | File | Why |
 |---|------|-----|
 | 1 | `HANDOFF.md` | Current gate, next action, traps |
-| 2 | `docs/WORKFLOW.md` | Plan → Review → Implement → Ship |
+| 2 | `docs/WORKFLOW.md` | Plan → Review → Implement → Ship (+ §3.5 Unknowns) |
 | 3 | `docs/PLAN.md` (header) | Version + Status |
 | 4 | `docs/plan_review.md` (header + Open) | Blocking reviews |
 
-Optional: `implementation-notes.md` (Deviations) if touching rename/compat/security.
+Optional: `implementation-notes.md` (Deviations) if touching rename/compat/security.  
+Optional: `docs/UNKNOWNS.md` if PLAN is **MINOR** / `pending-review` / new surface (see WORKFLOW §3.5).
 
 **Or run** (fast path for Codex/shell):
 
@@ -59,6 +60,7 @@ Do not start a large feature until the briefing is delivered, unless the user ga
 | Plan SSOT | `docs/PLAN.md` |
 | Reviews | `docs/plan_review.md` (always name target plan version) |
 | Deviations | `implementation-notes.md` → **Deviations** (pick conservative option) |
+| Unknowns | `docs/WORKFLOW.md` §3.5 + `docs/UNKNOWNS.md` — MINOR/new surface before R{n}; not a PLAN SSOT |
 | “진행해” | Next gate step → `bun test` → docs sync → often commit/push |
 | Verify | `bun test` green before claiming done |
 | Remote | `https://github.com/lemonbalms/Loom.git` (user lemonbalms) |

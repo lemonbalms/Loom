@@ -8,7 +8,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 | Field | Value |
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
-| **Related** | `docs/WORKFLOW.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
+| **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
 | **Last updated** | 2026-07-09 |
 
 ---
@@ -19,6 +19,9 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 2. Prefer the option that **preserves data, security invariants, and dual-compat** over purity or speed.
 3. Append a row under **Deviations** with: date, plan ref, choice, why conservative, follow-up if any.
 4. Keep implementing; do not block the wave for aesthetic renames.
+
+**Pre-wave unknowns** (MINOR / new surface) live in **`docs/UNKNOWNS.md`**, not here.  
+This file is for **during-implementation** plan deviations only.
 
 ---
 

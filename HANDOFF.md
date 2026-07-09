@@ -35,7 +35,7 @@ North star: *connect your agents — and your teammates.*
 | **Packages** | `@loom/*` Bun monorepo |
 | **PLAN SSOT** | `docs/PLAN.md` **v0.11.0** — status **`pending-review`** (M4.3b Tauri) |
 | **Review gate** | **R13 pending** — review 0.11.0 before desktop scaffold |
-| **Workflow rules** | **`docs/WORKFLOW.md`** · session entry **`AGENTS.md`** (Codex) |
+| **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
 | **Tests** | `bun test` green |
