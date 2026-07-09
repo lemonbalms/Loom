@@ -42,7 +42,8 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 | 2026-07-09 | RENAME §4.1 INSECURE warn | Emit stderr when only `FABLE_RELAY_INSECURE_OPEN` is set; still **does not** enable open bind | Matches plan “strong warn” without reintroducing fail-open | Done |
 | 2026-07-09 | L-14 | Moved compare to `@loom/protocol`; relay re-exports `timingSafeTokenEqual` for API stability | One impl; sticky imports protocol directly | Done |
 | 2026-07-09 | L-16 | Documented caps as **chars** only (no silent byte-cap behavior change) | Avoids breaking large board snapshots that fit char limit but not a naive byte limit | Optional future byte cap = new MINOR |
-| 2026-07-09 | L-4 | **Deferred** full `requestOnce` correlation ids | Wire change / concurrent ack design needs dedicated plan; sticky already serializes RPC | Backlog |
+| 2026-07-09 | L-4 | **Client FIFO waiter queue** instead of wire `requestId` | Fixes concurrent ack steal without protocol bump; sticky F-3 still serializes RPC | Wire correlation only if multi-multiplex still fails |
+| 2026-07-09 | L-4 claim match | Match `inbox.claim_result` by `entry.handoff.id` when present | Concurrent claims less cross-wired; failed claims without entry still FIFO | OK |
 
 ### Earlier waves (pointer only)
 

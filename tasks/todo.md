@@ -1,13 +1,12 @@
-# 0.9.3 L-14 + L-16 (done)
+# 0.9.4 L-4 requestOnce (done)
 
-- [x] timingSafeStringEqual in @loom/protocol; room/server/sticky use it
-- [x] Document attachment/body caps as chars (L-16)
-- [x] L-4 deferred (correlation id) — implementation-notes
-- [x] PLAN 0.9.3; tests; push
+- [x] FIFO pendingRequests; no onEnvelope hijack
+- [x] claim_result id-aware match
+- [x] concurrent handoff integration test
+- [x] PLAN 0.9.4; push
 
 ## Next backlog
 
-- L-4 requestOnce correlation id
 - L-5 pack embed TOCTOU (when embed ships)
 - Drop FABLE dual-compat (0.10)
 - Tauri (cargo)

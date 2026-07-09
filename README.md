@@ -11,7 +11,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 |--|--|
 | **CLI** | `loom` (legacy alias `fable` during transition) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.9.3** |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.9.4** |
 | **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
 
 ---

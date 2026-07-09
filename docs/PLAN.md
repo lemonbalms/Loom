@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.9.3** |
-| **Status** | **`approved`** — L-14 shared timing-safe util + L-16 cap units (chars) |
-| **Supersedes** | 0.9.2 |
+| **Version** | **0.9.4** |
+| **Status** | **`approved`** — L-4 requestOnce FIFO waiter queue (no wire correlation id) |
+| **Supersedes** | 0.9.3 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/plan_review.md`, `docs/RENAME_TO_LOOM.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -45,7 +45,23 @@
 
 ### Changelog
 
-#### 0.9.3 — 2026-07-09 (`approved`)
+#### 0.9.4 — 2026-07-09 (`approved`)
+
+**Why:** Backlog **L-4** — concurrent `requestOnce` stole acks by replacing `onEnvelope`.
+
+| What | Why |
+|------|-----|
+| FIFO `pendingRequests` queue on RelayClient | Concurrent handoffs each get an ack |
+| Do not hijack `opts.onEnvelope` | User listen handlers always see envelopes |
+| claim_result match prefers handoff id | Concurrent claims less ambiguous |
+| Reject pending on close/leave | No hung promises |
+| Integration test concurrent handoffs | L-4 regression guard |
+
+**Not in 0.9.4:** wire-level `requestId` correlation (optional later if multi-multiplex needs it). Sticky RPC serialization (F-3) remains.
+
+No re-review required (Low backlog PATCH; conservative client-only fix).
+
+#### 0.9.3 — 2026-07-09 (`superseded` by 0.9.4; was `approved`)
 
 **Why:** Backlog **L-14** / **L-16** (R10 Low).
 
@@ -54,8 +70,6 @@
 | `timingSafeStringEqual` / `timingSafeTokenEqual` in `@loom/protocol` | Single compare impl for relay token + peer secret (L-14) |
 | room/server/sticky import shared util | No divergent copy drift |
 | Attachment/body caps documented as **chars** (JS string length), not bytes | L-16 honesty |
-
-**Not in 0.9.3:** L-4 `requestOnce` correlation id (needs careful concurrent-ack design; still backlog).
 
 No re-review required (Low backlog PATCH).
 
@@ -794,5 +808,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Owner | | treat **0.9.1** as Loom rename baseline | 2026-07-09 | **0.9.1** |
 | Plan author | implementation | **0.9.2** R11 Low residual branding | 2026-07-09 | **0.9.2** |
 | Plan author | implementation | **0.9.3** L-14 timing-safe share + L-16 chars | 2026-07-09 | **0.9.3** |
+| Plan author | implementation | **0.9.4** L-4 requestOnce waiter queue | 2026-07-09 | **0.9.4** |
 
-**구현 게이트:** M-7 + Loom rename done. Low backlog L-14/L-16 closed in **0.9.3**. Remaining: L-4, L-5, Tauri.
+**구현 게이트:** M-7 + Loom rename + L-14/L-16/L-4 done. Remaining: L-5 (when embed), dual-compat drop 0.10, Tauri.

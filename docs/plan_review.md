@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.9.3** `approved` — L-14 timing-safe share + L-16 attachment caps in **chars**.  
+> **최신:** PLAN **v0.9.4** `approved` — L-4 requestOnce FIFO waiter queue.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재.  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
@@ -18,7 +18,7 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| L-4 | Low | `requestOnce` envelope-type matching (correlation id) | backlog |
+| L-4 | Low | `requestOnce` concurrent ack steal | **0.9.4 done** (FIFO waiters; wire requestId deferred) |
 | L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships |
 | R10 L-14 | Low | timing-safe util share | **0.9.3 done** |
 | R10 L-16 | Low | attachment cap units (chars) | **0.9.3 done** |
@@ -32,6 +32,7 @@
 | **R11 M-14/M-15/M-16** | **0.9.1** — loomDir() paths; sticky LOOM_* env; live-PID + FABLE- join tests |
 | **R11 Low** residual branding | **0.9.2** — loom tips; WARNING scope; FABLE_RELAY_INSECURE_OPEN warn |
 | **R10 L-14 / L-16** | **0.9.3** — shared timingSafe in protocol; caps documented as chars |
+| **L-4** requestOnce | **0.9.4** — FIFO pending queue; no onEnvelope hijack |
 | **R11** Fable→Loom rename | **0.9.0**–**0.9.2** — **done** |
 | **R10 M-13** run silent join failure | **0.8.1** — join fail-fast + onError/error surface |
 | **R10 L-15** sticky peerSecret 미저장 | **0.8.1** — saveSession + setReconnectPeerSecret |

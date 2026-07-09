@@ -34,6 +34,13 @@ export type RelayClientOptions = {
   maxReconnectAttempts?: number;
 };
 
+type PendingRequest = {
+  match: (e: Envelope) => boolean;
+  resolve: (e: Envelope) => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 export class RelayClient {
   private ws: WebSocket | null = null;
   private opts: RelayClientOptions;
@@ -41,6 +48,12 @@ export class RelayClient {
   private intentionalClose = false;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * L-4: FIFO waiters for in-flight requestOnce. Avoids hijacking onEnvelope
+   * (which stole acks under concurrent requests). Full wire correlation ids
+   * deferred — see implementation-notes.
+   */
+  private pendingRequests: PendingRequest[] = [];
 
   peerId: string | null = null;
   peerSecret: string | null = null;
@@ -136,10 +149,21 @@ export class RelayClient {
         if (!parsed.success) return;
         const env = parsed.data;
         this.applyEnvelope(env);
+        this.dispatchPending(env);
         this.opts.onEnvelope?.(env);
       };
     });
     return this.openPromise;
+  }
+
+  /** Resolve at most one FIFO waiter that matches this envelope. */
+  private dispatchPending(env: Envelope): void {
+    const idx = this.pendingRequests.findIndex((p) => p.match(env));
+    if (idx < 0) return;
+    const [pending] = this.pendingRequests.splice(idx, 1);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending.resolve(env);
   }
 
   private scheduleReconnect(): void {
@@ -359,7 +383,13 @@ export class RelayClient {
         id,
         via,
       },
-      (e) => e.type === "inbox.claim_result" || e.type === "error",
+      (e) => {
+        if (e.type === "error") return true;
+        if (e.type !== "inbox.claim_result") return false;
+        // Prefer id match when entry present (concurrent claims)
+        if (e.entry?.handoff.id) return e.entry.handoff.id === id;
+        return true;
+      },
     );
     if (env.type === "error") throw new Error(env.message);
     if (env.type !== "inbox.claim_result") {
@@ -372,6 +402,7 @@ export class RelayClient {
     this.intentionalClose = true;
     this.opts.autoReconnect = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.rejectAllPending(new Error("Client leaving"));
     if (!this.ws) return;
     try {
       this.send({ type: "leave", v: PROTOCOL_VERSION });
@@ -385,6 +416,7 @@ export class RelayClient {
     this.intentionalClose = true;
     this.opts.autoReconnect = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.rejectAllPending(new Error("Client closed"));
     if (this.ws) {
       try {
         this.ws.onmessage = null;
@@ -399,37 +431,43 @@ export class RelayClient {
     this.openPromise = null;
   }
 
+  private rejectAllPending(err: Error): void {
+    const pending = this.pendingRequests.splice(0);
+    for (const p of pending) {
+      clearTimeout(p.timer);
+      p.reject(err);
+    }
+  }
+
+  /**
+   * L-4: register a FIFO waiter without replacing opts.onEnvelope.
+   * User onEnvelope always receives every envelope; waiters take matching replies.
+   */
   private requestOnce(
     msg: unknown,
     match: (e: Envelope) => boolean,
     timeoutMs = 8000,
   ): Promise<Envelope> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new Error("Relay request timed out"));
-      }, timeoutMs);
-
-      const prev = this.opts.onEnvelope;
-      const handler = (env: Envelope) => {
-        prev?.(env);
-        if (match(env)) {
-          cleanup();
-          resolve(env);
-        }
+      const entry: PendingRequest = {
+        match,
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          const i = this.pendingRequests.indexOf(entry);
+          if (i >= 0) this.pendingRequests.splice(i, 1);
+          reject(new Error("Relay request timed out"));
+        }, timeoutMs),
       };
-      this.opts.onEnvelope = handler;
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        this.opts.onEnvelope = prev;
-      };
+      this.pendingRequests.push(entry);
 
       try {
         this.send(msg);
       } catch (e) {
-        cleanup();
-        reject(e);
+        const i = this.pendingRequests.indexOf(entry);
+        if (i >= 0) this.pendingRequests.splice(i, 1);
+        clearTimeout(entry.timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
       }
     });
   }
