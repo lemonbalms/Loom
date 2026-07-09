@@ -2,7 +2,7 @@
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
 > **최신:** PLAN **v0.9.4** `approved` — L-4 requestOnce FIFO waiter queue.  
-> **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재.  
+> **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
 

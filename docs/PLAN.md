@@ -8,8 +8,9 @@
 | **Supersedes** | 0.9.3 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
-| **Related** | `docs/plan_review.md`, `docs/RENAME_TO_LOOM.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
+| **Related** | `docs/WORKFLOW.md` (작업 규칙), `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
+| **Workflow** | 구현·리뷰·ship 절차 → **[`docs/WORKFLOW.md`](./WORKFLOW.md)** |
 
 ---
 

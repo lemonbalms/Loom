@@ -1,0 +1,286 @@
+# Loom — 워크플로우 규칙 (Workflow Rules)
+
+이 문서는 **현재 레포에서 실제로 쓰는 작업 방식**을 규칙으로 고정한 SSOT다.  
+에이전트·기여자·리뷰어는 이 규칙을 따른다. 제품 기능 계획은 `docs/PLAN.md`가 SSOT다.
+
+| Field | Value |
+|-------|--------|
+| **Document** | `docs/WORKFLOW.md` |
+| **Status** | **active** |
+| **Last updated** | 2026-07-09 |
+| **Related** | `docs/PLAN.md`, `docs/plan_review.md`, `implementation-notes.md`, `HANDOFF.md` |
+
+---
+
+## 1. 역할과 이름
+
+| 이름 | 역할 | 비고 |
+|------|------|------|
+| **Loom** | **제품** (CLI `loom`, 패키지 `@loom/*`) | 구 이름 Fable — dual-compat만 예외 |
+| **fable-advisor / Fable 5** | **리뷰·조언 에이전트** (제품 아님) | 제품 CLI와 혼동 금지 |
+| **Plan author / implementer** | PLAN 작성·코드 구현·PATCH 반영 | |
+| **Reviewer** | `plan_review.md`에 R{n} 작성 | 코드 실증 권장 |
+| **Owner** | 우선순위·승인 최종 판단 | 사용자 |
+
+문서·커밋·리뷰에서 “Fable이 고쳤다”처럼 모호한 주어를 쓰지 않는다.  
+→ **Loom(제품)** vs **Fable 5(리뷰어)** 를 구분한다.
+
+---
+
+## 2. 문서 지도 (무엇을 어디에)
+
+| 문서 | 역할 |
+|------|------|
+| **`docs/PLAN.md`** | 제품 계획 **SSOT** — 버전, status, changelog, decision log |
+| **`docs/plan_review.md`** | 리뷰 결과 **SSOT** — R{n}, open/blocking, backlog |
+| **`docs/plan_review_archive.md`** | 오래된 리뷰 본문 아카이브 |
+| **`docs/PROTOCOL.md`** | 와이어/프로토콜 |
+| **`docs/ARCHITECTURE.md`** | 패키지·데이터 플로우 |
+| **`implementation-notes.md`** | 계획 이탈(**Deviations**) 실시간 로그 |
+| **`HANDOFF.md`** | 세션 간 인수인계 (상태 스냅샷) |
+| **`tasks/todo.md`** | 단기 체크리스트 (비-SSOT) |
+| **`README.md`** | 외부용 목적·구조·퀵스타트 |
+
+**금지:** PLAN status를 리뷰 없이 `approved`로 올리기.  
+**예외 관례:** 리뷰가 “이 Med들 PATCH 후 approve 가능”이라고 명시한 경우, 구현자가 해당 PATCH를 반영한 뒤 author-close로 `approved` 가능 (0.8.1, 0.9.1 패턴).
+
+---
+
+## 3. 핵심 루프 (Plan → Review → Implement → Verify → Ship)
+
+```
+┌─────────────┐
+│ 1. Plan     │  PLAN version ↑, Status draft|pending-review, Changelog
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│ 2. Review   │  plan_review.md ← R{n} (대상 버전 명시)
+│             │  approved | pending-revision | on-hold
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│ 3. Implement│  approved 기준 (또는 pending-revision 필수 finding)
+│             │  이탈 시 implementation-notes Deviations
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│ 4. Verify   │  bun test (필수) · 관련 수동 스모크
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│ 5. Sync     │  PLAN “Implemented as of…”, plan_review follow-up,
+│             │  README 버전, CLI VERSION, HANDOFF/todo
+└──────┬──────┘
+       ▼
+┌─────────────┐
+│ 6. Ship     │  commit + push (main); 원격: lemonbalms/Loom
+└─────────────┘
+```
+
+사용자 지시 **「진행해」/「단계적으로 진행해」** 의미:
+
+1. 현재 게이트의 **다음 한 단계**를 실행한다 (리뷰 대기면 리뷰, 블로커면 수정, 백로그면 다음 Low 등).
+2. 한 웨이브가 끝나면 테스트 → 문서 동기화 → (관례상) 커밋·푸시까지 이어갈 수 있다.
+3. **새 MINOR/보안 Med+** 를 열 때는 먼저 PLAN을 올리고 리뷰 게이트를 탄다.
+
+---
+
+## 4. PLAN 버전·상태 규칙
+
+### 4.1 SemVer (PLAN 상단과 동일)
+
+| 자리 | 언제 |
+|------|------|
+| **MAJOR** | 제품 방향 전환, 이전 계획과 양립 불가 |
+| **MINOR** | 아키텍처·페이즈 범위·공개 표면 의미 변경 (rename, 새 페이즈) → **리뷰 권장** |
+| **PATCH** | finding 수정, Low backlog, 문서 정직화, 국소 리팩터 → **재리뷰 선택** |
+
+CLI `VERSION` 문자열과 PLAN Version을 **같은 숫자**로 맞춘다 (`packages/cli`, MCP `serverInfo` 등).
+
+### 4.2 Status
+
+| Status | 의미 | 구현 |
+|--------|------|------|
+| `draft` | 작성 중 | 본구현 금지 (스파이크만) |
+| `pending-review` | 리뷰 대기/진행 | 구현 가능하나 **approved 전 머지 정책은 Owner** |
+| `pending-revision` | *(리뷰 결론)* PLAN 헤더에도 반영 권장 | **Open blocking only** 수정 |
+| `approved` | 이 버전 기준 진행 허용 | 정상 구현·ship |
+| `superseded` | 상위 버전에 대체 | 읽기 전용 이력 |
+| `on-hold` | 의도적 중단 | 구현 중지 |
+
+### 4.3 Changelog 필수 항목
+
+- **Why** (한 줄)
+- **What** 표 (What / Why)
+- Implemented as of … (코드가 앞선 경우)
+- Not in … (범위 밖)
+- Review impact (재리뷰 필요 여부)
+
+---
+
+## 5. 리뷰 규칙 (`docs/plan_review.md`)
+
+### 5.1 언제 리뷰가 필요한가
+
+| 상황 | 리뷰 |
+|------|------|
+| PLAN `pending-review` (MINOR/보안/신규 페이즈) | **필수** → 새 R{n} |
+| 리뷰 `pending-revision` 후 필수 finding 수정 | **필수** (전체 또는 “해당 diff만”) |
+| Low backlog PATCH (문서 단위, 공유 유틸, 클라이언트 FIFO 등) | **선택** — 보통 재리뷰 없이 approve |
+| 순수 오타·주석 | 불필요 |
+| 호환 제거(0.10), Tauri, 프로토콜 와이어 변경 | **필수** |
+
+**현재(0.9.4 approved, open 없음):** 필수 리뷰 없음. 다음 MINOR/Med+ 착수 시 R12+.
+
+### 5.2 리뷰어 절차
+
+1. **대상** `docs/PLAN.md` **vX.Y.Z** 헤더에 명시.
+2. 관련 계획 부속 문서·**코드를 직접** 확인 (줄 근거).
+3. `plan_review.md`에 섹션 추가:
+
+```markdown
+## Review R{n} — Plan vX.Y.Z
+**검토 대상:** …
+**검토자:** …
+**날짜:** …
+**결론:** approved | pending-revision | on-hold
+### Checklist
+### Findings (Sev: High|Med|Low, ID)
+### Decision notes
+```
+
+4. 상단 **최신**, **Open (blocking)**, **Review index** 갱신.
+5. PLAN 헤더 Status를 리뷰 결론과 **동기화** (`pending-revision` 포함).
+
+### 5.3 Finding 심각도
+
+| Sev | 의미 | 게이트 |
+|-----|------|--------|
+| **High** | 보안 실패·데이터 손실·기본값 위험 | 즉시 블로커 |
+| **Med** | 실질 오동작·게이트 우회·호환 구멍 | 보통 PATCH 블로커 |
+| **Low** | 정리·문서·미래 회귀 | backlog 허용 |
+
+### 5.4 Finding ID 관례
+
+- 리뷰 내 일련: `H-n`, `M-n`, `L-n` (시리즈 전역 증가 가능: M-13, M-14…).
+- 닫을 때: Open에서 제거, Recent follow-ups에 처리 버전 기록.
+
+### 5.5 아카이브
+
+`plan_review.md`가 비대해지면 닫힌 R{n} 본문을 `plan_review_archive.md`로 옮긴다.  
+인덱스·Open·최신 헤더는 활성 파일에 유지.
+
+---
+
+## 6. 구현 규칙
+
+### 6.1 범위
+
+- **한 웨이브 = 한 게이트** (예: R11 블로커만, 또는 L-4만).  
+  rename + 새 기능 혼합 금지.
+- 최소 변경: 필요한 파일만. 드라이브바이 리팩터 금지.
+- 보안 불변식 유지: sanitize, timing-safe compare, M-7 peerSecret, H-5 fail-open 거부, H-4 MCP 단일 테이블 등.
+
+### 6.2 계획 이탈 (`implementation-notes.md`)
+
+계획/리뷰와 다른 선택을 해야 하면:
+
+1. **보수적 선택** (데이터 보존 · 보안 · dual-compat > 순수성).
+2. **`implementation-notes.md` → Deviations** 표에 한 줄 추가  
+   (날짜 | 계획 참조 | 한 일 | 왜 보수적 | follow-up).
+3. **멈추지 말고 진행**.
+
+침묵 즉흥 구현 금지.
+
+### 6.3 검증
+
+구현 웨이브 종료 시:
+
+```bash
+bun test          # 필수, green 전에 done 선언 금지
+bun run loom --version   # PLAN 버전과 일치
+```
+
+필요 시 관련 통합 테스트·수동 스모크.
+
+### 6.4 문서 동기화 (웨이브 끝)
+
+- [ ] `docs/PLAN.md` version/status/changelog/decision log  
+- [ ] `docs/plan_review.md` open/follow-up (해당 시)  
+- [ ] CLI `VERSION` / MCP version 문자열  
+- [ ] `README.md` Plan 버전  
+- [ ] `tasks/todo.md`  
+- [ ] `HANDOFF.md` (세션 넘길 때)  
+- [ ] Deviations (이탈 시)
+
+---
+
+## 7. Git / 원격
+
+| 항목 | 규칙 |
+|------|------|
+| 원격 | `https://github.com/lemonbalms/Loom.git` (`origin`) |
+| 기본 브랜치 | `main` |
+| 커밋 | 웨이브 완료 후; 메시지에 버전·finding ID 포함 권장 (`fix(0.9.4): L-4 …`) |
+| 푸시 | Owner/사용자가 푸시를 원하거나 「커밋하고 푸시해」「단계적으로 진행」으로 ship까지 포함한 경우 |
+| 시크릿 | `~/.loom`, `.env`, session, peerSecret **커밋 금지** (`.gitignore`) |
+| force-push main | 금지 (명시 승인 없이) |
+
+---
+
+## 8. 백로그 처리 순서 (관례)
+
+Open **blocking** 이 있으면 항상 최우선.
+
+blocking 없을 때 기본 순서:
+
+1. 리뷰 `pending-revision` 잔여  
+2. Med 보안/호환 backlog  
+3. Low (L-n) — 작은 PATCH로 묶기 가능 (0.9.2–0.9.4)  
+4. Product (Tauri 등) — 환경 블로커 명시  
+5. 호환 제거 MINOR (0.10) — 별도 리뷰
+
+---
+
+## 9. 사용자 지시 치트시트
+
+| 사용자 말 | 에이전트 행동 |
+|-----------|----------------|
+| **진행해 / 단계적으로 진행해** | 현재 게이트 다음 단계 실행 → 테스트 → 문서 동기화 → (관례) 커밋·푸시 |
+| **리뷰해 / plan_review 피드백** | 코드·PLAN 대조 메타/실질 리뷰; 필요 시 findings 제안 (파일 수정은 요청 범위에 따름) |
+| **커밋하고 푸시해** | status clean 확인 후 commit + push |
+| **핸드오프 작성** | `HANDOFF.md` 갱신 |
+| 계획 이탈 발생 | Deviations 기록 후 계속 |
+
+---
+
+## 10. 리뷰 vs 구현 담당 분리
+
+| 작업 | 산출물 |
+|------|--------|
+| 리뷰어 | `plan_review.md` R{n} 결론·findings (**코드 수정 최소화**) |
+| 구현자 | 코드 + PLAN PATCH + tests + follow-up 표 |
+| 메타 피드백 (“plan_review 검토해”) | 리뷰 품질·SSOT 드리프트 지적; 자동 approve 아님 |
+
+---
+
+## 11. 완료 정의 (Definition of Done) — 한 웨이브
+
+- [ ] 목표 finding/기능이 코드에 반영됨  
+- [ ] `bun test` green  
+- [ ] PLAN 버전·changelog 일치  
+- [ ] plan_review Open/follow-up 갱신 (해당 시)  
+- [ ] 이탈 시 Deviations 기록  
+- [ ] (ship 시) commit + push, 워킹트리 clean  
+
+---
+
+## 12. 변경 이력 (이 규칙 문서)
+
+| 날짜 | 내용 |
+|------|------|
+| 2026-07-09 | 초안 — 0.9.x 시리즈에서 확정된 Plan/Review/Implement/Ship 관례 성문화 |
+
+---
+
+*이 규칙과 `PLAN.md` 절차가 충돌하면 **PLAN의 버전 게이트 문구를 우선**하고, 이 문서의 운영 세부(Deviations, ship, 이름 경계)를 보완 규칙으로 본다.*

@@ -11,7 +11,8 @@
 
 Ship a **Mosaic-class multiplayer AI terminal**: room bus + offline handoff inbox + multi-agent CLI wrap (Claude/Codex/Grok), with plan-gated security fixes from `docs/plan_review.md`.
 
-**Immediate product goal after this handoff:** PLAN **v0.9.0** Loom rename **implemented** (`pending-review` / **R11**). Product CLI is **`loom`**. Next: R11 review, then Low backlog (L-14/L-16/L-4) or Tauri.
+**Immediate product goal after this handoff:** PLAN **v0.9.4 `approved`**. Product CLI is **`loom`**.  
+**Workflow rules:** `docs/WORKFLOW.md`. Next backlog: L-5 (when embed), dual-compat 0.10, Tauri.
 
 ### Naming boundary (critical)
 
@@ -29,10 +30,10 @@ See `docs/RENAME_TO_LOOM.md` (status `draft`).
 
 | Item | Value |
 |------|--------|
-| **PLAN SSOT** | `docs/PLAN.md` **v0.9.0** — status **`pending-review`** (Loom rename) |
-| **Review gate** | **R11** requested; M-7 done in 0.8.1 |
-| **CLI version** | `loom` / `VERSION = "0.9.0"` (`fable` alias still works) |
-| **Tests** | `bun test` → **116 pass / 0 fail** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.9.4** — status **`approved`** |
+| **Workflow** | `docs/WORKFLOW.md` |
+| **CLI version** | `loom` / `VERSION = "0.9.4"` (`fable` alias still works) |
+| **Tests** | `bun test` green (see latest local run) |
 | **Git** | Workspace may **not** be a git repo (`fatal: not a git repository` observed). Do not assume `git status` works. |
 | **Tauri** | Deferred — **no cargo/rustc** in environment |
 
@@ -180,12 +181,14 @@ Scripts (root `package.json`):
 
 ## Workflow conventions (do not skip)
 
+**Full rules:** [`docs/WORKFLOW.md`](docs/WORKFLOW.md).
+
 1. **PLAN is SSOT** — version + status + changelog for every non-trivial change.
 2. **Reviews** go in `docs/plan_review.md` with **target plan version**.
-3. **Implementation gate:** only `approved` is “blessed”; authors often implement then set `pending-review` (as with 0.8.0).
-4. **User phrase `진행해`** = implement next backlog / continue current gate (not re-plan from zero).
-5. Prefer **minimal, root-cause fixes**; run tests before claiming done.
-6. Global user prefs: plan multi-step work; verify with tests; capture lessons if corrected.
+3. **Implementation gate:** `approved` (or explicit pending-revision fixes).
+4. **User phrase `진행해`** = next gate step → test → docs → often commit/push.
+5. **Deviations** → `implementation-notes.md` (conservative choice).
+6. Prefer **minimal, root-cause fixes**; `bun test` green before done.
 
 ---
 

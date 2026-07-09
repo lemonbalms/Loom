@@ -8,7 +8,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 | Field | Value |
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
-| **Related** | `docs/PLAN.md`, `docs/plan_review.md`, `docs/RENAME_TO_LOOM.md`, `HANDOFF.md` |
+| **Related** | `docs/WORKFLOW.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
 | **Last updated** | 2026-07-09 |
 
 ---
