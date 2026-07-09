@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.11.0 pending-review** (Tauri shell). 다음: **R13 리뷰** 후 구현 (또는 Owner 지시).
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.11.0 pending-revision** (R13). 다음: **0.11.1 PATCH** (M-18 board path, M-19 Rust RPC + session) → approve → desktop scaffold. 본구현 금지.
 
 ---
 
@@ -33,8 +33,8 @@ North star: *connect your agents — and your teammates.*
 |------|--------|
 | **Product CLI** | `loom` v**0.10.3** (PLAN 0.11.0 draft; CLI bumps on implement) |
 | **Packages** | `@loom/*` Bun monorepo |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.11.0** — status **`pending-review`** (M4.3b Tauri) |
-| **Review gate** | **R13 pending** — review 0.11.0 before desktop scaffold |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.11.0** — status **`pending-revision`** (R13 M-18/M-19) |
+| **Review gate** | **R13 done** — Open **M-18, M-19**; next PLAN **0.11.1** then implement |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -96,7 +96,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | **R13** review of PLAN **0.11.0** | Then implement `apps/desktop` sticky-RPC shell |
+| **Next** | **0.11.1** PLAN PATCH | Lock Board path (M-18) + Rust RPC/session (M-19); then author-close approve |
 | Later | L-5 pack embed TOCTOU | Only when file-body embed ships (v1 is paths-only) |
 | Later | Wire `requestId` | Optional beyond L-4 FIFO waiters |
 | Later | Live board CRDT | Not in Tauri v1 shell |

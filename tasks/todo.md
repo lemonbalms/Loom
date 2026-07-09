@@ -1,13 +1,14 @@
-# Process: Unknowns §3.5 (scheme A)
+# R13 + plan_review hygiene (done this wave)
 
-- [x] WORKFLOW §3.5 + doc map + cheatsheet
-- [x] docs/UNKNOWNS.md template + 0.11.0 stub
-- [x] AGENTS / CLAUDE / implementation-notes / HANDOFF pointers
+- [x] Active review table; archive R7–R11 bodies
+- [x] Recent trim; L-19 closed residual
+- [x] R13 full body — M-18, M-19, L-21–L-23
+- [x] PLAN status → pending-revision; WORKFLOW §5.1; UNKNOWNS fill
 
-## Next product gate (unchanged)
+## Next
 
-1. Optional: fill UNKNOWNS 0.11.0 blindspot (before R13)
-2. **R13** review PLAN v0.11.0
-3. On approved → apps/desktop scaffold
+1. **0.11.1** PLAN PATCH — choose Board path A/B/C (M-18), Rust RPC + session order (M-19)
+2. Author-close `approved` after PATCH
+3. Scaffold `apps/desktop` (not before)
 
-`bun run status` · docs/WORKFLOW.md §3.5
+`bun run status`

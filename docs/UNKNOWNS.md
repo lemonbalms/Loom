@@ -100,9 +100,16 @@
 | Known knowns | sticky `POST /rpc` + Bearer; peers/inbox/board 목표; loopback only; no new wire protocol |
 | Known unknowns | sticky 미기동 UX; board write RPC 범위; sanitize 위치(JS vs Rust); multi-profile meta |
 | Unknown knowns | “좋은 데스크톱 UI” — 목업 전 미정의 |
-| Unknown unknowns | *(blindspot pass 전 — 비움)* |
+| Unknown unknowns | sticky에 **board RPC 없음** (R13 M-18); webview **CORS 없음** (R13 M-19); multi-profile meta 선택 |
 
-**Next:** R13 전 blindspot 1회 + (선택) HTML 목업. 본 스캐폴드는 R13 `approved` 후.
+### Blindspot / R13 (filled from review)
+
+- Board acceptance vs sticky surface gap → **M-18**
+- Desktop must use **Rust HTTP invoke**, not webview fetch → **M-19**
+- `list_peers` raw displayName → desktop XSS (L-21)
+- Session/meta: which `*.host.json` for profile
+
+**Next:** PLAN **0.11.1** locks M-18/M-19 → then `approved` → scaffold. Optional HTML mock still useful for unknown knowns (UI taste).
 
 ---
 

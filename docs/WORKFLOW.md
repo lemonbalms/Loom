@@ -247,7 +247,7 @@ CLI `VERSION` 문자열과 PLAN Version을 **같은 숫자**로 맞춘다 (`pack
 | 순수 오타·주석 | 불필요 |
 | 호환 제거(0.10), Tauri, 프로토콜 와이어 변경 | **필수** |
 
-**현재(0.9.4 approved, open 없음):** 필수 리뷰 없음. 다음 MINOR/Med+ 착수 시 R12+.
+**현재(0.11.0 `pending-revision`, R13):** Open blocking **M-18 / M-19** — Tauri 본구현 금지 until PLAN **0.11.1** PATCH. 필수 리뷰 게이트 = Active review in `plan_review.md`.
 
 ### 5.2 리뷰어 절차
 
@@ -402,6 +402,7 @@ blocking 없을 때 기본 순서:
 |------|------|
 | 2026-07-09 | 초안 — 0.9.x 시리즈에서 확정된 Plan/Review/Implement/Ship 관례 성문화 |
 | 2026-07-09 | **§3.5 Unknowns** — 지도≠영토; `docs/UNKNOWNS.md`; 치트시트 미지/인터뷰/목업/퀴즈 |
+| 2026-07-09 | §5.1 현재 게이트 → 0.11.0 R13 (M-18/M-19); 구 0.9.4 문구 삭제 |
 | 2026-07-09 | §0 세션 진입 의식 + `AGENTS.md` / `CLAUDE.md` 연동 |
 
 ---

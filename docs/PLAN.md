@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.11.0** |
-| **Status** | **`pending-review`** — M4.3b Tauri desktop shell (thin v1) |
+| **Status** | **`pending-revision`** — R13 (M-18 board path, M-19 desktop↔sticky transport) |
 | **Supersedes** | 0.10.3 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -46,9 +46,19 @@
 
 ### Changelog
 
-#### 0.11.0 — 2026-07-09 (`pending-review`)
+#### 0.11.0 — 2026-07-09 (`pending-revision` — was `pending-review`)
 
 **Why:** Phase **M4.3b** — thin **Tauri desktop shell** so humans can see room presence / inbox / board without living in the CLI. Rust toolchain is available (unblocked in 0.10.3).
+
+**R13 (2026-07-09):** `pending-revision` — see `docs/plan_review.md` R13.
+
+| ID | Sev | Required before implement |
+|----|-----|---------------------------|
+| **M-18** | Med | Board path: sticky ops **or** same-file read as CLI **or** drop Board from v1 |
+| **M-19** | Med | Rust-side sticky RPC only (no webview fetch/CORS); session/meta resolution order |
+| L-21–L-23 | Low | backlog OK (peer XSS escape, UNKNOWNS fill, /health docs) |
+
+Next PATCH expected: **0.11.1** then author-close `approved` (no full re-review if only M-18/M-19 locked).
 
 ##### Scope (v1 shell — **in**)
 
