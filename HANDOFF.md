@@ -58,7 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending) | **0.11.1** | R13 close: M-18 C, M-19 Rust invoke, M-20 textContent |
+| `baa2c90` | **0.11.1** | R13 close: M-18 C, M-19 Rust invoke, M-20 textContent |
 | `539930e` | R13 | plan_review hygiene + first R13 body |
 | `5a5b356` | **0.11.0** / 0.10.3 | PLAN draft M4.3b Tauri shell |
 | `c3d2de2` | **0.10.2** | Remove `fable`/`fable-mcp` bin aliases; CLI is `loom`/`loom-mcp` only |
