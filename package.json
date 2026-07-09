@@ -1,0 +1,24 @@
+{
+  "name": "loom",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Loom — multiplayer AI terminal: connect your agents and teammates",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "bun run --filter '*' build",
+    "test": "bun test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "loom": "bun run packages/cli/src/index.ts",
+    "fable": "bun run packages/cli/src/index.ts",
+    "spike:pty": "bun run packages/cli/src/index.ts spike pty",
+    "dev:relay": "bun run packages/relay/src/cli.ts",
+    "relay:lan": "LOOM_RELAY_HOST=0.0.0.0 LOOM_RELAY_TOKEN=${LOOM_RELAY_TOKEN:?set LOOM_RELAY_TOKEN} bun run packages/relay/src/cli.ts"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/bun": "latest",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@loom/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "loom": "./src/index.ts",
+    "fable": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "build": "echo ok",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@loom/adapters": "workspace:*",
+    "@loom/host": "workspace:*",
+    "@loom/mcp-server": "workspace:*",
+    "@loom/protocol": "workspace:*",
+    "@loom/relay": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

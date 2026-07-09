@@ -1,0 +1,754 @@
+# Loom — Multiplayer AI Terminal (Mosaic-class)
+
+| Field | Value |
+|-------|--------|
+| **Document** | `docs/PLAN.md` |
+| **Version** | **0.9.0** |
+| **Status** | **`pending-review`** — Product rename Fable → **Loom** (R11) |
+| **Supersedes** | 0.8.1 |
+| **Last updated** | 2026-07-09 |
+| **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
+| **Related** | `docs/plan_review.md`, `docs/RENAME_TO_LOOM.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
+| **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
+
+---
+
+## Version control (계획 버전 관리)
+
+이 파일이 **제품 계획의 단일 원본(SSOT)** 이다. 구현·리뷰·승인 게이트는 아래 규칙을 따른다.
+
+### 버전 번호 (SemVer 유사)
+
+| 자리 | 의미 | 예 |
+|------|------|-----|
+| **MAJOR** (`1.0.0`) | 제품 방향·성공 정의 변경, 이전 계획과 양립 불가 | 멀티휴먼 포기 등 |
+| **MINOR** (`0.2.0`) | 아키텍처 전제·수신 모델·페이즈 범위 변경 (리뷰 재요청) | MCP push 폐기, 큐 모드 기본 |
+| **PATCH** (`0.2.1`) | 완료 기준 보강, 보안 범위 명확화, 일정·경로 (재리뷰 선택) | R2 H-1/M-1 → M1.1 |
+
+### 상태 값
+
+| Status | 의미 |
+|--------|------|
+| `draft` | 작성 중 |
+| `pending-review` | 리뷰 요청 가능 / 대기 |
+| `approved` | 이 버전 기준 구현 진행 허용 |
+| `superseded` | 상위 버전에 대체됨 |
+| `on-hold` | 블로커로 의도적 중단 |
+
+### 변경 시 필수 절차
+
+1. 상단 **Version** 올리고 **Status**를 `draft` 또는 `pending-review`로 둔다.
+2. 아래 **Changelog**에 항목을 추가한다 (What / Why / Review impact).
+3. 재리뷰가 필요하면 Status = `pending-review`, 리뷰어는 `docs/plan_review.md`에 **대상 버전**을 명시해 결과를 남긴다.
+4. 승인 시 Status = `approved`, Changelog에 `Approved by …` 한 줄 추가.
+5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
+
+### Changelog
+
+#### 0.9.0 — 2026-07-09 (`pending-review`)
+
+**Why:** Product rename **Fable → Loom** (disambiguate review agent fable-advisor / Fable 5). Plan: `docs/RENAME_TO_LOOM.md` (RN1-patched).
+
+| What | Why |
+|------|-----|
+| CLI `loom`, packages `@loom/*`, env `LOOM_*`, `~/.loom` | Public identity |
+| Dual-read most `FABLE_*` (not `INSECURE_OPEN`) | Compat without H-5 regression |
+| Home migrate with live-PID gate | No sticky/relay split-brain |
+| Invite mint `LOOM-`; join exact full code (no prefix rewrite) | No room collision |
+| MCP `mcp_servers.loom` + exact-anchor dual-strip | H-4 + no bare “loom” wipe |
+| Slash `/loom` + `/fable`; `[LOOM HANDOFF]`; loom system hint | User/agent surfaces |
+| `fable` bin alias 1 minor | Transition |
+
+**Implemented as of 0.9.0** (code + tests 116 pass). Awaiting **R11**.
+
+#### 0.8.1 — 2026-07-09 (`approved`)
+
+**Why:** R10 **pending-revision** — M-13 silent join failure on `fable run`; L-15 sticky peerSecret persist.
+
+| What | Why |
+|------|-----|
+| `fable run` checks `joinRoom` result; exit 1 on `error` | Do not spawn agent off-room (M-13) |
+| run/listen/sticky `onError` → stderr | Reconnect `peer_auth_failed` not silent |
+| run `onEnvelope` handles `error` | Live error envelopes visible |
+| sticky (+ run) save `peerSecret` from `room.state` | L-15 parity with room-ops |
+| `RelayClient.setReconnectPeerSecret` | Keep auto-reconnect creds in sync |
+
+**Approved by:** plan author after R10 M-13/L-15 fix (re-review of M-7 core not required per R10).
+
+L-14 (shared timing-safe util), L-16 (KB vs chars) remain backlog.
+
+#### 0.8.0 — 2026-07-09 (`superseded` by 0.8.1; was `pending-review` → R10 `pending-revision`)
+
+**Why:** R5/R9 backlog **M-7** — token + invite alone must not allow taking over another peer’s roster identity / inbox.
+
+| What | Why |
+|------|-----|
+| Relay mints `peerSecret` (base64url 24B) on first join/create | Unforgeable rejoin proof bound to `peer.id` |
+| Rejoin with existing `peer.id` requires matching `peer.secret` (timing-safe) | Blocks identity takeover by invite+token holders |
+| `room.state.peerSecret` only to the joining socket (never roster broadcast) | Secret not leaked to other peers |
+| Session stores `peerSecret` (mode **0600**); sticky/CLI reconnect sends it | Survive disconnect / sticky host restart |
+| Error `peer_auth_failed` on mismatch / missing secret | Explicit failure mode |
+| Threat model updated in `apps/relay-cloud/README.md` + PROTOCOL | Operators know residual risk |
+
+**Implemented as of 0.8.0** (code + tests). Awaiting **R10** review.
+
+**Not in 0.8.0:** rotating secrets; mTLS/JWT peer certs; secret recovery if session file lost (must rejoin as **new** peer id).
+
+#### 0.7.3 — 2026-07-09 (`superseded` by 0.8.0; was `approved`)
+
+**Why:** R9 L-12 backlog — safer file locks for board/pack concurrent updates.
+
+| What | Why |
+|------|-----|
+| Lock `owner.pid` — only reclaim if owner **dead** and lock **stale** | Two waiters must not rmdir a live lock |
+| Release only if pid matches (or force reclaim dead) | Accidental unlock of peer process |
+| `sleepMs` via `Bun.sleepSync` / `Atomics.wait` | No busy-spin CPU burn |
+
+Re-review not required (Low backlog PATCH).
+
+#### 0.7.2 — 2026-07-09 (`superseded` by 0.7.3)
+
+**Why:** R9 L-11 backlog — bound relay memory for large handoff attachments / board snapshots.
+
+| What | Why |
+|------|-----|
+| Attachment content max **256KB**, max **32** attachments, body max **100KB** (zod + resolveHandoff slice) | DoS / memory |
+| Inbox max **100** entries/peer with trim | Bound growth |
+| Claim/accept **deletes** entry (no permanent claimed retention) | Repeated `--with-board` cannot pin memory |
+
+Re-review not required (Low backlog PATCH).
+
+#### 0.7.1 — 2026-07-09 (`superseded` by 0.7.2; Phase 4.3a baseline)
+
+**Why:** R9 `pending-revision` — board snapshot trust boundary.
+
+| What | Why |
+|------|-----|
+| **M-10:** ISO timestamp + clamp to now in `normalizeTimestamp` | peer spoofed `updatedAt` cannot dominate merge |
+| **M-11:** always `parseBoardSnapshot` (no kind cast shortcut) | malformed tasks crash |
+| **M-12:** `resolveHandoffEntryIndex` for import-handoff | M-8 regression |
+| **L-9:** foreign `sourceRoomId` requires `--force` | accidental cross-room merge |
+| **L-10/L-13:** sanitize timestamps/names; format who/id/mode | peer-controlled strings |
+
+**Merge trust model:** after clamp, higher `updatedAt` wins; spoofed future times become import-time.
+
+#### 0.7.0 — 2026-07-09 (`superseded` — R9 pending-revision)
+
+**Why:** Phase 4.3a — multi-machine board **share** without live relay sync (Tauri deferred: no Rust toolchain in env).
+
+| What | Why |
+|------|-----|
+| `fable board export` / `import` (merge\|replace) | Portable snapshot JSON |
+| `handoff --with-board` + MCP `withBoard` | Attach `fable-board-snapshot` attachment |
+| `fable board import-handoff <ho_id>` | Apply snapshot from inbox |
+| MCP `export_board` / `import_board` | Agent-side portability |
+| Honest scope: **not** live multi-writer remote board | Avoid false "synced" claims |
+
+**R9:** M-10/M-11/M-12 → **0.7.1**.
+
+**Not in 0.7.0:** relay-persisted board CRDT, Tauri UI, auto-merge conflicts UI.
+
+#### 0.6.1 — 2026-07-09 (`superseded` by 0.7.0; Phase 4.2 baseline)
+
+**Why:** R8 `pending-revision` — task board integrity + handoff id sanitize.
+
+| What | Why |
+|------|-----|
+| **H-7:** `writeAtomicJson` + `withFileLock` + corrupt backup (board **and** pack) | Concurrent agents must not wipe board |
+| **M-8:** task id exact/suffix only; empty/ambiguous error | Silent wrong-task updates |
+| **M-9:** relay always generates handoff id; sanitize id/from/mode on output | Peer-controlled string invariant |
+| L-6 id format on normalize; L-7 `clear-done --yes`; L-8 Security docs | R8 Lows |
+
+#### 0.6.0 — 2026-07-09 (`superseded` — R8 pending-revision)
+
+**Why:** Phase 4.2 task board — track work without leaving the multiplayer room workflow.
+
+| What | Why |
+|------|-----|
+| Local room-scoped board (`~/.fable/boards/<hash(roomId)>.json`, 0600) | Same model as context pack (UID+room shared) |
+| Statuses: todo / doing / done / blocked / cancelled | Minimal kanban |
+| `fable board show\|add\|set\|assign\|note\|rm\|clear-done` | Human CLI |
+| MCP `list_tasks` / `add_task` / `update_task` | Agent tooling |
+| `handoff --board` or `mode=task` → create linked task | Handoff ↔ board |
+| Optional `handoffId` on tasks | Traceability (no referential integrity after relay restart) |
+
+**R8:** H-7 concurrent write, M-8 id match, M-9 handoff id → **0.6.1**.
+
+**Not in 0.6.0:** relay-synced board, multi-machine live board, Tauri UI, dependency graph.
+
+#### 0.5.1 — 2026-07-09 (`superseded` by 0.6.0; Phase 4.1 baseline)
+
+**Why:** R7 Low follow-ups (L-1–L-3); re-review not required.
+
+| What | Why |
+|------|-----|
+| **L-1:** document room-scoped pack sharing (same UID + roomId) | Intentional; not profile-isolated |
+| **L-2:** symlink→outside-cwd rejection test | Regression guard for allowlist |
+| **L-3:** path attachment label prefix `context-pack-path:`; hint sender-relative warning | Receiver identification + trust |
+| Security invariant: receivers never fs-open pack paths | Display/metadata only until v2 redesign |
+| Review docs: `plan_review_archive.md` for R1–R6 | Structure debt |
+
+**Deferred:** L-4 requestOnce correlation id; L-5 v2 embed TOCTOU re-resolve.
+
+#### 0.5.0 — 2026-07-09 (`superseded` by 0.5.1; R7 **approved**)
+
+**Why:** Phase 4.1 context pack — portable room context without reimplementing agents.
+
+| What | Why |
+|------|-----|
+| Local **room-scoped** pack (`~/.fable/packs/<hash(roomId)>.json`, 0600) | summary + cwd-allowlisted paths + notes; **same OS user + same roomId → one pack file (all profiles)** |
+| `fable pack show\|set\|add\|remove\|note\|clear` | Human manage pack |
+| `handoff --with-pack` / MCP `withPack` | Share pack only on send (attachments) |
+| MCP `get_context_pack` | Agents read local pack |
+| Path allowlist = cwd realpath | Security (no escape to /etc etc.) |
+| No file body embed in v1 | Keep envelopes small; paths only |
+
+**R7:** approved; L-1–L-5 → 0.5.1 / backlog.
+
+**Not in 0.5.0:** relay-shared pack across machines, auto-sync, full file content embed, task board, Tauri.
+
+#### 0.4.1 — 2026-07-09 (`superseded` by 0.5.0; Phase 4.0a baseline)
+
+**Why:** R6 `pending-revision` — sticky host correctness/security PATCH.
+
+| What | Why |
+|------|-----|
+| **F-2:** `resolveLiveHostMeta` requires meta.roomId/peerId == session; room create/join stops host | 구 room으로 handoff 오배달 방지 |
+| **F-3:** sticky `/rpc` handlers serialized (promise chain) | 동시 handoff/claim ack 혼선 방지 |
+| **F-1:** sticky Bearer uses `timingSafeTokenEqual` | M-5 회귀 제거 |
+| Tests: session mismatch; concurrent RPC | 회귀 가드 |
+
+**Implemented as of 2026-07-09.** Re-review optional (PATCH).
+
+#### 0.4.0 — 2026-07-09 (`superseded` — R6 pending-revision)
+
+**Why:** Phase 4.0a — sticky long-lived host as foundation for context pack / task board.
+
+| What | Why |
+|------|-----|
+| `fable host start\|stop\|status` | Opt-in daemon holds one WS + auto-reconnect per session |
+| Loopback IPC `POST /rpc` + Bearer token in `*.host.json` (0600) | CLI/MCP avoid join→close per call |
+| `opsListPeers` / handoff / inbox / claim prefer host, **fallback one-shot** | Backward compatible |
+| MCP tools return `via: host\|oneshot` | Observability |
+| Integration tests sticky IPC | Regression |
+
+**R6:** F-2 host/session mismatch, F-3 concurrent ack, F-1 timing → **0.4.1**.
+
+**Not in 0.4.0:** context pack, task board, Tauri, force-host mode, M-7 peer ownership.
+
+#### 0.3.1 — 2026-07-09 (`superseded` by 0.4.0 sticky host)
+
+**Why:** R5 `pending-revision` on 0.3.0 — first network exposure must not fail-open; token handling hardened.
+
+| What | Why | Review impact |
+|------|-----|----------------|
+| **H-5:** non-loopback bind without token → **refuse start** unless `--insecure-open` / `FABLE_RELAY_INSECURE_OPEN` | fail-open 기본값 제거 | Phase 3 done |
+| **H-6:** WS **Bearer preferred**; Share hides token unless `--show-token`; session `relayToken` + URL strip; file **0600** | access log / Share 유출 | Phase 3 done |
+| **M-5:** `timingSafeTokenEqual` on Bearer + query | 타이밍 누출 완화 | PATCH |
+| **M-6:** `setOfflineIfSocket` — stale close ignored after reconnect | 재연결 offline 오판 방지 | PATCH |
+| Threat model (M-7 peerId) in `apps/relay-cloud/README.md` | **0.8.0** | done |
+
+**Implemented as of 2026-07-09.** Tests: auth Bearer, H-5 refuse, M-5 equal, M-6 unit, relay-url no-token-in-wsUrl. Re-review optional (PATCH).
+
+#### 0.3.0 — 2026-07-09 (`superseded` — R5 pending-revision)
+
+**Why:** Phase 3 remote multiplayer (skeleton). **Not done for production LAN** until 0.3.1.
+
+| What | Why |
+|------|-----|
+| `FABLE_RELAY_URL` / `--relay` + `FABLE_RELAY_TOKEN` / `--token` | Multi-machine clients |
+| Relay bind `0.0.0.0`, token on WS/HTTP | LAN/cloud host |
+| `ensureRelay` remote health check (no auto-spawn) | Don't spawn daemon against remote |
+| `RelayClient` auto-reconnect + re-join | listen/run survive brief drops |
+| `apps/relay-cloud/README.md` | Deploy notes (TLS terminate at proxy) |
+| Auth integration tests | 401 without token; create with token |
+
+**R5:** H-5 fail-open, H-6 token-in-query/Share, M-5 timing, M-6 stale close → **0.3.1**.
+
+**Not in 0.3.0:** durable inbox; mTLS/JWT; peerId ownership (M-7).
+
+#### 0.2.4 — 2026-07-09 (`superseded` by 0.3.0)
+
+**Why:** R4 conditional approve — H-4 legacy TOML duplicate table on `--write-user-config`.
+
+| What | Why |
+|------|-----|
+| `stripAllFableMcpSections` before upsert | Remove unmarker v0.2.2 `[mcp_servers.fable]` so TOML stays valid |
+| Legacy auto-added comments stripped | Migration path for existing ~/.codex and ~/.grok |
+| Test: H-4 unmarker block | Regression guard |
+| parseArgs boolean allowlist | `--write-user-config codex` no longer swallows agent id |
+| usage PLAN version string | Match VERSION 0.2.4 |
+| Grok MCP path documented from official user-guide | R4 M-4 format evidence |
+
+**R4:** approved with H-4 PATCH — this version.
+
+#### 0.2.3 — 2026-07-09 (`superseded` by 0.2.4 H-4)
+
+**Why:** R3 `pending-revision` — Phase 2 wiring honesty (M-3 + post-R3 Grok).
+
+| What | Why |
+|------|-----|
+| Codex/Grok **user-global MCP write = opt-in** (`--write-user-config`) | R3 M-3 무단 append 제거 |
+| Managed TOML block + **FABLE_SESSION env** + upsert | multi-profile MCP 세션 바인딩 |
+| Gemini removed earlier; Grok same policy as Codex | M-2 obsolete; Grok not re-introduce M-3 |
+| `isOnline` unregistered → false | R3 Low bug |
+| sanitize bidi/ZW; check/claim re-sanitize | R3 Low |
+| Claude ensureMcpConfig returns null (global --mcp-config SSOT) | R3 Low 중복 제거 |
+| ADAPTERS matrix: `userConfigWrite: opt-in` | 정직한 표기 |
+
+#### 0.2.2 — 2026-07-09 (`superseded` — Phase 2 wiring incomplete per R3)
+
+**Why:** Phase 2 multi-agent adapter depth after M1.1.
+
+| What | Why |
+|------|-----|
+| Adapter `capabilities` + `ensureMcpConfig` per CLI | Codex/Grok MCP paths beyond env-only |
+| Shared `fableSystemHint` with check/claim | Hetero agents same receive contract |
+| `fable run` auto-pick; `agents --matrix` | UX |
+| Claude/Codex/Grok project MCP config writers | Practical multi-CLI |
+| Hetero handoff unit tests (claude→codex claim) | Phase 2 done criterion without requiring all CLIs installed |
+| ADAPTERS.md matrix | Docs |
+
+**Next optional:** Phase 1.5 PTY spike · Phase 3 remote relay
+
+#### 0.2.1 — 2026-07-09 (`superseded` by 0.2.2 implementation notes; still the M1.1 contract baseline)
+
+**Why:** `docs/plan_review.md` **Review R2** (Plan v0.2.0) 조건부 승인 — High/Med finding을 M1.1 완료 기준에 반영. MINOR 재리뷰 불필요 (PATCH).
+
+| What | Why | Review impact |
+|------|-----|----------------|
+| **H-1:** roster(멤버십)와 live socket **분리**; offline 멤버 대상 handoff **enqueue** | 소켓 close 시 `removePeer`면 수신자 거의 항상 offline → inbox 무의미 | M1.1 필수 |
+| **`*` broadcast** inbox 적재 규칙 정의 | offline 포함 전원 queued | M1.1 필수 |
+| peers에 **online/offline** 표시 | roster 분리 후 UX | M1.1 |
+| **M-1:** `FABLE_SESSION` env 및/또는 `--profile` 로 세션 파일 분리 | 같은 머신 2-peer 시 `~/.fable/session.json` 덮어쓰기 | 데모 전제 |
+| sanitize 범위 = **모든 peer-controlled 문자열** (body, chat, displayName, roomName); **allowlist** (인쇄 가능 + `\n\t`) | body만 잡으면 우회 | Security 필수 |
+| handoff MCP 반환: `queued` \| `delivered` \| `peer_unknown` (무조건 `ok:true` 금지) | offline enqueue 후 의미 명확화 | Low→M1.1 |
+| claim vs `inbox accept`: **first-wins** 상태 전이 | 경합 | Low→M1.1 |
+| `handoff.ack` envelope (room.state 재전송 잔재 제거) | server.ts ack 정리 | Low→M1.1 |
+| `injectIntoStdin` = **unused / Phase 1.5 only** 표기 | dead path 혼동 방지 | docs |
+| Inbox 저장 = **relay 메모리, room 수명** (프로세스 재시작 시 유실 OK for MVP) | 공수 통제 | 명시 |
+| leave 명시 시에만 roster 제거; socket close = **offline** | H-1 정책 | M1.1 |
+
+**Approved by:** Fable 5 (R2, conditional) + plan owner acceptance of 0.2.1 PATCH.  
+**Next:** 구현 단위 **M1.1** 착수. 완료 후 Changelog에 `Implemented as of …` PATCH 가능.
+
+#### 0.2.0 — 2026-07-09 (`superseded`)
+
+**Why:** R1 보류 사유 반영 (큐 수신, 오버레이 제외, ANSI body, PTY 후순위).  
+**Review R2:** `approved` 조건부 → findings는 **0.2.1**에 흡수.
+
+| What | Why | Review impact |
+|------|-----|----------------|
+| 수신 = 큐 + 알림 + `check_handoffs` | MCP non-push | 재리뷰 필수였음 |
+| PTY/오버레이 비목표 | 일정·실현성 | 해소 |
+| 버전 관리 도입 | 추적 | 프로세스 |
+
+#### 0.1.0 — 2026-07-09 (`superseded` / R1 **on-hold**)
+
+- PTY 주입·오버레이 가정. R1 보류.
+
+---
+
+## Review resolution
+
+### R1 (v0.1.0 → v0.2.0) — 해소
+
+| # | 지적 | 결정 |
+|---|------|------|
+| 1 | MCP 송신 전용 / PTY 위험 | 큐 + 폴링 |
+| 2 | presence 오버레이 | 비목표 |
+| 3 | 얇은 데몬+MCP | 코어 아키텍처 |
+| 4 | 일정·속도·ANSI body | 반영 |
+
+### R2 (v0.2.0 → v0.2.1) — 해소 (본 버전)
+
+| Sev | Finding | 0.2.1 반영 |
+|-----|---------|------------|
+| H-1 | roster/socket 결합, offline handoff 실패 | 분리 + offline enqueue + broadcast 규칙 |
+| M-1 | 전역 session.json | `FABLE_SESSION` / `--profile` |
+| Med | sanitize body only | peer-controlled 전체 + allowlist |
+| Low | handoff 무조건 ok | `queued\|delivered\|peer_unknown` |
+| Low | claim/accept 경합 | first-wins |
+| Low | room.state ack 잔재 | `handoff.ack` |
+
+---
+
+## Context
+
+Mosaic-class: 여러 사람 + 여러 에이전트 CLI가 Room에서 협업하고 handoff로 작업/메시지를 넘긴다.
+
+**제품 한 줄:** 선호 에이전트 CLI를 유지한 채 Room + presence + **safe handoff inbox**로 연결.
+
+| 결정 | 선택 |
+|------|------|
+| 협업 범위 | 로컬 → 원격 |
+| 배포 | CLI 우선 |
+| AI 런타임 | multi-CLI: claude, codex, grok, shell |
+| 수신 모델 | **큐 + 알림 + MCP 폴링** (offline enqueue 포함) |
+| 포지셔닝 | 속도 (해자 주장 최소화) |
+
+---
+
+## Recommended approach
+
+### 핵심 통찰
+
+1. 에이전트 재구현 안 함.  
+2. MCP = 송신·폴링 only.  
+3. Handoff는 **roster 기준 inbox**에 쌓임 (live socket 불필요).  
+4. PTY 주입 = 선택 (Phase 1.5).
+
+### 아키텍처 (v0.2.1 코어)
+
+```
+Agent CLIs ──MCP/CLI──► Fable Host ──WebSocket──► Relay
+                              │                      │
+                         session profile         roster (members)
+                         sanitize all out        sockets (online map)
+                         inbox CLI/MCP           per-peer inbox queue
+```
+
+- **Roster member:** join 후 명시 `leave` 또는 TTL까지 유지.  
+- **Socket close:** member는 남고 `online=false`.  
+- **Handoff to offline member:** inbox enqueue, 송신 결과 `queued`.  
+- **Online + connected listener:** enqueue + 실시간 notify envelope, 결과 `delivered` (또는 `queued`+notify — 구현 시 하나로 통일, 권장: 항상 inbox 적재 후 online이면 push notify → ack `queued` with `notified: true`).
+
+**권장 ack 의미 (M1.1 고정):**
+
+| Result | 의미 |
+|--------|------|
+| `queued` | inbox에 적재됨 (offline이거나 online 알림 여부 무관; 최소 보장) |
+| `delivered` | 적재 + 현재 online socket에 notify 성공 |
+| `peer_unknown` | roster에 대상 없음 |
+
+### 비목표 (MVP)
+
+- pair-programming 공유 커서  
+- 에이전트 루프 재구현  
+- presence **인라인 오버레이**  
+- 기본 경로 PTY stdin 주입 (`injectIntoStdin` unused until 1.5)  
+- Windows 1급  
+- 데스크톱 스토어  
+- inbox disk 영속 (MVP = relay 메모리)
+
+---
+
+## Product surface
+
+### CLI
+
+```bash
+# 프로필 (같은 머신 2인 데모 필수)
+export FABLE_SESSION=~/.fable/profiles/alice.json
+# 또는
+fable --profile alice room create --name demo --as alice
+fable --profile bob room join FABLE-XXXX --as bob
+
+fable peers                 # id, name, agent, online/offline
+fable handoff @alice "…"
+fable listen
+fable inbox                 # queued list
+fable inbox accept <id>     # human accept (first-wins vs claim)
+fable run claude
+```
+
+### Presence
+
+- 배지 + `fable peers` (color, **online**)  
+- listen/run stderr 알림  
+- 오버레이 없음  
+
+### Handoff + inbox 상태
+
+```
+queued → notified (optional) → accepted | claimed → (done)
+         └ first-wins: accept 또는 claim 중 먼저 성공한 쪽만 body 확정
+```
+
+| status | 의미 |
+|--------|------|
+| `queued` | inbox 대기 |
+| `notified` | online peer에 push 알림 보냄 (여전히 claim/accept 가능) |
+| `accepted` | 사람이 `inbox accept` |
+| `claimed` | 에이전트 `claim_handoff` |
+| `expired` | (optional) TTL |
+
+### 수신 경로
+
+```
+handoff → sanitize → resolve roster targets
+       → enqueue each target inbox
+       → if online: send notify envelope
+       → ack sender: queued | delivered | peer_unknown
+```
+
+Agent: `check_handoffs` → `claim_handoff(id)`.  
+Human: `fable inbox` → `accept`.
+
+### MCP 도구
+
+| Tool | 설명 |
+|------|------|
+| `handoff` | 송신; 반환 `{ status, to, id? }` |
+| `list_peers` | peers + online |
+| `room_chat` | 채팅 (text sanitize) |
+| `check_handoffs` | 내 queued/notified 목록 (body preview sanitized) |
+| `claim_handoff` | id claim; first-wins |
+
+---
+
+## Security
+
+| 규칙 | 수준 |
+|------|------|
+| invite code join | 로컬 MVP |
+| 모든 **peer-controlled** 문자열 sanitize 후 터미널/도구 응답 | **필수** |
+| Allowlist: printable Unicode + `\n` + `\t`; strip ESC/CSI/OSC 등 | **필수** |
+| 적용 대상: handoff body, chat text, displayName, roomName, attachment labels, **handoff id/from/mode**, board title/notes/assignee | **필수** |
+| 프롬프트 인젝션 배너 | 보조 |
+| context pack path: cwd **realpath** allowlist on add | **필수** |
+| **Invariant:** receivers must **not** open pack/path attachments as filesystem paths | **필수** (display/metadata only; v2 embed needs redesign) |
+| pack file key = roomId (room-scoped; shared across profiles on same UID) | 문서화된 의도 |
+| pack leave room on wire only via `--with-pack` / `withPack` | **필수** |
+| relay 본문 디스크 로그 | off |
+
+---
+
+## Implementation status & phases
+
+### 완료 (M0 / M1)
+
+| ID | 상태 |
+|----|------|
+| M0 protocol monorepo | **done** |
+| M1-core local room CLI/MCP send | **done** |
+| M1-demo human handoff (listen) | **done** (주의: 세션 파일 수동 분리 시에만 안정) |
+
+### M1.1 — **done** (2026-07-09)
+
+**목표:** offline-safe inbox + multi-profile + sanitize + pull tools.
+
+| # | 작업 | 상태 |
+|---|------|------|
+| 1 | Roster ≠ socket | **done** |
+| 2 | Offline enqueue | **done** (E2E verified) |
+| 3 | `*` broadcast inbox | **done** (unit tests) |
+| 4 | online 플래그 | **done** |
+| 5 | `--profile` / `FABLE_SESSION` | **done** |
+| 6 | Sanitize allowlist | **done** (tests) |
+| 7 | Inbox API (relay memory) | **done** |
+| 8 | MCP check/claim + status enum | **done** |
+| 9 | CLI inbox / accept | **done** |
+| 10 | `handoff.ack` | **done** |
+| 11 | Docs | **done** |
+| 12 | `injectIntoStdin` unused | **done** |
+
+**Verified demo:** bob handoff @alice while offline → `queued` → alice `inbox` + `accept`.
+
+### Phase 1.5 — PTY spike — **done** (verdict: **no-go** for default inject)
+
+- Harness: `fable spike pty` + `packages/host/src/pty-spike.ts`
+- Automated: idle line-reader works; **busy inject buffers → late submit risk**
+- `injectIntoStdin` requires `{ experimental: true }`; default path never calls it
+- Report: `docs/spikes/PHASE-1.5-PTY.md`
+- **Product receive path unchanged:** queue + `check_handoffs` / inbox only
+- Manual Claude/Codex/Grok matrix optional; not required to close phase
+
+### Phase 2 — Multi-CLI depth — **done** (0.2.3 wiring fixed)
+
+- Adapter capabilities + `ensureMcpConfig` (claude json, codex/grok toml)
+- **Default: project-only MCP**; `--write-user-config` opt-in with session env + managed upsert
+- Gemini **removed**; **Grok** added (same opt-in policy as Codex)
+- Hetero room tests; `fable agents --matrix` shows `user-cfg`
+- Docs: `docs/ADAPTERS.md`
+
+### Phase 3 — Remote relay — **done** (0.3.0 + **0.3.1** security)
+
+- Token-auth relay (`FABLE_RELAY_TOKEN`), bind `0.0.0.0`
+- Clients: `--relay` / `FABLE_RELAY_URL` + `--token` (Bearer header preferred)
+- Auto-reconnect on `listen` / `run` (M-6 stale-close safe)
+- H-5: non-loopback without token refused (`--insecure-open` opt-in only)
+- H-6: session `relayToken` separate; Share default no token; file 0600
+- TLS: terminate at reverse proxy (`wss://` → local `ws://`)
+- Docs: `apps/relay-cloud/README.md`
+
+### Phase 4.0a — Sticky host — **done** (0.4.0 + **0.4.1** R6)
+
+- `fable host start|stop|status` — long-lived `RelayClient` + reconnect
+- Loopback RPC for peers / handoff / chat / inbox / claim
+- Without host: previous one-shot behavior unchanged
+- Meta: `~/.fable/session.host.json` (or profile sibling), mode 0600
+- **0.4.1:** session match (F-2), serialized RPC (F-3), timing-safe token (F-1)
+
+### Phase 4.1 — Context pack — **done** (0.5.0 R7 + **0.5.1** Lows)
+
+- Local pack per **roomId** (not per profile): summary, paths (cwd-allowlisted), notes
+- Same machine + same room + same OS user → **shared pack file** across `--profile`s (L-1 intentional)
+- CLI `fable pack …`; attach via `handoff --with-pack` only
+- MCP `get_context_pack` + handoff `withPack`
+- Path attachments: `context-pack-path` / `context-pack-path:<label>`; **display only** (never auto-open as FS)
+- Uses existing handoff `attachments` (no wire protocol version bump)
+
+### Phase 4.2 — Task board — **done** (0.6.0 + **0.6.1** R8)
+
+- Local board per roomId: tasks with status/assignee/notes/handoffId
+- CLI `fable board …`; MCP list/add/update
+- Handoff can spawn task (`--board` or `mode=task`)
+- Not relay-synced across machines (honest local room-scope)
+- **0.6.1:** atomic write+lock; strict task id match; server-only handoff ids
+
+### Phase 4.3a — Board snapshot share — **done** (0.7.0 + **0.7.1** R9)
+
+- Export/import board JSON; attach via handoff `--with-board`
+- Import from file or inbox handoff attachment
+- Merge by task id (clamped `updatedAt` wins) or replace; foreign room needs `--force`
+- **Not** live remote sync — intentional
+- **0.7.1:** timestamp clamp, always-parse snapshot, strict handoff id match
+
+### Phase 4+
+
+Tauri UI (requires Rust/cargo); optional live relay board later.
+
+---
+
+## Risk register
+
+| 리스크 | 완화 |
+|--------|------|
+| offline handoff 유실 | roster+inbox (H-1) |
+| 세션 덮어쓰기 | profiles (M-1) |
+| ANSI/OSC | allowlist sanitize all peer strings |
+| MCP push 환상 | pull only |
+| PTY 오염 | default off |
+| claim/accept race | first-wins |
+| relay restart 유실 inbox | MVP 문서화; later durable |
+| 오버레이 일정 | 비목표 |
+| **비루프백 무토큰 바인드 (H-5)** | 기동 거부; `--insecure-open` only (0.3.1) |
+| **토큰 쿼리/Share/session 유출 (H-6)** | Bearer 우선; Share 기본 숨김; `relayToken` 분리 + 0600 (0.3.1) |
+| **stale close → offline 오판 (M-6)** | current-socket 비교 후 setOffline (0.3.1) |
+| peerId 클라이언트 제공 (M-7) | **0.8.0** per-peer `peerSecret` rejoin proof; session 0600; residual: lost secret ⇒ new peer id |
+| 토큰 보유자 room/rate 남용 | MVP 수용; room GC / rate limit later |
+| context pack path escape | cwd realpath allowlist; no body embed v1; symlink test (0.5.1) |
+| pack 오공유 (remote) | opt-in `--with-pack` / `withPack` only |
+| pack 프로필 간 공유 (local) | **intentional room-scope** — same UID+roomId shares file; document, not a bug |
+| pack path attachment 오해석 | rel path + label prefix; agents must not treat as local FS (invariant) |
+| requestOnce ack 상관 (L-4) | sticky RPC serialize; correlation id backlog |
+| v2 pack embed TOCTOU (L-5) | re-resolve allowlist at read time when embed lands |
+
+---
+
+## Verification
+
+### 자동
+
+- Existing protocol/room/slash tests  
+- Sanitize allowlist fixtures  
+- Offline enqueue → rejoin → check/claim  
+- Broadcast to mixed online/offline  
+- Profile isolation (two session files)  
+- first-wins claim vs accept  
+
+### 수동 E2E
+
+1. Offline-at-send handoff (M1.1 데모)  
+2. Two profiles same machine  
+3. ANSI in body/chat/name — no raw ESC on terminal  
+4. Online notify path still works with listen  
+5. Phase 2+ hetero agents  
+
+---
+
+## Milestone map
+
+| Milestone | 상태 |
+|-----------|------|
+| M0 | **done** |
+| M1 | **done** |
+| **M1.1** | **done** (roster/offline inbox, profiles, sanitize, check/claim) |
+| M1.5 PTY spike | **done** — default inject **no-go**; see `docs/spikes/PHASE-1.5-PTY.md` |
+| M2 multi-CLI depth | **done** (0.2.3 R3 wiring) |
+| M3 remote relay | **done** (0.3.1 H-5/H-6/M-5/M-6) |
+| **M4.0a sticky host** | **done** (0.4.1 F-1/F-2/F-3) |
+| **M4.1 context pack** | **done** (0.5.0 R7 + 0.5.1 L-1–L-3) |
+| **M4.2 task board** | **done** (0.6.1 H-7/M-8/M-9) |
+| **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
+| M4.3b Tauri / live remote board | later (Tauri needs Rust toolchain) |
+
+---
+
+## Open follow-ups (defaults)
+
+| 항목 | 기본값 |
+|------|--------|
+| bin | `fable` |
+| port | `7842` |
+| session | `~/.fable/session.json` or profile path |
+| inbox store | relay memory |
+| roster TTL | room process lifetime (MVP) |
+| PTY inject | off |
+| overlay | never MVP |
+| context pack scope | **roomId** (shared across profiles, same UID) |
+| context pack attach | opt-in `--with-pack` only |
+| task board scope | **roomId** (local file; not multi-machine live) |
+| handoffId on tasks | traceability string only — **no** referential integrity after relay restart |
+| board snapshot merge | timestamps clamped to now; ISO only; foreign roomId needs force |
+| handoff attachment size | max 256KB content, 32 attachments, 100 inbox/peer; claim evicts |
+
+### Backlog (non-blocking)
+
+| ID | Item |
+|----|------|
+| L-4 | RelayClient `requestOnce` correlation id (beyond sticky serialize) |
+| L-5 | v2 pack file-body embed: re-resolve allowlist at read time |
+
+---
+
+## Success definition
+
+- 서로 다른 에이전트/프로필로 Room 참가  
+- peers에서 online/offline 확인  
+- **상대가 offline이어도** handoff가 inbox에 쌓임  
+- 알림 또는 `check_handoffs` / `fable inbox`로 안전 수신  
+- sanitize된 출력만 터미널에 표시  
+- 원격: **토큰 없이 비루프백 바인드 거부**; 클라이언트는 Bearer(헤더) 우선; Share에 토큰 기본 미포함  
+- room context pack 로컬 관리 + opt-in handoff attach; path attachments are **not** auto-opened as FS  
+
+
+---
+
+## Approval block
+
+| Role | Name | Decision | Date | Version |
+|------|------|----------|------|---------|
+| Reviewer | Fable 5 | R2 **approved** (conditional → PATCH findings) | 2026-07-09 | 0.2.0 reviewed |
+| Reviewer | Fable 5 | R4 **approved** (conditional H-4) | 2026-07-09 | 0.2.3 reviewed |
+| Plan author | implementation | **0.2.4** H-4 fixed | 2026-07-09 | **0.2.4** |
+| Reviewer | Fable 5 | R5 **pending-revision** (H-5/H-6 block Phase 3 done) | 2026-07-09 | 0.3.0 reviewed |
+| Plan author | implementation | **0.3.1** H-5/H-6/M-5/M-6 **implemented** | 2026-07-09 | **0.3.1** |
+| Owner | | treat **0.3.1** as Phase 3 baseline | 2026-07-09 | **0.3.1** |
+| Plan author | implementation | **0.4.0** sticky host **implemented** | 2026-07-09 | **0.4.0** |
+| Reviewer | Fable 5 | R6 **pending-revision** (F-1/F-2/F-3) | 2026-07-09 | 0.4.0 reviewed |
+| Plan author | implementation | **0.4.1** F-1/F-2/F-3 **implemented** | 2026-07-09 | **0.4.1** |
+| Owner | | treat **0.4.1** as Phase 4.0a baseline | 2026-07-09 | **0.4.1** |
+| Plan author | implementation | **0.5.0** context pack **implemented** | 2026-07-09 | **0.5.0** |
+| Reviewer | Fable 5 | R7 **approved** (L-1–L-5 → PATCH/backlog) | 2026-07-09 | 0.5.0 reviewed |
+| Plan author | implementation | **0.5.1** L-1–L-3 **implemented** | 2026-07-09 | **0.5.1** |
+| Owner | | treat **0.5.1** as Phase 4.1 baseline | 2026-07-09 | **0.5.1** |
+| Plan author | implementation | **0.6.0** task board **implemented** | 2026-07-09 | **0.6.0** |
+| Reviewer | Fable 5 | R8 **pending-revision** (H-7/M-8/M-9) | 2026-07-09 | 0.6.0 reviewed |
+| Plan author | implementation | **0.6.1** H-7/M-8/M-9 **implemented** | 2026-07-09 | **0.6.1** |
+| Owner | | treat **0.6.1** as Phase 4.2 baseline | 2026-07-09 | **0.6.1** |
+| Plan author | implementation | **0.7.0** board snapshot share **implemented** | 2026-07-09 | **0.7.0** |
+| Reviewer | Fable 5 | R9 **pending-revision** (M-10/M-11/M-12) | 2026-07-09 | 0.7.0 reviewed |
+| Plan author | implementation | **0.7.1** M-10/M-11/M-12 **implemented** | 2026-07-09 | **0.7.1** |
+| Owner | | treat **0.7.1** as Phase 4.3a baseline | 2026-07-09 | **0.7.1** |
+| Plan author | implementation | **0.7.2** L-11 caps/eviction | 2026-07-09 | **0.7.2** |
+| Plan author | implementation | **0.7.3** L-12 lock pid + sleep | 2026-07-09 | **0.7.3** |
+| Plan author | implementation | **0.8.0** M-7 peer rejoin secret **implemented** | 2026-07-09 | **0.8.0** |
+| Reviewer | Fable 5 | R10 **pending-revision** (M-13; L-14–L-16) | 2026-07-09 | 0.8.0 reviewed |
+| Plan author | implementation | **0.8.1** M-13 + L-15 **implemented** | 2026-07-09 | **0.8.1** |
+| Owner | | treat **0.8.1** as M-7 baseline (done) | 2026-07-09 | **0.8.1** |
+| Plan author | implementation | **0.9.0** Loom rename **implemented** | 2026-07-09 | **0.9.0** pending-review |
+| Reviewer | | **R11** on **0.9.0** rename | 2026-07-09 | requested |
+
+**구현 게이트:** M-7 **done** (0.8.1). Product rename **0.9.0** code complete, awaiting R11. Tauri deferred until cargo available.
