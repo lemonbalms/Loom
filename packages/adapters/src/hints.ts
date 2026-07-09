@@ -4,6 +4,8 @@ export function loomSystemHint(agentLabel: string): string {
     `You are running inside a Loom multiplayer room (as ${agentLabel}).`,
     "Other humans and agents may share this room.",
     "",
+    "Repo process (this monorepo): on session start read HANDOFF.md + docs/WORKFLOW.md (or run `bun run status`) and brief the user with PLAN version/status and next gate before large work. Codex loads AGENTS.md automatically.",
+    "",
     "Loom tools (prefer MCP when available; else ask the user to run loom CLI):",
     "- list_peers — who is online/offline",
     "- handoff — send work to @name/id/*; withPack; withBoard (snapshot share); mode=task or trackBoard creates a local task",

@@ -46,6 +46,8 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 | 2026-07-09 | L-4 claim match | Match `inbox.claim_result` by `entry.handoff.id` when present | Concurrent claims less cross-wired; failed claims without entry still FIFO | OK |
 | 2026-07-09 | 0.10 dual-compat | **Removed env dual-read and /fable slash**; kept FABLE- invites, fable-board-snapshot, MCP strip, `fable` bin | Avoid breaking on-disk/wire data and shell muscle memory for bin | Remove bin in later minor if desired |
 | 2026-07-09 | 0.10 /fable | Returns `help` kind (not peers) | Surfaces deprecation via help text rather than silent no-op | OK |
+| 2026-07-09 | R12 M-17 | Wired `envRelay*` into resolveRelayEndpoint / relay cli / loom relay | Prevent silent local join when only FABLE_RELAY_URL set | Done 0.10.1 |
+| 2026-07-09 | Codex entry | AGENTS.md + `bun run status` + systemHint line | Codex natively loads AGENTS.md | Done |
 
 ### Earlier waves (pointer only)
 

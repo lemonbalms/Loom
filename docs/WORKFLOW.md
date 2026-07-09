@@ -25,7 +25,13 @@
 | 3 | `docs/PLAN.md` **헤더** | Version / Status |
 | 4 | `docs/plan_review.md` **헤더 + Open** | blocking / 최신 R{n} |
 
-상세 진입 지시: 루트 **`AGENTS.md`**, **`CLAUDE.md`**.
+상세 진입 지시: 루트 **`AGENTS.md`** (Codex·공용), **`CLAUDE.md`** (Claude).
+
+| 도구 | 진입 파일 |
+|------|-----------|
+| **OpenAI Codex CLI** | 루트 `AGENTS.md` 자동 로드 ([Codex AGENTS.md](https://developers.openai.com/codex/guides/agents-md)) |
+| **Claude Code** | `CLAUDE.md` + `AGENTS.md` |
+| **빠른 상태** | `bun run status` → PLAN/Open/HANDOFF 요약 출력 |
 
 ### 0.2 사용자에게 바로 알릴 것
 

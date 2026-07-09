@@ -8,13 +8,14 @@
 
 ### Session entry (for agents)
 
-On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then **tell the user the status table** (PLAN / open gate / next action). See `AGENTS.md`.
+On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then **tell the user the status table** (PLAN / open gate / next action).  
+**Codex:** loads root `AGENTS.md` natively. **All:** `bun run status` for a quick table.
 
 ---
 
 ## One-line resume
 
-> `HANDOFF.md` + `docs/WORKFLOW.md` 읽고, **PLAN 0.10.0 R12 리뷰**부터 진행해. 승인되면 PLAN approved 처리 후 backlog(L-5 / Tauri / bin alias 제거 등).
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.10.1 approved**. 다음: L-5(embed 시) / Tauri / Owner 지시.
 
 ---
 
@@ -30,17 +31,18 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.10.0** (`fable` bin **alias still exists**) |
+| **Product CLI** | `loom` v**0.10.1** (`fable` bin **alias still exists**) |
 | **Packages** | `@loom/*` Bun monorepo |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.10.0** — status **`pending-review`** |
-| **Review gate** | **R12 requested** — dual-compat drop (env + slash) |
-| **Workflow rules** | **`docs/WORKFLOW.md`** (Plan → Review → Implement → Ship) |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.10.1** — status **`approved`** |
+| **Review gate** | R12 closed (M-17 fixed in 0.10.1) |
+| **Workflow rules** | **`docs/WORKFLOW.md`** · session entry **`AGENTS.md`** (Codex) |
+| **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
-| **Tests** | last full run **132 pass / 0 fail** (`bun test`) |
-| **Git** | `main` tracking `origin/main`; latest push includes `fe4719d` (0.10.0) |
+| **Tests** | `bun test` green |
+| **Git** | `main` → `origin` https://github.com/lemonbalms/Loom.git |
 | **Remote account** | GitHub auth: **lemonbalms** |
 | **Tauri** | **Blocked** — no `cargo` / `rustc` in env |
-| **Open blocking** | R12 review only (not a code bug — gate) |
+| **Open blocking** | none |
 
 ### Naming (critical)
 
@@ -56,6 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending push) | **0.10.1** | M-17 env wiring + Codex `AGENTS.md`/`bun run status` |
 | `fe4719d` | **0.10.0** | Drop `FABLE_*` env dual-read + `/fable` slash; keep data-path compat |
 | `e79dbcd` | docs | `docs/WORKFLOW.md` workflow rules |
 | `e15bf3a` | 0.9.4 | L-4 requestOnce FIFO waiter queue |
@@ -86,35 +89,24 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 ## Immediate next steps (ordered)
 
-### 1. Preferred — **R12 review** (gate)
-
-1. Read `docs/PLAN.md` (0.10.0 changelog) + R12 checklist in `docs/plan_review.md`.
-2. Code-verify dual-compat drop (env LOOM-only, slash, sticky, keep data-path).
-3. Write R12 findings **or** mark **approved** under `## Review R12`.
-4. If approved:
-   - PLAN header → `approved`
-   - Open blocking clear; decision log row
-5. If findings → PATCH 0.10.1, fix, re-check.
-
-**Do not mark PLAN `approved` without R12 sign-off** (WORKFLOW rule). Author-close only if review text says “PATCH then approve” pattern.
-
-### 2. After R12 approved
+### 1. Preferred next work
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| Optional | Remove `fable` bin alias | If R12 agrees |
+| Optional | Remove `fable` bin alias | Owner decision |
 | Later | L-5 pack embed TOCTOU | Only when file-body embed ships (v1 is paths-only) |
 | Product | Tauri UI | Needs Rust toolchain install first |
 | Later | Wire `requestId` | Optional beyond L-4 FIFO waiters |
 
-### 3. Smoke commands
+### 2. Smoke commands
 
 ```bash
 cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
 bun install
 bun test
-bun run loom --version    # expect 0.10.0
-git status -sb            # expect clean if no local edits
+bun run loom --version    # expect 0.10.1
+bun run status            # PLAN/Open briefing (Codex/Claude/human)
+git status -sb
 git log -3 --oneline
 ```
 
@@ -180,16 +172,16 @@ Full text: **`docs/WORKFLOW.md`**.
 
 | Done | Pending |
 |------|---------|
-| Loom rename 0.9.x + R11 closed | **R12 on 0.10.0** |
-| L-4 / L-14 / L-16 | R12 findings or approve |
-| WORKFLOW.md | Optional: drop `fable` bin |
-| 132 tests green (at 0.10.0 ship) | L-5, Tauri |
+| Loom rename + R11/R12 closed | Optional: drop `fable` bin |
+| 0.10 dual-compat + M-17 | L-5 when embed |
+| Codex/Claude session entry | Tauri (cargo) |
+| `bun run status` | Owner-directed features |
 
 **Resume prompt (copy-paste):**
 
 ```
-HANDOFF.md와 docs/WORKFLOW.md 읽고 PLAN 0.10.0 R12 리뷰부터 진행해.
-승인되면 plan approved 처리하고 다음 backlog로.
+HANDOFF.md와 docs/WORKFLOW.md 읽고 bun run status 출력 후 상태를 알려줘.
+PLAN 0.10.1 approved 기준으로 다음 backlog 제안해.
 ```
 
 ---

@@ -12,6 +12,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "loom": "bun run packages/cli/src/index.ts",
     "fable": "bun run packages/cli/src/index.ts",
+    "status": "bun run scripts/session-status.ts",
     "spike:pty": "bun run packages/cli/src/index.ts spike pty",
     "dev:relay": "bun run packages/relay/src/cli.ts",
     "relay:lan": "LOOM_RELAY_HOST=0.0.0.0 LOOM_RELAY_TOKEN=${LOOM_RELAY_TOKEN:?set LOOM_RELAY_TOKEN} bun run packages/relay/src/cli.ts"

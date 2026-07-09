@@ -9,6 +9,7 @@ import {
   makeEnvelopeBase,
   nowIso,
   timingSafeTokenEqual,
+  envRelayToken,
 } from "@loom/protocol";
 import { RoomRegistry, type SocketLike } from "./room";
 
@@ -56,8 +57,7 @@ export class RelayServer {
     this.host = opts.host ?? DEFAULT_RELAY_HOST;
     this.port = opts.port ?? DEFAULT_RELAY_PORT;
     this.registry = opts.registry ?? new RoomRegistry();
-    this.authToken =
-      opts.authToken || process.env.LOOM_RELAY_TOKEN || undefined;
+    this.authToken = opts.authToken || envRelayToken() || undefined;
     // RN1: do NOT dual-read FABLE_RELAY_INSECURE_OPEN (H-5)
     this.allowInsecureOpen =
       opts.allowInsecureOpen === true ||

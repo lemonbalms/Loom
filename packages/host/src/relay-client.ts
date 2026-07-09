@@ -7,6 +7,7 @@ import {
   type InboxEntry,
   type PeerInfo,
   generateId,
+  envTokenInQuery,
 } from "@loom/protocol";
 
 export type JoinCredentials = {
@@ -99,9 +100,7 @@ export class RelayClient {
       // Query fallback only if LOOM_RELAY_TOKEN_IN_QUERY=1 (legacy proxies).
       let connectUrl = this.opts.url.split("?")[0]!;
       const token = this.opts.token;
-      const forceQuery =
-        process.env.LOOM_RELAY_TOKEN_IN_QUERY === "1" ||
-        process.env.LOOM_RELAY_TOKEN_IN_QUERY === "true";
+      const forceQuery = envTokenInQuery();
       if (token && forceQuery) {
         const sep = connectUrl.includes("?") ? "&" : "?";
         connectUrl = `${connectUrl}${sep}token=${encodeURIComponent(token)}`;

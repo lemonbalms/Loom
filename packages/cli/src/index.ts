@@ -73,7 +73,7 @@ import {
 import { spawn } from "bun";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.10.0";
+const VERSION = "0.10.1";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -1356,20 +1356,33 @@ async function main() {
   }
   if (cmd === "relay") {
     const { RelayServer, isLoopbackHost } = await import("@loom/relay");
+    const { envRelayHost, envRelayPort, envRelayToken } = await import(
+      "@loom/protocol"
+    );
     const host =
       (typeof flags.host === "string" && flags.host) ||
-      process.env.LOOM_RELAY_HOST ||
+      envRelayHost() ||
       DEFAULT_RELAY_HOST;
     const port = Number(
       (typeof flags.port === "string" && flags.port) ||
-        process.env.LOOM_RELAY_PORT ||
+        envRelayPort() ||
         DEFAULT_RELAY_PORT,
     );
     const authToken =
       (typeof flags.token === "string" && flags.token) ||
-      process.env.LOOM_RELAY_TOKEN ||
+      envRelayToken() ||
       undefined;
     const allowInsecureOpen = Boolean(flags["insecure-open"]);
+    // R12: warn if legacy insecure env alone (does not enable open)
+    if (
+      !allowInsecureOpen &&
+      (process.env.FABLE_RELAY_INSECURE_OPEN === "1" ||
+        process.env.FABLE_RELAY_INSECURE_OPEN === "true")
+    ) {
+      console.warn(
+        "[loom] FABLE_RELAY_INSECURE_OPEN is ignored; set LOOM_RELAY_INSECURE_OPEN=1 or --insecure-open",
+      );
+    }
     const server = new RelayServer({
       host,
       port,
@@ -1382,7 +1395,7 @@ async function main() {
       console.error(e instanceof Error ? e.message : e);
       process.exit(1);
     }
-    console.log(`Fable relay on ${server.publicHint}`);
+    console.log(`Loom relay on ${server.publicHint}`);
     console.log(
       `Health: http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/health`,
     );

@@ -1,4 +1,5 @@
 import { DEFAULT_RELAY_HOST, DEFAULT_RELAY_PORT } from "./envelope";
+import { envRelayToken, envRelayUrl } from "./env";
 
 export type RelayEndpoint = {
   /** WebSocket URL including path, e.g. ws://127.0.0.1:7842/ws — never embeds token (H-6) */
@@ -101,13 +102,13 @@ export function buildWsUrl(opts: {
   return url;
 }
 
-/** Resolve from env: LOOM_RELAY_URL / LOOM_RELAY_TOKEN only (0.10). */
+/** Resolve from env via envLoom (0.10.1 M-17: warn if only FABLE_* set). */
 export function resolveRelayEndpoint(opts?: {
   relayFlag?: string;
   tokenFlag?: string;
 }): RelayEndpoint {
-  const token = opts?.tokenFlag || process.env.LOOM_RELAY_TOKEN || undefined;
-  const flag = opts?.relayFlag || process.env.LOOM_RELAY_URL;
+  const token = opts?.tokenFlag || envRelayToken() || undefined;
+  const flag = opts?.relayFlag || envRelayUrl();
   if (flag) return parseRelayUrl(flag, { token });
   return defaultLocalEndpoint(token);
 }

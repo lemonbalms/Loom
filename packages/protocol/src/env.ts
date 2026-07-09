@@ -6,6 +6,11 @@
 
 let warnedLegacyEnv = false;
 
+/** Test helper: allow L-17 to re-assert first-key warning. */
+export function resetLegacyEnvWarnFlag(): void {
+  warnedLegacyEnv = false;
+}
+
 function warnLegacyFableEnvRejected(fableKey: string, loomKey: string): void {
   if (warnedLegacyEnv) return;
   warnedLegacyEnv = true;

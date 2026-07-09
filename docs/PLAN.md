@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.10.0** |
-| **Status** | **`pending-review`** — drop FABLE_* env dual-read + /fable slash (R12) |
-| **Supersedes** | 0.9.4 |
+| **Version** | **0.10.1** |
+| **Status** | **`approved`** — R12 M-17 env warn wiring + Codex session-entry support |
+| **Supersedes** | 0.10.0 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙), `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,18 @@
 
 ### Changelog
 
-#### 0.10.0 — 2026-07-09 (`pending-review`)
+#### 0.10.1 — 2026-07-09 (`approved`)
+
+**Why:** R12 **M-17** — wire relay URL/host/port/token through `envLoom` so FABLE_* warns; Codex session-entry.
+
+| What | Why |
+|------|-----|
+| `resolveRelayEndpoint` / relay cli / `loom relay` use `envRelay*` | M-17 no silent local fallback without warn |
+| `envTokenInQuery` for relay-client | L-20 pattern |
+| L-17 warn test + L-18 legacy board snapshot test | R12 Low |
+| `AGENTS.md` Codex ritual + `bun run status` | Codex/Claude session entry |
+
+#### 0.10.0 — 2026-07-09 (`superseded` by 0.10.1; was `pending-review` → R12 `pending-revision`)
 
 **Why:** Drop **runtime dual-compat** for rename transition (RENAME Phase E / 0.10).
 
@@ -826,7 +837,8 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.9.2** R11 Low residual branding | 2026-07-09 | **0.9.2** |
 | Plan author | implementation | **0.9.3** L-14 timing-safe share + L-16 chars | 2026-07-09 | **0.9.3** |
 | Plan author | implementation | **0.9.4** L-4 requestOnce waiter queue | 2026-07-09 | **0.9.4** |
-| Plan author | implementation | **0.10.0** dual-compat drop (env/slash) | 2026-07-09 | **0.10.0** pending-review |
-| Reviewer | | **R12** on **0.10.0** | 2026-07-09 | requested |
+| Plan author | implementation | **0.10.0** dual-compat drop (env/slash) | 2026-07-09 | **0.10.0** |
+| Reviewer | Fable 5 | R12 **pending-revision** (M-17) | 2026-07-09 | 0.10.0 reviewed |
+| Plan author | implementation | **0.10.1** M-17 + Codex entry | 2026-07-09 | **0.10.1** |
 
-**구현 게이트:** **0.10.0** dual-compat drop code complete, awaiting R12. L-5 (embed), Tauri still later.
+**구현 게이트:** dual-compat **0.10.1 approved**. Remaining: L-5 (embed), Tauri.

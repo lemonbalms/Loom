@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.10.0** `pending-review` — dual-compat drop (env/slash) — **R12 요청**.  
+> **최신:** PLAN **v0.10.1** `approved` — R12 M-17 closed; Codex session-entry (`AGENTS.md` + `bun run status`).  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
@@ -12,12 +12,13 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| **R12** | gate | 0.10.0 dual-compat drop review | **requested** |
+| *(none)* | | | |
 
 ### Deferred / backlog
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
+| R12 L-19 | Low | 잔존 주석 브랜딩 일부 | backlog optional |
 | L-4 | Low | `requestOnce` concurrent ack steal | **0.9.4 done** (FIFO waiters; wire requestId deferred) |
 | L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships |
 | R10 L-14 | Low | timing-safe util share | **0.9.3 done** |
@@ -29,7 +30,8 @@
 
 | Finding | 처리 |
 |---------|------|
-| **R11 M-14/M-15/M-16** | **0.9.1** — loomDir() paths; sticky LOOM_* env; live-PID + FABLE- join tests |
+| **R12 M-17** | **0.10.1** — envRelay* wired in resolveRelayEndpoint / relay cli / loom relay; L-17/L-18 tests |
+| **R11 M-14/M-15/M-16** | **0.9.1** — loomDir() paths; sticky LOOM_* env; live-PID + FABLE- join tests (R12에서 소급 검증 완료) |
 | **R11 Low** residual branding | **0.9.2** — loom tips; WARNING scope; FABLE_RELAY_INSECURE_OPEN warn |
 | **R10 L-14 / L-16** | **0.9.3** — shared timingSafe in protocol; caps documented as chars |
 | **L-4** requestOnce | **0.9.4** — FIFO pending queue; no onEnvelope hijack |
@@ -49,7 +51,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
-| **R12** | v0.10.0 | **pending** | dual-compat drop — body below |
+| **R12** | v0.10.0 | pending-revision → **0.10.1 approved** | M-17 closed — body below |
 | **R11** | v0.9.0 | pending-revision → **0.9.1 approved** | M-14/15/16 closed — body below |
 | **R10** | v0.8.0 | pending-revision → **0.8.1 approved** | M-7 core OK; M-13/L-15 closed — body below |
 | **R9** | v0.7.0 | pending-revision → **0.7.1 approved** | M-10/M-11/M-12 closed — body below |
@@ -64,25 +66,61 @@
 
 ---
 
-## Review R12 — Plan v0.10.0 (**requested**)
+## Review R12 — Plan v0.10.0 (dual-compat drop)
 
-**검토 대상:** `docs/PLAN.md` **v0.10.0** — drop FABLE_* env dual-read + /fable slash  
-**요청자:** plan author (implemented)  
-**날짜:** 2026-07-09  
-**결론:** _(awaiting reviewer)_
+**검토 대상:** `docs/PLAN.md` **v0.10.0** — drop FABLE_* env dual-read + `/fable` slash dual-accept
+**검토자:** Fable 5 — 코드 직접 확인 (Read/Grep; 셸 실행 불가 → `bun test`는 정적 검증으로 대체)
+**날짜:** 2026-07-09
+**결론:** **`pending-revision`** → **0.10.1 applied / approved** (M-17 + L-17/L-18/L-20)
 
-### Scope checklist for reviewer
+### Checklist
 
-| # | Item | Intent |
-|---|------|--------|
-| 1 | `envLoom` / helpers: FABLE_* not used as values | Migration: warn only |
-| 2 | Relay token/host/port LOOM only | No silent FABLE_RELAY_TOKEN |
-| 3 | sticky-spawn LOOM_* only | Children must use LOOM_SESSION |
-| 4 | `/fable` slash not dual-accept | Help only |
-| 5 | **Kept:** FABLE- invites, fable-board-snapshot import, MCP fable strip, `fable` bin alias | Data/tooling conservativeness |
-| 6 | Tests: env.test + slash 0.10 | |
+**Part A — 밀린 0.9.1 M-14/M-15/M-16 소급 검증 (지금까지 plan author 자체 승인만 있었고 리뷰어 검증 없었음)**
 
-**Please leave findings or mark approved.**
+| # | Item | 검증 | 근거 |
+|---|------|------|------|
+| A1 | M-14: `relay-daemon.ts`/`mcp-server/config.ts`가 `loomDir()` 경유 | **Yes** | `relay-daemon.ts:10-19`, `mcp-server/config.ts:4,17,40` — 하드코딩 `~/.loom` 잔존 없음 |
+| A2 | M-15: sticky-spawn이 `LOOM_SESSION`/`LOOM_PROFILE` 세팅 | **Yes(현행)** | `sticky-spawn.ts:52-58` LOOM_*만 세팅 (0.9.1 시점 "+FABLE dual" 주장은 0.10.0이 이미 대체해 소급 확인 불가) |
+| A3 | M-16: live-PID gate 단위 테스트 + `FABLE-` 풀코드 join 호환 테스트 | **Yes** | `session-store.test.ts:17-79` (dead-pid 마이그레이션 / live-pid 시 `.fable` 유지), `room.test.ts:200-205` (`FABLE-7K2M` lookup) |
+| A4 | `LOOM_TEST_HOME` + `resetStateHomeDirCache` 존재 | **Yes** | `session-store.ts:56, 70-73` |
+
+**Part B — v0.10.0 신규 변경(dual-compat 제거) 검증**
+
+| # | Item | 검증 | 근거 |
+|---|------|------|------|
+| B5 | Env: FABLE_* 미독출 + 경고 발생 | **읽기제거 Yes / 경고 Partial** | `env.ts:26-39` 폴백 없음; SESSION/PROFILE/TOKEN은 `session-store.ts:231,235,261` 경유로 경고 실발생. **RELAY_URL/HOST/PORT는 경고 미연결 → M-17** |
+| B6 | `FABLE_RELAY_INSECURE_OPEN` 재도입 여부 (H-5) | **Yes, 회귀 없음** | `env.ts:57-60` LOOM만; `relay/cli.ts:22-29` 경고만 하고 값으로 안 씀 |
+| B7 | sticky-spawn dual-write 제거 | **Yes** | `sticky-spawn.ts`에 `FABLE_*` 쓰기 없음 |
+| B8 | `/fable` slash → help only | **Yes** | `slash.ts:16-18,25-27` legacy → `{kind:"help"}`; dual-accept 잔재 없음 |
+| B9 | 유지 4종(invite/board-snapshot/MCP-strip/bin-alias) 회귀 없음 | **Yes** | invite: `room.ts:483-496` 정확일치 lookup, `codes.ts:3-10` mint만 LOOM-; board snapshot: `task-board.ts:458,572` dual-accept (테스트 없음 → L-18); MCP strip: `user-mcp-config.ts:8-11` exact-anchor 유지; bin alias: `cli/package.json:6-8`, `mcp-server/package.json:8-10` 둘 다 유지 |
+| B10 | 테스트: env.test + slash 0.10 | **Yes(부분)** | `env.test.ts:32-48` 미독출만 검증, `slash.test.ts:13-15` `/fable`→help. 경고 실발생 테스트는 없음 (L-17) |
+
+**회귀 재확인 (매 사이클 반복 항목)**
+
+| # | Item | 검증 |
+|---|------|------|
+| B11 | `sanitize.ts` 무결 | **Yes** — ESC/CSI/OSC/C0·C1/bidi·ZW 로직 그대로 |
+| B12 | 타이밍세이프 비교 무결 | **Yes** — `timing-safe.ts:5-20`(패딩+상수시간), 사용처 `server.ts:208-210`, `sticky-server.ts:222`, `room.ts:122`. (명칭은 0.9.3에서 `timingSafeStringEqual`로 통합됨 — `secretsEqual`이라는 별도 함수는 존재하지 않음) |
+| B13 | M-7 peerSecret 무결 | **Yes** — 발급 `server.ts:261,307`(조인 소켓에만 전달), 검증 `room.ts:122`, 생성 `codes.ts:32-35` |
+| B14 | 이번 작업 중 새 하드코딩 경로/타이밍-불안전 비교 도입 여부 | **없음** — `homedir()` 직접 사용은 외부 어댑터(.codex/.grok) 설정뿐, 정당한 용례 |
+
+### Findings
+
+| Sev | ID | Finding | Suggested change |
+|-----|-----|---------|-------------------|
+| **Med** | **M-17** | **"FABLE_* warns, not read" 계약이 relay URL/host/port 경로에서 미구현.** `relay-url.ts:109-110`의 `resolveRelayEndpoint`가 `LOOM_RELAY_URL`/`TOKEN`만 읽고 `FABLE_RELAY_URL`만 설정된 클라이언트는 **경고 없이** `defaultLocalEndpoint()`로 폴백 → `ensureRelay`(relay-daemon.ts:76-101)가 로컬 relay를 자동 스폰해 원격 대신 로컬에 조인. `relay/cli.ts:14-16`, `cli/index.ts:1361-1371`도 FABLE_RELAY_HOST/PORT/TOKEN을 무경고 무시. `env.ts`의 `envRelayUrl/Host/Port`(67-76)는 정의만 있고 호출처 0곳(dead code) | `resolveRelayEndpoint`와 relay cli 기동부를 `envLoom()`(경고 포함) 경유로 배선; dead helper 제거 또는 사용 |
+| Low | L-17 | env 경고 **발생 자체**를 검증하는 테스트 없음 (`env.test.ts`는 미독출만 검증); `warnedLegacyEnv` 단일 플래그라 첫 키만 경고되는 것도 미문서화 | console.error spy 테스트 1개 추가 |
+| Low | L-18 | `fable-board-snapshot` 레거시 accept는 구현됐으나 회귀 테스트 없음 | legacy kind/label 파스 테스트 추가 |
+| Low | L-19 | 잔존 Fable 브랜딩: `cli/index.ts:1385` `"Fable relay on …"` (0.9.2가 고쳤다는 주장과 불일치), `codex.ts:46`/`sticky-meta.ts:29-30` 주석 | 문자열/주석 정리 |
+| Low | L-20 | `relay-client.ts:103-104`가 `LOOM_RELAY_TOKEN_IN_QUERY`를 `envLoom` 미경유로 직접 읽음 — M-17과 동일 패턴의 사소 사례 | envLoom 경유로 통일 |
+
+### Decision notes
+
+블로커는 **M-17 하나**다. 이번 PATCH의 헤드라인 계약("FABLE_* warns, not read")이 하필 가장 위험한 표면 — 원격 relay 접속 경로 — 에서 "warns" 없이 "조용히 무시 + 로컬 relay 자동 스폰"으로 동작한다. `FABLE_RELAY_URL`만 가진 기존 원격 사용자에게는 조용한 오접속(원격 대신 로컬 세션에 조인)이 발생할 수 있다. Part A 소급 검증(M-14/M-15/M-16)과 유지 4종(invite/board-snapshot/MCP-strip/bin-alias) 경계는 정확히 지켜졌고, 이 시리즈에서 반복돼 온 보안 불변식(sanitize, 타이밍세이프 비교, M-7 peerSecret) 회귀도 없다.
+
+**승인 조건:** `docs/PLAN.md` Version → **0.10.1** (PATCH) — M-17(relay URL/host/port를 envLoom 경유로 배선, dead code 정리) 반영 후 재리뷰 없이 승인 가능. L-17–L-20은 backlog로 이월 가능.
+
+**관련 파일:** `packages/protocol/src/env.ts`, `packages/protocol/src/relay-url.ts`, `packages/host/src/relay-daemon.ts`, `packages/host/src/relay-client.ts`, `packages/host/src/sticky-spawn.ts`, `packages/host/src/slash.ts`, `packages/relay/src/cli.ts`, `packages/cli/src/index.ts`, `packages/adapters/src/user-mcp-config.ts`, `packages/host/src/session-store.ts`, `packages/host/src/task-board.ts`
 
 ---
 

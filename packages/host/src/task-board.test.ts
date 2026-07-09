@@ -181,6 +181,36 @@ describe("task board", () => {
     ).not.toThrow();
   });
 
+  test("L-18: legacy fable-board-snapshot kind still parses", () => {
+    const s = parseBoardSnapshot({
+      kind: "fable-board-snapshot",
+      sourceRoomId: "room_board_test",
+      tasks: [
+        {
+          id: "task_ab12cd34ef",
+          title: "from fable",
+          status: "todo",
+        },
+      ],
+    });
+    expect(s.kind).toBe("loom-board-snapshot"); // normalized
+    expect(s.tasks.some((t) => t.title === "from fable")).toBe(true);
+    const atts = [
+      {
+        kind: "text" as const,
+        label: "fable-board-snapshot",
+        content: JSON.stringify({
+          kind: "fable-board-snapshot",
+          sourceRoomId: "room_board_test",
+          tasks: s.tasks,
+        }),
+      },
+    ];
+    const fromAtt = snapshotFromAttachments(atts);
+    expect(fromAtt).not.toBeNull();
+    expect(fromAtt!.tasks.some((t) => t.title === "from fable")).toBe(true);
+  });
+
   test("M-12: resolveHandoffEntryIndex exact and ambiguous", () => {
     const entries = [
       { handoff: { id: "ho_aaa111" } },
