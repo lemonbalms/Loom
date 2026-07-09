@@ -101,9 +101,7 @@ export class RelayClient {
       const token = this.opts.token;
       const forceQuery =
         process.env.LOOM_RELAY_TOKEN_IN_QUERY === "1" ||
-        process.env.LOOM_RELAY_TOKEN_IN_QUERY === "true" ||
-        process.env.FABLE_RELAY_TOKEN_IN_QUERY === "1" ||
-        process.env.FABLE_RELAY_TOKEN_IN_QUERY === "true";
+        process.env.LOOM_RELAY_TOKEN_IN_QUERY === "true";
       if (token && forceQuery) {
         const sep = connectUrl.includes("?") ? "&" : "?";
         connectUrl = `${connectUrl}${sep}token=${encodeURIComponent(token)}`;

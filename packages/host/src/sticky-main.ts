@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Detached sticky host entrypoint.
- * Spawned by `loom host start` with LOOM_SESSION / LOOM_PROFILE set
- * (FABLE_* dual-written during transition).
+ * Spawned by `loom host start` with LOOM_SESSION / LOOM_PROFILE set.
  */
 import { startStickyServer } from "./sticky-server";
 import { stickyMetaPath } from "./sticky-meta";

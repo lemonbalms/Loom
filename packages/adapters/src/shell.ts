@@ -28,7 +28,7 @@ export const shellAdapter: AgentAdapter = {
         LOOM_ACTIVE: "1",
         LOOM_AGENT: "shell",
         LOOM_MCP_CONFIG: opts.mcpConfigPath,
-        FABLE_SHELL: "1",
+        LOOM_SHELL: "1",
       },
       cwd: opts.cwd,
     };

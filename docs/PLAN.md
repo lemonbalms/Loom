@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.9.4** |
-| **Status** | **`approved`** — L-4 requestOnce FIFO waiter queue (no wire correlation id) |
-| **Supersedes** | 0.9.3 |
+| **Version** | **0.10.0** |
+| **Status** | **`pending-review`** — drop FABLE_* env dual-read + /fable slash (R12) |
+| **Supersedes** | 0.9.4 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙), `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,23 @@
 
 ### Changelog
 
-#### 0.9.4 — 2026-07-09 (`approved`)
+#### 0.10.0 — 2026-07-09 (`pending-review`)
+
+**Why:** Drop **runtime dual-compat** for rename transition (RENAME Phase E / 0.10).
+
+| What | Why |
+|------|-----|
+| Env: **LOOM_* only** (FABLE_* warns, not read) | End dual-read window |
+| Slash: **/loom only** (`/fable` → help / no dual-accept) | Product CLI surface |
+| sticky-spawn: LOOM_SESSION/PROFILE only | Match write-path policy |
+| Relay token/host/port: LOOM only | Same |
+| **Keep:** `FABLE-` invite join, `fable-board-snapshot` import, MCP strip of legacy fable tables, `fable` bin alias | Data/tooling compat (conservative) |
+
+**Implemented as of 0.10.0.** Awaiting **R12**.
+
+**Not in 0.10.0:** remove `fable` bin; remove legacy invite/board accept; L-5 embed; Tauri.
+
+#### 0.9.4 — 2026-07-09 (`superseded` by 0.10.0; was `approved`)
 
 **Why:** Backlog **L-4** — concurrent `requestOnce` stole acks by replacing `onEnvelope`.
 
@@ -810,5 +826,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.9.2** R11 Low residual branding | 2026-07-09 | **0.9.2** |
 | Plan author | implementation | **0.9.3** L-14 timing-safe share + L-16 chars | 2026-07-09 | **0.9.3** |
 | Plan author | implementation | **0.9.4** L-4 requestOnce waiter queue | 2026-07-09 | **0.9.4** |
+| Plan author | implementation | **0.10.0** dual-compat drop (env/slash) | 2026-07-09 | **0.10.0** pending-review |
+| Reviewer | | **R12** on **0.10.0** | 2026-07-09 | requested |
 
-**구현 게이트:** M-7 + Loom rename + L-14/L-16/L-4 done. Remaining: L-5 (when embed), dual-compat drop 0.10, Tauri.
+**구현 게이트:** **0.10.0** dual-compat drop code complete, awaiting R12. L-5 (embed), Tauri still later.

@@ -217,8 +217,8 @@ export function fableDir(): string {
 
 /**
  * Session path resolution:
- * 1. LOOM_SESSION / FABLE_SESSION env — absolute file path (not migrated)
- * 2. LOOM_PROFILE / FABLE_PROFILE / setActiveProfile — ~/.loom/profiles/<name>.json
+ * 1. LOOM_SESSION env — absolute file path (not migrated); FABLE_SESSION no longer read (0.10)
+ * 2. LOOM_PROFILE / setActiveProfile — ~/.loom/profiles/<name>.json
  * 3. default ~/.loom/session.json
  */
 let activeProfile: string | null = null;

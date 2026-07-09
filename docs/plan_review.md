@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.9.4** `approved` — L-4 requestOnce FIFO waiter queue.  
+> **최신:** PLAN **v0.10.0** `pending-review` — dual-compat drop (env/slash) — **R12 요청**.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
@@ -12,7 +12,7 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| *(none)* | | | |
+| **R12** | gate | 0.10.0 dual-compat drop review | **requested** |
 
 ### Deferred / backlog
 
@@ -49,6 +49,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
+| **R12** | v0.10.0 | **pending** | dual-compat drop — body below |
 | **R11** | v0.9.0 | pending-revision → **0.9.1 approved** | M-14/15/16 closed — body below |
 | **R10** | v0.8.0 | pending-revision → **0.8.1 approved** | M-7 core OK; M-13/L-15 closed — body below |
 | **R9** | v0.7.0 | pending-revision → **0.7.1 approved** | M-10/M-11/M-12 closed — body below |
@@ -60,6 +61,28 @@
 | R3 | v0.2.2 | pending-revision → **0.2.3** | [archive](./plan_review_archive.md) |
 | R2 | v0.2.0 | approved → **0.2.1** | [archive](./plan_review_archive.md) |
 | R1 | v0.1.0 | on-hold → **0.2.0** | [archive](./plan_review_archive.md) |
+
+---
+
+## Review R12 — Plan v0.10.0 (**requested**)
+
+**검토 대상:** `docs/PLAN.md` **v0.10.0** — drop FABLE_* env dual-read + /fable slash  
+**요청자:** plan author (implemented)  
+**날짜:** 2026-07-09  
+**결론:** _(awaiting reviewer)_
+
+### Scope checklist for reviewer
+
+| # | Item | Intent |
+|---|------|--------|
+| 1 | `envLoom` / helpers: FABLE_* not used as values | Migration: warn only |
+| 2 | Relay token/host/port LOOM only | No silent FABLE_RELAY_TOKEN |
+| 3 | sticky-spawn LOOM_* only | Children must use LOOM_SESSION |
+| 4 | `/fable` slash not dual-accept | Help only |
+| 5 | **Kept:** FABLE- invites, fable-board-snapshot import, MCP fable strip, `fable` bin alias | Data/tooling conservativeness |
+| 6 | Tests: env.test + slash 0.10 | |
+
+**Please leave findings or mark approved.**
 
 ---
 

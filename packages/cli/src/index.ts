@@ -73,7 +73,7 @@ import {
 import { spawn } from "bun";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.9.4";
+const VERSION = "0.10.0";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -985,10 +985,10 @@ async function cmdListen() {
         console.error(result.error);
       }
     } else if (t.startsWith("chat ") || t.startsWith("/loom chat ")) {
-      const text = t.replace(/^(\/fable )?chat\s+/, "");
+      const text = t.replace(/^(\/loom )?chat\s+/, "");
       await client.chat(text);
     } else if (t.startsWith("handoff ") || t.startsWith("/loom handoff ")) {
-      const payload = t.replace(/^(\/fable )?handoff\s+/, "");
+      const payload = t.replace(/^(\/loom )?handoff\s+/, "");
       const m = /^(@[\w.-]+|\*|[\w.-]+)\s+(.+)$/s.exec(payload);
       if (m) {
         const ack = await client.handoff({ to: m[1]!, body: m[2]! });

@@ -1,12 +1,14 @@
-# 0.9.4 L-4 requestOnce (done)
+# 0.10.0 dual-compat drop (pending R12)
 
-- [x] FIFO pendingRequests; no onEnvelope hijack
-- [x] claim_result id-aware match
-- [x] concurrent handoff integration test
-- [x] PLAN 0.9.4; push
+- [x] env LOOM-only (warn if FABLE_* set)
+- [x] slash /loom only
+- [x] sticky/relay LOOM env only
+- [x] keep invite/board/MCP strip/bin
+- [x] tests env + slash
+- [ ] R12 review
+- [ ] push
 
-## Next backlog
+## Next after R12
 
-- L-5 pack embed TOCTOU (when embed ships)
-- Drop FABLE dual-compat (0.10)
+- L-5 when embed ships
 - Tauri (cargo)

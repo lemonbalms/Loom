@@ -101,21 +101,13 @@ export function buildWsUrl(opts: {
   return url;
 }
 
-/** Resolve from env: LOOM_RELAY_URL / FABLE_* dual-read, optional flag override. */
+/** Resolve from env: LOOM_RELAY_URL / LOOM_RELAY_TOKEN only (0.10). */
 export function resolveRelayEndpoint(opts?: {
   relayFlag?: string;
   tokenFlag?: string;
 }): RelayEndpoint {
-  // lazy import avoid circular; inline dual-read
-  const token =
-    opts?.tokenFlag ||
-    process.env.LOOM_RELAY_TOKEN ||
-    process.env.FABLE_RELAY_TOKEN ||
-    undefined;
-  const flag =
-    opts?.relayFlag ||
-    process.env.LOOM_RELAY_URL ||
-    process.env.FABLE_RELAY_URL;
+  const token = opts?.tokenFlag || process.env.LOOM_RELAY_TOKEN || undefined;
+  const flag = opts?.relayFlag || process.env.LOOM_RELAY_URL;
   if (flag) return parseRelayUrl(flag, { token });
   return defaultLocalEndpoint(token);
 }

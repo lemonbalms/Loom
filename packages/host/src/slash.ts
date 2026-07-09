@@ -1,6 +1,6 @@
 /**
- * Parse /loom (or legacy /fable) slash commands from a line of user input.
- * Returns null if the line is not a loom/fable command.
+ * Parse /loom slash commands from a line of user input.
+ * 0.10: /fable dual-accept removed — use /loom.
  */
 export type SlashCommand =
   | { kind: "handoff"; to: string; body: string }
@@ -10,9 +10,11 @@ export type SlashCommand =
 
 function stripPrefix(line: string): string | null {
   const trimmed = line.trim();
-  for (const p of ["/loom", "/fable"] as const) {
-    if (trimmed === p) return "";
-    if (trimmed.startsWith(p + " ")) return trimmed.slice(p.length).trim();
+  if (trimmed === "/loom") return "";
+  if (trimmed.startsWith("/loom ")) return trimmed.slice("/loom ".length).trim();
+  // 0.10: explicit reject of legacy prefix (not dual-accept)
+  if (trimmed === "/fable" || trimmed.startsWith("/fable ")) {
+    return "\0legacy-fable";
   }
   return null;
 }
@@ -20,6 +22,9 @@ function stripPrefix(line: string): string | null {
 export function parseSlash(line: string): SlashCommand | null {
   const rest = stripPrefix(line);
   if (rest === null) return null;
+  if (rest === "\0legacy-fable") {
+    return { kind: "help" }; // caller may print deprecation; treat as help
+  }
 
   if (!rest || rest === "help") return { kind: "help" };
 
@@ -54,9 +59,10 @@ function stripQuotes(s: string): string {
   return t;
 }
 
-export const SLASH_HELP = `Slash commands (legacy /fable … still accepted):
+export const SLASH_HELP = `Slash commands:
   /loom peers
   /loom handoff @name message
   /loom handoff * broadcast
   /loom chat text
-  /loom help`;
+  /loom help
+(/fable is no longer accepted — use /loom)`;

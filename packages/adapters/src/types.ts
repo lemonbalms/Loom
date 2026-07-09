@@ -45,7 +45,7 @@ export interface AgentAdapter {
     cwd: string;
     mcpStdioPath: string;
     sessionEnv?: Record<string, string>;
-    /** Opt-in: merge into ~/.codex or ~/.grok config.toml with FABLE_SESSION */
+    /** Opt-in: merge into ~/.codex or ~/.grok config.toml with LOOM_SESSION */
     writeUserConfig?: boolean;
   }): Promise<string | null>;
   /** System hint text about Loom tools. */

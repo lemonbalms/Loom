@@ -10,8 +10,8 @@ describe("parseSlash", () => {
     expect(parseSlash("/loom peers")).toEqual({ kind: "peers" });
   });
 
-  test("legacy /fable dual-accept", () => {
-    expect(parseSlash("/fable peers")).toEqual({ kind: "peers" });
+  test("0.10: /fable no longer dual-accepts (returns help)", () => {
+    expect(parseSlash("/fable peers")).toEqual({ kind: "help" });
   });
 
   test("handoff to named peer", () => {

@@ -11,17 +11,9 @@ import { RelayServer, isLoopbackHost } from "./server";
  *   LOOM_RELAY_HOST=0.0.0.0 LOOM_RELAY_PORT=7842 LOOM_RELAY_TOKEN=secret \
  *     bun run packages/relay/src/cli.ts
  */
-const host =
-  process.env.LOOM_RELAY_HOST ??
-  process.env.FABLE_RELAY_HOST ??
-  DEFAULT_RELAY_HOST;
-const port = Number(
-  process.env.LOOM_RELAY_PORT ??
-    process.env.FABLE_RELAY_PORT ??
-    DEFAULT_RELAY_PORT,
-);
-const authToken =
-  process.env.LOOM_RELAY_TOKEN || process.env.FABLE_RELAY_TOKEN || undefined;
+const host = process.env.LOOM_RELAY_HOST ?? DEFAULT_RELAY_HOST;
+const port = Number(process.env.LOOM_RELAY_PORT ?? DEFAULT_RELAY_PORT);
+const authToken = process.env.LOOM_RELAY_TOKEN || undefined;
 // RN1: no dual-read of FABLE_RELAY_INSECURE_OPEN (H-5)
 const allowInsecureOpen =
   process.env.LOOM_RELAY_INSECURE_OPEN === "1" ||

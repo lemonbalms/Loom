@@ -57,10 +57,7 @@ export class RelayServer {
     this.port = opts.port ?? DEFAULT_RELAY_PORT;
     this.registry = opts.registry ?? new RoomRegistry();
     this.authToken =
-      opts.authToken ||
-      process.env.LOOM_RELAY_TOKEN ||
-      process.env.FABLE_RELAY_TOKEN ||
-      undefined;
+      opts.authToken || process.env.LOOM_RELAY_TOKEN || undefined;
     // RN1: do NOT dual-read FABLE_RELAY_INSECURE_OPEN (H-5)
     this.allowInsecureOpen =
       opts.allowInsecureOpen === true ||
