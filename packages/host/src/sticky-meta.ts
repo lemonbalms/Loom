@@ -26,8 +26,9 @@ export type StickyHostMeta = {
 
 export function stickyMetaPath(forSessionPath?: string): string {
   const sp = forSessionPath ?? sessionPath();
-  // ~/.fable/session.json → ~/.fable/session.host.json
-  // ~/.fable/profiles/alice.json → ~/.fable/profiles/alice.host.json
+  // ~/.loom/session.json → ~/.loom/session.host.json
+  // ~/.loom/profiles/alice.json → ~/.loom/profiles/alice.host.json
+  // (legacy ~/.fable paths only while migration gate keeps state home on legacy)
   if (sp.endsWith(".json")) {
     return sp.slice(0, -".json".length) + ".host.json";
   }

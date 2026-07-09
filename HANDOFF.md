@@ -172,10 +172,9 @@ Full text: **`docs/WORKFLOW.md`**.
 
 | Done | Pending |
 |------|---------|
-| Loom rename + R11/R12 closed | Optional: drop `fable` bin |
-| 0.10 dual-compat + M-17 | L-5 when embed |
-| Codex/Claude session entry | Tauri (cargo) |
-| `bun run status` | Owner-directed features |
+| Loom rename + R11/R12 + 0.10.1 | Optional: drop `fable` bin |
+| plan_review hygiene (R12 follow-up, Deferred open-only) | L-5 when embed |
+| Codex/Claude session entry + `bun run status` | Tauri (cargo) |
 
 **Resume prompt (copy-paste):**
 

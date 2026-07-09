@@ -1,17 +1,14 @@
-# Handoff for next session
+# Current (0.10.1 approved)
 
-Full context: **`HANDOFF.md`**  
-Workflow: **`docs/WORKFLOW.md`**
+- [x] R12 M-17 closed
+- [x] plan_review hygiene: R12 follow-up table, Deferred open-only
+- [x] sticky-meta comment L-19 touch
 
-## Current gate
+## Next (no blocking)
 
-- PLAN **0.10.0** `pending-review`
-- **R12** dual-compat drop — requested in `docs/plan_review.md`
-- Code pushed: `fe4719d` on `lemonbalms/Loom`
+1. Owner: next feature priority
+2. L-5 when pack file-body embed ships
+3. Optional: remove `fable` bin alias
+4. Tauri (needs cargo/rustc)
 
-## Next
-
-1. R12 review → approve or 0.10.1 fixes
-2. Optional: remove `fable` bin alias
-3. L-5 (when pack embed ships)
-4. Tauri (needs cargo)
+See **HANDOFF.md** · **docs/WORKFLOW.md** · `bun run status`

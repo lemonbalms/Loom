@@ -14,17 +14,16 @@
 |----|-----|------|------|
 | *(none)* | | | |
 
-### Deferred / backlog
+### Deferred / backlog (open only)
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| R12 L-19 | Low | 잔존 주석 브랜딩 일부 | backlog optional |
-| L-4 | Low | `requestOnce` concurrent ack steal | **0.9.4 done** (FIFO waiters; wire requestId deferred) |
 | L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships |
-| R10 L-14 | Low | timing-safe util share | **0.9.3 done** |
-| R10 L-16 | Low | attachment cap units (chars) | **0.9.3 done** |
-| R11 L | Low | WARNING 스코프 / INSECURE 경고 / 브랜딩 | **0.9.2** closed; dual-compat remains intentional |
+| R12 L-19 | Low | 잔존 주석 브랜딩 | mostly closed 0.10.1 hygiene; optional sweep |
 | Product | — | Tauri UI | needs Rust/cargo |
+| Product | — | optional remove `fable` bin alias | Owner decision |
+
+Done items live under **Recent follow-ups** only (not repeated here).
 
 ### Recent follow-ups (closed / in review)
 
@@ -68,12 +67,14 @@
 
 ## Review R12 — Plan v0.10.0 (dual-compat drop)
 
-**검토 대상:** `docs/PLAN.md` **v0.10.0** — drop FABLE_* env dual-read + `/fable` slash dual-accept
-**검토자:** Fable 5 — 코드 직접 확인 (Read/Grep; 셸 실행 불가 → `bun test`는 정적 검증으로 대체)
-**날짜:** 2026-07-09
+**검토 대상:** `docs/PLAN.md` **v0.10.0** — drop FABLE_* env dual-read + `/fable` slash dual-accept  
+**검토자:** Fable 5 — 코드 직접 확인 (Read/Grep; 셸 실행 불가 → `bun test`는 정적 검증으로 대체)  
+**날짜:** 2026-07-09  
 **결론:** **`pending-revision`** → **0.10.1 applied / approved** (M-17 + L-17/L-18/L-20)
 
-### Checklist
+> **Checklist below is a snapshot of code as of 0.10.0 review.** Post-fix state is in **R12 follow-up (0.10.1)**.
+
+### Checklist (as-reviewed @ 0.10.0)
 
 **Part A — 밀린 0.9.1 M-14/M-15/M-16 소급 검증 (지금까지 plan author 자체 승인만 있었고 리뷰어 검증 없었음)**
 
@@ -121,6 +122,19 @@
 **승인 조건:** `docs/PLAN.md` Version → **0.10.1** (PATCH) — M-17(relay URL/host/port를 envLoom 경유로 배선, dead code 정리) 반영 후 재리뷰 없이 승인 가능. L-17–L-20은 backlog로 이월 가능.
 
 **관련 파일:** `packages/protocol/src/env.ts`, `packages/protocol/src/relay-url.ts`, `packages/host/src/relay-daemon.ts`, `packages/host/src/relay-client.ts`, `packages/host/src/sticky-spawn.ts`, `packages/host/src/slash.ts`, `packages/relay/src/cli.ts`, `packages/cli/src/index.ts`, `packages/adapters/src/user-mcp-config.ts`, `packages/host/src/session-store.ts`, `packages/host/src/task-board.ts`
+
+### R12 follow-up (0.10.1 — applied)
+
+| Finding | 처리 |
+|---------|------|
+| **M-17** | `resolveRelayEndpoint` / relay `cli.ts` / `loom relay` → `envRelayUrl|Host|Port|Token`; silent local fallback only after warn path |
+| **L-17** | `env.test.ts` — console.error spy when only `FABLE_RELAY_URL` set; `resetLegacyEnvWarnFlag` |
+| **L-18** | `task-board.test.ts` — legacy `fable-board-snapshot` kind + attachment label |
+| **L-20** | `relay-client` uses `envTokenInQuery()` |
+| **L-19** | partial (CLI “Loom relay on”); sticky-meta comments optional residual |
+| PLAN | **v0.10.1** `approved`; dual-compat gate closed |
+| Tests | `bun test` **134 pass** (at ship) |
+| Also | Codex session entry: `AGENTS.md` + `bun run status` |
 
 ---
 
