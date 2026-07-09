@@ -13,6 +13,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 | **Packages** | `@loom/*` (Bun monorepo) |
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.10.0** (`pending-review`) |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
+| **Session entry** | [`AGENTS.md`](AGENTS.md) / [`HANDOFF.md`](HANDOFF.md) — agents brief status on start |
 | **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
 
 ---

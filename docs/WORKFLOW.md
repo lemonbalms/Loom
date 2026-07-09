@@ -8,7 +8,48 @@
 | **Document** | `docs/WORKFLOW.md` |
 | **Status** | **active** |
 | **Last updated** | 2026-07-09 |
-| **Related** | `docs/PLAN.md`, `docs/plan_review.md`, `implementation-notes.md`, `HANDOFF.md` |
+| **Related** | `docs/PLAN.md`, `docs/plan_review.md`, `implementation-notes.md`, `HANDOFF.md`, `AGENTS.md` |
+
+---
+
+## 0. 세션 진입 (Session start) — 필수
+
+새 세션(또는 컨텍스트 리셋 직후)에 에이전트는 **첫 응답 전에** 아래를 수행한다.
+
+### 0.1 읽을 파일
+
+| 순서 | 파일 | 목적 |
+|------|------|------|
+| 1 | `HANDOFF.md` | 현재 게이트·다음 액션·함정 |
+| 2 | `docs/WORKFLOW.md` | 이 규칙 |
+| 3 | `docs/PLAN.md` **헤더** | Version / Status |
+| 4 | `docs/plan_review.md` **헤더 + Open** | blocking / 최신 R{n} |
+
+상세 진입 지시: 루트 **`AGENTS.md`**, **`CLAUDE.md`**.
+
+### 0.2 사용자에게 바로 알릴 것
+
+첫 사용자 메시지에 대한 **첫  substantive 응답**에 상태 브리핑을 포함한다 (한국어 세션이면 한국어):
+
+```markdown
+## 세션 상태
+| 항목 | 값 |
+|------|-----|
+| PLAN | v… (`status`) |
+| Open blocking | … |
+| 다음 액션 | HANDOFF의 Immediate next steps |
+| 워크플로 | docs/WORKFLOW.md |
+| 제품/에이전트 | Loom ≠ Fable 5 |
+
+이어서 진행할까요?
+```
+
+사용자가 이미 매우 구체적인 명령만 준 경우(예: “이 파일만 고쳐”)는 브리핑을 **짧게** 하고 바로 실행해도 된다.  
+「진행해」「이어서」는 **반드시** HANDOFF 기준 다음 게이트를 따른다.
+
+### 0.3 세션 종료 / 게이트 완료 시
+
+다음 진입이 맞도록 **`HANDOFF.md`** 를 갱신한다 (Where we are, next steps, resume prompt).
 
 ---
 
@@ -280,6 +321,7 @@ blocking 없을 때 기본 순서:
 | 날짜 | 내용 |
 |------|------|
 | 2026-07-09 | 초안 — 0.9.x 시리즈에서 확정된 Plan/Review/Implement/Ship 관례 성문화 |
+| 2026-07-09 | §0 세션 진입 의식 + `AGENTS.md` / `CLAUDE.md` 연동 |
 
 ---
 

@@ -6,6 +6,10 @@
 **Audience:** next agent (fresh context)  
 **Language:** user often Korean (`진행해`, `리뷰해`, `단계적으로 진행해`, …)
 
+### Session entry (for agents)
+
+On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then **tell the user the status table** (PLAN / open gate / next action). See `AGENTS.md`.
+
 ---
 
 ## One-line resume
