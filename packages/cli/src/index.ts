@@ -73,7 +73,7 @@ import {
 import { spawn } from "bun";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.9.1";
+const VERSION = "0.9.2";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -110,7 +110,7 @@ Usage:
   loom host start | stop | status   # sticky long-lived relay connection
   loom relay [--host 0.0.0.0] [--port 7842] [--token <secret>] [--insecure-open]
   loom spike pty
-  fable help
+  loom help
 
   --relay <url>         Remote/local relay (or LOOM_RELAY_URL). e.g. ws://host:7842
   --token <secret>      Shared secret (or LOOM_RELAY_TOKEN). Required if server set one.
@@ -126,16 +126,16 @@ Remote example:
   # machine A (host) — token required on 0.0.0.0
   LOOM_RELAY_HOST=0.0.0.0 LOOM_RELAY_TOKEN=secret bun run loom relay
   # machine B
-  fable --relay ws://A_IP:7842 --token secret --profile bob room join FABLE-XXXX
+  loom --relay ws://A_IP:7842 --token secret --profile bob room join LOOM-XXXX
 
 Session isolation (same machine, 2 peers):
-  fable --profile alice room create --as alice
-  fable --profile bob room join FABLE-XXXX --as bob
+  loom --profile alice room create --as alice
+  loom --profile bob room join LOOM-XXXX --as bob
   # or: export LOOM_SESSION=~/.loom/profiles/alice.json
 
 Examples:
-  fable --profile alice handoff @bob "the british are coming"
-  fable --profile bob inbox
+  loom --profile alice handoff @bob "the british are coming"
+  loom --profile bob inbox
 `.trim();
 }
 
@@ -257,7 +257,7 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
   const tokenPart =
     showToken && endpoint.token ? ` --token ${endpoint.token}` : "";
   const joinHint = needsRelayFlags
-    ? `fable --relay ${baseRelay}${tokenPart} room join ${env.inviteCode}`
+    ? `loom --relay ${baseRelay}${tokenPart} room join ${env.inviteCode}`
     : `loom room join ${env.inviteCode}`;
   console.log(`Share: ${joinHint}`);
   if (endpoint.token && !showToken) {
@@ -270,7 +270,7 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
     `Relay: ${url}${remote ? " (remote)" : endpoint.isLocal ? " (local)" : ""}`,
   );
   console.log("");
-  console.log("Next: fable listen   or   loom run claude");
+  console.log("Next: loom listen   or   loom run claude");
   client.close();
   process.exit(0);
 }
@@ -323,7 +323,7 @@ async function cmdRoomJoin(
   console.log(`Joined room. Invite: ${env.inviteCode}`);
   console.log(`Session: ${sessionPath()}`);
   console.log(`Relay: ${url}${remote ? " (remote)" : " (local)"}`);
-  console.log("Next: fable listen   or   loom run claude");
+  console.log("Next: loom listen   or   loom run claude");
   client.close();
   process.exit(0);
 }
@@ -610,7 +610,7 @@ async function cmdBoard(
       }
       const snap = snapshotFromAttachments(entry.handoff.attachments);
       if (!snap) {
-        console.error("no fable-board-snapshot attachment on that handoff");
+        console.error("no loom-board-snapshot attachment on that handoff");
         process.exit(1);
       }
       const mode = flags.replace ? "replace" : "merge";
@@ -655,7 +655,7 @@ async function cmdPack(sub: string | undefined, rest: string[], flags: Record<st
       console.log(formatContextPack(pack));
       if (packIsEmpty(pack)) {
         console.log(
-          "\nTip: fable pack set \"summary…\" | pack add <path> | pack note <text>",
+          "\nTip: loom pack set \"summary…\" | pack add <path> | pack note <text>",
         );
       }
       return;
@@ -666,7 +666,7 @@ async function cmdPack(sub: string | undefined, rest: string[], flags: Record<st
           ? flags.summary
           : rest.join(" ").trim();
       if (!summary) {
-        console.error('Usage: fable pack set "summary text"');
+        console.error('Usage: loom pack set "summary text"');
         process.exit(1);
       }
       const pack = setPackSummary(summary);
@@ -677,7 +677,7 @@ async function cmdPack(sub: string | undefined, rest: string[], flags: Record<st
     if (action === "add") {
       const pathArg = rest[0] || (typeof flags.path === "string" ? flags.path : "");
       if (!pathArg) {
-        console.error("Usage: fable pack add <path-under-cwd>");
+        console.error("Usage: loom pack add <path-under-cwd>");
         process.exit(1);
       }
       const pack = addPackPath(pathArg, {
@@ -690,7 +690,7 @@ async function cmdPack(sub: string | undefined, rest: string[], flags: Record<st
     if (action === "remove" || action === "rm") {
       const pathArg = rest[0] || "";
       if (!pathArg) {
-        console.error("Usage: fable pack remove <path>");
+        console.error("Usage: loom pack remove <path>");
         process.exit(1);
       }
       const pack = removePackPath(pathArg);
@@ -701,7 +701,7 @@ async function cmdPack(sub: string | undefined, rest: string[], flags: Record<st
     if (action === "note") {
       const note = rest.join(" ").trim();
       if (!note) {
-        console.error("Usage: fable pack note <text>");
+        console.error("Usage: loom pack note <text>");
         process.exit(1);
       }
       const pack = addPackNote(note);
@@ -716,7 +716,7 @@ async function cmdPack(sub: string | undefined, rest: string[], flags: Record<st
       return;
     }
     console.error(
-      "Usage: fable pack show|set|add|remove|note|clear",
+      "Usage: loom pack show|set|add|remove|note|clear",
     );
     process.exit(1);
   } catch (e) {
@@ -765,7 +765,7 @@ async function cmdHost(sub: string | undefined) {
     console.log(
       "CLI/MCP handoff·peers·inbox will use this host (peer stays online).",
     );
-    console.log("Stop with: fable host stop");
+    console.log("Stop with: loom host stop");
     return;
   }
   if (sub === "stop") {
@@ -843,7 +843,7 @@ async function cmdAgents(flags: Record<string, string | boolean>) {
   }
   const available = await detectAvailableAgents();
   if (available.length === 0) {
-    console.log("\nNo AI CLIs detected. You can still: fable run shell");
+    console.log("\nNo AI CLIs detected. You can still: loom run shell");
   } else {
     console.log(
       `\nDefault pick: ${(await pickDefaultAdapter()).id} (claude→codex→grok→shell)`,
@@ -864,7 +864,7 @@ async function cmdAgents(flags: Record<string, string | boolean>) {
       );
     }
   } else {
-    console.log("\nTip: fable agents --matrix");
+    console.log("\nTip: loom agents --matrix");
   }
 }
 
@@ -1039,7 +1039,7 @@ async function cmdRun(
     if (!(await adapter.detect())) {
       console.error(`${adapter.label} not found on PATH.`);
       if (agentIdRaw !== "shell") {
-        console.error("Tip: fable run shell  or  loom run auto");
+        console.error("Tip: loom run shell  or  loom run auto");
       }
       process.exit(1);
     }
@@ -1278,7 +1278,7 @@ async function main() {
   if (cmd === "chat") {
     const text = [sub, ...rest].filter(Boolean).join(" ");
     if (!text) {
-      console.error("Usage: fable chat <message>");
+      console.error("Usage: loom chat <message>");
       process.exit(1);
     }
     await cmdChat(text);
@@ -1286,7 +1286,7 @@ async function main() {
   }
   if (cmd === "handoff") {
     if (!sub) {
-      console.error("Usage: fable handoff [@name|*] <message> [--with-pack]");
+      console.error("Usage: loom handoff [@name|*] <message> [--with-pack]");
       process.exit(1);
     }
     const looksTarget =
@@ -1346,7 +1346,7 @@ async function main() {
   }
   if (cmd === "spike") {
     if (sub !== "pty" && sub !== "1.5") {
-      console.error("Usage: fable spike pty");
+      console.error("Usage: loom spike pty");
       process.exit(1);
     }
     const report = await runPtySpike();

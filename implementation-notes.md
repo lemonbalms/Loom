@@ -38,6 +38,8 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 | 2026-07-09 | RENAME §4.1 INSECURE: strong stderr if only `FABLE_RELAY_INSECURE_OPEN` set | **Still silent ignore** of legacy insecure env (no dual-read) | Safer than dual-read fail-open; warning is UX-only (R11 Low) | Optional one-shot warn on relay start |
 | 2026-07-09 | R11 residual branding | Left some “Fable” strings in usage examples / adapter headers / stale version strings | Non-blocking per R11 Low; avoided drive-by doc thrash in security PATCH | Branding sweep backlog |
 | 2026-07-09 | Gate process: re-review after 0.9.1 | PLAN marked **0.9.1 `approved`** by implementer after R11 required fixes; no second full R11 body rewrite | Matches prior series (0.7.1, 0.8.1): required PATCH + author close when review said “PATCH then approve” | If owner wants independent re-review, add R11.1 note only |
+| 2026-07-09 | R11 Low branding sweep (0.9.2) | User-facing strings → loom; left intentional dual-compat (`FABLE_*` dual-read, `/fable` slash, deprecated type aliases, legacy MCP markers) | Avoid breaking transition paths while cleaning product UI | Drop dual-compat in 0.10 |
+| 2026-07-09 | RENAME §4.1 INSECURE warn | Emit stderr when only `FABLE_RELAY_INSECURE_OPEN` is set; still **does not** enable open bind | Matches plan “strong warn” without reintroducing fail-open | Done |
 
 ### Earlier waves (pointer only)
 

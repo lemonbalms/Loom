@@ -1,16 +1,15 @@
-# 0.9.1 R11 follow-up (done)
+# 0.9.2 R11 Low residual (done)
 
-- [x] M-14: relay-daemon + mcp config → `loomDir()`
-- [x] M-15: sticky-spawn `LOOM_SESSION`/`LOOM_PROFILE`
-- [x] M-16: live-PID gate tests + FABLE- join no-rewrite test
-- [x] PLAN 0.9.1 approved; plan_review R11 follow-up
-- [x] bun test **124 pass**
-- [x] CLI VERSION 0.9.1
+- [x] Push 0.9.1 to origin
+- [x] User-facing Fable → Loom strings (CLI tips, adapters, sticky, relay banner)
+- [x] isManagedComment WARNING scope
+- [x] FABLE_RELAY_INSECURE_OPEN warn (no dual-read open)
+- [x] MCP version 0.9.2; PLAN/plan_review/implementation-notes
 
 ## Next backlog
 
-- R11 Low residual branding / WARNING scope
-- L-14 timing-safe util share
-- L-16 attachment chars wording
+- L-14 shared timing-safe util
+- L-16 attachment cap “chars” wording
 - L-4 requestOnce correlation
+- Drop FABLE dual-compat (0.10)
 - Tauri (cargo)

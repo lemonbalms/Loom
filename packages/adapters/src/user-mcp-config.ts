@@ -64,11 +64,12 @@ function stripMarkerPair(text: string, begin: string, end: string): string {
  */
 function isManagedComment(trimmed: string): boolean {
   if (!trimmed.startsWith("#")) return false;
+  // R11 Low: never bare /WARNING: legacy/ — scope to product MCP markers only
   return (
     /Fable multiplayer/i.test(trimmed) ||
     /Loom multiplayer/i.test(trimmed) ||
     /legacy \[mcp_servers\.(?:fable|loom)\]/i.test(trimmed) ||
-    /WARNING: legacy/i.test(trimmed)
+    /WARNING: legacy \[mcp_servers\.(?:fable|loom)\]/i.test(trimmed)
   );
 }
 

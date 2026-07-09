@@ -22,10 +22,19 @@ const port = Number(
 );
 const authToken =
   process.env.LOOM_RELAY_TOKEN || process.env.FABLE_RELAY_TOKEN || undefined;
-// RN1: no dual-read of FABLE_RELAY_INSECURE_OPEN
+// RN1: no dual-read of FABLE_RELAY_INSECURE_OPEN (H-5)
 const allowInsecureOpen =
   process.env.LOOM_RELAY_INSECURE_OPEN === "1" ||
   process.env.LOOM_RELAY_INSECURE_OPEN === "true";
+// R11 Low: legacy insecure env alone does not open the relay — warn once
+const legacyInsecure =
+  process.env.FABLE_RELAY_INSECURE_OPEN === "1" ||
+  process.env.FABLE_RELAY_INSECURE_OPEN === "true";
+if (legacyInsecure && !allowInsecureOpen) {
+  console.warn(
+    "[loom] FABLE_RELAY_INSECURE_OPEN is ignored after rename; set LOOM_RELAY_INSECURE_OPEN=1 or pass --insecure-open explicitly",
+  );
+}
 
 const server = new RelayServer({ host, port, authToken, allowInsecureOpen });
 try {

@@ -48,6 +48,6 @@ export interface AgentAdapter {
     /** Opt-in: merge into ~/.codex or ~/.grok config.toml with FABLE_SESSION */
     writeUserConfig?: boolean;
   }): Promise<string | null>;
-  /** System hint text about Fable tools. */
+  /** System hint text about Loom tools. */
   systemHint(): string;
 }

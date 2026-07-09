@@ -38,7 +38,7 @@ export const shellAdapter: AgentAdapter = {
     return [
       loomSystemHint("Shell"),
       "",
-      "Shell has no MCP: use CLI — fable inbox, fable handoff, fable peers.",
+      "Shell has no MCP: use CLI — loom inbox, loom handoff, loom peers.",
     ].join("\n");
   },
 };

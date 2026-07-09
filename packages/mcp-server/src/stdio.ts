@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Minimal MCP server over stdio for Fable room tools.
+ * Minimal MCP server over stdio for Loom room tools.
  */
 import {
   toolHandoff,
@@ -27,7 +27,7 @@ const TOOLS = [
   {
     name: "list_peers",
     description:
-      "List peers in the Fable room (name, agent, id, online/offline).",
+      "List peers in the Loom room (name, agent, id, online/offline).",
     inputSchema: {
       type: "object",
       properties: {},
@@ -207,7 +207,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.7.3" },
+        serverInfo: { name: "loom", version: "0.9.2" },
       });
       return;
     case "notifications/initialized":

@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.9.1** |
-| **Status** | **`approved`** — Loom rename + R11 M-14/M-15/M-16 closed |
-| **Supersedes** | 0.9.0 |
+| **Version** | **0.9.2** |
+| **Status** | **`approved`** — R11 Low residual branding + insecure-env warn |
+| **Supersedes** | 0.9.1 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/plan_review.md`, `docs/RENAME_TO_LOOM.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -45,7 +45,20 @@
 
 ### Changelog
 
-#### 0.9.1 — 2026-07-09 (`approved`)
+#### 0.9.2 — 2026-07-09 (`approved`)
+
+**Why:** R11 Low residual — product-facing “Fable” strings, MCP WARNING scope, legacy INSECURE env warn.
+
+| What | Why |
+|------|-----|
+| User-facing CLI/adapter/sticky tips → `loom` | Branding consistency |
+| `isManagedComment` scoped WARNING to mcp_servers only | Avoid deleting unrelated comments |
+| Warn if only `FABLE_RELAY_INSECURE_OPEN` set | RENAME §4.1 UX; still no dual-read open |
+| MCP serverInfo version 0.9.2 | Stale 0.7.3 cleanup |
+
+No re-review required (Low residual PATCH).
+
+#### 0.9.1 — 2026-07-09 (`superseded` by 0.9.2; was `approved`)
 
 **Why:** R11 **pending-revision** — M-14 migration bypass, M-15 sticky env, M-16 missing tests.
 
@@ -765,5 +778,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Reviewer | Fable 5 | R11 **pending-revision** (M-14/M-15/M-16) | 2026-07-09 | 0.9.0 reviewed |
 | Plan author | implementation | **0.9.1** M-14/15/16 **implemented** | 2026-07-09 | **0.9.1** |
 | Owner | | treat **0.9.1** as Loom rename baseline | 2026-07-09 | **0.9.1** |
+| Plan author | implementation | **0.9.2** R11 Low residual branding | 2026-07-09 | **0.9.2** |
 
-**구현 게이트:** M-7 **done**. Loom rename **0.9.1 approved**. Tauri deferred until cargo available.
+**구현 게이트:** M-7 **done**. Loom rename **0.9.1+**; residual branding **0.9.2**. Tauri deferred until cargo available.

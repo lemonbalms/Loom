@@ -1,6 +1,6 @@
 /**
  * Sticky long-lived host process — holds one RelayClient + loopback RPC.
- * Entry: sticky-main.ts (spawned by `fable host start`).
+ * Entry: sticky-main.ts (spawned by `loom host start`).
  */
 
 import {
@@ -36,7 +36,7 @@ export async function startStickyServer(opts?: {
   let session = opts?.session ?? loadSession();
   if (!session) {
     throw new Error(
-      "No session. Create or join a room first, then: fable host start",
+      "No session. Create or join a room first, then: loom host start",
     );
   }
 

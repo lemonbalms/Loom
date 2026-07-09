@@ -129,7 +129,7 @@ export function describeHostMeta(meta: StickyHostMeta | null): string {
         `  meta:     ${stickyMetaPath(mismatch.meta.sessionPath)}`,
         `  host room/peer: ${mismatch.meta.roomId} / ${mismatch.meta.peerId}`,
         `  session room/peer: ${mismatch.sessionRoomId} / ${mismatch.sessionPeerId}`,
-        "  fix: fable host stop && fable host start",
+        "  fix: loom host stop && loom host start",
       ].join("\n");
     }
     return "sticky host: not running";

@@ -52,7 +52,7 @@ export type InjectResult =
  * only. Enable only behind an explicit experimental flag after go/no-go.
  *
  * Risks (R1): fullscreen TUIs (Ink/ratatui) may garble input queue or submit
- * mid-generation. Prefer queue + `check_handoffs` / `fable inbox`.
+ * mid-generation. Prefer queue + `check_handoffs` / `loom inbox`.
  */
 export function injectIntoStdin(
   stdin: { write(data: string | Buffer): unknown } | null | undefined,

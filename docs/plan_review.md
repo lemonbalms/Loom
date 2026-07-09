@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.9.1** `approved` — R11 M-14/M-15/M-16 closed; Loom rename baseline.  
+> **최신:** PLAN **v0.9.2** `approved` — R11 Low residual branding + insecure-env warn.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재.  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R7 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)
@@ -22,7 +22,7 @@
 | L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships |
 | R10 L-14 | Low | `secretsEqual`이 `timingSafeTokenEqual` 복사본 (공유 유틸화 권장) | backlog |
 | R10 L-16 | Low | 256KB 캡이 실제로는 chars 단위 (byte 아님) | backlog |
-| R11 L | Low | `isManagedComment` WARNING 스코프, INSECURE 구 env 경고, 잔존 Fable 브랜딩 | backlog |
+| R11 L | Low | WARNING 스코프 / INSECURE 경고 / 브랜딩 | **0.9.2** mostly closed; intentional dual-compat strings remain |
 | Product | — | Tauri UI | needs Rust/cargo |
 
 ### Recent follow-ups (closed / in review)
@@ -30,7 +30,8 @@
 | Finding | 처리 |
 |---------|------|
 | **R11 M-14/M-15/M-16** | **0.9.1** — loomDir() paths; sticky LOOM_* env; live-PID + FABLE- join tests |
-| **R11** Fable→Loom rename | **0.9.0** + **0.9.1** — **done** |
+| **R11 Low** residual branding | **0.9.2** — loom tips; WARNING scope; FABLE_RELAY_INSECURE_OPEN warn |
+| **R11** Fable→Loom rename | **0.9.0** + **0.9.1** + **0.9.2** — **done** |
 | **R10 M-13** run silent join failure | **0.8.1** — join fail-fast + onError/error surface |
 | **R10 L-15** sticky peerSecret 미저장 | **0.8.1** — saveSession + setReconnectPeerSecret |
 | **R5/R9 M-7** peerId ownership | **0.8.0** + **0.8.1** — **done** (R10 core approved) |

@@ -34,7 +34,7 @@ CLI or MCP
   → else one-shot RelayClient join→handoff→close
   → RelayServer routeHandoff
   → target peer WebSocket (if online) + inbox enqueue
-  → listen / sticky host / run stderr formats [FABLE HANDOFF]
+  → listen / sticky host / run stderr formats [LOOM HANDOFF]
 ```
 
 ### Sticky host (Phase 4.0a)

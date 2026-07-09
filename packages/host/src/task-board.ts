@@ -381,7 +381,7 @@ export function formatTaskBoard(board: TaskBoard): string {
     lines.push("");
   }
   if (board.tasks.length === 0) {
-    lines.push("(empty)  Tip: fable board add \"title\" [--as name]");
+    lines.push('(empty)  Tip: loom board add "title" [--as name]');
   }
   return lines.join("\n").trimEnd() + "\n";
 }
@@ -563,7 +563,7 @@ export function resolveHandoffEntryIndex<
   throw new Error(`handoff not found: ${q}`);
 }
 
-/** Extract board snapshot from handoff attachments (label fable-board-snapshot). */
+/** Extract board snapshot from handoff attachments (label loom-board-snapshot; legacy fable- accepted). */
 export function snapshotFromAttachments(
   attachments?: { label?: string; content: string; kind: string }[],
 ): BoardSnapshot | null {

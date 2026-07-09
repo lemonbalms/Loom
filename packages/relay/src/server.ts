@@ -148,7 +148,7 @@ export class RelayServer {
           return new Response("Expected WebSocket", { status: 400 });
         }
         return new Response(
-          "Fable Relay\nPhase 3 remote-ready. GET /health  WS /ws\n",
+          "Loom Relay\nPhase 3 remote-ready. GET /health  WS /ws\n",
           { status: 200 },
         );
       },

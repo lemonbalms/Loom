@@ -146,4 +146,17 @@ describe("user mcp config", () => {
     expect(stripped).toContain("deadline looming");
     expect(stripped).not.toContain("mcp_servers.fable");
   });
+
+  test("R11 Low: unrelated WARNING: legacy comment is preserved", () => {
+    const raw = [
+      "[cli]",
+      "x = 1",
+      "# WARNING: legacy config from my other tool",
+      "[other]",
+      "y = 2",
+    ].join("\n");
+    const stripped = stripAllLoomMcpSections(raw);
+    expect(stripped).toContain("WARNING: legacy config from my other tool");
+    expect(stripped).toContain("[other]");
+  });
 });
