@@ -247,7 +247,7 @@ CLI `VERSION` 문자열과 PLAN Version을 **같은 숫자**로 맞춘다 (`pack
 | 순수 오타·주석 | 불필요 |
 | 호환 제거(0.10), Tauri, 프로토콜 와이어 변경 | **필수** |
 
-**현재(0.11.1 `approved`):** Open blocking **없음**. Next = implement M4.3b thin shell (`apps/desktop`) per PLAN 0.11.1 locks (no Board v1; Rust invoke; textContent-only).
+**현재(0.11.2 `approved`):** Open blocking **없음**. Thin desktop shell shipped (`bun run desktop`). Next = dogfood / Board UI later / Owner.
 
 ### 5.2 리뷰어 절차
 

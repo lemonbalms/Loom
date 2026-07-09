@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.11.1** `approved` — R13 closed (M-18 C / M-19 Rust invoke / M-20 textContent). **Next: implement `apps/desktop`.**  
+> **최신:** PLAN **v0.11.2** `approved` — M4.3b thin desktop shell **implemented** (`apps/desktop`). R13 locks held.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| *(none)* | | | Implement against **0.11.1** approved |
+| *(none)* | | | **0.11.2** desktop shipped; polish / Board later |
 
 ---
 
@@ -40,7 +40,8 @@
 
 | Finding | 처리 |
 |---------|------|
-| **R13 M-18 / M-19 / M-20** | **0.11.1** — Board **out of v1** (C); Rust invoke-only + session order + token never to webview; textContent-only XSS |
+| **0.11.2 desktop** | **implemented** — `apps/desktop` Status/Peers/Inbox; Rust sticky; no Board; `cargo test` 3 pass |
+| **R13 M-18 / M-19 / M-20** | **0.11.1** locks → **0.11.2** code |
 | **R13 L-21** | **superseded by M-20** (closed as Med) |
 | **R13 L-22** | UNKNOWNS 0.11 filled |
 | **R13 L-24** | folded into M-19 token boundary in 0.11.1 |

@@ -11,7 +11,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.11.1** (`approved` — implement Tauri shell next) |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.11.2** (`approved` — thin desktop shell) |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |
 | **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
@@ -182,7 +182,7 @@ Env (**0.10: `LOOM_*` only** — `FABLE_*` is ignored with a warning):
 - [x] Per-peer rejoin secret (M-7) — invite+token alone cannot take over another peer  
 - [x] Product identity **Loom** (0.9.0)
 
-**Not goals (yet):** full Tauri UI (planned as M4.3b / 0.11.0), durable relay inbox across process restarts, live multi-writer CRDT board.
+**Not goals (yet):** Board-in-desktop / full multi-window Tauri, durable relay inbox across process restarts, live multi-writer CRDT board. Thin shell: `bun run desktop` (needs `loom host start`).
 
 ---
 

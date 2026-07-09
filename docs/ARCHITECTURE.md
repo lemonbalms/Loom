@@ -17,6 +17,7 @@
 | `@loom/adapters` | Detect/spawn agent CLIs |
 | `@loom/mcp-server` | MCP tools for agents (`handoff`, `list_peers`, `room_chat`) |
 | `@loom/cli` | User-facing `loom` command |
+| `apps/desktop` | Tauri 2 shell — Status/Peers/Inbox via sticky host RPC (Rust invoke; no Board v1) |
 
 ## Data flow
 

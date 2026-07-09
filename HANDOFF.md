@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.11.1 approved**. 다음: **implement `apps/desktop`** (Status/Peers/Inbox; Rust invoke; textContent-only; no Board v1).
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.11.2 approved** — desktop shell shipped. 다음: dogfood `bun run desktop` / Board UI later / Owner.
 
 ---
 
@@ -31,10 +31,10 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.10.3** (bumps with desktop implement wave) |
-| **Packages** | `@loom/*` Bun monorepo |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.11.1** — status **`approved`** (R13 closed) |
-| **Review gate** | Open blocking **none** — implement M4.3b shell |
+| **Product CLI** | `loom` v**0.11.2** |
+| **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (Tauri 2) |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.11.2** — status **`approved`** |
+| **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -58,6 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending) | **0.11.2** | `apps/desktop` Tauri shell (Status/Peers/Inbox) |
 | `baa2c90` | **0.11.1** | R13 close: M-18 C, M-19 Rust invoke, M-20 textContent |
 | `539930e` | R13 | plan_review hygiene + first R13 body |
 | `5a5b356` | **0.11.0** / 0.10.3 | PLAN draft M4.3b Tauri shell |
@@ -98,8 +99,8 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | **Implement `apps/desktop`** | PLAN 0.11.1: Status/Peers/Inbox; Rust invoke; textContent; no Board |
-| Later | Board UI | After shell; sticky board ops or explicit path |
+| **Next** | Dogfood desktop | `bun run desktop` + `loom host start` |
+| Later | Board UI | sticky board ops or explicit path (M-18 was C) |
 | Later | L-5 pack embed TOCTOU | When file-body embed ships |
 | Later | Wire `requestId` | Optional beyond L-4 FIFO |
 
@@ -109,9 +110,10 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
 bun install
 bun test
-bun run loom --version    # expect 0.10.3
-bun run status            # PLAN/Open briefing (Codex/Claude/human)
-cargo --version && rustc --version   # Tauri prerequisite
+bun run loom --version    # expect 0.11.2
+bun run status
+bun run desktop           # Tauri shell (needs loom host start)
+cargo --version && rustc --version
 git status -sb
 git log -3 --oneline
 ```

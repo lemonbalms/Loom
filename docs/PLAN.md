@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.11.1** |
-| **Status** | **`approved`** — R13 M-18/M-19/M-20 locked (thin Tauri shell plan) |
-| **Supersedes** | 0.11.0 |
+| **Version** | **0.11.2** |
+| **Status** | **`approved`** — M4.3b thin desktop shell implemented (`apps/desktop`) |
+| **Supersedes** | 0.11.1 |
 | **Last updated** | 2026-07-09 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,24 @@
 
 ### Changelog
 
-#### 0.11.1 — 2026-07-09 (`approved`)
+#### 0.11.2 — 2026-07-09 (`approved`)
+
+**Why:** Implement M4.3b thin **Tauri desktop shell** per **0.11.1** locks.
+
+| What | Why |
+|------|-----|
+| `apps/desktop` Tauri 2 + static `ui/` | Product desktop surface |
+| Rust sticky client (`sticky.rs`) + invoke commands | M-19: no webview fetch/token |
+| Views: Status / Peers / Inbox (claim/accept) | Sticky RPC surface |
+| Host CTAs: none / stale_pid / unauthorized / refused | L-25 |
+| textContent-only UI (`app.js` setText) | M-20 |
+| No Board UI | M-18 C |
+| `bun run desktop` / `cargo test` in src-tauri | Dev path |
+| CLI / MCP VERSION **0.11.2** | PLAN parity |
+
+**Implemented as of 0.11.2.** No re-review (implements approved 0.11.1).
+
+#### 0.11.1 — 2026-07-09 (`superseded` by 0.11.2; was `approved`)
 
 **Why:** R13 **pending-revision** close — lock M-18 / M-19 / M-20 before any `apps/desktop` code.
 
@@ -862,7 +879,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | **M4.1 context pack** | **done** (0.5.0 R7 + 0.5.1 L-1–L-3) |
 | **M4.2 task board** | **done** (0.6.1 H-7/M-8/M-9) |
 | **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
-| M4.3b Tauri desktop shell | **0.11.1** `approved` — plan locked; implement `apps/desktop` next |
+| M4.3b Tauri desktop shell | **0.11.2** **done** (thin shell; no Board) |
 
 ---
 
@@ -955,5 +972,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | plan | **0.11.0** M4.3b Tauri shell draft | 2026-07-09 | **0.11.0** pending-review |
 | Reviewer | Fable 5 + implementer | R13 **pending-revision** (M-18/M-19/M-20) | 2026-07-09 | 0.11.0 reviewed |
 | Plan author | plan | **0.11.1** R13 locks (M-18 C, M-19 Rust, M-20 textContent) | 2026-07-09 | **0.11.1** `approved` |
+| Plan author | implementation | **0.11.2** `apps/desktop` thin shell | 2026-07-09 | **0.11.2** |
 
-**구현 게이트:** **0.11.1 approved** — implement thin Tauri shell (`apps/desktop`). CLI VERSION bumps with implement wave. Deferred: Board UI, L-5 embed, live board CRDT.
+**구현 게이트:** **0.11.2 shipped** thin desktop. Next: dogfood UI polish / Board UI later / L-5 embed.

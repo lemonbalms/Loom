@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loom</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">◈</span>
+        <h1>Loom</h1>
+        <span id="version-tag" class="muted">desktop 0.11.2</span>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="status" role="tab">Status</button>
+        <button type="button" class="tab" data-tab="peers" role="tab">Peers</button>
+        <button type="button" class="tab" data-tab="inbox" role="tab">Inbox</button>
+      </nav>
+      <button type="button" id="btn-refresh" class="btn primary">Refresh</button>
+    </header>
+
+    <div id="banner" class="banner hidden" role="status"></div>
+
+    <main>
+      <section id="panel-status" class="panel active" role="tabpanel">
+        <h2>Host status</h2>
+        <dl id="status-dl" class="kv"></dl>
+        <p id="status-cta" class="cta muted"></p>
+      </section>
+
+      <section id="panel-peers" class="panel" role="tabpanel" hidden>
+        <h2>Peers</h2>
+        <p id="peers-meta" class="muted"></p>
+        <ul id="peers-list" class="list"></ul>
+      </section>
+
+      <section id="panel-inbox" class="panel" role="tabpanel" hidden>
+        <h2>Inbox</h2>
+        <p id="inbox-meta" class="muted"></p>
+        <ul id="inbox-list" class="list"></ul>
+      </section>
+    </main>
+
+    <footer class="foot muted">
+      Sticky host only · no Board in v1 · peer text is never HTML-injected
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

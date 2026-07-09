@@ -16,4 +16,7 @@ coverage/
 *.swp
 .idea/
 .vscode/
+# Rust / Tauri
+**/target/
+apps/desktop/src-tauri/gen/
 !docs/**
