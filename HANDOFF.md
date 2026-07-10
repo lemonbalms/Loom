@@ -58,7 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending) | **0.12.1** | desktop polish + PITCH 0.12 sync |
+| `ef517ab` | **0.12.1** | desktop polish + PITCH 0.12 sync |
 | `dea8407` | **0.12.0** | sticky board RPC + desktop Board + smoke:desktop |
 | `56c9546` | docs | product pitch + demo GIF |
 | `81bf607` | **0.11.2** | `apps/desktop` Tauri shell (Status/Peers/Inbox) |
