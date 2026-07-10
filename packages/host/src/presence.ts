@@ -44,20 +44,40 @@ export function renderPeerTable(
   return lines.join("\n");
 }
 
-export function renderInbox(entries: {
-  handoff: { id: string; fromPeerId: string; body: string; mode: string };
-  status: string;
-}[]): string {
+export type RenderInboxOpts = {
+  /** Resolve peer id → display name (dogfood: raw p_… is hard to read) */
+  peerName?: (peerId: string) => string | undefined;
+};
+
+export function renderInbox(
+  entries: {
+    handoff: {
+      id: string;
+      fromPeerId: string;
+      body: string;
+      mode: string;
+      attachments?: { kind: string; label?: string; content: string }[];
+    };
+    status: string;
+  }[],
+  opts?: RenderInboxOpts,
+): string {
   if (entries.length === 0) return "(inbox empty)";
   const lines: string[] = [];
   for (const e of entries) {
     const id = sanitizePeerText(e.handoff.id).slice(0, 64);
-    const from = sanitizePeerText(e.handoff.fromPeerId).slice(0, 64);
+    const rawFrom = e.handoff.fromPeerId;
+    const resolved = opts?.peerName?.(rawFrom);
+    const from = sanitizePeerText(
+      resolved ? `${resolved} (${rawFrom.slice(0, 12)})` : rawFrom,
+    ).slice(0, 80);
     const mode = sanitizePeerText(e.handoff.mode).slice(0, 32);
     const preview = sanitizePeerText(e.handoff.body)
       .replace(/\s+/g, " ")
       .slice(0, 48);
-    lines.push(`[${sanitizePeerText(e.status)}] ${id}`);
+    const nAtt = e.handoff.attachments?.length ?? 0;
+    const attNote = nAtt > 0 ? `  +${nAtt} attachment${nAtt === 1 ? "" : "s"}` : "";
+    lines.push(`[${sanitizePeerText(e.status)}] ${id}${attNote}`);
     lines.push(`  from: ${from}  mode: ${mode}`);
     lines.push(`  ${preview}`);
     lines.push("");

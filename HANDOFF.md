@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.1 approved (author-close, Low)**. Fable 필수 여부: WORKFLOW §5.1. 다음: Owner product priorities.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.2 approved (dogfood UX)**. 다음: Owner product priorities.
 
 ---
 
@@ -31,9 +31,9 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.13.1** |
+| **Product CLI** | `loom` v**0.13.2** |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.13.1** — **`approved` (author-close, Low backlog)** — not Fable 5 R{n}, not Owner sign-off |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.13.2** — dogfood UX author-close |
 | **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
@@ -58,6 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending) | **0.13.2** | dogfood UX: inbox names, share tips, host stop tip |
 | `676d4f3` | **0.13.1** | L-4 wire requestId correlation |
 | `e032731` | **0.13.0** | L-5 `--with-pack-embed` + host tip fix |
 | `fe416fb` | **0.12.2** | desktop Send handoff/chat + invite + smoke |

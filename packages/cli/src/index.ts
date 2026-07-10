@@ -73,7 +73,7 @@ import {
 import { spawn } from "bun";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.13.1";
+const VERSION = "0.13.2";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -201,7 +201,7 @@ async function stopStickyBeforeSessionChange() {
   if (!alive) return;
   await stopStickyHostProcess();
   process.stderr.write(
-    "\x1b[2mStopped sticky host (room session changing — run `loom host start` again)\x1b[0m\n",
+    "\x1b[2mStopped sticky host (room session changing — run `bun run loom host start` again)\x1b[0m\n",
   );
 }
 
@@ -259,8 +259,8 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
   const tokenPart =
     showToken && endpoint.token ? ` --token ${endpoint.token}` : "";
   const joinHint = needsRelayFlags
-    ? `loom --relay ${baseRelay}${tokenPart} room join ${env.inviteCode}`
-    : `loom room join ${env.inviteCode}`;
+    ? `bun run loom --relay ${baseRelay}${tokenPart} room join ${env.inviteCode}`
+    : `bun run loom room join ${env.inviteCode}`;
   console.log(`Share: ${joinHint}`);
   if (endpoint.token && !showToken) {
     console.log(
@@ -272,7 +272,12 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
     `Relay: ${url}${remote ? " (remote)" : endpoint.isLocal ? " (local)" : ""}`,
   );
   console.log("");
-  console.log("Next: loom listen   or   loom run claude");
+  console.log(
+    "Next: bun run loom listen   or   bun run loom run claude",
+  );
+  console.log(
+    "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root)\x1b[0m",
+  );
   client.close();
   process.exit(0);
 }
@@ -325,7 +330,12 @@ async function cmdRoomJoin(
   console.log(`Joined room. Invite: ${env.inviteCode}`);
   console.log(`Session: ${sessionPath()}`);
   console.log(`Relay: ${url}${remote ? " (remote)" : " (local)"}`);
-  console.log("Next: loom listen   or   loom run claude");
+  console.log(
+    "Next: bun run loom listen   or   bun run loom run claude",
+  );
+  console.log(
+    "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root)\x1b[0m",
+  );
   client.close();
   process.exit(0);
 }
@@ -734,10 +744,23 @@ async function cmdPack(sub: string | undefined, rest: string[], flags: Record<st
   }
 }
 
+async function peerNameResolver(): Promise<(id: string) => string | undefined> {
+  try {
+    const r = await opsListPeers();
+    const map = new Map(
+      r.peers.map((p) => [p.id, p.displayName] as const),
+    );
+    return (id: string) => map.get(id);
+  } catch {
+    return () => undefined;
+  }
+}
+
 async function cmdInbox() {
   const r = await opsListInbox();
   viaNote(r.source);
-  console.log(renderInbox(r.entries));
+  const peerName = await peerNameResolver();
+  console.log(renderInbox(r.entries, { peerName }));
   process.exit(0);
 }
 
@@ -748,7 +771,16 @@ async function cmdInboxAccept(id: string) {
     console.error(result.error ?? "accept failed");
     process.exit(1);
   }
-  console.log(formatIncomingHandoff(result.entry.handoff));
+  let fromPeer: import("@loom/protocol").PeerInfo | undefined;
+  try {
+    const peers = await opsListPeers();
+    fromPeer = peers.peers.find(
+      (p) => p.id === result.entry!.handoff.fromPeerId,
+    );
+  } catch {
+    /* offline roster ok */
+  }
+  console.log(formatIncomingHandoff(result.entry.handoff, fromPeer));
   console.log(
     `(accepted as ${result.session.displayName}, status=${result.entry.status})`,
   );
@@ -781,6 +813,11 @@ async function cmdHost(sub: string | undefined) {
   if (sub === "stop") {
     const r = await stopStickyHostProcess();
     console.log(r.message);
+    if (/no sticky host/i.test(r.message)) {
+      console.log(
+        "Tip: use the same --profile as host start, e.g. bun run loom --profile alice host stop",
+      );
+    }
     return;
   }
   if (sub === "status" || !sub) {

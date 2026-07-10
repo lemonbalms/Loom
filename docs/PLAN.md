@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.1** |
-| **Status** | **`approved` (author-close, Low backlog)** — L-4 wire `requestId` |
-| **Supersedes** | 0.13.0 |
+| **Version** | **0.13.2** |
+| **Status** | **`approved` (author-close, dogfood UX)** — inbox names, share tips |
+| **Supersedes** | 0.13.1 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **Not** R{n} / **not** Owner sign-off. Plan author (implementation agent) closed Low residual after ship; see Changelog 0.13.1. |
-| **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1** — next MINOR/security/protocol needs R{n}. |
+| **Approval** | author-close after real-use dogfood fixes (not R{n}). |
+| **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -48,7 +48,19 @@
 
 ### Changelog
 
-#### 0.13.1 — 2026-07-10 (`approved` — **author-close**, Low backlog)
+#### 0.13.2 — 2026-07-10 (`approved` — **author-close**, dogfood UX)
+
+**Why:** Real-use dogfood fixes after Owner request.
+
+| What | Why |
+|------|-----|
+| `renderInbox` resolves fromPeerId → displayName + attachment count | List showed raw `p_…` only; pack embed invisible until accept |
+| inbox accept loads peers for `formatIncomingHandoff` from-name | Same dogfood pain |
+| Share/Next tips: `bun run loom …` + PATH note | `loom: command not found` after create |
+| host stop tip when no host: same `--profile` | Stop without profile looked broken |
+| VERSION **0.13.2** | PATCH dogfood |
+
+#### 0.13.1 — 2026-07-10 (`superseded` by 0.13.2; was `approved` — **author-close**, Low backlog)
 
 **Why:** Close backlog **L-4 residual** — wire-level `requestId` on RPC request/reply (beyond FIFO waiters).
 
@@ -1064,5 +1076,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.12.2** desktop Send handoff/chat + invite | 2026-07-10 | **0.12.2** |
 | Plan author | implementation | **0.13.0** L-5 pack file embed opt-in | 2026-07-10 | **0.13.0** |
 | Plan author | implementation | **0.13.1** L-4 wire requestId — **`approved` author-close (Low)**; no R{n}, no Owner sign-off | 2026-07-10 | **0.13.1** |
+| Plan author | implementation | **0.13.2** dogfood UX (inbox names, share tips) author-close | 2026-07-10 | **0.13.2** |
 
-**구현 게이트:** **0.13.1** L-4/L-5 closed (**author-close** for 0.13.1). Next: Owner product priorities. Owner may still request R14 or reclassify status.
+**구현 게이트:** **0.13.2** dogfood fixes. Next: Owner product priorities.
