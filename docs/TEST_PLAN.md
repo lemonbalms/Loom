@@ -85,11 +85,14 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 | 8 | board 스냅샷 | task-board snapshot tests | P2 |
 | 9 | 에이전트 MCP | adapters tests (부분) | P2 실기기 |
 | 10 | LAN/원격 | auth.integration (부분) | P2 2머신 |
-| 11 | 회귀 묶음 | **smoke:desktop + bun test** | — |
+| 11 | 회귀 묶음 | **smoke:desktop + bun test + smoke:uc** | — |
 
 ```bash
 # 전체 자동 (CI 로컬 대응)
 bun test && bun run smoke:desktop
+
+# 사용 사례 CLI 스모크 (UC-0/1/3/5/6/7 핵심 — 격리 LOOM_TEST_HOME)
+bun run smoke:uc
 ```
 
 ---
@@ -274,11 +277,12 @@ bun run desktop
 
 | # | 명령 | 기대 |
 |---|------|------|
-| 11.1 | `bun test` | 전부 pass (현재 ~139) |
+| 11.1 | `bun test` | 전부 pass (현재 ~140) |
 | 11.2 | `bun run smoke:desktop` | status/peers/inbox/board/handoff/chat/401/stop |
-| 11.3 | (선택) `cd apps/desktop/src-tauri && cargo test` | Rust sticky path 단위 |
+| 11.3 | `bun run smoke:uc` | UC-0/1/3/5/6/7 CLI 시나리오 (격리 홈) |
+| 11.4 | (선택) `cd apps/desktop/src-tauri && cargo test` | Rust sticky path 단위 |
 
-**릴리스 전:** 11.1 + 11.2 필수.
+**릴리스 전:** 11.1 + 11.2 필수. **11.3 권장** (수동 UC-1/3/5/6 대체 가능).
 
 ---
 
@@ -346,6 +350,17 @@ Blockers:
 
 **Blockers:** none  
 **P0 release gate (TEST_PLAN §0.4):** 11.1 + 11.2 + UC-1 + UC-3 → **pass**
+
+### Test run — 2026-07-10 (`smoke:uc` automated)
+
+| Field | Value |
+|-------|--------|
+| **Command** | `bun run smoke:uc` |
+| **Build** | loom **0.13.5** |
+| **Covered** | UC-0,1,3,5,6,7 core (isolated `LOOM_TEST_HOME`) |
+| **Result** | **smoke-uc OK** (all checks) |
+
+Not covered by smoke:uc: UC-4 GUI, UC-8 snapshot multi-machine, UC-9 real agent CLIs, UC-10 LAN 2-machine, UC-5.4 slash.
 
 ---
 
