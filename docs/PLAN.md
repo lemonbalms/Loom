@@ -3,12 +3,13 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.2** |
-| **Status** | **`approved` (author-close, dogfood UX)** — inbox names, share tips |
-| **Supersedes** | 0.13.1 |
+| **Version** | **0.13.3** |
+| **Status** | **`approved` (author-close, P0 install DX)** — link:loom + PRIORITIES |
+| **Supersedes** | 0.13.2 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | author-close after real-use dogfood fixes (not R{n}). |
+| **Approval** | author-close (install DX / docs; not R{n}). |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. |
+| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -48,7 +49,19 @@
 
 ### Changelog
 
-#### 0.13.2 — 2026-07-10 (`approved` — **author-close**, dogfood UX)
+#### 0.13.3 — 2026-07-10 (`approved` — **author-close**, P0 install DX)
+
+**Why:** Short-term priorities doc + make `loom` easy to run without guessing PATH.
+
+| What | Why |
+|------|-----|
+| `docs/PRIORITIES.md` | P0=install DX, P1=trust, P2=durable inbox, P3=big features |
+| `scripts/loom` | Repo-local wrapper (`PATH=…/scripts`) |
+| `bun run link:loom` / `unlink:loom` | Bun global bin for `loom` |
+| README / USER_GUIDE install options A/B/C | Dogfood friction |
+| VERSION **0.13.3** | PATCH DX |
+
+#### 0.13.2 — 2026-07-10 (`superseded` by 0.13.3; was `approved` — **author-close**, dogfood UX)
 
 **Why:** Real-use dogfood fixes after Owner request.
 
@@ -1077,5 +1090,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.0** L-5 pack file embed opt-in | 2026-07-10 | **0.13.0** |
 | Plan author | implementation | **0.13.1** L-4 wire requestId — **`approved` author-close (Low)**; no R{n}, no Owner sign-off | 2026-07-10 | **0.13.1** |
 | Plan author | implementation | **0.13.2** dogfood UX (inbox names, share tips) author-close | 2026-07-10 | **0.13.2** |
+| Plan author | implementation | **0.13.3** PRIORITIES + link:loom install DX author-close | 2026-07-10 | **0.13.3** |
 
-**구현 게이트:** **0.13.2** dogfood fixes. Next: Owner product priorities.
+**구현 게이트:** **0.13.3** P0 install DX. Next: P1 trust (Owner/R14) or P2 durable inbox.

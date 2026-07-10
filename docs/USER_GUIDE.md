@@ -23,10 +23,19 @@ bun install
 
 | 방식 | 명령 | 비고 |
 |------|------|------|
-| 권장 | `bun run loom …` | PATH에 `loom` 없어도 됨 |
-| 전역 bin | `loom …` | 패키지 링크/설치 후에만 |
+| **A. 항상 안전** | `bun run loom …` | PATH 불필요, 레포 루트 |
+| **B. 글로벌 bin** | `bun run link:loom` 후 `export PATH="$HOME/.bun/bin:$PATH"` | 어디서나 `loom` |
+| **C. 레포 래퍼** | `export PATH="$PWD/scripts:$PATH"` | `scripts/loom` → bun CLI |
+| 해제 | `bun run unlink:loom` | B 링크 제거 |
 
-아래 예시는 모두 **레포 루트**에서 `bun run loom` 기준입니다.
+```bash
+bun run link:loom
+export PATH="${BUN_INSTALL:-$HOME/.bun}/bin:$PATH"
+loom --version
+```
+
+아래 예시는 **`bun run loom`** 기준 (A). 링크 후엔 `loom` 으로 바꿔 쓰면 됩니다.  
+단기 우선순위: [`PRIORITIES.md`](./PRIORITIES.md).
 
 ### 0.2 꼭 알아둘 개념
 

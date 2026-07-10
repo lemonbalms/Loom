@@ -102,7 +102,9 @@ bun test && bun run smoke:desktop
 | 0.2 | `bun run loom --version` | `loom v0.13.x` 등 버전 출력 | 🖐 |
 | 0.3 | `bun test` | 전부 pass | 🤖 |
 | 0.4 | `bun run smoke:desktop` | `smoke OK` | 🤖 |
-| 0.5 | 잘못된 `loom` (PATH 없음) | command not found — 가이드는 `bun run loom` 안내 | 🖐 |
+| 0.5 | `bun run link:loom` + PATH | `loom --version` 동작 | 🖐 |
+| 0.6 | `export PATH=$PWD/scripts:$PATH` | `loom --version` via scripts/loom | 🖐 |
+| 0.7 | PATH 없이 bare `loom` | command not found — A 또는 B/C 안내 | 🖐 |
 
 **실패 시:** 루트 cwd / bun 버전 / 의존성 먼저 확인.
 

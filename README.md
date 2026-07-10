@@ -11,7 +11,8 @@ Several people join the same **Room**; each runs their own agent; work and conte
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.13.2** (`approved` dogfood UX) |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.13.3** (`approved` install DX) |
+| **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
 | **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
 | **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
@@ -65,6 +66,7 @@ Loom/
 ├── docs/
 │   ├── PLAN.md                  # Product plan SSOT (versioned)
 │   ├── plan_review.md           # Review gate (R1…)
+│   ├── PRIORITIES.md            # What to do next (short-term)
 │   ├── USER_GUIDE.md            # End-user scenarios (Korean)
 │   ├── TEST_PLAN.md             # Per-scenario test checklist
 │   ├── PROTOCOL.md              # Wire protocol
@@ -105,10 +107,31 @@ Agent CLIs ──MCP/CLI──► Host ──WebSocket──► Relay
 git clone https://github.com/lemonbalms/Loom.git
 cd Loom
 bun install
+```
 
+### Make `loom` available (pick one)
+
+| 방식 | 명령 | 설명 |
+|------|------|------|
+| **A. Repo only** | `bun run loom …` | 항상 동작 (PATH 불필요) |
+| **B. Global bin** | `bun run link:loom` 후 `export PATH="$HOME/.bun/bin:$PATH"` | 어디서나 `loom …` |
+| **C. PATH wrapper** | `export PATH="$PWD/scripts:$PATH"` | 레포 `scripts/loom` 래퍼 |
+
+```bash
+# B — one-time link (recommended if you dogfood often)
+bun run link:loom
+export PATH="${BUN_INSTALL:-$HOME/.bun}/bin:$PATH"
+loom --version
+
+# Undo: bun run unlink:loom
+```
+
+### Two-profile handoff
+
+```bash
 # Terminal A — create room
 bun run loom --profile alice room create --name demo --as alice
-# note invite: LOOM-XXXX
+# note invite: LOOM-XXXX  (Share line uses bun run loom …)
 
 # Terminal B — join + handoff
 bun run loom --profile bob room join LOOM-XXXX --as bob

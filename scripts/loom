@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Repo-local loom wrapper — no global install required.
+# Usage from anywhere:
+#   /path/to/Loom/scripts/loom --version
+# Or add to PATH for this shell:
+#   export PATH="/path/to/Loom/scripts:$PATH"
+#   loom --profile alice peers
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec bun "$ROOT/packages/cli/src/index.ts" "$@"

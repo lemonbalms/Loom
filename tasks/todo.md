@@ -1,13 +1,13 @@
-# 0.13.0 — L-5 pack embed
+# 0.13.3 — PRIORITIES + install DX
 
-- [x] packToAttachments embedFiles + TOCTOU re-resolve
-- [x] CLI --with-pack-embed, MCP withPackEmbed
-- [x] tests + USER_GUIDE
-- [x] host tip: bun run loom
+- [x] docs/PRIORITIES.md
+- [x] scripts/loom, link-loom.sh, unlink-loom.sh
+- [x] package.json link:loom / unlink:loom
+- [x] README + USER_GUIDE install A/B/C
 
-## Next
+## Next (PRIORITIES)
 
-- L-4 residual requestId (optional)
-- Owner features
+1. P1 Owner sign or R14
+2. P2 durable relay inbox (needs Fable)
 
-`bun test` · `bun run loom handoff … --with-pack-embed`
+`bun run link:loom` · `loom --version`

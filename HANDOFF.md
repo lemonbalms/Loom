@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.2 approved (dogfood UX)**. 다음: Owner product priorities.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.3** + PRIORITIES P0 done (link:loom). 다음: P1 trust 또는 P2 durable inbox.
 
 ---
 
@@ -31,9 +31,10 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.13.2** |
+| **Product CLI** | `loom` v**0.13.3** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.13.2** — dogfood UX author-close |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.13.3** — install DX author-close |
+| **Priorities** | `docs/PRIORITIES.md` (P0 install done → P1/P2) |
 | **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
@@ -58,6 +59,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending) | **0.13.3** | PRIORITIES.md + link:loom install DX |
 | `9c4e46c` | **0.13.2** | dogfood UX: inbox names, share tips, host stop tip |
 | `676d4f3` | **0.13.1** | L-4 wire requestId correlation |
 | `e032731` | **0.13.0** | L-5 `--with-pack-embed` + host tip fix |
@@ -108,9 +110,10 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | Owner product priorities | live board sync, polish, etc. |
-| Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** (MINOR/보안/프로토콜/호환 제거 = 필수) |
-| Doc | Test plan | `docs/TEST_PLAN.md` — UC-0…11 검증 체크리스트 |
+| **Next** | P1 trust (Owner/R14) or P2 durable inbox | see PRIORITIES.md |
+| Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** |
+| Doc | Priorities | `docs/PRIORITIES.md` |
+| Doc | Test plan | `docs/TEST_PLAN.md` |
 | Done | L-4 requestId | **0.13.1** |
 | Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
 | Doc | User guide | `docs/USER_GUIDE.md` |
