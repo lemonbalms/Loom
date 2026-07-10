@@ -42,6 +42,23 @@
 
 ## Gate log
 
+### 0.16.0 — Work bus board notify + loom work (pending-review)
+
+| Field | Value |
+|-------|--------|
+| **PLAN** | v0.16.0 (`pending-review`) |
+| **Date** | 2026-07-10 |
+| **Review** | R17 required |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | Handoff is delivery SSOT (durable, notify when online). Board is local file. Receive path is pull (`check_handoffs`). No CRDT. 0.15 tags/purpose exist. |
+| Known unknowns | (1) Default notify-on-assignee vs require `--notify` — plan locks **default on when --as set**. (2) watch poll vs sticky events — plan locks **poll v1**. (3) Re-assign spam if assign called twice — plan: one handoff per assign call. |
+| Unknown knowns | Users think “board = work queue”; without bridge they are wrong. |
+| Unknown unknowns | Flood of notify if scripts loop board add; mitigate with docs + no notify on status-only updates. |
+
+**Next:** R17 → implement or pending-revision locks only.
+
 ### 0.15.0 — Purpose-based sprint 1 (pending-review)
 
 | Field | Value |
@@ -106,3 +123,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-09 | R13 fill; 0.11.1 locks |
 | 2026-07-10 | 0.14.0 P2 durable inbox unknowns |
 | 2026-07-10 | 0.15.0 purpose-based sprint 1 unknowns |
+| 2026-07-10 | 0.16.0 work bus unknowns |

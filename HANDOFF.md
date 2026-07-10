@@ -16,7 +16,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> PLAN **0.15.1** `approved` — purpose sprint shipped (purpose/verify/receive path, M-24/M-25). CLI **0.15.1**.
+> PLAN **0.16.0** `pending-review` — Work bus (board→handoff notify + `loom work`/`watch`). **R17**. Code **0.15.1**. **Do not implement** until approved.
 
 ---
 
@@ -34,9 +34,9 @@ North star: *connect your agents — and your teammates.*
 |------|--------|
 | **Product CLI** | `loom` v**0.15.1** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.15.1** — purpose sprint shipped |
-| **Priorities** | P0–P2 + purpose loop done; P3 deferred |
-| **Review gate** | Open blocking **none** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.16.0** — work bus `pending-review` |
+| **Priorities** | real-time work delivery via handoff bus |
+| **Review gate** | **R17 awaiting** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -114,9 +114,9 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | P3 only if Owner picks | CRDT / cloud — MINOR+R{n} |
-| Optional | L-30 purpose last-writer residual | accepted like board |
-| Done | 0.15.1 purpose + M-24/M-25 + R16 close | |
+| **Now** | **R17** on PLAN **0.16.0** | Claude `/advisor fable` → plan_review R17; no implement |
+| After approved | Implement board notify + `loom work`/`watch` | Then VERSION |
+| Done | 0.15.1 purpose sprint | |
 
 ### 2. Smoke / dogfood commands
 

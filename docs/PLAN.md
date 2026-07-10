@@ -3,13 +3,13 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.15.1** |
-| **Status** | **`approved` (author-close)** — R16 M-24/M-25 locks applied; purpose sprint implement allowed |
-| **Supersedes** | 0.15.0 |
+| **Version** | **0.16.0** |
+| **Status** | **`pending-review`** — Work bus: board→handoff notify + CLI work feed (MINOR) |
+| **Supersedes** | 0.15.1 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **author-close** after R16 Decision notes (PATCH locks, no R16b). Provenance: R16 + 0.15.1. **Implement under 0.15.1.** |
-| **Fable 5 when** | R16 closed via PATCH. Re-R{n} only if implement exceeds locks. |
-| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — purpose loop |
+| **Approval** | Awaiting **R17** (Fable 5 / `/advisor fable`). **Do not implement** until approved. |
+| **Fable 5 when** | **Required** — auto-notify handoff from board + new CLI surface (work/watch). |
+| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — real-time work delivery |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -49,7 +49,125 @@
 
 ### Changelog
 
-#### 0.15.1 — 2026-07-10 (`approved` — **author-close**, R16 M-24/M-25 locks)
+#### 0.16.0 — 2026-07-10 (`pending-review` — **Work bus: deliver tasks to CLI now**)
+
+**Why:** Owner goal: **작업 내역을 실시간으로 전달하고, 받아서 바로 처리**. Purpose (0.15) + durable handoff (0.14) exist, but **board cards do not push work** and there is **no first-class “my work” CLI feed**. Dogfood still requires humans to remember `handoff` text; assignees do not learn about board tasks unless someone handoffs manually.
+
+**Product one-liner:**  
+*Board (and explicit work CLI) creates/assigns work → **handoff is the delivery bus** → assignee inbox notifies when online → `loom work` / receive path surfaces items for immediate claim/process. Not multi-writer CRDT board.*
+
+**Review impact:** MINOR — behavior change on board mutations (optional/default notify), new CLI commands, possibly sticky poll. **Wire protocol v1 unchanged** (reuse handoff envelopes). **R17 required.**
+
+##### Architecture lock (SSOT)
+
+| Concern | SSOT |
+|---------|------|
+| **Delivery / queue / notify / durable** | **Handoff + inbox** (existing) |
+| **Status tracking** | Board task (`handoffId` link when notify used) |
+| **Purpose alignment** | Purpose card + body tags `[GOAL]` / `[R-REQUEST]` / … (0.15) |
+| **Live multi-writer board** | **Out** — P3 CRDT later |
+
+```text
+board add/assign --notify (or policy default)
+    → opsHandoff @assignee  body with tags + task:<id>
+    → enqueue (+ notify if online)
+    → assignee: sticky/run banner + loom work [watch] + check_handoffs → claim → process
+    → [DONE]/board set done
+```
+
+##### In (scope) — S1 + S2
+
+**S1 — Board → handoff bridge**
+
+| What | Why |
+|------|-----|
+| `loom board add "title" --as @peer` **with notify** | Card UX creates real work delivery |
+| Flag: `--notify` **or** default when `--as` present | Review: lock **default = notify when assignee set**; bare `board add` without `--as` = no handoff |
+| `loom board assign <taskId> @peer --notify` | Re-assign pushes new handoff (or only if status still todo/doing) |
+| Handoff body template (fixed shape) | Machine + human parse |
+| Set `task.handoffId` from ack when notify succeeds | Board ↔ inbox link |
+| MCP `add_task` / `update_task` optional `notify: true` | Agents can create work the same way |
+| Fail closed if handoff `peer_unknown` | Do not pretend card was delivered; print error; task may still exist locally |
+
+**Body template (plan lock):**
+
+```text
+[GOAL]
+task:<taskId>
+title: <sanitized title>
+assignee: @name or peerId
+
+<optional notes>
+
+(Untrusted handoff — review before acting.)
+```
+
+For review-shaped work, caller may use `[R-REQUEST]` instead of `[GOAL]` via `--tag R-REQUEST` (optional; default `[GOAL]` for board notify).
+
+**S2 — CLI work feed**
+
+| What | Why |
+|------|-----|
+| `loom work` | List **my** open work: (1) inbox pending, (2) board tasks where assignee matches me and status ∈ todo\|doing\|blocked |
+| `loom work watch` | Poll interval default **2s** (flag `--interval ms`); print new inbox ids / task changes to stderr; exit on Ctrl+C |
+| `loom run *` start banner | Extend 0.15 banner: pending inbox **and** count of my open board tasks |
+| Hint text | “Prefer loom work / check_handoffs; board --notify delivers via handoff” |
+| Docs | USER_GUIDE “Work bus”; DOGFOOD_LOOP one-liner |
+
+**Watch implementation (plan lock):**  
+v1 = **client poll** of `list_inbox` + local `loadTaskBoard` (and sticky RPC when host up). **No new relay envelope** for board.changed in 0.16.0.
+
+##### Out (non-goals)
+
+| Out | Why |
+|-----|-----|
+| CRDT / multi-machine live board merge | P3; not required for deliver-and-process |
+| Auto-claim without agent/human | Untrusted body; remains out (0.15) |
+| PTY inject into agent stdin | Phase 1.5 no-go |
+| sticky `board.changed` fanout / new wire types | Can be 0.16.x follow-up if poll insufficient |
+| Desktop-only work UI | CLI first |
+| Changing durable inbox / claim first-wins | Orthogonal |
+| Default notify on **every** board set (status spam) | Only add/assign notify; status changes do not auto-handoff unless explicit later flag |
+
+##### Security / failure locks (for R17)
+
+| Case | Required behavior |
+|------|-------------------|
+| Notify body | Full sanitize; untrusted banner on receive unchanged |
+| Assignee resolution | Same as handoff (`@name` / peer id / unknown → error, no silent drop to `*`) |
+| Spam | One handoff per add/assign notify; no loop on board set done |
+| Local board residual | Same-UID multi-profile share board file — accepted (like today) |
+| watch CPU | Default interval ≥ 1s; document |
+| MCP notify | If `notify: true` and no session/room → error |
+| Partial failure | Task created but handoff fails → non-zero CLI + message; do not set handoffId |
+
+##### Acceptance (after R17 approved)
+
+1. `board add "T" --as @bob` (bob on roster) → bob inbox has `[GOAL]` body with `task:task_…`; task.handoffId set.  
+2. Without `--as`, `board add` does **not** handoff.  
+3. Unknown assignee → handoff not silent-success; error visible.  
+4. `loom work` as bob shows that task and/or inbox row.  
+5. `loom work watch` prints a line when new inbox item arrives (test with short interval + fake enqueue).  
+6. `loom run` banner mentions open work counts when non-zero.  
+7. `bun test` green; no protocol version bump.
+
+##### Implementation sketch (not approved work)
+
+| Area | Touch |
+|------|--------|
+| `packages/host` task-board + room-ops helper `notifyTaskHandoff` | |
+| `packages/cli` board flags, `cmdWork`, run banner | |
+| `packages/mcp-server` add_task notify param | |
+| `packages/adapters` hints | |
+| tests | board notify unit; work list filter |
+| docs | USER_GUIDE, DOGFOOD_LOOP |
+| VERSION | bump on implement |
+
+**Unknowns:** `docs/UNKNOWNS.md` §0.16.0.
+
+**Not implemented.** Awaiting **R17**.
+
+#### 0.15.1 — 2026-07-10 (`superseded` by 0.16.0; was `approved` — **author-close**, R16 M-24/M-25 locks + purpose implement)
 
 **Why:** R16 `pending-revision` — verify[] exec trust boundary. PLAN-text locks only; no architecture change. **No R16b.**
 
@@ -1333,18 +1451,18 @@ Human: `fable inbox` → `accept`.
 - **Not** live remote sync — intentional
 - **0.7.1:** timestamp clamp, always-parse snapshot, strict handoff id match
 
-### Phase 6 — Purpose-based sprint 1 — **planned 0.15.0** (`pending-review`)
+### Phase 7 — Work bus (deliver & process) — **planned 0.16.0** (`pending-review`)
 
-**목표:** Room purpose 앵커 + handoff intent 계약 + receive-side claim 유도 + verify lite.
+**목표:** 작업카드 → handoff 전달 → CLI `work`/`watch`로 즉시 인지·처리. CRDT 아님.
 
 | Item | Status |
 |------|--------|
-| Purpose card schema v1 | planned |
-| CLI/MCP purpose + verify lite | planned |
-| Receive path / agent hint contract | planned |
-| Handoff tag convention | planned |
-| R16 | **open** |
-| Implement | **blocked on R16** |
+| board add/assign → handoff notify | planned |
+| `loom work` / `work watch` | planned |
+| R17 | **open** |
+| Implement | **blocked on R17** |
+
+### Phase 6 — Purpose-based sprint 1 — **done 0.15.1**
 
 ### Phase 5 — Durable relay state (P2) — **done 0.14.1–0.14.2**
 
@@ -1429,7 +1547,8 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
 | M4.3b Tauri desktop shell | **0.11.2** shell + **0.12.0** Board via sticky |
 | **M5 durable relay state (P2)** | **0.14.1–0.14.2** done |
-| **M6 purpose-based sprint 1** | **0.15.0** plan `pending-review` (R16) |
+| **M6 purpose-based sprint 1** | **0.15.1** done |
+| **M7 work bus (board notify + work CLI)** | **0.16.0** plan `pending-review` (R17) |
 
 ---
 
@@ -1551,5 +1670,6 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | Reviewer | Claude + Fable 5 | **R16 pending-revision** (M-24/M-25) | 2026-07-10 | 0.15.0 reviewed |
 | Plan author | plan | **0.15.1** R16 locks — **author-close** (no R16b) | 2026-07-10 | **0.15.1** `approved` |
 | Plan author | implementation | **0.15.1** purpose + receive path + verify lite | 2026-07-10 | **0.15.1** |
+| Plan author | plan | **0.16.0** work bus (board notify + loom work) MINOR draft | 2026-07-10 | **0.16.0** `pending-review` |
 
-**구현 게이트:** PLAN + code **0.15.1**.
+**구현 게이트:** code **0.15.1**. PLAN **0.16.0** `pending-review` — **no implement until R17 approved**.

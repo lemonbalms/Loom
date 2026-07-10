@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/PRIORITIES.md` |
-| **기준 시점** | PLAN **v0.15.0** (`pending-review`) · 2026-07-10 |
+| **기준 시점** | PLAN **v0.16.0** (`pending-review`) · 2026-07-10 |
 | **목적** | “지금 무엇을 할지” Owner·에이전트 공통 SSOT (단기) |
 | **관련** | [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`TEST_PLAN.md`](./TEST_PLAN.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) |
 
@@ -35,7 +35,8 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 | **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | **R14 done** | **done 0.13.4** |
 | **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **done 0.14.1–0.14.2** |
 | **P2.5** | **목적 루프** | Purpose card · handoff contracts · receive claim | **R16** | **done 0.15.1** |
-| **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 |
+| **P2.6** | **작업 버스** | board→handoff 전달 · `loom work`/`watch` · 즉시 처리 | **R17** | **PLAN 0.16.0 pending-review** |
+| **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 (작업 전달과 별개) |
 | — | Low 백로그 더 파기 | — | — | **하지 않음** (소진) |
 
 ---
@@ -111,8 +112,9 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 ③ P1 Owner 사인 또는 R14     ← done R14 (0.13.4)
 ④ P2 durable inbox           ← done 0.14.1–0.14.2
 ⑤ 문서 honesty / smoke:durable     ← done
-⑥ Purpose-based sprint 1 (0.15.0) ← **pending-review R16**
-⑦ P3 only if Owner picks
+⑥ Purpose-based sprint 1          ← done 0.15.1
+⑦ Work bus (board notify + work)  ← **0.16.0 pending-review R17**
+⑧ P3 CRDT only if Owner still wants multi-writer board
 ```
 
 ---
@@ -129,6 +131,7 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 | 2026-07-10 | P2 PLAN **0.14.0** draft pending-review (R15) |
 | 2026-07-10 | R15 → **0.14.1** implement · **0.14.2** harden · docs honesty wave |
 | 2026-07-10 | **0.15.0** Purpose-based sprint 1 draft (R16) |
+| 2026-07-10 | **0.15.1** purpose implement; **0.16.0** work bus draft (R17) |
 
 ---
 

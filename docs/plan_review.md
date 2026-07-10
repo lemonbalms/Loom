@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.15.1** `approved` (author-close) — R16 M-24/M-25 locks applied. Purpose sprint implement allowed.  
+> **최신:** PLAN **v0.16.0** `pending-review` — Work bus (board→handoff + `loom work`). Awaiting **R17**.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| *(none)* | | | **0.15.1** approved — implement purpose sprint |
+| **R17** | **v0.16.0** | **awaiting** | Work bus — Claude **must** `/advisor fable` then Review R17. **Do not implement.** |
 
 ---
 
@@ -21,7 +21,7 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| *(none)* | | | |
+| *(none yet — R17 not written)* | | | |
 
 ---
 
@@ -74,6 +74,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
+| **R17** | **v0.16.0** | **awaiting** | Work bus board notify + loom work — handoff 2026-07-10 |
 | **R16** | v0.15.0 → **0.15.1** | pending-revision → **closed (author-close)** | M-24/M-25 locked — body below |
 | **R15** | v0.14.0 → **0.14.1** | pending-revision → **closed (author-close)** | M-21/22/23 locked in PLAN 0.14.1 — body below |
 | **R14** | v0.13.3 code · **0.13.4** plan | **approved** | P1-B cumulative trust — body below |
