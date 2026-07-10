@@ -25,6 +25,9 @@ describe("sticky host IPC (Phase 4.0a)", () => {
 
   beforeAll(async () => {
     mkdirSync(dir, { recursive: true });
+    process.env.LOOM_TEST_HOME = dir;
+    const { resetStateHomeDirCache } = await import("./session-store");
+    resetStateHomeDirCache();
     relay.start();
 
     // Alice creates room
@@ -78,6 +81,13 @@ describe("sticky host IPC (Phase 4.0a)", () => {
     relay.stop();
     clearStickyMeta(sessionFile);
     delete process.env.LOOM_SESSION;
+    delete process.env.LOOM_TEST_HOME;
+    try {
+      const { resetStateHomeDirCache } = await import("./session-store");
+      resetStateHomeDirCache();
+    } catch {
+      /* */
+    }
     try {
       rmSync(dir, { recursive: true, force: true });
     } catch {
@@ -131,6 +141,39 @@ describe("sticky host IPC (Phase 4.0a)", () => {
       body: JSON.stringify({ op: "ping" }),
     });
     expect(res.status).toBe(401);
+  });
+
+  test("0.12 board: list_tasks / add_task / update_task via sticky", async () => {
+    const empty = await stickyRpc({ op: "list_tasks" }, { meta: sticky!.meta });
+    expect(empty.ok).toBe(true);
+    if (empty.ok && empty.op === "list_tasks") {
+      expect(empty.count).toBe(0);
+    }
+
+    const added = await stickyRpc(
+      { op: "add_task", title: "from sticky board", status: "todo" },
+      { meta: sticky!.meta },
+    );
+    expect(added.ok).toBe(true);
+    if (!added.ok || added.op !== "add_task") throw new Error("add_task failed");
+    expect(added.task.title).toBe("from sticky board");
+    const id = added.task.id;
+
+    const listed = await stickyRpc({ op: "list_tasks" }, { meta: sticky!.meta });
+    expect(listed.ok).toBe(true);
+    if (listed.ok && listed.op === "list_tasks") {
+      expect(listed.count).toBeGreaterThanOrEqual(1);
+      expect(listed.board?.tasks.some((t) => t.id === id)).toBe(true);
+    }
+
+    const upd = await stickyRpc(
+      { op: "update_task", id, status: "doing" },
+      { meta: sticky!.meta },
+    );
+    expect(upd.ok).toBe(true);
+    if (upd.ok && upd.op === "update_task") {
+      expect(upd.task.status).toBe("doing");
+    }
   });
 
   test("F-2: resolveLiveHostMeta null when session room/peer diverges", () => {

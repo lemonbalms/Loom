@@ -34,6 +34,9 @@ const peersList = document.getElementById("peers-list");
 const peersMeta = document.getElementById("peers-meta");
 const inboxList = document.getElementById("inbox-list");
 const inboxMeta = document.getElementById("inbox-meta");
+const boardList = document.getElementById("board-list");
+const boardMeta = document.getElementById("board-meta");
+const STATUSES = ["todo", "doing", "done", "blocked", "cancelled"];
 
 function showBanner(kind, message) {
   banner.classList.remove("hidden", "ok", "warn", "bad");
@@ -230,11 +233,95 @@ async function refreshInbox() {
   }
 }
 
+async function refreshBoard() {
+  clearChildren(boardList);
+  try {
+    const r = await invoke("list_tasks");
+    setText(boardMeta, r.message || "");
+    if (!r.ok) {
+      const empty = el("li", "empty");
+      setText(empty, r.message || "Host unavailable");
+      boardList.appendChild(empty);
+      return;
+    }
+    if (!r.tasks?.length) {
+      const empty = el("li", "empty");
+      setText(empty, "No tasks — add one above");
+      boardList.appendChild(empty);
+      return;
+    }
+    for (const t of r.tasks) {
+      const li = el("li", "card");
+      const head = el("div", "card-head");
+      const title = el("strong");
+      setText(title, t.title || t.id);
+      const id = el("span", "muted");
+      setText(id, t.id);
+      const sel = el("select", "status-select");
+      for (const s of STATUSES) {
+        const opt = el("option");
+        opt.value = s;
+        setText(opt, s);
+        if (s === t.status) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener("change", async () => {
+        sel.disabled = true;
+        try {
+          const res = await invoke("update_task", { id: t.id, status: sel.value });
+          showBanner(res.ok ? "ok" : "warn", res.message || "updated");
+          await refreshBoard();
+        } catch (err) {
+          showBanner("bad", err?.message || String(err));
+          sel.disabled = false;
+        }
+      });
+      head.appendChild(title);
+      head.appendChild(sel);
+      head.appendChild(id);
+      li.appendChild(head);
+      if (t.notes) {
+        const notes = el("p", "body-text");
+        setText(notes, t.notes);
+        li.appendChild(notes);
+      }
+      if (t.assignee) {
+        const asg = el("p", "muted");
+        setText(asg, `assignee: ${t.assignee}`);
+        li.appendChild(asg);
+      }
+      boardList.appendChild(li);
+    }
+  } catch (e) {
+    const empty = el("li", "empty");
+    setText(empty, e?.message || String(e));
+    boardList.appendChild(empty);
+  }
+}
+
 async function refreshAll() {
   await refreshStatus();
   await refreshPeers();
   await refreshInbox();
+  await refreshBoard();
 }
+
+document.getElementById("board-add").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const input = document.getElementById("board-title");
+  const title = (input.value || "").trim();
+  if (!title) return;
+  try {
+    const res = await invoke("add_task", { title, status: "todo" });
+    showBanner(res.ok ? "ok" : "warn", res.message || (res.ok ? "added" : "failed"));
+    if (res.ok) {
+      input.value = "";
+      await refreshBoard();
+    }
+  } catch (e) {
+    showBanner("bad", e?.message || String(e));
+  }
+});
 
 // Tabs
 document.querySelectorAll(".tab").forEach((tab) => {

@@ -1,15 +1,14 @@
-# 0.11.2 — desktop shell (this wave)
+# 0.12.0 — board + dogfood
 
-- [x] apps/desktop Tauri 2 scaffold
-- [x] Rust sticky meta + RPC (token not to JS)
-- [x] UI Status/Peers/Inbox + CTAs + textContent
-- [x] cargo test (3 pass)
-- [x] PLAN/HANDOFF/VERSION 0.11.2
+- [x] Dogfood sticky RPC path (status/peers/inbox/401)
+- [x] sticky list_tasks / add_task / update_task
+- [x] desktop Board tab
+- [x] smoke:desktop script
+- [x] PLAN/VERSION 0.12.0
 
 ## Next
 
-- Dogfood with live host
-- Board UI later
-- Optional: strip unused StickyMeta warn noise
+- GUI polish / multi-window later
+- L-5 when pack embed ships
 
-`bun run desktop` · `bun run status`
+`bun run smoke:desktop` · `bun run desktop`

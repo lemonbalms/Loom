@@ -3,10 +3,10 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.11.2** |
-| **Status** | **`approved`** — M4.3b thin desktop shell implemented (`apps/desktop`) |
-| **Supersedes** | 0.11.1 |
-| **Last updated** | 2026-07-09 |
+| **Version** | **0.12.0** |
+| **Status** | **`approved`** — sticky board RPC + desktop Board tab (M-18 A) |
+| **Supersedes** | 0.11.2 |
+| **Last updated** | 2026-07-10 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -46,7 +46,22 @@
 
 ### Changelog
 
-#### 0.11.2 — 2026-07-09 (`approved`)
+#### 0.12.0 — 2026-07-10 (`approved`)
+
+**Why:** Close M-18 deferral with **option A** — board via sticky host RPC + desktop Board tab. Dogfood sticky path automated.
+
+| What | Why |
+|------|-----|
+| sticky `list_tasks` / `add_task` / `update_task` | Same local board file as CLI/MCP; F-3 serialized |
+| Desktop Board tab + add/status update | Product surface; textContent-only (M-20) |
+| `bun run smoke:desktop` | Headless dogfood (status/peers/inbox/board/401) |
+| CLI / desktop VERSION **0.12.0** | Parity |
+
+Security: titles/notes sanitized on sticky out; no token to webview; no new bind.
+
+No re-review required beyond R13 locks (Board path A was listed option; XSS/transport unchanged).
+
+#### 0.11.2 — 2026-07-09 (`superseded` by 0.12.0; was `approved`)
 
 **Why:** Implement M4.3b thin **Tauri desktop shell** per **0.11.1** locks.
 
@@ -879,7 +894,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | **M4.1 context pack** | **done** (0.5.0 R7 + 0.5.1 L-1–L-3) |
 | **M4.2 task board** | **done** (0.6.1 H-7/M-8/M-9) |
 | **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
-| M4.3b Tauri desktop shell | **0.11.2** **done** (thin shell; no Board) |
+| M4.3b Tauri desktop shell | **0.11.2** shell + **0.12.0** Board via sticky |
 
 ---
 
@@ -973,5 +988,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Reviewer | Fable 5 + implementer | R13 **pending-revision** (M-18/M-19/M-20) | 2026-07-09 | 0.11.0 reviewed |
 | Plan author | plan | **0.11.1** R13 locks (M-18 C, M-19 Rust, M-20 textContent) | 2026-07-09 | **0.11.1** `approved` |
 | Plan author | implementation | **0.11.2** `apps/desktop` thin shell | 2026-07-09 | **0.11.2** |
+| Plan author | implementation | **0.12.0** sticky board + desktop Board + smoke | 2026-07-10 | **0.12.0** |
 
-**구현 게이트:** **0.11.2 shipped** thin desktop. Next: dogfood UI polish / Board UI later / L-5 embed.
+**구현 게이트:** **0.12.0** desktop Status/Peers/Inbox/**Board**. Next: dogfood GUI polish / L-5 embed / Owner.

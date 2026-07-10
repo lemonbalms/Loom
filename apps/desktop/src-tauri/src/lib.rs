@@ -85,6 +85,64 @@ struct ClaimDto {
     claimed: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskDto {
+    id: String,
+    title: String,
+    status: String,
+    assignee: Option<String>,
+    notes: Option<String>,
+    updated_at: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BoardDto {
+    ok: bool,
+    code: String,
+    message: String,
+    room_id: Option<String>,
+    room_name: Option<String>,
+    tasks: Vec<TaskDto>,
+    count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskMutDto {
+    ok: bool,
+    code: String,
+    message: String,
+    task: Option<TaskDto>,
+}
+
+fn task_from_json(t: &serde_json::Value) -> Option<TaskDto> {
+    Some(TaskDto {
+        id: t.get("id")?.as_str()?.to_string(),
+        title: t
+            .get("title")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
+        status: t
+            .get("status")
+            .and_then(|x| x.as_str())
+            .unwrap_or("todo")
+            .to_string(),
+        assignee: t
+            .get("assignee")
+            .and_then(|x| x.as_str())
+            .map(str::to_string),
+        notes: t.get("notes").and_then(|x| x.as_str()).map(str::to_string),
+        updated_at: t
+            .get("updatedAt")
+            .or_else(|| t.get("updated_at"))
+            .and_then(|x| x.as_str())
+            .map(str::to_string),
+    })
+}
+
 fn client_from_state(state: &AppState) -> StickyClient {
     let guard = state.session_override.lock().ok();
     let override_path = guard.and_then(|g| g.clone());
@@ -446,6 +504,189 @@ fn claim_handoff(state: State<'_, AppState>, id: String, via: Option<String>) ->
     }
 }
 
+#[tauri::command]
+fn list_tasks(state: State<'_, AppState>) -> BoardDto {
+    let client = client_from_state(&state);
+    let meta = match client.load_meta() {
+        Ok(m) => m,
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            return BoardDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                room_id: None,
+                room_name: None,
+                tasks: vec![],
+                count: 0,
+            };
+        }
+    };
+    match client.rpc(&meta, serde_json::json!({ "op": "list_tasks" })) {
+        Ok(v) if v.get("ok").and_then(|x| x.as_bool()) == Some(true) => {
+            let board = v.get("board");
+            let tasks: Vec<TaskDto> = board
+                .and_then(|b| b.get("tasks"))
+                .and_then(|x| x.as_array())
+                .map(|arr| arr.iter().filter_map(task_from_json).collect())
+                .unwrap_or_default();
+            let count = v
+                .get("count")
+                .and_then(|x| x.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(tasks.len());
+            BoardDto {
+                ok: true,
+                code: "ok".into(),
+                message: format!("{count} tasks"),
+                room_id: board
+                    .and_then(|b| b.get("roomId"))
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string),
+                room_name: board
+                    .and_then(|b| b.get("roomName"))
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string),
+                tasks,
+                count,
+            }
+        }
+        Ok(v) => BoardDto {
+            ok: false,
+            code: "refused".into(),
+            message: v
+                .get("error")
+                .and_then(|x| x.as_str())
+                .unwrap_or("list_tasks failed")
+                .into(),
+            room_id: None,
+            room_name: None,
+            tasks: vec![],
+            count: 0,
+        },
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            BoardDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                room_id: None,
+                room_name: None,
+                tasks: vec![],
+                count: 0,
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn add_task(
+    state: State<'_, AppState>,
+    title: String,
+    status: Option<String>,
+) -> TaskMutDto {
+    let client = client_from_state(&state);
+    let meta = match client.load_meta() {
+        Ok(m) => m,
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            return TaskMutDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                task: None,
+            };
+        }
+    };
+    let mut body = serde_json::json!({ "op": "add_task", "title": title });
+    if let Some(s) = status {
+        body["status"] = serde_json::Value::String(s);
+    }
+    match client.rpc(&meta, body) {
+        Ok(v) if v.get("ok").and_then(|x| x.as_bool()) == Some(true) => TaskMutDto {
+            ok: true,
+            code: "ok".into(),
+            message: "added".into(),
+            task: v.get("task").and_then(task_from_json),
+        },
+        Ok(v) => TaskMutDto {
+            ok: false,
+            code: "refused".into(),
+            message: v
+                .get("error")
+                .and_then(|x| x.as_str())
+                .unwrap_or("add_task failed")
+                .into(),
+            task: None,
+        },
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            TaskMutDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                task: None,
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn update_task(
+    state: State<'_, AppState>,
+    id: String,
+    status: Option<String>,
+    title: Option<String>,
+) -> TaskMutDto {
+    let client = client_from_state(&state);
+    let meta = match client.load_meta() {
+        Ok(m) => m,
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            return TaskMutDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                task: None,
+            };
+        }
+    };
+    let mut body = serde_json::json!({ "op": "update_task", "id": id });
+    if let Some(s) = status {
+        body["status"] = serde_json::Value::String(s);
+    }
+    if let Some(t) = title {
+        body["title"] = serde_json::Value::String(t);
+    }
+    match client.rpc(&meta, body) {
+        Ok(v) if v.get("ok").and_then(|x| x.as_bool()) == Some(true) => TaskMutDto {
+            ok: true,
+            code: "ok".into(),
+            message: "updated".into(),
+            task: v.get("task").and_then(task_from_json),
+        },
+        Ok(v) => TaskMutDto {
+            ok: false,
+            code: "refused".into(),
+            message: v
+                .get("error")
+                .and_then(|x| x.as_str())
+                .unwrap_or("update_task failed")
+                .into(),
+            task: None,
+        },
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            TaskMutDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                task: None,
+            }
+        }
+    }
+}
+
 /// Dev/test helper: never exposes token. Confirms meta path resolution only.
 #[tauri::command]
 fn debug_paths(state: State<'_, AppState>) -> serde_json::Value {
@@ -472,6 +713,9 @@ pub fn run() {
             list_peers,
             list_inbox,
             claim_handoff,
+            list_tasks,
+            add_task,
+            update_task,
             debug_paths,
         ])
         .run(tauri::generate_context!())

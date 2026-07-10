@@ -1,7 +1,7 @@
 {
   "name": "@loom/desktop",
   "private": true,
-  "version": "0.11.2",
+  "version": "0.12.0",
   "description": "Loom desktop shell (Tauri 2) — sticky host UI",
   "scripts": {
     "dev": "tauri dev",

@@ -21,6 +21,13 @@ import {
 import type { StickyRpcRequest, StickyRpcResponse } from "./sticky-rpc";
 import { sanitizePeerText, sanitizeHandoffForOutput } from "@loom/protocol";
 import { timingSafeTokenEqual } from "@loom/protocol";
+import {
+  addTask,
+  loadTaskBoard,
+  parseTaskStatus,
+  updateTask,
+  type TaskStatus,
+} from "./task-board";
 
 export type StickyServer = {
   meta: StickyHostMeta;
@@ -177,6 +184,95 @@ export async function startStickyServer(opts?: {
               handoff: sanitizeHandoffForOutput(result.entry.handoff),
             },
           };
+        }
+        case "list_tasks": {
+          // Local room board (same path as CLI/MCP); sanitize display fields
+          const board = loadTaskBoard(session.roomId);
+          if (!board) {
+            return { ok: true, op: "list_tasks", board: null, count: 0 };
+          }
+          const safe = {
+            ...board,
+            roomName: board.roomName
+              ? sanitizePeerText(board.roomName)
+              : board.roomName,
+            tasks: board.tasks.map((t) => ({
+              ...t,
+              title: sanitizePeerText(t.title),
+              notes: t.notes ? sanitizePeerText(t.notes) : t.notes,
+              assignee: t.assignee
+                ? sanitizePeerText(t.assignee)
+                : t.assignee,
+            })),
+          };
+          return {
+            ok: true,
+            op: "list_tasks",
+            board: safe,
+            count: safe.tasks.length,
+          };
+        }
+        case "add_task": {
+          const status = req.status
+            ? parseTaskStatus(String(req.status)) ?? undefined
+            : undefined;
+          if (req.status && !status) {
+            return {
+              ok: false,
+              error: `Invalid status: ${req.status}`,
+              code: "bad_status",
+            };
+          }
+          const task = addTask({
+            title: req.title,
+            assignee: req.assignee,
+            status: status as TaskStatus | undefined,
+            notes: req.notes,
+          });
+          return {
+            ok: true,
+            op: "add_task",
+            task: {
+              ...task,
+              title: sanitizePeerText(task.title),
+              notes: task.notes ? sanitizePeerText(task.notes) : task.notes,
+            },
+          };
+        }
+        case "update_task": {
+          const status = req.status
+            ? parseTaskStatus(String(req.status)) ?? undefined
+            : undefined;
+          if (req.status && !status) {
+            return {
+              ok: false,
+              error: `Invalid status: ${req.status}`,
+              code: "bad_status",
+            };
+          }
+          try {
+            const task = updateTask(req.id, {
+              title: req.title,
+              assignee: req.assignee,
+              status: status as TaskStatus | undefined,
+              notes: req.notes,
+            });
+            return {
+              ok: true,
+              op: "update_task",
+              task: {
+                ...task,
+                title: sanitizePeerText(task.title),
+                notes: task.notes ? sanitizePeerText(task.notes) : task.notes,
+              },
+            };
+          } catch (e) {
+            return {
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+              code: "update_failed",
+            };
+          }
         }
         case "stop": {
           setTimeout(() => {

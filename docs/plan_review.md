@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.11.2** `approved` — M4.3b thin desktop shell **implemented** (`apps/desktop`). R13 locks held.  
+> **최신:** PLAN **v0.12.0** `approved` — sticky board RPC + desktop Board tab; smoke:desktop.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| *(none)* | | | **0.11.2** desktop shipped; polish / Board later |
+| *(none)* | | | **0.12.0** shipped; polish / L-5 later |
 
 ---
 
@@ -32,7 +32,7 @@
 | L-5 | Low | v2 pack embed TOCTOU re-resolve | when embed ships (v1 paths-only) |
 | L-4 residual | Low | wire-level `requestId` beyond FIFO waiters | optional; 0.9.4 FIFO done |
 | L-23 | Low | sticky `GET /health` unauth loopback | **accepted** in 0.11.1 (document only) |
-| Product | — | Board UI / sticky board ops | after 0.11.1 shell (was M-18 C defer) |
+| Product | — | Board UI / sticky board ops | **done 0.12.0** (M-18 A) |
 
 ---
 
@@ -40,7 +40,8 @@
 
 | Finding | 처리 |
 |---------|------|
-| **0.11.2 desktop** | **implemented** — `apps/desktop` Status/Peers/Inbox; Rust sticky; no Board; `cargo test` 3 pass |
+| **0.12.0 board** | sticky `list_tasks`/`add_task`/`update_task` + desktop Board tab + `smoke:desktop` |
+| **0.11.2 desktop** | shell Status/Peers/Inbox; Rust sticky; `cargo test` |
 | **R13 M-18 / M-19 / M-20** | **0.11.1** locks → **0.11.2** code |
 | **R13 L-21** | **superseded by M-20** (closed as Med) |
 | **R13 L-22** | UNKNOWNS 0.11 filled |

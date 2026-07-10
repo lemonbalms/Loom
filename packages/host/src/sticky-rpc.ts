@@ -9,6 +9,7 @@ import type {
   HandoffSendStatus,
   HandoffAttachment,
 } from "@loom/protocol";
+import type { TaskBoard, TaskItem, TaskStatus } from "./task-board";
 
 export type StickyRpcRequest =
   | { op: "ping" }
@@ -24,6 +25,23 @@ export type StickyRpcRequest =
     }
   | { op: "chat"; text: string }
   | { op: "claim"; id: string; via?: "claim" | "accept" }
+  /** 0.12: local room board via sticky (same file as CLI/MCP) */
+  | { op: "list_tasks" }
+  | {
+      op: "add_task";
+      title: string;
+      assignee?: string;
+      status?: TaskStatus | string;
+      notes?: string;
+    }
+  | {
+      op: "update_task";
+      id: string;
+      title?: string;
+      assignee?: string;
+      status?: TaskStatus | string;
+      notes?: string;
+    }
   | { op: "stop" };
 
 export type StickyStatusPayload = {
@@ -68,5 +86,13 @@ export type StickyRpcResponse =
       entry?: InboxEntry;
       error?: string;
     }
+  | {
+      ok: true;
+      op: "list_tasks";
+      board: TaskBoard | null;
+      count: number;
+    }
+  | { ok: true; op: "add_task"; task: TaskItem }
+  | { ok: true; op: "update_task"; task: TaskItem }
   | { ok: true; op: "stop"; stopping: true }
   | { ok: false; error: string; code?: string };

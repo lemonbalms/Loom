@@ -255,3 +255,32 @@ main {
   border: 1px dashed var(--border);
   border-radius: var(--radius);
 }
+
+.board-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.board-add input {
+  flex: 1;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
+.board-add input:focus {
+  outline: 1px solid var(--accent);
+}
+
+.status-select {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
