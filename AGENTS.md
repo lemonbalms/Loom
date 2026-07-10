@@ -66,6 +66,8 @@ Do not start a large feature until the briefing is delivered, unless the user ga
 | Verify | `bun test` green before claiming done |
 | Remote | `https://github.com/lemonbalms/Loom.git` (user lemonbalms) |
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
+| Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok impl · Claude/Codex review via Loom room |
+| Claude R{n} | **Must** run **`/advisor fable`** (or `fable-advisor` agent) before writing R{n} |
 
 Full workflow: **`docs/WORKFLOW.md`**.
 
