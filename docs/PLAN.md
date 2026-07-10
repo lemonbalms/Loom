@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.12** |
-| **Status** | **`approved` (author-close)** — TUI agents via script PTY |
-| **Supersedes** | 0.13.11 |
+| **Version** | **0.13.13** |
+| **Status** | **`approved` (author-close)** — TUI PTY with SIGWINCH resize |
+| **Supersedes** | 0.13.12 |
 | **Last updated** | 2026-07-10 |
 | **Approval** | author-close PATCH; no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
@@ -49,7 +49,17 @@
 
 ### Changelog
 
-#### 0.13.12 — 2026-07-10 (`approved` — **author-close**, TUI PTY for Claude)
+#### 0.13.13 — 2026-07-10 (`approved` — **author-close**, TUI resize / SIGWINCH)
+
+**Why:** `script(1)` PTY fixed Claude kqueue but frozen terminal size at launch; resize ignored.
+
+| What | Why |
+|------|-----|
+| `scripts/run-with-pty.py` (python3 `pty.spawn`) | forwards SIGWINCH + TIOCSWINSZ |
+| Prefer python-pty over `script` for TUI agents | dynamic cols/rows |
+| VERSION **0.13.13** | PATCH dogfood |
+
+#### 0.13.12 — 2026-07-10 (`superseded` by 0.13.13; was `approved` — **author-close**, TUI PTY for Claude)
 
 **Why:** `loom run claude` started then Claude (Bun TUI) crashed with EINVAL kqueue on inherited tty.
 
@@ -1199,5 +1209,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.10** eprint writeSync(2) for run shell — author-close | 2026-07-10 | **0.13.10** |
 | Plan author | implementation | **0.13.11** shell REPL readSync(0) only — author-close | 2026-07-10 | **0.13.11** |
 | Plan author | implementation | **0.13.12** TUI agent script PTY (Claude kqueue) — author-close | 2026-07-10 | **0.13.12** |
+| Plan author | implementation | **0.13.13** TUI python pty SIGWINCH resize — author-close | 2026-07-10 | **0.13.13** |
 
-**구현 게이트:** **0.13.12**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.13**. Next: **P2 durable inbox** (MINOR + Fable R{n}).

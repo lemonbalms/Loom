@@ -72,9 +72,10 @@ import {
 } from "@loom/mcp-server";
 import { spawn } from "bun";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
-import { openSync, closeSync, writeSync, readSync } from "node:fs";
+import { openSync, closeSync, writeSync, readSync, existsSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 
-const VERSION = "0.13.12";
+const VERSION = "0.13.13";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -1368,11 +1369,38 @@ function spawnWait(
 }
 
 /**
- * UC-9.3: give Claude/Codex/Grok a real PTY.
- * Order: script(1) PTY → raw [0,1,2] → /dev/tty fds.
+ * UC-9.3: give Claude/Codex/Grok a real PTY that **tracks window resize**.
+ *
+ * Order:
+ * 1. python3 scripts/run-with-pty.py — SIGWINCH + TIOCSWINSZ (preferred)
+ * 2. script(1) — PTY but often freezes cols/rows at start (macOS)
+ * 3. raw [0,1,2] / /dev/tty
  */
 async function runTuiAgent(spec: AgentSpec): Promise<number> {
   const attempts: Array<{ label: string; run: () => Promise<number> }> = [];
+  const ptyHelper = pathJoin(
+    import.meta.dir,
+    "../../../scripts/run-with-pty.py",
+  );
+  // packages/cli/src → repo root is ../../..
+  const ptyHelperAlt = pathJoin(import.meta.dir, "../../scripts/run-with-pty.py");
+  const helperPath = existsSync(ptyHelper)
+    ? ptyHelper
+    : existsSync(ptyHelperAlt)
+      ? ptyHelperAlt
+      : null;
+
+  if (helperPath && process.platform !== "win32") {
+    attempts.push({
+      label: "python-pty-winch",
+      run: () =>
+        spawnWait(
+          "python3",
+          [helperPath, spec.command, ...spec.args],
+          spec,
+        ),
+    });
+  }
 
   if (process.platform === "darwin") {
     attempts.push({
