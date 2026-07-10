@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.3** + PRIORITIES P0 done (link:loom). 다음: P1 trust 또는 P2 durable inbox.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.3** · P0 install done · TEST_PLAN P0 (UC-1/3) recorded. **Next: P1** Owner 사인(A) 또는 R14(B).
 
 ---
 
@@ -110,10 +110,11 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | P1 trust (Owner/R14) or P2 durable inbox | see PRIORITIES.md |
+| **Next** | **P1 trust** — Owner A(사인) 또는 B(R14) | PRIORITIES §4 초안 있음 |
+| After P1 | P2 durable inbox (MINOR + Fable) | PRIORITIES P2 |
 | Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** |
 | Doc | Priorities | `docs/PRIORITIES.md` |
-| Doc | Test plan | `docs/TEST_PLAN.md` |
+| Doc | Test plan | `docs/TEST_PLAN.md` — **P0 gate pass 2026-07-10** |
 | Done | L-4 requestId | **0.13.1** |
 | Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
 | Doc | User guide | `docs/USER_GUIDE.md` |
@@ -124,7 +125,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
 bun install
 bun test
-bun run loom --version    # expect 0.12.2
+bun run loom --version    # expect 0.13.3
 bun run status
 bun run smoke:desktop     # headless sticky+board dogfood
 bun run desktop           # UI (needs loom host start)

@@ -4,7 +4,7 @@
 |-------|--------|
 | **문서** | `docs/TEST_PLAN.md` |
 | **대상** | QA·기여자·에이전트 — **시나리오 검증** |
-| **제품 기준** | CLI **v0.13.2** · desktop UI (Send/Board) |
+| **제품 기준** | CLI **v0.13.3** · desktop UI (Send/Board) |
 | **사용 가이드** | [`USER_GUIDE.md`](./USER_GUIDE.md) (같은 시나리오 번호) |
 | **자동화** | `bun test` · `bun run smoke:desktop` |
 
@@ -323,13 +323,39 @@ Blockers:
 
 ---
 
+## 실행 기록 (실제)
+
+### Test run — 2026-07-10 (P0 release gate)
+
+| Field | Value |
+|-------|--------|
+| **Date** | 2026-07-10 |
+| **Tester** | agent (session after 0.13.3) |
+| **Build** | `dee900a` · `loom v0.13.3` |
+| **LOOM_TEST_HOME** | `/tmp/loom-tp-1783650607` |
+| **Automations** | `bun test` 139 pass · `smoke:desktop` OK |
+
+| UC | Result | Notes |
+|----|--------|-------|
+| 0 | ✅ 🖐 | `bun run loom --version` → 0.13.3; `loom --version` (link); `scripts/loom` on PATH |
+| 1 | ✅ 🖐 | create Share=`bun run loom…`; bob join 2 peers; handoff queued; inbox `from: bob (p_…)`; accept HANDOFF block; re-accept → `No inbox item` (first-wins) |
+| 2 | ⏭ | offline enqueue covered by 🤖 room tests; full manual offline not re-run this pass |
+| 3 | ✅ 🖐 | host start tip + same `--profile`; handoff `notified=true` + inbox `(via sticky host)`; stop w/o profile → tip; stop w/ profile OK; re-start → already running |
+| 4 | ⏭ | GUI not opened; RPC covered by smoke:desktop |
+| 11 | ✅ 🤖 | 139 pass, 0 fail · smoke OK (status/peers/inbox/board/handoff/chat/401/stop) |
+
+**Blockers:** none  
+**P0 release gate (TEST_PLAN §0.4):** 11.1 + 11.2 + UC-1 + UC-3 → **pass**
+
+---
+
 ## 알려진 한계 (실패로 치지 않음)
 
 | 항목 | 설명 |
 |------|------|
-| Relay 재시작 | 인메모리 인박스/로스터 유실 (MVP) |
+| Relay 재시작 | 인메모리 인박스/로스터 유실 (MVP) — P2 후보 |
 | 보드 multi-machine live | 스냅샷만 (CRDT 없음) |
-| 전역 `loom` PATH | 기본 미설치 — `bun run loom` 정상 |
+| 전역 `loom` PATH | 기본 미설치 — `bun run loom` 또는 `bun run link:loom` (0.13.3) |
 | PTY inject | 제품 비목표 (스파이크 no-go) |
 
 ---
@@ -345,4 +371,4 @@ Blockers:
 
 ---
 
-*기준 버전: 제품 **0.13.2**. UC 번호는 USER_GUIDE와 동기. 기능 추가 시 이 표에 행을 추가한다.*
+*기준 버전: 제품 **0.13.3**. UC 번호는 USER_GUIDE와 동기. 기능 추가 시 이 표에 행을 추가한다.*
