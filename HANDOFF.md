@@ -58,7 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending) | **0.13.0** | L-5 `--with-pack-embed` + host tip fix |
+| `e032731` | **0.13.0** | L-5 `--with-pack-embed` + host tip fix |
 | `fe416fb` | **0.12.2** | desktop Send handoff/chat + invite + smoke |
 | `719c226` | docs | USER_GUIDE scenarios |
 | `ef517ab` | **0.12.1** | desktop polish + PITCH 0.12 sync |
