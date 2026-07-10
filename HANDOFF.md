@@ -58,7 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending) | **0.12.0** | sticky board RPC + desktop Board + smoke:desktop |
+| `dea8407` | **0.12.0** | sticky board RPC + desktop Board + smoke:desktop |
 | `81bf607` | **0.11.2** | `apps/desktop` Tauri shell (Status/Peers/Inbox) |
 | `baa2c90` | **0.11.1** | R13 close: M-18 C, M-19 Rust invoke, M-20 textContent |
 | `539930e` | R13 | plan_review hygiene + first R13 body |
