@@ -69,7 +69,7 @@ CLI 코어(위 GIF)는 실사용 검증된 부분: 방 생성 → 초대 → 오
 
 - 데모 피드백: 오프라인 핸드오프 체감, 데스크톱 첫인상, Board.
 - 다음 후보: GUI polish, live board sync, pack file-body embed (L-5).
-- 코드/스펙: [`README.md`](../README.md) · [`docs/PLAN.md`](./PLAN.md) · [`docs/plan_review.md`](./plan_review.md) · [`apps/desktop/README.md`](../apps/desktop/README.md)
+- 코드/스펙: [`README.md`](../README.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) (사용 사례) · [`PLAN.md`](./PLAN.md) · [`plan_review.md`](./plan_review.md) · [`apps/desktop/README.md`](../apps/desktop/README.md)
 
 ---
 

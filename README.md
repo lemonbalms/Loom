@@ -12,6 +12,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.12.2** (`approved` — desktop send/receive) |
+| **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |
 | **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
@@ -63,6 +64,7 @@ Loom/
 ├── docs/
 │   ├── PLAN.md                  # Product plan SSOT (versioned)
 │   ├── plan_review.md           # Review gate (R1…)
+│   ├── USER_GUIDE.md            # End-user scenarios (Korean)
 │   ├── PROTOCOL.md              # Wire protocol
 │   ├── ARCHITECTURE.md          # Component map
 │   ├── ADAPTERS.md              # Agent adapter matrix

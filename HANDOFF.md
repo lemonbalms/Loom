@@ -105,6 +105,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 | Priority | Item | Notes |
 |----------|------|--------|
 | **Next** | L-5 / Owner | pack embed when needed; product priorities |
+| Doc | User guide | `docs/USER_GUIDE.md` — 시나리오 사용 가이드 |
 | Later | L-5 pack embed TOCTOU | When file-body embed ships |
 | Later | Wire `requestId` | Optional beyond L-4 FIFO |
 
