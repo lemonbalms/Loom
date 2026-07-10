@@ -72,9 +72,9 @@ import {
 } from "@loom/mcp-server";
 import { spawn } from "bun";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
-import { openSync, closeSync, writeSync } from "node:fs";
+import { openSync, closeSync, writeSync, readSync } from "node:fs";
 
-const VERSION = "0.13.10";
+const VERSION = "0.13.11";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -1452,23 +1452,15 @@ function spawnShellViaScript(spec: AgentSpec): Promise<number> {
 }
 
 /**
- * Default `run shell` UI — raw stdin line loop.
+ * Default `run shell` UI — **fd 0/1/2 only**.
  *
- * Avoid node:readline with `terminal: true` and node:tty WriteStream:
- * Bun on macOS can throw `EINVAL: invalid argument, kqueue` (Owner dogfood).
+ * Do not touch `process.stdin` / `process.stdout` / `process.stderr` streams
+ * or `*.isTTY` / readline / node:tty — Bun on macOS throws
+ * `EINVAL: invalid argument, kqueue` when constructing TTY WriteStream
+ * (Owner dogfood UC-9.2).
  */
-function runLoomShellRepl(spec: AgentSpec): Promise<number> {
-  const stdinTty = Boolean(process.stdin.isTTY);
-  const stdoutTty = Boolean(process.stdout.isTTY);
-  eprint(`\x1b[2mTTY stdin=${stdinTty} stdout=${stdoutTty} v${VERSION}\x1b[0m\n`);
-
-  if (!stdinTty) {
-    eprint(
-      "\x1b[31mstdin is not a TTY — cannot open interactive shell.\n" +
-        "Run from Terminal.app / iTerm / VS Code terminal (not a pipe).\x1b[0m\n",
-    );
-    return Promise.resolve(1);
-  }
+async function runLoomShellRepl(spec: AgentSpec): Promise<number> {
+  eprint(`\x1b[2mloom-shell v${VERSION} (fd I/O)\x1b[0m\n`);
 
   const shell = process.env.SHELL || "/bin/zsh";
   const env = cleanEnv({
@@ -1479,76 +1471,77 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
     LOOM_SHELL_REPL: "1",
   });
 
-  const prompt = () => print("loom-shell> ");
+  let stopping = false;
+  const onSig = () => {
+    stopping = true;
+    print("\n");
+  };
+  process.on("SIGINT", onSig);
 
-  return new Promise((resolve) => {
-    let buf = "";
-    let closed = false;
-    const finish = (code: number) => {
-      if (closed) return;
-      closed = true;
-      try {
-        process.stdin.removeListener("data", onData);
-        process.stdin.pause();
-      } catch {
-        /* */
-      }
-      eprint("\x1b[2mLoom shell closed.\x1b[0m\n");
-      resolve(code);
-    };
+  const chunk = Buffer.alloc(1024);
+  let lineBuf = "";
+  print("loom-shell> ");
 
-    const runLine = (line: string) => {
-      const t = line.replace(/\r$/, "").trim();
-      if (t === "exit" || t === "quit") {
-        finish(0);
-        return;
-      }
-      if (!t) {
-        prompt();
-        return;
-      }
-      const loomish = t.match(
-        /^(peers|inbox|status|chat|handoff|board|pack|listen)(\s|$)/,
-      );
-      const cmd = loomish ? `bun run loom ${t}` : line.replace(/\r$/, "");
+  try {
+    while (!stopping) {
+      let n = 0;
       try {
-        spawnSync(shell, ["-c", cmd], {
-          cwd: spec.cwd,
-          env,
-          stdio: "inherit",
-        });
+        // null position = read from current offset (stdin)
+        n = readSync(0, chunk, 0, chunk.length, null);
       } catch (e) {
+        const err = e as NodeJS.ErrnoException;
+        if (err?.code === "EAGAIN" || err?.code === "EWOULDBLOCK") {
+          await Bun.sleep(30);
+          continue;
+        }
+        // EINTR etc.
+        if (err?.code === "EINTR") continue;
         eprint(
-          `\x1b[31mcommand failed: ${e instanceof Error ? e.message : e}\x1b[0m\n`,
+          `\x1b[31mstdin read failed: ${err?.message ?? e}\x1b[0m\n`,
         );
+        break;
       }
-      if (!closed) prompt();
-    };
-
-    const onData = (chunk: string | Buffer) => {
-      buf += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      if (n === 0) {
+        // EOF
+        break;
+      }
+      lineBuf += chunk.toString("utf8", 0, n);
       let idx: number;
-      while ((idx = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, idx);
-        buf = buf.slice(idx + 1);
-        runLine(line);
-        if (closed) return;
+      while ((idx = lineBuf.indexOf("\n")) >= 0) {
+        const line = lineBuf.slice(0, idx).replace(/\r$/, "");
+        lineBuf = lineBuf.slice(idx + 1);
+        const t = line.trim();
+        if (t === "exit" || t === "quit") {
+          stopping = true;
+          break;
+        }
+        if (t) {
+          const loomish = t.match(
+            /^(peers|inbox|status|chat|handoff|board|pack|listen)(\s|$)/,
+          );
+          const cmd = loomish ? `bun run loom ${t}` : line;
+          try {
+            // numeric stdio fds — avoid "inherit" stream construction
+            spawnSync(shell, ["-c", cmd], {
+              cwd: spec.cwd,
+              env,
+              stdio: [0, 1, 2],
+            });
+          } catch (err) {
+            eprint(
+              `\x1b[31mcommand failed: ${err instanceof Error ? err.message : err}\x1b[0m\n`,
+            );
+          }
+        }
+        if (!stopping) print("loom-shell> ");
       }
-    };
+    }
+  } finally {
+    process.off("SIGINT", onSig);
+  }
 
-    process.stdin.setEncoding("utf8");
-    process.stdin.resume();
-    process.stdin.on("data", onData);
-    process.stdin.on("end", () => finish(0));
-    process.stdin.on("error", () => finish(1));
-
-    process.once("SIGINT", () => {
-      print("\n");
-      finish(0);
-    });
-
-    prompt();
-  });
+  eprint("\x1b[2mLoom shell closed.\x1b[0m\n");
+  return 0;
 }
 
 async function cmdRoomLeave() {

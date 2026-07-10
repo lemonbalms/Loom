@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.10** |
-| **Status** | **`approved` (author-close)** — eprint via writeSync(2) |
-| **Supersedes** | 0.13.9 |
+| **Version** | **0.13.11** |
+| **Status** | **`approved` (author-close)** — shell REPL fd-only I/O |
+| **Supersedes** | 0.13.10 |
 | **Last updated** | 2026-07-10 |
 | **Approval** | author-close PATCH; no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
@@ -49,7 +49,17 @@
 
 ### Changelog
 
-#### 0.13.10 — 2026-07-10 (`approved` — **author-close**, writeSync stderr)
+#### 0.13.11 — 2026-07-10 (`approved` — **author-close**, shell fd-only)
+
+**Why:** Even `process.stdout.isTTY` / stdin stream APIs trigger Bun TTY WriteStream kqueue crash.
+
+| What | Why |
+|------|-----|
+| REPL reads `readSync(0)` only | no process.stdin |
+| spawn stdio `[0,1,2]` | no inherit streams |
+| VERSION **0.13.11** | PATCH |
+
+#### 0.13.10 — 2026-07-10 (`superseded` by 0.13.11; was `approved` — **author-close**, writeSync stderr)
 
 **Why:** Crash was on `process.stderr.write` itself (`WriteStream` / kqueue), not only readline.
 
@@ -1176,5 +1186,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.8** run shell REPL default — author-close | 2026-07-10 | **0.13.8** |
 | Plan author | implementation | **0.13.9** shell REPL raw stdin (no node:tty) — author-close | 2026-07-10 | **0.13.9** |
 | Plan author | implementation | **0.13.10** eprint writeSync(2) for run shell — author-close | 2026-07-10 | **0.13.10** |
+| Plan author | implementation | **0.13.11** shell REPL readSync(0) only — author-close | 2026-07-10 | **0.13.11** |
 
-**구현 게이트:** **0.13.10**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.11**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
