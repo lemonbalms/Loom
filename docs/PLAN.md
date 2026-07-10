@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.8** |
-| **Status** | **`approved` (author-close)** — run shell = Loom REPL default |
-| **Supersedes** | 0.13.7 |
+| **Version** | **0.13.9** |
+| **Status** | **`approved` (author-close)** — shell REPL without node:tty |
+| **Supersedes** | 0.13.8 |
 | **Last updated** | 2026-07-10 |
 | **Approval** | author-close PATCH; no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
@@ -49,7 +49,17 @@
 
 ### Changelog
 
-#### 0.13.8 — 2026-07-10 (`approved` — **author-close**, shell REPL default)
+#### 0.13.9 — 2026-07-10 (`approved` — **author-close**, shell REPL no node:tty)
+
+**Why:** Owner hit Bun `EINVAL kqueue` / `WriteStream` crash via readline `terminal:true`.
+
+| What | Why |
+|------|-----|
+| REPL = raw `stdin` line loop | avoid `node:tty` WriteStream |
+| try/catch around run shell | no hard crash |
+| VERSION **0.13.9** | PATCH |
+
+#### 0.13.8 — 2026-07-10 (`superseded` by 0.13.9; was `approved` — **author-close**, shell REPL default)
 
 **Why:** Nested zsh under Bun still returned to the outer prompt with no fallback message (Owner dogfood). Default `run shell` is now an in-process **Loom REPL**.
 
@@ -1154,5 +1164,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.6** run shell interactive fix — author-close | 2026-07-10 | **0.13.6** |
 | Plan author | implementation | **0.13.7** shell multi-strategy + REPL fallback — author-close | 2026-07-10 | **0.13.7** |
 | Plan author | implementation | **0.13.8** run shell REPL default — author-close | 2026-07-10 | **0.13.8** |
+| Plan author | implementation | **0.13.9** shell REPL raw stdin (no node:tty) — author-close | 2026-07-10 | **0.13.9** |
 
-**구현 게이트:** **0.13.8**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.9**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
