@@ -28,9 +28,9 @@ Optional: `docs/UNKNOWNS.md` if PLAN is **MINOR** / `pending-review` / new surfa
 bun run status
 ```
 
-### 2) Brief the user immediately
+### 2) Brief the user immediately (short)
 
-Use Korean if the user writes Korean. Do **not** skip this briefing:
+Use Korean if the user writes Korean. Do **not** skip this briefing — keep it **short**, then **work** (do not wait for “응/해”):
 
 ```markdown
 ## 세션 상태
@@ -41,13 +41,16 @@ Use Korean if the user writes Korean. Do **not** skip this briefing:
 | 다음 액션 | … (from HANDOFF / `bun run status`) |
 | 워크플로 | docs/WORKFLOW.md |
 | 주의 | Loom=제품 · Fable 5=리뷰 에이전트 (혼동 금지) |
-
-이어서 할까요? (예: R12 리뷰 / 구현 / 커밋 푸시)
 ```
 
-### 3) Then work
+**Do not** end with “이어서 할까요?” / “진행할까요?” / “커밋할까요?” as a default.  
+Owner wants **stepwise autonomous progress** through the current gate wave.
 
-Do not start a large feature until the briefing is delivered, unless the user gave a single precise command (e.g. only “커밋하고 푸시해”).
+### 3) Then work (autonomous default)
+
+1. After the status table, **immediately execute** the next gate action from HANDOFF/`bun run status`.
+2. Chain within the wave without re-asking: e.g. PLAN PATCH → tests → docs → commit/push when that is the natural end of the wave (see Standing rules).
+3. Only pause for **true blockers** (below). Precise one-shot commands (“커밋하고 푸시해”) still run immediately without a long ritual.
 
 ---
 
@@ -62,12 +65,23 @@ Do not start a large feature until the briefing is delivered, unless the user ga
 | Author-close | Low only + label `(author-close, Low backlog)` + Changelog provenance |
 | Deviations | `implementation-notes.md` → **Deviations** (pick conservative option) |
 | Unknowns | `docs/WORKFLOW.md` §3.5 + `docs/UNKNOWNS.md` — MINOR/new surface before R{n}; not a PLAN SSOT |
-| “진행해” | Next gate step → `bun test` → docs sync → often commit/push |
-| Verify | `bun test` green before claiming done |
+| **Autonomy (default)** | **Do not ask permission between steps.** Brief → execute next gate → verify → docs → ship when wave complete. Report progress after work, not before each click. |
+| “진행해” / “단계적으로” / “자율적으로” / “이어서” | **Full current wave:** next gate(s) until a natural stop (tests green + docs + usually **commit + push** to `main`). No mid-wave “해도 될까요?” |
+| Verify | `bun test` green before claiming done; related smoke when the gate touches that surface |
 | Remote | `https://github.com/lemonbalms/Loom.git` (user lemonbalms) |
+| Commit/push | **Default at end of a completed gate wave** (green tests + docs sync). Do not ask “커밋할까요?” — do it. Exception: user said “커밋 금지” / dry-run only. |
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok impl · Claude/Codex review via Loom room |
 | Claude R{n} | **Must** run **`/advisor fable`** (or `fable-advisor` agent) before writing R{n} |
+
+### Pause only when (true blockers)
+
+- **Ambiguous product direction** that changes MAJOR scope (not recoverable by PLAN defaults)
+- **Irreversible shared damage** outside normal ship (force-push, drop prod data, secrets publish)
+- **External human-only** dependency (Owner key, paid account) with no documented default
+- User explicitly: “멈춰”, “계획만”, “커밋 금지”
+
+Otherwise: pick the **conservative documented default** (WORKFLOW / PLAN / R{n} Decision notes) and continue.
 
 Full workflow: **`docs/WORKFLOW.md`**.
 

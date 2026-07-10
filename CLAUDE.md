@@ -7,9 +7,11 @@
 1. Read `HANDOFF.md` + `docs/WORKFLOW.md` + PLAN/plan_review headers  
    (or run `bun run status`).
 2. **Surface a short status table to the user** (do not skip this).
-3. Then wait for confirmation or follow their explicit command.
+3. **Then execute the next gate immediately** — do **not** wait for “이어서 할까요?”.  
+   Autonomy default: full wave (work → test → docs → commit/push) without mid-step approval.  
+   See **`AGENTS.md` Standing rules · Autonomy**.
 
-Do not bury the handoff; the user should see **where the project is** and **what the next gate is** on entry.
+Do not bury the handoff; the user should see **where the project is** and **what the next gate is** on entry — then keep moving.
 
 ## Dogfood multi-agent (Claude as reviewer)
 
