@@ -378,7 +378,7 @@ Not covered by smoke:uc: UC-4 GUI, UC-8 snapshot multi-machine, UC-9.2/9.3 agent
 | 6 | ✅ 🖐+🤖 | pack + embed; smoke:uc + prior manual |
 | 9.1 | ✅ 🤖 | `agents --matrix` |
 | 9.2 | ✅ 🖐 | `run shell` → `loom-shell>` (fd I/O, **0.13.11**); peers + exit |
-| 9.3 | ✅ 🖐 | **MCP 11 tools live** in Claude (see table below). `loom run claude` may still hit Bun TTY kqueue; MCP path verified in-session |
+| 9.3 | ✅ 🖐 | **MCP 11 tools live** + **`loom run claude` launcher OK** (0.13.12 script PTY; Owner confirmed) |
 | 9.4–9.6 | ✅ 🤖 | smoke:uc + adapters |
 | claim_handoff | ⏭ | alice inbox empty at test time; handoff went to **bob** offline queue (`ho_4ad2ab5c…`) |
 | withPackEmbed (live MCP) | ⏭ | covered by smoke:uc 9.5; not re-hit in this Claude write pass |
@@ -401,8 +401,8 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 | `import_board` | ✅ | merge idempotent (same ids) |
 | `claim_handoff` | ⏭ | no alice inbox item to claim |
 
-**Blockers:** none for MCP surface.  
-**Note on `loom run claude`:** pre-0.13.12 Bun parent→Bun Claude stdio inherit could crash (`EINVAL kqueue`). **0.13.12** wraps TUI agents with `script` PTY — worth a **retry of the launcher** only; MCP tools already proven.
+**Blockers:** none.  
+**Launcher:** pre-0.13.12 Bun→Bun Claude stdio inherit crashed (`EINVAL kqueue`). **0.13.12** `script` PTY — **Owner confirmed `loom run claude` works** (2026-07-10).
 
 ---
 
@@ -414,7 +414,7 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 | 보드 multi-machine live | 스냅샷만 (CRDT 없음) |
 | 전역 `loom` PATH | 기본 미설치 — `bun run loom` 또는 `bun run link:loom` (0.13.3) |
 | PTY inject | 제품 비목표 (스파이크 no-go) |
-| Bun TTY / `loom run claude` | Bun→Bun TUI inherit may kqueue; 0.13.12 script PTY; MCP works without launcher |
+| Bun TTY / `loom run claude` | fixed **0.13.12** (script PTY); was kqueue on Bun→Bun inherit |
 
 ---
 
