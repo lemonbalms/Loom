@@ -72,8 +72,10 @@ import {
 } from "@loom/mcp-server";
 import { spawn } from "bun";
 import { createInterface } from "node:readline";
+import { spawn as nodeSpawn, spawnSync } from "node:child_process";
+import { openSync, closeSync } from "node:fs";
 
-const VERSION = "0.13.6";
+const VERSION = "0.13.7";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -1256,18 +1258,35 @@ async function cmdRun(
     `\x1b[2mCaps: mcp=${adapter.capabilities.mcp} receive=${adapter.capabilities.receive}\x1b[0m\n\n`,
   );
 
-  // Prefer node child_process for interactive agents (shell/TUI): Bun.spawn
-  // inherit can drop tty semantics so zsh exits immediately (UC-9.2).
-  const { spawn: nodeSpawn } = await import("node:child_process");
-  const startedAt = Date.now();
-  const code = await new Promise<number>((resolve) => {
+  // Interactive agents: shell uses multi-strategy spawn + REPL (UC-9.2).
+  const code =
+    agentId === "shell"
+      ? await runShellAgent(spec)
+      : await runAgentChild(spec);
+
+  client.close();
+  process.exit(code);
+}
+
+type AgentSpec = {
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+};
+
+/** Spawn agent with stdio inherit (Claude/Codex/Grok). */
+function runAgentChild(spec: AgentSpec): Promise<number> {
+  return new Promise((resolve) => {
     const child = nodeSpawn(spec.command, spec.args, {
       cwd: spec.cwd,
-      env: spec.env as NodeJS.ProcessEnv,
+      env: cleanEnv(spec.env),
       stdio: "inherit",
     });
     child.on("error", (err) => {
-      process.stderr.write(`\x1b[31mFailed to start agent: ${err.message}\x1b[0m\n`);
+      process.stderr.write(
+        `\x1b[31mFailed to start agent: ${err.message}\x1b[0m\n`,
+      );
       resolve(1);
     });
     child.on("exit", (c, signal) => {
@@ -1275,21 +1294,154 @@ async function cmdRun(
       else resolve(c ?? 1);
     });
   });
+}
 
-  if (
-    agentId === "shell" &&
-    code === 0 &&
-    Date.now() - startedAt < 400
-  ) {
+function cleanEnv(
+  env: Record<string, string | undefined>,
+): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * UC-9.2: keep an interactive shell alive.
+ * 1) /dev/tty  2) macOS/Linux `script` PTY  3) inherit  4) Loom REPL
+ */
+async function runShellAgent(spec: AgentSpec): Promise<number> {
+  const attempts: Array<{ label: string; run: () => Promise<number> }> = [
+    { label: "/dev/tty", run: () => spawnShellOnDevTty(spec) },
+    { label: "script-pty", run: () => spawnShellViaScript(spec) },
+    { label: "inherit", run: () => runAgentChild(spec) },
+  ];
+
+  for (const a of attempts) {
+    const t0 = Date.now();
+    const code = await a.run();
+    const ms = Date.now() - t0;
+    // Stayed up ≥600ms → user had a chance to interact (or exited normally).
+    if (ms >= 600) return code;
     process.stderr.write(
-      "\x1b[33mShell exited immediately. Use a real terminal (not a pipe),\n" +
-        "  and ensure SHELL supports interactive mode (zsh/bash -i).\n" +
-        "  Retry: bun run loom --profile <you> run shell\x1b[0m\n",
+      `\x1b[2m(shell via ${a.label} exited in ${ms}ms code=${code} — trying next)\x1b[0m\n`,
     );
   }
 
-  client.close();
-  process.exit(code);
+  process.stderr.write(
+    "\x1b[33mNested $SHELL exited immediately. Falling back to Loom shell REPL.\x1b[0m\n" +
+      "Session stays active. Type commands (e.g. bun run loom peers). exit to leave.\n\n",
+  );
+  return runLoomShellRepl(spec);
+}
+
+function spawnShellOnDevTty(spec: AgentSpec): Promise<number> {
+  return new Promise((resolve) => {
+    const fds: number[] = [];
+    try {
+      // separate r/w fds — sharing one fd for all three confuses some shells
+      fds.push(openSync("/dev/tty", "r"), openSync("/dev/tty", "w"), openSync("/dev/tty", "w"));
+    } catch {
+      resolve(0); // ms≈0 → try next strategy
+      return;
+    }
+    const child = nodeSpawn(spec.command, spec.args, {
+      cwd: spec.cwd,
+      env: cleanEnv(spec.env),
+      stdio: [fds[0]!, fds[1]!, fds[2]!],
+    });
+    const closeFds = () => {
+      for (const fd of fds) {
+        try {
+          closeSync(fd);
+        } catch {
+          /* */
+        }
+      }
+      fds.length = 0;
+    };
+    child.on("error", (err) => {
+      closeFds();
+      process.stderr.write(
+        `\x1b[2m/dev/tty spawn failed: ${err.message}\x1b[0m\n`,
+      );
+      resolve(0);
+    });
+    child.on("exit", (c, signal) => {
+      closeFds();
+      if (signal) resolve(1);
+      else resolve(c ?? 1);
+    });
+  });
+}
+
+/** Allocate a PTY via `script` so zsh -i has a real terminal. */
+function spawnShellViaScript(spec: AgentSpec): Promise<number> {
+  let command: string;
+  let args: string[];
+  if (process.platform === "darwin") {
+    command = "/usr/bin/script";
+    args = ["-q", "/dev/null", spec.command, ...spec.args];
+  } else if (process.platform === "linux") {
+    const inner = [spec.command, ...spec.args]
+      .map((a) => (a.includes(" ") ? `'${a.replace(/'/g, `'\\''`)}'` : a))
+      .join(" ");
+    command = "script";
+    args = ["-q", "-c", inner, "/dev/null"];
+  } else {
+    return runAgentChild(spec);
+  }
+  return runAgentChild({ ...spec, command, args });
+}
+
+/** Always-works interactive fallback (no nested zsh). */
+function runLoomShellRepl(spec: AgentSpec): Promise<number> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    process.stderr.write(
+      "\x1b[31mstdin/stdout is not a TTY — cannot open interactive shell.\n" +
+        "Run from Terminal.app / iTerm (not a pipe).\x1b[0m\n",
+    );
+    return Promise.resolve(1);
+  }
+
+  const shell = process.env.SHELL || "/bin/zsh";
+  const env = cleanEnv({
+    ...process.env,
+    ...spec.env,
+    LOOM_SHELL_REPL: "1",
+  });
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: "loom-shell> ",
+    terminal: true,
+  });
+
+  return new Promise((resolve) => {
+    rl.prompt();
+    rl.on("line", (line) => {
+      const t = line.trim();
+      if (t === "exit" || t === "quit") {
+        rl.close();
+        return;
+      }
+      if (!t) {
+        rl.prompt();
+        return;
+      }
+      spawnSync(shell, ["-c", line], {
+        cwd: spec.cwd,
+        env,
+        stdio: "inherit",
+      });
+      rl.prompt();
+    });
+    rl.on("close", () => resolve(0));
+    rl.on("SIGINT", () => {
+      process.stdout.write("\n");
+      rl.close();
+    });
+  });
 }
 
 async function cmdRoomLeave() {

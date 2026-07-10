@@ -3,11 +3,11 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.6** |
-| **Status** | **`approved` (author-close)** — UC-9.2 shell interactive fix |
-| **Supersedes** | 0.13.5 |
+| **Version** | **0.13.7** |
+| **Status** | **`approved` (author-close)** — UC-9.2 shell multi-strategy + REPL |
+| **Supersedes** | 0.13.6 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | author-close PATCH (shell -i + node spawn inherit); no re-R{n}. |
+| **Approval** | author-close PATCH; no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -49,7 +49,16 @@
 
 ### Changelog
 
-#### 0.13.6 — 2026-07-10 (`approved` — **author-close**, UC-9.2 shell)
+#### 0.13.7 — 2026-07-10 (`approved` — **author-close**, UC-9.2 shell robust)
+
+**Why:** Nested zsh still exited immediately for Owner after 0.13.6.
+
+| What | Why |
+|------|-----|
+| shell spawn: `/dev/tty` → `script` PTY → inherit → **Loom REPL** | always leave an interactive prompt |
+| VERSION **0.13.7** | PATCH dogfood |
+
+#### 0.13.6 — 2026-07-10 (`superseded` by 0.13.7; was `approved` — **author-close**, UC-9.2 shell)
 
 **Why:** `loom run shell` exited immediately after “Starting Shell…” (non-interactive zsh under Bun spawn).
 
@@ -1132,5 +1141,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | plan/docs | **0.13.4** record R14 + P1 close | 2026-07-10 | **0.13.4** |
 | Plan author | implementation | **0.13.5** L-26/L-27 — **author-close** (R14 Low; no re-R{n}) | 2026-07-10 | **0.13.5** |
 | Plan author | implementation | **0.13.6** run shell interactive fix — author-close | 2026-07-10 | **0.13.6** |
+| Plan author | implementation | **0.13.7** shell multi-strategy + REPL fallback — author-close | 2026-07-10 | **0.13.7** |
 
-**구현 게이트:** **0.13.6**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.7**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
