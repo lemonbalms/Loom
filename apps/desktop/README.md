@@ -28,8 +28,11 @@ bun run smoke:desktop
 # terminal A
 bun run loom host start   # after room create/join
 
-# terminal B (from repo root)
+# terminal B (from repo root — runs `cd apps/desktop && tauri dev`)
 bun run desktop
+
+# or from apps/desktop:
+# bunx tauri dev
 ```
 
 Env (same as CLI):
