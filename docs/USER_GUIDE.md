@@ -158,6 +158,21 @@ bun run loom --profile alice inbox accept ho_…
 - 로스터에 offline으로 있어도 **인박스에 큐잉**  
 - 이게 Loom의 핵심 가치 (“오프라인이어도 유실 없음”)
 
+### 작업 버스 (Work bus) — 0.16+
+
+보드 카드 → **handoff로 전달** (CRDT 아님). 수신은 inbox / `loom work`.
+
+```bash
+# 송신: assignee 있으면 기본 notify (handoff [GOAL] + task:id)
+bun run loom board add "Review PLAN" --as claude-review
+# 끄려면 --no-notify
+
+# 수신
+bun run loom work              # inbox + 내 open tasks
+bun run loom work watch        # 2s poll (min 250ms)
+bun run loom inbox accept ho_…
+```
+
 ### 목적 (Purpose) — 0.15+
 
 방 단위로 “왜 하는가 / 성공 기준 / 비목표 / verify 레시피”를 둡니다.

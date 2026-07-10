@@ -128,7 +128,8 @@ const TOOLS = [
   },
   {
     name: "add_task",
-    description: "Add a task to the local room board.",
+    description:
+      "Add a task to the local room board. Optional notify=true sends handoff to assignee (L-32: default false).",
     inputSchema: {
       type: "object",
       properties: {
@@ -139,6 +140,10 @@ const TOOLS = [
           enum: ["todo", "doing", "done", "blocked", "cancelled"],
         },
         notes: { type: "string" },
+        notify: {
+          type: "boolean",
+          description: "If true, handoff [GOAL] to assignee (default false)",
+        },
       },
       required: ["title"],
     },
@@ -245,7 +250,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.15.1" },
+        serverInfo: { name: "loom", version: "0.16.1" },
       });
       return;
     case "notifications/initialized":
@@ -313,6 +318,7 @@ async function handle(req: JsonRpcReq) {
                   : undefined,
               status:
                 args.status !== undefined ? String(args.status) : undefined,
+              notify: Boolean(args.notify),
               notes:
                 args.notes !== undefined ? String(args.notes) : undefined,
             }),

@@ -17,6 +17,7 @@ import {
   loadPurpose,
   setPurpose,
   formatPurpose,
+  addTaskWithOptionalNotify,
   type ContextPack,
   type TaskBoard,
   type TaskItem,
@@ -134,20 +135,38 @@ export async function toolAddTask(args: {
   assignee?: string;
   status?: string;
   notes?: string;
-}): Promise<{ task: TaskItem }> {
+  /** L-32: default false — must opt in to handoff notify */
+  notify?: boolean;
+}): Promise<{
+  task: TaskItem;
+  handoffId?: string;
+  notifyError?: string;
+}> {
   if (!loadSession()) {
     throw new Error("No Loom session.");
   }
   const status = args.status
     ? parseTaskStatus(args.status) ?? undefined
     : undefined;
-  const task = addTask({
+  // L-32: MCP notify default off
+  const notify = Boolean(args.notify);
+  const result = await addTaskWithOptionalNotify({
     title: args.title,
     assignee: args.assignee,
-    status: status as TaskStatus | undefined,
     notes: args.notes,
+    status: status as TaskStatus | undefined,
+    notify,
   });
-  return { task };
+  if (result.error && notify) {
+    return {
+      task: result.task,
+      notifyError: result.error,
+    };
+  }
+  return {
+    task: result.task,
+    handoffId: result.handoffId,
+  };
 }
 
 export async function toolUpdateTask(args: {

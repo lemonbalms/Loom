@@ -19,6 +19,7 @@ export function loomSystemHint(agentLabel: string): string {
     "",
     "RECEIVE PATH (mandatory): On session start AND between tasks, call check_handoffs first.",
     "If any item is tagged [R-REQUEST], [GOAL], or [VERIFY], claim_handoff it and act per tag.",
+    "Board tasks with assignee are delivered via handoff (board add --as / notify). Use loom work to list inbox + my tasks.",
     "Do not wait for the human to paste handoff bodies when MCP tools work.",
     "",
     "Workflow: when asked to pass work to another peer, call handoff (withPack if pack is set).",

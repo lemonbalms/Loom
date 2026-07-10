@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.16.0** |
-| **Status** | **`pending-revision`** — R17 done: M-26 open (body 템플릿 줄 주입), L-31/L-32 |
-| **Supersedes** | 0.15.1 |
+| **Version** | **0.16.1** |
+| **Status** | **`approved` (author-close)** — R17 M-26/L-31/L-32 locks; work bus implement allowed |
+| **Supersedes** | 0.16.0 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **R17 `pending-revision`** (Fable 5 consulted). PATCH **0.16.1** must lock M-26 (template single-line fields strip `\r\n\t` before substitution) + L-31 (`--interval` clamp ≥250ms) + L-32 (MCP notify default off) into Failure/security locks, then **author-close** allowed (no R17b). **Do not implement** until 0.16.1 locks land. |
-| **Fable 5 when** | **Required** — auto-notify handoff from board + new CLI surface (work/watch). |
+| **Approval** | **author-close** after R17 Decision notes (PATCH locks, no R17b). **Implement under 0.16.1.** |
+| **Fable 5 when** | R17 closed via PATCH. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — real-time work delivery |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -49,7 +49,19 @@
 
 ### Changelog
 
-#### 0.16.0 — 2026-07-10 (`pending-review` — **Work bus: deliver tasks to CLI now**)
+#### 0.16.1 — 2026-07-10 (`approved` — **author-close**, R17 M-26/L-31/L-32)
+
+**Why:** R17 `pending-revision` — template line injection (M-26) + watch interval + MCP notify default.
+
+| Finding | Lock |
+|---------|------|
+| **M-26** | Before substituting into handoff template, **flatten single-line fields** (title): replace `\r` `\n` `\t` with space. Parsers trust header only until first blank line. Board-stored title may keep newlines for display. |
+| **L-31** | `loom work watch --interval`: **clamp ≥ 250ms** (warn if raised); default **2000ms** |
+| **L-32** | MCP `add_task`/`update_task` **`notify` default false** (opt-in). CLI: assignee set ⇒ notify default on (CLI-only policy). |
+
+**Approved by:** plan author after R17 Decision notes. **Implement next.**
+
+#### 0.16.0 — 2026-07-10 (`superseded` by 0.16.1; was `pending-revision` — **Work bus**)
 
 **Why:** Owner goal: **작업 내역을 실시간으로 전달하고, 받아서 바로 처리**. Purpose (0.15) + durable handoff (0.14) exist, but **board cards do not push work** and there is **no first-class “my work” CLI feed**. Dogfood still requires humans to remember `handoff` text; assignees do not learn about board tasks unless someone handoffs manually.
 
@@ -129,43 +141,46 @@ v1 = **client poll** of `list_inbox` + local `loadTaskBoard` (and sticky RPC whe
 | Changing durable inbox / claim first-wins | Orthogonal |
 | Default notify on **every** board set (status spam) | Only add/assign notify; status changes do not auto-handoff unless explicit later flag |
 
-##### Security / failure locks (for R17)
+##### Security / failure locks (authoritative — **0.16.1**)
 
 | Case | Required behavior |
 |------|-------------------|
 | Notify body | Full sanitize; untrusted banner on receive unchanged |
+| **M-26** template fields | **Single-line flatten** for title (and any other header field): `\r` `\n` `\t` → space **at template insertion only**. Header block ends at first blank line. |
 | Assignee resolution | Same as handoff (`@name` / peer id / unknown → error, no silent drop to `*`) |
 | Spam | One handoff per add/assign notify; no loop on board set done |
 | Local board residual | Same-UID multi-profile share board file — accepted (like today) |
-| watch CPU | Default interval ≥ 1s; document |
+| **L-31** watch interval | Default **2000ms**; CLI `--interval` **clamped ≥ 250ms** (stderr warn if clamped) |
+| **L-32** MCP notify | **`notify` default false**; must pass `notify: true` explicitly. CLI assignee-implies-notify is CLI-only |
 | MCP notify | If `notify: true` and no session/room → error |
 | Partial failure | Task created but handoff fails → non-zero CLI + message; do not set handoffId |
 
-##### Acceptance (after R17 approved)
+##### Acceptance (implement under 0.16.1)
 
 1. `board add "T" --as @bob` (bob on roster) → bob inbox has `[GOAL]` body with `task:task_…`; task.handoffId set.  
 2. Without `--as`, `board add` does **not** handoff.  
 3. Unknown assignee → handoff not silent-success; error visible.  
-4. `loom work` as bob shows that task and/or inbox row.  
-5. `loom work watch` prints a line when new inbox item arrives (test with short interval + fake enqueue).  
-6. `loom run` banner mentions open work counts when non-zero.  
-7. `bun test` green; no protocol version bump.
+4. Title with embedded newlines does **not** inject extra `task:`/`assignee:` header lines in body.  
+5. `loom work` as bob shows that task and/or inbox row.  
+6. `loom work watch --interval 100` effectively ≥250ms.  
+7. MCP add_task without notify does not handoff.  
+8. `bun test` green; no protocol version bump.
 
-##### Implementation sketch (not approved work)
+##### Implementation sketch (approved under 0.16.1)
 
 | Area | Touch |
 |------|--------|
-| `packages/host` task-board + room-ops helper `notifyTaskHandoff` | |
+| `packages/host` `work-bus.ts` + task-board | template flatten, notifyTask |
 | `packages/cli` board flags, `cmdWork`, run banner | |
-| `packages/mcp-server` add_task notify param | |
+| `packages/mcp-server` add_task notify opt-in | |
 | `packages/adapters` hints | |
-| tests | board notify unit; work list filter |
-| docs | USER_GUIDE, DOGFOOD_LOOP |
-| VERSION | bump on implement |
+| tests | M-26 flatten; work list; interval clamp |
+| docs | USER_GUIDE Work bus |
+| VERSION | **0.16.1** on ship |
 
 **Unknowns:** `docs/UNKNOWNS.md` §0.16.0.
 
-**Not implemented.** Awaiting **R17**.
+**Implement under PLAN 0.16.1 `approved`.**
 
 #### 0.15.1 — 2026-07-10 (`superseded` by 0.16.0; was `approved` — **author-close**, R16 M-24/M-25 locks + purpose implement)
 
@@ -1671,5 +1686,7 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | Plan author | plan | **0.15.1** R16 locks — **author-close** (no R16b) | 2026-07-10 | **0.15.1** `approved` |
 | Plan author | implementation | **0.15.1** purpose + receive path + verify lite | 2026-07-10 | **0.15.1** |
 | Plan author | plan | **0.16.0** work bus (board notify + loom work) MINOR draft | 2026-07-10 | **0.16.0** `pending-review` |
+| Reviewer | Claude + Fable 5 | **R17 pending-revision** (M-26; L-31/L-32) | 2026-07-10 | 0.16.0 reviewed |
+| Plan author | plan+impl | **0.16.1** R17 locks + work bus implement | 2026-07-10 | **0.16.1** `approved` |
 
-**구현 게이트:** code **0.15.1**. PLAN **0.16.0** `pending-review` — **no implement until R17 approved**.
+**구현 게이트:** PLAN + code **0.16.1**.

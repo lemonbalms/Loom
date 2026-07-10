@@ -55,6 +55,10 @@ import {
   hashVerifyList,
   readVerifyAck,
   writeVerifyAck,
+  addTaskWithOptionalNotify,
+  assignTaskWithOptionalNotify,
+  listMyOpenTasks,
+  clampWatchIntervalMs,
   SLASH_HELP,
 } from "@loom/host";
 import {
@@ -84,7 +88,7 @@ import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { openSync, closeSync, writeSync, readSync, existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.15.1";
+const VERSION = "0.16.1";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -131,6 +135,8 @@ const BOOLEAN_FLAGS = new Set([
   "with-pack-embed",
   "with-board",
   "with-purpose",
+  "notify",
+  "no-notify",
   "board",
   "task",
   "yes",
@@ -151,6 +157,7 @@ Usage:
   loom pack show | set | add | remove | note | clear   # room context pack
   loom purpose show | set | clear   # room purpose card (0.15)
   loom verify [--yes]               # run purpose.verify[] (M-25 gate)
+  loom work | work watch [--interval ms]  # my inbox + board tasks (0.16)
   loom board | board add|set|assign|note|rm|clear-done|export|import
   loom host start | stop | status   # sticky long-lived relay connection
   loom run shell                    # Loom shell REPL (session online)
@@ -168,6 +175,7 @@ Usage:
   --with-pack-embed     Pack + L-5 file body embed (re-resolve allowlist at send)
   --with-board          Attach board snapshot to handoff (multi-machine share)
   --with-purpose        Attach local room purpose card to handoff
+  --notify / --no-notify  board add/assign: handoff to assignee (default on if --as)
   --board               After handoff, also create a board task (or mode=task)
   --yes                 loom verify: skip TTY confirm after printing commands
   --write-user-config   Opt-in: MCP into ~/.codex or ~/.grok
@@ -602,6 +610,101 @@ async function cmdPurpose(
   }
 }
 
+async function cmdWork(
+  sub: string | undefined,
+  flags: Record<string, string | boolean>,
+) {
+  if (!loadSession()) {
+    console.error("No session. Create or join a room first.");
+    process.exit(1);
+  }
+  const action = sub || "list";
+
+  async function printWorkOnce(): Promise<{
+    inboxIds: string[];
+    taskIds: string[];
+  }> {
+    const inbox = await opsListInbox();
+    viaNote(inbox.source);
+    const tasks = listMyOpenTasks();
+    console.log(`Inbox (${inbox.count}):`);
+    if (inbox.entries.length === 0) console.log("  (empty)");
+    for (const e of inbox.entries) {
+      const c = parseHandoffContract(e.handoff.body);
+      const tag = c.tags.length ? ` [${c.tags.join(",")}]` : "";
+      console.log(
+        `  ${e.handoff.id}${tag}  ${e.handoff.body.slice(0, 80).replace(/\n/g, " ")}`,
+      );
+    }
+    console.log(`My open board tasks (${tasks.length}):`);
+    if (tasks.length === 0) console.log("  (none)");
+    for (const t of tasks) {
+      console.log(
+        `  ${t.id}  [${t.status}]  ${t.title}${t.handoffId ? `  ho=${t.handoffId}` : ""}`,
+      );
+    }
+    return {
+      inboxIds: inbox.entries.map((e) => e.handoff.id),
+      taskIds: tasks.map((t) => t.id),
+    };
+  }
+
+  if (action === "watch") {
+    const rawInterval =
+      typeof flags.interval === "string"
+        ? Number(flags.interval)
+        : undefined;
+    const { ms, clamped } = clampWatchIntervalMs(rawInterval);
+    if (clamped) {
+      console.error(
+        `watch interval clamped to ${ms}ms (L-31 min 250ms; default 2000)`,
+      );
+    }
+    console.log(`work watch every ${ms}ms (Ctrl+C to stop)`);
+    let prevInbox = new Set<string>();
+    let prevTasks = new Set<string>();
+    const first = await printWorkOnce();
+    prevInbox = new Set(first.inboxIds);
+    prevTasks = new Set(first.taskIds);
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      await Bun.sleep(ms);
+      try {
+        const inbox = await opsListInbox();
+        const tasks = listMyOpenTasks();
+        for (const e of inbox.entries) {
+          if (!prevInbox.has(e.handoff.id)) {
+            const c = parseHandoffContract(e.handoff.body);
+            eprint(
+              `\x1b[33m[+inbox] ${e.handoff.id}${c.tags.length ? ` [${c.tags.join(",")}]` : ""}\x1b[0m ${e.handoff.body.slice(0, 60).replace(/\n/g, " ")}\n`,
+            );
+          }
+        }
+        for (const t of tasks) {
+          if (!prevTasks.has(t.id)) {
+            eprint(
+              `\x1b[33m[+task] ${t.id} [${t.status}] ${t.title}\x1b[0m\n`,
+            );
+          }
+        }
+        prevInbox = new Set(inbox.entries.map((e) => e.handoff.id));
+        prevTasks = new Set(tasks.map((t) => t.id));
+      } catch (e) {
+        eprint(
+          `watch error: ${e instanceof Error ? e.message : e}\n`,
+        );
+      }
+    }
+  }
+
+  if (action === "list" || action === "show" || action === "ls") {
+    await printWorkOnce();
+    return;
+  }
+  console.error("Usage: loom work | loom work watch [--interval ms]");
+  process.exit(1);
+}
+
 /**
  * M-25: print verify[] verbatim; require ack hash match or TTY/--yes.
  */
@@ -700,7 +803,9 @@ async function cmdBoard(
           ? flags.title
           : rest.join(" ").trim();
       if (!title) {
-        console.error('Usage: loom board add "title" [--as assignee]');
+        console.error(
+          'Usage: loom board add "title" [--as assignee] [--notify|--no-notify]',
+        );
         process.exit(1);
       }
       const assignee =
@@ -709,8 +814,41 @@ async function cmdBoard(
           : typeof flags.assignee === "string"
             ? flags.assignee
             : undefined;
-      const task = addTask({ title, assignee });
-      console.log(`added ${task.id}  [${task.status}]  ${task.title}`);
+      // 0.16.1: default notify when assignee set; --no-notify opts out
+      const notify =
+        Boolean(flags["no-notify"])
+          ? false
+          : Boolean(flags.notify) || Boolean(assignee);
+      const tag =
+        typeof flags.tag === "string" &&
+        ["GOAL", "R-REQUEST", "R-RESULT", "VERIFY", "DONE"].includes(
+          flags.tag.toUpperCase(),
+        )
+          ? (flags.tag.toUpperCase() as
+              | "GOAL"
+              | "R-REQUEST"
+              | "R-RESULT"
+              | "VERIFY"
+              | "DONE")
+          : undefined;
+      const result = await addTaskWithOptionalNotify({
+        title,
+        assignee,
+        notify,
+        tag,
+      });
+      console.log(
+        `added ${result.task.id}  [${result.task.status}]  ${result.task.title}`,
+      );
+      if (result.error) {
+        console.error(`notify failed: ${result.error}`);
+        process.exit(1);
+      }
+      if (result.handoffId) {
+        console.log(
+          `notified handoff ${result.handoffId} (status=${result.status}, notified=${result.notified})`,
+        );
+      }
       return;
     }
     if (action === "set" || action === "status") {
@@ -738,11 +876,29 @@ async function cmdBoard(
       const id = rest[0];
       const who = rest[1] || (typeof flags.as === "string" ? flags.as : "");
       if (!id || !who) {
-        console.error("Usage: loom board assign <task_id> <@name|name>");
+        console.error(
+          "Usage: loom board assign <task_id> <@name|name> [--notify|--no-notify]",
+        );
         process.exit(1);
       }
-      const task = updateTask(id, { assignee: who.replace(/^@/, "") });
-      console.log(`assigned ${task.id} → @${task.assignee}`);
+      const notify = Boolean(flags["no-notify"])
+        ? false
+        : Boolean(flags.notify) || true; // default notify on assign
+      const result = await assignTaskWithOptionalNotify({
+        taskId: id,
+        assignee: who.replace(/^@/, ""),
+        notify,
+      });
+      console.log(`assigned ${result.task.id} → @${result.task.assignee}`);
+      if (result.error) {
+        console.error(`notify failed: ${result.error}`);
+        process.exit(1);
+      }
+      if (result.handoffId) {
+        console.log(
+          `notified handoff ${result.handoffId} (status=${result.status}, notified=${result.notified})`,
+        );
+      }
       return;
     }
     if (action === "note") {
@@ -1521,12 +1677,12 @@ async function cmdRun(
     });
   }
 
-  // Drain any queued handoffs into stderr on start (receive path 0.15)
+  // Drain pending inbox + my board tasks (receive path 0.15 / work bus 0.16)
   try {
     const pending = await client.listInbox();
     if (pending.length > 0) {
       eprint(
-        `\x1b[33m${pending.length} handoff(s) waiting in inbox — call check_handoffs / claim\x1b[0m\n`,
+        `\x1b[33m${pending.length} handoff(s) waiting in inbox — call check_handoffs / claim / loom work\x1b[0m\n`,
       );
       for (const e of pending.slice(0, 8)) {
         const c = parseHandoffContract(e.handoff.body);
@@ -1536,8 +1692,18 @@ async function cmdRun(
           `  ${e.handoff.id}${tag}  ${e.handoff.body.slice(0, 72).replace(/\n/g, " ")}\n`,
         );
       }
-      eprint(renderInbox(pending) + "\n\n");
+      eprint(renderInbox(pending) + "\n");
     }
+    const myTasks = listMyOpenTasks();
+    if (myTasks.length > 0) {
+      eprint(
+        `\x1b[33m${myTasks.length} open board task(s) assigned to you (loom work)\x1b[0m\n`,
+      );
+      for (const t of myTasks.slice(0, 8)) {
+        eprint(`  ${t.id}  [${t.status}]  ${t.title}\n`);
+      }
+    }
+    if (pending.length > 0 || myTasks.length > 0) eprint("\n");
   } catch {
     /* ignore */
   }
@@ -2064,6 +2230,10 @@ async function main() {
   }
   if (cmd === "verify") {
     await cmdVerify(flags);
+    return;
+  }
+  if (cmd === "work") {
+    await cmdWork(sub, flags);
     return;
   }
   if (cmd === "board" || cmd === "tasks") {

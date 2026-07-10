@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.16.0** `pending-revision` — **R17** 완료: M-26 (템플릿 줄 주입) + L-31/L-32 — PATCH 0.16.1 후 author-close 가능.  
+> **최신:** PLAN **v0.16.1** `approved` (author-close) — R17 M-26/L-31/L-32 + work bus shipped.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R17** | **v0.16.0** | **pending-revision** | M-26 open (body 템플릿 줄 주입). PATCH **0.16.1** locks required, then author-close (no R17b). **Do not implement** until 0.16.1 locks land. |
+| *(none)* | | | **0.16.1** work bus shipped |
 
 ---
 
@@ -21,7 +21,7 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| **M-26** | Med | 0.16.0 body 템플릿에 삽입되는 task title이 개행을 보존(`sanitizePeerText`)해 가짜 `task:`/`assignee:` 줄을 심을 수 있음 — "fixed shape machine-parse" 전제 붕괴 | R17 — PATCH 0.16.1에서 title 등 단일행 필드는 개행 제거 후 템플릿 삽입 lock 필요 |
+| *(none)* | | | |
 
 ---
 
