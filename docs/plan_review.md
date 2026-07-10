@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.15.0** `pending-review` — Purpose-based sprint 1. Awaiting **R16**.  
+> **최신:** PLAN **v0.15.0** `pending-revision` — **R16** 완료: M-24/M-25 (verify[] 실행 신뢰 경계) — PATCH 0.15.1 후 author-close 가능.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R16** | **v0.15.0** | **awaiting** | Purpose-based sprint 1 — Claude **must** `/advisor fable` then Review R16. **Do not implement.** |
+| **R16** | **v0.15.0** | **pending-revision** | M-24/M-25 open (verify[] exec trust boundary). PATCH **0.15.1** locks required, then author-close (no R16b). **Do not implement** until 0.15.1 locks land. |
 
 ---
 
@@ -21,7 +21,8 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| *(none yet — R16 not written)* | | | |
+| **M-24** | Med | 0.15.0 `verify[]`는 MCP `set_purpose`/CLI로 동일 UID 어떤 peer든 쓸 수 있어 PLAN의 "owner-controlled" 전제와 모순 | R16 — PATCH 0.15.1에서 `set_purpose`가 `verify[]` 거부하도록 lock 필요 |
+| **M-25** | Med | 0.15.0 `loom verify`가 미확인 recipe를 사람 확인 없이 실행할 수 있음 (autonomy-default 웨이브 하에서) | R16 — PATCH 0.15.1에서 verbatim 출력 + 해시 변경 시 TTY confirm/`--yes` lock 필요 |
 
 ---
 
@@ -29,6 +30,7 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
+| L-30 | Low | 0.15.0 purpose 파일 last-writer-wins (board와 동일 residual) | R16 — backlog, `updatedByPeerId`로 충분, board 문서 재사용 |
 | L-28 | Low | 0.14.0 `byCode` 재로드 시 invite-code 충돌이 silent last-wins | R15 — log 권고, backlog (PLAN locks cross-ref) |
 | L-29 | Low | 0.14.0 room 파일이 GC 없이 재시작 간 누적 | R15 — residual; cross-ref in 0.14.1 locks table |
 | L-23 | Low | sticky `GET /health` unauth loopback | **accepted** in 0.11.1 (document only) |
@@ -44,6 +46,7 @@
 
 | Finding | 처리 |
 |---------|------|
+| **R16 M-24/M-25** | **0.15.1 (required)** PLAN Failure/security locks — verify[] write path CLI-only + verbatim/confirm gate; then author-close (no R16b) |
 | **R15 M-21/M-22/M-23** | **0.14.1** PLAN Failure/security locks + author-close (no R15b) |
 | **0.13.5 L-26/L-27** | desktop `load_live_meta` F-2; pack embed O_NOFOLLOW+fd; tests; author-close |
 | **R14** | cumulative 0.11–0.13.3 trust → **approved**; L-26/L-27 closed in 0.13.5 |
@@ -72,7 +75,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
-| **R16** | **v0.15.0** | **awaiting** | Purpose-based sprint 1 — handoff 2026-07-10 |
+| **R16** | v0.15.0 → **0.15.1 (pending PATCH)** | **pending-revision** | M-24/M-25 open — verify[] exec trust boundary — body below |
 | **R15** | v0.14.0 → **0.14.1** | pending-revision → **closed (author-close)** | M-21/22/23 locked in PLAN 0.14.1 — body below |
 | **R14** | v0.13.3 code · **0.13.4** plan | **approved** | P1-B cumulative trust — body below |
 | **R13** | v0.11.0 | pending-revision → **0.11.1 approved** | M-18/19/20 closed — body below |
@@ -83,6 +86,53 @@
 | **R8** | v0.6.0 | → **0.6.1 approved** | [archive](./plan_review_archive.md) |
 | **R7** | v0.5.0 | **approved** | [archive](./plan_review_archive.md) |
 | R6–R1 | … | … | [archive](./plan_review_archive.md) |
+
+---
+
+## Review R16 — Plan v0.15.0 (Purpose-based sprint 1)
+
+**검토 대상:** `docs/PLAN.md` **v0.15.0** — Purpose 카드(room-scoped 로컬 파일) + handoff intent 태그 + receive-path 강제 + `loom verify` (lite). 코드 없음 — plan-vs-territory 리뷰 (`packages/host/src/purpose.ts`, CLI `purpose`/`verify` 서브커맨드, MCP `get_purpose`/`set_purpose` 전부 미생성 확인).  
+**검토자:** Claude (Sonnet 5, `claude-review`) + **Fable 5 second opinion** (`/advisor fable`, agent `fable-advisor`, 필수 컨설트 완료)  
+**날짜:** 2026-07-10  
+**결론:** **`pending-revision`** — Med 2건(M-24/M-25)은 PLAN 텍스트 lock row로 해소 가능. **PATCH(0.15.1) 적용 후 author-close 허용, 전체 재리뷰(R16b) 불필요** (WORKFLOW §5.1 "PATCH 후 author-close" 조항, R15 선례 준용). 아키텍처 자체는 타당함(sound).
+
+### Checklist
+
+| Area | Result | Evidence |
+|------|--------|----------|
+| Purpose schema v1 (sanitize/caps) | Pass | `task-board.ts` 패턴과 동일 (`sanitizePeerText`, length caps, atomic-json) |
+| Path safety | Pass | `loomDir()/purposes/<sha256(roomId)[:16]>.json`, mode 0600 — board와 동일 |
+| Corrupt file handling | Pass | backup + throw (board 패턴), silent empty 아님 |
+| Handoff intent tags / receive-path | Pass | best-effort parse, never blocks send; no-auto-claim / no-PTY-inject 명시적 non-goal 유지 확인 |
+| **verify[] 쓰기 권한 vs "owner-controlled" 주장** | **Fail** | PLAN.md 보안락 표는 "owner-controlled"라 쓰지만, 동일 UID의 어떤 peer든 MCP `set_purpose`/CLI로 `verify[]`를 쓸 수 있음 — 표 내부 모순 (UNKNOWNS.md §0.15.0 "Unknown unknowns"가 이미 이 남용 가능성을 인정) |
+| **`loom verify` 실행 권한 경계** | **Fail** | `verify[]`는 실행되는 shell 문자열. untrusted handoff(`hints.ts` "review before destructive actions") → prompt-injected peer → `set_purpose`로 주입 → 이 repo의 "autonomy default: no mid-step approval" 관례상 확인 없이 `loom verify` 실행 가능 → unattended 로컬 코드 실행 경로 |
+| set_purpose multi-profile 동시쓰기 | Pass (Low) | `withFileLock`로 파일 손상은 방지; last-writer-wins는 board와 동일한 수용된 residual |
+
+### Findings (Sev: High|Med|Low, ID)
+
+| Sev | ID | Finding | Evidence | Lock (PLAN 텍스트 추가 필요) |
+|-----|-----|---------|----------|-------------------------------|
+| **Med** | **M-24** | `verify[]` 쓰기 경로가 "owner-controlled" 전제를 무력화 — 동일 UID의 어떤 room peer(에이전트 포함)든 MCP `set_purpose` 또는 CLI로 `verify[]`를 쓸 수 있음 | PLAN.md 0.15.0 "Security / failure locks" 표 vs 쓰기 권한 서술 모순 | `verify[] write path (M-24)` — **MCP `set_purpose`는 `verify[]`를 생성/수정할 수 없다 (silent drop 아닌 명시적 에러로 거부). `verify[]`는 CLI `loom purpose set`으로만 쓸 수 있다 — 실행 가능한 문자열을 심는 유일한 경로에 에이전트 하네스의 exec-permission 게이트를 그대로 유지하기 위함. "owner-controlled" 표현 삭제.** |
+| **Med** | **M-25** | `loom verify`의 무인 실행 위험 — MCP `set_purpose`는 에이전트 하네스의 실행 권한 게이트를 우회하는 "무해해 보이는" tool call이고, `loom verify`는 그 결과로 심어진 문자열을 하네스가 안전하다고 보는 커맨드로 실행함. 이 repo의 autonomy-default 웨이브 관례상 사람 확인 없이 자동 실행될 수 있음 | `AGENTS.md`/`HANDOFF.md` autonomy default; `hints.ts` untrusted-handoff 서술 | `loom verify execution (M-25)` — **실행 전 정확한 커맨드 목록을 verbatim 출력한다. `verify[]`가 마지막으로 확인(acknowledge)된 해시(loomDir() 하위 저장)와 다르면 TTY confirm 또는 명시적 `--yes`를 요구한다 — `--yes`도 커맨드를 echo한다. 미확인 레시피를 조용히 실행하지 않는다.** |
+| Low | **L-30** | Purpose 파일 last-writer-wins (board와 동일한 수용된 residual) — `withFileLock`가 파일 손상은 막지만 갱신 유실은 막지 않음; `updatedByPeerId`로 충분 | `task-board.ts` `withFileLock` 패턴 대비 | backlog — board와 동일 residual, 별도 lock row 불필요 |
+
+### Decision notes
+
+- 아키텍처 자체는 타당함(sound): Purpose 카드 / handoff intent 태그 / receive-path 강제 / `loom verify`는 P0–P2가 남긴 "task-shaped, purpose-less" 간극을 메우는 합리적 다음 스텝이고, wire protocol v1도 그대로 유지된다. no-auto-claim / no-PTY-inject 비목표도 견고함 — 그대로 유지.
+- 그러나 board 선례를 그대로 `verify[]`에 적용하는 것은 **범주 오류**다: board 데이터는 inert(제목/메모)라 동시쓰기 residual이 "손상 없음"으로 충분하지만, `verify[]`는 **실행되는 셸 문자열**이라 같은 residual이 곧 "임의 로컬 코드 실행 경로"가 된다. `sanitizePeerText`는 표시 안전성(display-safety)이지 실행 안전성(exec-safety)이 아니다 — "sanitized니까 실행해도 안전하다"는 함의를 문서에 남기지 말 것.
+- M-24/M-25는 둘 다 **PLAN Failure/security locks 표에 lock row 3줄 추가**로 해소되는 범위이며 새 아키텍처·새 표면·프로토콜 변경이 아니다 (R15 Decision notes와 동일 논리: 방향은 맞고 표기만 비어 있었거나 모순이었을 뿐). **따라서 PATCH(0.15.1) 적용 후 — M-24/M-25가 Failure/security locks 표에 반영되고 PLAN Status가 이를 반영하면 — 전체 재리뷰(R16b) 없이 author-close를 허용한다.** (WORKFLOW §5.1 "PATCH 후 author-close 가능" 조항 적용.) L-30은 Low backlog로 선택 사항이며 PATCH를 막지 않는다.
+- **구현은 여전히 금지** — PATCH가 적용되고 PLAN Status가 `approved`(author-close 포함)로 동기화되기 전까지 `packages/host/src/purpose.ts`, CLI `purpose`/`verify` 서브커맨드, MCP `get_purpose`/`set_purpose` 등 실제 코드 작성 금지.
+
+### R16 follow-up (0.15.1 — required before implement)
+
+| Finding | 처리 |
+|---------|------|
+| **M-24** | Failure/security locks: MCP `set_purpose`가 `verify[]` 생성/수정 시 명시적 에러로 거부; `verify[]`는 CLI `loom purpose set`으로만 쓰기 가능; "owner-controlled" 표현 삭제 |
+| **M-25** | Failure/security locks: `loom verify` 실행 전 커맨드 verbatim 출력; `verify[]` 해시 미확인 시 TTY confirm 또는 `--yes` 필요(둘 다 echo) |
+| L-30 | Low backlog; board와 동일 residual로 문서화 |
+| PLAN | 0.15.1 `approved` 예정 (author-close per R16 Decision notes; **no R16b**) — PATCH 적용 시 |
+
+**Implement Purpose sprint 1은 0.15.1 PATCH 적용 후 허용.**
 
 ---
 

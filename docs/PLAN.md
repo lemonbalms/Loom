@@ -4,10 +4,10 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.15.0** |
-| **Status** | **`pending-review`** — Purpose-based sprint 1 (MINOR) |
+| **Status** | **`pending-revision`** — R16 done: M-24/M-25 open (verify[] exec trust boundary) |
 | **Supersedes** | 0.14.2 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | Awaiting **R16** (Fable 5 / `/advisor fable`). **Do not implement** until approved. |
+| **Approval** | **R16 `pending-revision`** (Fable 5 consulted). PATCH **0.15.1** must lock M-24 (verify[] write path CLI-only, no MCP set_purpose write) + M-25 (`loom verify` verbatim print + confirm-on-change gate) into Failure/security locks, then **author-close** allowed (no R16b). **Do not implement** until 0.15.1 locks land. |
 | **Fable 5 when** | **Required** — new product surface (purpose object, handoff contracts, receive-path behavior). |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — post-P2 purpose loop |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
