@@ -11,13 +11,14 @@
       <div class="brand">
         <span class="logo" aria-hidden="true">◈</span>
         <h1>Loom</h1>
-        <span id="version-tag" class="muted">desktop 0.12.1</span>
+        <span id="version-tag" class="muted">desktop 0.12.2</span>
       </div>
       <nav class="tabs" role="tablist">
         <button type="button" class="tab active" data-tab="status" role="tab">
           Status
         </button>
         <button type="button" class="tab" data-tab="peers" role="tab">Peers</button>
+        <button type="button" class="tab" data-tab="send" role="tab">Send</button>
         <button type="button" class="tab" data-tab="inbox" role="tab">
           Inbox <span id="badge-inbox" class="badge" hidden></span>
         </button>
@@ -44,12 +45,50 @@
         <h2>Host status</h2>
         <dl id="status-dl" class="kv"></dl>
         <p id="status-cta" class="cta muted"></p>
+        <div class="invite-box card" id="invite-box" hidden>
+          <div class="card-head">
+            <strong>Invite</strong>
+            <span class="pill">share</span>
+          </div>
+          <p id="invite-code" class="body-text mono"></p>
+          <p id="invite-hint" class="muted"></p>
+        </div>
       </section>
 
       <section id="panel-peers" class="panel" role="tabpanel" hidden>
         <h2>Peers</h2>
         <p id="peers-meta" class="muted"></p>
         <ul id="peers-list" class="list"></ul>
+      </section>
+
+      <section id="panel-send" class="panel" role="tabpanel" hidden>
+        <h2>Send handoff / chat</h2>
+        <p class="muted">Uses sticky host RPC (same as CLI). Body is never HTML-injected.</p>
+        <form id="send-form" class="send-form">
+          <label class="field">
+            <span class="muted">To</span>
+            <select id="send-to" required></select>
+          </label>
+          <label class="field">
+            <span class="muted">Mode</span>
+            <select id="send-mode">
+              <option value="message">message</option>
+              <option value="task">task</option>
+              <option value="chat">room chat</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="muted">Body</span>
+            <textarea
+              id="send-body"
+              rows="5"
+              maxlength="10000"
+              placeholder="Handoff body…"
+              required
+            ></textarea>
+          </label>
+          <button type="submit" class="btn primary" id="send-submit">Send</button>
+        </form>
       </section>
 
       <section id="panel-inbox" class="panel" role="tabpanel" hidden>
@@ -76,7 +115,7 @@
     </main>
 
     <footer class="foot muted">
-      Sticky host only · text never HTML-injected · Board via sticky RPC · press R to refresh
+      Sticky host only · text never HTML-injected · Send via sticky RPC · press R to refresh
     </footer>
 
     <script src="app.js"></script>

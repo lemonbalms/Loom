@@ -103,7 +103,22 @@ try {
     check("update_task", x.json?.ok === true && x.json?.task?.status === "doing");
   }
 
-  x = await rpc(metaPath, { op: "status" });
+  // handoff to self should still produce ack shape (or peer_unknown if only one peer)
+  x = await rpc(metaPath, {
+    op: "handoff",
+    to: "@smoke",
+    body: "smoke handoff body",
+    mode: "message",
+  });
+  check(
+    "handoff op",
+    x.json?.ok === true && typeof x.json?.handoffId === "string",
+    JSON.stringify(x.json),
+  );
+
+  x = await rpc(metaPath, { op: "chat", text: "smoke chat" });
+  check("chat op", x.json?.ok === true, JSON.stringify(x.json));
+
   // bad token
   const meta = JSON.parse(readFileSync(metaPath, "utf8")) as {
     port: number;

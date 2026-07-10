@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.12.1** |
-| **Status** | **`approved`** — desktop polish + PITCH sync to 0.12 |
-| **Supersedes** | 0.12.0 |
+| **Version** | **0.12.2** |
+| **Status** | **`approved`** — desktop Send handoff/chat + invite display |
+| **Supersedes** | 0.12.1 |
 | **Last updated** | 2026-07-10 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,21 @@
 
 ### Changelog
 
-#### 0.12.1 — 2026-07-10 (`approved`)
+#### 0.12.2 — 2026-07-10 (`approved`)
+
+**Why:** Desktop can **send** handoffs/chat (not only receive); show invite code for share.
+
+| What | Why |
+|------|-----|
+| sticky `handoff` / `chat` via desktop invoke | Complete human loop without CLI |
+| Send tab: to peer / `*` / modes message\|task\|chat | Sticky RPC already supported |
+| Status: invite code + `loom room join …` hint | Share without leaving app |
+| `smoke:desktop` covers handoff + chat | Regression |
+| VERSION **0.12.2** | Parity |
+
+No re-review (uses existing sticky ops; M-19/M-20 unchanged).
+
+#### 0.12.1 — 2026-07-10 (`superseded` by 0.12.2; was `approved`)
 
 **Why:** GUI polish after 0.12.0 dogfood; keep external pitch honest.
 
@@ -1004,5 +1018,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.11.2** `apps/desktop` thin shell | 2026-07-09 | **0.11.2** |
 | Plan author | implementation | **0.12.0** sticky board + desktop Board + smoke | 2026-07-10 | **0.12.0** |
 | Plan author | implementation | **0.12.1** desktop polish + PITCH sync | 2026-07-10 | **0.12.1** |
+| Plan author | implementation | **0.12.2** desktop Send handoff/chat + invite | 2026-07-10 | **0.12.2** |
 
-**구현 게이트:** **0.12.1** desktop polished. Next: L-5 embed when needed / Owner.
+**구현 게이트:** **0.12.2** desktop full loop (send/receive/board). Next: L-5 embed when needed / Owner.

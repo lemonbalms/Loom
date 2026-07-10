@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.12.1 approved** — desktop polish. 다음: L-5 / Owner.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.12.2 approved** — desktop Send. 다음: L-5 / Owner.
 
 ---
 
@@ -31,9 +31,9 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.12.1** |
-| **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (Tauri 2 + Board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.12.1** — status **`approved`** |
+| **Product CLI** | `loom` v**0.12.2** |
+| **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.12.2** — status **`approved`** |
 | **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
@@ -58,7 +58,9 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending) | **0.12.2** | desktop Send handoff/chat + invite + smoke |
 | `ef517ab` | **0.12.1** | desktop polish + PITCH 0.12 sync |
+| `3b983bd` | fix | desktop script: cd apps/desktop (no --manifest-path) |
 | `dea8407` | **0.12.0** | sticky board RPC + desktop Board + smoke:desktop |
 | `56c9546` | docs | product pitch + demo GIF |
 | `81bf607` | **0.11.2** | `apps/desktop` Tauri shell (Status/Peers/Inbox) |
@@ -112,7 +114,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
 bun install
 bun test
-bun run loom --version    # expect 0.12.1
+bun run loom --version    # expect 0.12.2
 bun run status
 bun run smoke:desktop     # headless sticky+board dogfood
 bun run desktop           # UI (needs loom host start)

@@ -326,3 +326,49 @@ main {
   padding: 4px 8px;
   font-size: 0.8rem;
 }
+
+.send-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field select,
+.field textarea {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.invite-box {
+  margin-top: 16px;
+}
+
+.invite-box[hidden] {
+  display: none !important;
+}

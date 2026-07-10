@@ -43,10 +43,17 @@ const lastRefreshEl = document.getElementById("last-refresh");
 const autoRefreshEl = document.getElementById("auto-refresh");
 const badgeInbox = document.getElementById("badge-inbox");
 const badgeBoard = document.getElementById("badge-board");
+const inviteBox = document.getElementById("invite-box");
+const inviteCodeEl = document.getElementById("invite-code");
+const inviteHintEl = document.getElementById("invite-hint");
+const sendToEl = document.getElementById("send-to");
 const STATUSES = ["todo", "doing", "done", "blocked", "cancelled"];
 
 /** peerId → displayName from last list_peers */
 let peerNameMap = new Map();
+let lastPeers = [];
+let lastMeId = null;
+let lastInviteCode = null;
 let refreshInFlight = false;
 let autoTimer = null;
 
@@ -147,12 +154,57 @@ async function refreshStatus() {
   }
 }
 
+function fillSendToSelect() {
+  if (!sendToEl) return;
+  const prev = sendToEl.value;
+  clearChildren(sendToEl);
+  const broadcast = el("option");
+  broadcast.value = "*";
+  setText(broadcast, "* (broadcast)");
+  sendToEl.appendChild(broadcast);
+  for (const p of lastPeers) {
+    if (lastMeId && p.id === lastMeId) continue;
+    const opt = el("option");
+    // Prefer @name for sticky handoff resolution
+    const name = p.displayName || p.id;
+    opt.value = name ? `@${name}` : p.id;
+    setText(opt, `${name}${p.online ? "" : " (offline)"} · ${p.id}`);
+    sendToEl.appendChild(opt);
+  }
+  if (prev) {
+    for (const o of sendToEl.options) {
+      if (o.value === prev) {
+        sendToEl.value = prev;
+        break;
+      }
+    }
+  }
+}
+
+function updateInviteBox() {
+  if (!inviteBox) return;
+  if (lastInviteCode) {
+    inviteBox.hidden = false;
+    setText(inviteCodeEl, lastInviteCode);
+    setText(inviteHintEl, `loom room join ${lastInviteCode}`);
+  } else {
+    inviteBox.hidden = true;
+    setText(inviteCodeEl, "");
+    setText(inviteHintEl, "");
+  }
+}
+
 async function refreshPeers() {
   clearChildren(peersList);
   try {
     const r = await invoke("list_peers");
     setText(peersMeta, r.message || "");
     peerNameMap = new Map();
+    lastPeers = r.ok ? r.peers || [] : [];
+    lastMeId = r.ok ? r.meId || null : null;
+    lastInviteCode = r.ok ? r.inviteCode || null : null;
+    updateInviteBox();
+    fillSendToSelect();
     if (!r.ok) {
       const empty = el("li", "empty");
       setText(empty, r.message || "Host unavailable");
@@ -192,6 +244,10 @@ async function refreshPeers() {
       peersList.appendChild(li);
     }
   } catch (e) {
+    lastPeers = [];
+    lastInviteCode = null;
+    updateInviteBox();
+    fillSendToSelect();
     const empty = el("li", "empty");
     setText(empty, e?.message || String(e));
     peersList.appendChild(empty);
@@ -423,6 +479,37 @@ document.querySelectorAll(".tab").forEach((tab) => {
 
 btnRefresh.addEventListener("click", () => {
   refreshAll();
+});
+
+document.getElementById("send-form")?.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const to = sendToEl?.value || "";
+  const mode = document.getElementById("send-mode")?.value || "message";
+  const body = (document.getElementById("send-body")?.value || "").trim();
+  if (!body) return;
+  const submit = document.getElementById("send-submit");
+  if (submit) submit.disabled = true;
+  try {
+    if (mode === "chat") {
+      const res = await invoke("send_chat", { text: body });
+      showBanner(res.ok ? "ok" : "warn", res.message || (res.ok ? "chat sent" : "failed"));
+    } else {
+      const res = await invoke("send_handoff", { to, body, mode });
+      const detail = res.ok
+        ? `${res.message || "sent"} · ${res.status || ""}${res.handoffId ? ` · ${res.handoffId}` : ""}`
+        : res.message || "failed";
+      showBanner(res.ok ? "ok" : "warn", detail.trim());
+    }
+    if (document.getElementById("send-body")) {
+      document.getElementById("send-body").value = "";
+    }
+    await refreshInbox();
+    markRefreshed();
+  } catch (e) {
+    showBanner("bad", e?.message || String(e));
+  } finally {
+    if (submit) submit.disabled = false;
+  }
 });
 
 document.getElementById("board-add").addEventListener("submit", async (ev) => {

@@ -504,6 +504,142 @@ fn claim_handoff(state: State<'_, AppState>, id: String, via: Option<String>) ->
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HandoffSendDto {
+    ok: bool,
+    code: String,
+    message: String,
+    handoff_id: Option<String>,
+    status: Option<String>,
+    notified: Option<bool>,
+}
+
+#[tauri::command]
+fn send_handoff(
+    state: State<'_, AppState>,
+    to: String,
+    body: String,
+    mode: Option<String>,
+) -> HandoffSendDto {
+    let client = client_from_state(&state);
+    let meta = match client.load_meta() {
+        Ok(m) => m,
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            return HandoffSendDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                handoff_id: None,
+                status: None,
+                notified: None,
+            };
+        }
+    };
+    let mode = mode.unwrap_or_else(|| "message".into());
+    match client.rpc(
+        &meta,
+        serde_json::json!({ "op": "handoff", "to": to, "body": body, "mode": mode }),
+    ) {
+        Ok(v) if v.get("ok").and_then(|x| x.as_bool()) == Some(true) => HandoffSendDto {
+            ok: true,
+            code: "ok".into(),
+            message: v
+                .get("message")
+                .and_then(|x| x.as_str())
+                .unwrap_or("sent")
+                .into(),
+            handoff_id: v
+                .get("handoffId")
+                .or_else(|| v.get("handoff_id"))
+                .and_then(|x| x.as_str())
+                .map(str::to_string),
+            status: v
+                .get("status")
+                .and_then(|x| x.as_str())
+                .map(str::to_string),
+            notified: v.get("notified").and_then(|x| x.as_bool()),
+        },
+        Ok(v) => HandoffSendDto {
+            ok: false,
+            code: "refused".into(),
+            message: v
+                .get("error")
+                .and_then(|x| x.as_str())
+                .or_else(|| v.get("message").and_then(|x| x.as_str()))
+                .unwrap_or("handoff failed")
+                .into(),
+            handoff_id: None,
+            status: None,
+            notified: None,
+        },
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            HandoffSendDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                handoff_id: None,
+                status: None,
+                notified: None,
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn send_chat(state: State<'_, AppState>, text: String) -> HandoffSendDto {
+    let client = client_from_state(&state);
+    let meta = match client.load_meta() {
+        Ok(m) => m,
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            return HandoffSendDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                handoff_id: None,
+                status: None,
+                notified: None,
+            };
+        }
+    };
+    match client.rpc(&meta, serde_json::json!({ "op": "chat", "text": text })) {
+        Ok(v) if v.get("ok").and_then(|x| x.as_bool()) == Some(true) => HandoffSendDto {
+            ok: true,
+            code: "ok".into(),
+            message: "chat sent".into(),
+            handoff_id: None,
+            status: Some("chat".into()),
+            notified: None,
+        },
+        Ok(v) => HandoffSendDto {
+            ok: false,
+            code: "refused".into(),
+            message: v
+                .get("error")
+                .and_then(|x| x.as_str())
+                .unwrap_or("chat failed")
+                .into(),
+            handoff_id: None,
+            status: None,
+            notified: None,
+        },
+        Err(p) => {
+            let d = problem_dto(&client, p);
+            HandoffSendDto {
+                ok: false,
+                code: d.code,
+                message: d.message,
+                handoff_id: None,
+                status: None,
+                notified: None,
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn list_tasks(state: State<'_, AppState>) -> BoardDto {
     let client = client_from_state(&state);
@@ -713,6 +849,8 @@ pub fn run() {
             list_peers,
             list_inbox,
             claim_handoff,
+            send_handoff,
+            send_chat,
             list_tasks,
             add_task,
             update_task,
