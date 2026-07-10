@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.1 approved** — L-4 requestId. 다음: Owner product priorities.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.1 approved (author-close, Low)** — not R{n}/Owner. 다음: Owner product priorities.
 
 ---
 
@@ -33,7 +33,7 @@ North star: *connect your agents — and your teammates.*
 |------|--------|
 | **Product CLI** | `loom` v**0.13.1** |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.13.1** — status **`approved`** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.13.1** — **`approved` (author-close, Low backlog)** — not Fable 5 R{n}, not Owner sign-off |
 | **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |

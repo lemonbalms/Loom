@@ -90,7 +90,8 @@
 | **`README.md`** | 외부용 목적·구조·퀵스타트 |
 
 **금지:** PLAN status를 리뷰 없이 `approved`로 올리기.  
-**예외 관례:** 리뷰가 “이 Med들 PATCH 후 approve 가능”이라고 명시한 경우, 구현자가 해당 PATCH를 반영한 뒤 author-close로 `approved` 가능 (0.8.1, 0.9.1 패턴).
+**예외 관례:** 리뷰가 “이 Med들 PATCH 후 approve 가능”이라고 명시한 경우, 구현자가 해당 PATCH를 반영한 뒤 author-close로 `approved` 가능 (0.8.1, 0.9.1 패턴).  
+**Low backlog author-close:** 선택적 Low만 구현하고 재리뷰를 생략할 때는 Status에 **`(author-close, Low backlog)`** 를 붙이고, Changelog에 **when / who / not R{n}·not Owner** 를 적는다. 모호한 bare `approved` 금지 (0.13.1 정직화).
 
 ---
 
@@ -404,6 +405,7 @@ blocking 없을 때 기본 순서:
 | 2026-07-09 | **§3.5 Unknowns** — 지도≠영토; `docs/UNKNOWNS.md`; 치트시트 미지/인터뷰/목업/퀴즈 |
 | 2026-07-09 | §5.1 현재 게이트 → 0.11.0 R13 (M-18/M-19); 구 0.9.4 문구 삭제 |
 | 2026-07-09 | §5.1 → **0.11.1 approved**; implement desktop next |
+| 2026-07-10 | author-close Low 표기 규칙 (0.13.1 정직화) |
 | 2026-07-09 | §0 세션 진입 의식 + `AGENTS.md` / `CLAUDE.md` 연동 |
 
 ---

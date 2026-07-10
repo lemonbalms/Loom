@@ -4,9 +4,10 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.13.1** |
-| **Status** | **`approved`** — L-4 residual: wire `requestId` correlation |
+| **Status** | **`approved` (author-close, Low backlog)** — L-4 wire `requestId` |
 | **Supersedes** | 0.13.0 |
 | **Last updated** | 2026-07-10 |
+| **Approval** | **Not** R{n} / **not** Owner sign-off. Plan author (implementation agent) closed Low residual after ship; see Changelog 0.13.1. |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -46,7 +47,7 @@
 
 ### Changelog
 
-#### 0.13.1 — 2026-07-10 (`approved`)
+#### 0.13.1 — 2026-07-10 (`approved` — **author-close**, Low backlog)
 
 **Why:** Close backlog **L-4 residual** — wire-level `requestId` on RPC request/reply (beyond FIFO waiters).
 
@@ -59,7 +60,16 @@
 | FIFO type-match remains if reply has no id | Backward compatible with older relays |
 | VERSION **0.13.1** | PATCH: protocol optional field |
 
-No re-review required (Low residual; additive optional field).
+**Approval provenance (honest):**
+
+| | |
+|--|--|
+| **When** | 2026-07-10 (commit `676d4f3`, ~11:01 +0900) |
+| **Who** | Plan author / implementer (agent session under Owner “다음 진행해”) — **not** Reviewer Fable 5, **not** explicit Owner approve |
+| **How** | Author-close after Low backlog implement; declared “no re-review required” |
+| **Not** | R14 / formal review sign-off / Owner decision log row |
+
+Git author on machine: local `skywk` account (agent commit via that identity).
 
 #### 0.13.0 — 2026-07-10 (`superseded` by 0.13.1; was `approved`)
 
@@ -1052,6 +1062,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.12.1** desktop polish + PITCH sync | 2026-07-10 | **0.12.1** |
 | Plan author | implementation | **0.12.2** desktop Send handoff/chat + invite | 2026-07-10 | **0.12.2** |
 | Plan author | implementation | **0.13.0** L-5 pack file embed opt-in | 2026-07-10 | **0.13.0** |
-| Plan author | implementation | **0.13.1** L-4 wire requestId correlation | 2026-07-10 | **0.13.1** |
+| Plan author | implementation | **0.13.1** L-4 wire requestId — **`approved` author-close (Low)**; no R{n}, no Owner sign-off | 2026-07-10 | **0.13.1** |
 
-**구현 게이트:** **0.13.1** L-4/L-5 closed. Next: Owner product priorities.
+**구현 게이트:** **0.13.1** L-4/L-5 closed (**author-close** for 0.13.1). Next: Owner product priorities. Owner may still request R14 or reclassify status.
