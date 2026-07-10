@@ -86,6 +86,24 @@ describe("adapters", () => {
   });
 
 
+  test("shell spawnSpec forces interactive -i (UC-9.2)", async () => {
+    const { shellAdapter, interactiveShellArgs } = await import("./shell");
+    expect(interactiveShellArgs("/bin/zsh")).toEqual(["-i"]);
+    expect(interactiveShellArgs("/bin/bash")).toEqual(["-i"]);
+    const prev = process.env.SHELL;
+    process.env.SHELL = "/bin/zsh";
+    const spec = await shellAdapter.spawnSpec({
+      cwd: process.cwd(),
+      mcpConfigPath: "/tmp/mcp.json",
+      env: {},
+    });
+    expect(spec.command).toBe("/bin/zsh");
+    expect(spec.args).toEqual(["-i"]);
+    expect(spec.env.LOOM_AGENT).toBe("shell");
+    if (prev === undefined) delete process.env.SHELL;
+    else process.env.SHELL = prev;
+  });
+
   test("grok detects binary when on PATH", async () => {
     const grok = getAdapter("grok")!;
     // May or may not be installed in CI; just ensure detect returns boolean

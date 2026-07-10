@@ -3,11 +3,11 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.5** |
-| **Status** | **`approved` (author-close, R14 Low)** — L-26/L-27 closed |
-| **Supersedes** | 0.13.4 |
+| **Version** | **0.13.6** |
+| **Status** | **`approved` (author-close)** — UC-9.2 shell interactive fix |
+| **Supersedes** | 0.13.5 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | R14 **approved**; Low L-26/L-27 **implemented** (author-close PATCH; no re-R{n}). |
+| **Approval** | author-close PATCH (shell -i + node spawn inherit); no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -49,7 +49,18 @@
 
 ### Changelog
 
-#### 0.13.5 — 2026-07-10 (`approved` — **author-close**, R14 Low L-26/L-27)
+#### 0.13.6 — 2026-07-10 (`approved` — **author-close**, UC-9.2 shell)
+
+**Why:** `loom run shell` exited immediately after “Starting Shell…” (non-interactive zsh under Bun spawn).
+
+| What | Why |
+|------|-----|
+| shell adapter `-i` | force interactive zsh/bash |
+| `cmdRun` uses `node:child_process` stdio inherit | better TTY for agent child |
+| immediate-exit tip | dogfood diagnosis |
+| VERSION **0.13.6** | PATCH |
+
+#### 0.13.5 — 2026-07-10 (`superseded` by 0.13.6; was `approved` — **author-close**, R14 Low L-26/L-27)
 
 **Why:** Owner chose Low backlog before P2; close R14 residuals.
 
@@ -1120,5 +1131,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Reviewer | Fable 5–equivalent | **R14 approved** (cumulative trust 0.11–0.13.3); L-26/L-27 Low | 2026-07-10 | **0.13.4** |
 | Plan author | plan/docs | **0.13.4** record R14 + P1 close | 2026-07-10 | **0.13.4** |
 | Plan author | implementation | **0.13.5** L-26/L-27 — **author-close** (R14 Low; no re-R{n}) | 2026-07-10 | **0.13.5** |
+| Plan author | implementation | **0.13.6** run shell interactive fix — author-close | 2026-07-10 | **0.13.6** |
 
-**구현 게이트:** **0.13.5** R14 Low closed. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.6**. Next: **P2 durable inbox** (MINOR + Fable R{n}).

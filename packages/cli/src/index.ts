@@ -73,7 +73,7 @@ import {
 import { spawn } from "bun";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.13.5";
+const VERSION = "0.13.6";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -1256,16 +1256,38 @@ async function cmdRun(
     `\x1b[2mCaps: mcp=${adapter.capabilities.mcp} receive=${adapter.capabilities.receive}\x1b[0m\n\n`,
   );
 
-  const proc = spawn({
-    cmd: [spec.command, ...spec.args],
-    cwd: spec.cwd,
-    env: spec.env as Record<string, string>,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
+  // Prefer node child_process for interactive agents (shell/TUI): Bun.spawn
+  // inherit can drop tty semantics so zsh exits immediately (UC-9.2).
+  const { spawn: nodeSpawn } = await import("node:child_process");
+  const startedAt = Date.now();
+  const code = await new Promise<number>((resolve) => {
+    const child = nodeSpawn(spec.command, spec.args, {
+      cwd: spec.cwd,
+      env: spec.env as NodeJS.ProcessEnv,
+      stdio: "inherit",
+    });
+    child.on("error", (err) => {
+      process.stderr.write(`\x1b[31mFailed to start agent: ${err.message}\x1b[0m\n`);
+      resolve(1);
+    });
+    child.on("exit", (c, signal) => {
+      if (signal) resolve(1);
+      else resolve(c ?? 1);
+    });
   });
 
-  const code = await proc.exited;
+  if (
+    agentId === "shell" &&
+    code === 0 &&
+    Date.now() - startedAt < 400
+  ) {
+    process.stderr.write(
+      "\x1b[33mShell exited immediately. Use a real terminal (not a pipe),\n" +
+        "  and ensure SHELL supports interactive mode (zsh/bash -i).\n" +
+        "  Retry: bun run loom --profile <you> run shell\x1b[0m\n",
+    );
+  }
+
   client.close();
   process.exit(code);
 }
