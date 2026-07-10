@@ -141,10 +141,12 @@ bun run smoke:uc
 | 2.1 | alice join 후 **host 없음** (연결 종료) | peers에서 alice offline 가능 | 🖐 |
 | 2.2 | bob `handoff @alice "offline msg"` | `queued` (또는 delivered if still online) | 🖐 |
 | 2.3 | 이후 alice `inbox` | 메시지 존재, accept 가능 | 🖐 |
-| 2.4 | (한계) relay 재시작 후 | 인메모리 인박스 **유실 가능** — 문서화된 MVP 한계, 버그 아님 | 🖐 인지 |
+| 2.4 | relay 재시작 (같은 state dir) | pending inbox **유지**, rejoin `peerSecret` 유효 | 🤖 `smoke:durable` + persist tests |
+| 2.5 | claim 후 재시작 | 해당 항목 **없음** (first-wins) | 🤖 persist tests |
+| 2.6 | leave 후 재시작 | peer + inbox **없음** | 🤖 persist tests |
 
-**통과 기준:** 2.2–2.3 ✅.  
-**관련 자동:** `room.test` offline enqueue.
+**통과 기준:** 2.2–2.4 ✅ (2.5–2.6 자동화 권장).  
+**관련 자동:** `room.test` offline enqueue · `persist.test` · `bun run smoke:durable`.
 
 ---
 
@@ -363,6 +365,19 @@ Blockers:
 
 Not covered by smoke:uc: UC-4 GUI, UC-8 snapshot multi-machine, UC-9.2/9.3 agent TUI (`run shell|claude`), UC-10 LAN 2-machine, UC-5.4 slash.
 
+### Test run — 2026-07-10 (P2 durable / docs honesty)
+
+| Field | Value |
+|-------|--------|
+| **Date** | 2026-07-10 |
+| **Build** | loom **0.14.2** · `8302ae9`+ |
+| **Automations** | `bun test` 154 pass · `smoke:uc` OK · `smoke:durable` OK |
+
+| UC | Result | Notes |
+|----|--------|-------|
+| 2.4–2.6 | ✅ 🤖 | persist tests + `bun run smoke:durable` — inbox/secret survive restart; claim/leave durable |
+| Docs | ✅ | USER_GUIDE / PRIORITIES / README / TEST_PLAN MVP-loss language removed |
+
 ### Test run — 2026-07-10 (UC-5 / UC-9 manual + MCP live)
 
 | Field | Value |
@@ -410,8 +425,9 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 
 | 항목 | 설명 |
 |------|------|
-| Relay 재시작 | 인메모리 인박스/로스터 유실 (MVP) — P2 후보 |
-| 보드 multi-machine live | 스냅샷만 (CRDT 없음) |
+| Relay 재시작 | **0.14+ durable** (default). `LOOM_RELAY_EPHEMERAL=1` 이면 유실 (의도) |
+| Room disk GC | leave peer 제거; 빈 room 파일 잔존 가능 (L-29) |
+| 보드 multi-machine live | 스냅샷만 (CRDT 없음) — P3 |
 | 전역 `loom` PATH | 기본 미설치 — `bun run loom` 또는 `bun run link:loom` (0.13.3) |
 | PTY inject | 제품 비목표 (스파이크 no-go) |
 | Bun TTY / `loom run claude` | kqueue **0.13.12**; resize **0.13.14** (python pty + winsize poll) — Owner confirmed OK |

@@ -207,9 +207,10 @@ Env (**0.10: `LOOM_*` only** — `FABLE_*` is ignored with a warning):
 - [x] Sticky host IPC  
 - [x] Context pack + task board (+ snapshot share via handoff)  
 - [x] Per-peer rejoin secret (M-7) — invite+token alone cannot take over another peer  
-- [x] Product identity **Loom** (0.9.0)
+- [x] Product identity **Loom** (0.9.0)  
+- [x] Durable relay inbox/roster across restarts (0.14.x; `LOOM_RELAY_EPHEMERAL=1` opt-out)
 
-**Not goals (yet):** multi-window Tauri polish, durable relay inbox across restarts, live multi-writer CRDT board. Desktop: `bun run desktop` (needs `loom host start`); headless: `bun run smoke:desktop`.
+**Not goals (yet):** multi-window Tauri polish, live multi-writer CRDT board, cloud accounts. Desktop: `bun run desktop` (needs `loom host start`); headless: `bun run smoke:desktop` · durable: `bun run smoke:durable`.
 
 ---
 
@@ -218,8 +219,9 @@ Env (**0.10: `LOOM_*` only** — `FABLE_*` is ignored with a warning):
 ```bash
 bun install
 bun test                 # unit + integration
+bun run smoke:durable    # UC-2.4 restart survival
 bun run loom --version
-bun run dev:relay        # local relay
+bun run dev:relay        # local relay (durable by default)
 ```
 
 Planning docs live under `docs/`. Implementation follows `docs/PLAN.md` version gates and `docs/plan_review.md` review rounds.

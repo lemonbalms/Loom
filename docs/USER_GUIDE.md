@@ -158,9 +158,19 @@ bun run loom --profile alice inbox accept ho_…
 - 로스터에 offline으로 있어도 **인박스에 큐잉**  
 - 이게 Loom의 핵심 가치 (“오프라인이어도 유실 없음”)
 
-### 한계 (현재)
+### 내구성 (0.14+)
 
-- Relay를 재시작하면 **인메모리 인박스는 사라질 수 있음** (MVP). 장시간 보관이 필요하면 상대가 받기 전에 relay를 끄지 마세요.
+기본 relay는 room meta · roster(+peerSecret) · pending inbox(`queued`|`notified`)를 디스크에 둡니다.
+
+| 항목 | 값 |
+|------|-----|
+| 기본 경로 | `~/.loom/relay-state/` (auto-daemon: `loomDir()/relay-state`) |
+| 오버라이드 | `LOOM_RELAY_STATE_DIR` |
+| 끄기 | `LOOM_RELAY_EPHEMERAL=1` (테스트/일회성) |
+| 검증 | `bun run smoke:durable` · `bun test` persist tests |
+
+**재시작 후:** 같은 state dir로 relay를 다시 띄우면 offline 큐가 남고, 세션의 `peerSecret`으로 rejoin 가능합니다.  
+**leave / claim 후 재시작:** leave한 peer·claim한 항목은 복구되지 않습니다 (first-wins).
 
 ---
 
@@ -441,8 +451,9 @@ bun run loom --profile bob \
 
 ### 한계
 
-- Relay 프로세스 재시작 시 인메모리 인박스/로스터 유실 가능  
-- 보드·팩은 기본적으로 **각 머신 로컬** → 스냅샷/`--with-board`/`--with-pack` 으로 공유
+- Relay 재시작: **0.14+ durable** (같은 `LOOM_RELAY_STATE_DIR`). `LOOM_RELAY_EPHEMERAL=1` 이면 유실  
+- 보드·팩은 기본적으로 **각 머신 로컬** → 스냅샷/`--with-board`/`--with-pack` 으로 공유  
+- Room 파일 GC 없음 (leave한 peer만 제거; 빈 방 파일 잔존 가능 — L-29 residual)
 
 ---
 

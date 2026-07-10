@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/PRIORITIES.md` |
-| **기준 시점** | PLAN **v0.14.1** (`approved`) · 2026-07-10 |
+| **기준 시점** | PLAN **v0.14.2** (`approved`) · 2026-07-10 |
 | **목적** | “지금 무엇을 할지” Owner·에이전트 공통 SSOT (단기) |
 | **관련** | [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`TEST_PLAN.md`](./TEST_PLAN.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) |
 
@@ -20,10 +20,10 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 |------|------|
 | 코어 멀티플레이 | 사용 가능 |
 | Desktop / pack embed | 사용 가능 |
-| 설치·PATH (`loom` 단독) | **마찰 큼** — 대부분 `bun run loom` 필수 |
-| PLAN 승인 형식 | 최근 author-close 다수 → 외부 신뢰 약함 |
-| Relay 재시작 내구성 | 인박스 유실 (MVP 한계) |
-| Live board sync | 없음 (스냅샷만) |
+| 설치·PATH (`loom` 단독) | **완화** — `bun run link:loom` / `scripts/loom` (P0) |
+| PLAN 승인 형식 | R14/R15 게이트 후 author-close 잔여 있음 |
+| Relay 재시작 내구성 | **done 0.14.x** — disk snapshot (inbox+roster) |
+| Live board sync | 없음 (스냅샷만) — P3 |
 
 ---
 
@@ -33,7 +33,7 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 |------|------|------|------------|------|
 | **P0** | **설치·실행 DX** | 클론 후 `loom` 을 헤매지 않게 | 보통 불필요 | **done 0.13.3** |
 | **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | **R14 done** | **done 0.13.4** |
-| **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **done 0.14.1** |
+| **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **done 0.14.1–0.14.2** |
 | **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 |
 | — | Low 백로그 더 파기 | — | — | **하지 않음** (소진) |
 
@@ -83,12 +83,13 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 
 ---
 
-## 5. P2 — 내구성 (진행 중)
+## 5. P2 — 내구성 (**done**)
 
-- Relay 인박스/로스터 **디스크 또는 재기동 복구**  
-- 문서화된 “재시작 시 유실” 한계를 줄이는 것이 제품 북극성에 직접 연결  
+- Relay 인박스/로스터 **디스크 스냅샷** (`~/.loom/relay-state` / `LOOM_RELAY_STATE_DIR`)  
+- R15 M-21/22/23 locks · 0.14.2 symlink/fail-closed harden  
+- 검증: `packages/relay` persist tests · `bun run smoke:durable`  
 
-→ PLAN **v0.14.1** implemented (persist + M-21/22/23 locks).
+→ **다음 우선순위는 P3 또는 제품 마무리(문서·dogfood)** — 필수 백로그 비움.
 
 ---
 
@@ -97,7 +98,7 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 - Live multi-writer board CRDT  
 - 클라우드 계정 / 멀티테넌시  
 - PTY inject  
-- 문서만 계속 늘리기 (가이드·테스트 플랜은 충분)
+- Low 백로그만 계속 파기
 
 ---
 
@@ -107,7 +108,8 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 ① P0 설치 DX 구현 + 문서     ← done 0.13.3
 ② TEST_PLAN P0 수동 1회 기록 (UC-1 + UC-3)  ← done 2026-07-10
 ③ P1 Owner 사인 또는 R14     ← done R14 (0.13.4)
-④ P2 durable inbox (설계 → Fable → 구현)  ← **0.14.1 approved; implement**
+④ P2 durable inbox           ← done 0.14.1–0.14.2
+⑤ (선택) 문서 honesty / smoke:durable / P3 설계
 ```
 
 ---
@@ -122,7 +124,7 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 | 2026-07-10 | P1-B R14 approved — 0.13.4; next P2 |
 | 2026-07-10 | R14 Low L-26/L-27 implemented — 0.13.5 |
 | 2026-07-10 | P2 PLAN **0.14.0** draft pending-review (R15) |
-| 2026-07-10 | R15 pending-revision; **0.14.1** locks author-close — implement P2 |
+| 2026-07-10 | R15 → **0.14.1** implement · **0.14.2** harden · docs honesty wave |
 
 ---
 

@@ -16,7 +16,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> PLAN **0.14.2** — P2 durable harden (symlink TOCTOU + leave persist fail-closed). CLI **0.14.2**.
+> PLAN **0.14.2** · P0–P2 **done**. Docs honesty + `smoke:durable`. Next: **P3** (optional) or Owner-picked feature.
 
 ---
 
@@ -35,8 +35,8 @@ North star: *connect your agents — and your teammates.*
 | **Product CLI** | `loom` v**0.14.2** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
 | **PLAN SSOT** | `docs/PLAN.md` **v0.14.2** — P2 durable + security harden |
-| **Priorities** | `docs/PRIORITIES.md` (P0+P1 done → **P2 implement**) |
-| **Review gate** | Open blocking **none** (R15 closed via 0.14.1) |
+| **Priorities** | `docs/PRIORITIES.md` — P0–P2 **done**; P3 deferred |
+| **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -114,10 +114,10 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | Commit/push 0.14.1 (if Owner wants) | P2 + listen fix + docs |
-| Optional | L-28/L-29 Low | byCode log done on load; disk GC residual docs |
-| Dogfood | Restart local relay to pick durable code | Old process may still be pre-0.14.1 |
-| Done | R15 + 0.14.1 locks + P2 implement | `bun test` 152 · `smoke:uc` OK |
+| **Next** | **P3** only if Owner picks (CRDT board / cloud / …) | MINOR + R{n} |
+| Optional | L-29 room file GC | residual documented |
+| Dogfood | `bun run dogfood:status` · restart relay once if still on old PID | durable code on disk |
+| Done | P2 + 0.14.2 harden + docs honesty + `smoke:durable` | |
 
 ### 2. Smoke / dogfood commands
 
@@ -129,7 +129,7 @@ bun run dogfood:room      # first time (or -- --fresh)
 bun run dogfood:status
 bun run loom --profile impl host start
 # terminals: impl run grok | claude-rev run claude | codex-rev run codex
-bun test && bun run smoke:uc && bun run smoke:desktop
+bun test && bun run smoke:uc && bun run smoke:durable && bun run smoke:desktop
 ```
 
 ---

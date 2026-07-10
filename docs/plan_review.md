@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| *(none)* | | | **0.14.1** approved + P2 implemented |
+| *(none)* | | | **0.14.2** · P0–P2 done · docs honesty |
 
 ---
 

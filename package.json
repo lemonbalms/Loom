@@ -18,6 +18,7 @@
     "desktop:build": "cd apps/desktop && bunx tauri build",
     "smoke:desktop": "bun run scripts/smoke-desktop-rpc.ts",
     "smoke:uc": "bun run scripts/smoke-uc.ts",
+    "smoke:durable": "bun run scripts/smoke-durable.ts",
     "dogfood:room": "bash scripts/dogfood-room-up.sh",
     "dogfood:status": "bash scripts/dogfood-room-status.sh",
     "spike:pty": "bun run packages/cli/src/index.ts spike pty",
