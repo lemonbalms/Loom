@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.9** |
-| **Status** | **`approved` (author-close)** — shell REPL without node:tty |
-| **Supersedes** | 0.13.8 |
+| **Version** | **0.13.10** |
+| **Status** | **`approved` (author-close)** — eprint via writeSync(2) |
+| **Supersedes** | 0.13.9 |
 | **Last updated** | 2026-07-10 |
 | **Approval** | author-close PATCH; no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
@@ -49,7 +49,17 @@
 
 ### Changelog
 
-#### 0.13.9 — 2026-07-10 (`approved` — **author-close**, shell REPL no node:tty)
+#### 0.13.10 — 2026-07-10 (`approved` — **author-close**, writeSync stderr)
+
+**Why:** Crash was on `process.stderr.write` itself (`WriteStream` / kqueue), not only readline.
+
+| What | Why |
+|------|-----|
+| `eprint`/`print` via `writeSync(1|2)` | bypass Bun TTY stream layer |
+| `cmdRun` / shell REPL use eprint | UC-9.2 dogfood |
+| VERSION **0.13.10** | PATCH |
+
+#### 0.13.9 — 2026-07-10 (`superseded` by 0.13.10; was `approved` — **author-close**, shell REPL no node:tty)
 
 **Why:** Owner hit Bun `EINVAL kqueue` / `WriteStream` crash via readline `terminal:true`.
 
@@ -1165,5 +1175,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.7** shell multi-strategy + REPL fallback — author-close | 2026-07-10 | **0.13.7** |
 | Plan author | implementation | **0.13.8** run shell REPL default — author-close | 2026-07-10 | **0.13.8** |
 | Plan author | implementation | **0.13.9** shell REPL raw stdin (no node:tty) — author-close | 2026-07-10 | **0.13.9** |
+| Plan author | implementation | **0.13.10** eprint writeSync(2) for run shell — author-close | 2026-07-10 | **0.13.10** |
 
-**구현 게이트:** **0.13.9**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.10**. Next: **P2 durable inbox** (MINOR + Fable R{n}).

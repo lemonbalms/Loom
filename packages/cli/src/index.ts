@@ -71,11 +71,39 @@ import {
   resolveMcpStdio,
 } from "@loom/mcp-server";
 import { spawn } from "bun";
-import { createInterface } from "node:readline";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
-import { openSync, closeSync } from "node:fs";
+import { openSync, closeSync, writeSync } from "node:fs";
 
-const VERSION = "0.13.9";
+const VERSION = "0.13.10";
+
+/**
+ * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
+ * Bun on macOS can throw `EINVAL: invalid argument, kqueue` on process.stderr.write
+ * when a TTY WriteStream is constructed (Owner dogfood `loom run shell`).
+ */
+function eprint(msg: string): void {
+  try {
+    writeSync(2, msg);
+  } catch {
+    try {
+      console.error(msg.replace(/\x1b\[[0-9;]*m/g, "").replace(/\n$/, ""));
+    } catch {
+      /* last resort: silence */
+    }
+  }
+}
+
+function print(msg: string): void {
+  try {
+    writeSync(1, msg);
+  } catch {
+    try {
+      console.log(msg.replace(/\n$/, ""));
+    } catch {
+      /* */
+    }
+  }
+}
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -1187,28 +1215,28 @@ async function cmdRun(
     },
     // M-13: reconnect join/auth failures must not be silent
     onError(err) {
-      process.stderr.write(`\x1b[31m[relay]\x1b[0m ${err.message}\n`);
+      eprint(`\x1b[31m[relay]\x1b[0m ${err.message}\n`);
     },
     onEnvelope(env) {
       if (env.type === "handoff") {
         const from = client.peers.find((p) => p.id === env.handoff.fromPeerId);
-        process.stderr.write(formatIncomingHandoff(env.handoff, from));
-        process.stderr.write(
+        eprint(formatIncomingHandoff(env.handoff, from));
+        eprint(
           "\x1b[2m(inbox — check_handoffs / loom inbox accept)\x1b[0m\n",
         );
       } else if (env.type === "peer.join") {
-        process.stderr.write(
+        eprint(
           `\n${ansiFg(env.peer.color, sanitizePeerName(env.peer.displayName))} joined (${env.peer.agentKind})\n`,
         );
       } else if (env.type === "chat") {
         const who =
           client.peers.find((p) => p.id === env.from)?.displayName ?? env.from;
-        process.stderr.write(
+        eprint(
           `\n\x1b[2m[chat ${sanitizePeerName(who)}]\x1b[0m ${sanitizePeerText(env.text)}\n`,
         );
       } else if (env.type === "error") {
         // M-13: surface relay error envelopes during run
-        process.stderr.write(`\x1b[31m[relay error]\x1b[0m ${env.message}\n`);
+        eprint(`\x1b[31m[relay error]\x1b[0m ${env.message}\n`);
       }
     },
   });
@@ -1222,7 +1250,7 @@ async function cmdRun(
     peerSecret: session.peerSecret,
   });
   if (joinEnv.type === "error") {
-    process.stderr.write(`${joinEnv.message}\n`);
+    eprint(`${joinEnv.message}\n`);
     client.close();
     process.exit(1);
   }
@@ -1238,27 +1266,27 @@ async function cmdRun(
   try {
     const pending = await client.listInbox();
     if (pending.length > 0) {
-      process.stderr.write(
+      eprint(
         `\x1b[33m${pending.length} handoff(s) waiting in inbox\x1b[0m\n`,
       );
-      process.stderr.write(renderInbox(pending) + "\n\n");
+      eprint(renderInbox(pending) + "\n\n");
     }
   } catch {
     /* ignore */
   }
 
-  process.stderr.write(
+  eprint(
     renderPresenceBar({
       roomName: client.roomName ?? session.roomName,
       peers: client.peers,
       meId: session.peerId,
     }) + "\n\n",
   );
-  process.stderr.write(`\x1b[2mStarting ${adapter.label}…\x1b[0m\n`);
-  process.stderr.write(
+  eprint(`\x1b[2mStarting ${adapter.label}…\x1b[0m\n`);
+  eprint(
     `\x1b[2mMCP: ${mcpPath} · session: ${sessionPath()} · agentKind=${agentKind}\x1b[0m\n`,
   );
-  process.stderr.write(
+  eprint(
     `\x1b[2mCaps: mcp=${adapter.capabilities.mcp} receive=${adapter.capabilities.receive}\x1b[0m\n\n`,
   );
 
@@ -1268,12 +1296,12 @@ async function cmdRun(
   try {
     if (agentId === "shell") {
       if (Boolean(flags.nested)) {
-        process.stderr.write(
+        eprint(
           "\x1b[2m--nested: trying real $SHELL (may exit immediately)\x1b[0m\n",
         );
         code = await runShellAgent(spec);
       } else {
-        process.stderr.write(
+        eprint(
           "\x1b[1mLoom shell\x1b[0m — room session stays online.\n" +
             "  peers | inbox | handoff …  (or full: bun run loom …)\n" +
             "  Type \x1b[1mexit\x1b[0m to leave.\n\n",
@@ -1285,11 +1313,7 @@ async function cmdRun(
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    try {
-      process.stderr.write(`\x1b[31mrun failed: ${msg}\x1b[0m\n`);
-    } catch {
-      console.error(`run failed: ${msg}`);
-    }
+    eprint(`\x1b[31mrun failed: ${msg}\x1b[0m\n`);
     code = 1;
   }
 
@@ -1434,27 +1458,12 @@ function spawnShellViaScript(spec: AgentSpec): Promise<number> {
  * Bun on macOS can throw `EINVAL: invalid argument, kqueue` (Owner dogfood).
  */
 function runLoomShellRepl(spec: AgentSpec): Promise<number> {
-  const log = (msg: string) => {
-    try {
-      process.stderr.write(msg);
-    } catch {
-      console.error(msg.replace(/\x1b\[[0-9;]*m/g, ""));
-    }
-  };
-  const out = (msg: string) => {
-    try {
-      process.stdout.write(msg);
-    } catch {
-      console.log(msg);
-    }
-  };
-
   const stdinTty = Boolean(process.stdin.isTTY);
   const stdoutTty = Boolean(process.stdout.isTTY);
-  log(`\x1b[2mTTY stdin=${stdinTty} stdout=${stdoutTty} v${VERSION}\x1b[0m\n`);
+  eprint(`\x1b[2mTTY stdin=${stdinTty} stdout=${stdoutTty} v${VERSION}\x1b[0m\n`);
 
   if (!stdinTty) {
-    log(
+    eprint(
       "\x1b[31mstdin is not a TTY — cannot open interactive shell.\n" +
         "Run from Terminal.app / iTerm / VS Code terminal (not a pipe).\x1b[0m\n",
     );
@@ -1470,7 +1479,7 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
     LOOM_SHELL_REPL: "1",
   });
 
-  const prompt = () => out("loom-shell> ");
+  const prompt = () => print("loom-shell> ");
 
   return new Promise((resolve) => {
     let buf = "";
@@ -1484,7 +1493,7 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
       } catch {
         /* */
       }
-      log("\x1b[2mLoom shell closed.\x1b[0m\n");
+      eprint("\x1b[2mLoom shell closed.\x1b[0m\n");
       resolve(code);
     };
 
@@ -1509,7 +1518,7 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
           stdio: "inherit",
         });
       } catch (e) {
-        log(
+        eprint(
           `\x1b[31mcommand failed: ${e instanceof Error ? e.message : e}\x1b[0m\n`,
         );
       }
@@ -1533,11 +1542,10 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
     process.stdin.on("end", () => finish(0));
     process.stdin.on("error", () => finish(1));
 
-    const onSigInt = () => {
-      out("\n");
+    process.once("SIGINT", () => {
+      print("\n");
       finish(0);
-    };
-    process.once("SIGINT", onSigInt);
+    });
 
     prompt();
   });
