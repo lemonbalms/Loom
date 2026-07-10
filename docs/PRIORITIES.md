@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/PRIORITIES.md` |
-| **기준 시점** | PLAN **v0.13.3** · 2026-07-10 |
+| **기준 시점** | PLAN **v0.13.4** · 2026-07-10 |
 | **목적** | “지금 무엇을 할지” Owner·에이전트 공통 SSOT (단기) |
 | **관련** | [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`TEST_PLAN.md`](./TEST_PLAN.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) |
 
@@ -32,8 +32,8 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 | 순위 | 테마 | 목표 | Fable R{n} | 상태 |
 |------|------|------|------------|------|
 | **P0** | **설치·실행 DX** | 클론 후 `loom` 을 헤매지 않게 | 보통 불필요 | **done 0.13.3** |
-| **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | Owner 선택 / R14 시 필수 | **next** |
-| **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | 백로그 |
+| **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | **R14 done** | **done 0.13.4** |
+| **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **next** |
 | **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 |
 | — | Low 백로그 더 파기 | — | — | **하지 않음** (소진) |
 
@@ -77,25 +77,9 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 | **A (빠름)** | 0.13.x author-close 묶음을 **인정** → PLAN Approval 한 줄 | 아래 문구 승인 |
 | **B (엄격)** | **R14**: 0.11–0.13 누적 diff 보안·정합성 (Fable 5) | “R14 돌려” |
 
-권장: 다음 MINOR(**P2 durable inbox**) 전에 **A 또는 B 하나**.  
+**P1 완료 (B):** R14 **approved** 2026-07-10 — 산출 `docs/plan_review.md` R14.  
+Low backlog: **L-26** (desktop F-2 parity), **L-27** (pack embed TOCTOU residual).  
 규칙: [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).
-
-### P1-A — Owner 사인 초안 (복붙용)
-
-Owner가 동의 시 에이전트가 PLAN/plan_review에 반영:
-
-```text
-Owner acknowledges 0.13.0–0.13.3 author-close series (L-5, L-4, dogfood UX, install DX)
-as acceptable without external R{n}; next external review required at P2 durable inbox (MINOR) or earlier if security-sensitive.
-```
-
-### P1-B — R14 범위 (요청 시)
-
-| 범위 | 내용 |
-|------|------|
-| Diff | ~0.11.0 … 0.13.3 (desktop sticky, pack embed, requestId, dogfood, install DX) |
-| 초점 | sticky token/RPC, pack embed allowlist, inbox claim first-wins, desktop XSS (M-20) |
-| 산출 | `docs/plan_review.md` R14 + Open/Closed |
 
 ---
 
@@ -122,8 +106,8 @@ as acceptable without external R{n}; next external review required at P2 durable
 ```text
 ① P0 설치 DX 구현 + 문서     ← done 0.13.3
 ② TEST_PLAN P0 수동 1회 기록 (UC-1 + UC-3)  ← done 2026-07-10
-③ P1 Owner 사인 또는 R14     ← next (Owner 선택)
-④ P2 durable inbox (설계 → Fable → 구현)
+③ P1 Owner 사인 또는 R14     ← done R14 (0.13.4)
+④ P2 durable inbox (설계 → Fable → 구현)  ← next
 ```
 
 ---
@@ -135,6 +119,7 @@ as acceptable without external R{n}; next external review required at P2 durable
 | 2026-07-10 | 초안 — 0.13.2 시점 진단 및 P0=설치 DX |
 | 2026-07-10 | P0 implemented (link:loom, scripts/loom, docs) — 0.13.3 |
 | 2026-07-10 | TEST_PLAN P0 gate 기록 (UC-0/1/3/11); P1 next |
+| 2026-07-10 | P1-B R14 approved — 0.13.4; next P2 |
 
 ---
 

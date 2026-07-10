@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.3** |
-| **Status** | **`approved` (author-close, P0 install DX)** — link:loom + PRIORITIES |
-| **Supersedes** | 0.13.2 |
+| **Version** | **0.13.4** |
+| **Status** | **`approved` (R14)** — cumulative trust P1-B closed |
+| **Supersedes** | 0.13.3 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | author-close (install DX / docs; not R{n}). |
-| **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. |
+| **Approval** | **R14 approved** 2026-07-10 (Fable 5–equivalent); Low L-26/L-27 backlog. |
+| **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -49,7 +49,20 @@
 
 ### Changelog
 
-#### 0.13.3 — 2026-07-10 (`approved` — **author-close**, P0 install DX)
+#### 0.13.4 — 2026-07-10 (`approved` — **R14** cumulative trust)
+
+**Why:** Owner chose **P1-B** — external R{n} over author-close series 0.11–0.13.3.
+
+| What | Why |
+|------|-----|
+| R14 code review (sticky / pack embed / claim / XSS / requestId / install DX) | Trust gate before next MINOR |
+| `docs/plan_review.md` R14 | Findings L-26, L-27 Low only |
+| PRIORITIES P1 → done | Next = P2 durable inbox |
+| No CLI feature change | Review/docs PATCH only |
+
+**Review impact:** R14 **approved**. No blocking fixes required.
+
+#### 0.13.3 — 2026-07-10 (`superseded` by 0.13.4; was `approved` — **author-close**, P0 install DX)
 
 **Why:** Short-term priorities doc + make `loom` easy to run without guessing PATH.
 
@@ -1091,5 +1104,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.1** L-4 wire requestId — **`approved` author-close (Low)**; no R{n}, no Owner sign-off | 2026-07-10 | **0.13.1** |
 | Plan author | implementation | **0.13.2** dogfood UX (inbox names, share tips) author-close | 2026-07-10 | **0.13.2** |
 | Plan author | implementation | **0.13.3** PRIORITIES + link:loom install DX author-close | 2026-07-10 | **0.13.3** |
+| Reviewer | Fable 5–equivalent | **R14 approved** (cumulative trust 0.11–0.13.3); L-26/L-27 Low | 2026-07-10 | **0.13.4** |
+| Plan author | plan/docs | **0.13.4** record R14 + P1 close | 2026-07-10 | **0.13.4** |
 
-**구현 게이트:** **0.13.3** P0 install DX. Next: P1 trust (Owner/R14) or P2 durable inbox.
+**구현 게이트:** **0.13.4** R14 trust closed. Next: **P2 durable inbox** (MINOR + Fable R{n}) or optional Low L-26/L-27.

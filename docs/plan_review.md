@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.13.3** `approved (author-close)` — PRIORITIES + `link:loom` install DX.  
+> **최신:** PLAN **v0.13.4** `approved` — **R14** cumulative trust (P1-B).  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| *(none)* | | | **0.13.1** author-close; Owner may request R14 |
+| *(none)* | | | **R14 closed** — next P2 durable inbox (MINOR + R{n}) |
 
 ---
 
@@ -29,9 +29,11 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| L-5 | Low | pack embed TOCTOU | **done 0.13.0** |
-| L-4 residual | Low | wire `requestId` | **done 0.13.1** |
+| **L-26** | Low | Desktop sticky F-2 room/peer match parity (CLI only) | **open** — backlog |
+| **L-27** | Low | Pack embed check/read TOCTOU residual (same-path swap) | **open** — backlog; primary L-5 done |
 | L-23 | Low | sticky `GET /health` unauth loopback | **accepted** in 0.11.1 (document only) |
+| L-5 | Low | pack embed allowlist at send | **done 0.13.0** (residual → L-27) |
+| L-4 residual | Low | wire `requestId` | **done 0.13.1** |
 | Product | — | Board UI / sticky board ops | **done 0.12.0** (M-18 A) |
 
 ---
@@ -40,6 +42,7 @@
 
 | Finding | 처리 |
 |---------|------|
+| **R14** | cumulative 0.11–0.13.3 trust → **approved**; L-26/L-27 Low backlog |
 | **0.13.3 install DX** | PRIORITIES.md; scripts/loom; link:loom / unlink:loom; README install A/B/C |
 | **0.13.2 dogfood** | inbox displayName + att count; Share uses `bun run loom`; host stop profile tip |
 | **0.13.1 L-4** | wire `requestId` — **author-close** (not R{n}; not Owner approve). Commit `676d4f3` 2026-07-10 |
@@ -65,6 +68,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
+| **R14** | v0.13.3 code · **0.13.4** plan | **approved** | P1-B cumulative trust — body below |
 | **R13** | v0.11.0 | pending-revision → **0.11.1 approved** | M-18/19/20 closed — body below |
 | **R12** | v0.10.0 | pending-revision → **0.10.1 approved** | M-17 closed — body below |
 | **R11** | v0.9.0 | → **0.9.1 approved** | [archive](./plan_review_archive.md) |
@@ -73,6 +77,48 @@
 | **R8** | v0.6.0 | → **0.6.1 approved** | [archive](./plan_review_archive.md) |
 | **R7** | v0.5.0 | **approved** | [archive](./plan_review_archive.md) |
 | R6–R1 | … | … | [archive](./plan_review_archive.md) |
+
+---
+
+## Review R14 — Cumulative trust (0.11–0.13.3 code / PLAN v0.13.4)
+
+**검토 대상:** 제품 코드 **0.11.0 … 0.13.3** (desktop sticky, pack embed L-5, requestId L-4, dogfood, install DX) + PLAN **v0.13.4** (이 리뷰 기록)  
+**검토자:** Fable 5–equivalent security/consistency lane (code Read/Grep; Owner P1-B)  
+**날짜:** 2026-07-10  
+**결론:** **`approved`** (no High/Med; Low L-26 / L-27 → backlog)
+
+> Snapshot: post-ship cumulative trust review, not a greenfield plan. Author-close series 0.12–0.13 gets external R{n} coverage for P1.
+
+### Checklist
+
+| Area | Result | Evidence (as reviewed) |
+|------|--------|------------------------|
+| Sticky token / RPC | **Pass** | `sticky-server.ts` `127.0.0.1` only; Bearer + `timingSafeTokenEqual`; meta `0o600`; desktop Rust-only token (`sticky.rs`); UI `invoke` only |
+| Pack embed (L-5) | **Pass** | `embedPackFileBodies` re-`resolveAllowlistedPath` at send; caps; symlink-out skip; tests |
+| Inbox claim first-wins | **Pass** | `room.claimHandoff` delete-on-claim; peer-scoped; tests |
+| Desktop XSS (M-20) | **Pass** | `app.js` `setText` → `textContent`; no `innerHTML` |
+| requestId (L-4) | **Pass** | wire echo same-socket; FIFO legacy fallback; no privilege use |
+| Install DX (0.13.3) | **Pass** | `scripts/loom` / `link:loom` local path only; no secret surface |
+
+### Findings
+
+| Sev | ID | Finding | Evidence | Outcome |
+|-----|-----|---------|----------|---------|
+| Low | **L-26** | Desktop sticky client does not enforce CLI **F-2** roomId/peerId match; after re-join without host restart, desktop can RPC old host (same OS user only) | CLI `resolveLiveHostMeta` vs Rust `load_meta` (pid only) | **backlog** |
+| Low | **L-27** | Pack embed residual TOCTOU: realpath then read can race same-path symlink swap | `context-pack.ts` embed path | **backlog** (primary L-5 closed) |
+
+### Non-findings / accepted
+
+| Item | Note |
+|------|------|
+| L-23 | `/health` unauth loopback — accepted since 0.11.1 |
+| Relay in-memory inbox | MVP; P2 durable candidate — not a 0.11–0.13 regression |
+| M-19 / M-20 | Hold through 0.12–0.13 |
+| sanitize ≠ HTML | Terminal sanitize; desktop XSS via textContent (by design) |
+
+### Decision notes
+
+No High/Med issues and no plan-vs-code security drift that blocks trust for the 0.11–0.13.3 surface. Token stays loopback-Bearer + file-0600 and never reaches the webview; pack embed re-resolves allowlist at send; claim is first-wins and peer-scoped; desktop UI is textContent-only. **P1-B closed.** Next product gate: **P2 durable inbox** requires MINOR + new R{n}. Low L-26/L-27 optional.
 
 ---
 

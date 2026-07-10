@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.3** · P0 install done · TEST_PLAN P0 (UC-1/3) recorded. **Next: P1** Owner 사인(A) 또는 R14(B).
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.4** · **R14 approved** (P1 trust). Next: **P2 durable inbox** (MINOR + Fable R{n}).
 
 ---
 
@@ -33,9 +33,9 @@ North star: *connect your agents — and your teammates.*
 |------|--------|
 | **Product CLI** | `loom` v**0.13.3** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.13.3** — install DX author-close |
-| **Priorities** | `docs/PRIORITIES.md` (P0 install done → P1/P2) |
-| **Review gate** | Open blocking **none** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.13.4** — R14 trust approved |
+| **Priorities** | `docs/PRIORITIES.md` (P0+P1 done → **P2** durable inbox) |
+| **Review gate** | Open blocking **none** (R14 Low L-26/L-27 backlog) |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -59,6 +59,8 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| *(pending)* | **0.13.4** | R14 cumulative trust approved (P1-B) |
+| `96ca50d` | docs | TEST_PLAN P0 gate record; queue P1 |
 | `d9a0b3d` | **0.13.3** | PRIORITIES.md + link:loom install DX |
 | `9c4e46c` | **0.13.2** | dogfood UX: inbox names, share tips, host stop tip |
 | `676d4f3` | **0.13.1** | L-4 wire requestId correlation |
@@ -110,11 +112,12 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | **P1 trust** — Owner A(사인) 또는 B(R14) | PRIORITIES §4 초안 있음 |
-| After P1 | P2 durable inbox (MINOR + Fable) | PRIORITIES P2 |
-| Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** |
+| **Next** | **P2 durable inbox** — 설계 → PLAN MINOR → Fable R{n} → 구현 | PRIORITIES P2 |
+| Done | P1 trust R14 | **0.13.4** approved; L-26/L-27 Low optional |
+| Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** (P2 requires R{n}) |
 | Doc | Priorities | `docs/PRIORITIES.md` |
 | Doc | Test plan | `docs/TEST_PLAN.md` — **P0 gate pass 2026-07-10** |
+| Doc | plan_review | **R14** body |
 | Done | L-4 requestId | **0.13.1** |
 | Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
 | Doc | User guide | `docs/USER_GUIDE.md` |
