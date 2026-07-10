@@ -8,7 +8,8 @@
 
 ### Session entry (for agents)
 
-On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then **tell the user the status table** (PLAN / open gate / next action).  
+On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then **tell the user the status table** (PLAN / open gate / next action) and **immediately continue the next gate** — do **not** wait for “이어서 할까요?”.  
+**Autonomy default:** stepwise full wave (work → test → docs → commit/push) without mid-step approval questions. Pause only for true blockers (AGENTS.md).  
 **Codex:** loads root `AGENTS.md` natively. **All:** `bun run status` for a quick table.
 
 ---
