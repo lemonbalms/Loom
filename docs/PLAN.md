@@ -4,10 +4,10 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.16.0** |
-| **Status** | **`pending-review`** — Work bus: board→handoff notify + CLI work feed (MINOR) |
+| **Status** | **`pending-revision`** — R17 done: M-26 open (body 템플릿 줄 주입), L-31/L-32 |
 | **Supersedes** | 0.15.1 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | Awaiting **R17** (Fable 5 / `/advisor fable`). **Do not implement** until approved. |
+| **Approval** | **R17 `pending-revision`** (Fable 5 consulted). PATCH **0.16.1** must lock M-26 (template single-line fields strip `\r\n\t` before substitution) + L-31 (`--interval` clamp ≥250ms) + L-32 (MCP notify default off) into Failure/security locks, then **author-close** allowed (no R17b). **Do not implement** until 0.16.1 locks land. |
 | **Fable 5 when** | **Required** — auto-notify handoff from board + new CLI surface (work/watch). |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — real-time work delivery |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |

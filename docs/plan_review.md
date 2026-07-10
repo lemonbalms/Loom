@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.16.0** `pending-review` — Work bus (board→handoff + `loom work`). Awaiting **R17**.  
+> **최신:** PLAN **v0.16.0** `pending-revision` — **R17** 완료: M-26 (템플릿 줄 주입) + L-31/L-32 — PATCH 0.16.1 후 author-close 가능.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R17** | **v0.16.0** | **awaiting** | Work bus — Claude **must** `/advisor fable` then Review R17. **Do not implement.** |
+| **R17** | **v0.16.0** | **pending-revision** | M-26 open (body 템플릿 줄 주입). PATCH **0.16.1** locks required, then author-close (no R17b). **Do not implement** until 0.16.1 locks land. |
 
 ---
 
@@ -21,7 +21,7 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| *(none yet — R17 not written)* | | | |
+| **M-26** | Med | 0.16.0 body 템플릿에 삽입되는 task title이 개행을 보존(`sanitizePeerText`)해 가짜 `task:`/`assignee:` 줄을 심을 수 있음 — "fixed shape machine-parse" 전제 붕괴 | R17 — PATCH 0.16.1에서 title 등 단일행 필드는 개행 제거 후 템플릿 삽입 lock 필요 |
 
 ---
 
@@ -29,6 +29,8 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
+| L-32 | Low | 0.16.0 MCP `add_task`/`update_task`의 `notify` 기본값이 PLAN에 명시 안 됨 (CLI만 `--as`→notify 기본 lock) | R17 — MCP는 기본 off(opt-in)로 lock 필요, scripted-loop spam 방지 |
+| L-31 | Low | 0.16.0 `loom work watch --interval`에 코드 강제 최솟값 없음 ("document"만) — tight-loop 폴링 가능 | R17 — CLI에서 ≥250ms 클램프 + 경고 lock 필요 |
 | L-30 | Low | 0.15.0 purpose 파일 last-writer-wins (board와 동일 residual) | R16 — backlog, `updatedByPeerId`로 충분, board 문서 재사용 |
 | L-28 | Low | 0.14.0 `byCode` 재로드 시 invite-code 충돌이 silent last-wins | R15 — log 권고, backlog (PLAN locks cross-ref) |
 | L-29 | Low | 0.14.0 room 파일이 GC 없이 재시작 간 누적 | R15 — residual; cross-ref in 0.14.1 locks table |
@@ -45,6 +47,7 @@
 
 | Finding | 처리 |
 |---------|------|
+| **R17 M-26** | **0.16.1 (required)** PLAN Failure/security locks — 템플릿 단일행 필드 개행 제거 + watch interval 클램프 + MCP notify 기본 off; then author-close (no R17b) |
 | **R16 M-24/M-25** | **0.15.1 done** — locks author-close; implement next |
 | **R15 M-21/M-22/M-23** | **0.14.1** PLAN Failure/security locks + author-close (no R15b) |
 | **0.13.5 L-26/L-27** | desktop `load_live_meta` F-2; pack embed O_NOFOLLOW+fd; tests; author-close |
@@ -74,7 +77,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
-| **R17** | **v0.16.0** | **awaiting** | Work bus board notify + loom work — handoff 2026-07-10 |
+| **R17** | v0.16.0 → **0.16.1 (pending PATCH)** | **pending-revision** | M-26 open — body 템플릿 줄 주입 — body below |
 | **R16** | v0.15.0 → **0.15.1** | pending-revision → **closed (author-close)** | M-24/M-25 locked — body below |
 | **R15** | v0.14.0 → **0.14.1** | pending-revision → **closed (author-close)** | M-21/22/23 locked in PLAN 0.14.1 — body below |
 | **R14** | v0.13.3 code · **0.13.4** plan | **approved** | P1-B cumulative trust — body below |
@@ -86,6 +89,53 @@
 | **R8** | v0.6.0 | → **0.6.1 approved** | [archive](./plan_review_archive.md) |
 | **R7** | v0.5.0 | **approved** | [archive](./plan_review_archive.md) |
 | R6–R1 | … | … | [archive](./plan_review_archive.md) |
+
+---
+
+## Review R17 — Plan v0.16.0 (Work bus: board → handoff + `loom work`)
+
+**검토 대상:** `docs/PLAN.md` **v0.16.0** — board add/assign가 handoff를 딜리버리 버스로 사용(기존 handoff/inbox 재사용, 새 wire 타입 없음), fixed-shape body 템플릿, `loom work` / `loom work watch` (client poll). 코드 없음 — plan-vs-territory 리뷰 (`task-board.ts`/`cli/index.ts`에 `notify` 관련 코드, `loom work` 커맨드 전부 미생성 확인).  
+**검토자:** Claude (Sonnet 5, `claude-review`) + **Fable 5 second opinion** (`/advisor fable`, agent `fable-advisor`, 필수 컨설트 완료)  
+**날짜:** 2026-07-10  
+**결론:** **`pending-revision`** — Med 1건(M-26) + Low 2건(L-31/L-32)은 PLAN 텍스트 lock row로 해소 가능. **PATCH(0.16.1) 적용 후 author-close 허용, 전체 재리뷰(R17b) 불필요** (WORKFLOW §5.1, R15/R16 선례 준용). 아키텍처(handoff-as-bus, poll v1, no new wire types)는 타당함(sound).
+
+### Checklist
+
+| Area | Result | Evidence |
+|------|--------|----------|
+| Architecture (handoff as delivery SSOT, no CRDT/new wire) | Pass | PLAN 0.16.0 Architecture lock 표; wire v1 불변 |
+| peer_unknown fail-closed | Pass | 기존 `loom handoff --track` 경로가 이미 동일 패턴 구현 (`cli/index.ts:525` `ack.handoffId && ack.status !== "peer_unknown"` 이후에만 `addTaskFromHandoff`) — 재사용이라 저위험 |
+| No-spam (add/assign만 notify, status 변경 시 미발동) | Pass | PLAN Out 표에 "Default notify on every board set (status spam)" 명시적 제외 |
+| No-auto-claim | Pass | 0.15 비목표 그대로 유지 확인 |
+| **body 템플릿 fixed-shape 전제** | **Fail** | task title은 `sanitizePeerText`로만 정제되어 개행 보존(`sanitize.ts:31-35`; `task-board.ts:192` `normalizeTask`가 `sanitizePeerName`이 아닌 `sanitizePeerText` 사용) — 동일 room의 아무 peer나 `board add`/MCP `add_task`로 title에 개행을 넣어 `task:`/`assignee:` 위조 줄을 심을 수 있음. assignee 필드 자체는 `sanitizePeerName`으로 이미 안전, taskId도 regex-coerce라 안전 — title만 유일한 취약 단일행 필드 |
+| **`loom work watch` poll interval 강제** | **Fail (Low)** | lock 표가 "Default interval ≥ 1s; document"라고만 되어 있어 권고 문서일 뿐 코드 클램프가 아님 — `--interval 0`/`1` 등 사용자·에이전트 입력값을 강제하는 코드 없음 |
+| MCP notify 기본값 | **Fail (Low)** | CLI는 "`--as` 존재 시 기본 notify" lock이 있지만 MCP `add_task`/`update_task`의 `notify` 기본값은 PLAN에 미고정 — scripted 루프가 기본으로 스팸할 위험 |
+
+### Findings (Sev: High|Med|Low, ID)
+
+| Sev | ID | Finding | Evidence | Lock (PLAN 텍스트 추가 필요) |
+|-----|-----|---------|----------|-------------------------------|
+| **Med** | **M-26** | body 템플릿의 "fixed shape, machine parse" 전제가 title 필드의 개행 보존으로 붕괴 — 어떤 room peer든 `add_task`/`board add`로 `"ok\ntask:evil_id\nassignee: @victim"` 같은 title을 심어 가짜 헤더 줄을 위조 가능. 이 기능의 존재 이유가 "기계 파싱"인데, 그 파싱 대상 자체가 위조 가능해짐. Untrusted-handoff 배너는 사람이 읽고 행동하기 전 리뷰만 완화하지, 기계 파싱(예: 향후 `loom work`/에이전트 자동 처리) 오염은 막지 못함 | `sanitize.ts:18-40` (`sanitizePeerText`는 탭/개행 보존) vs `task-board.ts:192` (`normalizeTask`가 title에 `sanitizePeerText` 사용) | `Template injection (M-26)` — **body 템플릿에 삽입되는 단일행 필드(title 등)는 삽입 직전 `\r\n\t`를 공백으로 치환한다(보드에 저장된 title 자체는 개행 유지 가능, 템플릿 삽입 시점에만 단일행화). 파서는 첫 빈 줄까지의 헤더 블록만 신뢰한다.** |
+| Low | **L-31** | `loom work watch --interval`에 코드 강제 최솟값 없음 — "document"는 lock이 아님. `--interval 0`은 매 tick마다 relay 연결/조인/이탈까지 발생할 수 있는 완전한 왕복이라 자기부과적이지만 실질적인 리소스 낭비 | PLAN 0.16.0 "watch CPU" 락 표 문구("document"만) | `watch interval floor (L-31)` — **CLI는 `--interval`을 최소 250ms로 클램프하고, 클램프 발생 시 경고를 출력한다. 기본값 2s는 유지.** |
+| Low | **L-32** | MCP `add_task`/`update_task`의 `notify` 기본값이 PLAN에 미고정 — CLI는 `--as` 존재 시 기본 notify를 lock했지만 MCP 경로는 "optional"이라고만 되어 있어 스크립트형 루프가 기본으로 스팸할 위험을 UNKNOWNS.md 자신이 이미 지적 | PLAN 0.16.0 S1 표 "MCP add_task/update_task optional notify: true" | `MCP notify default (L-32)` — **MCP `add_task`/`update_task`는 `notify` 기본값을 off로 lock한다. `notify: true`를 명시해야만 handoff가 발생한다 (CLI `--as`→기본 notify는 CLI 전용 관례로 유지).** |
+
+### Decision notes
+
+- 아키텍처 자체는 타당함(sound): handoff를 딜리버리 버스로 재사용하고 board를 상태 추적으로만 쓰는 설계는 CRDT 없이도 "board=work queue" 기대를 충족시키는 합리적 다음 스텝이며, wire protocol v1도 그대로 유지된다. peer_unknown fail-closed는 이미 `loom handoff --track` 경로에 구현된 패턴을 그대로 재사용하는 것이라 신규 설계 위험이 낮다. no-auto-claim 비목표도 견고함.
+- M-26은 R16의 verify[] 교훈과 같은 계열의 실수다: sanitize가 "표시 안전성(display-safety)"은 보장하지만 이 기능이 요구하는 "구조적 안전성(structural-safety, fixed-shape 파싱 신뢰)"까지는 보장하지 않는다. `sanitizePeerText`가 개행을 보존하는 것은 handoff 자유 텍스트에는 맞는 설계지만, 그 결과를 고정 위치 헤더 템플릿에 그대로 삽입하는 새 용도에는 안 맞는다 — 삽입 시점에 단일행화가 필요하다.
+- M-26/L-31/L-32 모두 **PLAN Failure/security locks 표에 lock row 추가**로 해소되는 범위이며 새 아키텍처·새 표면·프로토콜 변경이 아니다. **따라서 PATCH(0.16.1) 적용 후 — 세 항목이 Failure/security locks 표에 반영되고 PLAN Status가 이를 반영하면 — 전체 재리뷰(R17b) 없이 author-close를 허용한다.** (WORKFLOW §5.1 "PATCH 후 author-close 가능" 조항 적용, R15/R16 선례.)
+- **구현은 여전히 금지** — PATCH가 적용되고 PLAN Status가 `approved`(author-close 포함)로 동기화되기 전까지 `board add/assign --notify`, `loom work`/`loom work watch`, MCP `notify` 파라미터 등 실제 코드 작성 금지.
+
+### R17 follow-up (0.16.1 — required before implement)
+
+| Finding | 처리 |
+|---------|------|
+| **M-26** | Failure/security locks: 템플릿 단일행 필드(title)는 삽입 전 `\r\n\t` → 공백 치환; 파서는 첫 빈 줄까지만 헤더로 신뢰 |
+| **L-31** | Failure/security locks: `--interval` 최소 250ms 클램프 + 경고; 기본 2s 유지 |
+| **L-32** | Failure/security locks: MCP `add_task`/`update_task` `notify` 기본 off, 명시적 `notify:true` 필요 |
+| PLAN | 0.16.1 `approved` 예정 (author-close per R17 Decision notes; **no R17b**) — PATCH 적용 시 |
+
+**Implement Work bus는 0.16.1 PATCH 적용 후 허용.**
 
 ---
 

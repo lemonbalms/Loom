@@ -16,7 +16,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> PLAN **0.16.0** `pending-review` — Work bus (board→handoff notify + `loom work`/`watch`). **R17**. Code **0.15.1**. **Do not implement** until approved.
+> PLAN **0.16.0** `pending-revision` — **R17 done**: M-26 open (body 템플릿 줄 주입), L-31/L-32. Code still **0.15.1**. Next: implementer locks M-26/L-31/L-32 into PLAN 0.16.1 Failure/security table → author-close (no R17b) → implement Work bus.
 
 ---
 
@@ -34,9 +34,9 @@ North star: *connect your agents — and your teammates.*
 |------|--------|
 | **Product CLI** | `loom` v**0.15.1** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.16.0** — work bus `pending-review` |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.16.0** — work bus `pending-revision` (R17 done) |
 | **Priorities** | real-time work delivery via handoff bus |
-| **Review gate** | **R17 awaiting** |
+| **Review gate** | **R17 pending-revision** — M-26/L-31/L-32 open, see `docs/plan_review.md` |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -44,7 +44,7 @@ North star: *connect your agents — and your teammates.*
 | **Git** | `main` → `origin` https://github.com/lemonbalms/Loom.git |
 | **Remote account** | GitHub auth: **lemonbalms** |
 | **Tauri** | **Unblocked** — `cargo`/`rustc` 1.96 present; `@tauri-apps/cli` in root devDeps |
-| **Open blocking** | none |
+| **Open blocking** | **M-26, L-31, L-32** (R17 — body 템플릿 줄 주입 등; PATCH 0.16.1 required) |
 
 ### Naming (critical)
 
