@@ -74,7 +74,7 @@ import { spawn } from "bun";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { openSync, closeSync, writeSync, readSync } from "node:fs";
 
-const VERSION = "0.13.11";
+const VERSION = "0.13.12";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -1308,6 +1308,13 @@ async function cmdRun(
         );
         code = await runLoomShellRepl(spec);
       }
+    } else if (adapter.capabilities.tui) {
+      // Claude/Codex/Grok are often Bun-based TUIs. stdio:"inherit" from a Bun
+      // parent can leave a broken TTY → EINVAL kqueue inside the child (UC-9.3).
+      eprint(
+        "\x1b[2mStarting TUI agent with PTY wrapper (script) for Bun/macOS tty fix…\x1b[0m\n",
+      );
+      code = await runTuiAgent(spec);
     } else {
       code = await runAgentChild(spec);
     }
@@ -1332,21 +1339,129 @@ type AgentSpec = {
   env: Record<string, string | undefined>;
 };
 
-/** Spawn agent with stdio inherit (Claude/Codex/Grok). */
+/** Spawn agent with raw fds (non-TUI). */
 function runAgentChild(spec: AgentSpec): Promise<number> {
+  return spawnWait(spec.command, spec.args, spec);
+}
+
+function spawnWait(
+  command: string,
+  args: string[],
+  spec: AgentSpec,
+): Promise<number> {
   return new Promise((resolve) => {
-    const child = nodeSpawn(spec.command, spec.args, {
+    const child = nodeSpawn(command, args, {
       cwd: spec.cwd,
       env: cleanEnv(spec.env),
-      stdio: "inherit",
+      // Prefer numeric fds over "inherit" to reduce Bun stream wrapping
+      stdio: [0, 1, 2],
     });
     child.on("error", (err) => {
-      process.stderr.write(
-        `\x1b[31mFailed to start agent: ${err.message}\x1b[0m\n`,
-      );
+      eprint(`\x1b[31mFailed to start agent: ${err.message}\x1b[0m\n`);
       resolve(1);
     });
     child.on("exit", (c, signal) => {
+      if (signal) resolve(1);
+      else resolve(c ?? 1);
+    });
+  });
+}
+
+/**
+ * UC-9.3: give Claude/Codex/Grok a real PTY.
+ * Order: script(1) PTY → raw [0,1,2] → /dev/tty fds.
+ */
+async function runTuiAgent(spec: AgentSpec): Promise<number> {
+  const attempts: Array<{ label: string; run: () => Promise<number> }> = [];
+
+  if (process.platform === "darwin") {
+    attempts.push({
+      label: "script-pty",
+      run: () =>
+        spawnWait(
+          "/usr/bin/script",
+          ["-q", "/dev/null", spec.command, ...spec.args],
+          spec,
+        ),
+    });
+  } else if (process.platform === "linux") {
+    const inner = [spec.command, ...spec.args]
+      .map((a) =>
+        /[\s'"\\]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a,
+      )
+      .join(" ");
+    attempts.push({
+      label: "script-pty",
+      run: () =>
+        spawnWait("script", ["-q", "-c", inner, "/dev/null"], spec),
+    });
+  }
+
+  attempts.push(
+    { label: "stdio-fds", run: () => spawnWait(spec.command, spec.args, spec) },
+    { label: "dev-tty", run: () => spawnOnDevTty(spec) },
+  );
+
+  let lastCode = 1;
+  for (const a of attempts) {
+    eprint(`\x1b[2m(tui spawn via ${a.label}…)\x1b[0m\n`);
+    const t0 = Date.now();
+    lastCode = await a.run();
+    const ms = Date.now() - t0;
+    // Stayed up a while → user likely used the TUI (or exited normally)
+    if (ms >= 1500) return lastCode;
+    // Instant non-zero → try next; instant zero also try next (false start)
+    eprint(
+      `\x1b[2m(tui via ${a.label} exited in ${ms}ms code=${lastCode} — trying next)\x1b[0m\n`,
+    );
+  }
+
+  eprint(
+    "\x1b[33mAll TUI spawn strategies exited quickly.\n" +
+      "Workaround: leave Loom MCP configured, run Claude directly:\n" +
+      `  claude --mcp-config ${process.env.HOME ?? "~"}/.loom/mcp.json\n` +
+      "  (with LOOM_SESSION / LOOM_PROFILE set to this session)\x1b[0m\n",
+  );
+  return lastCode;
+}
+
+function spawnOnDevTty(spec: AgentSpec): Promise<number> {
+  return new Promise((resolve) => {
+    const fds: number[] = [];
+    try {
+      fds.push(
+        openSync("/dev/tty", "r"),
+        openSync("/dev/tty", "w"),
+        openSync("/dev/tty", "w"),
+      );
+    } catch (e) {
+      eprint(
+        `\x1b[2m/dev/tty unavailable: ${e instanceof Error ? e.message : e}\x1b[0m\n`,
+      );
+      resolve(1);
+      return;
+    }
+    const child = nodeSpawn(spec.command, spec.args, {
+      cwd: spec.cwd,
+      env: cleanEnv(spec.env),
+      stdio: [fds[0]!, fds[1]!, fds[2]!],
+    });
+    const closeFds = () => {
+      for (const fd of fds) {
+        try {
+          closeSync(fd);
+        } catch {
+          /* */
+        }
+      }
+    };
+    child.on("error", (err) => {
+      closeFds();
+      eprint(`\x1b[31m/dev/tty spawn failed: ${err.message}\x1b[0m\n`);
+      resolve(1);
+    });
+    child.on("exit", (c, signal) => {
+      closeFds();
       if (signal) resolve(1);
       else resolve(c ?? 1);
     });
