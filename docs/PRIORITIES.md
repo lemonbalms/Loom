@@ -54,7 +54,7 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 - [x] README Quick start 옵션 A/B/C  
 - [x] USER_GUIDE §0  
 - [x] `scripts/loom` 래퍼  
-- [ ] `bun test` + `smoke:desktop` green (ship 시 확인)  
+- [x] `bun test` + `smoke:desktop` green  
 
 ### 비목표 (P0에 넣지 않음)
 
