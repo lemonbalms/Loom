@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.12.0** |
-| **Status** | **`approved`** — sticky board RPC + desktop Board tab (M-18 A) |
-| **Supersedes** | 0.11.2 |
+| **Version** | **0.12.1** |
+| **Status** | **`approved`** — desktop polish + PITCH sync to 0.12 |
+| **Supersedes** | 0.12.0 |
 | **Last updated** | 2026-07-10 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,21 @@
 
 ### Changelog
 
-#### 0.12.0 — 2026-07-10 (`approved`)
+#### 0.12.1 — 2026-07-10 (`approved`)
+
+**Why:** GUI polish after 0.12.0 dogfood; keep external pitch honest.
+
+| What | Why |
+|------|-----|
+| Desktop: auto-refresh 5s, R key, last-updated, tab badges | Scanability / less manual refresh |
+| Inbox: resolve fromPeerId → displayName via peers map | UX |
+| Board: group tasks by status | Scanability |
+| `docs/PITCH.md` → v0.12.0 (Board shipped, smoke) | Pitch was stale (said Board deferred) |
+| CLI / desktop VERSION **0.12.1** | Parity |
+
+No re-review (UX + docs honesty only).
+
+#### 0.12.0 — 2026-07-10 (`superseded` by 0.12.1; was `approved`)
 
 **Why:** Close M-18 deferral with **option A** — board via sticky host RPC + desktop Board tab. Dogfood sticky path automated.
 
@@ -989,5 +1003,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | plan | **0.11.1** R13 locks (M-18 C, M-19 Rust, M-20 textContent) | 2026-07-09 | **0.11.1** `approved` |
 | Plan author | implementation | **0.11.2** `apps/desktop` thin shell | 2026-07-09 | **0.11.2** |
 | Plan author | implementation | **0.12.0** sticky board + desktop Board + smoke | 2026-07-10 | **0.12.0** |
+| Plan author | implementation | **0.12.1** desktop polish + PITCH sync | 2026-07-10 | **0.12.1** |
 
-**구현 게이트:** **0.12.0** desktop Status/Peers/Inbox/**Board**. Next: dogfood GUI polish / L-5 embed / Owner.
+**구현 게이트:** **0.12.1** desktop polished. Next: L-5 embed when needed / Owner.

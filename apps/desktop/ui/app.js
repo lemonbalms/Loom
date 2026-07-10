@@ -1,5 +1,5 @@
 /**
- * Loom desktop UI (PLAN 0.11.1 / 0.11.2)
+ * Loom desktop UI (PLAN 0.12.x)
  * - invoke only (no sticky fetch; no token in JS)
  * - textContent only for peer-controlled strings (M-20)
  */
@@ -7,7 +7,9 @@
 const invoke = (cmd, args) => {
   const core = window.__TAURI__?.core;
   if (!core?.invoke) {
-    return Promise.reject(new Error("Tauri invoke unavailable (open via loom desktop / tauri dev)"));
+    return Promise.reject(
+      new Error("Tauri invoke unavailable (open via loom desktop / tauri dev)"),
+    );
   }
   return core.invoke(cmd, args ?? {});
 };
@@ -36,7 +38,17 @@ const inboxList = document.getElementById("inbox-list");
 const inboxMeta = document.getElementById("inbox-meta");
 const boardList = document.getElementById("board-list");
 const boardMeta = document.getElementById("board-meta");
+const btnRefresh = document.getElementById("btn-refresh");
+const lastRefreshEl = document.getElementById("last-refresh");
+const autoRefreshEl = document.getElementById("auto-refresh");
+const badgeInbox = document.getElementById("badge-inbox");
+const badgeBoard = document.getElementById("badge-board");
 const STATUSES = ["todo", "doing", "done", "blocked", "cancelled"];
+
+/** peerId → displayName from last list_peers */
+let peerNameMap = new Map();
+let refreshInFlight = false;
+let autoTimer = null;
 
 function showBanner(kind, message) {
   banner.classList.remove("hidden", "ok", "warn", "bad");
@@ -52,7 +64,7 @@ function showBanner(kind, message) {
 function hostCta(code) {
   switch (code) {
     case "none":
-      return "CTA: Start sticky host\n  loom host start\nThen click Refresh.";
+      return "CTA: Start sticky host\n  loom host start\nThen click Refresh (or wait for auto-refresh).";
     case "stale_pid":
       return "CTA: Dead host process\n  loom host stop\n  loom host start";
     case "unauthorized":
@@ -61,6 +73,17 @@ function hostCta(code) {
       return "CTA: Connection refused or RPC error\n  Check relay + loom host start";
     default:
       return "";
+  }
+}
+
+function setBadge(el, n) {
+  if (!el) return;
+  if (n > 0) {
+    el.hidden = false;
+    setText(el, n > 99 ? "99+" : String(n));
+  } else {
+    el.hidden = true;
+    setText(el, "");
   }
 }
 
@@ -76,6 +99,14 @@ function renderKv(dl, rows) {
   }
 }
 
+function markRefreshed() {
+  const t = new Date();
+  setText(
+    lastRefreshEl,
+    `Updated ${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`,
+  );
+}
+
 async function refreshStatus() {
   try {
     const s = await invoke("get_host_status");
@@ -86,7 +117,14 @@ async function refreshStatus() {
         ["State", s.code],
         ["Peer", s.displayName ? `${s.displayName} (${s.peerId})` : s.peerId],
         ["Room", s.roomName ? `${s.roomName} (${s.roomId})` : s.roomId],
-        ["Relay", s.relayConnected == null ? "—" : s.relayConnected ? "connected" : "disconnected"],
+        [
+          "Relay",
+          s.relayConnected == null
+            ? "—"
+            : s.relayConnected
+              ? "connected"
+              : "disconnected",
+        ],
         ["PID", s.pid],
         ["Port", s.port],
         ["Started", s.startedAt],
@@ -114,6 +152,7 @@ async function refreshPeers() {
   try {
     const r = await invoke("list_peers");
     setText(peersMeta, r.message || "");
+    peerNameMap = new Map();
     if (!r.ok) {
       const empty = el("li", "empty");
       setText(empty, r.message || "Host unavailable");
@@ -127,6 +166,7 @@ async function refreshPeers() {
       return;
     }
     for (const p of r.peers) {
+      if (p.id) peerNameMap.set(p.id, p.displayName || p.id);
       const li = el("li", "card");
       const head = el("div", "card-head");
       const dot = el("span", `dot ${p.online ? "on" : "off"}`);
@@ -158,11 +198,22 @@ async function refreshPeers() {
   }
 }
 
+function displayFrom(entry) {
+  if (entry.fromName && entry.fromName !== entry.fromPeerId) {
+    return entry.fromName;
+  }
+  const mapped = peerNameMap.get(entry.fromPeerId);
+  if (mapped) return mapped;
+  return entry.fromName || entry.fromPeerId || "?";
+}
+
 async function refreshInbox() {
   clearChildren(inboxList);
   try {
     const r = await invoke("list_inbox");
     setText(inboxMeta, r.message || "");
+    const n = r.ok ? r.entries?.length || 0 : 0;
+    setBadge(badgeInbox, n);
     if (!r.ok) {
       const empty = el("li", "empty");
       setText(empty, r.message || "Host unavailable");
@@ -179,7 +230,7 @@ async function refreshInbox() {
       const li = el("li", "card");
       const head = el("div", "card-head");
       const from = el("strong");
-      setText(from, e.fromName || e.fromPeerId || "?");
+      setText(from, displayFrom(e));
       const mode = el("span", "pill");
       setText(mode, e.mode || "message");
       const id = el("span", "muted");
@@ -188,7 +239,6 @@ async function refreshInbox() {
       head.appendChild(mode);
       head.appendChild(id);
       const body = el("p", "body-text");
-      // M-20: text only — malicious HTML stays as characters
       setText(body, e.body || "");
       const actions = el("div", "card-actions");
       const claimBtn = el("button", "btn small");
@@ -198,7 +248,10 @@ async function refreshInbox() {
         claimBtn.disabled = true;
         try {
           const res = await invoke("claim_handoff", { id: e.id, via: "claim" });
-          showBanner(res.claimed ? "ok" : "warn", res.message || (res.claimed ? "claimed" : "not claimed"));
+          showBanner(
+            res.claimed ? "ok" : "warn",
+            res.message || (res.claimed ? "claimed" : "not claimed"),
+          );
           await refreshInbox();
         } catch (err) {
           showBanner("bad", err?.message || String(err));
@@ -211,8 +264,14 @@ async function refreshInbox() {
       acceptBtn.addEventListener("click", async () => {
         acceptBtn.disabled = true;
         try {
-          const res = await invoke("claim_handoff", { id: e.id, via: "accept" });
-          showBanner(res.claimed ? "ok" : "warn", res.message || (res.claimed ? "accepted" : "not accepted"));
+          const res = await invoke("claim_handoff", {
+            id: e.id,
+            via: "accept",
+          });
+          showBanner(
+            res.claimed ? "ok" : "warn",
+            res.message || (res.claimed ? "accepted" : "not accepted"),
+          );
           await refreshInbox();
         } catch (err) {
           showBanner("bad", err?.message || String(err));
@@ -227,6 +286,7 @@ async function refreshInbox() {
       inboxList.appendChild(li);
     }
   } catch (e) {
+    setBadge(badgeInbox, 0);
     const empty = el("li", "empty");
     setText(empty, e?.message || String(e));
     inboxList.appendChild(empty);
@@ -238,6 +298,8 @@ async function refreshBoard() {
   try {
     const r = await invoke("list_tasks");
     setText(boardMeta, r.message || "");
+    const n = r.ok ? r.tasks?.length || 0 : 0;
+    setBadge(badgeBoard, n);
     if (!r.ok) {
       const empty = el("li", "empty");
       setText(empty, r.message || "Host unavailable");
@@ -250,49 +312,66 @@ async function refreshBoard() {
       boardList.appendChild(empty);
       return;
     }
+    // Group by status for scanability
+    const byStatus = new Map(STATUSES.map((s) => [s, []]));
     for (const t of r.tasks) {
-      const li = el("li", "card");
-      const head = el("div", "card-head");
-      const title = el("strong");
-      setText(title, t.title || t.id);
-      const id = el("span", "muted");
-      setText(id, t.id);
-      const sel = el("select", "status-select");
-      for (const s of STATUSES) {
-        const opt = el("option");
-        opt.value = s;
-        setText(opt, s);
-        if (s === t.status) opt.selected = true;
-        sel.appendChild(opt);
-      }
-      sel.addEventListener("change", async () => {
-        sel.disabled = true;
-        try {
-          const res = await invoke("update_task", { id: t.id, status: sel.value });
-          showBanner(res.ok ? "ok" : "warn", res.message || "updated");
-          await refreshBoard();
-        } catch (err) {
-          showBanner("bad", err?.message || String(err));
-          sel.disabled = false;
+      const s = STATUSES.includes(t.status) ? t.status : "todo";
+      byStatus.get(s).push(t);
+    }
+    for (const status of STATUSES) {
+      const group = byStatus.get(status) || [];
+      if (!group.length) continue;
+      const header = el("li", "group-head");
+      setText(header, `${status} (${group.length})`);
+      boardList.appendChild(header);
+      for (const t of group) {
+        const li = el("li", "card");
+        const head = el("div", "card-head");
+        const title = el("strong");
+        setText(title, t.title || t.id);
+        const id = el("span", "muted");
+        setText(id, t.id);
+        const sel = el("select", "status-select");
+        for (const s of STATUSES) {
+          const opt = el("option");
+          opt.value = s;
+          setText(opt, s);
+          if (s === t.status) opt.selected = true;
+          sel.appendChild(opt);
         }
-      });
-      head.appendChild(title);
-      head.appendChild(sel);
-      head.appendChild(id);
-      li.appendChild(head);
-      if (t.notes) {
-        const notes = el("p", "body-text");
-        setText(notes, t.notes);
-        li.appendChild(notes);
+        sel.addEventListener("change", async () => {
+          sel.disabled = true;
+          try {
+            const res = await invoke("update_task", {
+              id: t.id,
+              status: sel.value,
+            });
+            showBanner(res.ok ? "ok" : "warn", res.message || "updated");
+            await refreshBoard();
+          } catch (err) {
+            showBanner("bad", err?.message || String(err));
+            sel.disabled = false;
+          }
+        });
+        head.appendChild(title);
+        head.appendChild(sel);
+        head.appendChild(id);
+        li.appendChild(head);
+        if (t.notes) {
+          const notes = el("p", "body-text");
+          setText(notes, t.notes);
+          li.appendChild(notes);
+        }
+        if (t.assignee) {
+          const asg = el("p", "muted");
+          setText(asg, `assignee: ${t.assignee}`);
+          li.appendChild(asg);
+        }
+        boardList.appendChild(li);
       }
-      if (t.assignee) {
-        const asg = el("p", "muted");
-        setText(asg, `assignee: ${t.assignee}`);
-        li.appendChild(asg);
-      }
-      boardList.appendChild(li);
     }
   } catch (e) {
+    setBadge(badgeBoard, 0);
     const empty = el("li", "empty");
     setText(empty, e?.message || String(e));
     boardList.appendChild(empty);
@@ -300,34 +379,40 @@ async function refreshBoard() {
 }
 
 async function refreshAll() {
-  await refreshStatus();
-  await refreshPeers();
-  await refreshInbox();
-  await refreshBoard();
+  if (refreshInFlight) return;
+  refreshInFlight = true;
+  btnRefresh.disabled = true;
+  try {
+    await refreshStatus();
+    await refreshPeers();
+    await refreshInbox();
+    await refreshBoard();
+    markRefreshed();
+  } finally {
+    refreshInFlight = false;
+    btnRefresh.disabled = false;
+  }
 }
 
-document.getElementById("board-add").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const input = document.getElementById("board-title");
-  const title = (input.value || "").trim();
-  if (!title) return;
-  try {
-    const res = await invoke("add_task", { title, status: "todo" });
-    showBanner(res.ok ? "ok" : "warn", res.message || (res.ok ? "added" : "failed"));
-    if (res.ok) {
-      input.value = "";
-      await refreshBoard();
-    }
-  } catch (e) {
-    showBanner("bad", e?.message || String(e));
+function setupAutoRefresh() {
+  if (autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
   }
-});
+  if (autoRefreshEl?.checked) {
+    autoTimer = setInterval(() => {
+      refreshAll();
+    }, 5000);
+  }
+}
 
 // Tabs
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     const name = tab.getAttribute("data-tab");
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+    document
+      .querySelectorAll(".tab")
+      .forEach((t) => t.classList.toggle("active", t === tab));
     document.querySelectorAll(".panel").forEach((p) => {
       const on = p.id === `panel-${name}`;
       p.hidden = !on;
@@ -336,9 +421,43 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-document.getElementById("btn-refresh").addEventListener("click", () => {
+btnRefresh.addEventListener("click", () => {
   refreshAll();
+});
+
+document.getElementById("board-add").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const input = document.getElementById("board-title");
+  const title = (input.value || "").trim();
+  if (!title) return;
+  try {
+    const res = await invoke("add_task", { title, status: "todo" });
+    showBanner(
+      res.ok ? "ok" : "warn",
+      res.message || (res.ok ? "added" : "failed"),
+    );
+    if (res.ok) {
+      input.value = "";
+      await refreshBoard();
+      markRefreshed();
+    }
+  } catch (e) {
+    showBanner("bad", e?.message || String(e));
+  }
+});
+
+autoRefreshEl?.addEventListener("change", setupAutoRefresh);
+
+// Keyboard: r / Cmd+R style without fighting browser — only when not typing
+document.addEventListener("keydown", (ev) => {
+  const tag = (ev.target && ev.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (ev.key === "r" || ev.key === "R") {
+    ev.preventDefault();
+    refreshAll();
+  }
 });
 
 // boot
 refreshAll();
+setupAutoRefresh();

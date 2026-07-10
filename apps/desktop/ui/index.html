@@ -11,15 +11,30 @@
       <div class="brand">
         <span class="logo" aria-hidden="true">◈</span>
         <h1>Loom</h1>
-        <span id="version-tag" class="muted">desktop 0.12.0</span>
+        <span id="version-tag" class="muted">desktop 0.12.1</span>
       </div>
       <nav class="tabs" role="tablist">
-        <button type="button" class="tab active" data-tab="status" role="tab">Status</button>
+        <button type="button" class="tab active" data-tab="status" role="tab">
+          Status
+        </button>
         <button type="button" class="tab" data-tab="peers" role="tab">Peers</button>
-        <button type="button" class="tab" data-tab="inbox" role="tab">Inbox</button>
-        <button type="button" class="tab" data-tab="board" role="tab">Board</button>
+        <button type="button" class="tab" data-tab="inbox" role="tab">
+          Inbox <span id="badge-inbox" class="badge" hidden></span>
+        </button>
+        <button type="button" class="tab" data-tab="board" role="tab">
+          Board <span id="badge-board" class="badge" hidden></span>
+        </button>
       </nav>
-      <button type="button" id="btn-refresh" class="btn primary">Refresh</button>
+      <div class="toolbar">
+        <label class="auto-label muted">
+          <input type="checkbox" id="auto-refresh" checked />
+          Auto 5s
+        </label>
+        <span id="last-refresh" class="muted"></span>
+        <button type="button" id="btn-refresh" class="btn primary" title="Refresh (R)">
+          Refresh
+        </button>
+      </div>
     </header>
 
     <div id="banner" class="banner hidden" role="status"></div>
@@ -47,7 +62,13 @@
         <h2>Board</h2>
         <p id="board-meta" class="muted"></p>
         <form id="board-add" class="board-add">
-          <input id="board-title" type="text" maxlength="200" placeholder="New task title" autocomplete="off" />
+          <input
+            id="board-title"
+            type="text"
+            maxlength="200"
+            placeholder="New task title"
+            autocomplete="off"
+          />
           <button type="submit" class="btn primary">Add</button>
         </form>
         <ul id="board-list" class="list"></ul>
@@ -55,7 +76,7 @@
     </main>
 
     <footer class="foot muted">
-      Sticky host only · peer text is never HTML-injected · Board via sticky RPC
+      Sticky host only · text never HTML-injected · Board via sticky RPC · press R to refresh
     </footer>
 
     <script src="app.js"></script>

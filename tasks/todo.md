@@ -1,14 +1,12 @@
-# 0.12.0 — board + dogfood
+# 0.12.1 — polish + pitch
 
-- [x] Dogfood sticky RPC path (status/peers/inbox/401)
-- [x] sticky list_tasks / add_task / update_task
-- [x] desktop Board tab
-- [x] smoke:desktop script
-- [x] PLAN/VERSION 0.12.0
+- [x] PITCH sync to 0.12 (Board shipped)
+- [x] Desktop auto-refresh, badges, peer names, board groups
+- [x] PLAN/VERSION 0.12.1
 
 ## Next
 
-- GUI polish / multi-window later
 - L-5 when pack embed ships
+- Owner-directed features
 
 `bun run smoke:desktop` · `bun run desktop`
