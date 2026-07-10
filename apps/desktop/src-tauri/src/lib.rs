@@ -160,6 +160,11 @@ fn problem_dto(client: &StickyClient, problem: HostProblem) -> HostStatusDto {
             "Sticky host meta exists but process is dead. Run: loom host stop && loom host start"
                 .into(),
         ),
+        HostProblem::SessionMismatch => (
+            "session_mismatch".into(),
+            "Sticky host is bound to a different room/peer than this session (F-2). Run: loom host stop && loom host start"
+                .into(),
+        ),
         HostProblem::Unauthorized => (
             "unauthorized".into(),
             "Host rejected token (401). Meta may not match running host — restart host.".into(),
@@ -187,7 +192,8 @@ fn problem_dto(client: &StickyClient, problem: HostProblem) -> HostStatusDto {
 #[tauri::command]
 fn get_host_status(state: State<'_, AppState>) -> HostStatusDto {
     let client = client_from_state(&state);
-    match client.load_meta() {
+    // L-26: F-2 live meta (room/peer match session) for all RPC paths
+    match client.load_live_meta() {
         Err(p) => problem_dto(&client, p),
         Ok(meta) => match client.rpc(&meta, serde_json::json!({ "op": "status" })) {
             Ok(v) => {
@@ -246,7 +252,7 @@ fn get_host_status(state: State<'_, AppState>) -> HostStatusDto {
 #[tauri::command]
 fn list_peers(state: State<'_, AppState>) -> PeersDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);
@@ -346,7 +352,7 @@ fn list_peers(state: State<'_, AppState>) -> PeersDto {
 #[tauri::command]
 fn list_inbox(state: State<'_, AppState>) -> InboxDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);
@@ -444,7 +450,7 @@ fn list_inbox(state: State<'_, AppState>) -> InboxDto {
 #[tauri::command]
 fn claim_handoff(state: State<'_, AppState>, id: String, via: Option<String>) -> ClaimDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);
@@ -523,7 +529,7 @@ fn send_handoff(
     mode: Option<String>,
 ) -> HandoffSendDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);
@@ -591,7 +597,7 @@ fn send_handoff(
 #[tauri::command]
 fn send_chat(state: State<'_, AppState>, text: String) -> HandoffSendDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);
@@ -643,7 +649,7 @@ fn send_chat(state: State<'_, AppState>, text: String) -> HandoffSendDto {
 #[tauri::command]
 fn list_tasks(state: State<'_, AppState>) -> BoardDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);
@@ -722,7 +728,7 @@ fn add_task(
     status: Option<String>,
 ) -> TaskMutDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);
@@ -775,7 +781,7 @@ fn update_task(
     title: Option<String>,
 ) -> TaskMutDto {
     let client = client_from_state(&state);
-    let meta = match client.load_meta() {
+    let meta = match client.load_live_meta() {
         Ok(m) => m,
         Err(p) => {
             let d = problem_dto(&client, p);

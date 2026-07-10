@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.13.4** `approved` — **R14** cumulative trust (P1-B).  
+> **최신:** PLAN **v0.13.5** `approved (author-close)` — R14 Low **L-26/L-27** closed.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| *(none)* | | | **R14 closed** — next P2 durable inbox (MINOR + R{n}) |
+| *(none)* | | | **0.13.5** R14 Low done — next **P2** durable inbox (MINOR + R{n}) |
 
 ---
 
@@ -29,10 +29,10 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| **L-26** | Low | Desktop sticky F-2 room/peer match parity (CLI only) | **open** — backlog |
-| **L-27** | Low | Pack embed check/read TOCTOU residual (same-path swap) | **open** — backlog; primary L-5 done |
 | L-23 | Low | sticky `GET /health` unauth loopback | **accepted** in 0.11.1 (document only) |
-| L-5 | Low | pack embed allowlist at send | **done 0.13.0** (residual → L-27) |
+| L-26 | Low | Desktop sticky F-2 room/peer match | **done 0.13.5** |
+| L-27 | Low | Pack embed check/read TOCTOU residual | **done 0.13.5** |
+| L-5 | Low | pack embed allowlist at send | **done 0.13.0** (+ L-27 harden) |
 | L-4 residual | Low | wire `requestId` | **done 0.13.1** |
 | Product | — | Board UI / sticky board ops | **done 0.12.0** (M-18 A) |
 
@@ -42,7 +42,8 @@
 
 | Finding | 처리 |
 |---------|------|
-| **R14** | cumulative 0.11–0.13.3 trust → **approved**; L-26/L-27 Low backlog |
+| **0.13.5 L-26/L-27** | desktop `load_live_meta` F-2; pack embed O_NOFOLLOW+fd; tests; author-close |
+| **R14** | cumulative 0.11–0.13.3 trust → **approved**; L-26/L-27 closed in 0.13.5 |
 | **0.13.3 install DX** | PRIORITIES.md; scripts/loom; link:loom / unlink:loom; README install A/B/C |
 | **0.13.2 dogfood** | inbox displayName + att count; Share uses `bun run loom`; host stop profile tip |
 | **0.13.1 L-4** | wire `requestId` — **author-close** (not R{n}; not Owner approve). Commit `676d4f3` 2026-07-10 |
@@ -119,6 +120,14 @@
 ### Decision notes
 
 No High/Med issues and no plan-vs-code security drift that blocks trust for the 0.11–0.13.3 surface. Token stays loopback-Bearer + file-0600 and never reaches the webview; pack embed re-resolves allowlist at send; claim is first-wins and peer-scoped; desktop UI is textContent-only. **P1-B closed.** Next product gate: **P2 durable inbox** requires MINOR + new R{n}. Low L-26/L-27 optional.
+
+### R14 follow-up (0.13.5 — applied)
+
+| Finding | 처리 |
+|---------|------|
+| **L-26** | `StickyClient::load_live_meta` + all desktop RPC; CTA `session_mismatch` |
+| **L-27** | `readAllowlistedFileText` O_NOFOLLOW open + fd read + re-resolve; test symlink swap |
+| PLAN | **v0.13.5** author-close (R14 Low; no re-R{n}) |
 
 ---
 

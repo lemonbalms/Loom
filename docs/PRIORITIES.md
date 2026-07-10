@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/PRIORITIES.md` |
-| **기준 시점** | PLAN **v0.13.4** · 2026-07-10 |
+| **기준 시점** | PLAN **v0.13.5** · 2026-07-10 |
 | **목적** | “지금 무엇을 할지” Owner·에이전트 공통 SSOT (단기) |
 | **관련** | [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`TEST_PLAN.md`](./TEST_PLAN.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) |
 
@@ -78,7 +78,7 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 | **B (엄격)** | **R14**: 0.11–0.13 누적 diff 보안·정합성 (Fable 5) | “R14 돌려” |
 
 **P1 완료 (B):** R14 **approved** 2026-07-10 — 산출 `docs/plan_review.md` R14.  
-Low backlog: **L-26** (desktop F-2 parity), **L-27** (pack embed TOCTOU residual).  
+R14 Low: **L-26 / L-27 done 0.13.5**.  
 규칙: [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).
 
 ---
@@ -120,6 +120,7 @@ Low backlog: **L-26** (desktop F-2 parity), **L-27** (pack embed TOCTOU residual
 | 2026-07-10 | P0 implemented (link:loom, scripts/loom, docs) — 0.13.3 |
 | 2026-07-10 | TEST_PLAN P0 gate 기록 (UC-0/1/3/11); P1 next |
 | 2026-07-10 | P1-B R14 approved — 0.13.4; next P2 |
+| 2026-07-10 | R14 Low L-26/L-27 implemented — 0.13.5 |
 
 ---
 

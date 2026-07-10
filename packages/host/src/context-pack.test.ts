@@ -154,6 +154,29 @@ describe("context pack", () => {
     );
   });
 
+  test("L-27 embed skips when path is replaced by symlink outside allow root", () => {
+    const secret = join(dir, "secret-outside.txt");
+    writeFileSync(secret, "LEAKED\n", "utf8");
+    const victim = join(workspace, "swap-me.txt");
+    writeFileSync(victim, "ok body\n", "utf8");
+    addPackPath("swap-me.txt");
+    // After allowlist add, replace file with symlink out of workspace
+    rmSync(victim);
+    try {
+      symlinkSync(secret, victim);
+    } catch {
+      return; // platform without symlink
+    }
+    const pack = loadContextPack()!;
+    const att = packToAttachments(pack, { embedFiles: true, cwd: workspace });
+    const fileAtt = att.find((a) =>
+      a.label?.startsWith("context-pack-file:swap-me"),
+    );
+    // Must not embed outside content (O_NOFOLLOW / re-resolve reject)
+    expect(fileAtt).toBeUndefined();
+    expect(att.every((a) => !a.content?.includes("LEAKED"))).toBe(true);
+  });
+
   test("pack path file location is under packs dir", () => {
     expect(packPathForRoom("room_pack_test")).toContain(".loom/packs");
   });

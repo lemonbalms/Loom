@@ -11,6 +11,7 @@ Thin **Tauri 2** shell for room Status / Peers / Inbox via **sticky host** loopb
 | Sticky only | No second WebSocket join from the desktop |
 | M-19 | Rust `invoke` → HTTP `127.0.0.1` + Bearer; **token never in webview** |
 | M-20 | UI uses `textContent` only for peer strings |
+| L-26 | F-2: `load_live_meta` room/peer match session before RPC |
 | Board | Via sticky `list_tasks` / `add_task` / `update_task` (same file as CLI) |
 
 ## Prerequisites

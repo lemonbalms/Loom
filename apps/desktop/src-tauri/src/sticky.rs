@@ -26,9 +26,19 @@ pub struct StickyMeta {
 pub enum HostProblem {
     NoMeta,
     StalePid,
+    /// F-2 / L-26: meta roomId/peerId ≠ current session (re-join without host restart).
+    SessionMismatch,
     Unauthorized,
     Refused(String),
     Other(String),
+}
+
+/// Minimal session fields for F-2 match (camelCase JSON on disk).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionIds {
+    peer_id: String,
+    room_id: String,
 }
 
 pub struct StickyClient {
@@ -57,6 +67,7 @@ impl StickyClient {
         }
     }
 
+    /// Pid-alive meta only (host stop/status style). Does **not** enforce F-2.
     pub fn load_meta(&self) -> Result<StickyMeta, HostProblem> {
         if !self.meta_path.exists() {
             return Err(HostProblem::NoMeta);
@@ -71,6 +82,29 @@ impl StickyClient {
             return Err(HostProblem::StalePid);
         }
         Ok(meta)
+    }
+
+    /// Live host for RPC — **F-2 / L-26**: pid alive **and** roomId/peerId match session.
+    /// Mismatch → treat as unusable (no silent wrong-room send).
+    pub fn load_live_meta(&self) -> Result<StickyMeta, HostProblem> {
+        let meta = self.load_meta()?;
+        let session = self.load_session_ids()?;
+        if meta.room_id != session.room_id || meta.peer_id != session.peer_id {
+            return Err(HostProblem::SessionMismatch);
+        }
+        Ok(meta)
+    }
+
+    fn load_session_ids(&self) -> Result<SessionIds, HostProblem> {
+        if !self.session_path.exists() {
+            return Err(HostProblem::SessionMismatch);
+        }
+        let raw = fs::read_to_string(&self.session_path).map_err(|e| {
+            HostProblem::Other(format!("read session: {e}"))
+        })?;
+        serde_json::from_str(&raw).map_err(|e| {
+            HostProblem::Other(format!("parse session: {e}"))
+        })
     }
 
     /// POST /rpc with Bearer. Token used only here.
@@ -235,6 +269,79 @@ mod tests {
             }
             Err(e) => panic!("unexpected {e:?}"),
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_live_meta_f2_session_mismatch() {
+        let dir = std::env::temp_dir().join(format!(
+            "loom-desktop-f2-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let session = dir.join("s.json");
+        let meta_path = dir.join("s.host.json");
+        // Session says room B / peer new
+        writeln!(
+            fs::File::create(&session).unwrap(),
+            r#"{{"roomId":"room_new","peerId":"p_new","roomName":"n","inviteCode":"LOOM-X","displayName":"d","agentKind":"shell","relayUrl":"ws://127.0.0.1/ws","updatedAt":"x"}}"#
+        )
+        .unwrap();
+        // Meta still bound to old room (use current pid so pid check passes)
+        let pid = std::process::id();
+        writeln!(
+            fs::File::create(&meta_path).unwrap(),
+            r#"{{"pid":{pid},"port":1,"token":"t","sessionPath":"{}","peerId":"p_old","roomId":"room_old","roomName":"n","displayName":"d","startedAt":"x"}}"#,
+            session.display()
+        )
+        .unwrap();
+        let c = StickyClient {
+            session_path: session,
+            meta_path,
+        };
+        match c.load_live_meta() {
+            Err(HostProblem::SessionMismatch) => {}
+            other => panic!("expected SessionMismatch, got {other:?}"),
+        }
+        // pid-only load still succeeds when process is us
+        assert!(c.load_meta().is_ok());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_live_meta_f2_match_ok() {
+        let dir = std::env::temp_dir().join(format!(
+            "loom-desktop-f2ok-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let session = dir.join("s.json");
+        let meta_path = dir.join("s.host.json");
+        let pid = std::process::id();
+        writeln!(
+            fs::File::create(&session).unwrap(),
+            r#"{{"roomId":"room_same","peerId":"p_same","roomName":"n","inviteCode":"LOOM-X","displayName":"d","agentKind":"shell","relayUrl":"ws://127.0.0.1/ws","updatedAt":"x"}}"#
+        )
+        .unwrap();
+        writeln!(
+            fs::File::create(&meta_path).unwrap(),
+            r#"{{"pid":{pid},"port":9,"token":"t","sessionPath":"{}","peerId":"p_same","roomId":"room_same","roomName":"n","displayName":"d","startedAt":"x"}}"#,
+            session.display()
+        )
+        .unwrap();
+        let c = StickyClient {
+            session_path: session,
+            meta_path,
+        };
+        let m = c.load_live_meta().expect("match");
+        assert_eq!(m.room_id, "room_same");
+        assert_eq!(m.peer_id, "p_same");
         let _ = fs::remove_dir_all(&dir);
     }
 }

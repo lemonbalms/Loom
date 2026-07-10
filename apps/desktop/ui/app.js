@@ -74,6 +74,8 @@ function hostCta(code) {
       return "CTA: Start sticky host\n  loom host start\nThen click Refresh (or wait for auto-refresh).";
     case "stale_pid":
       return "CTA: Dead host process\n  loom host stop\n  loom host start";
+    case "session_mismatch":
+      return "CTA: Host bound to different room/peer (F-2)\n  loom host stop\n  loom host start";
     case "unauthorized":
       return "CTA: Token/meta mismatch\n  loom host stop && loom host start";
     case "refused":

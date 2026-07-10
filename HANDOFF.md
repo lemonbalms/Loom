@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.4** · **R14 approved** (P1 trust). Next: **P2 durable inbox** (MINOR + Fable R{n}).
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.5** · R14 Low L-26/L-27 done. Next: **P2 durable inbox** (MINOR + Fable R{n}).
 
 ---
 
@@ -31,11 +31,11 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.13.3** — `bun run link:loom` or `scripts/loom` |
+| **Product CLI** | `loom` v**0.13.5** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.13.4** — R14 trust approved |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.13.5** — R14 Low L-26/L-27 closed |
 | **Priorities** | `docs/PRIORITIES.md` (P0+P1 done → **P2** durable inbox) |
-| **Review gate** | Open blocking **none** (R14 Low L-26/L-27 backlog) |
+| **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -59,6 +59,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| *(pending)* | **0.13.5** | L-26 desktop F-2 + L-27 pack embed TOCTOU |
 | `0300a7d` | **0.13.4** | R14 cumulative trust approved (P1-B) |
 | `96ca50d` | docs | TEST_PLAN P0 gate record; queue P1 |
 | `d9a0b3d` | **0.13.3** | PRIORITIES.md + link:loom install DX |
@@ -113,7 +114,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 | Priority | Item | Notes |
 |----------|------|--------|
 | **Next** | **P2 durable inbox** — 설계 → PLAN MINOR → Fable R{n} → 구현 | PRIORITIES P2 |
-| Done | P1 trust R14 | **0.13.4** approved; L-26/L-27 Low optional |
+| Done | P1 trust R14 + Low | **0.13.4** R14; **0.13.5** L-26/L-27 |
 | Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** (P2 requires R{n}) |
 | Doc | Priorities | `docs/PRIORITIES.md` |
 | Doc | Test plan | `docs/TEST_PLAN.md` — **P0 gate pass 2026-07-10** |
@@ -128,7 +129,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
 bun install
 bun test
-bun run loom --version    # expect 0.13.3
+bun run loom --version    # expect 0.13.5
 bun run status
 bun run smoke:desktop     # headless sticky+board dogfood
 bun run desktop           # UI (needs loom host start)

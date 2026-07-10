@@ -3,11 +3,11 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.4** |
-| **Status** | **`approved` (R14)** — cumulative trust P1-B closed |
-| **Supersedes** | 0.13.3 |
+| **Version** | **0.13.5** |
+| **Status** | **`approved` (author-close, R14 Low)** — L-26/L-27 closed |
+| **Supersedes** | 0.13.4 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **R14 approved** 2026-07-10 (Fable 5–equivalent); Low L-26/L-27 backlog. |
+| **Approval** | R14 **approved**; Low L-26/L-27 **implemented** (author-close PATCH; no re-R{n}). |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -49,7 +49,20 @@
 
 ### Changelog
 
-#### 0.13.4 — 2026-07-10 (`approved` — **R14** cumulative trust)
+#### 0.13.5 — 2026-07-10 (`approved` — **author-close**, R14 Low L-26/L-27)
+
+**Why:** Owner chose Low backlog before P2; close R14 residuals.
+
+| What | Why |
+|------|-----|
+| **L-26** desktop `load_live_meta` F-2 room/peer match | parity with CLI `resolveLiveHostMeta` |
+| UI CTA `session_mismatch` | clear host restart guidance |
+| **L-27** pack embed open `O_NOFOLLOW` + fd read + re-check | reduce check→read TOCTOU |
+| VERSION **0.13.5** | PATCH Low |
+
+**Review impact:** R14 said Low may author-close; no re-R{n} required.
+
+#### 0.13.4 — 2026-07-10 (`superseded` by 0.13.5; was `approved` — **R14** cumulative trust)
 
 **Why:** Owner chose **P1-B** — external R{n} over author-close series 0.11–0.13.3.
 
@@ -1106,5 +1119,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.3** PRIORITIES + link:loom install DX author-close | 2026-07-10 | **0.13.3** |
 | Reviewer | Fable 5–equivalent | **R14 approved** (cumulative trust 0.11–0.13.3); L-26/L-27 Low | 2026-07-10 | **0.13.4** |
 | Plan author | plan/docs | **0.13.4** record R14 + P1 close | 2026-07-10 | **0.13.4** |
+| Plan author | implementation | **0.13.5** L-26/L-27 — **author-close** (R14 Low; no re-R{n}) | 2026-07-10 | **0.13.5** |
 
-**구현 게이트:** **0.13.4** R14 trust closed. Next: **P2 durable inbox** (MINOR + Fable R{n}) or optional Low L-26/L-27.
+**구현 게이트:** **0.13.5** R14 Low closed. Next: **P2 durable inbox** (MINOR + Fable R{n}).

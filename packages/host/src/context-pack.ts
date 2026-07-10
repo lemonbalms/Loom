@@ -11,8 +11,12 @@
 import {
   existsSync,
   realpathSync,
-  readFileSync,
   statSync,
+  openSync,
+  closeSync,
+  fstatSync,
+  readSync,
+  constants as fsConstants,
 } from "node:fs";
 import { join, relative, resolve, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
@@ -327,7 +331,9 @@ export function packToAttachments(
 }
 
 /**
- * L-5: re-resolve each pack path against allowlist at **read** time, then attach body.
+ * L-5 + L-27: re-resolve allowlist at embed time, then read via fd.
+ * Prefer O_NOFOLLOW so a last-component symlink swap after realpath is rejected;
+ * re-check allowlist after open before using bytes.
  * Skips: outside allow root, missing, directories, oversized, binary (NUL bytes).
  */
 export function embedPackFileBodies(
@@ -337,32 +343,84 @@ export function embedPackFileBodies(
   const out: HandoffAttachment[] = [];
   for (const p of pack.paths) {
     if (out.length >= MAX_PACK_EMBED_FILES) break;
-    // TOCTOU: re-check allowlist now (not when path was added to pack)
-    const resolved = resolveAllowlistedPath(p.path, cwd);
-    if (!resolved.ok) continue;
-    try {
-      const st = statSync(resolved.abs);
-      if (!st.isFile()) continue;
-      if (st.size > MAX_PACK_EMBED_FILE_BYTES) continue;
-      const buf = readFileSync(resolved.abs);
-      if (buf.includes(0)) continue; // binary
-      let text = buf.toString("utf8");
-      if (text.length > MAX_PACK_EMBED_FILE_CHARS) {
-        text =
-          text.slice(0, MAX_PACK_EMBED_FILE_CHARS) +
-          "\n…[truncated for pack embed]";
-      }
-      const rel = sanitizePeerText(p.path).slice(0, 120);
-      out.push({
-        kind: "text",
-        label: `context-pack-file:${rel}`,
-        content: sanitizePeerText(text).slice(0, MAX_ATTACHMENT_CONTENT_CHARS),
-      });
-    } catch {
-      /* skip unreadable */
-    }
+    const text = readAllowlistedFileText(p.path, cwd);
+    if (text == null) continue;
+    const rel = sanitizePeerText(p.path).slice(0, 120);
+    out.push({
+      kind: "text",
+      label: `context-pack-file:${rel}`,
+      content: sanitizePeerText(text).slice(0, MAX_ATTACHMENT_CONTENT_CHARS),
+    });
   }
   return out;
+}
+
+/**
+ * L-27: open+fstat+read from fd under allowlist (mitigate path swap TOCTOU).
+ * Returns utf8 text or null to skip.
+ */
+export function readAllowlistedFileText(
+  inputPath: string,
+  cwd?: string,
+): string | null {
+  const allowRoot = cwd ?? process.cwd();
+  const resolved = resolveAllowlistedPath(inputPath, allowRoot);
+  if (!resolved.ok) return null;
+
+  let fd: number | undefined;
+  try {
+    fd = openAllowlistedFd(resolved.abs);
+    const st = fstatSync(fd);
+    if (!st.isFile()) return null;
+    if (st.size > MAX_PACK_EMBED_FILE_BYTES) return null;
+
+    // Re-check allowlist after open (path string) before trusting contents
+    const again = resolveAllowlistedPath(resolved.abs, allowRoot);
+    if (!again.ok || again.abs !== resolved.abs) return null;
+
+    const buf = Buffer.alloc(st.size);
+    let offset = 0;
+    while (offset < st.size) {
+      const n = readSync(fd, buf, offset, st.size - offset, offset);
+      if (n <= 0) break;
+      offset += n;
+    }
+    if (offset !== st.size) return null;
+    if (buf.includes(0)) return null; // binary
+
+    let text = buf.toString("utf8");
+    if (text.length > MAX_PACK_EMBED_FILE_CHARS) {
+      text =
+        text.slice(0, MAX_PACK_EMBED_FILE_CHARS) +
+        "\n…[truncated for pack embed]";
+    }
+    return text;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+function openAllowlistedFd(abs: string): number {
+  // Unix: refuse if final path component is a symlink (classic check→read race).
+  const nofollow = (fsConstants as { O_NOFOLLOW?: number }).O_NOFOLLOW;
+  if (typeof nofollow === "number" && nofollow !== 0) {
+    try {
+      return openSync(abs, fsConstants.O_RDONLY | nofollow);
+    } catch {
+      // ELOOP / EPERM when final component is symlink — do not follow.
+      throw new Error("open O_NOFOLLOW failed");
+    }
+  }
+  // Platforms without O_NOFOLLOW: still open by realpath'd path (weaker).
+  return openSync(abs, fsConstants.O_RDONLY);
 }
 
 export function packIsEmpty(pack: ContextPack): boolean {
