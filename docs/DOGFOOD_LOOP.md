@@ -28,16 +28,19 @@
 | `claude-rev` | `claude-review` | Claude Code | **primary** plan_review R{n} |
 | `codex-rev` | `codex-review` | Codex | secondary / adversarial |
 
-```bash
-# Once: create room as implementer
-bun run loom --profile impl room create --as grok-impl --name loom-dev
-# Save Invite LOOM-XXXX
+### One-shot setup (preferred)
 
-bun run loom --profile claude-rev room join LOOM-XXXX --as claude-review
-bun run loom --profile codex-rev  room join LOOM-XXXX --as codex-review
+```bash
+cd /path/to/Loom   # or fable-advisor local path
+bun run dogfood:room          # create + join all three profiles
+# bun run dogfood:room -- --fresh   # force new invite
+
+bun run dogfood:status        # invite + peers for impl / claude-rev / codex-rev
 ```
 
-Daily:
+State (gitignored): `.loom/dogfood-room.env`, `.loom/dogfood-next-session.txt`
+
+### Daily (after setup)
 
 ```bash
 # A — implementer (sticky recommended)
@@ -45,7 +48,7 @@ bun run loom --profile impl host start
 bun run loom --profile impl run grok
 
 # B — Claude primary reviewer
-bun run loom --profile claude-rev run claude   # needs 0.13.14+ for resize
+bun run loom --profile claude-rev run claude   # 0.13.14+ for resize; R{n} → /advisor fable
 
 # C — Codex second opinion
 bun run loom --profile codex-rev run codex

@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 후 세션 상태 브리핑. PLAN **0.13.14** · dogfood: `docs/DOGFOOD_LOOP.md` (Claude R{n} → **/advisor fable** 필수). Next: **P2 durable inbox** (MINOR + R{n}).
+> `bun run status` 브리핑. dogfood: `bun run dogfood:room` 한 번 → 다음 세션 `dogfood:status` + 3터미널 run. Claude R{n} → **/advisor fable**. Next: **P2 durable inbox** (MINOR + R{n}).
 
 ---
 
@@ -113,8 +113,9 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | **P2 durable inbox** — 설계 → PLAN MINOR → Fable R{n} → 구현 | PRIORITIES P2 |
-| Done | P1 trust R14 + Low | **0.13.4** R14; **0.13.5** L-26/L-27 |
+| **Next** | **P2 durable inbox** — 설계 → PLAN MINOR → R{n} (`/advisor fable`) → 구현 | PRIORITIES P2 |
+| Dogfood | `bun run dogfood:room` / `dogfood:status` | `docs/DOGFOOD_LOOP.md` |
+| Process | Claude R{n} | **`/advisor fable` 필수** before plan_review |
 | Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** (P2 requires R{n}) |
 | Doc | Priorities | `docs/PRIORITIES.md` |
 | Doc | Test plan | `docs/TEST_PLAN.md` — **P0 gate pass 2026-07-10** |
@@ -123,19 +124,17 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 | Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
 | Doc | User guide | `docs/USER_GUIDE.md` |
 
-### 2. Smoke commands
+### 2. Smoke / dogfood commands
 
 ```bash
 cd /Users/kyoungsiklee/projects/fable-advisor   # or clone Loom
 bun install
-bun test
-bun run loom --version    # expect 0.13.5
 bun run status
-bun run smoke:desktop     # headless sticky+board dogfood
-bun run desktop           # UI (needs loom host start)
-cargo --version && rustc --version
-git status -sb
-git log -3 --oneline
+bun run dogfood:room      # first time (or -- --fresh)
+bun run dogfood:status
+bun run loom --profile impl host start
+# terminals: impl run grok | claude-rev run claude | codex-rev run codex
+bun test && bun run smoke:uc && bun run smoke:desktop
 ```
 
 ---

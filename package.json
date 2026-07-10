@@ -18,6 +18,8 @@
     "desktop:build": "cd apps/desktop && bunx tauri build",
     "smoke:desktop": "bun run scripts/smoke-desktop-rpc.ts",
     "smoke:uc": "bun run scripts/smoke-uc.ts",
+    "dogfood:room": "bash scripts/dogfood-room-up.sh",
+    "dogfood:status": "bash scripts/dogfood-room-status.sh",
     "spike:pty": "bun run packages/cli/src/index.ts spike pty",
     "dev:relay": "bun run packages/relay/src/cli.ts",
     "relay:lan": "LOOM_RELAY_HOST=0.0.0.0 LOOM_RELAY_TOKEN=${LOOM_RELAY_TOKEN:?set LOOM_RELAY_TOKEN} bun run packages/relay/src/cli.ts"
