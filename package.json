@@ -20,6 +20,7 @@
     "smoke:uc": "bun run scripts/smoke-uc.ts",
     "smoke:durable": "bun run scripts/smoke-durable.ts",
     "dogfood:room": "bash scripts/dogfood-room-up.sh",
+    "dogfood:up": "bash scripts/dogfood-up.sh",
     "dogfood:status": "bash scripts/dogfood-room-status.sh",
     "spike:pty": "bun run packages/cli/src/index.ts spike pty",
     "dev:relay": "bun run packages/relay/src/cli.ts",

@@ -88,6 +88,31 @@ export function isPidAlive(pid: number): boolean {
   }
 }
 
+/**
+ * M-27: independent process-identity check before a raw SIGTERM.
+ *
+ * `isPidAlive` (kill(pid,0)) + `meta.sessionPath` string match do NOT prove the
+ * pid is still *our* sticky host — after a reboot the OS can reuse the pid for an
+ * unrelated process while stale `*.host.json` meta lingers. The SIGTERM fallback
+ * in `stopStickyHostProcess` fires exactly when the RPC stop failed, i.e. when we
+ * could not confirm the process over IPC. So before killing, require an
+ * independent signal: the process cmdline still references `sticky-main.ts`
+ * (best-effort start-time cross-check would be an acceptable alternative).
+ *
+ * Returns false on ANY doubt (dead pid, `ps` unavailable/nonzero, no match) so
+ * the caller falls back to "clear meta + warn" rather than killing a stranger.
+ */
+export function pidLooksLikeStickyHost(pid: number): boolean {
+  if (!isPidAlive(pid)) return false;
+  try {
+    const res = Bun.spawnSync(["ps", "-p", String(pid), "-o", "command="]);
+    if (res.exitCode !== 0) return false;
+    return res.stdout.toString().includes("sticky-main.ts");
+  } catch {
+    return false;
+  }
+}
+
 export function sessionKeyHash(sp: string): string {
   return createHash("sha256").update(sp).digest("hex").slice(0, 12);
 }

@@ -3,16 +3,15 @@
 **Date:** 2026-07-10  
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
 **GitHub:** https://github.com/lemonbalms/Loom (`main`)  
-**Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave “할까요?”)
+**Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
 
 ---
 
 ## One-line resume
 
-> PLAN **0.17.0** `pending-revision` — **Launcher UX** (`dogfood:up` / `loom up`, join auto-host, work-first, run only when working).  
-> **R18 done** (`docs/plan_review.md` R18) — **M-27** (`down` kill-safety needs real process-identity check, not just pid+sessionPath string match) + **M-28** (multi-profile `up` can't guarantee "no LOOM_SESSION mixing" with current `startStickyHostProcess`/`stopStickyHostProcess` primitive — needs sequential processing or `forSessionPath` parameterization).  
-> **Next:** @grok-impl applies **PATCH 0.17.1** (M-27/M-28 lock rows in PLAN, mirror 0.16.1 pattern) → author-close (no R18b per WORKFLOW §5.1) → implement → test → commit/push.  
-> Code still **0.16.1**. **Do not implement 0.17 until PATCH 0.17.1 locks land.**
+> PLAN **0.17.1** `approved` (author-close, R18 M-27/M-28 locks) — **Launcher UX shipped**:  
+> `loom up`/`down` (multi-profile background sticky host, **M-28 sequential**), **auto-host on `room create`/`join`** (default on; `--no-host` / `LOOM_NO_AUTO_HOST=1`), **M-27** down kill-safety (verify process cmdline is `sticky-main.ts` before SIGTERM), `dogfood:up` one-command online.  
+> **Code + PLAN both 0.17.1.** `bun test` **167 pass / 0 fail**. Committed + pushed.
 
 ---
 
@@ -20,25 +19,41 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.16.1** (work bus shipped) |
-| **PLAN** | **v0.17.0** `pending-revision` |
-| **Open blocking** | **M-27, M-28** (see `docs/plan_review.md` Open (blocking)) |
-| **Review** | **R18 done** — pending-revision; PATCH 0.17.1 required before implement |
+| **CLI / code** | **0.17.1** (Launcher UX shipped) |
+| **PLAN** | **v0.17.1** `approved` (author-close per R18; no R18b) |
+| **Open blocking** | **none** — R18 M-27/M-28 locked + implemented; L-33/L-34/L-35 done |
+| **Tests** | `bun test` 167 pass / 0 fail |
 
-### Already shipped (context, don’t redo)
+### Already shipped (context, don't redo)
 
 | Area | Version |
 |------|---------|
 | Durable inbox | 0.14.x |
 | Purpose + verify | 0.15.1 |
 | Work bus (board→handoff, `loom work`) | 0.16.1 |
+| **Launcher UX (up/down, auto-host, work-first)** | **0.17.1** |
 
 ### Naming
 **Loom** = product · **Fable 5** = review agent
 
 ---
 
-## Next session playbook (ordered)
+## What shipped in 0.17.1 (this wave)
+
+| Area | Change |
+|------|--------|
+| **M-27** | `sticky-meta.ts` `pidLooksLikeStickyHost(pid)` (ps cmdline ~ `sticky-main.ts`); `stopStickyHostProcess` gates raw SIGTERM on it — else clear meta + warn ("NOT killed (M-27)") |
+| **M-28** | `cmdUp`/`cmdDown` process profiles **sequentially** (no `Promise.all`), `setActiveProfile(explicit)` per profile before spawn/stop |
+| **Auto-host** | `cmdRoomCreate`/`cmdRoomJoin` call `autoHostAfterSession(flags)` before exit; fail-soft; `--no-host` / `LOOM_NO_AUTO_HOST=1` opt-out; success prints `host auto-started …` |
+| **CLI** | `loom up [--profiles a,b] [--status]` / `loom down [--profiles a,b]`; dispatch + usage + BOOLEAN_FLAGS (`no-host`, `status`) |
+| **L-33** | `bunfig.toml` preload `scripts/test-setup.ts` sets `LOOM_NO_AUTO_HOST=1` for `bun test` |
+| **Script** | `scripts/dogfood-up.sh` + `dogfood:up` alias (join-all w/ auto-host suppressed, then batched `loom up`) |
+| **Tests** | `packages/host/src/sticky-down-safety.test.ts` (M-27 guard: unrelated alive pid not killed) |
+| **Docs** | USER_GUIDE §3 (host default + up/down), DOGFOOD_LOOP §1 (dogfood:up journey + L-34 8s note), PLAN 0.17.1, plan_review R18 closed, VERSION 0.17.1 (CLI + MCP) |
+
+---
+
+## Next session playbook
 
 ### 1) Status (30s)
 ```bash
@@ -46,44 +61,19 @@ cd /Users/kyoungsiklee/projects/fable-advisor
 bun run status
 ```
 
-### 2) R18 — done, see `docs/plan_review.md` Review R18
-No further reviewer action needed unless PATCH reintroduces new risk (would be R18b).
+### 2) Optional manual smoke (not a blocker; L-33 keeps `bun test` clean)
+```bash
+# real dogfood online path (spawns background hosts):
+bun run dogfood:up -- --status     # report only
+# or full: bun run dogfood:up   →   bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev
+```
 
-### 3) PATCH 0.17.1 (impl — required before implement)
-Apply as PLAN lock rows (mirror 0.16.1 pattern at `docs/PLAN.md` Changelog):
-- **M-27**: `down`'s SIGTERM fallback must pass an independent identity check (cmdline contains `sticky-main.ts`, or start-time ≈ `meta.startedAt`) before killing; on failure, clear meta + warn instead of killing.
-- **M-28**: multi-profile `up` must process profiles **sequentially** (no `Promise.all`) or pass `forSessionPath` explicitly through spawn/stop — current primitive re-reads global `sessionPath()` mid-poll, so concurrent profiles can mix.
-- (Low, non-blocking but should ride along) **L-33** CI hygiene (`LOOM_NO_AUTO_HOST=1` in test harness), **L-34** doc the join double-stop/8s-delay interaction, **L-35** acceptance additions (idempotent double-up, `LOOM_NO_AUTO_HOST` path, down-safety unit test).
-
-Then author-close (no R18b needed — WORKFLOW §5.1 PATCH-then-author-close path).
-
-### 4) After author-close → implement 0.17.1
-In scope:
-1. `dogfood:up` / `loom up|down` — multi-profile sticky host background (sequential per M-28)  
-2. `room create|join` auto-host (default on; `--no-host` / `LOOM_NO_AUTO_HOST`)  
-3. Docs: daily path = up → board/handoff → run only when work  
-4. Optional `up --watch` only (not default)  
-5. `bun test` · VERSION · USER_GUIDE / DOGFOOD_LOOP rewrite  
-6. commit + push  
-
-### 5) Forbidden until PATCH 0.17.1 locks land
-- Product code for up/auto-host  
-- Author-close of 0.17.0 without the M-27/M-28 lock rows  
+### 3) No open blocking. Next work = Owner priorities (docs/PRIORITIES.md)
+Launcher UX (P after work bus) is done. Candidate next: L-30/L-28/L-29 Low backlog,
+or a new MINOR — open a PLAN version + R{n} gate first (WORKFLOW §5.1).
 
 ---
 
 ## Plan pointer
-Read: `docs/PLAN.md` Changelog **0.17.0** (user journey + four pillars + locks + acceptance).  
-Unknowns: `docs/UNKNOWNS.md` §0.17.0.
-
----
-
-## User journey (target UX — for implement after R18)
-
-```text
-bun run dogfood:up          # morning once; close terminal OK
-loom board add "…" --as claude-review
-# later:
-loom --profile claude-rev run claude   # only when processing
-loom work
-```
+Read: `docs/PLAN.md` Changelog **0.17.1** (M-27/M-28/L-33/L-34/L-35 locks) + **0.17.0** (four pillars, journey, acceptance).  
+Review: `docs/plan_review.md` R18 (closed, author-close).

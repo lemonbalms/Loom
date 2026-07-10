@@ -3,11 +3,11 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.17.0** |
-| **Status** | **`pending-revision`** — Launcher UX: up / host-default / work-first (MINOR) — **R18 M-27/M-28 lock rows required** |
-| **Supersedes** | 0.16.1 |
+| **Version** | **0.17.1** |
+| **Status** | **`approved`** (author-close, R18 M-27/M-28 locks applied; **no R18b**) — Launcher UX: up / host-default / work-first (MINOR) |
+| **Supersedes** | 0.17.0 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **R18 done** — `pending-revision` (see `docs/plan_review.md` R18). PATCH **0.17.1** must add M-27 (down kill-safety identity check) + M-28 (multi-profile session isolation) lock rows, then author-close allowed (no R18b). **Do not implement** until PATCH lands. |
+| **Approval** | **R18 done** — `pending-revision` (see `docs/plan_review.md` R18); PATCH **0.17.1** applied M-27 (down kill-safety identity check) + M-28 (multi-profile `up` sequential) + L-33/L-34/L-35 as Failure/security lock rows → **author-close per R18 Decision notes (no R18b)**. Implement allowed under 0.17.1. |
 | **Fable 5 when** | **Required** — changes default online lifecycle, dogfood entry, background daemons. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -49,7 +49,21 @@
 
 ### Changelog
 
-#### 0.17.0 — 2026-07-10 (`pending-review` — **Launcher UX: up + host-default + work-first**)
+#### 0.17.1 — 2026-07-10 (`approved` — **author-close**, R18 M-27/M-28 + L-33/L-34/L-35 locks)
+
+**Why:** R18 `pending-revision` — `down`의 kill-safety가 프로세스 신원을 실제로 검증하지 않음(M-27) + multi-profile `up`이 전역 `sessionPath()`를 매 호출 재평가해 동시 처리 시 세션 혼선 가능(M-28). PLAN 텍스트 lock rows only; 새 아키텍처·표면·프로토콜 변경 없음. **No R18b.**
+
+| Finding | Lock |
+|---------|------|
+| **M-27** | `down`/`host stop`이 쓰는 `stopStickyHostProcess`의 raw `SIGTERM` 폴백 전 **독립적 프로세스 신원 확인**을 통과해야 한다: 대상 pid의 cmdline에 `sticky-main.ts`가 포함되는지(`ps -p <pid> -o command=`) 확인(또는 시작 시각이 `meta.startedAt`과 근사). 확인 실패 시 **SIGTERM을 보내지 않고** meta만 정리한 뒤 경고를 출력한다. `pid alive` + `sessionPath` 문자열 일치만으로는 신원을 증명하지 못한다(reboot 후 pid 재사용). |
+| **M-28** | multi-profile `up`/`down`은 profile을 **순차 처리(no `Promise.all`)** 하며, 각 profile 처리 직전 `setActiveProfile(profile, { explicit: true })`로 전역 세션을 고정한 뒤 `startStickyHostProcess`/`stopStickyHostProcess`를 **완전히 await** 한다. 동시 처리로 인한 `LOOM_SESSION` 혼입을 구조적으로 배제한다. |
+| **L-33** | 테스트 하네스(`bun test` 실행 환경)는 `LOOM_NO_AUTO_HOST=1`을 기본 적용하여 auto-host가 CI/비대화형에서 sticky host를 조용히 스폰하지 않게 한다. Acceptance에 "bun test는 sticky host를 스폰하지 않는다"를 추가한다. |
+| **L-34** | join의 auto-host는 기존 `stopStickyBeforeSessionChange()`(구세션 host 정지) 위에 겹쳐 정지→재시작 이중 동작이 되며 `startStickyHostProcess` 폴링이 최대 8초 걸릴 수 있다 — USER_GUIDE/DOGFOOD_LOOP에 명시하고, auto-host 성공 시 `host auto-started (pid N); disable with --no-host` 안내를 출력한다. |
+| **L-35** | Acceptance에 ①idempotent double-`up`(meta 미손상) ②`LOOM_NO_AUTO_HOST=1` 시 join이 host 미시작 ③`down` 신원 확인 가드 단위테스트 존재를 추가한다. |
+
+**Approved by:** plan author after R18 Decision notes (author-close per WORKFLOW §5.1; **no R18b**). **Implement next** under 0.17.1.
+
+#### 0.17.0 — 2026-07-10 (`superseded` by 0.17.1; was `pending-revision` — **Launcher UX: up + host-default + work-first**)
 
 **Why:** Work bus (0.16) delivers via handoff, but **operator UX still forces multi-terminal host/run mental model**. Owner feedback: “online 유지에 창이 왜 필요?” / “왜 터미널마다 구동?”. Sticky host is already a **background process** (`unref`), but **entry surface** still looks like per-role terminal ops. Goal: **background online by default; send work with board/handoff; open `run` only when working.**
 
@@ -129,27 +143,31 @@
 | Killing unrelated user processes | down only stops **our** sticky meta pids |
 | Windows service installer | macOS/Linux dogfood first; launchd plist optional later not required in 0.17 |
 
-##### Security / failure locks (for R18)
+##### Security / failure locks (authoritative — **0.17.1**)
 
 | Case | Required behavior |
 |------|-------------------|
 | up only starts host for **profiles with existing session** | No invent peer / no join without invite |
-| down | Only stop sticky if meta.pid alive **and** meta.sessionPath matches that profile session |
-| Auto-host on join | Fail soft: join succeeds even if host start fails; print warning + `host status` tip |
+| **M-27** `down` kill-safety | `pid alive` + `sessionPath` 문자열 일치만으로는 신원 증명 불가. raw `SIGTERM` 폴백 전 **독립 신원 확인**(cmdline에 `sticky-main.ts` 포함, `ps -p <pid> -o command=`; 또는 start-time ≈ `meta.startedAt`)을 통과해야 한다. 확인 실패 시 **SIGTERM 안 보냄** — meta만 정리 + 경고. |
+| **M-28** Profile isolation | multi-profile `up`/`down`은 **순차 처리(no `Promise.all`)**; 각 profile 직전 `setActiveProfile(profile,{explicit:true})`로 전역 세션 고정 후 spawn/stop을 완전히 await. 절대 `LOOM_SESSION`을 profile 간에 섞지 않는다. |
+| **L-34** Auto-host on join | Fail soft: host start 실패해도 join 성공(경고 + `host status` tip). 기존 `stopStickyBeforeSessionChange()`(구세션 정지) 위에 정지→재시작 이중 동작이며 폴링 최대 8초 소요 가능 — docs에 명시. 성공 시 `host auto-started (pid N); disable with --no-host` 출력. |
+| **L-33** CI/test hygiene | 테스트 하네스는 `LOOM_NO_AUTO_HOST=1` 기본 — `bun test`가 sticky host를 스폰하지 않는다. |
 | Logs | sticky remains stdout/stderr ignore (or optional log file path under loomDir, 0600) — no secrets in logs |
-| Concurrent up | Idempotent; second up does not corrupt meta |
-| Profile isolation | Never mix LOOM_SESSION across profiles when spawning hosts |
+| Concurrent up | Idempotent; second up does not corrupt meta (already-running → "already running") |
 | watch daemon (if --watch) | Same clamp as L-31; log path not world-writable |
 
-##### Acceptance (after R18 approved)
+##### Acceptance (0.17.1 — implement)
 
-1. Fresh dogfood: `dogfood:up` (or room + up) → three profiles host running; `peers` shows online without any `host start` typed manually.  
+1. Fresh dogfood: `dogfood:up` (or room + up) → profiles host running; `peers` shows online without any `host start` typed manually.  
 2. Terminal closed after up → `host status` still running (daemon).  
 3. `room join` without `--no-host` → sticky auto-started for that profile.  
-4. `room join --no-host` → no sticky.  
+4. `room join --no-host` **or** `LOOM_NO_AUTO_HOST=1` → no sticky (L-33/L-35).  
 5. `loom down` stops hosts; peers go offline (after presence update).  
-6. Docs daily path matches journey above; no “6 terminals required” as default.  
-7. `bun test` green; VERSION bump on implement.
+6. Docs daily path matches journey above; no “6 terminals required” as default (L-34: join 정지→재시작 + 최대 8초 명시).  
+7. **Idempotent double-`up`** does not corrupt meta (second run → "already running") (L-35).  
+8. **`down` identity guard** unit test: pid alive but cmdline ≠ `sticky-main.ts` → meta cleared, **no SIGTERM** (M-27/L-35).  
+9. **`bun test` does not spawn a sticky host** (harness sets `LOOM_NO_AUTO_HOST=1`) (L-33).  
+10. `bun test` green; VERSION **0.17.1** on implement.
 
 ##### Implementation sketch (not approved work)
 
@@ -164,7 +182,7 @@
 
 **Unknowns:** `docs/UNKNOWNS.md` §0.17.0.
 
-**Not implemented.** **R18 done → `pending-revision`** (`docs/plan_review.md` R18: M-27/M-28). Next: apply PATCH 0.17.1 locks → author-close → implement.
+**R18 done → `pending-revision`** (`docs/plan_review.md` R18: M-27/M-28). **PATCH 0.17.1 applied** (M-27/M-28/L-33/L-34/L-35 locks above) → **author-close `approved`**. Implement Launcher UX under **0.17.1**.
 
 #### 0.16.1 — 2026-07-10 (`superseded` by 0.17.0; was `approved` — **author-close**, R17 M-26/L-31/L-32 + work bus)
 

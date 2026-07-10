@@ -1,0 +1,5 @@
+[test]
+# L-33 (PLAN 0.17.1): the test harness must never let auto-host spawn a sticky
+# daemon during `bun test`. The preload forces LOOM_NO_AUTO_HOST=1 for every test
+# process (children that inherit env get it too).
+preload = ["./scripts/test-setup.ts"]

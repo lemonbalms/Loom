@@ -30,6 +30,21 @@ Skipping `/advisor fable` for a formal R{n} is a **process defect** — do not b
 
 Requires plugin: `fable-advisor` (`claude plugin install fable-advisor`).
 
+### Claude as implementer (`claude-impl` profile)
+
+When this Claude session's Loom peer identity is **`claude-impl`** (started with
+`--profile claude-impl`), the role flips: **implementer, not reviewer**.
+Full rules: **[`docs/DOGFOOD_LOOP.md` §2.1](./docs/DOGFOOD_LOOP.md#21-claude-code--as-implementer-claude-impl-profile)**.
+
+1. Claim a board task first (§1.1) — check no other implementer (`grok-impl`)
+   already has it `doing`, to avoid duplicate work on the same PATCH/phase.
+2. Draft PLAN.md / apply PATCH lock rows / write product code / test / commit / push.
+3. Handoff `[R-REQUEST]` to `@claude-review` (+ `@codex-review` if security-relevant).
+4. Never write `docs/plan_review.md` R{n} verdicts — that's `claude-rev`'s job only.
+
+A `claude-rev` session and a `claude-impl` session are different Loom peers with
+opposite mandates, even though both run Claude Code — do not mix them in one terminal.
+
 ## Codex
 
 OpenAI **Codex CLI** loads root **`AGENTS.md`** natively (same ritual).  

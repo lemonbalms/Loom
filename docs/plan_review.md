@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.17.0** `pending-revision` — Launcher UX (up / host-default / work-first). **R18 M-27/M-28 PATCH 필요** (WORKFLOW §5.1 author-close 경로).  
+> **최신:** PLAN **v0.17.1** `approved` (author-close) — Launcher UX (up / host-default / work-first). **R18 M-27/M-28 locks applied** (WORKFLOW §5.1; no R18b).  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,16 +13,13 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R18** | **v0.17.0** | **pending-revision** | Launcher UX — M-27 (down kill-safety) + M-28 (multi-profile session isolation) must become PLAN lock rows. **PATCH(0.17.1) 후 author-close 허용, R18b 불필요.** Implement 금지 until locks land. |
+| **R18** | **v0.17.1** | **closed (author-close)** | Launcher UX — M-27 (down kill-safety) + M-28 (multi-profile session isolation) locked in PLAN 0.17.1 Failure/security locks + L-33/L-34/L-35. **Implement allowed under 0.17.1** (no R18b). |
 
 ---
 
 ## Open (blocking)
 
-| ID | Sev | 요약 | 상태 |
-|----|-----|------|------|
-| M-27 | Med | 0.17.0 `down`의 kill-safety 조건("pid alive AND sessionPath 일치")이 프로세스 신원을 실제로 검증하지 않음 — pid 재사용 시 무관 프로세스 SIGTERM 가능 | R18 — PLAN lock 추가 필요 |
-| M-28 | Med | 0.17.0 multi-profile `up`이 "LOOM_SESSION never mixed across profiles"를 현재 primitive로 보장 못함 — 동시 루프 시 세션 혼선 가능 | R18 — PLAN lock 추가 필요 (순차 처리 또는 `forSessionPath` 파라미터화) |
+_(none)_ — R18 **M-27/M-28** locked in PLAN **0.17.1** Failure/security locks (down 신원 확인 + multi-profile up 순차); L-33/L-34/L-35 applied. Implement allowed under 0.17.1.
 
 ---
 
@@ -30,9 +27,9 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| L-35 | Low | 0.17.0 acceptance 목록이 idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트를 명시 안 함 | R18 — acceptance 문구 보강 권고 |
-| L-34 | Low | 0.17.0 auto-host on join이 기존 `stopStickyBeforeSessionChange`(join 시 구세션 host 정지) 위에 겹침 — 문서화 필요, 8s 지연 가능성도 명시 필요 | R18 — 문서/lock 보강 |
-| L-33 | Low | 0.17.0 auto-host 기본 on이 `bun test`/CI에서 데몬을 조용히 띄울 위험 | R18 — 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 고정 + acceptance에 명시 |
+| L-35 | Low | 0.17.0 acceptance 목록이 idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트를 명시 안 함 | **done 0.17.1** — acceptance #7–#9 추가 |
+| L-34 | Low | 0.17.0 auto-host on join이 기존 `stopStickyBeforeSessionChange`(join 시 구세션 host 정지) 위에 겹침 — 문서화 필요, 8s 지연 가능성도 명시 필요 | **done 0.17.1** — locks 표 + docs 명시, 성공 안내 문구 |
+| L-33 | Low | 0.17.0 auto-host 기본 on이 `bun test`/CI에서 데몬을 조용히 띄울 위험 | **done 0.17.1** — 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 기본 + acceptance #9 |
 | L-32 | Low | 0.16.0 MCP `add_task`/`update_task`의 `notify` 기본값이 PLAN에 명시 안 됨 (CLI만 `--as`→notify 기본 lock) | R17 — MCP는 기본 off(opt-in)로 lock 필요, scripted-loop spam 방지 |
 | L-31 | Low | 0.16.0 `loom work watch --interval`에 코드 강제 최솟값 없음 ("document"만) — tight-loop 폴링 가능 | R17 — CLI에서 ≥250ms 클램프 + 경고 lock 필요 |
 | L-30 | Low | 0.15.0 purpose 파일 last-writer-wins (board와 동일 residual) | R16 — backlog, `updatedByPeerId`로 충분, board 문서 재사용 |
@@ -51,7 +48,7 @@
 
 | Finding | 처리 |
 |---------|------|
-| **R18 M-27/M-28** | **0.17.1 (required)** PLAN Failure/security locks — down 프로세스 신원 검증(cmdline/start-time) + multi-profile up 순차/파라미터화; then author-close (no R18b) |
+| **R18 M-27/M-28** | **0.17.1 done** — PLAN Failure/security locks: down 프로세스 신원 검증(cmdline `sticky-main.ts`) + multi-profile up 순차(no Promise.all); L-33/L-34/L-35 ride-along; author-close (no R18b) |
 | **R17 M-26** | **0.16.1 (required)** PLAN Failure/security locks — 템플릿 단일행 필드 개행 제거 + watch interval 클램프 + MCP notify 기본 off; then author-close (no R17b) |
 | **R16 M-24/M-25** | **0.15.1 done** — locks author-close; implement next |
 | **R15 M-21/M-22/M-23** | **0.14.1** PLAN Failure/security locks + author-close (no R15b) |
@@ -82,7 +79,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
-| **R18** | v0.17.0 → **0.17.1** | pending-revision → **author-close after PATCH** | M-27/M-28 locked — body below |
+| **R18** | v0.17.0 → **0.17.1** | pending-revision → **closed (author-close)** | M-27/M-28 locked in PLAN 0.17.1; L-33/L-34/L-35 applied — body below |
 | **R17** | v0.16.0 → **0.16.1** | pending-revision → **closed (author-close)** | M-26/L-31/L-32 + work bus — body below |
 | **R16** | v0.15.0 → **0.15.1** | pending-revision → **closed (author-close)** | M-24/M-25 locked — body below |
 | **R15** | v0.14.0 → **0.14.1** | pending-revision → **closed (author-close)** | M-21/22/23 locked in PLAN 0.14.1 — body below |
@@ -135,18 +132,18 @@
 - M-27/M-28 모두 **PLAN Failure/security locks 표에 lock row 추가**로 해소되는 범위이며 새 아키텍처·새 표면·프로토콜 변경이 아니다. **따라서 PATCH(0.17.1) 적용 후 — 두 항목이 Failure/security locks 표에 반영되고 PLAN Status가 이를 반영하면 — 전체 재리뷰(R18b) 없이 author-close를 허용한다.** (WORKFLOW §5.1 "PATCH 후 author-close 가능" 조항 적용, R15–R17 선례.)
 - **구현은 여전히 금지** — PATCH가 적용되고 PLAN Status가 `approved`(author-close 포함)로 동기화되기 전까지 `loom up`/`down`, auto-host on join, `--no-host`/`LOOM_NO_AUTO_HOST` 등 실제 코드 작성 금지.
 
-### R18 follow-up (0.17.1 — required before implement)
+### R18 follow-up (0.17.1 — applied)
 
 | Finding | 처리 |
 |---------|------|
-| **M-27** | Failure/security locks: `down` SIGTERM 폴백 전 독립 신원 확인(cmdline/start-time) 필요, 실패 시 meta만 정리 + 경고 |
-| **M-28** | Failure/security locks: multi-profile `up`은 순차 처리 또는 `forSessionPath` 명시 파라미터화 중 택1 확정 |
-| **L-33** | Failure/security locks: 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 기본 + acceptance 추가 |
+| **M-27** | Failure/security locks: `down` SIGTERM 폴백 전 독립 신원 확인(cmdline `sticky-main.ts` via `ps`) 필요, 실패 시 meta만 정리 + 경고 |
+| **M-28** | Failure/security locks: multi-profile `up`/`down`은 **순차 처리(no `Promise.all`)** + profile별 `setActiveProfile(explicit)` 확정 |
+| **L-33** | Failure/security locks: 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 기본 + acceptance #9 |
 | **L-34** | 문서화: join의 host 정지→재시작 이중 동작 + 최대 8초 지연 명시, auto-host 성공 안내 문구 |
-| **L-35** | Acceptance 보강: idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트 |
-| PLAN | 0.17.1 `approved` 예정 (author-close per R18 Decision notes; **no R18b**) — PATCH 적용 시 |
+| **L-35** | Acceptance 보강: idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트 (#7–#9) |
+| PLAN | **v0.17.1** `approved` (author-close per R18 Decision notes; **no R18b**) |
 
-**Implement Launcher UX는 0.17.1 PATCH 적용 후 허용.**
+**Implement Launcher UX under 0.17.1 now allowed.**
 
 ---
 

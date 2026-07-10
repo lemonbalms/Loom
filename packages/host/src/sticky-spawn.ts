@@ -6,6 +6,7 @@ import {
   clearStickyMeta,
   isPidAlive,
   loadStickyMeta,
+  pidLooksLikeStickyHost,
   type StickyHostMeta,
 } from "./sticky-meta";
 import {
@@ -106,10 +107,22 @@ export async function stopStickyHostProcess(): Promise<{
     await Bun.sleep(50);
   }
   if (isPidAlive(meta.pid)) {
-    try {
-      process.kill(meta.pid, "SIGTERM");
-    } catch {
-      /* */
+    // M-27: RPC stop failed or timed out — the exact condition that means we
+    // could not confirm this pid over IPC. Verify process identity before a raw
+    // SIGTERM so a post-reboot pid-reuse can't kill an unrelated process. On any
+    // doubt, clear the stale meta + warn instead of killing.
+    if (pidLooksLikeStickyHost(meta.pid)) {
+      try {
+        process.kill(meta.pid, "SIGTERM");
+      } catch {
+        /* */
+      }
+    } else {
+      clearStickyMeta(sessionPath());
+      return {
+        ok: true,
+        message: `sticky host meta cleared; pid ${meta.pid} did not verify as our sticky host — NOT killed (M-27)`,
+      };
     }
   }
   clearStickyMeta(sessionPath());

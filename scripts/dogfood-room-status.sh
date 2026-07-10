@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Show dogfood room invite + peers for all three profiles.
+# Show dogfood room invite + peers for all five profiles.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,7 +24,7 @@ echo "Room:   ${LOOM_DOGFOOD_ROOM_NAME:-?}"
 echo "Since:  ${LOOM_DOGFOOD_CREATED_AT:-?}"
 echo ""
 
-for prof in impl claude-rev codex-rev; do
+for prof in impl claude-impl codex-impl claude-rev codex-rev; do
   echo "-------- --profile $prof --------"
   loom --profile "$prof" peers 2>&1 || echo "(peers failed — rejoin: bun run dogfood:room)"
   echo ""

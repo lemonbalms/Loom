@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Create (or rejoin) the fixed dogfood room: impl + claude-rev + codex-rev.
+# Create (or rejoin) the fixed dogfood room:
+#   impl + claude-impl + codex-impl + claude-rev + codex-rev
 # State is written under repo .loom/ (gitignored).
 #
 # Usage (repo root):
@@ -11,8 +12,10 @@
 #   bun run dogfood:status
 #   bun run loom --profile impl host start
 #   bun run loom --profile impl run grok
+#   bun run loom --profile claude-impl run claude
+#   bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
 #   bun run loom --profile claude-rev run claude
-#   bun run loom --profile codex-rev run codex
+#   bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -78,6 +81,14 @@ else
 fi
 
 echo ""
+echo "==> Joining claude-impl as claude-impl …"
+loom --profile claude-impl room join "$INVITE" --as claude-impl 2>&1
+
+echo ""
+echo "==> Joining codex-impl as codex-impl …"
+loom --profile codex-impl room join "$INVITE" --as codex-impl 2>&1
+
+echo ""
 echo "==> Joining claude-rev as claude-review …"
 loom --profile claude-rev room join "$INVITE" --as claude-review 2>&1
 
@@ -103,8 +114,8 @@ Invite:  $INVITE
 Room:    $ROOM_NAME
 State:   $STATE_FILE
 
-Next session (3 terminals):
----------------------------
+Next session (5 peers — open terminals as needed):
+--------------------------------------------------
 # 0) status
 cd $ROOT && bun run status && bun run dogfood:status
 
@@ -112,15 +123,26 @@ cd $ROOT && bun run status && bun run dogfood:status
 bun run loom --profile impl host start
 bun run loom --profile impl run grok
 
+# A2 — Claude implementer (parallel lane; PLAN draft + implement)
+bun run loom --profile claude-impl run claude
+
+# A3 — Codex implementer (parallel lane; claim board task first)
+bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
+
 # B — Claude primary reviewer (/advisor fable required for R{n})
 bun run loom --profile claude-rev run claude
 
-# C — Codex second opinion
-bun run loom --profile codex-rev run codex
+# C — Codex second opinion (review only — not the same as codex-impl)
+bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
 
-Review request (from impl):
+Review request (from any implementer):
   bun run loom --profile impl handoff @claude-review "[R-REQUEST] … YOU MUST: /advisor fable first …"
   bun run loom --profile impl handoff @codex-review  "[R-REQUEST] adversarial …"
+
+Three implementers (impl=Grok, claude-impl=Claude, codex-impl=Codex) share the
+same board/PLAN — claim a board task (status: doing, assignee: your name)
+before starting work to avoid double-implementing the same PATCH.
+See docs/DOGFOOD_LOOP.md §1.1. Never mix codex-impl and codex-rev in one terminal.
 
 Docs: docs/DOGFOOD_LOOP.md
 EOF

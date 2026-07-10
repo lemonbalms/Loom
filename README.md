@@ -11,7 +11,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.13.5** (`approved` R14 + Low L-26/L-27) |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.17.1** (`approved` — Launcher UX: `up`/`down` + host-default + work-first; R18 author-close) |
 | **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
 | **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
 | **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |

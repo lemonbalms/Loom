@@ -205,31 +205,45 @@ bun run loom handoff @peer "[GOAL] align on purpose" --with-purpose
 
 ---
 
-## 3. 온라인 유지 — sticky host
+## 3. 온라인 유지 — sticky host (0.17: 기본 자동)
 
 **하고 싶은 일:** 에이전트/CLI를 잠깐 안 써도 피어가 **online** 으로 남고, 알림 경로가 살아 있게 한다.
 
-```bash
-# 방 참가 후
-bun run loom --profile alice host start
-# Sticky host started (pid …, port …)
+**0.17부터 host는 기본값입니다.** `room create` / `room join` 이 성공하면 해당 프로필의
+sticky host가 **백그라운드에서 자동 시작**됩니다. 끄려면 `--no-host` 또는 `LOOM_NO_AUTO_HOST=1`.
 
-bun run loom --profile alice host status   # 구현되어 있으면
-bun run loom --profile alice host stop     # 끌 때 — start와 같은 --profile
+```bash
+# 방 참가 → host 자동 시작 (백그라운드)
+bun run loom --profile alice room join LOOM-XXXX --as alice
+#   host auto-started (pid …); disable with --no-host or LOOM_NO_AUTO_HOST=1
+#   (join은 구세션 host를 내리고 새 host를 올리므로 최대 ~8초 걸릴 수 있음)
+
+# 여러 프로필을 한 번에 백그라운드 online (순차, M-28)
+bun run loom up --profiles alice,bob       # 프로필별 sticky host; --profiles 생략 시 세션 있는 전부
+bun run loom up --status                   # 프로필별 online/offline 보고 (스폰 안 함)
+bun run loom down --profiles alice,bob     # 전부 정지 (멱등)
+
+# 단일 프로필 수동 제어 (advanced / recovery)
+bun run loom --profile alice host start|stop|status
 ```
+
+**일상 흐름:** 아침에 `up` 한 번 → 창 닫아도 online → 송신은 `board add`/`handoff` →
+**작업할 때만** `run <agent>` 로 TUI를 연다.
 
 ### 함께 쓰면 좋은 것
 
 | 목적 | 명령 |
 |------|------|
 | 터미널에 실시간 알림 | `bun run loom --profile alice listen` |
-| 데스크톱 UI | host start 후 `bun run desktop` (같은 프로필) |
+| 데스크톱 UI | host 온라인 후 `bun run desktop` (같은 프로필) |
 | MCP/CLI 짧은 명령 | sticky가 있으면 one-shot 대신 IPC 사용 |
+| 내 작업 피드 | `bun run loom --profile alice work` (inbox + 내 보드 태스크) |
 
 ### 주의
 
-- `loom host stop` 이 아니라 **`bun run loom … host stop`**  
-- 프로필 불일치 시 “already running” / “no host” 혼선
+- `down` 의 kill-safety(M-27): RPC 정지 실패 후 강제 종료 전, 대상 pid가 실제 우리 sticky
+  프로세스인지(cmdline `sticky-main.ts`) 확인합니다. 확인 실패 시 **죽이지 않고** meta만 정리합니다.
+- 프로필 불일치 시 “already running” / “no host” 혼선 — `up`/`down` 은 프로필을 순회하므로 권장.
 
 ---
 

@@ -1,11 +1,11 @@
-# Loom dogfood loop — Grok implement · Claude/Codex review
+# Loom dogfood loop — Grok/Claude/Codex implement · Claude/Codex review
 
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/DOGFOOD_LOOP.md` |
 | **Purpose** | Multi-agent development using **product Loom** (rooms, handoff, board) |
-| **Implementer** | **Grok** (`loom run grok` / this repo’s coding lane) |
-| **Reviewers** | **Claude Code** (primary R{n}) · **Codex** (adversarial / security) |
+| **Implementers** | **Grok** (`impl`) · **Claude Code** (`claude-impl`) · **Codex** (`codex-impl`) — parallel lanes, same board/PLAN |
+| **Reviewers** | **Claude Code** (primary R{n}, `claude-rev` profile) · **Codex** (adversarial / security, `codex-rev` profile) |
 | **Related** | [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`plan_review.md`](./plan_review.md) · [`PRIORITIES.md`](./PRIORITIES.md) |
 
 ---
@@ -24,38 +24,88 @@
 
 | Profile (`--profile`) | Display name | Agent | Role |
 |----------------------|--------------|-------|------|
-| `impl` | `grok-impl` | Grok | implement |
+| `impl` | `grok-impl` | Grok | implement (PLAN draft + code) |
+| `claude-impl` | `claude-impl` | Claude Code | implement (PLAN draft + code) — parallel lane to `impl` |
+| `codex-impl` | `codex-impl` | Codex | implement (PLAN draft + code) — parallel lane; workspace-write |
 | `claude-rev` | `claude-review` | Claude Code | **primary** plan_review R{n} |
 | `codex-rev` | `codex-review` | Codex | secondary / adversarial |
 
-### One-shot setup (preferred)
+The `*-impl` and `*-rev` pairs may run the same agent product, but they are
+different Loom peer identities with different mandates. Never mix both roles in
+one terminal; verify `LOOM_PROFILE` at session start.
+
+### One-shot setup (preferred) — 0.17 Launcher UX
 
 ```bash
 cd /path/to/Loom   # or fable-advisor local path
-bun run dogfood:room          # create + join all three profiles
-# bun run dogfood:room -- --fresh   # force new invite
+bun run dogfood:up            # 0.17: ensure room + join all + sticky host per profile (background)
+# bun run dogfood:up -- --fresh     # force new invite first
+# bun run dogfood:up -- --status    # report host online/offline per profile (no spawn)
 
-bun run dogfood:status        # invite + peers for impl / claude-rev / codex-rev
+bun run dogfood:status        # invite + peers for all five profiles
 ```
+
+`dogfood:up` brings **every profile online in the background** (a sticky host each,
+started sequentially per M-28). Close the terminal — peers stay online. Send work
+with `board add`/`handoff`; open a `run` TUI **only to process** (see Daily below).
+Stop all hosts with `bun run loom down`.
+
+`dogfood:room` still exists for **join-only** setup. Note (L-34): with auto-host
+default-on, each `room join` first stops the old-session host, then starts a new one
+— so an individual join can take **up to ~8s** while the sticky host becomes ready.
+`dogfood:up` suppresses per-join auto-host (`LOOM_NO_AUTO_HOST=1`) and batches the
+hosts in one `loom up`, which is faster and clearer.
 
 State (gitignored): `.loom/dogfood-room.env`, `.loom/dogfood-next-session.txt`
 
-### Daily (after setup)
+### Daily (after setup) — `run` only when actually working
+
+Peers are already **online in the background** from `dogfood:up` — no `host start`
+needed. Sending work needs no TUI (`board add`/`handoff`); open a `run` window
+**only to process** claimed work. Stop hosts with `bun run loom down`.
 
 ```bash
-# A — implementer (sticky recommended)
-bun run loom --profile impl host start
+# A — Grok implementer (online already; open run only to process)
 bun run loom --profile impl run grok
+
+# A2 — Claude implementer (parallel lane; claim a board task first, see §1.1)
+bun run loom --profile claude-impl run claude
+
+# A3 — Codex implementer (separate identity from codex-rev)
+bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
 
 # B — Claude primary reviewer
 bun run loom --profile claude-rev run claude   # 0.13.14+ for resize; R{n} → /advisor fable
 
 # C — Codex second opinion
 # Autonomy without full FS escape: approval never + workspace-write sandbox
-bun run loom --profile codex-rev run codex -- -a never -s workspace-write
+bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
 # equivalent env default:
-#   LOOM_CODEX_ARGS="-a never -s workspace-write" bun run loom --profile codex-rev run codex
+#   LOOM_CODEX_ARGS="-a never -s workspace-write" bun run loom --profile codex-rev run codex --write-user-config
 ```
+
+When using both Codex lanes, start them **sequentially** and let each launch
+finish before starting the next. `--write-user-config` rebinds the single managed
+`mcp_servers.loom` block to that launch's profile; an already-running Codex/MCP
+process keeps its own session, while later Codex launches use the latest block.
+
+### 1.1 Three implementers — avoid double work
+
+`impl` (Grok), `claude-impl` (Claude), and `codex-impl` (Codex) all draft PLAN
+versions and write product code against the **same git working tree**. Without
+coordination they can pick up the same PATCH/phase and collide (merge conflicts,
+duplicate PLAN sections). Rule:
+
+1. Before starting new work, run `check_handoffs` + board `list_tasks` and
+   look for a task already `doing` with the *other* implementer as assignee.
+   If found, skip it — do not start the same work.
+2. Claim your task first: `update_task` → `status: doing`, `assignee: <your
+   display name>` (`grok-impl`, `claude-impl`, or `codex-impl`) — *then* start editing files.
+3. Prefer explicit routing: the Owner (human) or a handoff addresses work to
+   `@grok-impl`, `@claude-impl`, or `@codex-impl` by name. Unaddressed board items are
+   first-claim-wins per rule 2.
+4. If both sessions are mid-flight on unrelated phases, that's fine — the
+   collision risk is same-phase/same-PATCH, not general parallelism.
 
 | Codex flag | Meaning |
 |------------|---------|
@@ -84,7 +134,7 @@ When Claude (profile `claude-rev` or any Claude session) receives a Loom **revie
    - constraints = WORKFLOW §5, security boundaries, stated non-goals
    - options = any design alternatives in PLAN/UNKNOWNS
 4. **Act on the verdict** — write `docs/plan_review.md` **Review R{n}** (WORKFLOW §5.2 format).
-5. Handoff result back to `@grok-impl` with `[R-RESULT]`.
+5. Handoff result back to the requesting implementer with `[R-RESULT]`.
 
 ### Forbidden for Claude-on-review
 
@@ -99,7 +149,7 @@ You are claude-review on the Loom dogfood room. When you get [R-REQUEST] or
 "Fable 리뷰" / R{n}:
 1) Invoke /advisor fable (or Task subagent fable-advisor) BEFORE writing plan_review.
 2) Write docs/plan_review.md Review R{n} from the advisor verdict + your code read.
-3) Handoff [R-RESULT] to @grok-impl. Never implement.
+3) Handoff [R-RESULT] to the requesting implementer. Never implement.
 ```
 
 Plugin: `fable-advisor` installed (`claude plugin install fable-advisor`).  
@@ -107,16 +157,92 @@ Agent file: `agents/fable-advisor.md` (`model: fable`).
 
 ---
 
-## 3. Codex — secondary review
+## 2.1 Claude Code — as implementer (`claude-impl` profile)
+
+A Claude Code session running under profile `claude-impl` (peer display name
+`claude-impl`) is an **implementer**, not a reviewer — the opposite role from
+§2. Trigger: session was started with `--profile claude-impl`, or the Loom
+peer identity for this session is `claude-impl`.
+
+### Allowed / expected
+
+- Draft new PLAN.md versions (bump version, write user journey / pillars /
+  acceptance per WORKFLOW §5 shape) — same as Grok's PLAN-author role.
+- Write product code in `packages/`, run tests, commit, push.
+- Apply PATCH lock rows requested by an `[R-RESULT] pending-revision` from
+  `@claude-review` / `@codex-review` (mirror the Grok PATCH-then-author-close
+  flow — see `HANDOFF.md` playbook for the current PATCH).
+- Send `[R-REQUEST]` to `@claude-review` (and `@codex-review` if
+  security-relevant) when a new/patched PLAN needs review.
+- Send `[VERIFY]` after implementing (SHA, test result).
+
+### Forbidden for claude-impl
+
+- Approving its own PLAN (`docs/plan_review.md` R{n} verdicts are written only
+  by a `claude-rev`-profile session, per §2).
+- Skipping the claim step in §1.1 before starting work already claimed by
+  `impl` (Grok).
+- Treating this session's context as interchangeable with a `claude-rev`
+  session — they are different peers with different mandates even though
+  both are Claude Code.
+
+### Claude-impl session system note (paste into first message)
+
+```text
+You are claude-impl on the Loom dogfood room — an implementer, not a
+reviewer. On start:
+1) check_handoffs + board list_tasks. Skip any task already "doing" under
+   a different implementer assignee (grok-impl).
+2) Claim your task: update_task status=doing, assignee=claude-impl.
+3) Draft PLAN / apply PATCH locks / write code / test / commit / push.
+4) Handoff [R-REQUEST] to @claude-review (+ @codex-review if security-
+   relevant) for new or patched PLAN. Send [VERIFY] after implementing.
+Never write docs/plan_review.md R{n} verdicts — that's claude-rev's job.
+```
+
+---
+
+## 3. Codex lanes
+
+### 3.1 Secondary review (`codex-rev`)
 
 - Focus: security, races, fail-open, auth, data loss.
 - May add High/Med findings; does **not** alone close R{n} without Claude primary body
   (unless Owner says otherwise).
 - No `/advisor fable` (Claude-only). Codex uses its own adversarial pass.
+- Do not implement product code or claim implementer work from this profile.
+
+### 3.2 Implementer (`codex-impl`)
+
+`codex-impl` follows the same claim-first implementation lane as `impl` and
+`claude-impl`, but remains a different peer from `codex-rev`.
+
+- Verify `LOOM_PROFILE=codex-impl`, then check handoffs and the shared board.
+- Skip any task already `doing` under another implementer; claim the selected
+  task as `doing` / assignee `codex-impl` before editing.
+- Draft PLAN/PATCH, write code, test, sync docs, commit, and push.
+- Send `[R-REQUEST]` to `@claude-review`; add `@codex-review` only when an
+  independent adversarial pass is useful. Never write the R{n} verdict for its
+  own work.
+- Launch with the current MCP profile installed:
+  `bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write`.
+
+**Codex-impl session note:**
+
+```text
+You are codex-impl in the Loom dogfood room: implementer, not reviewer.
+Verify LOOM_PROFILE, check handoffs + board, and claim one unclaimed task as
+doing/codex-impl before editing. Do not duplicate another implementer's work.
+Follow PLAN → review gate → implement → bun test → docs → commit/push. Never
+author your own docs/plan_review.md R{n} verdict.
+```
 
 ---
 
-## 4. Grok — implementer handoff templates
+## 4. Implementer handoff templates (`impl`, `claude-impl`, `codex-impl`)
+
+All implementer profiles use the same templates below. Route results back to
+the requesting peer (`@grok-impl`, `@claude-impl`, or `@codex-impl`).
 
 ### 4.1 Review request → Claude (requires /advisor fable)
 
@@ -152,7 +278,7 @@ Focus: auth, persistence, fail-open, races
 Report High/Med only with file:line. Do not implement.
 ```
 
-### 4.3 Result → Grok
+### 4.3 Result → requesting implementer
 
 ```text
 [R-RESULT] R15 pending-revision
@@ -174,9 +300,9 @@ Advisor: /advisor fable consulted (yes/no)
 
 | Gate | Who |
 |------|-----|
-| PLAN draft / implement | Grok |
-| R{n} primary + `/advisor fable` | Claude Code |
-| R{n} security second pass | Codex |
+| PLAN draft / implement | Grok (`impl`), Claude (`claude-impl`), or Codex (`codex-impl`) — claim first, §1.1 |
+| R{n} primary + `/advisor fable` | Claude Code (`claude-rev`) |
+| R{n} security second pass | Codex (`codex-rev`) |
 | Owner go/no-go | Human |
 
 MINOR / security / protocol → R{n} **required** (WORKFLOW §5.1).  
@@ -193,16 +319,16 @@ bun run loom --profile <me> inbox
 bun run loom --profile <me> board
 ```
 
-Then: Grok → HANDOFF/PLAN; Claude/Codex → process inbox R-REQUEST only.
+Then: `*-impl` → claimed HANDOFF/PLAN task; `*-rev` → process review requests only.
 
 ### 6.1 Codex MCP + sticky host (common failure)
 
 | Symptom | Cause | Fix |
 |---------|--------|-----|
-| Codex has no Loom tools | Global `~/.codex/config.toml` still has legacy `mcp_servers.fable` → `/tmp/fake-stdio.ts`, or never wrote `loom` | Remove fable; `bun run loom --profile codex-rev run codex -- --write-user-config` **or** managed block with `mcp_servers.loom` + `LOOM_SESSION=…/codex-rev.json` |
+| Codex has no Loom tools | Global `~/.codex/config.toml` still has legacy `mcp_servers.fable` → `/tmp/fake-stdio.ts`, or never wrote `loom` | Remove fable; launch the intended Codex profile with `--write-user-config`, or install a managed `mcp_servers.loom` block with that profile's `LOOM_SESSION` |
 | Project `.loom/codex.mcp.toml` exists but Codex ignores it | Codex does **not** auto-load project snippet; needs **user** config (opt-in) | `--write-user-config` (R3 M-3) |
 | `loom --profile X inbox` shows wrong peer / empty while work was sent | Inside `loom run`, `LOOM_SESSION` used to beat `--profile` | **0.13.15+**: explicit `--profile` wins. Older: `env -u LOOM_SESSION loom --profile X inbox` |
-| peer offline / no sticky | Only impl host started | `bun run loom --profile claude-rev host start` and same for `codex-rev` |
+| peer offline / no sticky | Only one profile host started | Start the host for the intended profile; `dogfood:status` lists all five |
 
 Claude uses `--mcp-config` (always project path) so it does not need `~/.codex` style write.
 
@@ -215,7 +341,7 @@ Handoffs are **pull**: Claude/Codex must `check_handoffs` / `claim_handoff` (or 
 | Status | Meaning |
 |--------|---------|
 | todo | Planned |
-| doing | Grok implementing or drafting PLAN |
+| doing | One claimed implementer is drafting or implementing |
 | blocked | Waiting R{n} / Open Med |
 | done | Verified + shipped |
 

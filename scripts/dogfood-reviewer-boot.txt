@@ -8,7 +8,8 @@ Do this NOW before anything else:
    - Claude primary R{n}: YOU MUST run /advisor fable first, then write docs/plan_review.md
    - Codex: adversarial/security High/Med only; do not alone close R{n}
    - Never implement product code when on review
-3) Reply via handoff to @grok-impl with [R-RESULT] when done.
+3) Reply via handoff to the requesting implementer (@grok-impl,
+   @claude-impl, or @codex-impl) with [R-RESULT] when done.
 4) Between tasks, poll check_handoffs again.
 
 If inbox is empty: say "inbox empty" and wait. Do not invent work.

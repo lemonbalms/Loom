@@ -60,6 +60,7 @@ import {
   listMyOpenTasks,
   clampWatchIntervalMs,
   SLASH_HELP,
+  loomDir,
 } from "@loom/host";
 import {
   DEFAULT_RELAY_HOST,
@@ -85,10 +86,17 @@ import {
 } from "@loom/mcp-server";
 import { spawn } from "bun";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
-import { openSync, closeSync, writeSync, readSync, existsSync } from "node:fs";
+import {
+  openSync,
+  closeSync,
+  writeSync,
+  readSync,
+  existsSync,
+  readdirSync,
+} from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.16.1";
+const VERSION = "0.17.1";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -143,6 +151,8 @@ const BOOLEAN_FLAGS = new Set([
   "y",
   "replace",
   "force",
+  "no-host",
+  "status",
 ]);
 
 function usage(): string {
@@ -159,7 +169,9 @@ Usage:
   loom verify [--yes]               # run purpose.verify[] (M-25 gate)
   loom work | work watch [--interval ms]  # my inbox + board tasks (0.16)
   loom board | board add|set|assign|note|rm|clear-done|export|import
-  loom host start | stop | status   # sticky long-lived relay connection
+  loom up [--profiles a,b] [--status]   # background sticky host per profile (0.17)
+  loom down [--profiles a,b]            # stop sticky hosts (idempotent)
+  loom host start | stop | status   # sticky long-lived relay connection (advanced)
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
@@ -180,6 +192,9 @@ Usage:
   --yes                 loom verify: skip TTY confirm after printing commands
   --write-user-config   Opt-in: MCP into ~/.codex or ~/.grok
   --profile <name>      Session file isolation (~/.loom/profiles/<name>.json)
+  --profiles a,b,c      up/down: target these profiles (default: all with a session)
+  --no-host             room create/join: skip auto-host (or LOOM_NO_AUTO_HOST=1)
+  --status              loom up: show host online/offline per profile (no spawn)
   --insecure-open       Relay only: allow non-loopback bind without token (H-5)
   --                    After run <agent>, forward remaining args to the agent CLI
   LOOM_CODEX_ARGS       Optional default args for codex (space-separated)
@@ -272,6 +287,138 @@ async function stopStickyBeforeSessionChange() {
   );
 }
 
+/** L-33: --no-host or LOOM_NO_AUTO_HOST=1 disables auto-host on create/join. */
+function autoHostDisabled(flags: Record<string, string | boolean>): boolean {
+  if (flags["no-host"]) return true;
+  const env = process.env.LOOM_NO_AUTO_HOST;
+  return env === "1" || env === "true";
+}
+
+/**
+ * 0.17 host-default: after a successful create/join, bring this profile online
+ * in the background unless disabled. **Fail-soft** — never aborts the create/join
+ * (L-34). join already ran `stopStickyBeforeSessionChange()`, so this is a
+ * stop→restart; `startStickyHostProcess` polls up to ~8s.
+ */
+async function autoHostAfterSession(
+  flags: Record<string, string | boolean>,
+): Promise<void> {
+  if (autoHostDisabled(flags)) return;
+  try {
+    const r = await startStickyHostProcess();
+    if (r.ok) {
+      console.log(
+        `\x1b[2mhost auto-started (pid ${r.meta.pid}); disable with --no-host or LOOM_NO_AUTO_HOST=1\x1b[0m`,
+      );
+    } else {
+      console.log(
+        `\x1b[2mhost auto-start skipped: ${r.error} — try \`bun run loom host start\` / \`host status\`\x1b[0m`,
+      );
+    }
+  } catch (e) {
+    console.log(
+      `\x1b[2mhost auto-start error: ${e instanceof Error ? e.message : String(e)} (session still saved)\x1b[0m`,
+    );
+  }
+}
+
+/** Profiles that have an existing session file under ~/.loom/profiles/. */
+function profilesWithSession(): string[] {
+  const dir = pathJoin(loomDir(), "profiles");
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(".json")) continue;
+    if (name.endsWith(".host.json")) continue; // skip sticky meta files
+    out.push(name.slice(0, -".json".length));
+  }
+  return out.sort();
+}
+
+function parseProfilesFlag(
+  flags: Record<string, string | boolean>,
+): string[] | null {
+  if (typeof flags.profiles === "string") {
+    return flags.profiles
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return null;
+}
+
+/**
+ * 0.17 `loom up` — background sticky host per profile.
+ * **M-28:** profiles are processed **sequentially (no `Promise.all`)**, fixing the
+ * global session with `setActiveProfile(explicit)` before each spawn and fully
+ * awaiting it — so `LOOM_SESSION` never mixes across the concurrent hosts.
+ */
+async function cmdUp(flags: Record<string, string | boolean>) {
+  const profiles = parseProfilesFlag(flags) ?? profilesWithSession();
+  if (flags.status) {
+    if (profiles.length === 0) {
+      console.log("loom up --status: no profiles found.");
+      return;
+    }
+    console.log("loom up --status:");
+    for (const profile of profiles) {
+      setActiveProfile(profile, { explicit: true });
+      const alive = resolveAliveHostMeta();
+      console.log(
+        alive
+          ? `  ${profile.padEnd(14)} online   pid ${alive.pid}  ${alive.displayName} @ ${alive.roomName}`
+          : `  ${profile.padEnd(14)} offline`,
+      );
+    }
+    return;
+  }
+  if (profiles.length === 0) {
+    console.error(
+      "loom up: no profiles with a session under ~/.loom/profiles/.",
+    );
+    console.error(
+      "Create/join first (bun run loom --profile impl room create --as impl) or pass --profiles a,b.",
+    );
+    process.exit(1);
+  }
+  console.log("loom up — sticky hosts:");
+  for (const profile of profiles) {
+    setActiveProfile(profile, { explicit: true });
+    if (!existsSync(sessionPath()) || !loadSession()) {
+      console.log(`  ${profile.padEnd(14)} skipped  (no session)`);
+      continue;
+    }
+    const r = await startStickyHostProcess();
+    if (r.ok) {
+      console.log(
+        `  ${profile.padEnd(14)} ${r.alreadyRunning ? "already  " : "online   "} pid ${r.meta.pid}  ${r.meta.displayName} @ ${r.meta.roomName}`,
+      );
+    } else {
+      console.log(`  ${profile.padEnd(14)} FAILED   ${r.error}`);
+    }
+  }
+  console.log("");
+  console.log("Peers stay online in the background (closing the terminal is OK).");
+  console.log('Send:    loom board add "…" --as @peer   |   loom handoff @peer "…"');
+  console.log("Process: loom --profile <name> run <agent>   (only when working)");
+  console.log("Stop:    bun run loom down");
+}
+
+/** 0.17 `loom down` — stop sticky hosts. M-28: sequential per profile. */
+async function cmdDown(flags: Record<string, string | boolean>) {
+  const profiles = parseProfilesFlag(flags) ?? profilesWithSession();
+  if (profiles.length === 0) {
+    console.log("loom down: no profiles found.");
+    return;
+  }
+  console.log("loom down — stopping sticky hosts:");
+  for (const profile of profiles) {
+    setActiveProfile(profile, { explicit: true });
+    const r = await stopStickyHostProcess();
+    console.log(`  ${profile.padEnd(14)} ${r.message}`);
+  }
+}
+
 async function cmdRoomCreate(flags: Record<string, string | boolean>) {
   await stopStickyBeforeSessionChange();
   const { url, endpoint, remote } = await ensureRelay(relayOptsFromFlags(flags));
@@ -346,6 +493,7 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
     "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root)\x1b[0m",
   );
   client.close();
+  await autoHostAfterSession(flags);
   process.exit(0);
 }
 
@@ -404,6 +552,7 @@ async function cmdRoomJoin(
     "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root)\x1b[0m",
   );
   client.close();
+  await autoHostAfterSession(flags);
   process.exit(0);
 }
 
@@ -2259,6 +2408,14 @@ async function main() {
   }
   if (cmd === "host") {
     await cmdHost(sub);
+    return;
+  }
+  if (cmd === "up") {
+    await cmdUp(flags);
+    return;
+  }
+  if (cmd === "down") {
+    await cmdDown(flags);
     return;
   }
   if (cmd === "agents") {

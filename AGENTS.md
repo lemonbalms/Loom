@@ -71,7 +71,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Remote | `https://github.com/lemonbalms/Loom.git` (user lemonbalms) |
 | Commit/push | **Default at end of a completed gate wave** (green tests + docs sync). Do not ask “커밋할까요?” — do it. Exception: user said “커밋 금지” / dry-run only. |
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
-| Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok impl · Claude/Codex review via Loom room |
+| Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
 | Claude R{n} | **Must** run **`/advisor fable`** (or `fable-advisor` agent) before writing R{n} |
 
 ### Pause only when (true blockers)
@@ -93,6 +93,10 @@ Full workflow: **`docs/WORKFLOW.md`**.
 2. On `codex` / `codex exec` start: treat the ritual above as the **first tool/read actions**.
 3. If Loom MCP is configured (`loom run codex` / `mcp_servers.loom`), still run the ritual — MCP tools do not replace HANDOFF.
 4. Do not confuse **product** Loom MCP with this **repo process** guidance.
+5. Route work by Loom profile (full rules: **`docs/DOGFOOD_LOOP.md`**):
+   - **`codex-impl`** = implementer. Check inbox + board, claim an unclaimed task as `doing`, then PLAN/PATCH/code/test/ship. Never author an R{n} verdict for its own work.
+   - **`codex-rev`** = secondary/adversarial reviewer. Inspect security/races/fail-open/data-loss; do not take a task already claimed by an implementer.
+6. `codex-impl` and `codex-rev` are separate Loom peers. Never assume the MCP identity from the terminal label alone; verify `LOOM_PROFILE` and use the matching `--profile` when launching.
 
 ---
 
