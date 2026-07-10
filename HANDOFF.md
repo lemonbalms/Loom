@@ -16,7 +16,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> PLAN **0.15.0** `pending-revision` — **R16 done**: M-24/M-25 open (`verify[]` exec trust boundary). Code still **0.14.2**. Next: implementer locks M-24/M-25 into PLAN 0.15.1 Failure/security table → author-close (no R16b) → implement Purpose sprint 1.
+> PLAN **0.15.1** `approved` — purpose sprint shipped (purpose/verify/receive path, M-24/M-25). CLI **0.15.1**.
 
 ---
 
@@ -32,11 +32,11 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.14.2** — `bun run link:loom` or `scripts/loom` |
+| **Product CLI** | `loom` v**0.15.1** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.15.0** — purpose sprint 1 `pending-revision` (R16 done) |
-| **Priorities** | post-P2 → purpose loop (0.15.0) |
-| **Review gate** | **R16 pending-revision** — M-24/M-25 open, see `docs/plan_review.md` |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.15.1** — purpose sprint shipped |
+| **Priorities** | P0–P2 + purpose loop done; P3 deferred |
+| **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -44,7 +44,7 @@ North star: *connect your agents — and your teammates.*
 | **Git** | `main` → `origin` https://github.com/lemonbalms/Loom.git |
 | **Remote account** | GitHub auth: **lemonbalms** |
 | **Tauri** | **Unblocked** — `cargo`/`rustc` 1.96 present; `@tauri-apps/cli` in root devDeps |
-| **Open blocking** | **M-24, M-25** (R16 — `verify[]` exec trust boundary; PATCH 0.15.1 required) |
+| **Open blocking** | none |
 
 ### Naming (critical)
 
