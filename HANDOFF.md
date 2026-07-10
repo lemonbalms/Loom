@@ -58,7 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending) | **0.13.1** | L-4 wire requestId correlation |
+| `676d4f3` | **0.13.1** | L-4 wire requestId correlation |
 | `e032731` | **0.13.0** | L-5 `--with-pack-embed` + host tip fix |
 | `fe416fb` | **0.12.2** | desktop Send handoff/chat + invite + smoke |
 | `719c226` | docs | USER_GUIDE scenarios |
