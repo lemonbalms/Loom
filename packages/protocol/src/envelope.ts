@@ -86,7 +86,17 @@ const BaseEnvelope = z.object({
   v: z.literal(PROTOCOL_VERSION),
   roomId: z.string().min(1),
   ts: z.string().min(1),
+  /**
+   * L-4 residual: optional RPC correlation id.
+   * Client may set on request; relay echoes on the matching reply envelope.
+   */
+  requestId: z.string().min(1).max(80).optional(),
 });
+
+/** Shared optional field on client → relay requests (L-4). */
+const ClientRequestIdFields = {
+  requestId: z.string().min(1).max(80).optional(),
+};
 
 export const PeerJoinEnvelopeSchema = BaseEnvelope.extend({
   type: z.literal("peer.join"),
@@ -182,6 +192,7 @@ export const JoinRequestSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
   inviteCode: z.string().min(1),
   peer: ClientPeerSchema,
+  ...ClientRequestIdFields,
 });
 
 export const CreateRequestSchema = z.object({
@@ -189,6 +200,7 @@ export const CreateRequestSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
   roomName: z.string().min(1).default("room"),
   peer: ClientPeerSchema,
+  ...ClientRequestIdFields,
 });
 
 export const ClientHandoffRequestSchema = z.object({
@@ -203,27 +215,32 @@ export const ClientHandoffRequestSchema = z.object({
     fromPeerId: z.string().optional(),
     createdAt: z.string().optional(),
   }),
+  ...ClientRequestIdFields,
 });
 
 export const ClientChatRequestSchema = z.object({
   type: z.literal("chat"),
   v: z.literal(PROTOCOL_VERSION),
   text: z.string(),
+  ...ClientRequestIdFields,
 });
 
 export const ClientListPeersRequestSchema = z.object({
   type: z.literal("list_peers"),
   v: z.literal(PROTOCOL_VERSION),
+  ...ClientRequestIdFields,
 });
 
 export const ClientLeaveRequestSchema = z.object({
   type: z.literal("leave"),
   v: z.literal(PROTOCOL_VERSION),
+  ...ClientRequestIdFields,
 });
 
 export const ClientListInboxRequestSchema = z.object({
   type: z.literal("list_inbox"),
   v: z.literal(PROTOCOL_VERSION),
+  ...ClientRequestIdFields,
 });
 
 export const ClientClaimHandoffRequestSchema = z.object({
@@ -232,6 +249,7 @@ export const ClientClaimHandoffRequestSchema = z.object({
   id: z.string().min(1),
   /** "claim" = agent, "accept" = human — same first-wins semantics */
   via: z.enum(["claim", "accept"]).default("claim"),
+  ...ClientRequestIdFields,
 });
 
 export const EnvelopeSchema = z.discriminatedUnion("type", [

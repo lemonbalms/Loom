@@ -211,23 +211,38 @@ export class RelayServer {
     return false;
   }
 
+  /** L-4: echo requestId on RPC replies when client provided one. */
+  private reply(
+    state: ClientState,
+    env: Record<string, unknown>,
+    requestId?: string,
+  ): void {
+    const payload =
+      requestId && requestId.length > 0
+        ? { ...env, requestId }
+        : env;
+    state.socket.send(JSON.stringify(payload));
+  }
+
   private handleMessage(state: ClientState, data: unknown): void {
     const parsed = safeParseClientMessage(data);
     if (!parsed.success) {
-      state.socket.send(
-        JSON.stringify({
-          v: PROTOCOL_VERSION,
-          type: "error",
-          roomId: state.roomId ?? "none",
-          ts: nowIso(),
-          code: "bad_message",
-          message: parsed.error.message,
-        }),
-      );
+      this.reply(state, {
+        v: PROTOCOL_VERSION,
+        type: "error",
+        roomId: state.roomId ?? "none",
+        ts: nowIso(),
+        code: "bad_message",
+        message: parsed.error.message,
+      });
       return;
     }
 
     const msg = parsed.data;
+    const rid =
+      "requestId" in msg && typeof msg.requestId === "string"
+        ? msg.requestId
+        : undefined;
 
     switch (msg.type) {
       case "create": {
@@ -243,37 +258,46 @@ export class RelayServer {
           state.socket,
         );
         if (!added.ok) {
-          state.socket.send(
-            JSON.stringify({
+          this.reply(
+            state,
+            {
               v: PROTOCOL_VERSION,
               type: "error",
               roomId: room.id,
               ts: nowIso(),
               code: added.code,
               message: added.message,
-            }),
+            },
+            rid,
           );
           return;
         }
         state.peerId = added.peer.id;
         state.roomId = room.id;
-        state.socket.send(
-          JSON.stringify(room.roomStateEnvelope({ peerSecret: added.secret })),
+        this.reply(
+          state,
+          room.roomStateEnvelope({ peerSecret: added.secret }) as unknown as Record<
+            string,
+            unknown
+          >,
+          rid,
         );
         break;
       }
       case "join": {
         const room = this.registry.getByCode(msg.inviteCode);
         if (!room) {
-          state.socket.send(
-            JSON.stringify({
+          this.reply(
+            state,
+            {
               v: PROTOCOL_VERSION,
               type: "error",
               roomId: "none",
               ts: nowIso(),
               code: "room_not_found",
               message: `No room for code ${msg.inviteCode}`,
-            }),
+            },
+            rid,
           );
           return;
         }
@@ -289,25 +313,33 @@ export class RelayServer {
           state.socket,
         );
         if (!added.ok) {
-          state.socket.send(
-            JSON.stringify({
+          this.reply(
+            state,
+            {
               v: PROTOCOL_VERSION,
               type: "error",
               roomId: room.id,
               ts: nowIso(),
               code: added.code,
               message: added.message,
-            }),
+            },
+            rid,
           );
           return;
         }
         state.peerId = added.peer.id;
         state.roomId = room.id;
-        state.socket.send(
-          JSON.stringify(room.roomStateEnvelope({ peerSecret: added.secret })),
+        this.reply(
+          state,
+          room.roomStateEnvelope({ peerSecret: added.secret }) as unknown as Record<
+            string,
+            unknown
+          >,
+          rid,
         );
         const inbox = room.listInbox(added.peer.id);
         if (inbox.length > 0) {
+          // Unsolicited inbox push — no requestId (not the RPC reply)
           state.socket.send(
             JSON.stringify(room.inboxStateEnvelope(added.peer.id)),
           );
@@ -324,19 +356,23 @@ export class RelayServer {
       }
       case "handoff": {
         if (!state.peerId || !state.roomId) {
-          this.sendNotInRoom(state);
+          this.sendNotInRoom(state, rid);
           return;
         }
         const room = this.registry.getById(state.roomId);
         if (!room) return;
         const handoff = room.resolveHandoff(state.peerId, msg.handoff);
         const result = room.routeHandoff(handoff);
-        state.socket.send(JSON.stringify(room.handoffAckEnvelope(result)));
+        this.reply(
+          state,
+          room.handoffAckEnvelope(result) as unknown as Record<string, unknown>,
+          rid,
+        );
         break;
       }
       case "chat": {
         if (!state.peerId || !state.roomId) {
-          this.sendNotInRoom(state);
+          this.sendNotInRoom(state, rid);
           return;
         }
         const room = this.registry.getById(state.roomId);
@@ -346,27 +382,38 @@ export class RelayServer {
       }
       case "list_peers": {
         if (!state.roomId) {
-          this.sendNotInRoom(state);
+          this.sendNotInRoom(state, rid);
           return;
         }
         const room = this.registry.getById(state.roomId);
         if (!room) return;
-        state.socket.send(JSON.stringify(room.roomStateEnvelope()));
+        this.reply(
+          state,
+          room.roomStateEnvelope() as unknown as Record<string, unknown>,
+          rid,
+        );
         break;
       }
       case "list_inbox": {
         if (!state.peerId || !state.roomId) {
-          this.sendNotInRoom(state);
+          this.sendNotInRoom(state, rid);
           return;
         }
         const room = this.registry.getById(state.roomId);
         if (!room) return;
-        state.socket.send(JSON.stringify(room.inboxStateEnvelope(state.peerId)));
+        this.reply(
+          state,
+          room.inboxStateEnvelope(state.peerId) as unknown as Record<
+            string,
+            unknown
+          >,
+          rid,
+        );
         break;
       }
       case "claim_handoff": {
         if (!state.peerId || !state.roomId) {
-          this.sendNotInRoom(state);
+          this.sendNotInRoom(state, rid);
           return;
         }
         const room = this.registry.getById(state.roomId);
@@ -377,22 +424,26 @@ export class RelayServer {
           msg.via ?? "claim",
         );
         if (result.ok) {
-          state.socket.send(
-            JSON.stringify({
+          this.reply(
+            state,
+            {
               ...makeEnvelopeBase(room.id),
               type: "inbox.claim_result",
               ok: true,
               entry: result.entry,
-            }),
+            },
+            rid,
           );
         } else {
-          state.socket.send(
-            JSON.stringify({
+          this.reply(
+            state,
+            {
               ...makeEnvelopeBase(room.id),
               type: "inbox.claim_result",
               ok: false,
               error: result.error,
-            }),
+            },
+            rid,
           );
         }
         break;
@@ -411,16 +462,18 @@ export class RelayServer {
     }
   }
 
-  private sendNotInRoom(state: ClientState): void {
-    state.socket.send(
-      JSON.stringify({
+  private sendNotInRoom(state: ClientState, requestId?: string): void {
+    this.reply(
+      state,
+      {
         v: PROTOCOL_VERSION,
         type: "error",
         roomId: "none",
         ts: nowIso(),
         code: "not_in_room",
         message: "Join or create a room first",
-      }),
+      },
+      requestId,
     );
   }
 }

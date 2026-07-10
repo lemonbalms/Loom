@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.0** |
-| **Status** | **`approved`** — L-5 opt-in pack file-body embed (TOCTOU re-resolve) |
-| **Supersedes** | 0.12.2 |
+| **Version** | **0.13.1** |
+| **Status** | **`approved`** — L-4 residual: wire `requestId` correlation |
+| **Supersedes** | 0.13.0 |
 | **Last updated** | 2026-07-10 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,22 @@
 
 ### Changelog
 
-#### 0.13.0 — 2026-07-10 (`approved`)
+#### 0.13.1 — 2026-07-10 (`approved`)
+
+**Why:** Close backlog **L-4 residual** — wire-level `requestId` on RPC request/reply (beyond FIFO waiters).
+
+| What | Why |
+|------|-----|
+| Client messages optional `requestId` | Correlation token |
+| Reply envelopes optional `requestId` (BaseEnvelope) | Relay echo |
+| `RelayServer.reply` echoes id on create/join/handoff/list_*/claim errors | End-to-end match |
+| `RelayClient.requestOnce` always sends id; match by id when present | Concurrent same-type RPCs |
+| FIFO type-match remains if reply has no id | Backward compatible with older relays |
+| VERSION **0.13.1** | PATCH: protocol optional field |
+
+No re-review required (Low residual; additive optional field).
+
+#### 0.13.0 — 2026-07-10 (`superseded` by 0.13.1; was `approved`)
 
 **Why:** Close backlog **L-5** with **opt-in** pack file-body embed — re-resolve allowlist at **send/read** time (TOCTOU).
 
@@ -966,7 +981,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 
 | ID | Item |
 |----|------|
-| L-4 | RelayClient wire-level `requestId` correlation (FIFO waiters done in 0.9.4; optional beyond sticky serialize) |
+| L-4 | ~~wire-level `requestId`~~ | **done 0.13.1** (echo + client match; FIFO fallback) |
 | L-5 | ~~v2 pack file-body embed~~ | **done 0.13.0** (`--with-pack-embed` / `withPackEmbed`) |
 | M4.3b | Tauri desktop shell — **0.11.1 approved**; implement next (Board deferred M-18 C) |
 
@@ -1037,5 +1052,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.12.1** desktop polish + PITCH sync | 2026-07-10 | **0.12.1** |
 | Plan author | implementation | **0.12.2** desktop Send handoff/chat + invite | 2026-07-10 | **0.12.2** |
 | Plan author | implementation | **0.13.0** L-5 pack file embed opt-in | 2026-07-10 | **0.13.0** |
+| Plan author | implementation | **0.13.1** L-4 wire requestId correlation | 2026-07-10 | **0.13.1** |
 
-**구현 게이트:** **0.13.0** L-5 closed. Next: L-4 residual requestId / Owner.
+**구현 게이트:** **0.13.1** L-4/L-5 closed. Next: Owner product priorities.

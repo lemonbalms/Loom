@@ -11,7 +11,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.13.0** (`approved` — L-5 pack embed) |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.13.1** (`approved` — L-4 requestId) |
 | **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |

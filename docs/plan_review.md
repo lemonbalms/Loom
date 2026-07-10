@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.13.0** `approved` — L-5 pack file-body embed (`--with-pack-embed`).  
+> **최신:** PLAN **v0.13.1** `approved` — L-4 wire `requestId` + L-5 pack embed done.  
 > **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재. 전체 워크플로우 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| *(none)* | | | **0.13.0** L-5 done; L-4 residual / Owner later |
+| *(none)* | | | **0.13.1** backlog Lows closed; Owner later |
 
 ---
 
@@ -29,8 +29,8 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| L-5 | Low | v2 pack embed TOCTOU re-resolve | **done 0.13.0** |
-| L-4 residual | Low | wire-level `requestId` beyond FIFO waiters | optional; 0.9.4 FIFO done |
+| L-5 | Low | pack embed TOCTOU | **done 0.13.0** |
+| L-4 residual | Low | wire `requestId` | **done 0.13.1** |
 | L-23 | Low | sticky `GET /health` unauth loopback | **accepted** in 0.11.1 (document only) |
 | Product | — | Board UI / sticky board ops | **done 0.12.0** (M-18 A) |
 
@@ -40,6 +40,7 @@
 
 | Finding | 처리 |
 |---------|------|
+| **0.13.1 L-4** | wire `requestId` on client RPC + relay echo + client match |
 | **0.13.0 L-5** | `--with-pack-embed` / `withPackEmbed`; re-resolve allowlist at send; caps |
 | **0.12.2 send** | desktop Send tab (handoff/chat) + invite display + smoke handoff/chat |
 | **0.12.1 polish** | auto-refresh, tab badges, peer names, board groups, PITCH 0.12 |

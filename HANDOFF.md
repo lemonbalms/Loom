@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.0 approved** — L-5 pack embed. 다음: L-4 residual / Owner.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.1 approved** — L-4 requestId. 다음: Owner product priorities.
 
 ---
 
@@ -31,9 +31,9 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.13.0** |
+| **Product CLI** | `loom` v**0.13.1** |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.13.0** — status **`approved`** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.13.1** — status **`approved`** |
 | **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
@@ -58,6 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending) | **0.13.1** | L-4 wire requestId correlation |
 | `e032731` | **0.13.0** | L-5 `--with-pack-embed` + host tip fix |
 | `fe416fb` | **0.12.2** | desktop Send handoff/chat + invite + smoke |
 | `719c226` | docs | USER_GUIDE scenarios |
@@ -106,9 +107,10 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | L-4 residual / Owner | wire requestId optional; product priorities |
-| Doc | User guide | `docs/USER_GUIDE.md` (incl. pack embed) |
+| **Next** | Owner product priorities | live board sync, polish, etc. |
+| Done | L-4 requestId | **0.13.1** |
 | Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
+| Doc | User guide | `docs/USER_GUIDE.md` |
 
 ### 2. Smoke commands
 

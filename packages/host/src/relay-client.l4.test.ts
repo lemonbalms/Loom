@@ -46,6 +46,12 @@ describe("L-4 requestOnce waiter queue", () => {
     expect(a1.handoffId).not.toBe(a2.handoffId);
     expect(a1.status === "delivered" || a1.status === "queued").toBe(true);
     expect(a2.status === "delivered" || a2.status === "queued").toBe(true);
+    // L-4 residual: acks should carry requestId when client sent one
+    expect(typeof (a1 as { requestId?: string }).requestId).toBe("string");
+    expect(typeof (a2 as { requestId?: string }).requestId).toBe("string");
+    expect((a1 as { requestId?: string }).requestId).not.toBe(
+      (a2 as { requestId?: string }).requestId,
+    );
 
     // User onEnvelope still works alongside pending waiters
     const seen: string[] = [];

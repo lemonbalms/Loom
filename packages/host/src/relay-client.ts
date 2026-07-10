@@ -50,9 +50,9 @@ export class RelayClient {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /**
-   * L-4: FIFO waiters for in-flight requestOnce. Avoids hijacking onEnvelope
-   * (which stole acks under concurrent requests). Full wire correlation ids
-   * deferred — see implementation-notes.
+   * L-4: waiters for in-flight requestOnce.
+   * Prefer wire `requestId` correlation; FIFO type-match remains fallback
+   * when the relay does not echo requestId (older servers).
    */
   private pendingRequests: PendingRequest[] = [];
 
@@ -437,15 +437,28 @@ export class RelayClient {
   }
 
   /**
-   * L-4: register a FIFO waiter without replacing opts.onEnvelope.
-   * User onEnvelope always receives every envelope; waiters take matching replies.
+   * L-4: register a waiter without replacing opts.onEnvelope.
+   * Attaches a wire `requestId` and matches the echoed id on the reply when present.
    */
   private requestOnce(
-    msg: unknown,
-    match: (e: Envelope) => boolean,
+    msg: Record<string, unknown>,
+    typeMatch: (e: Envelope) => boolean,
     timeoutMs = 8000,
   ): Promise<Envelope> {
+    const requestId = generateId("req");
+    const outbound = { ...msg, requestId };
     return new Promise((resolve, reject) => {
+      const match = (e: Envelope): boolean => {
+        if (!typeMatch(e)) return false;
+        const rid =
+          "requestId" in e && typeof (e as { requestId?: unknown }).requestId === "string"
+            ? (e as { requestId: string }).requestId
+            : undefined;
+        // Prefer exact correlation when relay echoes requestId
+        if (rid) return rid === requestId;
+        // Legacy relay: fall back to type-only FIFO
+        return true;
+      };
       const entry: PendingRequest = {
         match,
         resolve,
@@ -459,7 +472,7 @@ export class RelayClient {
       this.pendingRequests.push(entry);
 
       try {
-        this.send(msg);
+        this.send(outbound);
       } catch (e) {
         const i = this.pendingRequests.indexOf(entry);
         if (i >= 0) this.pendingRequests.splice(i, 1);
