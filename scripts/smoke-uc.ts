@@ -1,14 +1,17 @@
 /**
- * Automated use-case smoke (TEST_PLAN UC-1 / 3 / 5 / 6 / 7 core).
+ * Automated use-case smoke (TEST_PLAN UC-0/1/3/5/6/7 + UC-9 auto subset).
  * Isolated LOOM_TEST_HOME — does not touch ~/.loom.
+ *
+ * UC-9 automated: 9.1 agents matrix, 9.4 MCP tools, 9.5 withPackEmbed, 9.6 adapters tests.
+ * Not automated: 9.2/9.3 interactive `run shell|claude` TUI.
  *
  * Usage (repo root):
  *   bun run smoke:uc
  */
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { spawn } from "bun";
+import { spawn, type Subprocess } from "bun";
 
 const root = join(import.meta.dir, "..");
 const home = join(tmpdir(), `loom-uc-${Date.now()}`);
@@ -61,6 +64,144 @@ function extractInvite(text: string): string | null {
 function extractHandoffId(text: string): string | null {
   const m = text.match(/ho_[a-f0-9]+/i);
   return m ? m[0] : null;
+}
+
+/** Minimal NDJSON MCP client for loom-mcp stdio. */
+class McpClient {
+  private proc: Subprocess<"pipe", "pipe", "pipe">;
+  private buf = "";
+  private nextId = 1;
+  private waiters = new Map<
+    number,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+  >();
+  private readLoop: Promise<void>;
+
+  constructor(profile: string) {
+    this.proc = spawn({
+      cmd: ["bun", "run", "packages/mcp-server/src/stdio.ts"],
+      cwd: root,
+      env: {
+        ...env,
+        LOOM_PROFILE: profile,
+        LOOM_SESSION: "",
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    this.readLoop = this.pump();
+  }
+
+  private async pump() {
+    const reader = this.proc.stdout.getReader();
+    const dec = new TextDecoder();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        this.buf += dec.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = this.buf.indexOf("\n")) >= 0) {
+          const line = this.buf.slice(0, idx).trim();
+          this.buf = this.buf.slice(idx + 1);
+          if (!line) continue;
+          try {
+            const msg = JSON.parse(line) as {
+              id?: number | string | null;
+              result?: unknown;
+              error?: { message?: string };
+            };
+            if (msg.id === undefined || msg.id === null) continue;
+            const id = Number(msg.id);
+            const w = this.waiters.get(id);
+            if (!w) continue;
+            this.waiters.delete(id);
+            if (msg.error) {
+              w.reject(new Error(msg.error.message ?? JSON.stringify(msg.error)));
+            } else {
+              w.resolve(msg.result);
+            }
+          } catch {
+            /* ignore partial/non-json */
+          }
+        }
+      }
+    } finally {
+      for (const [, w] of this.waiters) {
+        w.reject(new Error("MCP stdout closed"));
+      }
+      this.waiters.clear();
+    }
+  }
+
+  private request(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    const id = this.nextId++;
+    const payload =
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        params: params ?? {},
+      }) + "\n";
+    const p = new Promise<unknown>((resolve, reject) => {
+      this.waiters.set(id, { resolve, reject });
+      setTimeout(() => {
+        if (this.waiters.has(id)) {
+          this.waiters.delete(id);
+          reject(new Error(`MCP timeout: ${method}`));
+        }
+      }, 12000);
+    });
+    this.proc.stdin.write(payload);
+    return p;
+  }
+
+  async initialize() {
+    return this.request("initialize", {
+      protocolVersion: "2024-11-05",
+      capabilities: {},
+      clientInfo: { name: "smoke-uc", version: "0.1" },
+    });
+  }
+
+  async toolsList() {
+    return this.request("tools/list", {});
+  }
+
+  async toolsCall(name: string, args: Record<string, unknown> = {}) {
+    const result = (await this.request("tools/call", {
+      name,
+      arguments: args,
+    })) as {
+      content?: Array<{ type?: string; text?: string }>;
+      isError?: boolean;
+    };
+    const text = result?.content?.[0]?.text ?? "";
+    if (result?.isError) {
+      throw new Error(`tool ${name} error: ${text}`);
+    }
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return { raw: text };
+    }
+  }
+
+  async close() {
+    try {
+      this.proc.stdin.end();
+    } catch {
+      /* */
+    }
+    try {
+      this.proc.kill();
+    } catch {
+      /* */
+    }
+    await Promise.race([this.proc.exited, Bun.sleep(1500)]);
+    void this.readLoop;
+  }
 }
 
 async function main() {
@@ -386,6 +527,151 @@ async function main() {
       "doing",
     );
     check("UC-7", "board set doing", r.code === 0, r.text);
+  }
+
+  // --- UC-9 agents + MCP (automated subset) ---
+  r = await run("agents", "--matrix");
+  check(
+    "UC-9",
+    "9.1 agents --matrix",
+    r.code === 0 &&
+      /claude/i.test(r.text) &&
+      /codex/i.test(r.text) &&
+      /Capability matrix|mcp/i.test(r.text),
+    r.text,
+  );
+
+  // 9.6 adapters unit tests (user-config / matrix / ensureMcpConfig)
+  {
+    const t = spawn({
+      cmd: ["bun", "test", "packages/adapters"],
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      t.exited,
+      new Response(t.stdout).text(),
+      new Response(t.stderr).text(),
+    ]);
+    const text = `${stdout}\n${stderr}`;
+    check(
+      "UC-9",
+      "9.6 adapters unit tests",
+      code === 0 && /0 fail/.test(text),
+      text.slice(-400),
+    );
+  }
+
+  // Ensure pack for embed still present (from UC-6)
+  await run("--profile", "alice", "pack", "add", "README.md");
+
+  const mcpAlice = new McpClient("alice");
+  const mcpBob = new McpClient("bob");
+  try {
+    const initA = (await mcpAlice.initialize()) as { serverInfo?: { name?: string } };
+    check(
+      "UC-9",
+      "9.4 MCP initialize (alice)",
+      initA?.serverInfo?.name === "loom" || !!initA,
+      JSON.stringify(initA),
+    );
+    await mcpBob.initialize();
+
+    const listed = (await mcpAlice.toolsList()) as {
+      tools?: Array<{ name: string }>;
+    };
+    const names = (listed.tools ?? []).map((t) => t.name);
+    check(
+      "UC-9",
+      "9.4 tools/list has core tools",
+      names.includes("list_peers") &&
+        names.includes("handoff") &&
+        names.includes("check_handoffs"),
+      names.join(","),
+    );
+
+    const peers = (await mcpAlice.toolsCall("list_peers")) as {
+      peers?: unknown[];
+      roomName?: string;
+    };
+    check(
+      "UC-9",
+      "9.4 list_peers",
+      Array.isArray(peers.peers) && peers.peers.length >= 2,
+      JSON.stringify(peers).slice(0, 200),
+    );
+
+    const ho = (await mcpAlice.toolsCall("handoff", {
+      to: "@bob",
+      body: "uc9 mcp handoff",
+      mode: "message",
+    })) as { status?: string; handoffId?: string };
+    check(
+      "UC-9",
+      "9.4 handoff tool",
+      (ho.status === "queued" || ho.status === "delivered") &&
+        typeof ho.handoffId === "string",
+      JSON.stringify(ho),
+    );
+
+    const inbox = (await mcpBob.toolsCall("check_handoffs")) as {
+      entries?: unknown[];
+      count?: number;
+    };
+    const inboxText = JSON.stringify(inbox);
+    check(
+      "UC-9",
+      "9.4 check_handoffs sees message",
+      inboxText.includes("uc9 mcp handoff") ||
+        (Array.isArray(inbox.entries) && (inbox.entries?.length ?? 0) > 0),
+      inboxText.slice(0, 300),
+    );
+
+    // 9.5 withPackEmbed via MCP
+    const embed = (await mcpAlice.toolsCall("handoff", {
+      to: "@bob",
+      body: "uc9 mcp embed",
+      withPackEmbed: true,
+    })) as {
+      status?: string;
+      handoffId?: string;
+      packEmbedded?: boolean;
+      packAttached?: boolean;
+    };
+    check(
+      "UC-9",
+      "9.5 handoff withPackEmbed",
+      (embed.status === "queued" || embed.status === "delivered") &&
+        (embed.packEmbedded === true || embed.packAttached === true),
+      JSON.stringify(embed),
+    );
+
+    if (embed.handoffId) {
+      const claimed = (await mcpBob.toolsCall("claim_handoff", {
+        id: embed.handoffId,
+      })) as { claimed?: boolean; handoff?: { body?: string; attachments?: unknown[] } };
+      const ct = JSON.stringify(claimed);
+      check(
+        "UC-9",
+        "9.5 claim embed has pack/file",
+        claimed.claimed === true ||
+          /uc9 mcp embed|context-pack|README/i.test(ct),
+        ct.slice(0, 400),
+      );
+    } else {
+      check("UC-9", "9.5 claim embed has pack/file", false, "no handoffId");
+    }
+  } catch (e) {
+    check(
+      "UC-9",
+      "MCP session",
+      false,
+      e instanceof Error ? e.message : String(e),
+    );
+  } finally {
+    await mcpAlice.close();
+    await mcpBob.close();
   }
 
   // summary

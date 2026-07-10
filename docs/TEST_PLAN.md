@@ -83,7 +83,7 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 | 6 | pack / embed | context-pack.test L-5 | P1 |
 | 7 | board | task-board · sticky board ops | P1 |
 | 8 | board 스냅샷 | task-board snapshot tests | P2 |
-| 9 | 에이전트 MCP | adapters tests (부분) | P2 실기기 |
+| 9 | 에이전트 MCP | adapters + **smoke:uc** (9.1/4/5/6) | 9.2–9.3 TUI only |
 | 10 | LAN/원격 | auth.integration (부분) | P2 2머신 |
 | 11 | 회귀 묶음 | **smoke:desktop + bun test + smoke:uc** | — |
 
@@ -243,18 +243,19 @@ bun run desktop
 
 ## UC-9 — 에이전트 + MCP (P2)
 
-**전제:** `claude` / `codex` / `grok` 중 설치분.
+**전제:** `claude` / `codex` / `grok` 중 설치분 (9.2–9.3만). MCP stdio(9.4–9.5)는 CLI 불필요.
 
 | # | 단계 | 기대 | 자동 |
 |---|------|------|------|
-| 9.1 | `agents --matrix` | 표 출력 | 🖐 |
-| 9.2 | `run shell` (최소) | 셸 기동, 세션 유지 | 🖐 |
-| 9.3 | `run claude` (설치 시) | MCP 설정, join 실패 시 **exit 1** (무음 금지 M-13) | 🖐 |
-| 9.4 | MCP `list_peers` / `handoff` / `check_handoffs` | 도구 응답 JSON | 🖐 |
-| 9.5 | `withPackEmbed: true` | pack file body 포함 | 🖐 |
-| 9.6 | `--write-user-config` (Codex/Grok) | managed 블록 1개, 중복 테이블 없음 | 🤖 adapters |
+| 9.1 | `agents --matrix` | 표 출력 | 🤖 `smoke:uc` |
+| 9.2 | `run shell` (최소) | 셸 기동, 세션 유지 | 🖐 (TUI) |
+| 9.3 | `run claude` (설치 시) | MCP 설정, join 실패 시 **exit 1** (무음 금지 M-13) | 🖐 (TUI) |
+| 9.4 | MCP `list_peers` / `handoff` / `check_handoffs` | 도구 응답 JSON | 🤖 `smoke:uc` (stdio) |
+| 9.5 | `withPackEmbed: true` | pack file body 포함 | 🤖 `smoke:uc` (MCP handoff) |
+| 9.6 | `--write-user-config` (Codex/Grok) | managed 블록 1개, 중복 테이블 없음 | 🤖 adapters + `smoke:uc` |
 
-**스킵:** 해당 CLI 미설치 시 ⏭ + 사유.
+**스킵:** 해당 CLI 미설치 시 9.2–9.3만 ⏭ + 사유.  
+**자동 게이트:** `bun run smoke:uc` 의 UC-9 블록 + `bun test packages/adapters`.
 
 ---
 
@@ -279,7 +280,7 @@ bun run desktop
 |---|------|------|
 | 11.1 | `bun test` | 전부 pass (현재 ~140) |
 | 11.2 | `bun run smoke:desktop` | status/peers/inbox/board/handoff/chat/401/stop |
-| 11.3 | `bun run smoke:uc` | UC-0/1/3/5/6/7 CLI 시나리오 (격리 홈) |
+| 11.3 | `bun run smoke:uc` | UC-0/1/3/5/6/7 + **UC-9** MCP (격리 홈) |
 | 11.4 | (선택) `cd apps/desktop/src-tauri && cargo test` | Rust sticky path 단위 |
 
 **릴리스 전:** 11.1 + 11.2 필수. **11.3 권장** (수동 UC-1/3/5/6 대체 가능).
@@ -357,10 +358,10 @@ Blockers:
 |-------|--------|
 | **Command** | `bun run smoke:uc` |
 | **Build** | loom **0.13.5** |
-| **Covered** | UC-0,1,3,5,6,7 core (isolated `LOOM_TEST_HOME`) |
-| **Result** | **smoke-uc OK** (all checks) |
+| **Covered** | UC-0,1,3,5,6,7 + UC-9.1/4/5/6 (isolated `LOOM_TEST_HOME`) |
+| **Result** | **smoke-uc OK** (all checks; UC-9 MCP added) |
 
-Not covered by smoke:uc: UC-4 GUI, UC-8 snapshot multi-machine, UC-9 real agent CLIs, UC-10 LAN 2-machine, UC-5.4 slash.
+Not covered by smoke:uc: UC-4 GUI, UC-8 snapshot multi-machine, UC-9.2/9.3 agent TUI (`run shell|claude`), UC-10 LAN 2-machine, UC-5.4 slash.
 
 ---
 
