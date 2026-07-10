@@ -16,7 +16,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> PLAN **0.14.1** `approved` + **P2 durable relay implemented** (persist.ts, M-21/22/23). CLI **0.14.1**. Next: optional L-28/L-29, dogfood restart smoke, commit/push.
+> PLAN **0.14.2** — P2 durable harden (symlink TOCTOU + leave persist fail-closed). CLI **0.14.2**.
 
 ---
 
@@ -32,9 +32,9 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.14.1** — `bun run link:loom` or `scripts/loom` |
+| **Product CLI** | `loom` v**0.14.2** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.14.1** — `approved` P2 durable relay (implement) |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.14.2** — P2 durable + security harden |
 | **Priorities** | `docs/PRIORITIES.md` (P0+P1 done → **P2 implement**) |
 | **Review gate** | Open blocking **none** (R15 closed via 0.14.1) |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |

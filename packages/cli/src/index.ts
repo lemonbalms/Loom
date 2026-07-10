@@ -75,7 +75,7 @@ import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { openSync, closeSync, writeSync, readSync, existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.14.1";
+const VERSION = "0.14.2";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.

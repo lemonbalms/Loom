@@ -5,6 +5,8 @@ import {
   rmSync,
   existsSync,
   readFileSync,
+  symlinkSync,
+  chmodSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -13,6 +15,7 @@ import {
   releaseStateDirLock,
   roomStatePath,
   loadAllSnapshots,
+  writeAtomicJson,
 } from "./persist";
 
 function tmpState(): string {
@@ -225,5 +228,56 @@ describe("P2 durable relay persist (0.14.1)", () => {
     const hydrated = Room.fromSnapshot(snap);
     const snap2 = hydrated.toSnapshot();
     expect(snap2.members[0]!.secret).toBe(a.secret);
+  });
+
+  test("writeAtomicJson does not write through symlink (TOCTOU)", () => {
+    const victim = join(dir, "victim.txt");
+    writeFileSync(victim, "ORIGINAL_SECRET\n", "utf8");
+    const target = join(dir, "room.json");
+    symlinkSync(victim, target);
+    writeAtomicJson(target, { secret: "overwrite" });
+    expect(readFileSync(victim, "utf8")).toBe("ORIGINAL_SECRET\n");
+    // final path is a regular file with payload (symlink replaced, not followed)
+    const body = readFileSync(target, "utf8");
+    expect(body).toContain('"secret"');
+    expect(body).toContain("overwrite");
+  });
+
+  test("removePeer rolls back when persist fails (no resurrection)", () => {
+    const reg1 = new RoomRegistry({ stateDir: dir });
+    const room = reg1.create("leave-room");
+    const sock = { send() {} };
+    room.addPeer({ id: "p_x", displayName: "x", agentKind: "shell" }, sock);
+    room.addPeer({ id: "p_y", displayName: "y", agentKind: "shell" }, sock);
+    room.setOffline("p_y");
+    room.routeHandoff({
+      id: "ho_leave",
+      fromPeerId: "p_x",
+      to: "p_y",
+      body: "stay",
+      mode: "message",
+      createdAt: new Date().toISOString(),
+    });
+    // Make state dir unwritable so next snapshot fails
+    chmodSync(dir, 0o500);
+    let threw = false;
+    try {
+      room.removePeer("p_y");
+    } catch {
+      threw = true;
+    }
+    chmodSync(dir, 0o700);
+    expect(threw).toBe(true);
+    // Memory rolled back — still present
+    expect(room.getPeer("p_y")).toBeTruthy();
+    expect(room.listInbox("p_y").length).toBe(1);
+    reg1.close();
+
+    // Disk still has peer (leave never committed)
+    const reg2 = new RoomRegistry({ stateDir: dir });
+    const loaded = reg2.getById(room.id)!;
+    expect(loaded.getPeer("p_y")).toBeTruthy();
+    expect(loaded.listInbox("p_y").length).toBe(1);
+    reg2.close();
   });
 });

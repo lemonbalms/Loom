@@ -87,15 +87,13 @@ export class Room {
     this.persistHook = hook;
   }
 
+  /**
+   * Durable flush. Throws on failure (no silent fail-open).
+   * Callers that already mutated memory must rollback before rethrowing.
+   */
   private touchPersist(): void {
-    try {
-      this.persistHook?.();
-    } catch (e) {
-      console.error(
-        `[loom relay] persist failed room=${this.id}:`,
-        e instanceof Error ? e.message : e,
-      );
-    }
+    if (!this.persistHook) return;
+    this.persistHook();
   }
 
   /**
@@ -280,7 +278,17 @@ export class Room {
     if (!this.inboxes.has(peer.id)) {
       this.inboxes.set(peer.id, new Map());
     }
-    this.touchPersist();
+    try {
+      this.touchPersist();
+    } catch (e) {
+      this.members.delete(peer.id);
+      this.inboxes.delete(peer.id);
+      console.error(
+        `[loom relay] persist failed room=${this.id} (addPeer rolled back):`,
+        e instanceof Error ? e.message : e,
+      );
+      throw e;
+    }
     return { ok: true, peer, secret, isNew: true };
   }
 
@@ -310,9 +318,22 @@ export class Room {
   removePeer(peerId: string): PeerInfo | undefined {
     const m = this.members.get(peerId);
     if (!m) return undefined;
+    const prevInbox = this.inboxes.get(peerId);
     this.members.delete(peerId);
     this.inboxes.delete(peerId);
-    this.touchPersist();
+    try {
+      this.touchPersist();
+    } catch (e) {
+      // Fail closed: keep leave durable or restore memory so restart cannot resurrect
+      this.members.set(peerId, m);
+      if (prevInbox) this.inboxes.set(peerId, prevInbox);
+      else this.inboxes.delete(peerId);
+      console.error(
+        `[loom relay] persist failed room=${this.id} (removePeer rolled back):`,
+        e instanceof Error ? e.message : e,
+      );
+      throw e;
+    }
     return m.peer;
   }
 
@@ -505,14 +526,27 @@ export class Room {
     };
 
     let anyNotified = false;
+    const enqueuedTo: string[] = [];
     for (const t of targets) {
       const entry = this.enqueue(t.id, handoff);
+      enqueuedTo.push(t.id);
       if (this.sendTo(t.id, notifyEnv)) {
         entry.status = "notified";
         anyNotified = true;
       }
     }
-    this.touchPersist();
+    try {
+      this.touchPersist();
+    } catch (e) {
+      for (const to of enqueuedTo) {
+        this.inboxes.get(to)?.delete(handoff.id);
+      }
+      console.error(
+        `[loom relay] persist failed room=${this.id} (routeHandoff rolled back):`,
+        e instanceof Error ? e.message : e,
+      );
+      throw e;
+    }
 
     return {
       status: anyNotified ? "delivered" : "queued",
@@ -585,11 +619,22 @@ export class Room {
       return { ok: false, error: `Cannot claim status=${entry.status}` };
     }
     const next: HandoffInboxStatus = via === "accept" ? "accepted" : "claimed";
+    const prevStatus = entry.status;
     entry.status = next;
     const out = { ...entry, handoff: { ...entry.handoff } };
     // L-11: drop terminal entries so repeated large attachments don't pin memory
     box?.delete(entry.handoff.id);
-    this.touchPersist();
+    try {
+      this.touchPersist();
+    } catch (e) {
+      // Restore pending entry so restart cannot re-offer a half-claimed handoff incorrectly
+      box?.set(entry.handoff.id, { ...entry, status: prevStatus });
+      console.error(
+        `[loom relay] persist failed room=${this.id} (claim rolled back):`,
+        e instanceof Error ? e.message : e,
+      );
+      throw e;
+    }
     return { ok: true, entry: out };
   }
 
@@ -690,15 +735,19 @@ export class RoomRegistry {
     this.wirePersist(room);
     this.byId.set(room.id, room);
     this.byCode.set(room.inviteCode.toUpperCase(), room);
-    // immediate create flush
+    // immediate create flush — fail closed (do not register half-created durable room)
     if (this.durable && this.stateDir) {
       try {
         saveRoomSnapshot(this.stateDir, room.toSnapshot());
       } catch (e) {
+        this.byId.delete(room.id);
+        this.byCode.delete(room.inviteCode.toUpperCase());
+        room.setPersistHook(null);
         console.error(
           `[loom relay] persist create failed:`,
           e instanceof Error ? e.message : e,
         );
+        throw e;
       }
     }
     return room;

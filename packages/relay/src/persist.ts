@@ -15,9 +15,12 @@ import {
   copyFileSync,
   readdirSync,
   statSync,
+  lstatSync,
+  realpathSync,
+  unlinkSync,
   rmSync,
 } from "node:fs";
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import type { HandoffPayload, PeerInfo } from "@loom/protocol";
@@ -164,19 +167,64 @@ export function releaseStateDirLock(stateDir: string): void {
   }
 }
 
+/**
+ * Atomic JSON write (temp + rename + 0600).
+ * Hardened vs symlink write-through / TOCTOU:
+ * - parent resolved via realpath
+ * - existing symlink at final path is unlinked (never write-through)
+ * - tmp and final stay under the resolved parent directory
+ */
 export function writeAtomicJson(filePath: string, data: unknown): void {
-  mkdirSync(dirname(filePath), { recursive: true });
+  const parent = dirname(resolve(filePath));
+  mkdirSync(parent, { recursive: true });
+  let realParent: string;
+  try {
+    realParent = realpathSync(parent);
+  } catch {
+    realParent = parent;
+  }
+  const base = basename(filePath);
+  if (!base || base === "." || base === "..") {
+    throw new Error(`Invalid snapshot basename: ${filePath}`);
+  }
+  const finalPath = join(realParent, base);
+
+  // If final path is a symlink, remove it so rename does not write through to target
+  try {
+    const st = lstatSync(finalPath);
+    if (st.isSymbolicLink()) {
+      unlinkSync(finalPath);
+    } else if (st.isDirectory()) {
+      throw new Error(`Refusing to overwrite directory: ${finalPath}`);
+    }
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException;
+    if (err?.code !== "ENOENT") {
+      if (e instanceof Error && e.message.startsWith("Refusing")) throw e;
+      // other lstat errors: continue; rename will surface
+    }
+  }
+
   const tmp = join(
-    dirname(filePath),
-    `.${basename(filePath)}.tmp.${process.pid}.${Date.now()}`,
+    realParent,
+    `.${base}.tmp.${process.pid}.${Date.now()}`,
   );
   const body = JSON.stringify(data, null, 2) + "\n";
-  writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
-  renameSync(tmp, filePath);
   try {
-    chmodSync(filePath, 0o600);
-  } catch {
-    /* */
+    writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
+    renameSync(tmp, finalPath);
+    try {
+      chmodSync(finalPath, 0o600);
+    } catch {
+      /* */
+    }
+  } catch (e) {
+    try {
+      if (existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      /* */
+    }
+    throw e;
   }
 }
 
@@ -329,7 +377,18 @@ export function saveRoomSnapshot(
   stateDir: string,
   snap: RoomSnapshotV1,
 ): void {
-  const path = roomStatePath(stateDir, snap.room.id);
+  // Ensure path stays under realpath(stateDir)
+  mkdirSync(stateDir, { recursive: true });
+  let realState: string;
+  try {
+    realState = realpathSync(stateDir);
+  } catch {
+    realState = resolve(stateDir);
+  }
+  const path = roomStatePath(realState, snap.room.id);
+  if (!path.startsWith(realState + "/") && path !== realState) {
+    throw new Error(`Snapshot path escapes state dir: ${path}`);
+  }
   writeAtomicJson(path, snap);
 }
 

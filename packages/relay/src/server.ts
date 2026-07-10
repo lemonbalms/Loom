@@ -302,16 +302,33 @@ export class RelayServer {
           return;
         }
         const wasMember = Boolean(room.getPeer(msg.peer.id));
-        const added = room.addPeer(
-          {
-            id: msg.peer.id || generateId("p"),
-            displayName: sanitizePeerName(msg.peer.displayName),
-            agentKind: msg.peer.agentKind ?? "unknown",
-            color: msg.peer.color,
-            secret: msg.peer.secret,
-          },
-          state.socket,
-        );
+        let added: ReturnType<typeof room.addPeer>;
+        try {
+          added = room.addPeer(
+            {
+              id: msg.peer.id || generateId("p"),
+              displayName: sanitizePeerName(msg.peer.displayName),
+              agentKind: msg.peer.agentKind ?? "unknown",
+              color: msg.peer.color,
+              secret: msg.peer.secret,
+            },
+            state.socket,
+          );
+        } catch (e) {
+          this.reply(
+            state,
+            {
+              v: PROTOCOL_VERSION,
+              type: "error",
+              roomId: room.id,
+              ts: nowIso(),
+              code: "persist_failed",
+              message: e instanceof Error ? e.message : String(e),
+            },
+            rid,
+          );
+          return;
+        }
         if (!added.ok) {
           this.reply(
             state,
@@ -362,12 +379,30 @@ export class RelayServer {
         const room = this.registry.getById(state.roomId);
         if (!room) return;
         const handoff = room.resolveHandoff(state.peerId, msg.handoff);
-        const result = room.routeHandoff(handoff);
-        this.reply(
-          state,
-          room.handoffAckEnvelope(result) as unknown as Record<string, unknown>,
-          rid,
-        );
+        try {
+          const result = room.routeHandoff(handoff);
+          this.reply(
+            state,
+            room.handoffAckEnvelope(result) as unknown as Record<
+              string,
+              unknown
+            >,
+            rid,
+          );
+        } catch (e) {
+          this.reply(
+            state,
+            {
+              v: PROTOCOL_VERSION,
+              type: "error",
+              roomId: room.id,
+              ts: nowIso(),
+              code: "persist_failed",
+              message: e instanceof Error ? e.message : String(e),
+            },
+            rid,
+          );
+        }
         break;
       }
       case "chat": {
@@ -418,30 +453,43 @@ export class RelayServer {
         }
         const room = this.registry.getById(state.roomId);
         if (!room) return;
-        const result = room.claimHandoff(
-          state.peerId,
-          msg.id,
-          msg.via ?? "claim",
-        );
-        if (result.ok) {
-          this.reply(
-            state,
-            {
-              ...makeEnvelopeBase(room.id),
-              type: "inbox.claim_result",
-              ok: true,
-              entry: result.entry,
-            },
-            rid,
+        try {
+          const result = room.claimHandoff(
+            state.peerId,
+            msg.id,
+            msg.via ?? "claim",
           );
-        } else {
+          if (result.ok) {
+            this.reply(
+              state,
+              {
+                ...makeEnvelopeBase(room.id),
+                type: "inbox.claim_result",
+                ok: true,
+                entry: result.entry,
+              },
+              rid,
+            );
+          } else {
+            this.reply(
+              state,
+              {
+                ...makeEnvelopeBase(room.id),
+                type: "inbox.claim_result",
+                ok: false,
+                error: result.error,
+              },
+              rid,
+            );
+          }
+        } catch (e) {
           this.reply(
             state,
             {
               ...makeEnvelopeBase(room.id),
               type: "inbox.claim_result",
               ok: false,
-              error: result.error,
+              error: e instanceof Error ? e.message : String(e),
             },
             rid,
           );
@@ -452,11 +500,28 @@ export class RelayServer {
         if (!state.peerId || !state.roomId) return;
         const room = this.registry.getById(state.roomId);
         if (!room) return;
-        room.removePeer(state.peerId);
-        room.broadcast(room.peerLeaveEnvelope(state.peerId));
-        this.registry.maybeGc(room);
-        state.peerId = undefined;
-        state.roomId = undefined;
+        const leaving = state.peerId;
+        try {
+          room.removePeer(leaving);
+          room.broadcast(room.peerLeaveEnvelope(leaving));
+          this.registry.maybeGc(room);
+          state.peerId = undefined;
+          state.roomId = undefined;
+        } catch (e) {
+          // Peer still in memory after rollback — stay in room
+          this.reply(
+            state,
+            {
+              v: PROTOCOL_VERSION,
+              type: "error",
+              roomId: room.id,
+              ts: nowIso(),
+              code: "persist_failed",
+              message: e instanceof Error ? e.message : String(e),
+            },
+            rid,
+          );
+        }
         break;
       }
     }

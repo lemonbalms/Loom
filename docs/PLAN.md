@@ -3,11 +3,11 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.14.1** |
-| **Status** | **`approved` (author-close)** — R15 Med M-21/M-22/M-23 locks applied; P2 implement allowed |
-| **Supersedes** | 0.14.0 |
+| **Version** | **0.14.2** |
+| **Status** | **`approved` (author-close, Low security harden)** — P2 durable symlink/fail-open fix |
+| **Supersedes** | 0.14.1 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **author-close** after R15 Decision notes (“PATCH 후 재리뷰 없이 author-close 가능”). Locks in Failure/security table. **Implement P2 under this plan.** Not a bare approve — provenance: R15 + 0.14.1 PATCH. |
+| **Approval** | **author-close** after adversarial dogfood findings (symlink TOCTOU + leave persist fail-open). Not re-R{n}. |
 | **Fable 5 when** | R15 closed via PATCH. Next R{n} only if implement opens new security surface beyond locks. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — **P2** |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -49,7 +49,22 @@
 
 ### Changelog
 
-#### 0.14.1 — 2026-07-10 (`approved` — **author-close**, R15 M-21/M-22/M-23 locks)
+#### 0.14.2 — 2026-07-10 (`approved` — **author-close**, P2 durable security harden)
+
+**Why:** Adversarial dogfood (Codex) showed (1) `writeAtomicJson` could write-through a final-path symlink (TOCTOU) and (2) `removePeer`/mutations swallowed persist I/O errors → leave appeared OK but peer/inbox **resurrected** after restart.
+
+| What | Why |
+|------|-----|
+| `writeAtomicJson`: realpath parent, unlink symlink at final, no write-through | Symlink TOCTOU |
+| `saveRoomSnapshot` path must stay under realpath(stateDir) | Path escape |
+| Persist failures **throw**; leave/claim/addPeer/routeHandoff **rollback** memory | Fail closed durability |
+| Server replies `persist_failed` instead of half-applied leave | Wire honesty |
+| Tests: symlink victim untouched; leave EACCES no resurrection | Regression |
+| VERSION **0.14.2** | CLI/MCP parity |
+
+**author-close, Low security harden** (no re-R{n}; tightens 0.14.1 locks).
+
+#### 0.14.1 — 2026-07-10 (`superseded` by 0.14.2; was `approved` — **author-close**, R15 M-21/M-22/M-23 locks)
 
 **Why:** R15 `pending-revision` — three Med findings, all **PLAN-text lock rows** only (no architecture change). Decision notes: PATCH → **author-close, no re-review (no R15b)**.
 
