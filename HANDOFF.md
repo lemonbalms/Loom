@@ -59,7 +59,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| *(pending)* | **0.13.5** | L-26 desktop F-2 + L-27 pack embed TOCTOU |
+| `9b96f2a` | **0.13.5** | L-26 desktop F-2 + L-27 pack embed TOCTOU |
 | `0300a7d` | **0.13.4** | R14 cumulative trust approved (P1-B) |
 | `96ca50d` | docs | TEST_PLAN P0 gate record; queue P1 |
 | `d9a0b3d` | **0.13.3** | PRIORITIES.md + link:loom install DX |
