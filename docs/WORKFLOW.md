@@ -401,7 +401,7 @@ blocking 없을 때 기본 순서:
 | 사용자 말 | 에이전트 행동 |
 |-----------|----------------|
 | **진행해 / 단계적으로 진행해** | 현재 게이트 다음 단계 실행 → 테스트 → 문서 동기화 → (관례) 커밋·푸시 |
-| **리뷰해 / plan_review 피드백 / Fable 리뷰 / R{n}** | Fable 5(또는 동등) 게이트: PLAN+코드 대조 → `plan_review.md` R{n}; **필수 상황 §5.1** |
+| **리뷰해 / plan_review 피드백 / Fable 리뷰 / R{n}** | Fable 5(또는 동등) 게이트: PLAN+코드 대조 → `plan_review.md` R{n}; **필수 상황 §5.1**. Claude Code dogfood: **`/advisor fable` 필수** → [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md) |
 | **승인 / approve** (Owner) | Owner 최종 go — PLAN Approval block에 Owner 행 (선택·권장 when MINOR) |
 | **미지 / blindspot / 블라인드** | 코드베이스 스캔 → 4분면 표 + 관련 unknown unknowns (§3.5, `docs/UNKNOWNS.md`) |
 | **인터뷰해** | 아키텍처를 바꿀 질문을 **한 번에 1개** (우선순위: 분기 큰 것) |

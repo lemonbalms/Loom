@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.5** · R14 Low L-26/L-27 done. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+> `bun run status` 후 세션 상태 브리핑. PLAN **0.13.14** · dogfood: `docs/DOGFOOD_LOOP.md` (Claude R{n} → **/advisor fable** 필수). Next: **P2 durable inbox** (MINOR + R{n}).
 
 ---
 
