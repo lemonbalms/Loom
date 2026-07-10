@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.13** |
-| **Status** | **`approved` (author-close)** — TUI PTY with SIGWINCH resize |
-| **Supersedes** | 0.13.12 |
+| **Version** | **0.13.14** |
+| **Status** | **`approved` (author-close)** — TUI winsize poll + SIGWINCH forward |
+| **Supersedes** | 0.13.13 |
 | **Last updated** | 2026-07-10 |
 | **Approval** | author-close PATCH; no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
@@ -49,7 +49,17 @@
 
 ### Changelog
 
-#### 0.13.13 — 2026-07-10 (`approved` — **author-close**, TUI resize / SIGWINCH)
+#### 0.13.14 — 2026-07-10 (`approved` — **author-close**, TUI resize robust)
+
+**Why:** Owner still saw fixed Claude layout after 0.13.13; SIGWINCH often delivered only to Loom parent.
+
+| What | Why |
+|------|-----|
+| `run-with-pty.py` openpty + 200ms winsize poll | resize without relying on signal delivery |
+| Loom parent `forwardWinch` → python child | parent is foreground process group |
+| VERSION **0.13.14** | PATCH dogfood |
+
+#### 0.13.13 — 2026-07-10 (`superseded` by 0.13.14; was `approved` — **author-close**, TUI resize / SIGWINCH)
 
 **Why:** `script(1)` PTY fixed Claude kqueue but frozen terminal size at launch; resize ignored.
 
@@ -1210,5 +1220,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.11** shell REPL readSync(0) only — author-close | 2026-07-10 | **0.13.11** |
 | Plan author | implementation | **0.13.12** TUI agent script PTY (Claude kqueue) — author-close | 2026-07-10 | **0.13.12** |
 | Plan author | implementation | **0.13.13** TUI python pty SIGWINCH resize — author-close | 2026-07-10 | **0.13.13** |
+| Plan author | implementation | **0.13.14** TUI winsize poll + parent SIGWINCH forward — author-close | 2026-07-10 | **0.13.14** |
 
-**구현 게이트:** **0.13.13**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.14**. Next: **P2 durable inbox** (MINOR + Fable R{n}).

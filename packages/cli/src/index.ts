@@ -75,7 +75,7 @@ import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { openSync, closeSync, writeSync, readSync, existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.13.13";
+const VERSION = "0.13.14";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -1349,6 +1349,7 @@ function spawnWait(
   command: string,
   args: string[],
   spec: AgentSpec,
+  opts?: { forwardWinch?: boolean },
 ): Promise<number> {
   return new Promise((resolve) => {
     const child = nodeSpawn(command, args, {
@@ -1357,11 +1358,31 @@ function spawnWait(
       // Prefer numeric fds over "inherit" to reduce Bun stream wrapping
       stdio: [0, 1, 2],
     });
+    // Loom is often the foreground process; SIGWINCH hits us, not the PTY helper.
+    // Forward so python run-with-pty / Claude can resize.
+    const onWinch =
+      opts?.forwardWinch && child.pid
+        ? () => {
+            try {
+              process.kill(child.pid!, "SIGWINCH");
+            } catch {
+              /* child gone */
+            }
+          }
+        : null;
+    if (onWinch) {
+      process.on("SIGWINCH", onWinch);
+    }
+    const cleanup = () => {
+      if (onWinch) process.off("SIGWINCH", onWinch);
+    };
     child.on("error", (err) => {
+      cleanup();
       eprint(`\x1b[31mFailed to start agent: ${err.message}\x1b[0m\n`);
       resolve(1);
     });
     child.on("exit", (c, signal) => {
+      cleanup();
       if (signal) resolve(1);
       else resolve(c ?? 1);
     });
@@ -1394,11 +1415,9 @@ async function runTuiAgent(spec: AgentSpec): Promise<number> {
     attempts.push({
       label: "python-pty-winch",
       run: () =>
-        spawnWait(
-          "python3",
-          [helperPath, spec.command, ...spec.args],
-          spec,
-        ),
+        spawnWait("python3", [helperPath, spec.command, ...spec.args], spec, {
+          forwardWinch: true,
+        }),
     });
   }
 
