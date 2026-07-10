@@ -58,7 +58,7 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
-| (pending) | **0.12.2** | desktop Send handoff/chat + invite + smoke |
+| `fe416fb` | **0.12.2** | desktop Send handoff/chat + invite + smoke |
 | `ef517ab` | **0.12.1** | desktop polish + PITCH 0.12 sync |
 | `3b983bd` | fix | desktop script: cd apps/desktop (no --manifest-path) |
 | `dea8407` | **0.12.0** | sticky board RPC + desktop Board + smoke:desktop |
