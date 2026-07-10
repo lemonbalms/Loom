@@ -3,13 +3,13 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.16.1** |
-| **Status** | **`approved` (author-close)** — R17 M-26/L-31/L-32 locks; work bus implement allowed |
-| **Supersedes** | 0.16.0 |
+| **Version** | **0.17.0** |
+| **Status** | **`pending-review`** — Launcher UX: up / host-default / work-first (MINOR) |
+| **Supersedes** | 0.16.1 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **author-close** after R17 Decision notes (PATCH locks, no R17b). **Implement under 0.16.1.** |
-| **Fable 5 when** | R17 closed via PATCH. |
-| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — real-time work delivery |
+| **Approval** | Awaiting **R18** (`/advisor fable`). **Do not implement** until approved. Next session: R18 → then implement. |
+| **Fable 5 when** | **Required** — changes default online lifecycle, dogfood entry, background daemons. |
+| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -49,7 +49,124 @@
 
 ### Changelog
 
-#### 0.16.1 — 2026-07-10 (`approved` — **author-close**, R17 M-26/L-31/L-32)
+#### 0.17.0 — 2026-07-10 (`pending-review` — **Launcher UX: up + host-default + work-first**)
+
+**Why:** Work bus (0.16) delivers via handoff, but **operator UX still forces multi-terminal host/run mental model**. Owner feedback: “online 유지에 창이 왜 필요?” / “왜 터미널마다 구동?”. Sticky host is already a **background process** (`unref`), but **entry surface** still looks like per-role terminal ops. Goal: **background online by default; send work with board/handoff; open `run` only when working.**
+
+**Product one-liner:**  
+*`loom up` / `dogfood:up` brings room peers online in the background; join auto-starts sticky; users live on work bus; TUI `run` is opt-in for actual agent work.*
+
+**Review impact:** MINOR — default behavior change on join, new multi-profile launcher, optional background watch. **No wire protocol change.** **R18 required.**
+
+##### User journey (target — lock for docs/acceptance)
+
+```text
+아침 1회:  bun run dogfood:up     # 또는 loom up --profiles impl,claude-rev,codex-rev
+           → 창 닫아도 peers online
+
+낮 송신:   loom board add "…" --as claude-review
+           loom handoff @claude-review "[R-REQUEST] …"
+           → 끝 (host 수동 start 없음)
+
+수신 인지: (옵션) dogfood:up 이 work-watch 데몬도 띄움
+           또는 나중에 loom work
+
+처리 시:   loom --profile claude-rev run claude   # TUI 창 1개만
+           boot → check_handoffs → claim
+
+결과:      loom work / inbox
+```
+
+##### In (scope) — four pillars
+
+**1) `loom up` / `dogfood:up` (background multi-host)**
+
+| What | Why |
+|------|-----|
+| `bun run dogfood:up` | Prefer enhance existing `scripts/dogfood-room-up.sh` (or sibling): ensure room + **start sticky host for each dogfood profile** (impl, claude-rev, codex-rev) if session exists |
+| `loom up [--profiles a,b]` | Product CLI: for each profile with a session file, `startStickyHostProcess` in background; print summary table (profile, peer, host pid, online) |
+| `loom down [--profiles …]` | Stop sticky hosts for those profiles (idempotent) |
+| `loom up --status` / reuse dogfood:status | Show hosts alive + peers |
+| No TUI spawned by up | **run is separate** (pillar 4) |
+| Idempotent | Already-running host → “already running”, not error |
+
+**2) Host default on join (hide host start for normal path)**
+
+| What | Why |
+|------|-----|
+| After successful `room create` / `room join` | **Auto `host start`** for that profile (default **on**) |
+| Escape hatch | `--no-host` on create/join **or** `LOOM_NO_AUTO_HOST=1` |
+| Docs | USER_GUIDE: host is default; `host start/stop` advanced/power-user |
+| CLI help | Deprioritize host in “daily path”; keep commands for stop/debug |
+| Do **not** remove `host start/stop/status` | Power users + recovery |
+
+**3) Work bus front-and-center (docs + thin CLI polish)**
+
+| What | Why |
+|------|-----|
+| Docs rewrite daily path | Send = board/handoff; receive = work / run; not “6 terminals” |
+| `loom work` already 0.16 | Ensure up/status mention work |
+| Optional: `dogfood:up --watch` | Start `work watch` as background for listed profiles (log file under loomDir) — **opt-in flag** to avoid surprise CPU |
+| Default up **without** watch | Watch is optional (L-31 CPU concern) |
+
+**4) `run` only when working**
+
+| What | Why |
+|------|-----|
+| Docs + dogfood loop | Explicit: online ≠ agent TUI; open run only to process |
+| No auto-run on up | Never spawn claude/codex from up (cost, secrets, TUI) |
+| Boot prompt path unchanged | `scripts/dogfood-reviewer-boot.txt` still first message on run |
+
+##### Out (non-goals)
+
+| Out | Why |
+|-----|-----|
+| CRDT / live multi-writer board | P3; orthogonal |
+| Single process multi-peer in one OS process | Larger redesign; up multi-process is enough |
+| Auto-claim | Untrusted; stays out |
+| PTY inject | no-go |
+| Auto `run` agents on up | User must opt into TUI/cost |
+| Killing unrelated user processes | down only stops **our** sticky meta pids |
+| Windows service installer | macOS/Linux dogfood first; launchd plist optional later not required in 0.17 |
+
+##### Security / failure locks (for R18)
+
+| Case | Required behavior |
+|------|-------------------|
+| up only starts host for **profiles with existing session** | No invent peer / no join without invite |
+| down | Only stop sticky if meta.pid alive **and** meta.sessionPath matches that profile session |
+| Auto-host on join | Fail soft: join succeeds even if host start fails; print warning + `host status` tip |
+| Logs | sticky remains stdout/stderr ignore (or optional log file path under loomDir, 0600) — no secrets in logs |
+| Concurrent up | Idempotent; second up does not corrupt meta |
+| Profile isolation | Never mix LOOM_SESSION across profiles when spawning hosts |
+| watch daemon (if --watch) | Same clamp as L-31; log path not world-writable |
+
+##### Acceptance (after R18 approved)
+
+1. Fresh dogfood: `dogfood:up` (or room + up) → three profiles host running; `peers` shows online without any `host start` typed manually.  
+2. Terminal closed after up → `host status` still running (daemon).  
+3. `room join` without `--no-host` → sticky auto-started for that profile.  
+4. `room join --no-host` → no sticky.  
+5. `loom down` stops hosts; peers go offline (after presence update).  
+6. Docs daily path matches journey above; no “6 terminals required” as default.  
+7. `bun test` green; VERSION bump on implement.
+
+##### Implementation sketch (not approved work)
+
+| Area | Touch |
+|------|--------|
+| `scripts/dogfood-room-up.sh` or `dogfood-up.sh` | multi host start after room ready |
+| `packages/cli` `up` / `down` commands | loop profiles |
+| `cmdRoomCreate` / `cmdRoomJoin` | auto host unless --no-host |
+| package.json `dogfood:up` | alias |
+| docs USER_GUIDE, DOGFOOD_LOOP, HANDOFF | journey rewrite |
+| tests | unit: auto-host flag parsing; script dry-run if feasible |
+
+**Unknowns:** `docs/UNKNOWNS.md` §0.17.0.
+
+**Not implemented.** Awaiting **R18**. Next session: review → implement.
+
+#### 0.16.1 — 2026-07-10 (`superseded` by 0.17.0; was `approved` — **author-close**, R17 M-26/L-31/L-32 + work bus)
 
 **Why:** R17 `pending-revision` — template line injection (M-26) + watch interval + MCP notify default.
 
@@ -1466,16 +1583,19 @@ Human: `fable inbox` → `accept`.
 - **Not** live remote sync — intentional
 - **0.7.1:** timestamp clamp, always-parse snapshot, strict handoff id match
 
-### Phase 7 — Work bus (deliver & process) — **planned 0.16.0** (`pending-review`)
+### Phase 8 — Launcher UX (up / host-default) — **planned 0.17.0** (`pending-review`)
 
-**목표:** 작업카드 → handoff 전달 → CLI `work`/`watch`로 즉시 인지·처리. CRDT 아님.
+**목표:** 백그라운드 multi-host, join 시 sticky 기본, work bus 일상 경로, run은 작업 시에만.
 
 | Item | Status |
 |------|--------|
-| board add/assign → handoff notify | planned |
-| `loom work` / `work watch` | planned |
-| R17 | **open** |
-| Implement | **blocked on R17** |
+| dogfood:up / loom up·down | planned |
+| join auto-host + --no-host | planned |
+| docs journey rewrite | planned |
+| R18 | **open** |
+| Implement | **blocked on R18** |
+
+### Phase 7 — Work bus (deliver & process) — **done 0.16.1**
 
 ### Phase 6 — Purpose-based sprint 1 — **done 0.15.1**
 
@@ -1563,7 +1683,8 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | M4.3b Tauri desktop shell | **0.11.2** shell + **0.12.0** Board via sticky |
 | **M5 durable relay state (P2)** | **0.14.1–0.14.2** done |
 | **M6 purpose-based sprint 1** | **0.15.1** done |
-| **M7 work bus (board notify + work CLI)** | **0.16.0** plan `pending-review` (R17) |
+| **M7 work bus (board notify + work CLI)** | **0.16.1** done |
+| **M8 launcher UX (up / host-default)** | **0.17.0** plan `pending-review` (R18) |
 
 ---
 
@@ -1688,5 +1809,6 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | Plan author | plan | **0.16.0** work bus (board notify + loom work) MINOR draft | 2026-07-10 | **0.16.0** `pending-review` |
 | Reviewer | Claude + Fable 5 | **R17 pending-revision** (M-26; L-31/L-32) | 2026-07-10 | 0.16.0 reviewed |
 | Plan author | plan+impl | **0.16.1** R17 locks + work bus implement | 2026-07-10 | **0.16.1** `approved` |
+| Plan author | plan | **0.17.0** launcher UX (up / host-default / work-first) draft | 2026-07-10 | **0.17.0** `pending-review` |
 
-**구현 게이트:** PLAN + code **0.16.1**.
+**구현 게이트:** code **0.16.1**. PLAN **0.17.0** `pending-review` — **next session: R18 then implement**.

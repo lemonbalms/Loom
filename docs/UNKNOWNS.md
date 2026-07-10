@@ -42,6 +42,23 @@
 
 ## Gate log
 
+### 0.17.0 — Launcher UX up / host-default (pending-review)
+
+| Field | Value |
+|-------|--------|
+| **PLAN** | v0.17.0 (`pending-review`) |
+| **Date** | 2026-07-10 |
+| **Review** | R18 required; **next session implements after approve** |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | sticky already daemonizes (unref). Multi-profile = multi session file. Work bus ships 0.16. dogfood-room-up exists for join only. |
+| Known unknowns | (1) dogfood:up vs loom up naming — plan: both (script + CLI). (2) Auto-host on every join may surprise headless CI — plan: LOOM_NO_AUTO_HOST + --no-host. (3) Whether --watch on up is default — plan: **opt-in only**. |
+| Unknown knowns | Users think host = open terminal; education + up removes the confusion. |
+| Unknown unknowns | Orphan hosts after crash; down must be robust via meta.pid. |
+
+**Next session:** R18 → 0.17.x implement → tests → docs.
+
 ### 0.16.0 — Work bus board notify + loom work (pending-review)
 
 | Field | Value |
@@ -124,3 +141,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-10 | 0.14.0 P2 durable inbox unknowns |
 | 2026-07-10 | 0.15.0 purpose-based sprint 1 unknowns |
 | 2026-07-10 | 0.16.0 work bus unknowns |
+| 2026-07-10 | 0.17.0 launcher UX unknowns |

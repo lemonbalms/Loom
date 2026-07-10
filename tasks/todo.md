@@ -1,14 +1,21 @@
-# 0.16.0 — Work bus PLAN pending-review
+# 0.17.0 — Launcher UX (next session)
 
-## Done
+## Ready now
 
-- [x] PLAN **v0.16.0** draft (S1 board→handoff + S2 work/watch)
-- [x] UNKNOWNS §0.16.0
-- [x] plan_review Active → R17
-- [x] HANDOFF / PRIORITIES sync
+- [x] PLAN **v0.17.0** pending-review (up / host-default / work-first / run-only-when-work)
+- [x] UNKNOWNS §0.17.0
+- [x] plan_review Active → R18 awaiting
+- [x] HANDOFF next-session playbook
+- [x] [R-REQUEST] prepared for claude-review
 
-## Next
+## Next session
 
-- [ ] **R17** — Claude `/advisor fable` → plan_review.md Review R17
-- [ ] On approved: implement notify bridge + loom work/watch
-- [ ] **Forbidden:** product implement until R17 approved
+1. [ ] `bun run status`
+2. [ ] **R18** — Claude `/advisor fable` → `docs/plan_review.md` Review R18
+3. [ ] If pending-revision: PLAN PATCH locks only → author-close if allowed
+4. [ ] If approved: implement dogfood:up / loom up·down / join auto-host / docs
+5. [ ] `bun test` → commit push · VERSION
+
+## Forbidden until R18 approved
+
+- Implement up/auto-host product code
