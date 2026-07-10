@@ -3,13 +3,13 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.14.2** |
-| **Status** | **`approved` (author-close, Low security harden)** — P2 durable symlink/fail-open fix |
-| **Supersedes** | 0.14.1 |
+| **Version** | **0.15.0** |
+| **Status** | **`pending-review`** — Purpose-based sprint 1 (MINOR) |
+| **Supersedes** | 0.14.2 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **author-close** after adversarial dogfood findings (symlink TOCTOU + leave persist fail-open). Not re-R{n}. |
-| **Fable 5 when** | R15 closed via PATCH. Next R{n} only if implement opens new security surface beyond locks. |
-| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — **P2** |
+| **Approval** | Awaiting **R16** (Fable 5 / `/advisor fable`). **Do not implement** until approved. |
+| **Fable 5 when** | **Required** — new product surface (purpose object, handoff contracts, receive-path behavior). |
+| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — post-P2 purpose loop |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -49,7 +49,134 @@
 
 ### Changelog
 
-#### 0.14.2 — 2026-07-10 (`approved` — **author-close**, P2 durable security harden)
+#### 0.15.0 — 2026-07-10 (`pending-review` — **Purpose-based sprint 1**)
+
+**Why:** Loom exists for **purpose-based multiplayer development** (agents + humans aligned on a stated goal). P0–P2 shipped connect/handoff/durable queue, but work is still **task-shaped** (raw handoff text + board todos) without a **room-scoped purpose**, **intent contracts**, or a **receive path that starts execution**. Dogfood showed: handoff arrives, Claude/Codex UI stays empty until a human pastes or the agent happens to `check_handoffs`.
+
+**Product one-liner (this MINOR):**  
+*Anchor a Purpose on the room; stamp handoffs with intent; force receive-side claim loop; optional local verify recipe.*
+
+**Review impact:** MINOR — new local data surface + agent receive contract + CLI. **R16 required.** Wire protocol v1 **unchanged** (purpose is local file + optional handoff attachment text; no new envelope types required in v1).
+
+##### In (scope) — sprint 1
+
+| What | Why |
+|------|-----|
+| **Purpose card** room-scoped local file | Single “why / DoD / out-of-scope” anchor for the room |
+| CLI `loom purpose show \| set \| clear` | Human/agent can read/write purpose without editing JSON by hand |
+| Schema v1 (below) | Stable fields for tools + docs |
+| Optional attach on handoff: `--with-purpose` | Receivers see purpose without separate fetch |
+| MCP `get_purpose` / `set_purpose` (or fold into get_context_pack later — prefer **dedicated tools** for clarity) | Agents pull purpose without CLI |
+| **Handoff intent tags** (convention + light parse) | `[GOAL]` `[R-REQUEST]` `[R-RESULT]` `[VERIFY]` `[DONE]` prefixes documented + helper to detect |
+| Optional structured fields on handoff body header lines | `intent:` `goalId:` `round:` as first-line metadata (still body text — no wire change) |
+| **Receive path (run start)** | On `loom run *`: after join, print pending inbox count + **force system/agent hint**: “NOW call check_handoffs; claim [R-REQUEST]/[GOAL]” |
+| Strengthen `loomSystemHint` | Same contract for MCP-configured agents |
+| Dogfood templates | `docs/DOGFOOD_LOOP.md` + `scripts/dogfood-reviewer-boot.txt` first-message paste |
+| Board helper (optional thin) | `loom board add` from purpose next-gate line **or** document manual; prefer **auto-suggest print** not silent board mutation |
+| **`loom verify` (lite)** | Run purpose.`verify[]` commands (default cwd repo); print pass/fail; optional handoff body template `[VERIFY]` |
+| Docs | USER_GUIDE purpose section; PROTOCOL note “local only”; ARCHITECTURE purpose flow |
+| Tests | purpose file round-trip; sanitize; path under loomDir; tag detect helper; verify dry-run empty recipe |
+| VERSION bump on implement | CLI/MCP match PLAN after approve |
+
+##### Purpose schema v1 (plan lock)
+
+```ts
+// ~/.loom/purposes/<sha256(roomId)[0:16]>.json  mode 0600
+type PurposeV1 = {
+  v: 1;
+  roomId: string;
+  roomName?: string;
+  /** One-line north star */
+  purpose: string;       // max ~500 chars sanitized
+  /** Falsifiable success checks (human-readable) */
+  successCriteria: string[];  // max 12 × ~300 chars
+  /** Explicit non-goals */
+  outOfScope: string[];       // max 12
+  /** Shell recipes relative to process cwd when loom verify runs */
+  verify: string[];           // max 8 × ~200 chars; e.g. "bun test"
+  /** Free notes */
+  notes?: string;
+  updatedAt: string; // ISO
+  updatedByPeerId?: string;
+};
+```
+
+Atomic write pattern = host `atomic-json` (same as board/pack). Scope = **roomId** (shared across profiles same UID — intentional, like board).
+
+##### Handoff contract (plan lock — body convention, not new wire types)
+
+| Prefix | Intent | Expected receiver action |
+|--------|--------|---------------------------|
+| `[GOAL]` | Align / set work against purpose | Read purpose; optionally `purpose set` only if owner role |
+| `[R-REQUEST]` | Plan/code review request | Reviewer: `/advisor fable` if Claude; write plan_review; no product implement |
+| `[R-RESULT]` | Review outcome | Implementer: apply Open blocking only or ship |
+| `[VERIFY]` | Evidence of DoD | Record pass/fail; do not invent green |
+| `[DONE]` | Claim work complete | Point to evidence (sha, tests) |
+
+Detection helper in `@loom/protocol` or host: `parseHandoffContract(body) → { tags, intent? }` — best-effort, never blocks send.
+
+##### Receive path (plan lock)
+
+| Step | Behavior |
+|------|----------|
+| `loom run` after successful join | `list_inbox`; if count>0 stderr: yellow banner + top ids/tags |
+| Agent hint | **Must** include: on start and between tasks → `check_handoffs` then `claim_handoff` for `[R-REQUEST]`/`[GOAL]`/`[VERIFY]` |
+| Auto-claim | **Out of v1** (too dangerous unattended). Human/agent still claims. |
+| PTY inject of body into agent stdin | **Out** (Phase 1.5 no-go) |
+
+##### Out (non-goals for 0.15.0)
+
+| Out | Why |
+|-----|-----|
+| Wire protocol new envelope types | Keep v1; body convention + local files first |
+| Auto-claim without agent | Untrusted body risk |
+| PTY inject / wake dead agent process | Prior no-go; OS-specific |
+| Full playbook orchestrator YAML | Later; docs templates enough for sprint 1 |
+| Live CRDT board / cloud accounts | P3 |
+| Purpose encryption / multi-tenant | Overkill |
+| Changing claim first-wins or durable inbox | Orthogonal (0.14 done) |
+| Desktop UI purpose tab | Later; CLI/MCP first |
+
+##### Security / failure locks (for R16)
+
+| Case | Required behavior |
+|------|-------------------|
+| Purpose strings | Same sanitize as peer text before store/display |
+| Path | Only under `loomDir()/purposes/`; hash roomId filename |
+| Corrupt purpose file | backup `.corrupt-*` + throw/empty with error (board pattern) — **not** silent empty success |
+| `set_purpose` / CLI set | No privilege escalation; any room member on same UID can write (document residual like board) |
+| `verify` commands | **No shell=true freeform eval of remote handoff**; only run **local purpose.verify[]** already on disk (owner-controlled). Handoff must not inject verify argv. |
+| Untrusted handoff | Tags do not skip untrusted banner |
+| MCP set_purpose | Still untrusted if agent compromised — residual accepted local-first |
+
+##### Acceptance (implement after R16 approved)
+
+1. `loom purpose set "…"` then `show` round-trips; file 0600 under purposes/.  
+2. `loom handoff @x "…" --with-purpose` includes purpose summary in attachments or body section.  
+3. `loom run shell` (or mock) after queued `[R-REQUEST]` prints pending inbox banner.  
+4. System hint text contains check_handoffs/claim contract (unit string test).  
+5. `parseHandoffContract("[R-REQUEST] …")` detects tag.  
+6. `loom verify` with `verify: ["bun test"]` runs and exits non-zero on fail (or skip if recipe empty).  
+7. `bun test` green; no protocol version bump required.  
+8. Docs: USER_GUIDE + DOGFOOD_LOOP boot prompt committed.
+
+##### Implementation sketch (not approved work)
+
+| Area | Touch |
+|------|--------|
+| `packages/host/src/purpose.ts` (+ test) | load/save/schema |
+| `packages/cli` purpose + verify + run banner | |
+| `packages/adapters/src/hints.ts` | receive contract |
+| `packages/mcp-server` | get_purpose, set_purpose |
+| `packages/protocol` (optional) | parseHandoffContract |
+| `docs/DOGFOOD_LOOP.md`, `scripts/dogfood-reviewer-boot.txt` | |
+| VERSION | bump on implement ship |
+
+**Unknowns:** `docs/UNKNOWNS.md` §0.15.0.
+
+**Not implemented.** Awaiting **R16**.
+
+#### 0.14.2 — 2026-07-10 (`superseded` by 0.15.0; was `approved` — **author-close**, P2 durable security harden)
 
 **Why:** Adversarial dogfood (Codex) showed (1) `writeAtomicJson` could write-through a final-path symlink (TOCTOU) and (2) `removePeer`/mutations swallowed persist I/O errors → leave appeared OK but peer/inbox **resurrected** after restart.
 
@@ -1190,7 +1317,20 @@ Human: `fable inbox` → `accept`.
 - **Not** live remote sync — intentional
 - **0.7.1:** timestamp clamp, always-parse snapshot, strict handoff id match
 
-### Phase 5 — Durable relay state (P2) — **PLAN 0.14.1 `approved`** (implement next)
+### Phase 6 — Purpose-based sprint 1 — **planned 0.15.0** (`pending-review`)
+
+**목표:** Room purpose 앵커 + handoff intent 계약 + receive-side claim 유도 + verify lite.
+
+| Item | Status |
+|------|--------|
+| Purpose card schema v1 | planned |
+| CLI/MCP purpose + verify lite | planned |
+| Receive path / agent hint contract | planned |
+| Handoff tag convention | planned |
+| R16 | **open** |
+| Implement | **blocked on R16** |
+
+### Phase 5 — Durable relay state (P2) — **done 0.14.1–0.14.2**
 
 **목표:** Relay 프로세스 재시작 후에도 room invite · roster(+peerSecret) · pending handoff inbox 유지.
 
@@ -1272,7 +1412,8 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | **M4.2 task board** | **done** (0.6.1 H-7/M-8/M-9) |
 | **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
 | M4.3b Tauri desktop shell | **0.11.2** shell + **0.12.0** Board via sticky |
-| **M5 durable relay state (P2)** | **0.14.1** implemented |
+| **M5 durable relay state (P2)** | **0.14.1–0.14.2** done |
+| **M6 purpose-based sprint 1** | **0.15.0** plan `pending-review` (R16) |
 
 ---
 
@@ -1389,5 +1530,7 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | Reviewer | Claude + Fable 5 | **R15 pending-revision** (M-21/M-22/M-23) | 2026-07-10 | 0.14.0 reviewed |
 | Plan author | plan | **0.14.1** R15 locks PATCH — **author-close** (no R15b) | 2026-07-10 | **0.14.1** `approved` |
 | Plan author | implementation | **0.14.1** P2 durable relay (persist + M-21/22/23) | 2026-07-10 | **0.14.1** |
+| Plan author | implementation | **0.14.2** durable symlink/fail-closed harden | 2026-07-10 | **0.14.2** |
+| Plan author | plan | **0.15.0** Purpose-based sprint 1 MINOR draft | 2026-07-10 | **0.15.0** `pending-review` |
 
-**구현 게이트:** PLAN + code **0.14.1**. P2 durable inbox **shipped**.
+**구현 게이트:** code **0.14.2**. PLAN **0.15.0** `pending-review` — **no implement until R16 approved**.

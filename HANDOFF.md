@@ -16,7 +16,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> PLAN **0.14.2** · P0–P2 **done**. Docs honesty + `smoke:durable`. Next: **P3** (optional) or Owner-picked feature.
+> PLAN **0.15.0** `pending-review` — Purpose-based sprint 1. **R16** (Claude `/advisor fable`). Code still **0.14.2**. **Do not implement** until approved.
 
 ---
 
@@ -34,9 +34,9 @@ North star: *connect your agents — and your teammates.*
 |------|--------|
 | **Product CLI** | `loom` v**0.14.2** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.14.2** — P2 durable + security harden |
-| **Priorities** | `docs/PRIORITIES.md` — P0–P2 **done**; P3 deferred |
-| **Review gate** | Open blocking **none** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.15.0** — purpose sprint 1 `pending-review` |
+| **Priorities** | post-P2 → purpose loop (0.15.0) |
+| **Review gate** | **R16 awaiting** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -114,10 +114,9 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | **P3** only if Owner picks (CRDT board / cloud / …) | MINOR + R{n} |
-| Optional | L-29 room file GC | residual documented |
-| Dogfood | `bun run dogfood:status` · restart relay once if still on old PID | durable code on disk |
-| Done | P2 + 0.14.2 harden + docs honesty + `smoke:durable` | |
+| **Now** | **R16** on PLAN **0.15.0** | Claude `/advisor fable` → `plan_review.md` R16; no implement |
+| After approved | Implement purpose + receive path + verify lite | Then VERSION ship |
+| Done | P0–P2 · 0.14.2 · docs honesty | |
 
 ### 2. Smoke / dogfood commands
 

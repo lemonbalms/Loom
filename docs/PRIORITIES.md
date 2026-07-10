@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/PRIORITIES.md` |
-| **기준 시점** | PLAN **v0.14.2** (`approved`) · 2026-07-10 |
+| **기준 시점** | PLAN **v0.15.0** (`pending-review`) · 2026-07-10 |
 | **목적** | “지금 무엇을 할지” Owner·에이전트 공통 SSOT (단기) |
 | **관련** | [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`TEST_PLAN.md`](./TEST_PLAN.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) |
 
@@ -34,6 +34,7 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 | **P0** | **설치·실행 DX** | 클론 후 `loom` 을 헤매지 않게 | 보통 불필요 | **done 0.13.3** |
 | **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | **R14 done** | **done 0.13.4** |
 | **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **done 0.14.1–0.14.2** |
+| **P2.5** | **목적 루프** | Purpose card · handoff contracts · receive claim | **R16** | **PLAN 0.15.0 pending-review** |
 | **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 |
 | — | Low 백로그 더 파기 | — | — | **하지 않음** (소진) |
 
@@ -109,7 +110,9 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 ② TEST_PLAN P0 수동 1회 기록 (UC-1 + UC-3)  ← done 2026-07-10
 ③ P1 Owner 사인 또는 R14     ← done R14 (0.13.4)
 ④ P2 durable inbox           ← done 0.14.1–0.14.2
-⑤ (선택) 문서 honesty / smoke:durable / P3 설계
+⑤ 문서 honesty / smoke:durable     ← done
+⑥ Purpose-based sprint 1 (0.15.0) ← **pending-review R16**
+⑦ P3 only if Owner picks
 ```
 
 ---
@@ -125,6 +128,7 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 | 2026-07-10 | R14 Low L-26/L-27 implemented — 0.13.5 |
 | 2026-07-10 | P2 PLAN **0.14.0** draft pending-review (R15) |
 | 2026-07-10 | R15 → **0.14.1** implement · **0.14.2** harden · docs honesty wave |
+| 2026-07-10 | **0.15.0** Purpose-based sprint 1 draft (R16) |
 
 ---
 

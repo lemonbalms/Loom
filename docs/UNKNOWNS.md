@@ -42,6 +42,23 @@
 
 ## Gate log
 
+### 0.15.0 — Purpose-based sprint 1 (pending-review)
+
+| Field | Value |
+|-------|--------|
+| **PLAN** | v0.15.0 (`pending-review`) |
+| **Date** | 2026-07-10 |
+| **Review** | R16 required before implement |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | Handoff is pull (`check_handoffs`/`claim`); no PTY inject. Board/pack are room-scoped local 0600 files. Dogfood roles impl/reviewer exist as docs+profiles. Wire v1 frozen for this sprint. |
+| Known unknowns | (1) MCP `set_purpose` vs CLI-only for v1 — plan includes both. (2) Whether `--with-purpose` is attachment vs body section — impl free if sanitize+caps. (3) `loom verify` cwd = process.cwd() vs session-bound path — plan: process cwd at invoke. |
+| Unknown knowns | Reviewers ignore stderr handoff banners; only first-prompt + MCP pull works in practice. |
+| Unknown unknowns | Agents ignoring hints still; purpose file races multi-profile same UID (accept like board); verify recipe abuse if agent can set_purpose then verify — residual local UID trust. |
+
+**Next:** R16 → if approved implement; if pending-revision only Open locks.
+
 ### 0.14.0 — P2 durable relay inbox/roster (pending-review)
 
 | Field | Value |
@@ -88,3 +105,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-09 | 초안 + 0.11 stub |
 | 2026-07-09 | R13 fill; 0.11.1 locks |
 | 2026-07-10 | 0.14.0 P2 durable inbox unknowns |
+| 2026-07-10 | 0.15.0 purpose-based sprint 1 unknowns |
