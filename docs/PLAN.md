@@ -4,10 +4,10 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.17.0** |
-| **Status** | **`pending-review`** — Launcher UX: up / host-default / work-first (MINOR) |
+| **Status** | **`pending-revision`** — Launcher UX: up / host-default / work-first (MINOR) — **R18 M-27/M-28 lock rows required** |
 | **Supersedes** | 0.16.1 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | Awaiting **R18** (`/advisor fable`). **Do not implement** until approved. Next session: R18 → then implement. |
+| **Approval** | **R18 done** — `pending-revision` (see `docs/plan_review.md` R18). PATCH **0.17.1** must add M-27 (down kill-safety identity check) + M-28 (multi-profile session isolation) lock rows, then author-close allowed (no R18b). **Do not implement** until PATCH lands. |
 | **Fable 5 when** | **Required** — changes default online lifecycle, dogfood entry, background daemons. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -164,7 +164,7 @@
 
 **Unknowns:** `docs/UNKNOWNS.md` §0.17.0.
 
-**Not implemented.** Awaiting **R18**. Next session: review → implement.
+**Not implemented.** **R18 done → `pending-revision`** (`docs/plan_review.md` R18: M-27/M-28). Next: apply PATCH 0.17.1 locks → author-close → implement.
 
 #### 0.16.1 — 2026-07-10 (`superseded` by 0.17.0; was `approved` — **author-close**, R17 M-26/L-31/L-32 + work bus)
 

@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.17.0** `pending-review` — Launcher UX (up / host-default / work-first). Awaiting **R18**.  
+> **최신:** PLAN **v0.17.0** `pending-revision` — Launcher UX (up / host-default / work-first). **R18 M-27/M-28 PATCH 필요** (WORKFLOW §5.1 author-close 경로).  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R18** | **v0.17.0** | **awaiting** | Launcher UX — Claude **must** `/advisor fable` then Review R18. **Do not implement** until approved. Next session implements after R18. |
+| **R18** | **v0.17.0** | **pending-revision** | Launcher UX — M-27 (down kill-safety) + M-28 (multi-profile session isolation) must become PLAN lock rows. **PATCH(0.17.1) 후 author-close 허용, R18b 불필요.** Implement 금지 until locks land. |
 
 ---
 
@@ -21,7 +21,8 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| *(none yet — R18 not written)* | | | |
+| M-27 | Med | 0.17.0 `down`의 kill-safety 조건("pid alive AND sessionPath 일치")이 프로세스 신원을 실제로 검증하지 않음 — pid 재사용 시 무관 프로세스 SIGTERM 가능 | R18 — PLAN lock 추가 필요 |
+| M-28 | Med | 0.17.0 multi-profile `up`이 "LOOM_SESSION never mixed across profiles"를 현재 primitive로 보장 못함 — 동시 루프 시 세션 혼선 가능 | R18 — PLAN lock 추가 필요 (순차 처리 또는 `forSessionPath` 파라미터화) |
 
 ---
 
@@ -29,6 +30,9 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
+| L-35 | Low | 0.17.0 acceptance 목록이 idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트를 명시 안 함 | R18 — acceptance 문구 보강 권고 |
+| L-34 | Low | 0.17.0 auto-host on join이 기존 `stopStickyBeforeSessionChange`(join 시 구세션 host 정지) 위에 겹침 — 문서화 필요, 8s 지연 가능성도 명시 필요 | R18 — 문서/lock 보강 |
+| L-33 | Low | 0.17.0 auto-host 기본 on이 `bun test`/CI에서 데몬을 조용히 띄울 위험 | R18 — 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 고정 + acceptance에 명시 |
 | L-32 | Low | 0.16.0 MCP `add_task`/`update_task`의 `notify` 기본값이 PLAN에 명시 안 됨 (CLI만 `--as`→notify 기본 lock) | R17 — MCP는 기본 off(opt-in)로 lock 필요, scripted-loop spam 방지 |
 | L-31 | Low | 0.16.0 `loom work watch --interval`에 코드 강제 최솟값 없음 ("document"만) — tight-loop 폴링 가능 | R17 — CLI에서 ≥250ms 클램프 + 경고 lock 필요 |
 | L-30 | Low | 0.15.0 purpose 파일 last-writer-wins (board와 동일 residual) | R16 — backlog, `updatedByPeerId`로 충분, board 문서 재사용 |
@@ -47,6 +51,7 @@
 
 | Finding | 처리 |
 |---------|------|
+| **R18 M-27/M-28** | **0.17.1 (required)** PLAN Failure/security locks — down 프로세스 신원 검증(cmdline/start-time) + multi-profile up 순차/파라미터화; then author-close (no R18b) |
 | **R17 M-26** | **0.16.1 (required)** PLAN Failure/security locks — 템플릿 단일행 필드 개행 제거 + watch interval 클램프 + MCP notify 기본 off; then author-close (no R17b) |
 | **R16 M-24/M-25** | **0.15.1 done** — locks author-close; implement next |
 | **R15 M-21/M-22/M-23** | **0.14.1** PLAN Failure/security locks + author-close (no R15b) |
@@ -77,7 +82,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
-| **R18** | **v0.17.0** | **awaiting** | Launcher UX — next session |
+| **R18** | v0.17.0 → **0.17.1** | pending-revision → **author-close after PATCH** | M-27/M-28 locked — body below |
 | **R17** | v0.16.0 → **0.16.1** | pending-revision → **closed (author-close)** | M-26/L-31/L-32 + work bus — body below |
 | **R16** | v0.15.0 → **0.15.1** | pending-revision → **closed (author-close)** | M-24/M-25 locked — body below |
 | **R15** | v0.14.0 → **0.14.1** | pending-revision → **closed (author-close)** | M-21/22/23 locked in PLAN 0.14.1 — body below |
@@ -90,6 +95,58 @@
 | **R8** | v0.6.0 | → **0.6.1 approved** | [archive](./plan_review_archive.md) |
 | **R7** | v0.5.0 | **approved** | [archive](./plan_review_archive.md) |
 | R6–R1 | … | … | [archive](./plan_review_archive.md) |
+
+---
+
+## Review R18 — Plan v0.17.0 (Launcher UX: `up`/`down`, host-default, work-first)
+
+**검토 대상:** `docs/PLAN.md` **v0.17.0** — `loom up`/`down` (multi-profile 백그라운드 sticky host), `room create`/`join` 시 auto-host 기본 on(`--no-host`/`LOOM_NO_AUTO_HOST` 탈출구), work bus 문서 전면화, `run`(TUI)은 작업 시에만. **MINOR, wire protocol 변경 없음.** 코드 없음 — plan-vs-territory 리뷰 (`packages/cli/src`에 `cmdUp`/`cmdDown`/`LOOM_NO_AUTO_HOST`/`--no-host` 전부 0건 확인; `scripts/dogfood-room-up.sh`는 join만 하고 host start는 수동 — 클린한 스코프 경계 확인).  
+**검토자:** Claude (Sonnet 5, `claude-review`) + **Fable 5 second opinion** (`/advisor fable`, agent `fable-advisor`, 필수 컨설트 완료)  
+**날짜:** 2026-07-10  
+**결론:** **`pending-revision`** — Med 2건(M-27/M-28)은 PLAN 텍스트 lock row로 해소 가능. **PATCH(0.17.1) 적용 후 author-close 허용, 전체 재리뷰(R18b) 불필요** (WORKFLOW §5.1, R15–R17 선례 준용). 아키텍처(MINOR 프레이밍, wire/신뢰 경계 불변, per-host loopback 토큰 모델은 단순히 개수만 늘어남)는 타당함(sound).
+
+### Checklist
+
+| Area | Result | Evidence |
+|------|--------|----------|
+| MINOR 프레이밍 (wire/trust-boundary 변경 없음) | Pass | `sticky-client.ts` loopback 토큰 모델 불변, `up`/`down`은 기존 `startStickyHostProcess`/`stopStickyHostProcess` primitive를 profile 수만큼 반복 호출하는 것뿐 |
+| `up`은 기존 세션 파일 있는 profile만 대상 (peer 위조/무단 join 없음) | Pass | PLAN Security/failure locks 표 명시, 기존 `sessionPath()`가 profile별 파일 경로만 반환 (`session-store.ts:248-260`) — invite 없이 join 불가한 기존 경로 재사용 |
+| `up` 자체는 agent TUI 미실행 | Pass | PLAN Out 표 "Auto `run` agents on up" 명시적 제외; `startStickyHostProcess`는 `sticky-main.ts`만 spawn (`sticky-spawn.ts:57-64`), TUI 프로세스 아님 |
+| 로그에 비밀값 없음 / 0600 | Pass | 기존 sticky 관례 그대로(옵션 로그 경로만 0600 lock 예정), 신규 표면 아님 |
+| **`down` kill-safety (pid+sessionPath 일치)** | **Fail (Med)** | 현재 `stopStickyHostProcess`는 RPC `{op:"stop"}`이 실패했을 때만 raw `process.kill(meta.pid, "SIGTERM")`로 폴백한다(`sticky-spawn.ts:103-114`) — 이 폴백 경로가 실행되는 정확한 조건이 "그 pid가 우리 sticky 프로세스라는 걸 RPC로 확인 못 한 상태"다. `meta.sessionPath` 일치는 우리 자신이 쓴 파일 문자열 대조일 뿐이고 `isPidAlive`(`sticky-meta.ts:79-88`)는 `process.kill(pid, 0)` 성공 여부만 본다 — reboot 후 pid 재사용 시나리오에서 무관 프로세스에 SIGTERM 전달 가능 |
+| **multi-profile `up`의 LOOM_SESSION 미혼입 보장** | **Fail (Med)** | `startStickyHostProcess`/`stopStickyHostProcess`는 세션 인자를 받지 않고 모듈 전역/env 기반 `sessionPath()`를 매 호출 시점에 재평가한다(`sticky-spawn.ts:51,72,98,100,115`; `session-store.ts:248-261`) — polling 루프 중간(`sticky-spawn.ts:72`)에도 재평가되므로, `Promise.all` 등으로 profile을 동시 처리하면 프로세스 간 세션이 뒤섞일 수 있는 구조. 순차 처리 또는 `forSessionPath` 명시 전달로 프로세스 자체를 fix해야 함 (client 함수들은 이미 `forSessionPath` 인자를 받는 패턴 존재 — `sticky-meta.ts:70` 등) |
+| CI/테스트에서 auto-host 침묵 스폰 방지 | **Fail (Low)** | PLAN에 `LOOM_NO_AUTO_HOST` 탈출구는 있으나 "테스트 하네스가 기본으로 이걸 켠다"는 lock/acceptance가 없음 |
+| auto-host on join의 기존 부작용과의 상호작용 문서화 | **Fail (Low)** | join은 이미 `stopStickyBeforeSessionChange()`를 호출한다(`packages/cli/src/index.ts:352`, `cmdRoomJoin` 진입 직후) — 구세션 host를 내린 뒤 새 host를 auto-start하는 이중 동작이 되는데 PLAN에 이 상호작용이 명시되어 있지 않음. 또한 `startStickyHostProcess`의 polling은 최대 8초 소요 가능(`sticky-spawn.ts:69` `deadline = Date.now() + 8000`)하므로 join 커맨드 자체가 그만큼 느려질 수 있음 — acceptance에 명시 필요 |
+
+### Findings (Sev: High|Med|Low, ID)
+
+| Sev | ID | Finding | Evidence | Lock (PLAN 텍스트 추가 필요) |
+|-----|-----|---------|----------|-------------------------------|
+| **Med** | **M-27** | `down`(및 `host stop`이 사용하는 동일 primitive)의 kill-safety가 "pid alive AND sessionPath 일치"만으로는 프로세스 신원을 증명하지 못한다. 현재 `stopStickyHostProcess`는 RPC 정지가 실패한 경우에만 raw SIGTERM 폴백을 쓰는데, 바로 그 실패 상황(RPC 불응)이 "그 pid가 더 이상 우리 sticky 프로세스가 아닐 수 있다"는 신호이기도 하다. reboot 후 meta 파일은 남고 pid가 무관 프로세스에 재사용된 경우, `down`이 그 무관 프로세스를 죽일 수 있다 | `sticky-spawn.ts:103-114`(SIGTERM 폴백), `sticky-meta.ts:79-88`(`isPidAlive`가 `kill(pid,0)`만 확인) | `down kill-safety (M-27)` — **SIGTERM 폴백 전, 최소 하나의 독립적 신원 확인(프로세스 cmdline에 `sticky-main.ts` 포함, 또는 시작 시각이 `meta.startedAt`과 근사)을 통과해야 한다. 확인 실패 시 SIGTERM을 보내지 않고 meta만 정리한 뒤 경고를 출력한다.** |
+| **Med** | **M-28** | multi-profile `up`이 plan이 스스로 요구한 "profile 간 LOOM_SESSION 미혼입" 락을 현재 primitive(`startStickyHostProcess`/`stopStickyHostProcess`)로 보장할 수 없다 — 두 함수 모두 세션 인자를 받지 않고 매 호출 시점(폴링 루프 도중 포함)에 전역 `sessionPath()`를 재평가하므로, profile을 동시(Promise.all)로 처리하면 경쟁 상태에서 세션이 섞일 수 있다 | `sticky-spawn.ts:51,72,98,100,115`(재평가 지점), `session-store.ts:248-261`(`sessionPath()` 전역 상태 의존) | `multi-profile up isolation (M-28)` — **`up`은 profile을 순차적으로(sequential, no `Promise.all`) 처리하거나, spawn/stop 경로에 `forSessionPath`를 명시 파라미터로 통과시켜 프로세스별 세션을 고정한다. 둘 중 하나를 구현 전 확정한다.** |
+| Low | **L-33** | auto-host 기본 on이 `bun test`/비대화형 스크립트에서 조용히 데몬을 띄울 위험 — PLAN에 탈출구(`LOOM_NO_AUTO_HOST`)는 있지만 테스트 하네스가 이를 기본 적용한다는 lock이 없음 | PLAN 0.17.0 Security/failure locks 표 (auto-host 행만 있고 CI 행 없음) | `CI hygiene (L-33)` — **테스트 하네스(`bun test` 실행 환경)는 `LOOM_NO_AUTO_HOST=1`을 기본 설정한다. Acceptance에 "bun test는 sticky host를 스폰하지 않는다"를 추가한다.** |
+| Low | **L-34** | auto-host on join이 기존 `stopStickyBeforeSessionChange()`(join 시 구세션 host 정지, `cli/index.ts:352`) 위에 겹쳐 이중 동작(정지→재시작)이 되는데 PLAN에 미문서화. 또한 `startStickyHostProcess`의 폴링이 최대 8초 걸릴 수 있어(`sticky-spawn.ts:69`) join 커맨드 체감 지연이 늘 수 있음 | `cli/index.ts:352`(`cmdRoomJoin`의 기존 `stopStickyBeforeSessionChange` 호출), `sticky-spawn.ts:69`(8초 deadline) | `auto-host join interaction (L-34)` — **문서(USER_GUIDE/DOGFOOD_LOOP)에 "join은 구세션 host를 내리고 새 host를 자동 시작하며 최대 8초 소요될 수 있다"를 명시. auto-host 성공 시 `"host auto-started (pid N); disable: --no-host"` 안내를 출력한다.** |
+| Low | **L-35** | acceptance 목록(`docs/PLAN.md:144-152`)이 idempotent double-`up`, `LOOM_NO_AUTO_HOST` 경로, down-safety 단위테스트를 명시하지 않음 | PLAN 0.17.0 Acceptance 절 | `acceptance completeness (L-35)` — **acceptance에 "①두 번 연속 `up` 호출이 meta를 손상시키지 않는다 ②`LOOM_NO_AUTO_HOST=1` 시 join이 host를 시작하지 않는다 ③down의 신원 확인 가드에 대한 단위테스트가 존재한다"를 추가한다.** |
+
+### Decision notes
+
+- 아키텍처 자체는 타당함(sound): `up`/`down`은 이미 존재하는 `startStickyHostProcess`/`stopStickyHostProcess` primitive를 profile 목록에 반복 적용하는 것뿐이고, per-host loopback 토큰 모델(`sticky-client.ts`)도 변경되지 않는다. MINOR·wire-불변 프레이밍은 정확하다. auto-host on join의 fail-soft 방향(RPC/host-start 실패해도 join은 성공)도 옳은 설계 — 이 프로젝트의 dogfood 도구 성격상 default-on + `--no-host`/`LOOM_NO_AUTO_HOST` 탈출구 조합이면 충분하며, TTY 감지 같은 휴리스틱을 추가로 넣을 필요는 없다.
+- M-27/M-28은 R16 verify[] 및 R17 M-26과 같은 계열의 실수 패턴이다: **"파일에 적힌 문자열 일치"를 "프로세스/신원 확인"으로 착각**하는 것. sessionPath 문자열 일치나 pid 존재만으로는 시간차(TOCTOU)와 pid 재사용을 못 막는다 — 실제 신원 신호(cmdline, 시작 시각)가 필요하다. 마찬가지로 "전역 상태를 참조하는 함수를 루프에서 병렬 호출하면 안전하다"는 암묵적 가정도 검증되지 않았다.
+- M-27/M-28 모두 **PLAN Failure/security locks 표에 lock row 추가**로 해소되는 범위이며 새 아키텍처·새 표면·프로토콜 변경이 아니다. **따라서 PATCH(0.17.1) 적용 후 — 두 항목이 Failure/security locks 표에 반영되고 PLAN Status가 이를 반영하면 — 전체 재리뷰(R18b) 없이 author-close를 허용한다.** (WORKFLOW §5.1 "PATCH 후 author-close 가능" 조항 적용, R15–R17 선례.)
+- **구현은 여전히 금지** — PATCH가 적용되고 PLAN Status가 `approved`(author-close 포함)로 동기화되기 전까지 `loom up`/`down`, auto-host on join, `--no-host`/`LOOM_NO_AUTO_HOST` 등 실제 코드 작성 금지.
+
+### R18 follow-up (0.17.1 — required before implement)
+
+| Finding | 처리 |
+|---------|------|
+| **M-27** | Failure/security locks: `down` SIGTERM 폴백 전 독립 신원 확인(cmdline/start-time) 필요, 실패 시 meta만 정리 + 경고 |
+| **M-28** | Failure/security locks: multi-profile `up`은 순차 처리 또는 `forSessionPath` 명시 파라미터화 중 택1 확정 |
+| **L-33** | Failure/security locks: 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 기본 + acceptance 추가 |
+| **L-34** | 문서화: join의 host 정지→재시작 이중 동작 + 최대 8초 지연 명시, auto-host 성공 안내 문구 |
+| **L-35** | Acceptance 보강: idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트 |
+| PLAN | 0.17.1 `approved` 예정 (author-close per R18 Decision notes; **no R18b**) — PATCH 적용 시 |
+
+**Implement Launcher UX는 0.17.1 PATCH 적용 후 허용.**
 
 ---
 
