@@ -51,8 +51,18 @@ bun run loom --profile impl run grok
 bun run loom --profile claude-rev run claude   # 0.13.14+ for resize; R{n} → /advisor fable
 
 # C — Codex second opinion
-bun run loom --profile codex-rev run codex
+# Autonomy without full FS escape: approval never + workspace-write sandbox
+bun run loom --profile codex-rev run codex -- -a never -s workspace-write
+# equivalent env default:
+#   LOOM_CODEX_ARGS="-a never -s workspace-write" bun run loom --profile codex-rev run codex
 ```
+
+| Codex flag | Meaning |
+|------------|---------|
+| `-a never` / `--ask-for-approval never` | Do not prompt the human for command approval; failures return to the model |
+| `-s workspace-write` / `--sandbox workspace-write` | Sandbox: write only inside the workspace (not danger-full-access) |
+
+Outside the sandbox, commands **fail** instead of asking — safer than `--dangerously-bypass-approvals-and-sandbox`.
 
 ---
 

@@ -144,6 +144,7 @@ Usage:
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
+  loom run codex -- -a never -s workspace-write   # forward args to agent
   loom relay [--host 0.0.0.0] [--port 7842] [--token <secret>] [--insecure-open]
   loom spike pty
   loom help
@@ -158,6 +159,8 @@ Usage:
   --write-user-config   Opt-in: MCP into ~/.codex or ~/.grok
   --profile <name>      Session file isolation (~/.loom/profiles/<name>.json)
   --insecure-open       Relay only: allow non-loopback bind without token (H-5)
+  --                    After run <agent>, forward remaining args to the agent CLI
+  LOOM_CODEX_ARGS       Optional default args for codex (space-separated)
 
 Remote example:
   # machine A (host) — token required on 0.0.0.0
@@ -189,8 +192,14 @@ function parseArgs(argv: string[]) {
   const args = argv.slice(2);
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
+  /** Everything after bare `--` is forwarded to the child agent (e.g. codex -a never). */
+  const passthrough: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
+    if (a === "--") {
+      passthrough.push(...args.slice(i + 1));
+      break;
+    }
     if (a === "--help" || a === "-h") flags.help = true;
     else if (a.startsWith("--")) {
       const key = a.slice(2);
@@ -212,7 +221,7 @@ function parseArgs(argv: string[]) {
       positional.push(a);
     }
   }
-  return { flags, positional };
+  return { flags, positional, passthrough };
 }
 
 function applyProfileFlags(flags: Record<string, string | boolean>) {
@@ -1166,6 +1175,7 @@ async function cmdListen() {
 async function cmdRun(
   agentIdRaw: string | undefined,
   flags: Record<string, string | boolean>,
+  agentExtraArgs: string[] = [],
 ) {
   const session = loadSession();
   if (!session) {
@@ -1250,6 +1260,20 @@ async function cmdRun(
     );
   }
 
+  // Forward args after `loom run <agent> -- …` plus LOOM_CODEX_ARGS / LOOM_AGENT_ARGS
+  const envExtra =
+    agentId === "codex" && process.env.LOOM_CODEX_ARGS
+      ? process.env.LOOM_CODEX_ARGS.split(/\s+/).filter(Boolean)
+      : process.env.LOOM_AGENT_ARGS
+        ? process.env.LOOM_AGENT_ARGS.split(/\s+/).filter(Boolean)
+        : [];
+  const extraArgs = [...envExtra, ...agentExtraArgs];
+  if (extraArgs.length > 0) {
+    eprint(
+      `\x1b[2mAgent args: ${extraArgs.map((a) => JSON.stringify(a)).join(" ")}\x1b[0m\n`,
+    );
+  }
+
   const spec = await adapter.spawnSpec({
     cwd: process.cwd(),
     mcpConfigPath: mcpPath,
@@ -1257,6 +1281,7 @@ async function cmdRun(
       ...sessionEnv,
       LOOM_AGENT: agentId,
     },
+    extraArgs,
   });
 
   try {
@@ -1795,7 +1820,7 @@ async function cmdRoomLeave() {
 }
 
 async function main() {
-  const { flags, positional } = parseArgs(process.argv);
+  const { flags, positional, passthrough } = parseArgs(process.argv);
   applyProfileFlags(flags);
 
   if (flags.help || positional[0] === "help" || positional.length === 0) {
@@ -1892,7 +1917,8 @@ async function main() {
     return;
   }
   if (cmd === "run") {
-    await cmdRun(sub, flags);
+    // `loom run codex -- -a never -s workspace-write`
+    await cmdRun(sub, flags, [...rest, ...passthrough]);
     return;
   }
   if (cmd === "spike") {
