@@ -5,7 +5,7 @@
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
 | **제품 버전** | CLI **v0.13.0** / desktop UI **v0.12.2** 기준 |
-| **관련** | [README](../README.md) · [ADAPTERS](./ADAPTERS.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
+| **관련** | [README](../README.md) · [TEST_PLAN](./TEST_PLAN.md) (사례별 검증) · [ADAPTERS](./ADAPTERS.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 이 문서는 **지금까지 구현된 기능으로 실제로 할 수 있는 일**을 시나리오 중심으로 정리합니다.  
 Loom은 코딩 에이전트 자체가 아니라, **Room · 핸드오프 · 인박스 · 보드 · MCP · 데스크톱** 을 붙이는 멀티플레이어 레이어입니다.

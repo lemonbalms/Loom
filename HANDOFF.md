@@ -110,6 +110,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 |----------|------|--------|
 | **Next** | Owner product priorities | live board sync, polish, etc. |
 | Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** (MINOR/보안/프로토콜/호환 제거 = 필수) |
+| Doc | Test plan | `docs/TEST_PLAN.md` — UC-0…11 검증 체크리스트 |
 | Done | L-4 requestId | **0.13.1** |
 | Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
 | Doc | User guide | `docs/USER_GUIDE.md` |

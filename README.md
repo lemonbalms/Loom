@@ -13,6 +13,7 @@ Several people join the same **Room**; each runs their own agent; work and conte
 | **Packages** | `@loom/*` (Bun monorepo) |
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.13.2** (`approved` dogfood UX) |
 | **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
+| **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |
 | **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
@@ -65,6 +66,7 @@ Loom/
 │   ├── PLAN.md                  # Product plan SSOT (versioned)
 │   ├── plan_review.md           # Review gate (R1…)
 │   ├── USER_GUIDE.md            # End-user scenarios (Korean)
+│   ├── TEST_PLAN.md             # Per-scenario test checklist
 │   ├── PROTOCOL.md              # Wire protocol
 │   ├── ARCHITECTURE.md          # Component map
 │   ├── ADAPTERS.md              # Agent adapter matrix
