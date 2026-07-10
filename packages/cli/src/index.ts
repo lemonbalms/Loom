@@ -75,13 +75,14 @@ import { createInterface } from "node:readline";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { openSync, closeSync } from "node:fs";
 
-const VERSION = "0.13.7";
+const VERSION = "0.13.8";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
   "help",
   "h",
   "version",
+  "nested",
   "matrix",
   "verbose",
   "v",
@@ -111,6 +112,9 @@ Usage:
   loom pack show | set | add | remove | note | clear   # room context pack
   loom board | board add|set|assign|note|rm|clear-done|export|import
   loom host start | stop | status   # sticky long-lived relay connection
+  loom run shell                    # Loom shell REPL (session online)
+  loom run shell --nested           # real $SHELL (often exits under Bun)
+  loom run claude|codex|grok|auto
   loom relay [--host 0.0.0.0] [--port 7842] [--token <secret>] [--insecure-open]
   loom spike pty
   loom help
@@ -1258,11 +1262,26 @@ async function cmdRun(
     `\x1b[2mCaps: mcp=${adapter.capabilities.mcp} receive=${adapter.capabilities.receive}\x1b[0m\n\n`,
   );
 
-  // Interactive agents: shell uses multi-strategy spawn + REPL (UC-9.2).
-  const code =
-    agentId === "shell"
-      ? await runShellAgent(spec)
-      : await runAgentChild(spec);
+  // UC-9.2: default shell = in-process Loom REPL (nested zsh is unreliable under Bun).
+  // Opt-in: loom run shell --nested
+  let code: number;
+  if (agentId === "shell") {
+    if (Boolean(flags.nested)) {
+      process.stderr.write(
+        "\x1b[2m--nested: trying real $SHELL (may exit immediately)\x1b[0m\n",
+      );
+      code = await runShellAgent(spec);
+    } else {
+      process.stderr.write(
+        "\x1b[1mLoom shell\x1b[0m — room session stays online.\n" +
+          "  bun run loom peers | inbox | handoff …\n" +
+          "  Type \x1b[1mexit\x1b[0m to leave. (\x1b[2m--nested\x1b[0m for real $SHELL)\n\n",
+      );
+      code = await runLoomShellRepl(spec);
+    }
+  } else {
+    code = await runAgentChild(spec);
+  }
 
   client.close();
   process.exit(code);
@@ -1394,12 +1413,21 @@ function spawnShellViaScript(spec: AgentSpec): Promise<number> {
   return runAgentChild({ ...spec, command, args });
 }
 
-/** Always-works interactive fallback (no nested zsh). */
+/**
+ * Default `run shell` UI: readline loop on the current TTY.
+ * Nested zsh under Bun often exits with no prompt (Owner dogfood UC-9.2).
+ */
 function runLoomShellRepl(spec: AgentSpec): Promise<number> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  const stdinTty = Boolean(process.stdin.isTTY);
+  const stdoutTty = Boolean(process.stdout.isTTY);
+  process.stderr.write(
+    `\x1b[2mTTY stdin=${stdinTty} stdout=${stdoutTty} v${VERSION}\x1b[0m\n`,
+  );
+
+  if (!stdinTty || !stdoutTty) {
     process.stderr.write(
       "\x1b[31mstdin/stdout is not a TTY — cannot open interactive shell.\n" +
-        "Run from Terminal.app / iTerm (not a pipe).\x1b[0m\n",
+        "Run from Terminal.app / iTerm / VS Code terminal (not a pipe).\x1b[0m\n",
     );
     return Promise.resolve(1);
   }
@@ -1408,6 +1436,8 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
   const env = cleanEnv({
     ...process.env,
     ...spec.env,
+    LOOM_ACTIVE: "1",
+    LOOM_AGENT: "shell",
     LOOM_SHELL_REPL: "1",
   });
   const rl = createInterface({
@@ -1418,6 +1448,8 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
   });
 
   return new Promise((resolve) => {
+    // Ensure banner is flushed before prompt
+    process.stderr.write("");
     rl.prompt();
     rl.on("line", (line) => {
       const t = line.trim();
@@ -1429,14 +1461,25 @@ function runLoomShellRepl(spec: AgentSpec): Promise<number> {
         rl.prompt();
         return;
       }
-      spawnSync(shell, ["-c", line], {
+      // Built-in shortcuts so users need not type full bun run loom
+      const loomish = t.match(
+        /^(peers|inbox|status|chat|handoff|board|pack|listen)(\s|$)/,
+      );
+      let cmd = line;
+      if (loomish) {
+        cmd = `bun run loom ${t}`;
+      }
+      spawnSync(shell, ["-c", cmd], {
         cwd: spec.cwd,
         env,
         stdio: "inherit",
       });
       rl.prompt();
     });
-    rl.on("close", () => resolve(0));
+    rl.on("close", () => {
+      process.stderr.write("\x1b[2mLoom shell closed.\x1b[0m\n");
+      resolve(0);
+    });
     rl.on("SIGINT", () => {
       process.stdout.write("\n");
       rl.close();

@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.7** |
-| **Status** | **`approved` (author-close)** — UC-9.2 shell multi-strategy + REPL |
-| **Supersedes** | 0.13.6 |
+| **Version** | **0.13.8** |
+| **Status** | **`approved` (author-close)** — run shell = Loom REPL default |
+| **Supersedes** | 0.13.7 |
 | **Last updated** | 2026-07-10 |
 | **Approval** | author-close PATCH; no re-R{n}. |
 | **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
@@ -49,7 +49,18 @@
 
 ### Changelog
 
-#### 0.13.7 — 2026-07-10 (`approved` — **author-close**, UC-9.2 shell robust)
+#### 0.13.8 — 2026-07-10 (`approved` — **author-close**, shell REPL default)
+
+**Why:** Nested zsh under Bun still returned to the outer prompt with no fallback message (Owner dogfood). Default `run shell` is now an in-process **Loom REPL**.
+
+| What | Why |
+|------|-----|
+| `run shell` → `loom-shell>` REPL | reliable interactive UC-9.2 |
+| `run shell --nested` | optional real $SHELL |
+| shortcuts: `peers` → `bun run loom peers` | less typing |
+| VERSION **0.13.8** | PATCH |
+
+#### 0.13.7 — 2026-07-10 (`superseded` by 0.13.8; was `approved` — **author-close**, UC-9.2 shell robust)
 
 **Why:** Nested zsh still exited immediately for Owner after 0.13.6.
 
@@ -1142,5 +1153,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.5** L-26/L-27 — **author-close** (R14 Low; no re-R{n}) | 2026-07-10 | **0.13.5** |
 | Plan author | implementation | **0.13.6** run shell interactive fix — author-close | 2026-07-10 | **0.13.6** |
 | Plan author | implementation | **0.13.7** shell multi-strategy + REPL fallback — author-close | 2026-07-10 | **0.13.7** |
+| Plan author | implementation | **0.13.8** run shell REPL default — author-close | 2026-07-10 | **0.13.8** |
 
-**구현 게이트:** **0.13.7**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** **0.13.8**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
