@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/PRIORITIES.md` |
-| **기준 시점** | PLAN **v0.13.5** · 2026-07-10 |
+| **기준 시점** | PLAN **v0.14.1** (`approved`) · 2026-07-10 |
 | **목적** | “지금 무엇을 할지” Owner·에이전트 공통 SSOT (단기) |
 | **관련** | [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`TEST_PLAN.md`](./TEST_PLAN.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) |
 
@@ -33,7 +33,7 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 |------|------|------|------------|------|
 | **P0** | **설치·실행 DX** | 클론 후 `loom` 을 헤매지 않게 | 보통 불필요 | **done 0.13.3** |
 | **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | **R14 done** | **done 0.13.4** |
-| **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **next** |
+| **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **done 0.14.1** |
 | **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 |
 | — | Low 백로그 더 파기 | — | — | **하지 않음** (소진) |
 
@@ -83,12 +83,12 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 
 ---
 
-## 5. P2 — 내구성 (다음 마일스톤 후보)
+## 5. P2 — 내구성 (진행 중)
 
 - Relay 인박스/로스터 **디스크 또는 재기동 복구**  
 - 문서화된 “재시작 시 유실” 한계를 줄이는 것이 제품 북극성에 직접 연결  
 
-→ PLAN MINOR + **Fable R{n} 필수**.
+→ PLAN **v0.14.1** implemented (persist + M-21/22/23 locks).
 
 ---
 
@@ -107,7 +107,7 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 ① P0 설치 DX 구현 + 문서     ← done 0.13.3
 ② TEST_PLAN P0 수동 1회 기록 (UC-1 + UC-3)  ← done 2026-07-10
 ③ P1 Owner 사인 또는 R14     ← done R14 (0.13.4)
-④ P2 durable inbox (설계 → Fable → 구현)  ← next
+④ P2 durable inbox (설계 → Fable → 구현)  ← **0.14.1 approved; implement**
 ```
 
 ---
@@ -121,6 +121,8 @@ R14 Low: **L-26 / L-27 done 0.13.5**.
 | 2026-07-10 | TEST_PLAN P0 gate 기록 (UC-0/1/3/11); P1 next |
 | 2026-07-10 | P1-B R14 approved — 0.13.4; next P2 |
 | 2026-07-10 | R14 Low L-26/L-27 implemented — 0.13.5 |
+| 2026-07-10 | P2 PLAN **0.14.0** draft pending-review (R15) |
+| 2026-07-10 | R15 pending-revision; **0.14.1** locks author-close — implement P2 |
 
 ---
 

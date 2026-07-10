@@ -3,13 +3,13 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.13.14** |
-| **Status** | **`approved` (author-close)** — TUI winsize poll + SIGWINCH forward |
-| **Supersedes** | 0.13.13 |
+| **Version** | **0.14.1** |
+| **Status** | **`approved` (author-close)** — R15 Med M-21/M-22/M-23 locks applied; P2 implement allowed |
+| **Supersedes** | 0.14.0 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | author-close PATCH; no re-R{n}. |
-| **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1**. Next required: **P2 durable inbox** MINOR. |
-| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) |
+| **Approval** | **author-close** after R15 Decision notes (“PATCH 후 재리뷰 없이 author-close 가능”). Locks in Failure/security table. **Implement P2 under this plan.** Not a bare approve — provenance: R15 + 0.14.1 PATCH. |
+| **Fable 5 when** | R15 closed via PATCH. Next R{n} only if implement opens new security surface beyond locks. |
+| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — **P2** |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -49,7 +49,141 @@
 
 ### Changelog
 
-#### 0.13.14 — 2026-07-10 (`approved` — **author-close**, TUI resize robust)
+#### 0.14.1 — 2026-07-10 (`approved` — **author-close**, R15 M-21/M-22/M-23 locks)
+
+**Why:** R15 `pending-revision` — three Med findings, all **PLAN-text lock rows** only (no architecture change). Decision notes: PATCH → **author-close, no re-review (no R15b)**.
+
+| Finding | Lock (now in Failure/security locks table) |
+|---------|-----------------------------------------------|
+| **M-21** | Auto-daemon **must** pass `LOOM_RELAY_STATE_DIR=join(loomDir(),"relay-state")` to child; standalone/remote `loom relay` documents independent default (gate-exempt) |
+| **M-22** | Hydrate reconstructs `members`/`inboxes` from stored `secret` — **never** `addPeer` / `generatePeerSecret` |
+| **M-23** | **(a) required:** pid-ownership exclusive lock on state dir / per-room write (same class as `atomic-json.ts` `withFileLock`) in relay-local `persist.ts` — not “optional” |
+
+Also: L-28/L-29 remain Low backlog (non-blocking). Cross-ref L-29 disk growth residual under locks table.
+
+**Approved by:** plan author after R15 Decision notes (author-close). **Implement next** under 0.14.1.
+
+**Implemented as of 0.14.1** (CLI/MCP VERSION **0.14.1**).
+
+#### 0.13.15 — 2026-07-10 (`approved` — **author-close**, dogfood multi-profile / Codex MCP)
+
+**Why:** Inside `loom run`, inherited `LOOM_SESSION` overrode CLI `--profile` (wrong peer inbox). Codex global config still had legacy `mcp_servers.fable` → `/tmp/fake-stdio.ts`. MCP `serverInfo.version` lagged at 0.13.3.
+
+| What | Why |
+|------|-----|
+| CLI `--profile` → `setActiveProfile(..., { explicit: true })` beats `LOOM_SESSION` | Dogfood multi-peer ops from agent shells |
+| MCP `serverInfo.version` **0.13.15** | Parity with CLI |
+| DOGFOOD_LOOP §6.1 | Codex MCP + sticky host recovery |
+| (ops, not git) `~/.codex/config.toml` → strip fable, install `mcp_servers.loom` (codex-rev) | Unblock Codex tools |
+
+**Not** P2 durable inbox / not R15 scope. **author-close, Low dogfood DX.**
+
+#### 0.14.0 — 2026-07-10 (`superseded` by 0.14.1; was `pending-revision` — **P2 durable relay state**)
+
+**Why:** PRIORITIES **P2** — relay restart currently wipes in-memory rooms, roster (`peerSecret`), and per-peer handoff inboxes. Offline-safe handoff is only process-lifetime durable; product north star needs handoffs to survive local/remote relay restarts.
+
+**Review impact:** MINOR + **security/data** surface → **R15** → pending-revision → **0.14.1** locks + author-close. Wire protocol stays v1.
+
+##### In (scope)
+
+| What | Why |
+|------|-----|
+| Persist **room meta** (id, name, inviteCode, createdAt) on disk | Rejoin same invite after relay restart |
+| Persist **roster** incl. **peerSecret** (M-7) | Identity rejoin proof survives process death |
+| Persist **pending inbox** (`queued` \| `notified` only) | Handoff bodies/attachments not lost on restart |
+| Load all room snapshots at relay start into `RoomRegistry` | Transparent recovery; clients use existing session |
+| Atomic write (temp + rename + **mode 0600**) | Same pattern as board/pack; no torn JSON |
+| Default state dir `~/.loom/relay-state/` (override `LOOM_RELAY_STATE_DIR`) | Align with `~/.loom` local-first; remote relay = host machine disk |
+| Per-room file `<sha256(roomId)[0:16]>.json` | Bound path; no raw roomId in filename |
+| Persist after create / join-mutate / leave / enqueue / claim | Durability = last successful mutation |
+| On load: all peers **offline** (`socket = null`) | No fake online; presence reattaches on rejoin |
+| Production `loom relay` / auto-daemon: durable **ON** by default | Real dogfood path recovers |
+| Tests: `persist: false` or `LOOM_RELAY_EPHEMERAL=1` | Unit tests stay hermetic; no home pollution |
+| Caps unchanged (100 inbox/peer, attach size, etc.) | Disk DoS bound same as memory L-11/L-16 |
+| leave still drops peer inbox + roster entry + flush | Explicit leave semantics unchanged |
+| claim/accept first-wins + delete terminal entry + flush | No re-claim after restart |
+| Docs: ARCHITECTURE, RISK, PROTOCOL residual, USER_GUIDE restart, TEST_PLAN UC | Honesty after implement |
+| CLI/MCP **VERSION** bump on implement ship (0.14.x) | Plan was ahead of code; ship with implement |
+
+##### Schema (snapshot v1 — plan lock)
+
+```ts
+// packages/relay — conceptual; exact field names free in impl if zod-validated
+type RoomSnapshotV1 = {
+  v: 1;
+  room: { id: string; name: string; inviteCode: string; createdAt: string };
+  members: Array<{
+    peer: { id: string; displayName: string; color: string; agentKind: string; joinedAt: string };
+    secret: string; // M-7 — never log; file 0600 only
+  }>;
+  inboxes: Record<string /* peerId */, Array<{
+    status: "queued" | "notified";
+    toPeerId: string;
+    handoff: HandoffPayload; // existing protocol shape
+  }>>;
+  colorIndex: number;
+  updatedAt: string; // ISO
+};
+```
+
+##### Out (non-goals for 0.14.0)
+
+| Out | Why |
+|-----|-----|
+| Protocol wire / envelope changes | Transparent server-side durability |
+| Chat history persistence | Separate product surface |
+| Live board CRDT / multi-writer board | P3 |
+| Encryption at rest / KMS | Residual: OS-user file perms (document) |
+| Multi-relay HA / shared-disk multi-writer | Single relay process owns state dir |
+| Claimed/accepted archive | Terminal entries already deleted (L-11) |
+| Room auto-GC / TTL eviction of disk rooms | Keep process+disk; GC later if needed |
+| Client session / sticky / desktop API changes | Reuse existing rejoin + list_inbox |
+| Moving `atomic-json` into protocol (optional later) | Relay may ship small `persist.ts` (host→relay cycle if import host) |
+
+##### Failure / security locks (authoritative for implement — 0.14.1)
+
+| Case | Required behavior |
+|------|-------------------|
+| Missing state file | Treat as empty; create on first write |
+| Corrupt JSON | Backup `*.corrupt-<ts>`; **skip that room**; log error; never silently treat as empty success for that file |
+| Write I/O error | Log; keep in-memory truth for process life; retry on next mutation |
+| **M-21** state dir / M-14 | **Auto-daemon** (`ensureLocalRelay` / `relay-daemon` spawn) **must** set child env `LOOM_RELAY_STATE_DIR = join(loomDir(), "relay-state")` so durable path honors the same home migration gate as sessions. **Standalone / remote** `loom relay` (no host parent): default may be `~/.loom/relay-state` or `LOOM_RELAY_STATE_DIR` if set — **documented as gate-exempt** (operator owns home layout). Never invent a second home that ignores live `.fable` PID gate without docs. |
+| **M-22** hydrate secrets | **Hydrate must NOT call `addPeer` / `generatePeerSecret`.** Reconstruct `members` Map and `inboxes` Map **directly** from snapshot fields (including stored `secret`). New joins after load still use `addPeer` as today. |
+| **M-23** multi-writer | **Required (a):** relay-local `persist.ts` uses **pid-ownership exclusive lock** (same class as `packages/host/src/atomic-json.ts` `withFileLock` — lock dir + owner.pid, reclaim only if owner dead). Apply around load-all and each room snapshot write. Port bind + `relay.pid` remain; lock is **not optional**. (Option b — ephemeral-only `dev:relay` — is **not** the sole control.) |
+| Two processes same state dir | Port bind + `relay.pid` **and** M-23 file lock; second process must fail loud (log/exit), not silent last-write-wins |
+| peerSecret on disk | **0600**; never in logs/health; same residual class as `session.json` peerSecret |
+| Remote operator | Host UID can read secrets — **accepted** local-first residual (document) |
+| Load order / invite index | Rebuild `byId` + `byCode` from all snapshots; **L-28** invite-code collision → log (do not silent last-wins without log) |
+| **L-29** disk growth | Room files accumulate until explicit leave/GC — residual accepted (Out: no auto-GC in v1); document in USER_GUIDE/ARCHITECTURE on ship |
+
+##### Acceptance (implement under 0.14.1)
+
+1. handoff → kill relay → restart same state dir → target `list_inbox` still has entry; `claim`/`accept` works once.  
+2. After claim, restart → entry gone (first-wins).  
+3. leave peer → restart → peer + inbox absent.  
+4. Rejoin with correct `peerSecret` OK; wrong/missing → `peer_auth_failed`.  
+5. Corrupt one room file → other rooms still load.  
+6. `LOOM_RELAY_EPHEMERAL=1` → no state files written.  
+7. Auto-daemon child has `LOOM_RELAY_STATE_DIR` under `loomDir()` (M-21).  
+8. Restart does **not** mint new secrets for existing peers (M-22).  
+9. Second writer against locked state dir fails loud (M-23).  
+10. `bun test` + `bun run smoke:uc` green.
+
+##### Implementation sketch (approved under 0.14.1)
+
+| Area | Touch |
+|------|--------|
+| `packages/relay/src/persist.ts` (new) | snapshot schema, path, atomic write 0600, **pid lock (M-23)**, loadAll |
+| `packages/relay/src/room.ts` | serialize hooks; **hydrate without addPeer (M-22)**; registry load/save |
+| `packages/relay/src/server.ts` / `cli.ts` | wire stateDir from env; ephemeral flag |
+| `packages/host/src/relay-daemon.ts` | **must** pass `LOOM_RELAY_STATE_DIR` (M-21) |
+| Tests | unit persist + restart simulation; hydrate secret stability; lock contention; no live port required |
+
+**Unknowns:** see `docs/UNKNOWNS.md` §0.14.0.
+
+**Implemented as of 0.14.1** (`packages/relay/src/persist.ts`, Room hydrate M-22, `relay-daemon` M-21, process lock M-23). R15 Med closed by lock rows above.
+
+#### 0.13.14 — 2026-07-10 (`superseded` by 0.14.0; was `approved` — **author-close**, TUI resize robust)
 
 **Why:** Owner still saw fixed Claude layout after 0.13.13; SIGWINCH often delivered only to Loom parent.
 
@@ -1041,9 +1175,23 @@ Human: `fable inbox` → `accept`.
 - **Not** live remote sync — intentional
 - **0.7.1:** timestamp clamp, always-parse snapshot, strict handoff id match
 
+### Phase 5 — Durable relay state (P2) — **PLAN 0.14.1 `approved`** (implement next)
+
+**목표:** Relay 프로세스 재시작 후에도 room invite · roster(+peerSecret) · pending handoff inbox 유지.
+
+| Item | Status |
+|------|--------|
+| Disk snapshot schema v1 | planned (locked) |
+| Atomic 0600 write + load-at-start | planned |
+| M-21/M-22/M-23 locks | **locked in 0.14.1** |
+| leave / claim / caps semantics unchanged | planned |
+| Wire protocol v1 unchanged | planned |
+| R15 Fable review | **closed** (pending-revision → PATCH author-close) |
+| Implement | **done 0.14.1** |
+
 ### Phase 4+
 
-Tauri UI (requires Rust/cargo); optional live relay board later.
+Tauri UI (done through 0.12.x); optional live relay board later (P3).
 
 ---
 
@@ -1057,7 +1205,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | MCP push 환상 | pull only |
 | PTY 오염 | default off |
 | claim/accept race | first-wins |
-| relay restart 유실 inbox | MVP 문서화; later durable |
+| relay restart 유실 inbox | **done 0.14.1** — disk snapshot + M-21/22/23 locks |
 | 오버레이 일정 | 비목표 |
 | **비루프백 무토큰 바인드 (H-5)** | 기동 거부; `--insecure-open` only (0.3.1) |
 | **토큰 쿼리/Share/session 유출 (H-6)** | Bearer 우선; Share 기본 숨김; `relayToken` 분리 + 0600 (0.3.1) |
@@ -1109,6 +1257,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | **M4.2 task board** | **done** (0.6.1 H-7/M-8/M-9) |
 | **M4.3a board snapshot share** | **done** (0.7.1 M-10/M-11/M-12) |
 | M4.3b Tauri desktop shell | **0.11.2** shell + **0.12.0** Board via sticky |
+| **M5 durable relay state (P2)** | **0.14.1** implemented |
 
 ---
 
@@ -1120,8 +1269,8 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | port | `7842` |
 | session | `~/.loom/session.json` or `~/.loom/profiles/<name>.json` |
 | state home | `~/.loom` (migrate from `~/.fable` when no live sticky/relay PID) |
-| inbox store | relay memory |
-| roster TTL | room process lifetime (MVP) |
+| inbox store | **0.14.0:** disk under `~/.loom/relay-state/` (memory + snapshot); ephemeral for tests |
+| roster TTL | **0.14.0:** room process **and** disk snapshot lifetime (leave still removes) |
 | PTY inject | off |
 | overlay | never MVP |
 | context pack scope | **roomId** (shared across profiles, same UID) |
@@ -1221,5 +1370,9 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.13.12** TUI agent script PTY (Claude kqueue) — author-close | 2026-07-10 | **0.13.12** |
 | Plan author | implementation | **0.13.13** TUI python pty SIGWINCH resize — author-close | 2026-07-10 | **0.13.13** |
 | Plan author | implementation | **0.13.14** TUI winsize poll + parent SIGWINCH forward — author-close | 2026-07-10 | **0.13.14** |
+| Plan author | plan | **0.14.0** P2 durable relay inbox/roster MINOR draft | 2026-07-10 | **0.14.0** `pending-review` |
+| Reviewer | Claude + Fable 5 | **R15 pending-revision** (M-21/M-22/M-23) | 2026-07-10 | 0.14.0 reviewed |
+| Plan author | plan | **0.14.1** R15 locks PATCH — **author-close** (no R15b) | 2026-07-10 | **0.14.1** `approved` |
+| Plan author | implementation | **0.14.1** P2 durable relay (persist + M-21/22/23) | 2026-07-10 | **0.14.1** |
 
-**구현 게이트:** **0.13.14**. Next: **P2 durable inbox** (MINOR + Fable R{n}).
+**구현 게이트:** PLAN + code **0.14.1**. P2 durable inbox **shipped**.

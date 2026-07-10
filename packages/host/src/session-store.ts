@@ -217,14 +217,28 @@ export function fableDir(): string {
 
 /**
  * Session path resolution:
- * 1. LOOM_SESSION env — absolute file path (not migrated); FABLE_SESSION no longer read (0.10)
- * 2. LOOM_PROFILE / setActiveProfile — ~/.loom/profiles/<name>.json
- * 3. default ~/.loom/session.json
+ * 1. **CLI `--profile`** (explicit `setActiveProfile`) — wins over inherited env
+ *    so dogfood multi-peer from inside `loom run` still targets the right file.
+ * 2. LOOM_SESSION env — absolute file path (MCP/child default); FABLE_SESSION not read (0.10)
+ * 3. LOOM_PROFILE / soft setActiveProfile — ~/.loom/profiles/<name>.json
+ * 4. default ~/.loom/session.json
  */
 let activeProfile: string | null = null;
+/** True when setActiveProfile was called with explicit CLI --profile. */
+let activeProfileExplicit = false;
 
-export function setActiveProfile(profile: string | null): void {
+export function setActiveProfile(
+  profile: string | null,
+  opts?: { explicit?: boolean },
+): void {
   activeProfile = profile && profile.length > 0 ? profile : null;
+  activeProfileExplicit = Boolean(opts?.explicit && activeProfile);
+}
+
+/** Test / process reset helper. */
+export function resetActiveProfile(): void {
+  activeProfile = null;
+  activeProfileExplicit = false;
 }
 
 export function getActiveProfile(): string | null {
@@ -232,10 +246,14 @@ export function getActiveProfile(): string | null {
 }
 
 export function sessionPath(): string {
+  const home = loomDir();
+  // Explicit --profile must beat LOOM_SESSION inherited from parent agent run
+  if (activeProfileExplicit && activeProfile) {
+    return join(home, "profiles", `${activeProfile}.json`);
+  }
   const override = envSessionPath();
   if (override) return override;
   const profile = getActiveProfile();
-  const home = loomDir();
   if (profile) {
     return join(home, "profiles", `${profile}.json`);
   }

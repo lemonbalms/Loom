@@ -5,6 +5,7 @@ import {
   type InboxEntry,
   type HandoffSendStatus,
   type HandoffInboxStatus,
+  type AgentKind,
   makeEnvelopeBase,
   nowIso,
   colorForPeer,
@@ -21,6 +22,15 @@ import {
   MAX_ATTACHMENTS_PER_HANDOFF,
   MAX_HANDOFF_BODY_CHARS,
 } from "@loom/protocol";
+import {
+  type RoomSnapshotV1,
+  acquireStateDirLock,
+  releaseStateDirLock,
+  loadAllSnapshots,
+  saveRoomSnapshot,
+  peerForSnapshot,
+  defaultRelayStateDir,
+} from "./persist";
 
 export type SocketLike = {
   send(data: string): void;
@@ -57,12 +67,125 @@ export class Room {
   /** peerId → handoff id → entry */
   private inboxes = new Map<string, Map<string, InboxEntry>>();
   private colorIndex = 0;
+  /** Called after durable-relevant mutations (registry sets this). */
+  private persistHook: (() => void) | null = null;
 
-  constructor(name: string, inviteCode?: string, id?: string) {
+  constructor(
+    name: string,
+    inviteCode?: string,
+    id?: string,
+    opts?: { createdAt?: string; colorIndex?: number },
+  ) {
     this.id = id ?? generateRoomId();
     this.name = sanitizePeerText(name) || "room";
     this.inviteCode = inviteCode ?? generateInviteCode();
-    this.createdAt = nowIso();
+    this.createdAt = opts?.createdAt ?? nowIso();
+    this.colorIndex = opts?.colorIndex ?? 0;
+  }
+
+  setPersistHook(hook: (() => void) | null): void {
+    this.persistHook = hook;
+  }
+
+  private touchPersist(): void {
+    try {
+      this.persistHook?.();
+    } catch (e) {
+      console.error(
+        `[loom relay] persist failed room=${this.id}:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+
+  /**
+   * M-22: rebuild roster+inbox from disk **without** addPeer/generatePeerSecret.
+   */
+  static fromSnapshot(snap: RoomSnapshotV1): Room {
+    const room = new Room(snap.room.name, snap.room.inviteCode, snap.room.id, {
+      createdAt: snap.room.createdAt,
+      colorIndex: snap.colorIndex ?? 0,
+    });
+    const agentKinds = new Set([
+      "claude",
+      "codex",
+      "grok",
+      "shell",
+      "unknown",
+    ]);
+    for (const m of snap.members) {
+      const ak = agentKinds.has(m.peer.agentKind)
+        ? (m.peer.agentKind as AgentKind)
+        : "unknown";
+      const peer: PeerInfo = {
+        id: m.peer.id,
+        displayName: m.peer.displayName,
+        color: m.peer.color,
+        agentKind: ak,
+        joinedAt: m.peer.joinedAt,
+        online: false,
+      };
+      room.members.set(peer.id, {
+        peer,
+        socket: null,
+        secret: m.secret,
+      });
+      if (!room.inboxes.has(peer.id)) {
+        room.inboxes.set(peer.id, new Map());
+      }
+    }
+    for (const [peerId, entries] of Object.entries(snap.inboxes ?? {})) {
+      let box = room.inboxes.get(peerId);
+      if (!box) {
+        box = new Map();
+        room.inboxes.set(peerId, box);
+      }
+      for (const e of entries) {
+        if (e.status !== "queued" && e.status !== "notified") continue;
+        box.set(e.handoff.id, {
+          handoff: e.handoff,
+          status: e.status,
+          toPeerId: e.toPeerId,
+        });
+      }
+    }
+    return room;
+  }
+
+  toSnapshot(): RoomSnapshotV1 {
+    const members: RoomSnapshotV1["members"] = [];
+    for (const m of this.members.values()) {
+      members.push({
+        peer: peerForSnapshot({ ...m.peer, online: false }),
+        secret: m.secret,
+      });
+    }
+    const inboxes: RoomSnapshotV1["inboxes"] = {};
+    for (const [peerId, box] of this.inboxes) {
+      const list: RoomSnapshotV1["inboxes"][string] = [];
+      for (const e of box.values()) {
+        if (e.status !== "queued" && e.status !== "notified") continue;
+        list.push({
+          status: e.status,
+          toPeerId: e.toPeerId,
+          handoff: e.handoff,
+        });
+      }
+      if (list.length > 0) inboxes[peerId] = list;
+    }
+    return {
+      v: 1,
+      room: {
+        id: this.id,
+        name: this.name,
+        inviteCode: this.inviteCode,
+        createdAt: this.createdAt,
+      },
+      members,
+      inboxes,
+      colorIndex: this.colorIndex,
+      updatedAt: nowIso(),
+    };
   }
 
   get peerCount(): number {
@@ -157,6 +280,7 @@ export class Room {
     if (!this.inboxes.has(peer.id)) {
       this.inboxes.set(peer.id, new Map());
     }
+    this.touchPersist();
     return { ok: true, peer, secret, isNew: true };
   }
 
@@ -188,6 +312,7 @@ export class Room {
     if (!m) return undefined;
     this.members.delete(peerId);
     this.inboxes.delete(peerId);
+    this.touchPersist();
     return m.peer;
   }
 
@@ -387,6 +512,7 @@ export class Room {
         anyNotified = true;
       }
     }
+    this.touchPersist();
 
     return {
       status: anyNotified ? "delivered" : "queued",
@@ -463,6 +589,7 @@ export class Room {
     const out = { ...entry, handoff: { ...entry.handoff } };
     // L-11: drop terminal entries so repeated large attachments don't pin memory
     box?.delete(entry.handoff.id);
+    this.touchPersist();
     return { ok: true, entry: out };
   }
 
@@ -476,14 +603,104 @@ export class Room {
   }
 }
 
+export type RoomRegistryOptions = {
+  /**
+   * When set (and not ephemeral), load/save room snapshots here.
+   * Unit tests omit this → in-memory only.
+   */
+  stateDir?: string;
+  /** Force no disk I/O even if stateDir set. */
+  ephemeral?: boolean;
+};
+
 export class RoomRegistry {
   private byId = new Map<string, Room>();
   private byCode = new Map<string, Room>();
+  readonly stateDir: string | null;
+  readonly durable: boolean;
+  private processLockHeld = false;
+
+  constructor(opts?: RoomRegistryOptions) {
+    const ephemeral =
+      opts?.ephemeral === true ||
+      process.env.LOOM_RELAY_EPHEMERAL === "1" ||
+      process.env.LOOM_RELAY_EPHEMERAL === "true";
+    if (ephemeral || !opts?.stateDir) {
+      this.stateDir = null;
+      this.durable = false;
+      return;
+    }
+    this.stateDir = opts.stateDir;
+    this.durable = true;
+    try {
+      acquireStateDirLock(this.stateDir);
+      this.processLockHeld = true;
+    } catch (e) {
+      throw e;
+    }
+    this.loadFromDisk();
+  }
+
+  /** Release M-23 process lock (call on relay shutdown). */
+  close(): void {
+    if (this.processLockHeld && this.stateDir) {
+      releaseStateDirLock(this.stateDir);
+      this.processLockHeld = false;
+    }
+  }
+
+  private wirePersist(room: Room): void {
+    if (!this.durable || !this.stateDir) {
+      room.setPersistHook(null);
+      return;
+    }
+    const dir = this.stateDir;
+    room.setPersistHook(() => {
+      saveRoomSnapshot(dir, room.toSnapshot());
+    });
+  }
+
+  private loadFromDisk(): void {
+    if (!this.stateDir) return;
+    const { snapshots, errors } = loadAllSnapshots(this.stateDir);
+    for (const msg of errors) {
+      console.error(`[loom relay] state load: ${msg}`);
+    }
+    const codeOwners = new Map<string, string>(); // invite upper → roomId
+    for (const snap of snapshots) {
+      const room = Room.fromSnapshot(snap);
+      this.wirePersist(room);
+      this.byId.set(room.id, room);
+      const code = room.inviteCode.toUpperCase();
+      const prev = codeOwners.get(code);
+      if (prev && prev !== room.id) {
+        // L-28: log invite collision (do not silent last-wins without log)
+        console.error(
+          `[loom relay] invite code collision on load: ${room.inviteCode} ` +
+            `rooms ${prev} and ${room.id} — last wins (${room.id})`,
+        );
+      }
+      codeOwners.set(code, room.id);
+      this.byCode.set(code, room);
+    }
+  }
 
   create(name: string, inviteCode?: string): Room {
     const room = new Room(name, inviteCode);
+    this.wirePersist(room);
     this.byId.set(room.id, room);
     this.byCode.set(room.inviteCode.toUpperCase(), room);
+    // immediate create flush
+    if (this.durable && this.stateDir) {
+      try {
+        saveRoomSnapshot(this.stateDir, room.toSnapshot());
+      } catch (e) {
+        console.error(
+          `[loom relay] persist create failed:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
     return room;
   }
 
@@ -496,7 +713,7 @@ export class RoomRegistry {
   }
 
   maybeGc(_room: Room): void {
-    // keep rooms for relay process lifetime
+    // keep rooms for relay process lifetime (+ disk when durable)
   }
 
   listRooms(): {
@@ -515,3 +732,5 @@ export class RoomRegistry {
     }));
   }
 }
+
+export { defaultRelayStateDir };

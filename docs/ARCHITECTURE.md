@@ -12,7 +12,7 @@
 | Package | Role |
 |---------|------|
 | `@loom/protocol` | Versioned envelopes, invite codes, formatting |
-| `@loom/relay` | In-memory rooms, WebSocket fanout, handoff routing |
+| `@loom/relay` | Rooms, WebSocket fanout, handoff routing; **durable** room/roster/inbox snapshots under `LOOM_RELAY_STATE_DIR` (0.14.1) |
 | `@loom/host` | Session store, relay client, presence render, slash parse, daemon bootstrap |
 | `@loom/adapters` | Detect/spawn agent CLIs |
 | `@loom/mcp-server` | MCP tools for agents (`handoff`, `list_peers`, `room_chat`) |
@@ -108,7 +108,7 @@ loom run claude
 
 - Handoff bodies are **untrusted** — UI shows a warning banner  
 - File attachments (future) restricted to cwd allowlist  
-- Relay does not persist message bodies by default  
+- Relay **persists** room meta, roster (+peerSecret), and pending inbox (`queued`|`notified`) under `~/.loom/relay-state/` (or `LOOM_RELAY_STATE_DIR`); `LOOM_RELAY_EPHEMERAL=1` disables. Auto-daemon sets state dir via `loomDir()` (M-21). Chat is still not persisted.
 - Agents run under the **user’s own** CLI credentials (no proxy login)
 
 ## Why not shared PTY?

@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 브리핑. dogfood: `bun run dogfood:room` 한 번 → 다음 세션 `dogfood:status` + 3터미널 run. Claude R{n} → **/advisor fable**. Next: **P2 durable inbox** (MINOR + R{n}).
+> PLAN **0.14.1** `approved` + **P2 durable relay implemented** (persist.ts, M-21/22/23). CLI **0.14.1**. Next: optional L-28/L-29, dogfood restart smoke, commit/push.
 
 ---
 
@@ -31,11 +31,11 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.13.5** — `bun run link:loom` or `scripts/loom` |
+| **Product CLI** | `loom` v**0.14.1** — `bun run link:loom` or `scripts/loom` |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.13.5** — R14 Low L-26/L-27 closed |
-| **Priorities** | `docs/PRIORITIES.md` (P0+P1 done → **P2** durable inbox) |
-| **Review gate** | Open blocking **none** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.14.1** — `approved` P2 durable relay (implement) |
+| **Priorities** | `docs/PRIORITIES.md` (P0+P1 done → **P2 implement**) |
+| **Review gate** | Open blocking **none** (R15 closed via 0.14.1) |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
 | **Deviations log** | `implementation-notes.md` |
@@ -43,7 +43,7 @@ North star: *connect your agents — and your teammates.*
 | **Git** | `main` → `origin` https://github.com/lemonbalms/Loom.git |
 | **Remote account** | GitHub auth: **lemonbalms** |
 | **Tauri** | **Unblocked** — `cargo`/`rustc` 1.96 present; `@tauri-apps/cli` in root devDeps |
-| **Open blocking** | none (R13 M-18/19/20 locked in 0.11.1) |
+| **Open blocking** | none |
 
 ### Naming (critical)
 
@@ -113,16 +113,10 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | **P2 durable inbox** — 설계 → PLAN MINOR → R{n} (`/advisor fable`) → 구현 | PRIORITIES P2 |
-| Dogfood | `bun run dogfood:room` / `dogfood:status` | `docs/DOGFOOD_LOOP.md` |
-| Process | Claude R{n} | **`/advisor fable` 필수** before plan_review |
-| Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** (P2 requires R{n}) |
-| Doc | Priorities | `docs/PRIORITIES.md` |
-| Doc | Test plan | `docs/TEST_PLAN.md` — **P0 gate pass 2026-07-10** |
-| Doc | plan_review | **R14** body |
-| Done | L-4 requestId | **0.13.1** |
-| Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
-| Doc | User guide | `docs/USER_GUIDE.md` |
+| **Next** | Commit/push 0.14.1 (if Owner wants) | P2 + listen fix + docs |
+| Optional | L-28/L-29 Low | byCode log done on load; disk GC residual docs |
+| Dogfood | Restart local relay to pick durable code | Old process may still be pre-0.14.1 |
+| Done | R15 + 0.14.1 locks + P2 implement | `bun test` 152 · `smoke:uc` OK |
 
 ### 2. Smoke / dogfood commands
 

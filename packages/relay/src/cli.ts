@@ -6,6 +6,7 @@ import {
   envRelayToken,
 } from "@loom/protocol";
 import { RelayServer, isLoopbackHost } from "./server";
+import { RoomRegistry, defaultRelayStateDir } from "./room";
 
 /**
  * Phase 3 remote-ready relay process.
@@ -34,18 +35,59 @@ if (legacyInsecure && !allowInsecureOpen) {
   );
 }
 
-const server = new RelayServer({ host, port, authToken, allowInsecureOpen });
+const ephemeral =
+  process.env.LOOM_RELAY_EPHEMERAL === "1" ||
+  process.env.LOOM_RELAY_EPHEMERAL === "true";
+// Production durable ON by default; LOOM_RELAY_STATE_DIR override; standalone default = ~/.loom/relay-state (M-21 gate-exempt)
+const stateDir = ephemeral
+  ? undefined
+  : process.env.LOOM_RELAY_STATE_DIR || defaultRelayStateDir();
+
+let registry: RoomRegistry;
 try {
-  server.start();
+  registry = new RoomRegistry(
+    ephemeral ? { ephemeral: true } : { stateDir: stateDir! },
+  );
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);
   process.exit(1);
 }
 
+const server = new RelayServer({
+  host,
+  port,
+  authToken,
+  allowInsecureOpen,
+  registry,
+});
+try {
+  server.start();
+} catch (e) {
+  registry.close();
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+}
+
+const shutdown = () => {
+  try {
+    registry.close();
+  } catch {
+    /* */
+  }
+  process.exit(0);
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
 console.log(`Loom relay listening on ${server.publicHint}`);
 console.log(
   `Health: http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/health`,
 );
+if (ephemeral) {
+  console.log("State: ephemeral (LOOM_RELAY_EPHEMERAL) — inbox lost on restart");
+} else {
+  console.log(`State: durable ${stateDir}`);
+}
 if (authToken) {
   console.log(
     "Auth: LOOM_RELAY_TOKEN required (Authorization: Bearer preferred; ?token= fallback)",

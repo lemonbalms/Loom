@@ -1,13 +1,16 @@
-# 0.13.3 — PRIORITIES + install DX
+# 0.14.1 — P2 durable relay (done)
 
-- [x] docs/PRIORITIES.md
-- [x] scripts/loom, link-loom.sh, unlink-loom.sh
-- [x] package.json link:loom / unlink:loom
-- [x] README + USER_GUIDE install A/B/C
+## Done
 
-## Next (PRIORITIES)
+- [x] R15 M-21/M-22/M-23 PLAN locks + author-close
+- [x] `packages/relay/src/persist.ts` + Room hydrate (M-22)
+- [x] `relay-daemon` `LOOM_RELAY_STATE_DIR` (M-21)
+- [x] Process lock M-23
+- [x] Tests + VERSION 0.14.1
+- [x] Fix `loom listen` crash (`createInterface` missing → peer offline)
+- [x] `bun test` 152 pass · `bun run smoke:uc` OK
 
-1. P1 Owner sign or R14
-2. P2 durable relay inbox (needs Fable)
+## Optional next
 
-`bun run link:loom` · `loom --version`
+- [ ] git commit + push
+- [ ] Dogfood: restart relay so running daemon loads durable code

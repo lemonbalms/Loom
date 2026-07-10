@@ -212,7 +212,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.13.3" },
+        serverInfo: { name: "loom", version: "0.14.1" },
       });
       return;
     case "notifications/initialized":

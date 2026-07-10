@@ -182,6 +182,19 @@ bun run loom --profile <me> board
 
 Then: Grok → HANDOFF/PLAN; Claude/Codex → process inbox R-REQUEST only.
 
+### 6.1 Codex MCP + sticky host (common failure)
+
+| Symptom | Cause | Fix |
+|---------|--------|-----|
+| Codex has no Loom tools | Global `~/.codex/config.toml` still has legacy `mcp_servers.fable` → `/tmp/fake-stdio.ts`, or never wrote `loom` | Remove fable; `bun run loom --profile codex-rev run codex -- --write-user-config` **or** managed block with `mcp_servers.loom` + `LOOM_SESSION=…/codex-rev.json` |
+| Project `.loom/codex.mcp.toml` exists but Codex ignores it | Codex does **not** auto-load project snippet; needs **user** config (opt-in) | `--write-user-config` (R3 M-3) |
+| `loom --profile X inbox` shows wrong peer / empty while work was sent | Inside `loom run`, `LOOM_SESSION` used to beat `--profile` | **0.13.15+**: explicit `--profile` wins. Older: `env -u LOOM_SESSION loom --profile X inbox` |
+| peer offline / no sticky | Only impl host started | `bun run loom --profile claude-rev host start` and same for `codex-rev` |
+
+Claude uses `--mcp-config` (always project path) so it does not need `~/.codex` style write.
+
+Handoffs are **pull**: Claude/Codex must `check_handoffs` / `claim_handoff` (or human paste). They do not appear as native IDE tasks.
+
 ---
 
 ## 7. Board columns (suggested)

@@ -85,6 +85,9 @@ export async function ensureRelay(opts?: {
 
   mkdirSync(stateDir(), { recursive: true });
   const relayCli = resolveRelayCli();
+  // M-21: auto-daemon must pass LOOM_RELAY_STATE_DIR under loomDir() (M-14 gate)
+  const relayStateDir =
+    process.env.LOOM_RELAY_STATE_DIR || join(loomDir(), "relay-state");
   const proc = spawn({
     cmd: ["bun", "run", relayCli],
     env: {
@@ -92,6 +95,7 @@ export async function ensureRelay(opts?: {
       LOOM_RELAY_HOST: endpoint.host,
       LOOM_RELAY_PORT: String(endpoint.port),
       ...(endpoint.token ? { LOOM_RELAY_TOKEN: endpoint.token } : {}),
+      LOOM_RELAY_STATE_DIR: relayStateDir,
     },
     stdout: "ignore",
     stderr: "ignore",

@@ -42,6 +42,23 @@
 
 ## Gate log
 
+### 0.14.0 — P2 durable relay inbox/roster (pending-review)
+
+| Field | Value |
+|-------|--------|
+| **PLAN** | v0.14.0 (`pending-review`) |
+| **Date** | 2026-07-10 |
+| **Review** | R15 required before implement |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | Today: `Room.inboxes` + `members` in memory only (`packages/relay/src/room.ts`); restart loses handoffs. Board/pack already use atomic JSON + 0600 under `~/.loom`. M-7 peerSecret must survive with roster. Protocol v1 / claim first-wins / leave-drops-inbox stay. Caps L-11/L-16 stay. |
+| Known unknowns | (1) Sync write every mutation vs short debounce — plan prefers **sync** for simpler durability proof. (2) Whether auto-daemon (`ensureLocalRelay`) needs explicit `LOOM_RELAY_STATE_DIR` or just default home. (3) Disk growth if rooms never left — accept until GC backlog. (4) Exact placement of atomic helper (relay-local vs lift from host) — plan: **relay-local `persist.ts`** to avoid host↔relay cycle. |
+| Unknown knowns | Operators expect “restart relay ≠ lose handoffs” once dogfood documents it; empty inbox after restart is a trust-break. |
+| Unknown unknowns | Multi-host same NFS path; crash mid-rename on exotic FS; very large attachment spam filling disk despite caps; partial write if chmod fails on Windows (out of primary dogfood). R15 should probe fail-open vs fail-closed on load errors. |
+
+**Next:** R15 on PLAN 0.14.0 → if approved, implement; if pending-revision, only Open blocking.
+
 ### 0.11.1 — M4.3b Tauri shell (plan locked)
 
 | Field | Value |
@@ -70,3 +87,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 |------|------|
 | 2026-07-09 | 초안 + 0.11 stub |
 | 2026-07-09 | R13 fill; 0.11.1 locks |
+| 2026-07-10 | 0.14.0 P2 durable inbox unknowns |

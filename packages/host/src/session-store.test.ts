@@ -12,6 +12,9 @@ import {
   resetStateHomeDirCache,
   resolveStateHomeDir,
   loomDir,
+  setActiveProfile,
+  resetActiveProfile,
+  sessionPath,
 } from "./session-store";
 
 describe("M-16 state home migration (live-PID gate)", () => {
@@ -75,5 +78,59 @@ describe("M-16 state home migration (live-PID gate)", () => {
 
   test("loomDir matches resolveStateHomeDir", () => {
     expect(loomDir()).toBe(resolveStateHomeDir());
+  });
+});
+
+describe("session path: explicit --profile beats LOOM_SESSION", () => {
+  let root: string;
+  let prevSession: string | undefined;
+  let prevProfile: string | undefined;
+
+  beforeEach(() => {
+    root = join(
+      tmpdir(),
+      `loom-profile-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    mkdirSync(join(root, ".loom", "profiles"), { recursive: true });
+    process.env.LOOM_TEST_HOME = root;
+    prevSession = process.env.LOOM_SESSION;
+    prevProfile = process.env.LOOM_PROFILE;
+    process.env.LOOM_SESSION = join(root, ".loom", "profiles", "impl.json");
+    process.env.LOOM_PROFILE = "impl";
+    writeFileSync(process.env.LOOM_SESSION, "{}", "utf8");
+    writeFileSync(join(root, ".loom", "profiles", "codex-rev.json"), "{}", "utf8");
+    resetStateHomeDirCache();
+    resetActiveProfile();
+  });
+
+  afterEach(() => {
+    resetActiveProfile();
+    resetStateHomeDirCache();
+    delete process.env.LOOM_TEST_HOME;
+    if (prevSession === undefined) delete process.env.LOOM_SESSION;
+    else process.env.LOOM_SESSION = prevSession;
+    if (prevProfile === undefined) delete process.env.LOOM_PROFILE;
+    else process.env.LOOM_PROFILE = prevProfile;
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch {
+      /* */
+    }
+  });
+
+  test("without explicit profile, LOOM_SESSION wins", () => {
+    expect(sessionPath()).toBe(process.env.LOOM_SESSION);
+  });
+
+  test("setActiveProfile({ explicit: true }) beats LOOM_SESSION", () => {
+    setActiveProfile("codex-rev", { explicit: true });
+    expect(sessionPath()).toBe(
+      join(root, ".loom", "profiles", "codex-rev.json"),
+    );
+  });
+
+  test("soft setActiveProfile still loses to LOOM_SESSION", () => {
+    setActiveProfile("codex-rev");
+    expect(sessionPath()).toBe(process.env.LOOM_SESSION);
   });
 });

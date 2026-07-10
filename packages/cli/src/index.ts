@@ -75,7 +75,7 @@ import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { openSync, closeSync, writeSync, readSync, existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.13.14";
+const VERSION = "0.14.1";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -217,7 +217,8 @@ function parseArgs(argv: string[]) {
 
 function applyProfileFlags(flags: Record<string, string | boolean>) {
   if (typeof flags.profile === "string") {
-    setActiveProfile(flags.profile);
+    // Must beat LOOM_SESSION from parent `loom run` (dogfood multi-peer)
+    setActiveProfile(flags.profile, { explicit: true });
   }
 }
 
@@ -1038,16 +1039,65 @@ async function cmdListen() {
     console.error(env.message);
     process.exit(1);
   }
+  if (env.type === "room.state" && env.peerSecret) {
+    saveSession({
+      ...session,
+      peerSecret: env.peerSecret,
+      updatedAt: new Date().toISOString(),
+    });
+  }
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  rl.setPrompt("loom> ");
-  rl.prompt();
-  rl.on("line", async (line) => {
-    const t = line.trim();
-    if (!t) {
-      rl.prompt();
-      return;
+  // Drain pending inbox on start (visibility)
+  try {
+    const pending = await client.listInbox();
+    if (pending.length > 0) {
+      console.log(`\x1b[33m${pending.length} handoff(s) waiting in inbox\x1b[0m`);
+      console.log(renderInbox(pending));
     }
+  } catch {
+    /* */
+  }
+
+  let stopping = false;
+  const shutdownListen = async () => {
+    if (stopping) return;
+    stopping = true;
+    try {
+      await client.leave();
+    } catch {
+      /* */
+    }
+    client.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", () => {
+    void shutdownListen();
+  });
+  process.on("SIGTERM", () => {
+    void shutdownListen();
+  });
+
+  /**
+   * Interactive REPL only on TTY. Smoke/background (piped stdin) must stay
+   * connected without node:readline — missing createInterface crashed listen
+   * after join (peer went offline; handoffs only queued).
+   */
+  const stdinTty = Boolean(process.stdin.isTTY);
+  if (!stdinTty) {
+    // Stay online until signal; envelopes print via onEnvelope
+    await new Promise<void>(() => {
+      /* hang */
+    });
+    return;
+  }
+
+  // TTY: fd line loop (avoid node:readline / Bun WriteStream kqueue)
+  const { readSync } = await import("node:fs");
+  const decoder = new TextDecoder();
+  let lineBuf = "";
+  const handleLine = async (line: string) => {
+    const t = line.trim();
+    if (!t) return;
     if (t === "help" || t === "/loom help") {
       console.log(SLASH_HELP);
       console.log("Also: inbox | accept <id> | handoff @name msg | peers | quit");
@@ -1082,19 +1132,35 @@ async function cmdListen() {
         console.log(`handoff ${ack.status} id=${ack.handoffId}`);
       }
     } else if (t === "quit" || t === "exit") {
-      await client.leave();
-      rl.close();
-      process.exit(0);
+      await shutdownListen();
     } else {
       await client.chat(t);
     }
-    rl.prompt();
-  });
+  };
 
-  process.on("SIGINT", async () => {
-    await client.leave();
-    process.exit(0);
-  });
+  eprint("loom> ");
+  const buf = Buffer.alloc(1024);
+  while (!stopping) {
+    let n = 0;
+    try {
+      n = readSync(0, buf, 0, buf.length, null);
+    } catch {
+      await Bun.sleep(50);
+      continue;
+    }
+    if (n === 0) {
+      await Bun.sleep(50);
+      continue;
+    }
+    lineBuf += decoder.decode(buf.subarray(0, n), { stream: true });
+    let idx: number;
+    while ((idx = lineBuf.indexOf("\n")) >= 0) {
+      const line = lineBuf.slice(0, idx);
+      lineBuf = lineBuf.slice(idx + 1);
+      await handleLine(line);
+      if (!stopping) eprint("loom> ");
+    }
+  }
 }
 
 async function cmdRun(
