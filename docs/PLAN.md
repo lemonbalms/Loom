@@ -8,6 +8,7 @@
 | **Supersedes** | 0.13.0 |
 | **Last updated** | 2026-07-10 |
 | **Approval** | **Not** R{n} / **not** Owner sign-off. Plan author (implementation agent) closed Low residual after ship; see Changelog 0.13.1. |
+| **Fable 5 when** | See **`docs/WORKFLOW.md` §5.0–5.1** — next MINOR/security/protocol needs R{n}. |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |

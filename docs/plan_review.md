@@ -2,7 +2,7 @@
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
 > **최신:** PLAN **v0.13.1** `approved (author-close, Low backlog)` — L-4 `requestId`. **No R{n} / no Owner sign-off.**  
-> **규칙:** PLAN `Status=approved`는 리뷰 사인오프 **후에만** 기재가 원칙. Low author-close 시 출처를 Changelog에 명시 → [`docs/WORKFLOW.md`](./WORKFLOW.md).  
+> **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
 > **스냅샷:** 닫힌 R{n} 본문의 줄 번호·패키지명은 **검토 당시** 기준. 현재 코드는 follow-up 표 + PLAN을 볼 것.

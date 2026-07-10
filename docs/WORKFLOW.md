@@ -238,17 +238,53 @@ CLI `VERSION` 문자열과 PLAN Version을 **같은 숫자**로 맞춘다 (`pack
 
 ## 5. 리뷰 규칙 (`docs/plan_review.md`)
 
-### 5.1 언제 리뷰가 필요한가
+### 5.0 역할 — 누가 “승인”하나
 
-| 상황 | 리뷰 |
-|------|------|
-| PLAN `pending-review` (MINOR/보안/신규 페이즈) | **필수** → 새 R{n} |
-| 리뷰 `pending-revision` 후 필수 finding 수정 | **필수** (전체 또는 “해당 diff만”) |
-| Low backlog PATCH (문서 단위, 공유 유틸, 클라이언트 FIFO 등) | **선택** — 보통 재리뷰 없이 approve |
-| 순수 오타·주석 | 불필요 |
-| 호환 제거(0.10), Tauri, 프로토콜 와이어 변경 | **필수** |
+| 이름 | 역할 | PLAN에 남기는 것 |
+|------|------|------------------|
+| **Owner** (사용자) | 제품 우선순위·최종 go/no-go | 선택적으로 Approval block “Owner” 행 |
+| **Fable 5 / fable-advisor** | **계획·보안·코드 대조 리뷰 에이전트** (제품 Loom 아님) | `plan_review.md` **R{n}** 결론 (`approved` / `pending-revision` / `on-hold`) |
+| **Plan author / implementer** | PLAN 작성·코드 구현·문서 동기화 | Changelog; Low만 **author-close** 가능 (출처 명시) |
 
-**현재(0.13.1 `approved`):** Open blocking **없음**. L-4/L-5 closed. Smoke: `bun run smoke:desktop`. Next = Owner product priorities.
+**“Fable 승인”** = Fable 5가 `docs/plan_review.md`에 **R{n}** 을 쓰고 결론을 **`approved`** 로 남기는 것.  
+Git 커밋 author 이름이나 bare `PLAN Status=approved` 만으로 “Fable 승인”이 된 것이 **아니다**.
+
+### 5.1 언제 **Fable 5 리뷰(R{n})가 필요한가**
+
+| 상황 | Fable 5 (R{n}) | PLAN Status 관례 |
+|------|----------------|------------------|
+| 새 **MINOR** / 신규 제품 표면 (Tauri 셸, 보드 UI, MCP 표면 확대) | **필수** | `pending-review` → R{n} 후 `approved` 또는 `pending-revision` |
+| **보안·신뢰 경계** 변경 (auth, peerSecret, sanitize 계약, bind/H-5, 토큰 경로) | **필수** | 동일 |
+| **프로토콜 와이어** 의미 변경 (필수 필드 추가, 호환 깨짐) | **필수** | 동일 |
+| **호환 제거 / 컷오버** (0.10 dual-compat drop 등) | **필수** | 동일 |
+| R{n} **`pending-revision`** 의 Med/High finding 수정 후 | **필수** 재확인 또는 “PATCH 후 author-close 가능” 문구 따름 | 리뷰 결론 따름 |
+| Owner가 **「리뷰해」「R{n}」「Fable 리뷰」** 명시 | **필수** | 지시 따름 |
+| **Low** backlog만 (문서, caps 표기, 선택 opt-in, additive optional 필드) | **선택** | author-close 가능 → Status에 `(author-close, Low backlog)` + Changelog 출처 |
+| 순수 오타·주석·VERSION 문자열·HANDOFF 정리 | **불필요** | 보통 PLAN 버전 안 올림 |
+
+**필수일 때 절차 요약**
+
+1. PLAN Version↑, Status = `pending-review`, Changelog What/Why/Out.  
+2. (MINOR) Unknowns §3.5 권장.  
+3. Fable 5(또는 동등 리뷰 에이전트)가 코드·PLAN 대조 → `plan_review.md` **R{n}**.  
+4. `approved` → 구현·ship. `pending-revision` → Open blocking만 수정.  
+5. 리뷰가 “이 Med PATCH 후 재리뷰 없이 approve 가능”이면 implementer **author-close** 허용 (출처 기록).
+
+**Fable 승인이 *불필요*한 예 (최근)**
+
+- 0.13.1 L-4 residual `requestId` (optional additive) → author-close  
+- 0.12.1 desktop polish / PITCH sync → author-close  
+- 문서-only hygiene  
+
+**Fable 승인이 *필요*했던 예**
+
+- R13 — Tauri 셸 계획 (0.11.0) 보안·스코프  
+- R12 — dual-compat 제거 (0.10.0)  
+- R10–R11 — M-7 peerSecret, Loom rename 게이트  
+
+### 5.1b 현재 게이트 스냅샷
+
+**현재(0.13.1 `approved` author-close Low):** Open blocking **없음**. L-4/L-5 closed. Smoke: `bun run smoke:desktop`. Next = Owner product priorities (다음 MINOR/보안이면 다시 R{n} 필수).
 
 ### 5.2 리뷰어 절차
 
@@ -365,7 +401,8 @@ blocking 없을 때 기본 순서:
 | 사용자 말 | 에이전트 행동 |
 |-----------|----------------|
 | **진행해 / 단계적으로 진행해** | 현재 게이트 다음 단계 실행 → 테스트 → 문서 동기화 → (관례) 커밋·푸시 |
-| **리뷰해 / plan_review 피드백** | 코드·PLAN 대조 메타/실질 리뷰; 필요 시 findings 제안 (파일 수정은 요청 범위에 따름) |
+| **리뷰해 / plan_review 피드백 / Fable 리뷰 / R{n}** | Fable 5(또는 동등) 게이트: PLAN+코드 대조 → `plan_review.md` R{n}; **필수 상황 §5.1** |
+| **승인 / approve** (Owner) | Owner 최종 go — PLAN Approval block에 Owner 행 (선택·권장 when MINOR) |
 | **미지 / blindspot / 블라인드** | 코드베이스 스캔 → 4분면 표 + 관련 unknown unknowns (§3.5, `docs/UNKNOWNS.md`) |
 | **인터뷰해** | 아키텍처를 바꿀 질문을 **한 번에 1개** (우선순위: 분기 큰 것) |
 | **목업 / 프로토타입** | 앱 본코드 안 건드리고 HTML/`docs/spikes/` 만 |
@@ -406,6 +443,7 @@ blocking 없을 때 기본 순서:
 | 2026-07-09 | §5.1 현재 게이트 → 0.11.0 R13 (M-18/M-19); 구 0.9.4 문구 삭제 |
 | 2026-07-09 | §5.1 → **0.11.1 approved**; implement desktop next |
 | 2026-07-10 | author-close Low 표기 규칙 (0.13.1 정직화) |
+| 2026-07-10 | **§5.0–5.1** Fable 5 승인이 필요한 경우 / 역할 표 |
 | 2026-07-09 | §0 세션 진입 의식 + `AGENTS.md` / `CLAUDE.md` 연동 |
 
 ---

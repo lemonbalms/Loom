@@ -58,7 +58,8 @@ Do not start a large feature until the briefing is delivered, unless the user ga
 | Product | **Loom** — CLI `loom`, packages `@loom/*` |
 | Review agent | **fable-advisor / Fable 5** ≠ product |
 | Plan SSOT | `docs/PLAN.md` |
-| Reviews | `docs/plan_review.md` (always name target plan version) |
+| Reviews | `docs/plan_review.md` R{n}; **when Fable 5 required → `docs/WORKFLOW.md` §5.0–5.1** |
+| Author-close | Low only + label `(author-close, Low backlog)` + Changelog provenance |
 | Deviations | `implementation-notes.md` → **Deviations** (pick conservative option) |
 | Unknowns | `docs/WORKFLOW.md` §3.5 + `docs/UNKNOWNS.md` — MINOR/new surface before R{n}; not a PLAN SSOT |
 | “진행해” | Next gate step → `bun test` → docs sync → often commit/push |

@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.1 approved (author-close, Low)** — not R{n}/Owner. 다음: Owner product priorities.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.1 approved (author-close, Low)**. Fable 필수 여부: WORKFLOW §5.1. 다음: Owner product priorities.
 
 ---
 
@@ -108,6 +108,7 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 | Priority | Item | Notes |
 |----------|------|--------|
 | **Next** | Owner product priorities | live board sync, polish, etc. |
+| Process | Fable 5 when | **`docs/WORKFLOW.md` §5.0–5.1** (MINOR/보안/프로토콜/호환 제거 = 필수) |
 | Done | L-4 requestId | **0.13.1** |
 | Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
 | Doc | User guide | `docs/USER_GUIDE.md` |
