@@ -14,11 +14,15 @@ import {
   addTaskFromHandoff,
   exportBoardSnapshot,
   importBoardSnapshot,
+  loadPurpose,
+  setPurpose,
+  formatPurpose,
   type ContextPack,
   type TaskBoard,
   type TaskItem,
   type TaskStatus,
   type BoardSnapshot,
+  type PurposeV1,
 } from "@loom/host";
 import type { PeerInfo, InboxEntry } from "@loom/protocol";
 
@@ -205,6 +209,51 @@ export async function toolCheckHandoffs(): Promise<{
 }> {
   const r = await opsListInbox();
   return { entries: r.entries, count: r.count, via: r.source };
+}
+
+export async function toolGetPurpose(): Promise<{
+  purpose: PurposeV1 | null;
+  formatted: string | null;
+}> {
+  if (!loadSession()) {
+    return { purpose: null, formatted: null };
+  }
+  try {
+    const purpose = loadPurpose();
+    return {
+      purpose,
+      formatted: purpose ? formatPurpose(purpose) : null,
+    };
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(String(e));
+  }
+}
+
+/**
+ * M-24: never accepts verify[] — setPurpose throws if verify present without allowVerify.
+ */
+export async function toolSetPurpose(args: {
+  purpose?: string;
+  successCriteria?: string[];
+  outOfScope?: string[];
+  notes?: string;
+  /** Rejected if present (M-24). */
+  verify?: string[];
+}): Promise<{ purpose: PurposeV1 }> {
+  if (!loadSession()) throw new Error("No Loom session.");
+  if (args.verify !== undefined) {
+    throw new Error(
+      "verify[] cannot be set via MCP set_purpose (M-24). Use CLI: loom purpose set --verify …",
+    );
+  }
+  const purpose = setPurpose({
+    purpose: args.purpose,
+    successCriteria: args.successCriteria,
+    outOfScope: args.outOfScope,
+    notes: args.notes,
+    allowVerify: false,
+  });
+  return { purpose };
 }
 
 export async function toolClaimHandoff(args: {

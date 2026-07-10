@@ -64,6 +64,9 @@ bun run loom --profile codex-rev run codex -- -a never -s workspace-write
 
 Outside the sandbox, commands **fail** instead of asking — safer than `--dangerously-bypass-approvals-and-sandbox`.
 
+**Reviewer boot prompt (paste as first message):**  
+`scripts/dogfood-reviewer-boot.txt` — forces `check_handoffs` → claim `[R-REQUEST]`.
+
 ---
 
 ## 2. Claude Code — **must** use `/advisor fable` for reviews

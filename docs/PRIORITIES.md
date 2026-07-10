@@ -34,7 +34,7 @@ Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline
 | **P0** | **설치·실행 DX** | 클론 후 `loom` 을 헤매지 않게 | 보통 불필요 | **done 0.13.3** |
 | **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | **R14 done** | **done 0.13.4** |
 | **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **done 0.14.1–0.14.2** |
-| **P2.5** | **목적 루프** | Purpose card · handoff contracts · receive claim | **R16** | **PLAN 0.15.0 pending-review** |
+| **P2.5** | **목적 루프** | Purpose card · handoff contracts · receive claim | **R16** | **done 0.15.1** |
 | **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 |
 | — | Low 백로그 더 파기 | — | — | **하지 않음** (소진) |
 

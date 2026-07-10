@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.15.0** `pending-revision` — **R16** 완료: M-24/M-25 (verify[] 실행 신뢰 경계) — PATCH 0.15.1 후 author-close 가능.  
+> **최신:** PLAN **v0.15.1** `approved` (author-close) — R16 M-24/M-25 locks applied. Purpose sprint implement allowed.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R16** | **v0.15.0** | **pending-revision** | M-24/M-25 open (verify[] exec trust boundary). PATCH **0.15.1** locks required, then author-close (no R16b). **Do not implement** until 0.15.1 locks land. |
+| *(none)* | | | **0.15.1** approved — implement purpose sprint |
 
 ---
 
@@ -21,8 +21,7 @@
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| **M-24** | Med | 0.15.0 `verify[]`는 MCP `set_purpose`/CLI로 동일 UID 어떤 peer든 쓸 수 있어 PLAN의 "owner-controlled" 전제와 모순 | R16 — PATCH 0.15.1에서 `set_purpose`가 `verify[]` 거부하도록 lock 필요 |
-| **M-25** | Med | 0.15.0 `loom verify`가 미확인 recipe를 사람 확인 없이 실행할 수 있음 (autonomy-default 웨이브 하에서) | R16 — PATCH 0.15.1에서 verbatim 출력 + 해시 변경 시 TTY confirm/`--yes` lock 필요 |
+| *(none)* | | | |
 
 ---
 
@@ -46,7 +45,7 @@
 
 | Finding | 처리 |
 |---------|------|
-| **R16 M-24/M-25** | **0.15.1 (required)** PLAN Failure/security locks — verify[] write path CLI-only + verbatim/confirm gate; then author-close (no R16b) |
+| **R16 M-24/M-25** | **0.15.1 done** — locks author-close; implement next |
 | **R15 M-21/M-22/M-23** | **0.14.1** PLAN Failure/security locks + author-close (no R15b) |
 | **0.13.5 L-26/L-27** | desktop `load_live_meta` F-2; pack embed O_NOFOLLOW+fd; tests; author-close |
 | **R14** | cumulative 0.11–0.13.3 trust → **approved**; L-26/L-27 closed in 0.13.5 |
@@ -75,7 +74,7 @@
 
 | Review | Plan | Conclusion | Notes |
 |--------|------|------------|-------|
-| **R16** | v0.15.0 → **0.15.1 (pending PATCH)** | **pending-revision** | M-24/M-25 open — verify[] exec trust boundary — body below |
+| **R16** | v0.15.0 → **0.15.1** | pending-revision → **closed (author-close)** | M-24/M-25 locked — body below |
 | **R15** | v0.14.0 → **0.14.1** | pending-revision → **closed (author-close)** | M-21/22/23 locked in PLAN 0.14.1 — body below |
 | **R14** | v0.13.3 code · **0.13.4** plan | **approved** | P1-B cumulative trust — body below |
 | **R13** | v0.11.0 | pending-revision → **0.11.1 approved** | M-18/19/20 closed — body below |
@@ -132,7 +131,15 @@
 | L-30 | Low backlog; board와 동일 residual로 문서화 |
 | PLAN | 0.15.1 `approved` 예정 (author-close per R16 Decision notes; **no R16b**) — PATCH 적용 시 |
 
-**Implement Purpose sprint 1은 0.15.1 PATCH 적용 후 허용.**
+### R16 follow-up applied (0.15.1)
+
+| Finding | 처리 |
+|---------|------|
+| **M-24** | Failure/security locks: MCP rejects `verify[]`; CLI-only write |
+| **M-25** | Failure/security locks: verbatim print + ack hash / TTY / `--yes` |
+| PLAN | **v0.15.1** `approved` (author-close; **no R16b**) |
+
+**Implement Purpose sprint 1 under 0.15.1 now allowed.**
 
 ---
 

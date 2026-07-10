@@ -9,6 +9,8 @@ import {
   toolCheckHandoffs,
   toolClaimHandoff,
   toolGetContextPack,
+  toolGetPurpose,
+  toolSetPurpose,
   toolListTasks,
   toolAddTask,
   toolUpdateTask,
@@ -80,6 +82,37 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_purpose",
+    description:
+      "Read the local room purpose card (purpose, success criteria, out-of-scope, verify recipes). Room-scoped on this machine.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "set_purpose",
+    description:
+      "Update room purpose / successCriteria / outOfScope / notes. Cannot set verify[] (M-24 — use CLI loom purpose set --verify). Same UID residual as board.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        purpose: { type: "string" },
+        successCriteria: {
+          type: "array",
+          items: { type: "string" },
+        },
+        outOfScope: {
+          type: "array",
+          items: { type: "string" },
+        },
+        notes: { type: "string" },
+      },
       additionalProperties: false,
     },
   },
@@ -212,7 +245,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.14.2" },
+        serverInfo: { name: "loom", version: "0.15.1" },
       });
       return;
     case "notifications/initialized":
@@ -245,6 +278,29 @@ async function handle(req: JsonRpcReq) {
           );
         } else if (name === "get_context_pack") {
           text = JSON.stringify(await toolGetContextPack(), null, 2);
+        } else if (name === "get_purpose") {
+          text = JSON.stringify(await toolGetPurpose(), null, 2);
+        } else if (name === "set_purpose") {
+          text = JSON.stringify(
+            await toolSetPurpose({
+              purpose:
+                args.purpose !== undefined ? String(args.purpose) : undefined,
+              successCriteria: Array.isArray(args.successCriteria)
+                ? args.successCriteria.map(String)
+                : undefined,
+              outOfScope: Array.isArray(args.outOfScope)
+                ? args.outOfScope.map(String)
+                : undefined,
+              notes: args.notes !== undefined ? String(args.notes) : undefined,
+              verify: Array.isArray(args.verify)
+                ? args.verify.map(String)
+                : args.verify !== undefined
+                  ? [String(args.verify)]
+                  : undefined,
+            }),
+            null,
+            2,
+          );
         } else if (name === "list_tasks") {
           text = JSON.stringify(await toolListTasks(), null, 2);
         } else if (name === "add_task") {

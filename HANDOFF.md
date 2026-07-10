@@ -114,9 +114,9 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Now** | **R16** on PLAN **0.15.0** | Claude `/advisor fable` → `plan_review.md` R16; no implement |
-| After approved | Implement purpose + receive path + verify lite | Then VERSION ship |
-| Done | P0–P2 · 0.14.2 · docs honesty | |
+| **Next** | P3 only if Owner picks | CRDT / cloud — MINOR+R{n} |
+| Optional | L-30 purpose last-writer residual | accepted like board |
+| Done | 0.15.1 purpose + M-24/M-25 + R16 close | |
 
 ### 2. Smoke / dogfood commands
 

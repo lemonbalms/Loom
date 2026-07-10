@@ -3,13 +3,13 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.15.0** |
-| **Status** | **`pending-revision`** — R16 done: M-24/M-25 open (verify[] exec trust boundary) |
-| **Supersedes** | 0.14.2 |
+| **Version** | **0.15.1** |
+| **Status** | **`approved` (author-close)** — R16 M-24/M-25 locks applied; purpose sprint implement allowed |
+| **Supersedes** | 0.15.0 |
 | **Last updated** | 2026-07-10 |
-| **Approval** | **R16 `pending-revision`** (Fable 5 consulted). PATCH **0.15.1** must lock M-24 (verify[] write path CLI-only, no MCP set_purpose write) + M-25 (`loom verify` verbatim print + confirm-on-change gate) into Failure/security locks, then **author-close** allowed (no R16b). **Do not implement** until 0.15.1 locks land. |
-| **Fable 5 when** | **Required** — new product surface (purpose object, handoff contracts, receive-path behavior). |
-| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — post-P2 purpose loop |
+| **Approval** | **author-close** after R16 Decision notes (PATCH locks, no R16b). Provenance: R16 + 0.15.1. **Implement under 0.15.1.** |
+| **Fable 5 when** | R16 closed via PATCH. Re-R{n} only if implement exceeds locks. |
+| **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — purpose loop |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
 | **Naming** | **Loom** = product. **Fable 5 / fable-advisor** = review agent (not the product). |
@@ -49,7 +49,20 @@
 
 ### Changelog
 
-#### 0.15.0 — 2026-07-10 (`pending-review` — **Purpose-based sprint 1**)
+#### 0.15.1 — 2026-07-10 (`approved` — **author-close**, R16 M-24/M-25 locks)
+
+**Why:** R16 `pending-revision` — verify[] exec trust boundary. PLAN-text locks only; no architecture change. **No R16b.**
+
+| Finding | Lock (now in Failure/security locks) |
+|---------|--------------------------------------|
+| **M-24** | MCP `set_purpose` **must reject** create/modify of `verify[]` with **explicit error** (no silent drop). `verify[]` writable **only** via CLI `loom purpose set` (agent harness exec-permission stays on the only path that plants recipes). Remove “owner-controlled” wording for verify. |
+| **M-25** | `loom verify` **prints full command list verbatim** before run. If `verify[]` hash ≠ last-acknowledged hash under `loomDir()`, require **TTY confirm** or explicit **`--yes`** (still echoes). Never silently run unacknowledged recipe. |
+
+Also: L-30 last-writer-wins residual accepted (like board); `updatedByPeerId` OK.
+
+**Approved by:** plan author after R16 Decision notes (author-close). **Implement next.**
+
+#### 0.15.0 — 2026-07-10 (`superseded` by 0.15.1; was `pending-revision` — **Purpose-based sprint 1**)
 
 **Why:** Loom exists for **purpose-based multiplayer development** (agents + humans aligned on a stated goal). P0–P2 shipped connect/handoff/durable queue, but work is still **task-shaped** (raw handoff text + board todos) without a **room-scoped purpose**, **intent contracts**, or a **receive path that starts execution**. Dogfood showed: handoff arrives, Claude/Codex UI stays empty until a human pastes or the agent happens to `check_handoffs`.
 
@@ -66,7 +79,7 @@
 | CLI `loom purpose show \| set \| clear` | Human/agent can read/write purpose without editing JSON by hand |
 | Schema v1 (below) | Stable fields for tools + docs |
 | Optional attach on handoff: `--with-purpose` | Receivers see purpose without separate fetch |
-| MCP `get_purpose` / `set_purpose` (or fold into get_context_pack later — prefer **dedicated tools** for clarity) | Agents pull purpose without CLI |
+| MCP `get_purpose` / `set_purpose` (**M-24:** set cannot write `verify[]`) | Agents pull purpose; cannot plant recipes via MCP |
 | **Handoff intent tags** (convention + light parse) | `[GOAL]` `[R-REQUEST]` `[R-RESULT]` `[VERIFY]` `[DONE]` prefixes documented + helper to detect |
 | Optional structured fields on handoff body header lines | `intent:` `goalId:` `round:` as first-line metadata (still body text — no wire change) |
 | **Receive path (run start)** | On `loom run *`: after join, print pending inbox count + **force system/agent hint**: “NOW call check_handoffs; claim [R-REQUEST]/[GOAL]” |
@@ -137,44 +150,47 @@ Detection helper in `@loom/protocol` or host: `parseHandoffContract(body) → { 
 | Changing claim first-wins or durable inbox | Orthogonal (0.14 done) |
 | Desktop UI purpose tab | Later; CLI/MCP first |
 
-##### Security / failure locks (for R16)
+##### Security / failure locks (authoritative — **0.15.1**)
 
 | Case | Required behavior |
 |------|-------------------|
 | Purpose strings | Same sanitize as peer text before store/display |
 | Path | Only under `loomDir()/purposes/`; hash roomId filename |
 | Corrupt purpose file | backup `.corrupt-*` + throw/empty with error (board pattern) — **not** silent empty success |
-| `set_purpose` / CLI set | No privilege escalation; any room member on same UID can write (document residual like board) |
-| `verify` commands | **No shell=true freeform eval of remote handoff**; only run **local purpose.verify[]** already on disk (owner-controlled). Handoff must not inject verify argv. |
+| Purpose fields (non-verify) | Same-UID room peers may write purpose/successCriteria/outOfScope/notes via CLI or MCP (board-class residual; document) |
+| **M-24** `verify[]` write path | **MCP `set_purpose` MUST reject** any request that creates or modifies `verify[]` with an **explicit error** (not silent drop). **`verify[]` writable only via CLI** `loom purpose set` (and related CLI-only paths). Do **not** call this “owner-controlled” — gate is **CLI vs MCP**, not peer role. |
+| **M-25** `loom verify` run gate | Before executing: **print every command verbatim**. Compute hash of `verify[]`; if ≠ last-ack hash stored under `loomDir()` (e.g. `purposes/<id>.verify-ack`), require **interactive TTY confirm** or **`--yes`** (still prints list). Persist ack hash only after successful confirm/`--yes`. Never silent unacknowledged run. |
+| `verify` execution | Run only **local disk** `purpose.verify[]` via controlled spawn (no remote handoff argv injection; no freeform `shell: true` of handoff body) |
 | Untrusted handoff | Tags do not skip untrusted banner |
-| MCP set_purpose | Still untrusted if agent compromised — residual accepted local-first |
+| L-30 multi-profile | last-writer-wins on purpose file — accepted residual like board; `updatedByPeerId` optional |
 
-##### Acceptance (implement after R16 approved)
+##### Acceptance (implement under 0.15.1)
 
 1. `loom purpose set "…"` then `show` round-trips; file 0600 under purposes/.  
 2. `loom handoff @x "…" --with-purpose` includes purpose summary in attachments or body section.  
 3. `loom run shell` (or mock) after queued `[R-REQUEST]` prints pending inbox banner.  
 4. System hint text contains check_handoffs/claim contract (unit string test).  
 5. `parseHandoffContract("[R-REQUEST] …")` detects tag.  
-6. `loom verify` with `verify: ["bun test"]` runs and exits non-zero on fail (or skip if recipe empty).  
-7. `bun test` green; no protocol version bump required.  
-8. Docs: USER_GUIDE + DOGFOOD_LOOP boot prompt committed.
+6. `loom verify` with `verify: ["bun test"]` prints commands; first run needs confirm/`--yes`; exits non-zero on fail (or skip if recipe empty).  
+7. MCP `set_purpose` with `verify` field → **error** (M-24).  
+8. `bun test` green; no protocol version bump required.  
+9. Docs: USER_GUIDE + DOGFOOD_LOOP boot prompt committed.
 
-##### Implementation sketch (not approved work)
+##### Implementation sketch (approved under 0.15.1)
 
 | Area | Touch |
 |------|--------|
-| `packages/host/src/purpose.ts` (+ test) | load/save/schema |
-| `packages/cli` purpose + verify + run banner | |
+| `packages/host/src/purpose.ts` (+ test) | load/save/schema; verify ack hash; CLI vs MCP set |
+| `packages/cli` purpose + verify + run banner | M-25 gate |
 | `packages/adapters/src/hints.ts` | receive contract |
-| `packages/mcp-server` | get_purpose, set_purpose |
+| `packages/mcp-server` | get_purpose; set_purpose **rejects verify[]** |
 | `packages/protocol` (optional) | parseHandoffContract |
 | `docs/DOGFOOD_LOOP.md`, `scripts/dogfood-reviewer-boot.txt` | |
 | VERSION | bump on implement ship |
 
 **Unknowns:** `docs/UNKNOWNS.md` §0.15.0.
 
-**Not implemented.** Awaiting **R16**.
+**Implemented as of 0.15.1** (purpose.ts, CLI purpose/verify, MCP get/set_purpose M-24, verify M-25, hints receive path).
 
 #### 0.14.2 — 2026-07-10 (`superseded` by 0.15.0; was `approved` — **author-close**, P2 durable security harden)
 
@@ -1532,5 +1548,8 @@ Tauri UI (done through 0.12.x); optional live relay board later (P3).
 | Plan author | implementation | **0.14.1** P2 durable relay (persist + M-21/22/23) | 2026-07-10 | **0.14.1** |
 | Plan author | implementation | **0.14.2** durable symlink/fail-closed harden | 2026-07-10 | **0.14.2** |
 | Plan author | plan | **0.15.0** Purpose-based sprint 1 MINOR draft | 2026-07-10 | **0.15.0** `pending-review` |
+| Reviewer | Claude + Fable 5 | **R16 pending-revision** (M-24/M-25) | 2026-07-10 | 0.15.0 reviewed |
+| Plan author | plan | **0.15.1** R16 locks — **author-close** (no R16b) | 2026-07-10 | **0.15.1** `approved` |
+| Plan author | implementation | **0.15.1** purpose + receive path + verify lite | 2026-07-10 | **0.15.1** |
 
-**구현 게이트:** code **0.14.2**. PLAN **0.15.0** `pending-review` — **no implement until R16 approved**.
+**구현 게이트:** PLAN + code **0.15.1**.

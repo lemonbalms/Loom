@@ -47,6 +47,14 @@ import {
   parseBoardSnapshot,
   snapshotFromAttachments,
   resolveHandoffEntryIndex,
+  loadPurpose,
+  setPurpose,
+  clearPurpose,
+  formatPurpose,
+  purposeAsAttachment,
+  hashVerifyList,
+  readVerifyAck,
+  writeVerifyAck,
   SLASH_HELP,
 } from "@loom/host";
 import {
@@ -57,6 +65,7 @@ import {
   sanitizePeerName,
   sanitizePeerText,
   resolveRelayEndpoint,
+  parseHandoffContract,
 } from "@loom/protocol";
 import {
   getAdapter,
@@ -75,7 +84,7 @@ import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import { openSync, closeSync, writeSync, readSync, existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.14.2";
+const VERSION = "0.15.1";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -121,6 +130,7 @@ const BOOLEAN_FLAGS = new Set([
   "with-pack",
   "with-pack-embed",
   "with-board",
+  "with-purpose",
   "board",
   "task",
   "yes",
@@ -139,6 +149,8 @@ Usage:
   loom room leave
   loom peers | chat | handoff | inbox | listen | run | status | agents
   loom pack show | set | add | remove | note | clear   # room context pack
+  loom purpose show | set | clear   # room purpose card (0.15)
+  loom verify [--yes]               # run purpose.verify[] (M-25 gate)
   loom board | board add|set|assign|note|rm|clear-done|export|import
   loom host start | stop | status   # sticky long-lived relay connection
   loom run shell                    # Loom shell REPL (session online)
@@ -155,7 +167,9 @@ Usage:
   --with-pack           Attach local context pack to handoff (paths/notes)
   --with-pack-embed     Pack + L-5 file body embed (re-resolve allowlist at send)
   --with-board          Attach board snapshot to handoff (multi-machine share)
+  --with-purpose        Attach local room purpose card to handoff
   --board               After handoff, also create a board task (or mode=task)
+  --yes                 loom verify: skip TTY confirm after printing commands
   --write-user-config   Opt-in: MCP into ~/.codex or ~/.grok
   --profile <name>      Session file isolation (~/.loom/profiles/<name>.json)
   --insecure-open       Relay only: allow non-loopback bind without token (H-5)
@@ -463,9 +477,21 @@ async function cmdHandoff(
   const withPackEmbed = Boolean(flags["with-pack-embed"]);
   const withPack = Boolean(flags["with-pack"]) || withPackEmbed;
   const withBoard = Boolean(flags["with-board"]);
+  const withPurpose = Boolean(flags["with-purpose"]);
   const mode = flags.task || flags.mode === "task" ? "task" : "message";
   // --board / mode=task → create linked task; --with-board → attach snapshot
   const createTask = Boolean(flags.board) || mode === "task";
+  let attachments: import("@loom/protocol").HandoffAttachment[] | undefined;
+  if (withPurpose) {
+    try {
+      const p = loadPurpose();
+      if (p && p.purpose) {
+        attachments = [purposeAsAttachment(p)];
+      }
+    } catch {
+      /* */
+    }
+  }
   const ack = await opsHandoff({
     to,
     body: sanitizePeerText(body),
@@ -473,6 +499,7 @@ async function cmdHandoff(
     withPackEmbed,
     withBoard,
     mode,
+    attachments,
   });
   viaNote(ack.source);
   console.log(
@@ -487,6 +514,13 @@ async function cmdHandoff(
   } else if (withPack) console.log("(pack empty — nothing attached)");
   if (ack.boardAttached) console.log("(board snapshot attached)");
   else if (withBoard) console.log("(board empty — nothing attached)");
+  if (withPurpose) {
+    console.log(
+      attachments?.length
+        ? "(purpose card attached)"
+        : "(purpose empty — nothing attached)",
+    );
+  }
   if (ack.message) console.log(ack.message);
   if (createTask && ack.handoffId && ack.status !== "peer_unknown") {
     try {
@@ -505,6 +539,139 @@ async function cmdHandoff(
     }
   }
   process.exit(0);
+}
+
+async function cmdPurpose(
+  sub: string | undefined,
+  rest: string[],
+  flags: Record<string, string | boolean>,
+) {
+  if (!loadSession()) {
+    console.error("No session. Create or join a room first.");
+    process.exit(1);
+  }
+  const action = sub || "show";
+  try {
+    if (action === "show" || action === "list") {
+      const p = loadPurpose();
+      if (!p || !p.purpose) {
+        console.log("No purpose set. Use: loom purpose set \"one-line purpose\"");
+        return;
+      }
+      console.log(formatPurpose(p));
+      return;
+    }
+    if (action === "clear") {
+      clearPurpose();
+      console.log("Purpose cleared (empty card written).");
+      return;
+    }
+    if (action === "set") {
+      // loom purpose set "text" [--verify "cmd1" --verify "cmd2"] via rest + flags
+      const purposeText =
+        rest.length > 0
+          ? rest.join(" ")
+          : typeof flags.purpose === "string"
+            ? flags.purpose
+            : "";
+      if (!purposeText && flags.verify === undefined) {
+        console.error(
+          'Usage: loom purpose set "one-line purpose" [--verify "bun test"]',
+        );
+        process.exit(1);
+      }
+      // Collect verify from repeated --verify= or single string
+      let verify: string[] | undefined;
+      if (typeof flags.verify === "string") {
+        verify = [flags.verify];
+      }
+      // Also accept --success / freeform later; keep minimal
+      const p = setPurpose({
+        purpose: purposeText || undefined,
+        verify,
+        allowVerify: true, // M-24: CLI only
+      });
+      console.log(formatPurpose(p));
+      return;
+    }
+    console.error("Usage: loom purpose show|set|clear");
+    process.exit(1);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+}
+
+/**
+ * M-25: print verify[] verbatim; require ack hash match or TTY/--yes.
+ */
+async function cmdVerify(flags: Record<string, string | boolean>) {
+  if (!loadSession()) {
+    console.error("No session. Create or join a room first.");
+    process.exit(1);
+  }
+  const session = loadSession()!;
+  let p;
+  try {
+    p = loadPurpose();
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+  if (!p || p.verify.length === 0) {
+    console.log("No verify recipes on purpose (empty). Nothing to run.");
+    process.exit(0);
+  }
+  console.log("Commands to run (purpose.verify[]):");
+  for (const c of p.verify) {
+    console.log(`  $ ${c}`);
+  }
+  const hash = hashVerifyList(p.verify);
+  const prev = readVerifyAck(session.roomId);
+  const forceYes = Boolean(flags.yes || flags.y);
+  if (prev !== hash) {
+    if (!forceYes) {
+      if (!process.stdin.isTTY) {
+        console.error(
+          "verify[] changed or not yet acknowledged. Re-run with --yes after reviewing the list above (M-25).",
+        );
+        process.exit(2);
+      }
+      process.stdout.write("Run these commands? [y/N] ");
+      const answer = await new Promise<string>((resolve) => {
+        const chunks: Buffer[] = [];
+        process.stdin.once("data", (d) => {
+          chunks.push(Buffer.from(d));
+          resolve(Buffer.concat(chunks).toString("utf8"));
+        });
+      });
+      if (!/^y(es)?$/i.test(answer.trim())) {
+        console.error("Aborted.");
+        process.exit(1);
+      }
+    }
+    writeVerifyAck(session.roomId, hash);
+  } else if (forceYes) {
+    console.log("(recipe already acknowledged; --yes noted)");
+  }
+
+  let failed = 0;
+  for (const cmd of p.verify) {
+    console.log(`\n→ ${cmd}`);
+    const r = spawnSync(cmd, {
+      shell: true,
+      cwd: process.cwd(),
+      stdio: "inherit",
+      env: process.env,
+    });
+    const code = r.status ?? 1;
+    if (code !== 0) {
+      console.error(`Command failed (exit ${code}): ${cmd}`);
+      failed = code || 1;
+      break;
+    }
+  }
+  process.exit(failed);
 }
 
 async function cmdBoard(
@@ -1354,13 +1521,21 @@ async function cmdRun(
     });
   }
 
-  // Drain any queued handoffs into stderr on start
+  // Drain any queued handoffs into stderr on start (receive path 0.15)
   try {
     const pending = await client.listInbox();
     if (pending.length > 0) {
       eprint(
-        `\x1b[33m${pending.length} handoff(s) waiting in inbox\x1b[0m\n`,
+        `\x1b[33m${pending.length} handoff(s) waiting in inbox — call check_handoffs / claim\x1b[0m\n`,
       );
+      for (const e of pending.slice(0, 8)) {
+        const c = parseHandoffContract(e.handoff.body);
+        const tag =
+          c.tags.length > 0 ? ` [${c.tags.join(",")}]` : "";
+        eprint(
+          `  ${e.handoff.id}${tag}  ${e.handoff.body.slice(0, 72).replace(/\n/g, " ")}\n`,
+        );
+      }
       eprint(renderInbox(pending) + "\n\n");
     }
   } catch {
@@ -1881,6 +2056,14 @@ async function main() {
   }
   if (cmd === "pack") {
     await cmdPack(sub, rest, flags);
+    return;
+  }
+  if (cmd === "purpose") {
+    await cmdPurpose(sub, rest, flags);
+    return;
+  }
+  if (cmd === "verify") {
+    await cmdVerify(flags);
     return;
   }
   if (cmd === "board" || cmd === "tasks") {

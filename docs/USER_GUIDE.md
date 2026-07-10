@@ -158,6 +158,22 @@ bun run loom --profile alice inbox accept ho_…
 - 로스터에 offline으로 있어도 **인박스에 큐잉**  
 - 이게 Loom의 핵심 가치 (“오프라인이어도 유실 없음”)
 
+### 목적 (Purpose) — 0.15+
+
+방 단위로 “왜 하는가 / 성공 기준 / 비목표 / verify 레시피”를 둡니다.
+
+```bash
+bun run loom purpose set "Ship purpose-based multiplayer loop"
+bun run loom purpose set "…" --verify "bun test"
+bun run loom purpose show
+bun run loom verify --yes    # prints commands; --yes after first review (M-25)
+bun run loom handoff @peer "[GOAL] align on purpose" --with-purpose
+```
+
+- `verify[]` 는 **CLI만** 기록 가능 (MCP `set_purpose` 거부 — M-24)  
+- 태그: `[GOAL]` `[R-REQUEST]` `[R-RESULT]` `[VERIFY]` `[DONE]`  
+- `loom run *` 시작 시 pending inbox 배너 + agent hint 에 check_handoffs 강제  
+
 ### 내구성 (0.14+)
 
 기본 relay는 room meta · roster(+peerSecret) · pending inbox(`queued`|`notified`)를 디스크에 둡니다.
