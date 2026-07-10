@@ -414,7 +414,7 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 | 보드 multi-machine live | 스냅샷만 (CRDT 없음) |
 | 전역 `loom` PATH | 기본 미설치 — `bun run loom` 또는 `bun run link:loom` (0.13.3) |
 | PTY inject | 제품 비목표 (스파이크 no-go) |
-| Bun TTY / `loom run claude` | kqueue fixed **0.13.12** (script PTY); resize fixed **0.13.13** (python pty SIGWINCH) |
+| Bun TTY / `loom run claude` | kqueue **0.13.12**; resize **0.13.14** (python pty + winsize poll) — Owner confirmed OK |
 
 ---
 
