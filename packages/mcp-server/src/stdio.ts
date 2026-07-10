@@ -37,7 +37,7 @@ const TOOLS = [
   {
     name: "handoff",
     description:
-      "Send a message/task to another peer (@name, id, or *). Works even if target is offline (queued in their inbox). Returns status queued|delivered|peer_unknown. Optional withPack attaches local room context pack (summary/paths/notes).",
+      "Send a message/task to another peer (@name, id, or *). Works even if target is offline (queued in their inbox). Returns status queued|delivered|peer_unknown. Optional withPack attaches local room context pack (summary/paths/notes). withPackEmbed also embeds file bodies (L-5; re-resolves allowlist at send).",
     inputSchema: {
       type: "object",
       properties: {
@@ -53,6 +53,11 @@ const TOOLS = [
         withPack: {
           type: "boolean",
           description: "Attach local context pack as handoff attachments",
+        },
+        withPackEmbed: {
+          type: "boolean",
+          description:
+            "L-5: embed file bodies for pack paths (implies withPack; allowlist re-checked at send)",
         },
         withBoard: {
           type: "boolean",
@@ -207,7 +212,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.12.2" },
+        serverInfo: { name: "loom", version: "0.13.0" },
       });
       return;
     case "notifications/initialized":
@@ -229,7 +234,8 @@ async function handle(req: JsonRpcReq) {
               to: String(args.to ?? "*"),
               body: String(args.body ?? ""),
               mode: args.mode === "task" ? "task" : "message",
-              withPack: Boolean(args.withPack),
+              withPack: Boolean(args.withPack || args.withPackEmbed),
+              withPackEmbed: Boolean(args.withPackEmbed),
               withBoard: Boolean(args.withBoard),
               trackBoard:
                 args.trackBoard === undefined

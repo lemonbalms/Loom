@@ -8,7 +8,7 @@ export function loomSystemHint(agentLabel: string): string {
     "",
     "Loom tools (prefer MCP when available; else ask the user to run loom CLI):",
     "- list_peers — who is online/offline",
-    "- handoff — send work to @name/id/*; withPack; withBoard (snapshot share); mode=task or trackBoard creates a local task",
+    "- handoff — send work to @name/id/*; withPack; withPackEmbed (L-5 file bodies); withBoard (snapshot share); mode=task or trackBoard creates a local task",
     "- get_context_pack — read local room summary/paths/notes",
     "- list_tasks / add_task / update_task — local room task board (todo|doing|done|blocked|cancelled)",
     "- export_board / import_board — portable board snapshot (multi-machine; not live sync)",

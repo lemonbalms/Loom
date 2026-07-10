@@ -42,6 +42,8 @@ export async function toolHandoff(args: {
   body: string;
   mode?: "message" | "task";
   withPack?: boolean;
+  /** L-5: embed pack file bodies (implies withPack) */
+  withPackEmbed?: boolean;
   withBoard?: boolean;
   /** Create/link a board task for this handoff */
   trackBoard?: boolean;
@@ -53,10 +55,15 @@ export async function toolHandoff(args: {
   recipientCount: number;
   via?: string;
   packAttached?: boolean;
+  packEmbedded?: boolean;
   boardAttached?: boolean;
   taskId?: string;
 }> {
-  const ack = await opsHandoff(args);
+  const ack = await opsHandoff({
+    ...args,
+    withPack: Boolean(args.withPack || args.withPackEmbed),
+    withPackEmbed: Boolean(args.withPackEmbed),
+  });
   let taskId: string | undefined;
   const track =
     args.trackBoard || args.mode === "task";
@@ -87,6 +94,7 @@ export async function toolHandoff(args: {
     recipientCount: ack.recipientCount,
     via: ack.source,
     packAttached: ack.packAttached,
+    packEmbedded: ack.packEmbedded,
     boardAttached: ack.boardAttached,
     taskId,
   };

@@ -102,6 +102,11 @@ export async function opsHandoff(args: {
   mode?: "message" | "task";
   /** Attach local room context pack as handoff attachments */
   withPack?: boolean;
+  /**
+   * L-5: also embed file bodies for pack paths (implies withPack).
+   * Re-resolves allowlist at attach time (TOCTOU-safe skip).
+   */
+  withPackEmbed?: boolean;
   /** Attach local task board snapshot (multi-machine share, not live sync) */
   withBoard?: boolean;
   attachments?: HandoffAttachment[];
@@ -114,18 +119,26 @@ export async function opsHandoff(args: {
   message?: string;
   source: RoomOpsSource;
   packAttached?: boolean;
+  packEmbedded?: boolean;
   boardAttached?: boolean;
 }> {
   const body = sanitizePeerText(args.body);
   let attachments = args.attachments;
   let packAttached = false;
+  let packEmbedded = false;
   let boardAttached = false;
-  if (args.withPack) {
+  const wantPack = Boolean(args.withPack || args.withPackEmbed);
+  if (wantPack) {
     const pack = loadContextPack();
     if (pack && !packIsEmpty(pack)) {
-      const packAtt = packToAttachments(pack);
+      const packAtt = packToAttachments(pack, {
+        embedFiles: Boolean(args.withPackEmbed),
+      });
       attachments = [...(attachments ?? []), ...packAtt];
       packAttached = packAtt.length > 0;
+      packEmbedded =
+        Boolean(args.withPackEmbed) &&
+        packAtt.some((a) => a.label?.startsWith("context-pack-file:"));
     }
   }
   if (args.withBoard) {
@@ -154,6 +167,7 @@ export async function opsHandoff(args: {
       message: host.message,
       source: "host",
       packAttached,
+      packEmbedded,
       boardAttached,
     };
   }
@@ -174,6 +188,7 @@ export async function opsHandoff(args: {
       message: ack.message,
       source: "oneshot",
       packAttached,
+      packEmbedded,
       boardAttached,
     };
   } finally {

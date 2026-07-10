@@ -3,9 +3,9 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.12.2** |
-| **Status** | **`approved`** — desktop Send handoff/chat + invite display |
-| **Supersedes** | 0.12.1 |
+| **Version** | **0.13.0** |
+| **Status** | **`approved`** — L-5 opt-in pack file-body embed (TOCTOU re-resolve) |
+| **Supersedes** | 0.12.2 |
 | **Last updated** | 2026-07-10 |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -46,7 +46,24 @@
 
 ### Changelog
 
-#### 0.12.2 — 2026-07-10 (`approved`)
+#### 0.13.0 — 2026-07-10 (`approved`)
+
+**Why:** Close backlog **L-5** with **opt-in** pack file-body embed — re-resolve allowlist at **send/read** time (TOCTOU).
+
+| What | Why |
+|------|-----|
+| `packToAttachments({ embedFiles })` + `embedPackFileBodies` | L-5: re-check path under cwd allow root before read |
+| CLI `--with-pack-embed` (implies pack attach) | Explicit opt-in; default paths-only unchanged |
+| MCP `withPackEmbed` | Agent parity |
+| Caps: 8 files, 64k chars/file, skip binary/dirs/oversized | Keep handoffs bounded |
+| Host tips use `bun run loom host …` | UX (PATH without global bin) |
+| VERSION **0.13.0** | MINOR: new attach surface |
+
+Default `--with-pack` still **paths/notes only**. Receivers treat path attachments as metadata (not auto-open FS).
+
+No full re-review required (Low backlog L-5; security-conservative caps + re-resolve).
+
+#### 0.12.2 — 2026-07-10 (`superseded` by 0.13.0; was `approved`)
 
 **Why:** Desktop can **send** handoffs/chat (not only receive); show invite code for share.
 
@@ -950,7 +967,7 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | ID | Item |
 |----|------|
 | L-4 | RelayClient wire-level `requestId` correlation (FIFO waiters done in 0.9.4; optional beyond sticky serialize) |
-| L-5 | v2 pack file-body embed: re-resolve allowlist at read time (v1 remains paths-only) |
+| L-5 | ~~v2 pack file-body embed~~ | **done 0.13.0** (`--with-pack-embed` / `withPackEmbed`) |
 | M4.3b | Tauri desktop shell — **0.11.1 approved**; implement next (Board deferred M-18 C) |
 
 ---
@@ -1019,5 +1036,6 @@ Tauri UI (requires Rust/cargo); optional live relay board later.
 | Plan author | implementation | **0.12.0** sticky board + desktop Board + smoke | 2026-07-10 | **0.12.0** |
 | Plan author | implementation | **0.12.1** desktop polish + PITCH sync | 2026-07-10 | **0.12.1** |
 | Plan author | implementation | **0.12.2** desktop Send handoff/chat + invite | 2026-07-10 | **0.12.2** |
+| Plan author | implementation | **0.13.0** L-5 pack file embed opt-in | 2026-07-10 | **0.13.0** |
 
-**구현 게이트:** **0.12.2** desktop full loop (send/receive/board). Next: L-5 embed when needed / Owner.
+**구현 게이트:** **0.13.0** L-5 closed. Next: L-4 residual requestId / Owner.

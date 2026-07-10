@@ -11,12 +11,14 @@
 import {
   existsSync,
   realpathSync,
+  readFileSync,
   statSync,
 } from "node:fs";
 import { join, relative, resolve, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 import {
   sanitizePeerText,
+  MAX_ATTACHMENT_CONTENT_CHARS,
   type HandoffAttachment,
 } from "@loom/protocol";
 import { loadSession, loomDir } from "./session-store";
@@ -48,6 +50,15 @@ const MAX_SUMMARY = 2000;
 const MAX_NOTE = 500;
 const MAX_NOTES = 40;
 const MAX_PATHS = 50;
+/** L-5 embed: max files to body-embed per handoff */
+export const MAX_PACK_EMBED_FILES = 8;
+/** L-5 embed: max chars per file (≤ protocol attachment cap) */
+export const MAX_PACK_EMBED_FILE_CHARS = Math.min(
+  64_000,
+  MAX_ATTACHMENT_CONTENT_CHARS,
+);
+/** Skip embed if raw size exceeds this (bytes) before reading fully */
+const MAX_PACK_EMBED_FILE_BYTES = 128_000;
 
 function packsDir(): string {
   return join(loomDir(), "packs");
@@ -264,8 +275,25 @@ export function formatContextPack(pack: ContextPack): string {
   return lines.join("\n");
 }
 
-/** Build handoff attachments from pack (summary + paths + notes). No file body embed. */
-export function packToAttachments(pack: ContextPack): HandoffAttachment[] {
+export type PackToAttachmentsOpts = {
+  /**
+   * L-5: embed file bodies for allowlisted **files** (not dirs).
+   * Paths are **re-resolved** at read time (TOCTOU) — escaped/missing paths are skipped.
+   */
+  embedFiles?: boolean;
+  /** Allow root for re-resolve (default: process.cwd()) */
+  cwd?: string;
+};
+
+/**
+ * Build handoff attachments from pack (summary + paths + notes).
+ * Optional L-5 file-body embed via `embedFiles` (opt-in only).
+ * Receivers must still treat path attachments as **display metadata**, not auto-open FS paths.
+ */
+export function packToAttachments(
+  pack: ContextPack,
+  opts?: PackToAttachmentsOpts,
+): HandoffAttachment[] {
   const out: HandoffAttachment[] = [];
   if (pack.summary.trim()) {
     out.push({
@@ -291,6 +319,48 @@ export function packToAttachments(pack: ContextPack): HandoffAttachment[] {
       label: "context-pack-notes",
       content: sanitizePeerText(pack.notes.map((n) => `• ${n}`).join("\n")),
     });
+  }
+  if (opts?.embedFiles) {
+    out.push(...embedPackFileBodies(pack, opts.cwd));
+  }
+  return out;
+}
+
+/**
+ * L-5: re-resolve each pack path against allowlist at **read** time, then attach body.
+ * Skips: outside allow root, missing, directories, oversized, binary (NUL bytes).
+ */
+export function embedPackFileBodies(
+  pack: ContextPack,
+  cwd?: string,
+): HandoffAttachment[] {
+  const out: HandoffAttachment[] = [];
+  for (const p of pack.paths) {
+    if (out.length >= MAX_PACK_EMBED_FILES) break;
+    // TOCTOU: re-check allowlist now (not when path was added to pack)
+    const resolved = resolveAllowlistedPath(p.path, cwd);
+    if (!resolved.ok) continue;
+    try {
+      const st = statSync(resolved.abs);
+      if (!st.isFile()) continue;
+      if (st.size > MAX_PACK_EMBED_FILE_BYTES) continue;
+      const buf = readFileSync(resolved.abs);
+      if (buf.includes(0)) continue; // binary
+      let text = buf.toString("utf8");
+      if (text.length > MAX_PACK_EMBED_FILE_CHARS) {
+        text =
+          text.slice(0, MAX_PACK_EMBED_FILE_CHARS) +
+          "\n…[truncated for pack embed]";
+      }
+      const rel = sanitizePeerText(p.path).slice(0, 120);
+      out.push({
+        kind: "text",
+        label: `context-pack-file:${rel}`,
+        content: sanitizePeerText(text).slice(0, MAX_ATTACHMENT_CONTENT_CHARS),
+      });
+    } catch {
+      /* skip unreadable */
+    }
   }
   return out;
 }

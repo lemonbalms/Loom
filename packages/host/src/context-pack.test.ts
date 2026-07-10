@@ -127,6 +127,31 @@ describe("context pack", () => {
       att.some((a) => a.label === "context-pack-path:docs"),
     ).toBe(true);
     expect(att.some((a) => a.label === "context-pack-notes")).toBe(true);
+    expect(att.some((a) => a.label?.startsWith("context-pack-file:"))).toBe(
+      false,
+    );
+  });
+
+  test("L-5 pack embed re-resolves and embeds file body", () => {
+    setPackSummary("embed me");
+    addPackPath("readme.md");
+    const pack = loadContextPack()!;
+    const att = packToAttachments(pack, { embedFiles: true, cwd: workspace });
+    const fileAtt = att.find((a) => a.label === "context-pack-file:readme.md");
+    expect(fileAtt).toBeTruthy();
+    expect(fileAtt!.kind).toBe("text");
+    expect(fileAtt!.content).toContain("# hi");
+  });
+
+  test("L-5 embed skips path that escapes allowlist after pack add", () => {
+    addPackPath("readme.md");
+    const pack = loadContextPack()!;
+    // Mutate pack path to absolute outside workspace without re-add
+    pack.paths = [{ path: "/etc/passwd" }];
+    const att = packToAttachments(pack, { embedFiles: true, cwd: workspace });
+    expect(att.some((a) => a.label?.startsWith("context-pack-file:"))).toBe(
+      false,
+    );
   });
 
   test("pack path file location is under packs dir", () => {

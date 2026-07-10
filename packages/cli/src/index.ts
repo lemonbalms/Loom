@@ -73,7 +73,7 @@ import {
 import { spawn } from "bun";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.12.2";
+const VERSION = "0.13.0";
 
 /** Flags that never take a value (must not swallow following positionals). */
 const BOOLEAN_FLAGS = new Set([
@@ -87,6 +87,7 @@ const BOOLEAN_FLAGS = new Set([
   "insecure-open",
   "show-token",
   "with-pack",
+  "with-pack-embed",
   "with-board",
   "board",
   "task",
@@ -115,7 +116,8 @@ Usage:
   --relay <url>         Remote/local relay (or LOOM_RELAY_URL). e.g. ws://host:7842
   --token <secret>      Shared secret (or LOOM_RELAY_TOKEN). Required if server set one.
   --show-token          Include --token in Share join hint (default: hidden)
-  --with-pack           Attach local context pack to handoff
+  --with-pack           Attach local context pack to handoff (paths/notes)
+  --with-pack-embed     Pack + L-5 file body embed (re-resolve allowlist at send)
   --with-board          Attach board snapshot to handoff (multi-machine share)
   --board               After handoff, also create a board task (or mode=task)
   --write-user-config   Opt-in: MCP into ~/.codex or ~/.grok
@@ -403,7 +405,8 @@ async function cmdHandoff(
   body: string,
   flags: Record<string, string | boolean> = {},
 ) {
-  const withPack = Boolean(flags["with-pack"]);
+  const withPackEmbed = Boolean(flags["with-pack-embed"]);
+  const withPack = Boolean(flags["with-pack"]) || withPackEmbed;
   const withBoard = Boolean(flags["with-board"]);
   const mode = flags.task || flags.mode === "task" ? "task" : "message";
   // --board / mode=task → create linked task; --with-board → attach snapshot
@@ -412,6 +415,7 @@ async function cmdHandoff(
     to,
     body: sanitizePeerText(body),
     withPack,
+    withPackEmbed,
     withBoard,
     mode,
   });
@@ -419,8 +423,13 @@ async function cmdHandoff(
   console.log(
     `handoff ${ack.status} → ${ack.to} (recipients=${ack.recipientCount}, notified=${ack.notified}, id=${ack.handoffId})`,
   );
-  if (ack.packAttached) console.log("(context pack attached)");
-  else if (withPack) console.log("(pack empty — nothing attached)");
+  if (ack.packAttached) {
+    console.log(
+      ack.packEmbedded
+        ? "(context pack attached + file bodies embedded)"
+        : "(context pack attached)",
+    );
+  } else if (withPack) console.log("(pack empty — nothing attached)");
   if (ack.boardAttached) console.log("(board snapshot attached)");
   else if (withBoard) console.log("(board empty — nothing attached)");
   if (ack.message) console.log(ack.message);
@@ -765,7 +774,8 @@ async function cmdHost(sub: string | undefined) {
     console.log(
       "CLI/MCP handoff·peers·inbox will use this host (peer stays online).",
     );
-    console.log("Stop with: loom host stop");
+    console.log("Stop with: bun run loom host stop");
+    console.log("(use the same --profile as start)");
     return;
   }
   if (sub === "stop") {
@@ -784,11 +794,13 @@ async function cmdHost(sub: string | undefined) {
         );
       }
     } else if (!resolveAliveHostMeta()) {
-      console.log("Tip: loom host start  — keep peer online without listen");
+      console.log(
+        "Tip: bun run loom host start  — keep peer online without listen",
+      );
     }
     return;
   }
-  console.error("Usage: loom host start|stop|status");
+  console.error("Usage: bun run loom host start|stop|status");
   process.exit(1);
 }
 

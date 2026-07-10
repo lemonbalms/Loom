@@ -15,7 +15,7 @@ On first reply of a new session: read this file + `docs/WORKFLOW.md` §0, then *
 
 ## One-line resume
 
-> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.12.2 approved** — desktop Send. 다음: L-5 / Owner.
+> `bun run status` 출력 후 사용자에게 세션 상태 알려줘. PLAN **0.13.0 approved** — L-5 pack embed. 다음: L-4 residual / Owner.
 
 ---
 
@@ -31,9 +31,9 @@ North star: *connect your agents — and your teammates.*
 
 | Item | Value |
 |------|--------|
-| **Product CLI** | `loom` v**0.12.2** |
+| **Product CLI** | `loom` v**0.13.0** |
 | **Packages** | `@loom/*` Bun monorepo + `apps/desktop` (send/receive/board) |
-| **PLAN SSOT** | `docs/PLAN.md` **v0.12.2** — status **`approved`** |
+| **PLAN SSOT** | `docs/PLAN.md` **v0.13.0** — status **`approved`** |
 | **Review gate** | Open blocking **none** |
 | **Workflow rules** | **`docs/WORKFLOW.md`** (§3.5 Unknowns) · **`docs/UNKNOWNS.md`** · session entry **`AGENTS.md`** |
 | **Status script** | `bun run status` |
@@ -58,7 +58,9 @@ North star: *connect your agents — and your teammates.*
 
 | Commit | Version | Summary |
 |--------|---------|---------|
+| (pending) | **0.13.0** | L-5 `--with-pack-embed` + host tip fix |
 | `fe416fb` | **0.12.2** | desktop Send handoff/chat + invite + smoke |
+| `719c226` | docs | USER_GUIDE scenarios |
 | `ef517ab` | **0.12.1** | desktop polish + PITCH 0.12 sync |
 | `3b983bd` | fix | desktop script: cd apps/desktop (no --manifest-path) |
 | `dea8407` | **0.12.0** | sticky board RPC + desktop Board + smoke:desktop |
@@ -104,10 +106,9 @@ Key files: `packages/protocol/src/env.ts`, `env.test.ts`, `packages/host/src/sla
 
 | Priority | Item | Notes |
 |----------|------|--------|
-| **Next** | L-5 / Owner | pack embed when needed; product priorities |
-| Doc | User guide | `docs/USER_GUIDE.md` — 시나리오 사용 가이드 |
-| Later | L-5 pack embed TOCTOU | When file-body embed ships |
-| Later | Wire `requestId` | Optional beyond L-4 FIFO |
+| **Next** | L-4 residual / Owner | wire requestId optional; product priorities |
+| Doc | User guide | `docs/USER_GUIDE.md` (incl. pack embed) |
+| Done | L-5 pack embed | **0.13.0** `--with-pack-embed` |
 
 ### 2. Smoke commands
 

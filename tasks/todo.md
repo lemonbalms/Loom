@@ -1,13 +1,13 @@
-# 0.12.2 — desktop Send
+# 0.13.0 — L-5 pack embed
 
-- [x] Rust send_handoff / send_chat
-- [x] Send tab + invite on Status
-- [x] smoke handoff/chat
-- [x] PLAN 0.12.2
+- [x] packToAttachments embedFiles + TOCTOU re-resolve
+- [x] CLI --with-pack-embed, MCP withPackEmbed
+- [x] tests + USER_GUIDE
+- [x] host tip: bun run loom
 
 ## Next
 
-- L-5 when pack embed ships
+- L-4 residual requestId (optional)
 - Owner features
 
-`bun run smoke:desktop` · `bun run desktop`
+`bun test` · `bun run loom handoff … --with-pack-embed`

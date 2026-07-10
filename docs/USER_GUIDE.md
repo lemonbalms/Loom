@@ -4,7 +4,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI / desktop **v0.12.2** 기준 |
+| **제품 버전** | CLI **v0.13.0** / desktop UI **v0.12.2** 기준 |
 | **관련** | [README](../README.md) · [ADAPTERS](./ADAPTERS.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 이 문서는 **지금까지 구현된 기능으로 실제로 할 수 있는 일**을 시나리오 중심으로 정리합니다.  
@@ -256,15 +256,19 @@ bun run loom --profile alice pack add ./src/auth.ts
 bun run loom --profile alice pack note "미들웨어 순서 주의"
 bun run loom --profile alice pack show
 
-# 핸드오프에 팩 첨부 (옵트인)
+# 핸드오프에 팩 첨부 (옵트인) — 경로/요약/노트만
 bun run loom --profile alice handoff @bob "이 컨텍스트로 이어서" --with-pack
+
+# L-5: 파일 본문까지 첨부 (cwd allowlist 재검증 후 읽기, 최대 8파일·64k chars/파일)
+bun run loom --profile alice handoff @bob "코드 스니펫 포함" --with-pack-embed
 ```
 
 ### 중요 규칙
 
 - 팩은 **roomId 단위 로컬 파일** (같은 OS 유저·같은 방이면 프로필 간 공유될 수 있음 — 의도된 room-scope).  
 - 첨부 **경로를 수신자가 자동으로 열지 않음** — 표시/메타데이터. 다른 머신의 로컬 경로일 수 있음.  
-- **파일 본문 embed는 아직 없음** (paths-only; L-5 예약).
+- **`--with-pack-embed`**: 허용 루트(보통 cwd) 안의 **파일**만 본문 첨부. 디렉터리·바이너리·너무 큰 파일·allowlist 밖 경로는 스킵.  
+- MCP: `handoff({ withPackEmbed: true })`.
 
 ---
 
@@ -469,7 +473,7 @@ bun run loom --profile codex-side run codex
 ```text
 bun run loom --profile <p> room create|join|leave
 bun run loom --profile <p> peers | status | chat "…"
-bun run loom --profile <p> handoff @name|id|* "body" [--with-pack] [--with-board] [--board]
+bun run loom --profile <p> handoff @name|id|* "body" [--with-pack] [--with-pack-embed] [--with-board] [--board]
 bun run loom --profile <p> inbox | inbox accept <id>
 bun run loom --profile <p> listen
 bun run loom --profile <p> host start|stop|status
@@ -503,7 +507,6 @@ bun test
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
-- 파일 **본문 embed** pack (paths-only; L-5)  
 - 보드 **실시간 멀티라이터 CRDT** / relay 영속 보드  
 - 에이전트 TUI **stdin 자동 주입**  
 - 클라우드 계정·멀티테넌시  
@@ -525,4 +528,4 @@ bun test
 
 ---
 
-*가이드 버전: 제품 **0.12.2** 기능 집합 기준. 기능이 늘면 이 문서의 사례 표를 갱신한다.*
+*가이드 버전: 제품 **0.13.0** 기능 집합 기준 (pack embed 포함). 기능이 늘면 이 문서의 사례 표를 갱신한다.*
