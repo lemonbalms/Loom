@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.18.0** |
-| **Status** | **`approved`** (R19) — Self-contained invite (portable join blob): one-command cross-machine join (MINOR). **M-1/M-2 binding on impl** |
-| **Supersedes** | 0.17.1 |
+| **Version** | **0.19.0** |
+| **Status** | **`approved`** (R20) — Tier A1: 5분 설치 경로 (install script `curl \| bash` + PATH 활성화 + `loomCmd` 문자열 스윕) (MINOR). **M-1…M-4 binding on impl** |
+| **Supersedes** | 0.18.0 |
 | **Last updated** | 2026-07-11 |
-| **Approval** | **R19 `approved`** (`docs/plan_review.md`) — with binding constraints M-1 (`loom://join/` prefix + bare-code shape check before blob decode) + M-2 (`invite --link` warn/refuse loopback); L-1/L-2 author-close after Low fixes. Implement allowed under 0.18.0. |
-| **Fable 5 when** | **Required** — new invite surface + relay token embedded in portable blob (security/trust boundary, H-5 interaction). |
+| **Approval** | **R20 `approved`** (`docs/plan_review.md`) — binding on impl: **M-1**(bin dir는 `bun pm bin -g`/`BUN_INSTALL`로 해석, `$HOME/.bun/bin` 하드코딩 금지), **M-2**(`exec $SHELL`는 curl\|bash에서 무효 → 안내 출력/`</dev/tty` tty-guard), **M-3**(`loomCmd` 열거형 스왑 — self-ref 노트 `index.ts:495/604`·실행 spawn `2350` 제외), **M-4**(Bun 설치 후 script PATH export). L-1..L-4 author-close. Implement allowed under 0.19.0. |
+| **Fable 5 when** | **Required** — 새 제품 표면(낯선 머신 first-run) + `curl \| bash` 신뢰 경계 (§5.1). |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -48,6 +48,43 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.19.0 — 2026-07-11 (`approved` R20 — **Tier A1: 5분 설치 경로 (install script)**)
+
+**Product one-liner:** 낯선 사람이 **한 줄**로 설치하고 5분 안에 방에 참여한다 — `curl -fsSL … | bash` → `loom room join <blob>`.
+
+**Why:** 전략 최우선(Tier A1, `docs/DOGFOOD_FEATURES.md` · `LOOM_PURPOSE_REVIEW` #1)은 "다른 머신의 실제 사람 ≥2명 태우기". 0.18.0이 join의 3-비밀 문제를 blob으로 해소했으나, **설치(get-`loom`-runnable) 반쪽**이 여전히 막혀 있다. 현 README 경로는 수동 실패점 4개(Bun 유무·clone·`link`·PATH export)이고 `scripts/link-loom.sh`는 PATH 안내만 **출력하고 종료** → 낯선 사람은 거기서 멈춘다(첫-5분 마찰). Fable 5 방향 자문(2026-07-11): **Option 1 설치 스크립트** 커밋(②는 스크립트 내부 fallback 텍스트, ③ 바이너리는 spawn 리팩터 선행+비목표라 유보). repo는 PUBLIC 확인(익명 클론 가능) — Option 1 성립 전제 충족.
+
+**What (범위):**
+| 항목 | 내용 |
+|------|------|
+| **`scripts/install.sh`** | `curl \| bash` 가능. (a) Bun 없으면 설치, (b) 고정 디렉토리로 clone/update, (c) `bun install`, (d) `bun link`(packages/cli), (e) **절대경로 `$HOME/.bun/bin/loom --version`로 검증**, (f) 사용자 shell rc에 PATH 라인 **멱등 append**, (g) 마지막에 `exec $SHELL` 후 `loom room join <blob>` 명시 |
+| **README 원라이너** | Quick start 최상단에 `curl -fsSL <raw-url> \| bash` 한 줄. 기존 A/B/C 표는 fallback으로 하단 유지(=Option 2 텍스트) |
+| **명령 접두 스윕** | share/next-step 문자열의 `bun run loom`을 설치 감지 시 `loom`으로 해석하는 단일 helper(`loomCmd`)로 통일. 설치 안 됐으면 `bun run loom` 유지(회귀 없음) — cli `index.ts` share 라인(478/479)·next 라인(492/601) 등 |
+
+**Security / trust (R{n} 필수 이유):**
+- **`curl \| bash` 신뢰 경계** — 스크립트는 사용자 홈 디렉토리·shell rc만 건드림(sudo 없음), PATH append는 멱등(중복 금지), clone는 고정 URL(`lemonbalms/Loom`). 원격 스크립트 실행은 명시적 raw URL로만 안내(핀 대상=브랜치 vs 태그는 Unknown).
+- **낯선 머신 first-run** = 새 제품 표면. Bun 설치 경로(공식 `bun.sh` installer 위임)의 신뢰 체인 명시.
+
+**Review impact:** 프로토콜 **와이어 변경 없음**, 제품 런타임 로직 변경 없음(설치/문서/문자열 표면만). 새 표면 + `curl\|bash` 신뢰 경계 → **R20 필수**.
+
+**Out of scope (이 버전 아님):**
+- Prebuilt binary / `bun compile`(유보 — spawn `import.meta.url` 리팩터 선행). npm/npx·Homebrew·서명 설치본·Windows 서비스(비목표 유지). VPS relay 배포(병렬 **ops** 트랙 — A1과 무결합; 단 2머신 수용 테스트는 양쪽 필요). 기본 share 라인 토큰 자동 삽입(0.18.0 불변).
+
+**Unknowns (§3.5, MINOR 권장 → `docs/UNKNOWNS.md`):**
+- **PATH 활성화(판정 리스크):** `curl\|bash`는 호출자 셸을 못 바꿈 → "done인데 command not found". 완화=절대경로 검증 + rc append + `exec $SHELL` 안내. 검증 방법 충분한가?
+- shell rc 감지 — bash/zsh/fish 중 어디에 append할지(멱등·다중 셸).
+- 고정 clone 디렉토리 선택 + 기존 디렉토리/repo 충돌 시 update vs 거부.
+- 재실행 멱등성(두 번 돌려도 안전).
+- `curl\|bash` 핀 — main 브랜치 vs 태그(공급망 신뢰).
+
+**Binding on impl (R20 M-1…M-4 locks):**
+- **M-1:** bin dir는 `bun pm bin -g`(또는 `${BUN_INSTALL:-$HOME/.bun}/bin`)로 해석 — verify(`loom --version`)·rc append 양쪽 동일 값. `$HOME/.bun/bin` 하드코딩 금지.
+- **M-2:** `exec $SHELL`를 마지막 실행 단계로 두지 말 것(`curl\|bash`는 stdin=파이프 → 즉시 EOF 종료). 안내로 출력하거나 tty 체크 후 `</dev/tty`로만 exec.
+- **M-3:** `loomCmd` 스윕은 문자열별 열거형 — self-ref fallback 노트(`index.ts:495,604`)와 **실행되는** spawnSync(`index.ts:2350`)는 제외(리터럴/절대경로 유지).
+- **M-4:** Bun을 script 내에서 설치하면 직후 해석된 bin dir를 `export PATH`(또는 절대경로 bun) — 이후 `bun install`/`bun link` 성공 보장.
+
+**Approved by:** Fable 5 (fable-advisor) R20 `approved`, 2026-07-11 — binding M-1…M-4; L-1..L-4 author-close.
 
 #### 0.18.0 — 2026-07-11 (`approved` R19 — **Self-contained invite (portable join blob)**)
 

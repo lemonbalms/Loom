@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.18.0** `approved` (R19) — Self-contained invite (portable join blob). **M-1/M-2 binding on impl**; L-1/L-2 author-close after Low fixes (WORKFLOW §5.1).  
+> **최신:** PLAN **v0.19.0** `approved` (R20) — Tier A1 5분 설치 경로 (install script). **binding on impl:** M-1(bun bin dir 해석) · M-2(`exec $SHELL` curl\|bash 무효) · M-3(`loomCmd` 열거형 스왑) · M-4(mid-script bun PATH); L-1..L-4 author-close (WORKFLOW §5.1).  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,14 +13,46 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R19** | **v0.18.0** | **approved** | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. **Binding on impl:** M-1 (`loom://join/` prefix + bare-code shape check **before** blob decode), M-2 (`invite --link` warn/refuse loopback relayUrl). L-1/L-2 author-close after Low fixes; no re-review unless blob carries fields beyond `{relayUrl,token,inviteCode}`. |
+| **R20** | **v0.19.0** | **approved** | Tier A1 5분 설치 경로 (install script) — install/doc/string surface only, zero relay coupling. **Binding on impl:** M-1 (bin dir via `BUN_INSTALL`/`bun pm bin -g`, not hardcoded `$HOME/.bun/bin`), M-2 (`exec $SHELL`은 curl\|bash에서 무효 → 안내 출력 또는 `</dev/tty` tty-guard), M-3 (`loomCmd`는 문자열별 열거형 스왑 — self-ref 노트 495/604·실행 spawn 2350 제외), M-4 (Bun 설치 후 script PATH export). L-1..L-4 author-close. |
+| R19 | v0.18.0 | closed (approved→shipped `2b59dee`) | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. M-1/M-2 impl-bound (done), L-1/L-2 author-close. |
 | R18 | v0.17.1 | closed (author-close) | Launcher UX — M-27/M-28 locks in 0.17.1 (see Recent follow-ups). |
 
 ---
 
 ## Open (blocking)
 
-_(none)_ — **R19 approved** (v0.18.0). Implementation must honor **M-1** (blob prefix + parse order) + **M-2** (loopback guard); **L-1/L-2** author-close fixes. See R19 body below.
+_(none)_ — **R20 approved** (v0.19.0). Implementation must honor **M-1** (bin dir resolve) · **M-2** (`exec $SHELL` fix) · **M-3** (`loomCmd` enumerated swap) · **M-4** (mid-script bun PATH); **L-1..L-4** author-close. See R20 body below. (R19/v0.18.0 shipped `2b59dee`.)
+
+---
+
+## Review R20 — Plan v0.19.0
+**검토 대상:** `docs/PLAN.md` v0.19.0 `#### 0.19.0` changelog (Tier A1 5분 설치 경로 / install script) + header block + `docs/UNKNOWNS.md` 0.19.0
+**검토자:** Fable 5 (fable-advisor)
+**날짜:** 2026-07-11
+**결론:** approved (binding M-1…M-4; PLAN에 lock 기록 후 착수 허용 — PATCH급 텍스트 수정, 재리뷰 불요)
+
+### Checklist
+- [x] **Scope** — install/doc/string 표면만; relay 무결합 확인 (blob이 `relayUrl`+`token`+`inviteCode` 운반, `packages/protocol/src/invite-link.ts:1-12,42`; install.sh는 relay 지식 불요).
+- [x] **새 표면 식별** — `curl\|bash`, 낯선 머신 first-run.
+- [x] **Security/trust** — sudo 없음·홈 한정·멱등 append·공식 `bun.sh` 위임 명시(PLAN.md:66-67); 핀(main vs 태그)은 Unknown으로 정당하게 유보.
+- [x] **Out-of-scope 정합** — binary 유보가 R19 spawn 제약과 일치(PLAN.md:72,87).
+- [x] **Unknowns 충분** — 판정 리스크(PATH 활성화) 명시(UNKNOWNS.md:45-58). 보강: git 존재(macOS xcode-select 프롬프트)·mid-script bun PATH(M-4).
+- [x] **"낯선 사람 멈춤" 주장 검증** — `scripts/link-loom.sh:20-31`이 PATH 안내만 출력하고 종료 확인.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (Med, binding):** verify/append 경로가 `$HOME/.bun/bin` 하드코딩(PLAN.md:61(e)) — Bun은 `BUN_INSTALL` 존중, 기존 `link-loom.sh:19`도 `${BUN_INSTALL:-$HOME/.bun}/bin` 사용. Fix: `bun pm bin -g`(또는 `BUN_INSTALL` fallback)로 bin dir 해석해 verify·rc append 양쪽 동일 값 사용.
+- **M-2 (Med, binding):** `exec $SHELL`를 script 마지막 실행 단계로 두면(PLAN.md:61(g)) `curl\|bash`에서 깨짐 — stdin이 파이프라 exec된 셸이 EOF 읽고 즉시 종료. Fix: `exec $SHELL`/`source <rc>`를 **안내로 출력**, 또는 tty 체크 후 `</dev/tty`로만 exec.
+- **M-3 (Med, binding):** `loomCmd` 스윕은 blanket 아님·열거형 per-string 스왑이어야 함. (a) `index.ts:495,604`는 self-ref fallback 노트("if `loom` is not on PATH, always use `bun run loom`") — 스왑 시 무의미해짐, 리터럴 유지. (b) `index.ts:2350`은 **실행되는** spawnSync 명령(표시 텍스트 아님) — global `loom`으로 스왑하면 실행 중 체크아웃 대신 링크된 clone 실행, 스윕에서 제외.
+- **M-4 (Med, binding, trivial):** script 내에서 Bun 설치 직후 `bun`이 script 자신의 PATH에 없음 → 이후 `bun install`/`bun link` 실패. Fix: 해석된 bin dir를 `export PATH` 또는 절대경로 `$BUN/bin/bun` 사용.
+- **L-1 (Low):** script 본문을 `main(){…}; main "$@"`로 감싸 truncated-download 안전성 확보 + `git` 존재 체크. author-close.
+- **L-2 (Low):** 핀 결정 — main은 신뢰 코호트엔 수용 가능; 기록하고 raw URL이 fetch한 것과 동일 ref를 clone하게 보장. author-close.
+- **L-3 (Low):** share 라인(`index.ts:478-479`)은 *joiner* 머신 기준; 로컬 `loomCmd` 감지는 휴리스틱 — 설치 후 낯선 사람은 `loom` 보유라 수용, fallback 노트 유지. author-close.
+- **L-4 (Low):** fish — `fish_add_path`/config.fish + marker-line 멱등 체크. author-close.
+
+### Decision notes
+- **구현 승인** — 방향·스코프 건전. 단 plan-text 메커니즘 (e)/(g)가 작성된 그대로는 실패 → M-1/M-2가 교정. M-1…M-4를 PLAN에 binding lock으로 기록(PATCH급 텍스트, 재리뷰 불요)하면 0.19.0 하에 착수 허용.
+- L-1..L-4 implementation-time author-close (`implementation-notes.md` 기록).
+- Advisor: fable-advisor consulted: yes.
 
 ---
 
@@ -54,10 +86,18 @@ _(none)_ — **R19 approved** (v0.18.0). Implementation must honor **M-1** (blob
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| M-1 | Med | R19/0.18.0 blob·invite-code 파싱 모호성 — `LOOM-7K2M`이 그 자체로 유효 base64url | **binding on impl** — blob은 `loom://join/` 프리픽스 필수, 파서는 `^LOOM-[A-Z2-9-]+$` bare 형태를 blob 디코드 **전에** 검사 |
-| M-2 | Med | R19/0.18.0 loopback relayUrl로 만든 blob은 타 머신에서 죽음(footgun) | **binding on impl** — `invite --link`는 `isLoopbackHost`(`server.ts:42`)로 경고/거부 |
-| L-1 | Low | R19/0.18.0 blob + 명시 `--relay`/`--token` 동시 전달 시 우선순위 미정 | author-close — 우선순위 정하고(예: 명시 flag 우선/에러) 문서화 |
-| L-2 | Low | R19/0.18.0 blob의 token이 shell 히스토리 노출 | author-close — `invite --link` 출력에 "bearer secret" 1줄 안내 |
+| A1-M1 | Med | R20/0.19.0 install.sh verify/append이 `$HOME/.bun/bin` 하드코딩 — Bun은 `BUN_INSTALL` 존중 | **binding on impl** — `bun pm bin -g`/`${BUN_INSTALL:-$HOME/.bun}/bin`로 해석해 verify·rc append 동일 값 |
+| A1-M2 | Med | R20/0.19.0 `exec $SHELL` 마지막 실행 단계가 `curl\|bash`에서 즉시 EOF 종료 | **binding on impl** — 안내로 출력 또는 tty 체크 후 `</dev/tty` |
+| A1-M3 | Med | R20/0.19.0 `loomCmd` 스윕이 blanket이면 self-ref 노트(495/604)·실행 spawn(2350) 오염 | **binding on impl** — 문자열별 열거형 스왑, 두 케이스 제외 |
+| A1-M4 | Med | R20/0.19.0 Bun 설치 직후 script PATH에 `bun` 부재 → `bun install`/`link` 실패 | **binding on impl** — 해석 bin dir `export PATH` 또는 절대경로 |
+| A1-L1 | Low | R20/0.19.0 truncated-download 안전 + `git` 존재 체크 | author-close — `main(){…}; main "$@"` 래핑 |
+| A1-L2 | Low | R20/0.19.0 `curl\|bash` 핀(main vs 태그) 미정 | author-close — 결정 기록, raw URL fetch ref와 동일 clone |
+| A1-L3 | Low | R20/0.19.0 share 라인 `loomCmd` 감지는 휴리스틱 | author-close — fallback 노트 유지 |
+| A1-L4 | Low | R20/0.19.0 fish 셸 rc 멱등 append | author-close — `fish_add_path`/config.fish + marker |
+| M-1 | Med | R19/0.18.0 blob·invite-code 파싱 모호성 — `LOOM-7K2M`이 그 자체로 유효 base64url | **done 0.18.0** (`2b59dee`) — `loom://join/` 프리픽스 + bare 형태 선검사 |
+| M-2 | Med | R19/0.18.0 loopback relayUrl로 만든 blob은 타 머신에서 죽음(footgun) | **done 0.18.0** (`2b59dee`) — `invite --link` loopback 경고 |
+| L-1 | Low | R19/0.18.0 blob + 명시 `--relay`/`--token` 동시 전달 시 우선순위 미정 | **done 0.18.0** — 명시 flag override (author-close) |
+| L-2 | Low | R19/0.18.0 blob의 token이 shell 히스토리 노출 | **done 0.18.0** — bearer secret 안내 (author-close) |
 | L-35 | Low | 0.17.0 acceptance 목록이 idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트를 명시 안 함 | **done 0.17.1** — acceptance #7–#9 추가 |
 | L-34 | Low | 0.17.0 auto-host on join이 기존 `stopStickyBeforeSessionChange`(join 시 구세션 host 정지) 위에 겹침 — 문서화 필요, 8s 지연 가능성도 명시 필요 | **done 0.17.1** — locks 표 + docs 명시, 성공 안내 문구 |
 | L-33 | Low | 0.17.0 auto-host 기본 on이 `bun test`/CI에서 데몬을 조용히 띄울 위험 | **done 0.17.1** — 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 기본 + acceptance #9 |

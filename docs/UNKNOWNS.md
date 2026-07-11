@@ -42,6 +42,23 @@
 
 ## Gate log
 
+### 0.19.0 — Tier A1 5분 설치 경로 install script (pending-review)
+
+| Field | Value |
+|-------|--------|
+| **PLAN** | v0.19.0 (`pending-review`) |
+| **Date** | 2026-07-11 |
+| **Review** | R20 required (새 표면 + `curl\|bash` 신뢰 경계) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | repo PUBLIC(익명 clone 가능). blob이 relayUrl+token 운반(0.18.0). `bun link`는 이미 있으나 `link-loom.sh`는 PATH 안내만 출력하고 종료. Bun 공식 installer(`bun.sh`) 위임 가능. |
+| Known unknowns | (1) **PATH 활성화**(판정 리스크) — curl\|bash는 호출자 셸 못 바꿈 → 절대경로 검증 + rc append + `exec $SHELL` 안내로 충분한가. (2) shell rc 감지(bash/zsh/fish, 멱등). (3) 고정 clone 디렉토리 + 기존 충돌 시 update vs 거부. (4) 재실행 멱등성. (5) `curl\|bash` 핀 — main vs 태그(공급망). |
+| Unknown knowns | 낯선 사람은 4개 수동 실패점 중 첫 하나에서 멈춘다 — 스크립트가 그 판단을 대신 내려줘야 함. |
+| Unknown unknowns | Bun 설치 실패(네트워크·권한)·기존 다른 버전 Bun 충돌·비표준 셸 환경에서의 rc 위치. |
+
+**Next session:** R20 → 0.19.x implement(install.sh + README + `loomCmd` 스윕) → tests → docs.
+
 ### 0.17.0 — Launcher UX up / host-default (pending-review)
 
 | Field | Value |
