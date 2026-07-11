@@ -209,9 +209,10 @@ export class Room {
 
   findPeerByName(name: string): PeerInfo | undefined {
     const n = name.replace(/^@/, "").toLowerCase();
-    return this.listPeers().find(
+    const matches = this.listPeers().filter(
       (p) => p.displayName.toLowerCase() === n || p.id === name,
     );
+    return matches.find((p) => p.online) ?? matches[0];
   }
 
   allocateColor(): string {

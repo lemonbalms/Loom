@@ -504,11 +504,37 @@ async function cmdRoomJoin(
     String(flags.as || defaultDisplayName()),
   );
   const client = new RelayClient({ url, token: endpoint.token });
-  const env = await client.joinRoom({
-    inviteCode: code,
-    displayName,
-    agentKind: "unknown",
-  });
+  const session = loadSession();
+  const reuse = Boolean(
+    session?.peerId &&
+      session?.inviteCode &&
+      session.inviteCode.toUpperCase() === code.toUpperCase(),
+  );
+  let env = await client.joinRoom(
+    reuse && session
+      ? {
+          inviteCode: code,
+          displayName,
+          agentKind: "unknown",
+          peerId: session.peerId,
+          peerSecret: session.peerSecret,
+        }
+      : {
+          inviteCode: code,
+          displayName,
+          agentKind: "unknown",
+        },
+  );
+  if (reuse && env.type === "error" && env.code === "peer_auth_failed") {
+    env = await client.joinRoom({
+      inviteCode: code,
+      displayName,
+      agentKind: "unknown",
+    });
+    console.error(
+      "\x1b[2m(peer identity could not be reused — rejoined as a new peer)\x1b[0m",
+    );
+  }
   if (env.type === "error") {
     console.error(`Error: ${env.message}`);
     process.exit(1);

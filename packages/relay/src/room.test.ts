@@ -66,6 +66,15 @@ describe("Room roster vs socket", () => {
     expect(room.listInbox("p1")[0]!.handoff.body).toContain("british");
   });
 
+  test("findPeerByName prefers online peer when display names collide", () => {
+    const room = new Room("demo");
+    mustAdd(room, { id: "stale", displayName: "alice" }, mockSocket().socket);
+    room.setOffline("stale");
+    mustAdd(room, { id: "live", displayName: "alice" }, mockSocket().socket);
+
+    expect(room.findPeerByName("@alice")?.id).toBe("live");
+  });
+
   test("online handoff is delivered and inbox notified", () => {
     const room = new Room("demo");
     const a = mockSocket();
