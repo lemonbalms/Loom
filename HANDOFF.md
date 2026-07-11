@@ -9,7 +9,15 @@
 
 ## ⭐ Next action (strategic — read first)
 
-> **목표 그대로:** 제품 검증 0 → 최고가치 = **"다른 머신의 실제 사람 ≥2명에게 태우기"** (`LOOM_PURPOSE_REVIEW`).
+> **🎯 목적지 재확정 (오너 공리 + Fable 5 재판정, 2026-07-11).** Loom = **오너 6인 팀 전용 내부 도구.** 효용은 **확정된 전제**(외부 시장 수요 검증 대상 아님). → `LOOM_PURPOSE_REVIEW`의 "수요 검증/트립와이어" 프레임은 **목적지로서 폐기.** 새 "완성" = **팀 6인 온보딩 + relay 상시가동 + 실제 핸드오프 매일 왕복하며 Slack 회귀 없이 1~2주 지속(=adoption).**
+>
+> **🧊 개발 규칙 (FREEZE, 근거 교체판).** 신규 기능은 **팀 실사용에서 pull된 요구만** 구현 — **에이전트 추측(push) 금지.** 현 백로그(work-watch·MCP·C1/C2)는 전부 솔로 도그푸드 추측이라 **신규 PLAN 오픈 금지.** 팀이 쓰기 시작하면 진짜 요구가 pull됨 → 그때 로드맵 재개. **진짜 드리프트 = "실사용자가 요구 안 한 걸 만드는 일"**(이번 세션의 위임 규칙·effort 매트릭스가 그 예 — 프로세스용이지 도구 사용자용 아님).
+>
+> **▶ 다음 행동 2갈래:**
+> 1. **팀-pull된 유일 실기능 = Windows 온보딩 경로** (오너 확인: **팀에 Windows 사용자 있음**). `install.sh`는 bash 전용 → Windows 팀원 온보딩 불가. 이건 추측 아닌 pull이므로 정당 → **별도 PLAN 게이트(접근법: WSL 안내 vs PowerShell 스크립트 vs native) 후 구현.** 착수 전 오너에게 접근법 확인.
+> 2. **relay 공용 호스트(VPS) 확보 = 오너 블로커** (오너 확인: **아직 없음**). 확보되면 `docs/DRY_RUN_RUNBOOK.md` Step 0(systemd 상시가동)부터 실행.
+>
+> **런북:** **`docs/DRY_RUN_RUNBOOK.md`** — 팀 온보딩 런북(원격, relay 상시가동 절 포함). macOS/Linux 팀원은 즉시 온보딩 가능, Windows는 위 1번 대기.
 > **코드 잠금해제는 완료됨(0.18.0):** 자기완결 초대 blob — `loom room invite --link` → `loom room join <blob>` 한 명령 join(relay URL+token 내장). R19 approved, 구현·검증·커밋(`2b59dee`). 이제 **초대 하나만 넘기면** 됨(3-비밀 문제 해소).
 >
 > **A1 설치 경로도 완료됨(0.19.0):** `scripts/install.sh` (`curl … | bash`) — Bun 확보→clone→link→verify→PATH. 이제 초대받은 낯선 사람은 **한 줄 설치 + `loom room join <blob>`**. R20 approved, 구현·검증·커밋(`a9cefd0`).
@@ -29,7 +37,7 @@
 
 ## One-line resume
 
-> **⏩ 다음 세션 = OPS 2머신 dry-run** (사용자/2번째 머신 필요). 코드 3종(A1 설치·invite join·A3 doctor) 완비 → 실사용 검증만 남음. **A3 `loom doctor` shipped** (0.20.0 `c15de88`, R21 M-1..M-4 충족, bun test 180/0). **프로세스 변경:** 위임 워크플로 복원 — 세션 모델은 approved/locked 스펙을 직접 코딩하지 않고 grok-impl→codex-impl→하위모델 서브에이전트로 위임(`AGENTS.md` Impl delegation · `docs/DOGFOOD_LOOP.md §1.2`).
+> **⏩ 목적지 재확정 = 내부 6인 팀 채택(adoption).** 효용 확정 전제(내부 도구) → 수요검증 프레임 폐기, FREEZE는 "팀-pull된 요구만 구현"으로 근거 교체. **다음 2갈래:** ①팀-pull 유일 실기능 = **Windows 온보딩 경로**(팀에 Windows 사용자 있음 확인 · `install.sh` bash 전용 → PLAN 게이트 후 구현, 접근법 오너 확인) ②**relay 공용 호스트(VPS) 확보 = 오너 블로커**(아직 없음). 런북 = `docs/DRY_RUN_RUNBOOK.md`(팀 온보딩판). 코드 3종(설치·invite·doctor) 완비, bun test 180/0. 상세 판정 = ⭐ 블록.
 >
 > PLAN **0.19.0** `approved` (R20) — **Tier A1 5분 설치 경로 shipped (code)**:  
 > `scripts/install.sh` (`curl \| bash`): Bun 확보→clone(~/.loom-src)→`bun link`→절대경로 verify→shell rc PATH append. `loomCmd()` helper로 share/next 힌트를 설치 시 `loom`으로 표시(미설치 시 `bun run loom` fallback). R20 binding M-1..M-4 준수, L-1..L-4 author-close.  
