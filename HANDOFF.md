@@ -9,22 +9,24 @@
 
 ## ⭐ Next action (strategic — read first)
 
-> **최우선 = Tier A1: 5분 설치 경로** (`docs/DOGFOOD_FEATURES.md` Tier A).
-> 전략 판정(`docs/LOOM_PURPOSE_REVIEW.md`)은 그대로 유효: 제품 검증 0 → **단일 최고가치 =
-> "다른 머신의 실제 사람 ≥2명에게 태우기"**. 그 유일한 잠금해제가 **5분 설치 경로**다
-> (지금은 `bun link`라 외부인 불가). 방향이 갈리는 설계 결정(설치 스크립트 vs 상시
-> relay+초대코드) → **착수 전 `fable-advisor` 자문**.
-> 선행 2·3: 첫-5분 마찰 제거 + 수요 신호 1줄 기록.
-> 전체 후보·티어: `docs/DOGFOOD_FEATURES.md` · 트립와이어/리스크: `docs/LOOM_PURPOSE_REVIEW.md`.
+> **목표 그대로:** 제품 검증 0 → 최고가치 = **"다른 머신의 실제 사람 ≥2명에게 태우기"** (`LOOM_PURPOSE_REVIEW`).
+> **코드 잠금해제는 완료됨(0.18.0):** 자기완결 초대 blob — `loom room invite --link` → `loom room join <blob>` 한 명령 join(relay URL+token 내장). R19 approved, 구현·검증·커밋(`2b59dee`). 이제 **초대 하나만 넘기면** 됨(3-비밀 문제 해소).
+>
+> **다음은 코드가 아니라 OPS/실사용 (사용자 필요):**
+> 1. **relay를 도달 가능한 호스트에 배포** — `apps/relay-cloud/README.md` 경로(VPS/LAN, `--host 0.0.0.0 --token …`, H-5). 로컬(loopback)이면 blob이 타 머신에서 안 됨(M-2 경고).
+> 2. 그 relay에서 `room create` → `room invite --link`로 blob 생성.
+> 3. **2번째 머신**: repo clone + `bun install` + `bun run loom room join <blob>` → **시간 측정(5분?)**. 초과 시에만 binary(spawn 리팩터 선행) 착수.
+> 4. 첫-5분 마찰(A2)·수요 신호 1줄(A4) 기록.
+> 티어 전체: `docs/DOGFOOD_FEATURES.md`.
 
 ---
 
 ## One-line resume
 
-> PLAN **0.17.1** `approved` (author-close, R18 M-27/M-28 locks) — **Launcher UX shipped**:  
-> `loom up`/`down` (multi-profile background sticky host, **M-28 sequential**), **auto-host on `room create`/`join`** (default on; `--no-host` / `LOOM_NO_AUTO_HOST=1`), **M-27** down kill-safety (verify process cmdline is `sticky-main.ts` before SIGTERM), `dogfood:up` one-command online.  
-> **Code + PLAN both 0.17.1.** `bun test` **168 pass / 0 fail** (+1: dup-peer fix test). Committed + pushed.
-> **2026-07-11 PM 세션:** 도그푸드 UC-12/13/14 신설·라이브 검증 + **중복 peer 버그 수정**(`bcd7504`).
+> PLAN **0.18.0** `approved` (R19) — **Self-contained invite shipped (code)**:  
+> `loom room invite --link` → portable `loom://join/<blob>` ({relayUrl,token,inviteCode}); `room join` accepts blob or bare `LOOM-XXXX`. M-1(parse order)/M-2(loopback warn)/L-1(flag override)/L-2(bearer notice) all in.  
+> **Code + PLAN both 0.18.0.** `bun test` **175 pass / 0 fail**. Committed (`2b59dee`); **push pending / done this session**.
+> **2026-07-11 PM 세션:** 플러그인 v3.1.0 · UC-12/13/14 라이브 검증 · 중복 peer fix(`bcd7504`) · **0.18.0 자기완결 초대(gate R19→구현)**.
 
 ---
 
@@ -32,11 +34,11 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.17.1** (Launcher UX shipped) |
-| **PLAN** | **v0.17.1** `approved` (author-close per R18; no R18b) |
-| **Open blocking** | **none** — R18 M-27/M-28 locked + implemented; L-33/L-34/L-35 done |
-| **Tests** | `bun test` 168 pass / 0 fail |
-| **Latest fix** | `bcd7504` dup-peer (room join identity reuse + relay prefer-online) — C4 in `docs/DOGFOOD_FEATURES.md` |
+| **CLI / code** | **0.18.0** (self-contained invite blob) |
+| **PLAN** | **v0.18.0** `approved` (R19; M-1/M-2 impl-bound, done) |
+| **Open blocking** | **none** — R19 M-1/M-2 implemented; L-1/L-2 author-close done (`implementation-notes.md`) |
+| **Tests** | `bun test` 175 pass / 0 fail |
+| **Latest** | `2b59dee` self-contained invite (0.18.0) · `bcd7504` dup-peer fix (C4) |
 
 ### Already shipped (context, don't redo)
 
@@ -76,6 +78,7 @@
 | UC 신설 | `TEST_PLAN.md` **UC-12/13/14**(Launcher UX / Work bus / Purpose+verify) — 실제 CLI 표면 근거 |
 | 라이브 검증 | `dogfood:up` 5호스트 실구동 → UC 핵심 경로 ✅; 초안 오류 2건 정정, 실배송 버그 1건 발견 |
 | **버그 수정** | **중복 peer**(`bcd7504`): room join 재조인 시 정체성 재사용(+`peer_auth_failed` fallback), relay `findPeerByName` online 우선. 자문(Fable)→codex(GPT-5.6 Sol) 구현→아키텍트 검증→라이브 재현 |
+| **0.18.0 자기완결 초대**(`2b59dee`) | 정식 게이트 완주: PLAN 0.18.0 작성 → **R19 approved**(fable-advisor) → 구현(codex, M-1/M-2 bound) → 아키텍트 검증(diff·test 175·격리 라이브 스모크) → author-close 커밋. `invite --link`/`join <blob>` |
 | 정리 | 5호스트 down, relay 재시작(새 코드), 구 비영속 room 소멸(테스트 태스크 정리됨) |
 
 ### ⚠ 운영 노트 (다음 세션 주의)
