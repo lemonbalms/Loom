@@ -2,16 +2,9 @@
 
 ## On session start
 
-**Always** run the session-start ritual in [`AGENTS.md`](./AGENTS.md):
+Run the session-start ritual in [`AGENTS.md`](./AGENTS.md): read the handoff, surface a short status table, then execute the next gate autonomously (full wave — see `AGENTS.md` Standing rules · Autonomy).
 
-1. Read `HANDOFF.md` + `docs/WORKFLOW.md` + PLAN/plan_review headers  
-   (or run `bun run status`).
-2. **Surface a short status table to the user** (do not skip this).
-3. **Then execute the next gate immediately** — do **not** wait for “이어서 할까요?”.  
-   Autonomy default: full wave (work → test → docs → commit/push) without mid-step approval.  
-   See **`AGENTS.md` Standing rules · Autonomy**.
-
-Do not bury the handoff; the user should see **where the project is** and **what the next gate is** on entry — then keep moving.
+**Exception:** if the user opens with an explicit unrelated request, that request takes precedence — give a one-line status and do what was asked.
 
 ## Dogfood multi-agent (Claude as reviewer)
 
