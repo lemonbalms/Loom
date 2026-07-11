@@ -132,9 +132,11 @@ stale HANDOFF note):
 
 1. **Default:** `grok-impl` (Grok) — verify auth (`grok` CLI logged in). If expired, don't stop here.
 2. **Cross-vendor fallback:** `codex-impl` (Codex / GPT-5.x) — verify `codex` CLI installed + authenticated. Use when grok is down or a second model family is wanted.
-3. **Last resort — neither external CLI lane available:** the architect **still does not hand-code**. Spawn a **lower-tier in-harness model** subagent (`Agent` / `Workflow`) to implement from the locked spec, given the full five-part spec. The session model then reviews the diff and verifies. Effort applies **only at this tier** (cross-vendor lanes carry their own reasoning config — do not try to set Anthropic `effort` on them). Defaults:
-   - **Locked-spec implementation** → `model: sonnet`, `effort: high`.
-   - **Trivial mechanical edit** → `model: haiku`, `effort: low`.
+3. **Last resort — neither external CLI lane available:** the architect **still does not hand-code**. Spawn a **lower-tier in-harness model** subagent (`Agent` / `Workflow`) to implement from the locked spec, given the full five-part spec. The session model then reviews the diff and verifies. **Effort tracks the task, not the model tier** — and applies only at this in-harness tier (cross-vendor lanes carry their own reasoning config; never set Anthropic `effort` on them). Defaults:
+   - **Locked-spec implementation** → `model: sonnet`, `effort: xhigh` (a locked spec is coding/agentic work, for which `xhigh` is the documented default — Claude Code's own default).
+   - **Trivial mechanical edit** → `model: haiku` — **pass no `effort` param** (Haiku 4.5 has no effort knob; setting `effort` is a hard API error).
+
+   Do **not** invert this into a "lower tier → higher effort" ladder: Haiku has no bottom rung (it takes no effort), and the mirror image would run verify/judge tiers at low effort — exactly backwards. Verify/judge stays `high`/`max` per §2.
 
 **The criterion is spec-lockedness, not raw difficulty.** Intelligence is spent at plan time (approved PLAN + R{n} locks), so a locked spec tolerates a mid-tier implementer. **Corollary:** if a task seems to need Opus/`xhigh` *to implement*, the spec is not actually locked — send it back to the architect as **spec work** (PLAN/R{n}), do not raise the implementer tier to compensate. (Adversarial verify/judge tiers are governed by §2 / Standing rules, not this step.)
 
