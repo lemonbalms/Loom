@@ -75,21 +75,22 @@
 
 ---
 
-## This session (2026-07-11 PM #2) — Tier A1 install path gate→ship
+## This session (2026-07-11 PM #2) — A1 install ship + Docker 드라이런 + A3 doctor 게이트
 
 | 영역 | 결과 |
 |------|------|
-| 방향 자문 | `fable-advisor`(Fable 5): A1 = **Option 1 설치 스크립트** 커밋(②=fallback 텍스트, ③ 바이너리 유보). 판정 리스크=**PATH 활성화**. repo PUBLIC 확인(익명 clone). |
-| **게이트** | PLAN **0.19.0** 작성 → **R20 approved**(fable-advisor, binding M-1..M-4) → UNKNOWNS 로그 → plan_review R20 기록 → 커밋(`a711478`) |
-| **구현**(`a9cefd0`) | `scripts/install.sh`(curl\|bash: Bun→clone→link→verify→PATH, M-1..M-4/L-1/L-2/L-4) · `loomCmd()` helper + 표시 힌트 스윕(실행 spawn·self-ref 제외, M-3) · README 원라이너 · VERSION 0.19.0(CLI+MCP) · impl-notes L-1..L-4 |
-| 검증 | 6 pkg typecheck green · `bun test` 175 pass/0 fail · shellcheck clean · **격리 install.sh 라이브 smoke** · loomCmd 양쪽 분기 |
-| 정리 | smoke의 `bun link`가 글로벌 `@loom/cli`를 임시 dir로 재지정 → real repo에서 **재링크 복구**(`loom v0.19.0` 정상) |
-| **Docker 드라이런 하네스**(`3b6cc0c`) | `test/docker/` — Test A(clean ubuntu:24.04 install 냉시동, M-4) + Test B(relay+peerA+peerB 냉설치→**컨테이너 간 오프라인 handoff 수신**). **둘 다 통과.** = 2머신 드라이런의 단일호스트 대역(QA, 수요검증 아님) |
-| **하네스가 잡은 버그** | install.sh `ensure_path` bash 분기가 `.bash_profile` 부재 시 1 반환 → `set -e`로 설치가 ✅ 직전 중단. Linux bash-login 전멸 버그(macOS zsh라 smoke가 못 잡음). 수정: `return 0` + `~/.profile`(로그인 셸). +`LOOM_INSTALL_REPO`·unzip 힌트 |
+| A1 방향 자문 | `fable-advisor`: A1 = **Option 1 설치 스크립트**(②=fallback, ③ 바이너리 유보). 판정 리스크=PATH 활성화. repo PUBLIC 확인. |
+| **A1 게이트→ship**(`a711478`·`a9cefd0`) | PLAN **0.19.0** → **R20 approved**(binding M-1..M-4) → `scripts/install.sh`(curl\|bash: Bun→clone→link→verify→PATH) · `loomCmd()` + 힌트 스윕(spawn·self-ref 제외) · README 원라이너 · VERSION 0.19.0 · impl-notes. 6 pkg typecheck·175 test·shellcheck green |
+| **Docker 드라이런 하네스**(`3b6cc0c`) | `test/docker/` Test A(clean ubuntu:24.04 install 냉시동, M-4) + Test B(relay+peerA+peerB 냉설치→**컨테이너 간 오프라인 handoff 수신**). 둘 다 통과 = 2머신 드라이런 단일호스트 대역(QA, 수요검증 아님) |
+| **하네스가 잡은 실버그** | install.sh `ensure_path` bash 분기가 `.bash_profile` 부재 시 1 반환→`set -e`로 설치가 ✅ 직전 중단(**Linux bash-login 전멸**, macOS zsh라 smoke 미포착). 수정: `return 0`+`~/.profile`. +`LOOM_INSTALL_REPO`·unzip 힌트 |
+| **LAN 배관 점검**(`632bbb4`) | `test/docker/run-lan-check.sh` — relay를 **실 LAN IP(0.0.0.0)** 에 띄우고 컨테이너가 실 IP로 join → 바인딩·방화벽·real-IP 라우팅·blob 실주소·handoff 왕복 검증. `192.168.43.192:7900` PASS. (사다리 2/3) |
+| **A3 `loom doctor` 게이트**(`1ad0c26`) | 사용자 지시 "게이트만, 구현은 다음 세션". PLAN **0.20.0** → **R21 approved**(binding M-1..M-4) → UNKNOWNS·plan_review R21. **코드 미착수.** Fable가 read-only 위반 2건(`ensureRelay` spawn·`resolveAliveHostMeta` 삭제) 사전 차단 |
 
 ### ⚠ 운영 노트 (다음 세션 주의)
-- **grok CLI 인증 만료** — 기본 impl 레인 사용 불가. 복구: `! grok login` (사용자 실행). (이번 세션은 아키텍트 직접 구현.)
-- **격리 smoke 주의** — HOME override로 install.sh를 돌려도 `bun link`/`bun pm bin -g`는 실제 `~/.bun`을 씀 → 글로벌 링크 오염됨. smoke 후 `cd packages/cli && bun link`로 복구 필수.
+- **다음 세션 큐 = `loom doctor` 구현** (0.20.0 approved). PLAN 0.20.0 + R21 읽고 바로 구현. M-1 `ensureRelay`금지·M-2 `resolveAliveHostMeta`금지(read-only 보장).
+- **grok CLI 인증 만료** — 기본 impl 레인 불가. 복구: `! grok login`. (이번 세션은 아키텍트 직접 구현.)
+- **격리 smoke 주의** — HOME override로 install.sh 돌려도 `bun link`/`bun pm bin -g`는 실 `~/.bun` 사용 → 글로벌 링크 오염. smoke 후 `cd packages/cli && bun link`로 복구 필수.
+- **Docker 이미지 잔존** — `loom-test-clean`(262MB)·`loom-test-ready`(688MB) 남음(재실행용). 정리: `docker image rm loom-test-clean loom-test-ready`.
 - **dogfood room 소멸** — 재개 시 `bun run dogfood:room --fresh` → `bun run dogfood:up`.
 
 ---
