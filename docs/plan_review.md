@@ -13,6 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R22** | **v0.21.0** | **pending-review (awaiting Fable 5)** | **PTY handoff inject** — 원래 설계 유보 수신 경로 고도화(Claude-first · opt-in · accept+idle-gated). 수신 모델 새 경로 + R1 결정적 리스크 영역. 와이어 변경 없음. FREEZE 예외=오너 pull. |
 | **R21** | **v0.20.0** | **closed (approved→shipped `c15de88`)** | Tier A3 `loom doctor` (read-only 진단) — no wire change. All binding M-1..M-4 met (architect-verified: bun test 180/0, live run exit 0), L-1..L-3 author-closed. Implemented via codex-impl lane. |
 | R20 | v0.19.0 | closed (approved→shipped `a9cefd0`) | Tier A1 install script — install/doc/string surface, zero relay coupling. M-1..M-4 impl-bound (done), L-1..L-4 author-close. Docker harness caught + fixed a bash-login `set -e` abort. |
 | R19 | v0.18.0 | closed (approved→shipped `2b59dee`) | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. |
@@ -21,7 +22,26 @@
 
 ## Open (blocking)
 
-_(none)_ — **R21 shipped** (v0.20.0 `loom doctor`, `c15de88`): all binding M-1..M-4 met + L-1..L-3 author-closed, architect-verified (bun test 180/0, live run exit 0). No open blocking review. (R20/v0.19.0 shipped `a9cefd0`.)
+| ID | Sev | 요약 | 상태 |
+|----|-----|------|------|
+| **R22** | Review | PLAN **v0.21.0** PTY handoff inject (MINOR, 수신 모델 + R1 결정적 리스크) | **Fable 5 검토 대기** |
+
+---
+
+## Review R22 — Plan v0.21.0 (요청)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.21.0` changelog (PTY handoff inject) + header block + `docs/UNKNOWNS.md` §0.21.0 + `docs/ORIGIN.md` §1(원래 설계)·Phase 1.5 verdict(`docs/spikes/PHASE-1.5-PTY.md`)
+**검토자:** Fable 5 (fable-advisor) — **claude-rev가 R{n} 작성 전 필수 컨설트**
+**날짜:** 2026-07-11
+**결론:** _(대기)_
+
+### 저자 체크리스트 (검토 관점 제안)
+- [ ] **R1 결정적 리스크 재현 방지** — idle-gated 완화가 실제로 입력 레이스/의도치 않은 제출을 막는가. Claude hooks vs 출력 quiescence 휴리스틱 중 신뢰 가능한 것은? 오탐 시 fail-safe(주입 취소)인가.
+- [ ] **accept-gated 무결성** — auto-inject 경로가 정말 없는가(사람 accept/claim 없이는 주입 불가). opt-in 플래그 없으면 코드 미도달인가.
+- [ ] **Sanitize** — 주입 텍스트가 `prepareInjectText`로 정화되고 untrusted 마커가 붙는가. 에이전트 입력 스트림에 ESC/CSI 주입 불가한가.
+- [ ] **범위 규율** — Claude-first가 타당한가(Codex/Grok idle 신호 부재). busy 주입·auto·다른 에이전트가 확실히 out인가.
+- [ ] **회귀 없음** — 기본 수신 경로(큐+폴링)와 `loom run`(플래그 없음)이 불변인가.
+- [ ] **FREEZE 예외 타당성** — 오너 pull이 이 예외를 정당화하는가, 아니면 더 좁혀야 하는가.
 
 ---
 

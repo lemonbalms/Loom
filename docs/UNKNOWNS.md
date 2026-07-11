@@ -42,6 +42,14 @@
 
 ## Gate log
 
+### 0.21.0 — PTY handoff inject (pending-review R22)
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 기반코드 존재(`handoff-inject.ts` `prepareInjectText`/`injectIntoStdin` experimental); PTY 실행 래퍼(`run-with-pty.py`); R1이 default no-go·opt-in deferred로 판정; 안전조건 3개(idle+accept+opt-in) 이미 정의됨 |
+| Known unknowns | **에이전트 유휴 감지 방식**(Claude hooks vs 출력 quiescence 휴리스틱, 오탐 처리); 제어 채널(named pipe/unix socket/sticky RPC/fd); accept→inject 구동 위치(`loom run` vs sticky host) |
+| Unknown knowns | 주입 텍스트를 에이전트가 실제 사용자 입력으로 처리하는지(Phase 1.5 수동 매트릭스 미완 — Claude Code부터 채움); busy-중 주입의 실패 양상이 에이전트별로 다를 수 있음 |
+| Unknown unknowns | Claude Code 버전업 시 hooks/TUI 동작 변화; PTY 래퍼(python)와 Bun 프로세스 간 신호/소유권 경합; 주입이 에이전트 세션 상태를 오염시키는 미지 경로 |
+
 ### 0.20.0 — Tier A3 `loom doctor` 자가진단 (pending-review)
 
 | Field | Value |

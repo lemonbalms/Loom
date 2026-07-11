@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.20.0** |
-| **Status** | **`approved` → shipped** (R21) — Tier A3: `loom doctor` 자가진단 (read-only 온보딩 진단) (MINOR). **M-1…M-4 all met · implemented `c15de88`, architect-verified (bun test 180/0)** |
-| **Supersedes** | 0.19.0 |
+| **Version** | **0.21.0** |
+| **Status** | **`pending-review`** (R22) — **PTY handoff inject** (원래 설계의 유보된 수신 경로 고도화, Claude-first · opt-in · accept+idle-gated) (MINOR). **FREEZE 예외 = 오너 pull.** 0.20.0(R21) shipped `c15de88`. |
+| **Supersedes** | 0.20.0 |
 | **Last updated** | 2026-07-11 |
-| **Approval** | **R21 `approved`** (`docs/plan_review.md`) — binding on impl: **M-1**(`ensureRelay` 금지 — 직접 `/health` fetch + `AbortSignal.timeout(3000)`; 아니면 relay spawn), **M-2**(`resolveAliveHostMeta` 금지 — stale meta 삭제함 → `loadStickyMeta`+`isPidAlive`로 보고만), **M-3**(exit: fail≥1→1, warn만→0; `--strict` 없음), **M-4**(no-session은 `info`, fail 아님). L-1..L-3 author-close. **Implement next session** under 0.20.0. |
-| **Fable 5 when** | **Required** — 새 제품 표면(`loom doctor` 서브커맨드) (§5.1). |
+| **Approval** | **R22 대기** (`docs/plan_review.md`) — 수신 모델에 새 경로 추가 + R1 결정적 리스크 영역 → Fable 5 필수. binding locks는 R22에서 확정. |
+| **Fable 5 when** | **Required** — 수신 모델 변경(새 receive 경로) + R1이 "가장 어려운 부분"으로 유보한 영역 (§5.1). |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,38 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.21.0 — 2026-07-11 (`pending-review` R22 — **PTY handoff inject (원래 설계 유보 수신 경로 고도화)**)
+
+**Product one-liner:** 수락한 handoff를 실행 중인 에이전트에 **유휴일 때만 안전하게 주입** — 원래 v0.1.0 설계의 PTY 수신 경로를 R1이 정한 안전조건대로 고도화한다.
+
+**Why:** 원래 설계(`docs/ORIGIN.md` §1)의 코어 수신 메커니즘은 **PTY stdin 주입**이었다. R1은 이를 **폐기가 아니라 Phase 1.5 유보**로 판정했다(`docs/spikes/PHASE-1.5-PTY.md`: default **no-go**, opt-in **deferred** — idle 감지 + 사람 수락 우선 필요). 기반코드(`handoff-inject.ts`의 `prepareInjectText`/`injectIntoStdin` — experimental 플래그 뒤, 기본경로 미호출)는 이미 있으나 고도화 미착수. 오너가 이 고도화를 **pull**(내부 도구 필수 기능, 2026-07-11) → **FREEZE 예외**. R1이 "가장 어려운 부분·결정적 리스크"로 지목한 영역이므로 **좁고 안전한 첫 슬라이스**로 착수한다.
+
+**What (범위 — Claude-first · opt-in · accept+idle-gated):**
+| 항목 | 내용 |
+|------|------|
+| **opt-in 플래그** | `loom run claude --inject-handoffs` — **기본경로(큐+`check_handoffs`/`inbox`)는 불변**(회귀 없음). 플래그 없으면 주입 코드 미도달. |
+| **accept-gated** | auto-inject **금지**. 사람이 `inbox accept` / `claim_handoff`한 **특정** handoff만 주입 대상. |
+| **idle-gated** | 에이전트가 **생성 중이 아닐 때만** 주입(R1 입력 레이스 방지). 감지 방식은 Unknown(아래). |
+| **주입 내용** | `prepareInjectText`로 sanitize + `⚠ Untrusted handoff content` 마커 포함(기존 함수 재사용). |
+| **제어 채널** | 실행 중 `loom run`(PTY 래퍼)에 "이 handoff 지금 주입" 신호를 넣는 경로. 구현 방식 Unknown. |
+| **Claude Code만** | Codex/Grok(ratatui)은 idle 신호가 불명확 → **이 MINOR 범위 밖**(큐+폴링 유지). |
+
+**Out of scope (이 버전 아님):** auto-inject(사람 수락 없이); Codex/Grok/기타 에이전트 주입; **생성 중(busy) 주입**; presence 오버레이/VT 에뮬레이터; MCP notify 경로 주입; 기본 수신 경로(큐+폴링) 변경; 와이어 프로토콜 변경.
+
+**Security / trust (R{n} 필수 이유):** 주입은 에이전트 입력 스트림에 **untrusted peer 텍스트**를 쓰는 행위 → sanitize(`prepareInjectText`) + untrusted 마커 + **사람 수락 게이트**로 방어. opt-in 없으면 경로 비활성. R1의 결정적 리스크(입력 큐 꼬임·의도치 않은 제출)를 idle-gated로 완화하나, 완화의 신뢰성이 판정 대상.
+
+**Review impact:** 수신 모델에 **새 경로 추가**(아키텍처 전제 변경) + R1 결정적 리스크 영역 → **R22 필수(Fable 5).** 와이어 프로토콜 **변경 없음**(주입은 클라이언트 로컬).
+
+**Unknowns (§3.5 → `docs/UNKNOWNS.md` §0.21.0):**
+- **에이전트 유휴 감지 메커니즘(판정 리스크):** Claude Code **hooks**(idle 이벤트) vs PTY 출력 **정적(quiescence) 휴리스틱**(N ms 무출력). 어느 게 신뢰 가능하며 오탐 시 어떻게 되나.
+- **제어 채널:** `run-with-pty.py`(또는 Bun 래퍼)에 주입 트리거를 넣는 방식 — named pipe / unix socket / sticky RPC / 별도 fd.
+- **accept→inject 구동 위치:** `loom run` 프로세스 vs sticky host 중 누가 주입을 실행하나(둘의 생명주기·소유권).
+- **에이전트별 실제 동작 검증:** 주입 텍스트를 에이전트가 사용자 입력으로 처리하는가(Phase 1.5 수동 매트릭스 미완 — Claude Code부터 채운다).
+
+**Binding on impl:** R22에서 Fable 5가 확정(pending-review 초안).
+
+**FREEZE 관계:** 오너 pull에 의한 **명시적 예외**(2026-07-11). 나머지 백로그(work-watch·MCP·C1/C2)는 **동결 유지** — 팀 실사용 pull 전엔 열지 않음.
 
 #### 0.20.0 — 2026-07-11 (`approved` R21 — **Tier A3: `loom doctor` 자가진단** · 구현 다음 세션)
 
