@@ -19,4 +19,8 @@ coverage/
 # Rust / Tauri
 **/target/
 apps/desktop/src-tauri/gen/
+# Python bytecode (py_compile / run-with-pty.py)
+__pycache__/
+**/__pycache__/
+*.pyc
 !docs/**

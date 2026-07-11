@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
   injectIntoStdin,
+  injectPasteIntoStdin,
+  preparePasteInjectText,
   prepareInjectText,
   formatIncomingHandoff,
+  BRACKETED_PASTE_END,
+  BRACKETED_PASTE_START,
+  frameBracketedPaste,
 } from "./handoff-inject";
 import type { HandoffPayload } from "@loom/protocol";
 
@@ -27,7 +32,24 @@ describe("handoff-inject", () => {
     expect(p.allowedByDefault).toBe(false);
     expect(p.text.endsWith("\n")).toBe(true);
     expect(p.text).not.toContain("\x1b");
+    expect(p.text).toContain("Untrusted handoff content");
     expect(p.text).toContain("hello");
+  });
+
+  test("preparePasteInjectText uses bracketed paste without trailing newline", () => {
+    const p = preparePasteInjectText(ho);
+    expect(p.allowedByDefault).toBe(false);
+    expect(p.text.endsWith("\n")).toBe(false);
+    expect(p.text).not.toContain("\x1b");
+    expect(p.text).toContain("Untrusted handoff content");
+    expect(p.text).toContain("LOOM HANDOFF");
+  });
+
+  test("frameBracketedPaste wraps exact text", () => {
+    const framed = frameBracketedPaste("hi\nthere");
+    expect(framed.startsWith(BRACKETED_PASTE_START)).toBe(true);
+    expect(framed.endsWith(BRACKETED_PASTE_END)).toBe(true);
+    expect(framed).toBe(`${BRACKETED_PASTE_START}hi\nthere${BRACKETED_PASTE_END}`);
   });
 
   test("injectIntoStdin blocked without experimental flag", () => {
@@ -64,5 +86,20 @@ describe("handoff-inject", () => {
     const r = injectIntoStdin(null, "x", { experimental: true });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("no_stdin");
+  });
+
+  test("injectPasteIntoStdin writes exactly without adding newline", () => {
+    const writes: string[] = [];
+    const r = injectPasteIntoStdin(
+      {
+        write(d) {
+          writes.push(String(d));
+        },
+      },
+      `${BRACKETED_PASTE_START}hi${BRACKETED_PASTE_END}`,
+      { experimental: true },
+    );
+    expect(r.ok).toBe(true);
+    expect(writes.join("")).toBe(`${BRACKETED_PASTE_START}hi${BRACKETED_PASTE_END}`);
   });
 });

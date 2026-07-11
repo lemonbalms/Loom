@@ -63,6 +63,9 @@ import {
   clampWatchIntervalMs,
   SLASH_HELP,
   loomDir,
+  injectIdleMarkerPath,
+  injectSocketPath,
+  runIdForCurrentProfile,
 } from "@loom/host";
 import {
   DEFAULT_RELAY_HOST,
@@ -113,8 +116,12 @@ import {
   type HostRpcProbe,
   type RelayProbe,
 } from "./doctor";
+import {
+  ensureClaudeStopHook,
+  shouldActivateHandoffInject,
+} from "./inject-handoffs";
 
-const VERSION = "0.20.0";
+const VERSION = "0.21.1";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -191,6 +198,7 @@ const BOOLEAN_FLAGS = new Set([
   "no-host",
   "link",
   "status",
+  "inject-handoffs",
 ]);
 
 function usage(): string {
@@ -214,6 +222,7 @@ Usage:
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
+  loom run claude --inject-handoffs
   loom run codex -- -a never -s workspace-write   # forward args to agent
   loom relay [--host 0.0.0.0] [--port 7842] [--token <secret>] [--insecure-open]
   loom spike pty
@@ -235,6 +244,7 @@ Usage:
   --no-host             room create/join: skip auto-host (or LOOM_NO_AUTO_HOST=1)
   --status              loom up: show host online/offline per profile (no spawn)
   --insecure-open       Relay only: allow non-loopback bind without token (H-5)
+  --inject-handoffs     Claude only: after explicit accept/claim, paste handoff when idle (no auto-submit)
   --                    After run <agent>, forward remaining args to the agent CLI
   LOOM_CODEX_ARGS       Optional default args for codex (space-separated)
 
@@ -1986,6 +1996,26 @@ async function cmdRun(
   };
   const profile = getActiveProfile();
   if (profile) sessionEnv.LOOM_PROFILE = profile;
+  const injectRequested = Boolean(flags["inject-handoffs"]);
+  const injectActive = shouldActivateHandoffInject(agentId, flags);
+  if (injectRequested && !injectActive) {
+    eprint(
+      `\x1b[2m--inject-handoffs ignored for ${agentId} (Claude Code only in this version)\x1b[0m\n`,
+    );
+  }
+  if (injectActive) {
+    const runId = runIdForCurrentProfile();
+    const socketPath = injectSocketPath(runId);
+    const idleMarkerPath = injectIdleMarkerPath(runId);
+    ensureClaudeStopHook(process.cwd(), idleMarkerPath);
+    Object.assign(sessionEnv, {
+      LOOM_INJECT_SOCKET: socketPath,
+      LOOM_INJECT_IDLE_MARKER: idleMarkerPath,
+    });
+    eprint(
+      "\x1b[33minject-handoffs: ON — accepted handoffs paste into this Claude session when idle (no auto-submit)\x1b[0m\n",
+    );
+  }
 
   const writeUserConfig = Boolean(flags["write-user-config"]);
   if (

@@ -23,6 +23,7 @@ import {
   boardToAttachments,
   boardIsEmpty,
 } from "./task-board";
+import { notifyInjectAccepted } from "./inject-control";
 
 export type RoomOpsSource = "host" | "oneshot";
 
@@ -254,6 +255,13 @@ export async function opsClaim(
   }
   const host = await tryStickyRpc({ op: "claim", id, via });
   if (host?.ok && host.op === "claim") {
+    if (host.claimed && host.entry) {
+      try {
+        await notifyInjectAccepted(host.entry.handoff);
+      } catch {
+        /* best-effort only */
+      }
+    }
     return {
       ok: host.claimed,
       entry: host.entry,
@@ -272,6 +280,11 @@ export async function opsClaim(
         source: "oneshot",
         session,
       };
+    }
+    try {
+      await notifyInjectAccepted(result.entry.handoff);
+    } catch {
+      /* best-effort only */
     }
     return {
       ok: true,

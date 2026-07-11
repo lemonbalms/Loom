@@ -5,6 +5,11 @@ import {
   type PeerInfo,
 } from "@loom/protocol";
 
+const UNTRUSTED_HANDOFF_MARKER =
+  "⚠ Untrusted handoff content — review before acting";
+export const BRACKETED_PASTE_START = "\x1b[200~";
+export const BRACKETED_PASTE_END = "\x1b[201~";
+
 /**
  * Format a handoff for terminal display.
  * Body is sanitized inside formatHandoffBlock.
@@ -13,14 +18,20 @@ export function formatIncomingHandoff(
   handoff: HandoffPayload,
   from?: PeerInfo,
 ): string {
-  const trust =
-    "\x1b[33m⚠ Untrusted handoff content — review before acting\x1b[0m\n";
+  const trust = `\x1b[33m${UNTRUSTED_HANDOFF_MARKER}\x1b[0m\n`;
   return trust + formatHandoffBlock(handoff, from);
 }
 
 /** Payload prepared for optional Phase 1.5 stdin injection. */
 export type InjectPayload = {
-  /** Sanitized text that would be written (always ends with newline). */
+  /** Sanitized text that would be written. */
+  text: string;
+  /** Whether inject is allowed by product policy (default path: false). */
+  allowedByDefault: false;
+};
+
+export type PasteInjectPayload = {
+  /** Sanitized text for bracketed-paste mode (never forced to end with newline). */
   text: string;
   /** Whether inject is allowed by product policy (default path: false). */
   allowedByDefault: false;
@@ -36,9 +47,34 @@ export function prepareInjectText(
 ): InjectPayload {
   // formatHandoffBlock already sanitizes body/labels; re-sanitize whole block
   // for defense in depth before any experimental stdin write.
-  const cleaned = sanitizePeerText(formatHandoffBlock(handoff, from));
-  const text = cleaned.endsWith("\n") ? cleaned : cleaned + "\n";
+  const cleaned = sanitizePeerText(
+    `${UNTRUSTED_HANDOFF_MARKER}\n${formatHandoffBlock(handoff, from)}`,
+  );
+  const text = cleaned.endsWith("\n") ? cleaned : `${cleaned}\n`;
   return { text, allowedByDefault: false };
+}
+
+export function stripTrailingNewlines(text: string): string {
+  return text.replace(/[\r\n]+$/g, "");
+}
+
+export function frameBracketedPaste(text: string): string {
+  return `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`;
+}
+
+/**
+ * Build paste-only payload for the v0.21.1 opt-in inject path.
+ * It is derived from prepareInjectText, then strips the final submit newline.
+ */
+export function preparePasteInjectText(
+  handoff: HandoffPayload,
+  from?: PeerInfo,
+): PasteInjectPayload {
+  const prepared = prepareInjectText(handoff, from);
+  return {
+    text: stripTrailingNewlines(prepared.text),
+    allowedByDefault: false,
+  };
 }
 
 export type InjectResult =
@@ -65,8 +101,27 @@ export function injectIntoStdin(
   }
   if (!stdin) return { ok: false, reason: "no_stdin" };
   try {
-    const payload = text.endsWith("\n") ? text : text + "\n";
+    const payload = text.endsWith("\n") ? text : `${text}\n`;
     stdin.write(payload);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "write_failed" };
+  }
+}
+
+/** Write an already bracketed paste payload exactly; never appends newline. */
+export function injectPasteIntoStdin(
+  stdin: { write(data: string | Buffer): unknown } | null | undefined,
+  text: string,
+  opts?: { /** Must be true — guards against accidental default-path use */
+    experimental?: boolean },
+): InjectResult {
+  if (!opts?.experimental) {
+    return { ok: false, reason: "policy_blocked" };
+  }
+  if (!stdin) return { ok: false, reason: "no_stdin" };
+  try {
+    stdin.write(text);
     return { ok: true };
   } catch {
     return { ok: false, reason: "write_failed" };

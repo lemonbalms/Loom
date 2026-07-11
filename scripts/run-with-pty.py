@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import json
 import os
 import pty
 import select
 import signal
+import socket
 import struct
 import sys
 import termios
@@ -50,6 +52,151 @@ def _set_winsize(fd: int, rows: int, cols: int, hp: int = 0, wp: int = 0) -> Non
         )
     except Exception:
         pass
+
+
+def _safe_unlink(path: str | None) -> None:
+    if not path:
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+
+def _peer_uid(conn: socket.socket) -> int | None:
+    try:
+        if hasattr(socket, "SO_PEERCRED"):
+            raw = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
+            _pid, uid, _gid = struct.unpack("3i", raw)
+            return uid
+    except Exception:
+        return None
+    try:
+        if hasattr(socket, "LOCAL_PEERCRED"):
+            raw = conn.getsockopt(socket.SOL_SOCKET, socket.LOCAL_PEERCRED, 12)
+            _version, uid, _ngroups = struct.unpack("Iih", raw[:10])
+            return uid
+    except Exception:
+        return None
+    return None
+
+
+def _setup_inject_server(socket_path: str | None, marker_path: str | None) -> socket.socket | None:
+    if not socket_path or not marker_path:
+        return None
+    if not os.path.isabs(socket_path) or not os.path.isabs(marker_path):
+        return None
+    try:
+        os.makedirs(os.path.dirname(socket_path), mode=0o700, exist_ok=True)
+        os.makedirs(os.path.dirname(marker_path), mode=0o700, exist_ok=True)
+    except Exception:
+        return None
+
+    _safe_unlink(socket_path)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    old_umask = os.umask(0o177)
+    try:
+        srv.bind(socket_path)
+    except Exception:
+        os.umask(old_umask)
+        srv.close()
+        return None
+    finally:
+        try:
+            os.umask(old_umask)
+        except Exception:
+            pass
+    try:
+        os.chmod(socket_path, 0o600)
+    except Exception:
+        srv.close()
+        _safe_unlink(socket_path)
+        return None
+    srv.listen(4)
+    srv.setblocking(False)
+    return srv
+
+
+def _handle_inject_conn(
+    conn: socket.socket,
+    master_fd: int,
+    marker_path: str,
+    injected_ids: set[str],
+    last_output_ns: int,
+) -> None:
+    def reply(ok: bool, reason: str | None = None) -> None:
+        try:
+            payload: dict[str, object] = {"ok": ok}
+            if reason:
+                payload["reason"] = reason
+            conn.sendall((json.dumps(payload) + "\n").encode("utf-8"))
+        except Exception:
+            pass
+
+    try:
+        uid = _peer_uid(conn)
+        if uid is not None and uid != os.getuid():
+            reply(False, "wrong_uid")
+            return
+
+        chunks: list[bytes] = []
+        total = 0
+        conn.settimeout(0.05)
+        while total < 1024 * 1024:
+            try:
+                chunk = conn.recv(8192)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if b"\n" in chunk:
+                break
+        raw = b"".join(chunks).split(b"\n", 1)[0]
+        msg = json.loads(raw.decode("utf-8"))
+        if not isinstance(msg, dict):
+            reply(False, "bad_request")
+            return
+        handoff_id = msg.get("id")
+        text = msg.get("text")
+        if not isinstance(handoff_id, str) or not isinstance(text, str):
+            reply(False, "bad_request")
+            return
+
+        if handoff_id in injected_ids:
+            reply(False, "duplicate")
+            return
+
+        # Fail-safe: no fresh Stop-hook marker, or recent PTY output, means busy
+        # or unknown. Never queue/retry for later delivery.
+        try:
+            marker = os.stat(marker_path)
+        except OSError:
+            reply(False, "busy_or_unknown")
+            return
+        if time.time() - marker.st_mtime > 30.0:
+            reply(False, "busy_or_unknown")
+            return
+        quiet_for = (time.monotonic_ns() - last_output_ns) / 1_000_000_000
+        if quiet_for < 0.3:
+            reply(False, "busy_or_unknown")
+            return
+
+        safe_text = text.rstrip("\r\n")
+        frame = f"\x1b[200~{safe_text}\x1b[201~"
+        os.write(master_fd, frame.encode("utf-8"))
+        injected_ids.add(handoff_id)
+        reply(True)
+    except Exception:
+        reply(False, "error")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def main() -> int:
@@ -98,6 +245,11 @@ def main() -> int:
     # Parent
     os.close(slave_fd)
     last_size = (rows, cols)
+    last_output_ns = time.monotonic_ns()
+    injected_ids: set[str] = set()
+    inject_socket_path = os.environ.get("LOOM_INJECT_SOCKET")
+    inject_marker_path = os.environ.get("LOOM_INJECT_IDLE_MARKER")
+    inject_server = _setup_inject_server(inject_socket_path, inject_marker_path)
 
     def apply_size(force: bool = False) -> None:
         nonlocal last_size
@@ -145,9 +297,27 @@ def main() -> int:
     try:
         while True:
             try:
-                rfds, _, _ = select.select([master_fd, stdin_fd], [], [], 0.2)
+                watch = [master_fd, stdin_fd]
+                if inject_server is not None:
+                    watch.append(inject_server)
+                rfds, _, _ = select.select(watch, [], [], 0.2)
             except (InterruptedError, select.error):
                 continue
+
+            if inject_server is not None and inject_server in rfds:
+                try:
+                    conn, _addr = inject_server.accept()
+                    _handle_inject_conn(
+                        conn,
+                        master_fd,
+                        inject_marker_path or "",
+                        injected_ids,
+                        last_output_ns,
+                    )
+                except BlockingIOError:
+                    pass
+                except Exception:
+                    pass
 
             if master_fd in rfds:
                 try:
@@ -158,6 +328,7 @@ def main() -> int:
                     raise
                 if not data:
                     break
+                last_output_ns = time.monotonic_ns()
                 os.write(stdout_fd, data)
 
             if stdin_fd in rfds:
@@ -168,6 +339,7 @@ def main() -> int:
                 if not data:
                     # EOF from user
                     break
+                _safe_unlink(inject_marker_path)
                 os.write(master_fd, data)
 
             # child exited?
@@ -192,6 +364,13 @@ def main() -> int:
             os.close(master_fd)
         except Exception:
             pass
+        if inject_server is not None:
+            try:
+                inject_server.close()
+            except Exception:
+                pass
+            _safe_unlink(inject_socket_path)
+            _safe_unlink(inject_marker_path)
         # reap if still running
         try:
             wpid, status = os.waitpid(pid, 0)
