@@ -1,6 +1,6 @@
 import { which } from "bun";
 
-export async function commandExists(name: string): Promise<boolean> {
+async function commandExists(name: string): Promise<boolean> {
   try {
     const path = which(name);
     return Boolean(path);

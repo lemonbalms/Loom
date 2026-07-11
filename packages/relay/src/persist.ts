@@ -232,7 +232,7 @@ export function writeAtomicJson(filePath: string, data: unknown): void {
  * Read JSON. Missing → null.
  * Corrupt → backup + throw (caller skips room).
  */
-export function readJsonFile(filePath: string): unknown | null {
+function readJsonFile(filePath: string): unknown | null {
   if (!existsSync(filePath)) return null;
   let raw: string;
   try {
@@ -269,7 +269,7 @@ function isPeerInfoShape(p: unknown): p is RoomSnapshotV1["members"][0]["peer"] 
   );
 }
 
-export function parseRoomSnapshot(raw: unknown): RoomSnapshotV1 | null {
+function parseRoomSnapshot(raw: unknown): RoomSnapshotV1 | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   if (o.v !== 1) return null;
@@ -390,17 +390,6 @@ export function saveRoomSnapshot(
     throw new Error(`Snapshot path escapes state dir: ${path}`);
   }
   writeAtomicJson(path, snap);
-}
-
-export function deleteRoomSnapshot(stateDir: string, roomId: string): void {
-  const path = roomStatePath(stateDir, roomId);
-  if (existsSync(path)) {
-    try {
-      rmSync(path);
-    } catch {
-      /* */
-    }
-  }
 }
 
 /** Map PeerInfo for snapshot (online not stored). */

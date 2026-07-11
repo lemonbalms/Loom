@@ -2,6 +2,9 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreBinaries": ["shellcheck"],
   "ignore": ["apps/desktop/**"],
+  "rules": {
+    "duplicates": "off"
+  },
   "workspaces": {
     "packages/host": {
       "entry": ["src/sticky-main.ts"]
