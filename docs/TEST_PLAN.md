@@ -86,6 +86,7 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 | 9 | 에이전트 MCP | adapters + **smoke:uc** (9.1/4/5/6) | 9.2–9.3 TUI only |
 | 10 | LAN/원격 | auth.integration (부분) | P2 2머신 |
 | 11 | 회귀 묶음 | **smoke:desktop + bun test + smoke:uc** | — |
+| 12 | Launcher UX (up/down/auto-host) | sticky-host.integration (부분) | **P1 수동** |
 
 ```bash
 # 전체 자동 (CI 로컬 대응)
@@ -286,6 +287,91 @@ bun run desktop
 | 11.4 | (선택) `cd apps/desktop/src-tauri && cargo test` | Rust sticky path 단위 |
 
 **릴리스 전:** 11.1 + 11.2 필수. **11.3 권장** (수동 UC-1/3/5/6 대체 가능).
+
+---
+
+## UC-12 — Launcher UX: up/down + auto-host (P1) · 제품 0.17
+
+**대상:** 0.17 Launcher UX — `loom up`/`down` 멀티프로필 백그라운드 호스트, room create/join 시 auto-host, M-27 kill-safety, M-28 순차 처리.
+**전제:** `~/.loom/profiles/` 에 세션 있는 프로필 ≥1 (없으면 `room create`/`join` 먼저). 격리는 §0.1 `LOOM_TEST_HOME` 권장.
+**참조 구현:** `packages/cli/src/index.ts` (`cmdUp`/`cmdDown`/`autoHostAfterSession`), `packages/host/src/sticky-spawn.ts`·`sticky-meta.ts`.
+
+### 12.A — auto-host on room create/join (기본 on)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.A1 | `bun run loom --profile alice room create --as alice --name demo` | invite 출력 + dim 줄 `host auto-started (pid <pid>); disable with --no-host or LOOM_NO_AUTO_HOST=1` | 🖐 |
+| 12.A2 | `bun run loom --profile alice host status` | `sticky host: running`, pid/ipc/room 표시 | 🖐 |
+| 12.A3 | `bun run loom --profile bob room join LOOM-… --as bob` | join 성공 + bob도 `host auto-started …` | 🖐 |
+| 12.A4 | host 시작 실패 시 (예: 세션 이상) | create/join은 **중단되지 않음**; dim `host auto-start skipped: <error> — try …` (fail-soft, L-34) | 🖐 선택 |
+
+### 12.B — auto-host opt-out (`--no-host` / env)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.B1 | `bun run loom --profile carol room create --as carol --name d2 --no-host` | invite 출력, **auto-host 메시지 없음** | 🖐 |
+| 12.B2 | 12.B1 직후 `host status` | `sticky host: not running` | 🖐 |
+| 12.B3 | `LOOM_NO_AUTO_HOST=1 bun run loom --profile dave room join LOOM-… --as dave` | join 성공, auto-host 메시지 없음 (env=`1`/`true`만 인정) | 🖐 |
+
+### 12.C — `loom up` (멀티프로필 일괄 기동, M-28 순차)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.C1 | 세션 프로필 없이 `bun run loom up` | exit 1 + `loom up: no profiles with a session under ~/.loom/profiles/.` + create/join 안내 | 🖐 |
+| 12.C2 | `bun run loom up` (세션 프로필 존재) | 헤더 `loom up — sticky hosts:` + 프로필별 `online`/`already` + pid + `<displayName> @ <roomName>` | 🖐 |
+| 12.C3 | 12.C2 출력 하단 | 푸터 `Peers stay online in the background (closing the terminal is OK).` + Send/Process/Stop 안내 | 🖐 |
+| 12.C4 | `bun run loom up --profiles alice,bob` | alice·bob만 대상 | 🖐 |
+| 12.C5 | 이미 online인 상태에서 재 `up` | 해당 프로필 `already   pid <pid>` (에러 아님, 멱등) | 🖐 |
+| 12.C6 | 세션 없는 프로필이 섞임 | 그 프로필은 `skipped  (no session)` | 🖐 선택 |
+
+### 12.D — `loom up --status` (기동 없이 조회)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.D1 | `bun run loom up --status` | 헤더 `loom up --status:` + 프로필별 `online   pid <pid>  <displayName> @ <roomName>` 또는 `offline`; **새 호스트 스폰 안 함** | 🖐 |
+| 12.D2 | 프로필 전무 시 | `loom up --status: no profiles found.` | 🖐 선택 |
+
+### 12.E — `loom down` (정지)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.E1 | `bun run loom down` | 헤더 `loom down — stopping sticky hosts:` + 프로필별 `sticky host stopping` (RPC ok) | 🖐 |
+| 12.E2 | 12.E1 직후 `loom up --status` | 대상 프로필 전부 `offline` | 🖐 |
+| 12.E3 | `bun run loom down --profiles alice` | alice만 정지, 나머지 유지 | 🖐 |
+| 12.E4 | 호스트 없는 상태 재 `down` | 프로필별 `no sticky host running` (에러 아님) | 🖐 |
+
+### 12.F — M-27 kill-safety (pid 재활용 방어)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.F1 | 정상 `down` 시 종료 경로 | RPC stop → 미종료 시에만 SIGTERM; **SIGTERM 전 `ps -o command=`에 `sticky-main.ts` 포함 확인** (`pidLooksLikeStickyHost`) | 🤖 단위 (sticky-meta) |
+| 12.F2 | meta.pid가 무관 프로세스로 재활용된 경우 | **kill 안 함**; meta만 정리 + `sticky host meta cleared; pid <pid> did not verify as our sticky host — NOT killed (M-27)` | 🤖 단위 / 🖐 재현 난이도 높음(선택) |
+
+### 12.G — 세션 변경 시 기존 호스트 자동 정지 (F-2)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.G1 | 호스트 살아있는 프로필로 다시 `room create`/`join` | stderr `Stopped sticky host (room session changing — run bun run loom host start again)` 후 새 세션 저장 (+ auto-host 재기동, 단 `--no-host` 아니면) | 🖐 |
+
+### 12.H — dogfood:up 엔드투엔드 (5 프로필)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 12.H1 | `bun run dogfood:room` | room `loom-dev` 생성/재조인, 5 프로필 join (`impl`/`claude-impl`/`codex-impl`/`claude-rev`/`codex-rev`), `.loom/dogfood-room.env` 기록 | 🖐 |
+| 12.H2 | `bun run dogfood:up` | 내부: room-up(`LOOM_NO_AUTO_HOST=1`) → `loom up --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev` (M-28 순차) → 5 호스트 online | 🖐 |
+| 12.H3 | `bun run dogfood:up --status` | 5 프로필 online/offline + pid | 🖐 |
+| 12.H4 | 정지 | `bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev` → 전부 stopping (**`dogfood:down` 스크립트는 없음**) | 🖐 |
+
+### 12.I — 불변식 (횡단 확인)
+
+| # | 검사 | 기대 |
+|---|------|------|
+| 12.I1 | meta 파일 권한 | `~/.loom/profiles/<name>.host.json` 존재, 퍼미션 **0600** |
+| 12.I2 | 백그라운드 유지 | `up` 후 터미널 닫아도 peer online 유지 (detached/unref) |
+
+**통과 기준:** 12.A1–A3, 12.C2–C3, 12.D1, 12.E1–E2, 12.H2 ✅. (12.F2·12.A4는 선택/재현 난이도)
+**관련 자동:** `sticky-host.integration`, `sticky-meta` 단위(M-27), `smoke:desktop`(RPC).
+**공백(자동화 미비):** `up`/`down`/`--status`/auto-host 전용 스모크 없음 — 대부분 수동. → `smoke:uc`에 UC-12 블록 추가 검토(후속).
 
 ---
 
