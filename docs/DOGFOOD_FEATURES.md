@@ -34,7 +34,7 @@
 |---|------|------|------|-----|
 | A1 | **5분 설치 경로** (설치 스크립트 or 상시 relay+초대코드, `bun link` 대체) | 빌드 | LOOM_PURPOSE_REVIEW #1 | UC-0 확장 |
 | A2 | **첫 5분 마찰 제거** (외부인 온보딩 마찰) | 빌드 | PRIORITIES §3 · REVIEW #2 | UC-0/1 |
-| A3 | **`loom doctor` 진단** (세션/호스트/프로필 자가진단) | 빌드(선택) | PRIORITIES §3 #4 | 신규 UC |
+| A3 | **`loom doctor` 진단** (install/home/session/relay/host) — **PLAN 0.20.0 approved(R21), 구현 다음 세션**; read-only(M-1 `ensureRelay`금지·M-2 `resolveAliveHostMeta`금지) | 빌드 | PRIORITIES §3 #4 · Docker 하네스 실패모드 흡수 | 신규 UC |
 | A4 | **수요 신호 1줄 기록** (사용자 반응 캡처) | 관찰 | REVIEW #3 | — |
 
 ## Tier B — 최신 기능 도그푸드 + UC 신설 ★ 착수 지점

@@ -42,6 +42,23 @@
 
 ## Gate log
 
+### 0.20.0 — Tier A3 `loom doctor` 자가진단 (pending-review)
+
+| Field | Value |
+|-------|--------|
+| **PLAN** | v0.20.0 (`pending-review`) |
+| **Date** | 2026-07-11 |
+| **Review** | R21 required (새 CLI 서브커맨드 표면). **구현은 다음 세션** |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 진단 표면 다 존재: `Bun.which`/loomCmd(install), `loomDir`/`getActiveProfile`(home), `loadSession`(session), `parseRelayUrl`/`isLoopbackHost`+`/health`(relay), `resolveLiveHostMeta`/`describeHostMeta`/`stickyRpc`(host). Docker 하네스가 실패 모드(PATH·unzip·loopback) 이미 노출. |
+| Known unknowns | (1) exit code 계약 — 항상 0 vs `fail`시 non-zero vs `--strict`. (2) `/health` 프로브 타임아웃(오프라인 relay 매달림 방지). (3) 세션 없음(설치 직후) 첫 실행 출력이 유용한가. (4) read-only 보장 — auto-host 절대 안 띄움. |
+| Unknown knowns | 낯선 사람은 "무엇이 틀렸는지"가 아니라 "다음 한 걸음"을 원함 → 각 fail에 조치 힌트 필수. |
+| Unknown unknowns | 비표준 셸/컨테이너/CI에서의 health GET 동작·타임아웃, describeHostMeta가 stale pid를 live로 오판하는 경계. |
+
+**Next session:** R21 → 0.20.x implement(`cmdDoctor` + dispatch + 테스트) → docs.
+
 ### 0.19.0 — Tier A1 5분 설치 경로 install script (pending-review)
 
 | Field | Value |

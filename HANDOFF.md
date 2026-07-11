@@ -14,7 +14,9 @@
 >
 > **A1 설치 경로도 완료됨(0.19.0):** `scripts/install.sh` (`curl … | bash`) — Bun 확보→clone→link→verify→PATH. 이제 초대받은 낯선 사람은 **한 줄 설치 + `loom room join <blob>`**. R20 approved, 구현·검증·커밋(`a9cefd0`).
 >
-> **다음은 코드가 아니라 OPS/실사용 (사용자 필요):**
+> **⏩ 다음 세션 큐(사용자 지시): A3 `loom doctor` 구현** — PLAN **0.20.0 approved(R21)**, binding M-1..M-4 잠금 완료. `docs/PLAN.md` 0.20.0 + `plan_review.md` R21 읽고 바로 구현: `cmdDoctor`(read-only 5섹션 진단) + dispatch + 테스트. **M-1: `ensureRelay` 금지(직접 /health fetch+timeout)** · **M-2: `resolveAliveHostMeta` 금지(stale 보고만)** · M-3 exit code · M-4 no-session=info.
+>
+> **그다음(코드 아님, OPS/실사용, 사용자 필요):**
 > 1. **relay를 도달 가능한 호스트에 배포** — `apps/relay-cloud/README.md` 경로(VPS/LAN, `--host 0.0.0.0 --token …`, H-5). 로컬(loopback)이면 blob이 타 머신에서 안 됨(M-2 경고).
 > 2. 그 relay에서 `room create` → `room invite --link`로 blob 생성.
 > 3. **2번째 머신**: `curl -fsSL https://raw.githubusercontent.com/lemonbalms/Loom/main/scripts/install.sh | bash` → `exec $SHELL` → `loom room join <blob>` → **시간 측정(목표 5분)**. install.sh 실경로 마찰이 A2 관찰 대상.
@@ -25,6 +27,8 @@
 
 ## One-line resume
 
+> **⏩ 다음 세션 = A3 `loom doctor` 구현.** PLAN **0.20.0 `approved` (R21)** — read-only 자가진단(install/home/session/relay/host 5섹션). binding **M-1 `ensureRelay` 금지** · **M-2 `resolveAliveHostMeta` 금지** · M-3 exit code · M-4 no-session=info. 게이트만 세워둠, 코드 미착수. → `docs/PLAN.md` 0.20.0 · `plan_review.md` R21.
+>
 > PLAN **0.19.0** `approved` (R20) — **Tier A1 5분 설치 경로 shipped (code)**:  
 > `scripts/install.sh` (`curl \| bash`): Bun 확보→clone(~/.loom-src)→`bun link`→절대경로 verify→shell rc PATH append. `loomCmd()` helper로 share/next 힌트를 설치 시 `loom`으로 표시(미설치 시 `bun run loom` fallback). R20 binding M-1..M-4 준수, L-1..L-4 author-close.  
 > **Code + PLAN both 0.19.0.** `bun test` **175 pass / 0 fail**, 6 pkg typecheck green, shellcheck clean, 격리 install.sh 라이브 smoke ✅. Committed (`a711478` plan, `a9cefd0` impl); **push pending / done this session**.
@@ -36,11 +40,11 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.19.0** (install script + loomCmd sweep) |
-| **PLAN** | **v0.19.0** `approved` (R20; M-1..M-4 impl-bound, done) |
-| **Open blocking** | **none** — R20 M-1..M-4 implemented; L-1..L-4 author-close done (`implementation-notes.md`) |
-| **Tests** | `bun test` 175 pass / 0 fail · 6 pkg typecheck green · shellcheck clean |
-| **Latest** | `a9cefd0` install path (0.19.0) · `a711478` PLAN 0.19.0/R20 · `2b59dee` invite blob (0.18.0) |
+| **CLI / code** | **0.19.0** (install script + loomCmd sweep) — shipped |
+| **PLAN** | **v0.20.0** `approved` (R21) — `loom doctor`, **구현 대기(다음 세션)**. 0.19.0(R20) shipped |
+| **Open blocking** | **none** — R21 approved. 다음 세션이 M-1..M-4 지켜 구현 |
+| **Tests** | `bun test` 175 pass / 0 fail · 6 pkg typecheck green · shellcheck clean · Docker 하네스 A/B/LAN green |
+| **Latest** | `632bbb4` LAN check · `3b6cc0c` Docker 하네스 · `a9cefd0` install path (0.19.0) |
 
 ### Already shipped (context, don't redo)
 
@@ -125,16 +129,20 @@ bun run dogfood:up -- --status     # report only
 # or full: bun run dogfood:up   →   bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev
 ```
 
-### 3) Priority = OPS 2머신 dry-run (A1 코드 완료), not another feature
-A1(설치 경로)·invite blob 둘 다 shipped. 남은 건 **실사용 검증**:
-1. relay를 도달 가능한 호스트에 배포(`apps/relay-cloud/README.md`, `--host 0.0.0.0 --token`).
-2. `room create` → `room invite --link`로 blob.
-3. 2번째 머신에서 `curl … install.sh | bash` → `loom room join <blob>` → **5분 측정**.
-4. A2(첫-5분 마찰, install.sh 실경로)·A4(수요 신호) 기록.
-새 MINOR/Low 백로그는 그 이후 — PLAN 버전 + R{n} 게이트(WORKFLOW §5.1).
+### 3) 다음 세션 큐 = A3 `loom doctor` 구현 (R21 approved, 사용자 지시)
+게이트 완료됨(PLAN 0.20.0 approved, R21, M-1..M-4 잠금). 바로 구현:
+1. `cmdDoctor` — read-only 5섹션(install/home/session/relay/host), 섹션별 ok/warn/fail + 다음-조치 힌트.
+2. **M-1 `ensureRelay` 금지** → 직접 `fetch(origin+"/health",{signal:AbortSignal.timeout(3000)})`. **M-2 `resolveAliveHostMeta` 금지** → `loadStickyMeta`+`isPidAlive`로 stale 보고만.
+3. **M-3** exit: fail≥1→1, warn만→0. **M-4** no-session=`info`(fail 아님). token 값 출력 금지.
+4. dispatch(`cmd === "doctor"`) + 테스트 + VERSION 0.20.0(CLI+MCP) + docs. L-1..L-3 author-close.
+5. 검증: `bun test` + `test/docker/run-install-test.sh`(설치 직후 doctor 첫 실행 케이스 확인).
+
+### 4) 그다음 전략 = OPS 2머신 dry-run (사용자/2nd 머신 필요)
+relay 배포 → `room invite --link` blob → 2번째 머신 `curl … install.sh | bash` → join → 5분 측정 · A2/A4 기록. 네트워크 배관은 `test/docker/run-lan-check.sh`로 사전 검증 가능.
 
 ---
 
 ## Plan pointer
-Read: `docs/PLAN.md` Changelog **0.19.0** (Tier A1 install script, M-1..M-4 locks) + **0.18.0** (invite blob).  
-Review: `docs/plan_review.md` **R20** (approved, v0.19.0) · R19 (closed, shipped).
+Read: `docs/PLAN.md` Changelog **0.20.0** (Tier A3 `loom doctor`, M-1..M-4 locks, **구현 대기**) + **0.19.0** (install script, shipped).  
+Review: `docs/plan_review.md` **R21** (approved, v0.20.0, implement next session) · R20/R19 (closed, shipped).  
+Harness: `test/docker/` (install 냉시동 · 2컨테이너 join · LAN 배관) — 전부 green.

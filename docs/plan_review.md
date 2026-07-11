@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.19.0** `approved` (R20) — Tier A1 5분 설치 경로 (install script). **binding on impl:** M-1(bun bin dir 해석) · M-2(`exec $SHELL` curl\|bash 무효) · M-3(`loomCmd` 열거형 스왑) · M-4(mid-script bun PATH); L-1..L-4 author-close (WORKFLOW §5.1).  
+> **최신:** PLAN **v0.20.0** `approved` (R21) — Tier A3 `loom doctor` 자가진단 (read-only). **binding on impl:** M-1(`ensureRelay` 금지 — 직접 `/health` fetch+timeout) · M-2(`resolveAliveHostMeta` 금지 — stale은 보고만) · M-3(exit code: fail≥1→1, warn만→0) · M-4(no-session은 fail 아님, info). **구현은 다음 세션.** (0.19.0/R20 shipped.)  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,15 +13,43 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R20** | **v0.19.0** | **approved** | Tier A1 5분 설치 경로 (install script) — install/doc/string surface only, zero relay coupling. **Binding on impl:** M-1 (bin dir via `BUN_INSTALL`/`bun pm bin -g`, not hardcoded `$HOME/.bun/bin`), M-2 (`exec $SHELL`은 curl\|bash에서 무효 → 안내 출력 또는 `</dev/tty` tty-guard), M-3 (`loomCmd`는 문자열별 열거형 스왑 — self-ref 노트 495/604·실행 spawn 2350 제외), M-4 (Bun 설치 후 script PATH export). L-1..L-4 author-close. |
-| R19 | v0.18.0 | closed (approved→shipped `2b59dee`) | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. M-1/M-2 impl-bound (done), L-1/L-2 author-close. |
-| R18 | v0.17.1 | closed (author-close) | Launcher UX — M-27/M-28 locks in 0.17.1 (see Recent follow-ups). |
+| **R21** | **v0.20.0** | **approved** | Tier A3 `loom doctor` (read-only 진단) — no wire change. **Binding on impl:** M-1 (never `ensureRelay` — direct `/health` fetch + `AbortSignal.timeout(3000)`; spawns relay otherwise, `relay-daemon.ts:91-105`), M-2 (never `resolveAliveHostMeta` — it deletes stale meta `sticky-client.ts:25-27`; use `loadStickyMeta`+`isPidAlive`, report stale), M-3 (exit: fail≥1→1, warn-only→0; no `--strict`), M-4 (no-session = `info`, not `fail`). L-1..L-3 author-close. **Implement next session.** |
+| R20 | v0.19.0 | closed (approved→shipped `a9cefd0`) | Tier A1 install script — install/doc/string surface, zero relay coupling. M-1..M-4 impl-bound (done), L-1..L-4 author-close. Docker harness caught + fixed a bash-login `set -e` abort. |
+| R19 | v0.18.0 | closed (approved→shipped `2b59dee`) | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. |
 
 ---
 
 ## Open (blocking)
 
-_(none)_ — **R20 approved** (v0.19.0). Implementation must honor **M-1** (bin dir resolve) · **M-2** (`exec $SHELL` fix) · **M-3** (`loomCmd` enumerated swap) · **M-4** (mid-script bun PATH); **L-1..L-4** author-close. See R20 body below. (R19/v0.18.0 shipped `2b59dee`.)
+_(none)_ — **R21 approved** (v0.20.0, `loom doctor`). **Implement next session**; must honor **M-1** (no `ensureRelay` — direct `/health`+timeout) · **M-2** (no `resolveAliveHostMeta` — report stale, don't delete) · **M-3** (exit-code contract) · **M-4** (no-session = info); **L-1..L-3** author-close. See R21 body below. (R20/v0.19.0 shipped `a9cefd0`.)
+
+---
+
+## Review R21 — Plan v0.20.0
+**검토 대상:** `docs/PLAN.md` v0.20.0 `#### 0.20.0` changelog (Tier A3 `loom doctor` 자가진단) + header block + `docs/UNKNOWNS.md` 0.20.0
+**검토자:** Fable 5 (fable-advisor)
+**날짜:** 2026-07-11
+**결론:** approved (binding M-1…M-4 전제; 구현은 다음 세션, 재리뷰 불요)
+
+### Checklist
+- [x] **Check-set vs real surfaces** — 전부 실재: `loomDir`(`session-store.ts:209`), `getActiveProfile`(:244), `resolveStateHomeDir`(:154), `loadSession`(:288, 순수 읽기), `isPidAlive`(:76); `loomCmd`/`Bun.which`(`cli/index.ts:137–139`), `parseRelayUrl`, host status(:1446–1456), `isLoopbackHost` dynamic import(:645); relay `/health` `{ok,rooms,auth,version}`(`relay/src/server.ts:106–112`), 토큰 없이 열려 있어 프로브 성립(`auth.integration.test.ts:27–32`).
+- [x] **Security** — `describeHostMeta`는 token 미출력; session relayUrl은 H-6로 토큰 미포함(`relay-daemon.ts:69`). present/missing만 출력.
+- [x] **Read-only 의도는 맞음** — 단, 두 helper에 실제 부작용 → M-1/M-2로 잠금.
+- [x] **Out-of-scope / Unknowns** — 깨끗; Unknowns 4개가 실제 리스크(exit code·health timeout·no-session·auto-host) 정확히 짚음.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (High, binding):** doctor의 relay 검사는 **절대 `ensureRelay` 호출 금지**. `relay-daemon.ts:91–105` — local relay가 죽어 있으면 spawn + pid 파일 write → read-only 파기. `parseRelayUrl` + 직접 `fetch(httpOrigin + "/health", { signal: AbortSignal.timeout(3000) })`로만.
+- **M-2 (Med, binding):** **`resolveAliveHostMeta` 호출 금지** — `sticky-client.ts:25–27`에서 stale meta를 `clearStickyMeta`로 삭제(mutation). doctor는 `loadStickyMeta` + `isPidAlive`를 직접 조합해 stale을 **보고만** 한다(stale 자체가 진단 정보).
+- **M-3 (Med, binding):** exit code 계약 — `fail`≥1 → exit 1, `warn`만 → exit 0. `--strict`(warn도 non-zero)는 범위 밖. 항상 0이면 Docker 하네스/CI에서 활용 불가.
+- **M-4 (Med, binding):** no-session(설치 직후 첫 실행)은 `fail` 아님 — Session/Relay/Host 섹션은 `info: no session — next: loom room join <blob>`. 안 그러면 정상 설치가 3-fail로 보여 A3 목적(안심) 역행.
+- **L-1 (Low):** `~/.loom` writable 검사는 probe-write 말고 `accessSync(W_OK)`. author-close.
+- **L-2 (Low):** relayUrl 출력 시 `?token=` 방어적 redact(H-6로 미포함이나 1줄 가드). author-close.
+- **L-3 (Low):** host RPC는 `stickyRpc({op:"status"}, {timeoutMs: 2000-3000})` — 기본 8s(`sticky-client.ts:79`)는 doctor엔 김. author-close.
+
+### Decision notes
+- **5-섹션 구성은 최소·충분** — 유지(health `auth:true` × 세션 token missing 교차검사가 relay 섹션의 실질 가치).
+- M-1…M-4를 binding-on-impl로 잠그면 **다음 세션 구현 허용**. 재리뷰 불요, 0.20.0 그대로 진행. L-1..L-3 author-close(`implementation-notes.md`).
+- Advisor: fable-advisor consulted: yes.
 
 ---
 
@@ -86,14 +114,18 @@ _(none)_ — **R20 approved** (v0.19.0). Implementation must honor **M-1** (bin 
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
-| A1-M1 | Med | R20/0.19.0 install.sh verify/append이 `$HOME/.bun/bin` 하드코딩 — Bun은 `BUN_INSTALL` 존중 | **binding on impl** — `bun pm bin -g`/`${BUN_INSTALL:-$HOME/.bun}/bin`로 해석해 verify·rc append 동일 값 |
-| A1-M2 | Med | R20/0.19.0 `exec $SHELL` 마지막 실행 단계가 `curl\|bash`에서 즉시 EOF 종료 | **binding on impl** — 안내로 출력 또는 tty 체크 후 `</dev/tty` |
-| A1-M3 | Med | R20/0.19.0 `loomCmd` 스윕이 blanket이면 self-ref 노트(495/604)·실행 spawn(2350) 오염 | **binding on impl** — 문자열별 열거형 스왑, 두 케이스 제외 |
-| A1-M4 | Med | R20/0.19.0 Bun 설치 직후 script PATH에 `bun` 부재 → `bun install`/`link` 실패 | **binding on impl** — 해석 bin dir `export PATH` 또는 절대경로 |
-| A1-L1 | Low | R20/0.19.0 truncated-download 안전 + `git` 존재 체크 | author-close — `main(){…}; main "$@"` 래핑 |
-| A1-L2 | Low | R20/0.19.0 `curl\|bash` 핀(main vs 태그) 미정 | author-close — 결정 기록, raw URL fetch ref와 동일 clone |
-| A1-L3 | Low | R20/0.19.0 share 라인 `loomCmd` 감지는 휴리스틱 | author-close — fallback 노트 유지 |
-| A1-L4 | Low | R20/0.19.0 fish 셸 rc 멱등 append | author-close — `fish_add_path`/config.fish + marker |
+| A3-M1 | High | R21/0.20.0 `loom doctor`가 `ensureRelay` 호출 시 죽은 local relay를 spawn+pid write(read-only 파기) | **binding on impl** — 직접 `fetch(origin+"/health",{signal:AbortSignal.timeout(3000)})`만 |
+| A3-M2 | Med | R21/0.20.0 `resolveAliveHostMeta`는 stale meta를 `clearStickyMeta`로 삭제(mutation) | **binding on impl** — `loadStickyMeta`+`isPidAlive` 조합, stale은 보고만 |
+| A3-M3 | Med | R21/0.20.0 exit code 계약 미정 | **binding on impl** — fail≥1→exit 1, warn만→0; `--strict` 범위 밖 |
+| A3-M4 | Med | R21/0.20.0 no-session(설치 직후)이 fail로 보이면 A3 목적 역행 | **binding on impl** — Session/Relay/Host를 `info: no session — next: room join` |
+| A3-L1 | Low | R21/0.20.0 `~/.loom` writable 검사 방식 | author-close — probe-write 말고 `accessSync(W_OK)` |
+| A3-L2 | Low | R21/0.20.0 relayUrl 출력 `?token=` 방어 redact | author-close — 1줄 가드(H-6로 현재 미포함) |
+| A3-L3 | Low | R21/0.20.0 host RPC 타임아웃 8s는 doctor엔 김 | author-close — `stickyRpc(...,{timeoutMs:2000-3000})` |
+| A1-M1 | Med | R20/0.19.0 install.sh verify/append `$HOME/.bun/bin` 하드코딩 | **done 0.19.0** (`a9cefd0`) — `bun pm bin -g` 해석 |
+| A1-M2 | Med | R20/0.19.0 `exec $SHELL` curl\|bash 무효 | **done 0.19.0** — 안내 출력 |
+| A1-M3 | Med | R20/0.19.0 `loomCmd` 열거형 스왑(spawn/self-ref 제외) | **done 0.19.0** — helper + 열거 스왑 |
+| A1-M4 | Med | R20/0.19.0 Bun 설치 후 script PATH | **done 0.19.0** — export PATH |
+| A1-L1..L4 | Low | R20/0.19.0 main 래핑·핀·share 휴리스틱·fish | **done 0.19.0** (+ Docker-caught bash-login `set -e` fix, `~/.profile`) |
 | M-1 | Med | R19/0.18.0 blob·invite-code 파싱 모호성 — `LOOM-7K2M`이 그 자체로 유효 base64url | **done 0.18.0** (`2b59dee`) — `loom://join/` 프리픽스 + bare 형태 선검사 |
 | M-2 | Med | R19/0.18.0 loopback relayUrl로 만든 blob은 타 머신에서 죽음(footgun) | **done 0.18.0** (`2b59dee`) — `invite --link` loopback 경고 |
 | L-1 | Low | R19/0.18.0 blob + 명시 `--relay`/`--token` 동시 전달 시 우선순위 미정 | **done 0.18.0** — 명시 flag override (author-close) |

@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.19.0** |
-| **Status** | **`approved`** (R20) — Tier A1: 5분 설치 경로 (install script `curl \| bash` + PATH 활성화 + `loomCmd` 문자열 스윕) (MINOR). **M-1…M-4 binding on impl** |
-| **Supersedes** | 0.18.0 |
+| **Version** | **0.20.0** |
+| **Status** | **`approved`** (R21) — Tier A3: `loom doctor` 자가진단 (read-only 온보딩 진단) (MINOR). **M-1…M-4 binding on impl · 구현은 다음 세션** |
+| **Supersedes** | 0.19.0 |
 | **Last updated** | 2026-07-11 |
-| **Approval** | **R20 `approved`** (`docs/plan_review.md`) — binding on impl: **M-1**(bin dir는 `bun pm bin -g`/`BUN_INSTALL`로 해석, `$HOME/.bun/bin` 하드코딩 금지), **M-2**(`exec $SHELL`는 curl\|bash에서 무효 → 안내 출력/`</dev/tty` tty-guard), **M-3**(`loomCmd` 열거형 스왑 — self-ref 노트 `index.ts:495/604`·실행 spawn `2350` 제외), **M-4**(Bun 설치 후 script PATH export). L-1..L-4 author-close. Implement allowed under 0.19.0. |
-| **Fable 5 when** | **Required** — 새 제품 표면(낯선 머신 first-run) + `curl \| bash` 신뢰 경계 (§5.1). |
+| **Approval** | **R21 `approved`** (`docs/plan_review.md`) — binding on impl: **M-1**(`ensureRelay` 금지 — 직접 `/health` fetch + `AbortSignal.timeout(3000)`; 아니면 relay spawn), **M-2**(`resolveAliveHostMeta` 금지 — stale meta 삭제함 → `loadStickyMeta`+`isPidAlive`로 보고만), **M-3**(exit: fail≥1→1, warn만→0; `--strict` 없음), **M-4**(no-session은 `info`, fail 아님). L-1..L-3 author-close. **Implement next session** under 0.20.0. |
+| **Fable 5 when** | **Required** — 새 제품 표면(`loom doctor` 서브커맨드) (§5.1). |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -48,6 +48,41 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.20.0 — 2026-07-11 (`approved` R21 — **Tier A3: `loom doctor` 자가진단** · 구현 다음 세션)
+
+**Product one-liner:** 낯선 사람이 막혔을 때 `loom doctor` 한 번으로 **어디가 문제인지** 스스로 안다.
+
+**Why:** Tier A3(`docs/DOGFOOD_FEATURES.md` · `PRIORITIES.md §3 #4`). A1(설치)·invite(join)로 경로는 열렸지만, 첫-5분에 막히면(잘못된 profile, host 미기동, relay 미도달, loopback blob) **낯선 사람은 원인을 모른 채 이탈**한다(A2 마찰). 읽기전용 진단 한 명령이 "지금 상태 + 다음 한 걸음"을 알려주면 마찰이 준다. Docker 하네스가 이미 드러낸 실패 모드(PATH 미활성, unzip 부재, loopback relay)를 진단 항목으로 흡수.
+
+**What (범위 — read-only, 상태 변경 없음):** `loom doctor`가 섹션별 `ok`/`warn`/`fail` + 다음 조치 힌트를 출력:
+| 검사 | 내용 | 근거 표면 |
+|------|------|-----------|
+| **Install/env** | `loom` on PATH? (아니면 `scripts/install.sh` 안내) · `bun` 존재 · VERSION | `Bun.which`(loomCmd), `VERSION` |
+| **Home/profile** | `~/.loom` 존재·쓰기가능 · active profile | `loomDir`, `getActiveProfile`, `resolveStateHomeDir` |
+| **Session** | 방 참여 상태 · `inviteCode`/`relayUrl` 유무 | `loadSession` |
+| **Relay** | `relayUrl` 파싱 · `/health` 도달성 · **loopback 경고(M-2: blob 타 머신 불가)** · non-loopback인데 token 없음 경고 | `parseRelayUrl`, `isLoopbackHost`, health GET |
+| **Host** | sticky host online/offline · pid alive · relay connected | `resolveLiveHostMeta`, `describeHostMeta`, `stickyRpc({op:"status"})` |
+
+**Out of scope (이 버전 아님):** 상태 **변경/자동수정**(진단만 — `--fix` 없음). 네트워크 프로브는 자기 relay `/health` GET만(스캔·외부 호출 금지). 새 의존성. MCP 표면 확대.
+
+**Security / trust:** read-only. token/peerSecret 값 **출력 금지**(존재 여부만 `present`/`missing`). health GET은 세션의 relayUrl로만.
+
+**Review impact:** 와이어/프로토콜 변경 없음. 새 CLI 서브커맨드(표면) → **R21 필수**.
+
+**Unknowns (§3.5, MINOR 권장 → `docs/UNKNOWNS.md`):**
+- exit code 계약 — 항상 0인가, `fail` 시 non-zero인가(스크립트/CI 사용), `--strict` 여부.
+- `/health` 프로브 타임아웃·오프라인 relay에서 매달림 방지.
+- 세션 없음(설치 직후)일 때 출력이 도움이 되는가(막 설치한 낯선 사람의 첫 실행 케이스).
+- `loom doctor`가 auto-host를 절대 안 띄우는지(LOOM_NO_AUTO_HOST 무관 read-only 보장).
+
+**Binding on impl (R21 M-1…M-4 locks):**
+- **M-1:** relay 검사는 **`ensureRelay` 절대 호출 금지**(죽은 local relay를 spawn+pid write, `relay-daemon.ts:91-105`). `parseRelayUrl` + 직접 `fetch(origin+"/health", { signal: AbortSignal.timeout(3000) })`만.
+- **M-2:** host 검사는 **`resolveAliveHostMeta` 금지**(stale meta를 `clearStickyMeta`로 삭제, `sticky-client.ts:25-27`). `loadStickyMeta`+`isPidAlive`로 stale을 **보고만**.
+- **M-3:** exit code — `fail`≥1 → exit 1, `warn`만 → exit 0. `--strict`(warn도 non-zero)는 범위 밖.
+- **M-4:** no-session(설치 직후)은 `fail` 아님 — Session/Relay/Host는 `info: no session — next: loom room join <blob>`.
+
+**Approved by:** Fable 5 (fable-advisor) R21 `approved`, 2026-07-11 — binding M-1…M-4; L-1..L-3 author-close. 구현은 다음 세션.
 
 #### 0.19.0 — 2026-07-11 (`approved` R20 — **Tier A1: 5분 설치 경로 (install script)**)
 
