@@ -20,16 +20,19 @@ import {
   normalizeTimestamp,
   resolveHandoffEntryIndex,
 } from "./task-board";
-import { saveSession, setActiveProfile } from "./session-store";
+import { resetStateHomeDirCache, saveSession, setActiveProfile } from "./session-store";
 
 describe("task board", () => {
   const dir = join(tmpdir(), `fable-board-${Date.now()}`);
   const sessionFile = join(dir, "session.json");
   const prevSession = process.env.LOOM_SESSION;
+  const prevTestHome = process.env.LOOM_TEST_HOME;
 
   beforeEach(() => {
     mkdirSync(dir, { recursive: true });
+    process.env.LOOM_TEST_HOME = dir;
     process.env.LOOM_SESSION = sessionFile;
+    resetStateHomeDirCache();
     setActiveProfile(null);
     saveSession({
       roomId: "room_board_test",
@@ -44,14 +47,21 @@ describe("task board", () => {
   });
 
   afterEach(() => {
-    if (prevSession === undefined) delete process.env.LOOM_SESSION;
-    else process.env.LOOM_SESSION = prevSession;
     try {
       saveTaskBoard(emptyBoard("room_board_test"));
+    } catch {
+      /* */
+    }
+    if (prevSession === undefined) delete process.env.LOOM_SESSION;
+    else process.env.LOOM_SESSION = prevSession;
+    if (prevTestHome === undefined) delete process.env.LOOM_TEST_HOME;
+    else process.env.LOOM_TEST_HOME = prevTestHome;
+    try {
       rmSync(dir, { recursive: true, force: true });
     } catch {
       /* */
     }
+    resetStateHomeDirCache();
   });
 
   test("parseTaskStatus", () => {
@@ -212,10 +222,7 @@ describe("task board", () => {
   });
 
   test("M-12: resolveHandoffEntryIndex exact and ambiguous", () => {
-    const entries = [
-      { handoff: { id: "ho_aaa111" } },
-      { handoff: { id: "ho_bbb111" } },
-    ];
+    const entries = [{ handoff: { id: "ho_aaa111" } }, { handoff: { id: "ho_bbb111" } }];
     expect(resolveHandoffEntryIndex(entries, "ho_aaa111")).toBe(0);
     expect(resolveHandoffEntryIndex(entries, "aaa111")).toBe(0);
     expect(() => resolveHandoffEntryIndex(entries, "111")).toThrow(/ambiguous/);
@@ -238,8 +245,6 @@ describe("task board", () => {
     const now = "2026-07-09T12:00:00.000Z";
     expect(normalizeTimestamp("not-a-date", now)).toBe(now);
     expect(normalizeTimestamp("9999-01-01T00:00:00.000Z", now)).toBe(now);
-    expect(normalizeTimestamp("2026-01-01T00:00:00.000Z", now)).toBe(
-      "2026-01-01T00:00:00.000Z",
-    );
+    expect(normalizeTimestamp("2026-01-01T00:00:00.000Z", now)).toBe("2026-01-01T00:00:00.000Z");
   });
 });

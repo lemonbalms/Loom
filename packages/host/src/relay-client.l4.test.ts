@@ -1,4 +1,4 @@
-import { describe, expect, test, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { RelayServer } from "@loom/relay";
 import { RelayClient } from "./relay-client";
 
@@ -6,12 +6,29 @@ import { RelayClient } from "./relay-client";
  * L-4: concurrent requestOnce must not steal each other's acks via onEnvelope hijack.
  */
 describe("L-4 requestOnce waiter queue", () => {
-  const port = 19600 + Math.floor(Math.random() * 400);
-  const relay = new RelayServer({ host: "127.0.0.1", port });
-  relay.start();
+  let port = 0;
+  let relay: RelayServer | null = null;
+
+  beforeAll(() => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      port = randomHighPort();
+      relay = new RelayServer({ host: "127.0.0.1", port });
+      try {
+        relay.start();
+        return;
+      } catch (e) {
+        lastError = e;
+        relay = null;
+      }
+    }
+    throw new Error(
+      `failed to start relay-client.l4 test relay: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    );
+  });
 
   afterAll(() => {
-    relay.stop();
+    relay?.stop();
   });
 
   test("concurrent handoffs both receive distinct acks", async () => {
@@ -77,3 +94,7 @@ describe("L-4 requestOnce waiter queue", () => {
     listen.close();
   });
 });
+
+function randomHighPort(): number {
+  return 18000 + Math.floor(Math.random() * 2000);
+}

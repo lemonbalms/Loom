@@ -1,11 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import {
-  mkdirSync,
-  writeFileSync,
-  rmSync,
-  symlinkSync,
-  existsSync,
-} from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -21,7 +15,7 @@ import {
   packIsEmpty,
   packPathForRoom,
 } from "./context-pack";
-import { saveSession, setActiveProfile } from "./session-store";
+import { resetStateHomeDirCache, saveSession, setActiveProfile } from "./session-store";
 
 describe("context pack", () => {
   const dir = join(tmpdir(), `loom-pack-${Date.now()}`);
@@ -29,13 +23,16 @@ describe("context pack", () => {
   const workspace = join(dir, "ws");
   const prevCwd = process.cwd();
   const prevSession = process.env.LOOM_SESSION;
+  const prevTestHome = process.env.LOOM_TEST_HOME;
 
   beforeEach(() => {
     mkdirSync(workspace, { recursive: true });
     writeFileSync(join(workspace, "readme.md"), "# hi\n", "utf8");
     mkdirSync(join(workspace, "src"), { recursive: true });
     writeFileSync(join(workspace, "src", "a.ts"), "export {}\n", "utf8");
+    process.env.LOOM_TEST_HOME = dir;
     process.env.LOOM_SESSION = sessionFile;
+    resetStateHomeDirCache();
     setActiveProfile(null);
     saveSession({
       roomId: "room_pack_test",
@@ -52,16 +49,23 @@ describe("context pack", () => {
 
   afterEach(() => {
     process.chdir(prevCwd);
-    if (prevSession === undefined) delete process.env.LOOM_SESSION;
-    else process.env.LOOM_SESSION = prevSession;
     try {
-      rmSync(dir, { recursive: true, force: true });
       // pack file under ~/.loom/packs — clear by overwriting empty
       const pack = emptyPack("room_pack_test");
       saveContextPack(pack);
     } catch {
       /* */
     }
+    if (prevSession === undefined) delete process.env.LOOM_SESSION;
+    else process.env.LOOM_SESSION = prevSession;
+    if (prevTestHome === undefined) delete process.env.LOOM_TEST_HOME;
+    else process.env.LOOM_TEST_HOME = prevTestHome;
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* */
+    }
+    resetStateHomeDirCache();
   });
 
   test("summary and notes sanitize and persist", () => {
@@ -76,9 +80,7 @@ describe("context pack", () => {
 
   test("add path under cwd; reject escape", () => {
     const p = addPackPath("src/a.ts");
-    expect(p.paths.some((x) => x.path === "src/a.ts" || x.path.endsWith("a.ts"))).toBe(
-      true,
-    );
+    expect(p.paths.some((x) => x.path === "src/a.ts" || x.path.endsWith("a.ts"))).toBe(true);
     expect(() => addPackPath("../../../etc/passwd")).toThrow(/outside|not found/);
   });
 
@@ -119,17 +121,12 @@ describe("context pack", () => {
       att.some(
         (a) =>
           a.kind === "path" &&
-          (a.label === "context-pack-path" ||
-            a.label?.startsWith("context-pack-path:")),
+          (a.label === "context-pack-path" || a.label?.startsWith("context-pack-path:")),
       ),
     ).toBe(true);
-    expect(
-      att.some((a) => a.label === "context-pack-path:docs"),
-    ).toBe(true);
+    expect(att.some((a) => a.label === "context-pack-path:docs")).toBe(true);
     expect(att.some((a) => a.label === "context-pack-notes")).toBe(true);
-    expect(att.some((a) => a.label?.startsWith("context-pack-file:"))).toBe(
-      false,
-    );
+    expect(att.some((a) => a.label?.startsWith("context-pack-file:"))).toBe(false);
   });
 
   test("L-5 pack embed re-resolves and embeds file body", () => {
@@ -149,9 +146,7 @@ describe("context pack", () => {
     // Mutate pack path to absolute outside workspace without re-add
     pack.paths = [{ path: "/etc/passwd" }];
     const att = packToAttachments(pack, { embedFiles: true, cwd: workspace });
-    expect(att.some((a) => a.label?.startsWith("context-pack-file:"))).toBe(
-      false,
-    );
+    expect(att.some((a) => a.label?.startsWith("context-pack-file:"))).toBe(false);
   });
 
   test("L-27 embed skips when path is replaced by symlink outside allow root", () => {
@@ -169,9 +164,7 @@ describe("context pack", () => {
     }
     const pack = loadContextPack()!;
     const att = packToAttachments(pack, { embedFiles: true, cwd: workspace });
-    const fileAtt = att.find((a) =>
-      a.label?.startsWith("context-pack-file:swap-me"),
-    );
+    const fileAtt = att.find((a) => a.label?.startsWith("context-pack-file:swap-me"));
     // Must not embed outside content (O_NOFOLLOW / re-resolve reject)
     expect(fileAtt).toBeUndefined();
     expect(att.every((a) => !a.content?.includes("LEAKED"))).toBe(true);
