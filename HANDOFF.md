@@ -13,11 +13,11 @@
 >
 > **🧊 개발 규칙 (FREEZE, 근거 교체판).** 신규 기능은 **팀 실사용에서 pull된 요구만** 구현 — **에이전트 추측(push) 금지.** 현 백로그(work-watch·MCP·C1/C2)는 전부 솔로 도그푸드 추측이라 **신규 PLAN 오픈 금지.** 팀이 쓰기 시작하면 진짜 요구가 pull됨 → 그때 로드맵 재개. **진짜 드리프트 = "실사용자가 요구 안 한 걸 만드는 일"**(이번 세션의 위임 규칙·effort 매트릭스가 그 예 — 프로세스용이지 도구 사용자용 아님).
 >
-> **▶ 다음 행동 2갈래:**
-> 1. **팀-pull된 유일 실기능 = Windows 온보딩 경로** (오너 확인: **팀에 Windows 사용자 있음**). `install.sh`는 bash 전용 → Windows 팀원 온보딩 불가. 이건 추측 아닌 pull이므로 정당 → **별도 PLAN 게이트(접근법: WSL 안내 vs PowerShell 스크립트 vs native) 후 구현.** 착수 전 오너에게 접근법 확인.
-> 2. **relay 공용 호스트(VPS) 확보 = 오너 블로커** (오너 확인: **아직 없음**). 확보되면 `docs/DRY_RUN_RUNBOOK.md` Step 0(systemd 상시가동)부터 실행.
+> **▶ 남은 블로커 = relay 공용 호스트(VPS) 확보 = 오너 전용** (오너 확인: **아직 없음**). 확보되면 `docs/DRY_RUN_RUNBOOK.md` Step 0(systemd 상시가동)부터 실행 → 팀 6인 온보딩 → 매일 핸드오프 왕복 관측(Step 4).
 >
-> **런북:** **`docs/DRY_RUN_RUNBOOK.md`** — 팀 온보딩 런북(원격, relay 상시가동 절 포함). macOS/Linux 팀원은 즉시 온보딩 가능, Windows는 위 1번 대기.
+> **✅ Windows 온보딩 = WSL 안내로 해결** (오너 결정). `install.sh`는 bash 전용 → Windows 팀원은 `wsl --install`(admin PowerShell)→재부팅→Ubuntu에서 동일 2줄. **docs-only author-close**(코드 추가 없음, 이미 R20 리뷰된 install.sh 재사용) — `docs/DRY_RUN_RUNBOOK.md` Step 2 + `README.md` Quick start Windows 노트. WSL 명령은 Microsoft Learn(2025-08) 대조 확인.
+>
+> **런북:** **`docs/DRY_RUN_RUNBOOK.md`** — 팀 온보딩 런북(원격, relay 상시가동 + WSL 절 포함). **macOS/Linux·Windows(WSL) 팀원 모두 즉시 온보딩 가능** → VPS만 확보되면 배포 실행.
 > **코드 잠금해제는 완료됨(0.18.0):** 자기완결 초대 blob — `loom room invite --link` → `loom room join <blob>` 한 명령 join(relay URL+token 내장). R19 approved, 구현·검증·커밋(`2b59dee`). 이제 **초대 하나만 넘기면** 됨(3-비밀 문제 해소).
 >
 > **A1 설치 경로도 완료됨(0.19.0):** `scripts/install.sh` (`curl … | bash`) — Bun 확보→clone→link→verify→PATH. 이제 초대받은 낯선 사람은 **한 줄 설치 + `loom room join <blob>`**. R20 approved, 구현·검증·커밋(`a9cefd0`).

@@ -117,6 +117,10 @@ touches only your home dir + shell rc (no sudo). Overrides: `LOOM_INSTALL_DIR`,
 `LOOM_INSTALL_REF`. (`curl | bash` runs a remote script — read it first if you
 prefer: [`scripts/install.sh`](./scripts/install.sh).)
 
+> **Windows:** `install.sh` is bash-only. Install [WSL](https://learn.microsoft.com/windows/wsl/install)
+> first (`wsl --install` in an admin PowerShell, then reboot), and run the two lines
+> above inside the Ubuntu shell. Full team steps: [`docs/DRY_RUN_RUNBOOK.md`](./docs/DRY_RUN_RUNBOOK.md).
+
 ---
 
 ### Manual setup (two peers, one machine)

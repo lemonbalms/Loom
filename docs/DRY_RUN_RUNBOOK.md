@@ -14,7 +14,7 @@
 
 - [x] 5분 설치(`scripts/install.sh`, macOS/Linux) · self-contained invite blob · `loom doctor` — 완비
 - [x] relay 재시작 내구(0.14.x) · 배관 검증(Docker/LAN 하네스)
-- [ ] **⚠️ Windows 온보딩 경로 — 미구현.** `install.sh`는 bash 전용. **팀에 Windows 사용자 있음**(오너 확인) → 이건 팀에서 pull된 유일한 진짜 선행 기능. Windows 팀원은 이 경로가 나오기 전까지 온보딩 불가(또는 WSL 임시 우회).
+- [x] **Windows 온보딩 경로 = WSL 안내** (Step 2 참조). `install.sh`는 bash 전용 → Windows 팀원은 WSL(Ubuntu) 안에서 동일 2줄 실행. docs-only(이미 R20 리뷰된 install.sh 재사용, 코드 추가 없음).
 - [ ] **⚠️ 공용 relay 호스트(VPS) — 미확보.** 오너 확보 대기(외부 의존).
 
 ---
@@ -86,7 +86,25 @@ exec $SHELL
 loom room join "loom://join/<받은-blob>"
 ```
 
-**Windows 팀원 — ⚠️ 정식 경로 미구현.** 현재 임시 우회는 WSL 안에서 위 macOS/Linux 절차 실행뿐. 정식 Windows 온보딩 경로는 별도 PLAN 게이트로 구현 예정(팀 pull 실기능).
+**Windows 팀원 — WSL 경로** (팀에 Windows 사용자 있음 → 이 경로가 온보딩 표준):
+
+1. **관리자 PowerShell**에서 WSL 설치 후 재부팅:
+   ```powershell
+   wsl --install
+   ```
+   - Win10 2004+(Build 19041+) / Win11 필요. 그 이하면 → [수동 설치](https://learn.microsoft.com/windows/wsl/install-manual).
+   - `wsl --install`이 도움말만 뜨면(이미 부분 설치됨): `wsl --list --online` → `wsl --install -d Ubuntu`.
+   - 0.0%에서 멈추면: `wsl --install --web-download`.
+   - 기본 배포판 = Ubuntu. 재부팅 후 Ubuntu가 열리며 사용자명·비밀번호 1회 설정.
+2. 재부팅 후 **Ubuntu 터미널**에서 macOS/Linux와 동일한 2줄 실행:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/lemonbalms/Loom/main/scripts/install.sh | bash
+   exec $SHELL
+   loom room join "loom://join/<받은-blob>"
+   ```
+   - relay는 원격(VPS)이므로 WSL2의 아웃바운드 `ws://`만 있으면 됨 — 추가 네트워크 설정 불필요.
+   - 막히면 Ubuntu에서 `loom doctor` → `fail` 섹션 스크린샷.
+   - 전제: BIOS 가상화 활성(대개 기본 on). `wsl --install` 실패 시 첫 의심 지점.
 
 - 막히면 `loom doctor` → `fail` 섹션 스크린샷으로 오너에게.
 - 온보딩 후 팀원 host는 기본 자동 기동(0.17) → 창 닫아도 online.
