@@ -66,6 +66,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Deviations | `implementation-notes.md` → **Deviations** (pick conservative option) |
 | Unknowns | `docs/WORKFLOW.md` §3.5 + `docs/UNKNOWNS.md` — MINOR/new surface before R{n}; not a PLAN SSOT |
 | **Autonomy (default)** | **Do not ask permission between steps.** Brief → execute next gate → verify → docs → ship when wave complete. Report progress after work, not before each click. |
+| **Next-action test** | When **self-choosing** the next action, first answer *"if this fails, what do I newly learn?"* An action that **cannot fail** (already-green re-run, owner-blocked wait, doc-sync paperwork) is **disqualified** as a next action. Cross-check HANDOFF's "don't redo / already shipped" list, then pick the **scariest still-verifiable** check. Before deferring to an owner blocker, state in one line what is verifiable **without** that blocker — and do that first. |
 | “진행해” / “단계적으로” / “자율적으로” / “이어서” | **Full current wave**, no mid-wave approval — see `docs/WORKFLOW.md` §3 |
 | Verify | `bun test` green before claiming done; related smoke when the gate touches that surface |
 | Remote | `https://github.com/lemonbalms/Loom.git` (user lemonbalms) |

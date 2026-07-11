@@ -33,11 +33,11 @@ docker run --rm \
     cat /host-repo/scripts/install.sh | bash
     # loom is a `#!/usr/bin/env bun` symlink → its bin dir must be on PATH for bun too.
     echo "--- assert: binary works with PATH set (install produced a runnable loom) ---"
-    PATH="/root/.bun/bin:$PATH" loom --version | grep -q "v0.19" || { echo "version mismatch"; exit 1; }
+    PATH="/root/.bun/bin:$PATH" loom --version | grep -q "Loom multiplayer" || { echo "version mismatch"; exit 1; }
     echo "--- assert: fresh INTERACTIVE shell finds loom (human opens a new terminal) ---"
-    bash -ic "loom --version" </dev/null | grep -q "v0.19" || { echo "interactive PATH not active"; exit 1; }
+    bash -ic "loom --version" </dev/null | grep -q "Loom multiplayer" || { echo "interactive PATH not active"; exit 1; }
     echo "--- assert: LOGIN shell finds loom (ssh / bash -l — we write ~/.profile) ---"
-    bash -lc "loom --version" </dev/null | grep -q "v0.19" || { echo "login PATH not active"; exit 1; }
+    bash -lc "loom --version" </dev/null | grep -q "Loom multiplayer" || { echo "login PATH not active"; exit 1; }
   '
 check $? "A1 cold install (bun-from-scratch M-4) + interactive PATH activation"
 set -e

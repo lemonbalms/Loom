@@ -9,8 +9,7 @@
 
 ## Next
 
-1. [ ] **라이브 스모크 (flag 개방 전 권장)** — 실제 `loom run claude --inject-handoffs`로
-       accept→paste-not-submit + busy-중 no-inject 확인. python 주입 경로가 유일한 런타임 미검증 지점.
+1. [x] **라이브 스모크 완료 (2026-07-12).** ① 자동 통합 테스트 `inject-live.test.ts`(`08ddb98`) — 실 `run-with-pty.py` PTY spawn, 프레임 안착·dedup·stale·breakout. ② **실 `claude` 바이너리 프로브** — idle TUI quiescence 통과(400ms 0 bytes), inject `ok:true`, paste가 `❯` 입력창 안착 + **미제출**. python 주입 경로 + Ink 수용까지 런타임 검증됨. 남은 것 없음.
 2. [ ] **relay 공용 호스트(VPS) 확보 = 오너 블로커** → 확보 시 `docs/DRY_RUN_RUNBOOK.md` Step 0부터 팀 온보딩.
 3. [ ] **원래설계 나머지 결정 4개** (`docs/ORIGIN.md` §5): presence 오버레이 / Phase 4 협업품질 / Phase 5 UX polish / Mosaic 벤치마크 — 복원 vs 의식적 폐기.
 

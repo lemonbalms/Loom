@@ -40,7 +40,7 @@ after pushing product changes.
 Runs `scripts/install.sh` piped through `bash` (mirrors `curl … | bash`) inside
 the clean, Bun-less image.
 
-- **A1** — cold install succeeds; asserts `loom v0.19.x` via the absolute path and
+- **A1** — cold install succeeds; asserts the `loom` banner (version-agnostic) via the absolute path and
   via a fresh **interactive** shell (the "open a new terminal" path). Exercises
   **M-4** (Bun-from-scratch — the path the macOS smoke never ran). Reports whether
   a non-interactive **login** shell (`bash -lc`) also gets PATH.
