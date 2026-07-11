@@ -3,7 +3,6 @@ import {
   mkdirSync,
   writeFileSync,
   rmSync,
-  existsSync,
   readFileSync,
   symlinkSync,
   chmodSync,

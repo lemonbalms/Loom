@@ -35,7 +35,6 @@ import {
   formatContextPack,
   packIsEmpty,
   loadTaskBoard,
-  addTask,
   updateTask,
   removeTask,
   clearDoneTasks,
@@ -44,7 +43,6 @@ import {
   addTaskFromHandoff,
   exportBoardSnapshot,
   importBoardSnapshot,
-  parseBoardSnapshot,
   snapshotFromAttachments,
   resolveHandoffEntryIndex,
   loadPurpose,
@@ -69,7 +67,6 @@ import {
   ansiFg,
   sanitizePeerName,
   sanitizePeerText,
-  resolveRelayEndpoint,
   parseHandoffContract,
 } from "@loom/protocol";
 import {
@@ -84,7 +81,6 @@ import {
   writeAgentHintFile,
   resolveMcpStdio,
 } from "@loom/mcp-server";
-import { spawn } from "bun";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
 import {
   openSync,

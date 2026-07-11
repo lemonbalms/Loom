@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { sessionPath, ensureFableDir } from "./session-store";
+import { sessionPath, ensureFableDir, isPidAlive } from "./session-store";
 
 /** On-disk locator for a running sticky host (per session file). */
 export type StickyHostMeta = {
@@ -77,16 +77,8 @@ export function clearStickyMeta(forSessionPath?: string): void {
   }
 }
 
-/** Best-effort: is pid still running? */
-export function isPidAlive(pid: number): boolean {
-  if (!Number.isFinite(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
+/** Re-exported from session-store (single definition) for existing importers. */
+export { isPidAlive };
 
 /**
  * M-27: independent process-identity check before a raw SIGTERM.

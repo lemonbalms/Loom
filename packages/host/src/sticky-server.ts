@@ -335,9 +335,13 @@ export async function startStickyServer(opts?: {
     },
   });
 
+  const boundPort = server.port;
+  if (boundPort == null) {
+    throw new Error("sticky host failed to bind a port");
+  }
   const meta: StickyHostMeta = {
     pid: process.pid,
-    port: server.port,
+    port: boundPort,
     token,
     sessionPath: sessionPath(),
     peerId: session.peerId,

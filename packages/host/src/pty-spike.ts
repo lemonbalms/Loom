@@ -154,7 +154,6 @@ export async function caseBusyThenRead(): Promise<SpikeCaseResult> {
   }
 
   // inject while "busy" (sleeping, not reading)
-  const { text } = prepareInjectText(SAMPLE_HANDOFF);
   injectIntoStdin(proc.stdin, "ACCIDENTAL_SUBMIT_DURING_BUSY\n", {
     experimental: true,
   });

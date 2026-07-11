@@ -119,7 +119,7 @@ describe("Room roster vs socket", () => {
     expect(c1.ok).toBe(true);
     // L-11: claimed entry removed — second claim is "not found", not already-claimed
     const c2 = room.claimHandoff("p1", ho.id, "accept");
-    expect(c2.ok).toBe(false);
+    if (c2.ok) throw new Error("expected second claim to fail (L-11 first-wins)");
     expect(c2.error).toMatch(/No inbox item|Already/i);
   });
 

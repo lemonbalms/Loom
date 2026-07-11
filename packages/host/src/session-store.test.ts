@@ -119,7 +119,7 @@ describe("session path: explicit --profile beats LOOM_SESSION", () => {
   });
 
   test("without explicit profile, LOOM_SESSION wins", () => {
-    expect(sessionPath()).toBe(process.env.LOOM_SESSION);
+    expect(sessionPath()).toBe(join(root, ".loom", "profiles", "impl.json"));
   });
 
   test("setActiveProfile({ explicit: true }) beats LOOM_SESSION", () => {
@@ -131,6 +131,6 @@ describe("session path: explicit --profile beats LOOM_SESSION", () => {
 
   test("soft setActiveProfile still loses to LOOM_SESSION", () => {
     setActiveProfile("codex-rev");
-    expect(sessionPath()).toBe(process.env.LOOM_SESSION);
+    expect(sessionPath()).toBe(join(root, ".loom", "profiles", "impl.json"));
   });
 });

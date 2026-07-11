@@ -8,7 +8,6 @@ import {
   loadContextPack,
   packIsEmpty,
   loadTaskBoard,
-  addTask,
   updateTask,
   parseTaskStatus,
   addTaskFromHandoff,
