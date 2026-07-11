@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.20.0** `approved` (R21) — Tier A3 `loom doctor` 자가진단 (read-only). **binding on impl:** M-1(`ensureRelay` 금지 — 직접 `/health` fetch+timeout) · M-2(`resolveAliveHostMeta` 금지 — stale은 보고만) · M-3(exit code: fail≥1→1, warn만→0) · M-4(no-session은 fail 아님, info). **구현은 다음 세션.** (0.19.0/R20 shipped.)  
+> **최신:** PLAN **v0.20.0** `approved`→**shipped** (R21, `c15de88`) — Tier A3 `loom doctor` 자가진단 (read-only). 바인딩 M-1..M-4 전부 충족 + L-1..L-3 author-close, 아키텍트 검증(bun test 180/0, 라이브 exit 0). codex-impl 레인 구현. (0.19.0/R20 shipped.)  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R21** | **v0.20.0** | **approved** | Tier A3 `loom doctor` (read-only 진단) — no wire change. **Binding on impl:** M-1 (never `ensureRelay` — direct `/health` fetch + `AbortSignal.timeout(3000)`; spawns relay otherwise, `relay-daemon.ts:91-105`), M-2 (never `resolveAliveHostMeta` — it deletes stale meta `sticky-client.ts:25-27`; use `loadStickyMeta`+`isPidAlive`, report stale), M-3 (exit: fail≥1→1, warn-only→0; no `--strict`), M-4 (no-session = `info`, not `fail`). L-1..L-3 author-close. **Implement next session.** |
+| **R21** | **v0.20.0** | **closed (approved→shipped `c15de88`)** | Tier A3 `loom doctor` (read-only 진단) — no wire change. All binding M-1..M-4 met (architect-verified: bun test 180/0, live run exit 0), L-1..L-3 author-closed. Implemented via codex-impl lane. |
 | R20 | v0.19.0 | closed (approved→shipped `a9cefd0`) | Tier A1 install script — install/doc/string surface, zero relay coupling. M-1..M-4 impl-bound (done), L-1..L-4 author-close. Docker harness caught + fixed a bash-login `set -e` abort. |
 | R19 | v0.18.0 | closed (approved→shipped `2b59dee`) | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. |
 
@@ -21,7 +21,7 @@
 
 ## Open (blocking)
 
-_(none)_ — **R21 approved** (v0.20.0, `loom doctor`). **Implement next session**; must honor **M-1** (no `ensureRelay` — direct `/health`+timeout) · **M-2** (no `resolveAliveHostMeta` — report stale, don't delete) · **M-3** (exit-code contract) · **M-4** (no-session = info); **L-1..L-3** author-close. See R21 body below. (R20/v0.19.0 shipped `a9cefd0`.)
+_(none)_ — **R21 shipped** (v0.20.0 `loom doctor`, `c15de88`): all binding M-1..M-4 met + L-1..L-3 author-closed, architect-verified (bun test 180/0, live run exit 0). No open blocking review. (R20/v0.19.0 shipped `a9cefd0`.)
 
 ---
 

@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.20.0** |
-| **Status** | **`approved`** (R21) — Tier A3: `loom doctor` 자가진단 (read-only 온보딩 진단) (MINOR). **M-1…M-4 binding on impl · 구현은 다음 세션** |
+| **Status** | **`approved` → shipped** (R21) — Tier A3: `loom doctor` 자가진단 (read-only 온보딩 진단) (MINOR). **M-1…M-4 all met · implemented `c15de88`, architect-verified (bun test 180/0)** |
 | **Supersedes** | 0.19.0 |
 | **Last updated** | 2026-07-11 |
 | **Approval** | **R21 `approved`** (`docs/plan_review.md`) — binding on impl: **M-1**(`ensureRelay` 금지 — 직접 `/health` fetch + `AbortSignal.timeout(3000)`; 아니면 relay spawn), **M-2**(`resolveAliveHostMeta` 금지 — stale meta 삭제함 → `loadStickyMeta`+`isPidAlive`로 보고만), **M-3**(exit: fail≥1→1, warn만→0; `--strict` 없음), **M-4**(no-session은 `info`, fail 아님). L-1..L-3 author-close. **Implement next session** under 0.20.0. |
@@ -82,7 +82,9 @@
 - **M-3:** exit code — `fail`≥1 → exit 1, `warn`만 → exit 0. `--strict`(warn도 non-zero)는 범위 밖.
 - **M-4:** no-session(설치 직후)은 `fail` 아님 — Session/Relay/Host는 `info: no session — next: loom room join <blob>`.
 
-**Approved by:** Fable 5 (fable-advisor) R21 `approved`, 2026-07-11 — binding M-1…M-4; L-1..L-3 author-close. 구현은 다음 세션.
+**Approved by:** Fable 5 (fable-advisor) R21 `approved`, 2026-07-11 — binding M-1…M-4; L-1..L-3 author-close.
+
+**Implemented as of `c15de88`** (2026-07-11) — via codex-impl lane (GPT-5.5), architect-verified. All M-1…M-4 met (M-1 direct /health+3s no ensureRelay · M-2 loadStickyMeta+isPidAlive report-only no resolveAliveHostMeta · M-3 exit 1 iff fail · M-4 no-session=info, live-confirmed exit 0). L-1..L-3 author-closed (`implementation-notes.md`). Read-only deviation documented (hand-rolled home/session resolution to avoid `resolveStateHomeDir` migration side-effect). `bun test` 180 pass/0 fail (5 new), 6 pkg typecheck green, biome clean, live `loom doctor` run verified. VERSION 0.20.0 (CLI + MCP).
 
 #### 0.19.0 — 2026-07-11 (`approved` R20 — **Tier A1: 5분 설치 경로 (install script)**)
 

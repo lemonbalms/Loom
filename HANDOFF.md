@@ -14,7 +14,9 @@
 >
 > **A1 설치 경로도 완료됨(0.19.0):** `scripts/install.sh` (`curl … | bash`) — Bun 확보→clone→link→verify→PATH. 이제 초대받은 낯선 사람은 **한 줄 설치 + `loom room join <blob>`**. R20 approved, 구현·검증·커밋(`a9cefd0`).
 >
-> **⏩ 다음 세션 큐(사용자 지시): A3 `loom doctor` 구현** — PLAN **0.20.0 approved(R21)**, binding M-1..M-4 잠금 완료. `docs/PLAN.md` 0.20.0 + `plan_review.md` R21 읽고 바로 구현: `cmdDoctor`(read-only 5섹션 진단) + dispatch + 테스트. **M-1: `ensureRelay` 금지(직접 /health fetch+timeout)** · **M-2: `resolveAliveHostMeta` 금지(stale 보고만)** · M-3 exit code · M-4 no-session=info.
+> **✅ A3 `loom doctor` shipped (0.20.0, `c15de88`)** — read-only 5섹션 진단(install/home/session/relay/host). R21 M-1..M-4 전부 충족 + L-1..L-3 author-close, 아키텍트 검증(bun test 180/0, 라이브 exit 0). **codex-impl 레인(GPT-5.5) 구현** — 이번 세션에 위임 워크플로 복원(아래 프로세스 노트 참조).
+>
+> **⏩ 다음 세션 큐 = OPS 2머신 dry-run (제품 검증 0 → 최고가치).** 코드 경로는 A1(설치)+invite(join)+A3(doctor)로 완비됨. 이제 실사용 검증만 남음(사용자/2번째 머신 필요, 아래 4단계).
 >
 > **그다음(코드 아님, OPS/실사용, 사용자 필요):**
 > 1. **relay를 도달 가능한 호스트에 배포** — `apps/relay-cloud/README.md` 경로(VPS/LAN, `--host 0.0.0.0 --token …`, H-5). 로컬(loopback)이면 blob이 타 머신에서 안 됨(M-2 경고).
@@ -27,7 +29,7 @@
 
 ## One-line resume
 
-> **⏩ 다음 세션 = A3 `loom doctor` 구현.** PLAN **0.20.0 `approved` (R21)** — read-only 자가진단(install/home/session/relay/host 5섹션). binding **M-1 `ensureRelay` 금지** · **M-2 `resolveAliveHostMeta` 금지** · M-3 exit code · M-4 no-session=info. 게이트만 세워둠, 코드 미착수. → `docs/PLAN.md` 0.20.0 · `plan_review.md` R21.
+> **⏩ 다음 세션 = OPS 2머신 dry-run** (사용자/2번째 머신 필요). 코드 3종(A1 설치·invite join·A3 doctor) 완비 → 실사용 검증만 남음. **A3 `loom doctor` shipped** (0.20.0 `c15de88`, R21 M-1..M-4 충족, bun test 180/0). **프로세스 변경:** 위임 워크플로 복원 — 세션 모델은 approved/locked 스펙을 직접 코딩하지 않고 grok-impl→codex-impl→하위모델 서브에이전트로 위임(`AGENTS.md` Impl delegation · `docs/DOGFOOD_LOOP.md §1.2`).
 >
 > PLAN **0.19.0** `approved` (R20) — **Tier A1 5분 설치 경로 shipped (code)**:  
 > `scripts/install.sh` (`curl \| bash`): Bun 확보→clone(~/.loom-src)→`bun link`→절대경로 verify→shell rc PATH append. `loomCmd()` helper로 share/next 힌트를 설치 시 `loom`으로 표시(미설치 시 `bun run loom` fallback). R20 binding M-1..M-4 준수, L-1..L-4 author-close.  
@@ -40,11 +42,11 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.19.0** (install script + loomCmd sweep) — shipped |
-| **PLAN** | **v0.20.0** `approved` (R21) — `loom doctor`, **구현 대기(다음 세션)**. 0.19.0(R20) shipped |
-| **Open blocking** | **none** — R21 approved. 다음 세션이 M-1..M-4 지켜 구현 |
-| **Tests** | `bun test` 175 pass / 0 fail · 6 pkg typecheck green · shellcheck clean · Docker 하네스 A/B/LAN green |
-| **Latest** | `632bbb4` LAN check · `3b6cc0c` Docker 하네스 · `a9cefd0` install path (0.19.0) |
+| **CLI / code** | **0.20.0** (`loom doctor` read-only 진단) — shipped |
+| **PLAN** | **v0.20.0** `approved`→**shipped** (R21, `c15de88`) — `loom doctor`. 0.19.0(R20) shipped |
+| **Open blocking** | **none** — R21 shipped, 검증 완료 |
+| **Tests** | `bun test` **180 pass / 0 fail** · 6 pkg typecheck green · biome clean · 라이브 `loom doctor` exit 0 확인 |
+| **Latest** | `c15de88` loom doctor · `80e951e` host test 격리 · `b2f9d75`+`dc83d2b`..`ac6e460` 위임/effort 프로세스 규칙 |
 
 ### Already shipped (context, don't redo)
 
@@ -72,6 +74,23 @@
 | **Script** | `scripts/dogfood-up.sh` + `dogfood:up` alias (join-all w/ auto-host suppressed, then batched `loom up`) |
 | **Tests** | `packages/host/src/sticky-down-safety.test.ts` (M-27 guard: unrelated alive pid not killed) |
 | **Docs** | USER_GUIDE §3 (host default + up/down), DOGFOOD_LOOP §1 (dogfood:up journey + L-34 8s note), PLAN 0.17.1, plan_review R18 closed, VERSION 0.17.1 (CLI + MCP) |
+
+---
+
+## This session (2026-07-11 PM #3) — A3 doctor ship (delegated) + 위임/effort 프로세스 규칙
+
+| 영역 | 결과 |
+|------|------|
+| **위임 워크플로 복원**(`dc83d2b`) | 아키텍트(세션 모델)가 R21 locked 스펙을 **직접 코딩 시작한 실수** → 사용자 교정. grok 하나 죽은 걸 "impl 레인 불가"로 넘겨짚고 살아있는 codex 레인 미확인. 규칙 성문화: 세션 모델은 approved/locked 스펙 직접 코딩 금지, **grok-impl→codex-impl→하위모델 서브에이전트** 에스컬레이션. `AGENTS.md` Standing rules + `docs/DOGFOOD_LOOP.md §1.2` + `tasks/lessons.md` |
+| **model×effort 규칙**(`88d0dc7`·`bd30a36`·`ac6e460`) | Fable 5 자문 3회 경유. 매트릭스 폐기 → §1.2 두 줄: locked-spec→`sonnet`+`xhigh`, trivial→`haiku`(effort 미전달 — **Haiku 4.5는 effort 노브 없음, 세팅 시 하드 에러**). 기준=spec-lockedness. "하위 tier→고effort 사다리" 인코딩 금지 |
+| **A3 `loom doctor` ship**(`c15de88`) | **codex-impl 레인(GPT-5.5) 구현** → 아키텍트 검증. `doctor.ts`(순수 로직)+`cmdDoctor`(I/O)+dispatch+테스트5개. M-1(직접/health+3s)·M-2(loadStickyMeta+isPidAlive)·M-3(exit)·M-4(no-session=info) 전부 충족. read-only deviation: `resolveStateHomeDir` 마이그레이션 부작용 회피 위해 home/session 경로 hand-roll(implementation-notes 기록). VERSION 0.20.0(CLI+MCP) |
+| **host 테스트 위생**(`80e951e`) | codex가 스코프 밖 3개 테스트에 `LOOM_TEST_HOME` 격리+relay 포트 재시도 추가(실 `~/.loom` 오염 방지). 검증 후 별도 커밋 분리 |
+| 검증 | `bun test` **180 pass/0 fail**(+5 doctor) · 6 pkg typecheck · biome clean(doctor 파일) · 라이브 `loom doctor` exit 0 |
+
+### ⚠ 운영 노트 (다음 세션 주의)
+- **위임 우선**: approved/locked 스펙은 직접 코딩 말고 레인 위임. 매 세션 레인 가용성 새로 확인(stale HANDOFF 노트 불신). grok 만료 시 `! grok login`, codex는 사용 가능했음.
+- **다음 = OPS 2머신 dry-run** (아래 4단계). 코드는 완비, 실사용/2번째 머신만 필요.
+- **Docker 이미지 잔존** 등 이전 세션 노트 유효.
 
 ---
 
