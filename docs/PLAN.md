@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.21.0** |
-| **Status** | **`pending-review`** (R22) — **PTY handoff inject** (원래 설계의 유보된 수신 경로 고도화, Claude-first · opt-in · accept+idle-gated) (MINOR). **FREEZE 예외 = 오너 pull.** 0.20.0(R21) shipped `c15de88`. |
+| **Version** | **0.21.1** |
+| **Status** | **`approved`** (author-close after R22 `pending-revision` + M-1…M-6 locks) — **PTY handoff inject** (원래 설계 유보 수신 경로 고도화, Claude-first · opt-in · accept-gated · **no-auto-submit paste**) (MINOR). **FREEZE 예외 = 오너 pull.** 구현 대기(레인 위임). 0.20.0(R21) shipped `c15de88`. |
 | **Supersedes** | 0.20.0 |
 | **Last updated** | 2026-07-11 |
-| **Approval** | **R22 대기** (`docs/plan_review.md`) — 수신 모델에 새 경로 추가 + R1 결정적 리스크 영역 → Fable 5 필수. binding locks는 R22에서 확정. |
-| **Fable 5 when** | **Required** — 수신 모델 변경(새 receive 경로) + R1이 "가장 어려운 부분"으로 유보한 영역 (§5.1). |
+| **Approval** | **R22 `pending-revision` → PATCH 0.21.1 locks → author-close `approved`** (Fable 5 사전 승인, no R22b). Binding: **M-1** auto-inject 경로 부재, **M-2** no-auto-submit(trailing `\n` 금지, paste-only, 사람 Enter), **M-3** fail-safe=no-inject(buffer-later 금지, at-most-once), **M-4** sanitize 페이로드만, **M-5** 제어채널 로컬 same-UID 0600, **M-6** 기본 큐+폴링 회귀 불변. |
+| **Fable 5 when** | **Required** — 수신 모델 변경(새 receive 경로) + R1이 "가장 어려운 부분"으로 유보한 영역 (§5.1). **R22 done.** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -50,9 +50,9 @@
 
 ### Changelog
 
-#### 0.21.0 — 2026-07-11 (`pending-review` R22 — **PTY handoff inject (원래 설계 유보 수신 경로 고도화)**)
+#### 0.21.0 → 0.21.1 — 2026-07-11 (`approved` author-close after R22 `pending-revision` — **PTY handoff inject (원래 설계 유보 수신 경로 고도화)**)
 
-**Product one-liner:** 수락한 handoff를 실행 중인 에이전트에 **유휴일 때만 안전하게 주입** — 원래 v0.1.0 설계의 PTY 수신 경로를 R1이 정한 안전조건대로 고도화한다.
+**Product one-liner:** 수락한 handoff를 실행 중인 에이전트 **입력창에 유휴일 때만 붙여넣되(자동 제출 없이) 사람이 Enter** — 원래 v0.1.0 설계의 PTY 수신 경로를 R1이 정한 안전조건대로 고도화한다.
 
 **Why:** 원래 설계(`docs/ORIGIN.md` §1)의 코어 수신 메커니즘은 **PTY stdin 주입**이었다. R1은 이를 **폐기가 아니라 Phase 1.5 유보**로 판정했다(`docs/spikes/PHASE-1.5-PTY.md`: default **no-go**, opt-in **deferred** — idle 감지 + 사람 수락 우선 필요). 기반코드(`handoff-inject.ts`의 `prepareInjectText`/`injectIntoStdin` — experimental 플래그 뒤, 기본경로 미호출)는 이미 있으나 고도화 미착수. 오너가 이 고도화를 **pull**(내부 도구 필수 기능, 2026-07-11) → **FREEZE 예외**. R1이 "가장 어려운 부분·결정적 리스크"로 지목한 영역이므로 **좁고 안전한 첫 슬라이스**로 착수한다.
 
@@ -61,8 +61,9 @@
 |------|------|
 | **opt-in 플래그** | `loom run claude --inject-handoffs` — **기본경로(큐+`check_handoffs`/`inbox`)는 불변**(회귀 없음). 플래그 없으면 주입 코드 미도달. |
 | **accept-gated** | auto-inject **금지**. 사람이 `inbox accept` / `claim_handoff`한 **특정** handoff만 주입 대상. |
-| **idle-gated** | 에이전트가 **생성 중이 아닐 때만** 주입(R1 입력 레이스 방지). 감지 방식은 Unknown(아래). |
-| **주입 내용** | `prepareInjectText`로 sanitize + `⚠ Untrusted handoff content` 마커 포함(기존 함수 재사용). |
+| **idle-gated** | 에이전트가 **생성 중이 아닐 때만** 주입(R1 입력 레이스 방지). **1차 신호 = Claude Code hooks(Stop/idle), quiescence는 AND-보조만**(M-3). 감지 방식 상세는 Unknown(아래). |
+| **no-auto-submit (M-2)** | trailing `\n` **금지** — bracketed-paste로 입력창에 채우고 **제출은 사람이 Enter**. 권한 프롬프트 대기 중 오판 주입이 위험 액션을 자동 승인하는 R1 최악형을 **구조적으로 차단**. |
+| **주입 내용** | `prepareInjectText`로 sanitize + `⚠ Untrusted handoff content` 마커 포함(기존 함수 재사용, 단 M-2 모드에서 `\n` 강제 우회). |
 | **제어 채널** | 실행 중 `loom run`(PTY 래퍼)에 "이 handoff 지금 주입" 신호를 넣는 경로. 구현 방식 Unknown. |
 | **Claude Code만** | Codex/Grok(ratatui)은 idle 신호가 불명확 → **이 MINOR 범위 밖**(큐+폴링 유지). |
 
@@ -78,9 +79,17 @@
 - **accept→inject 구동 위치:** `loom run` 프로세스 vs sticky host 중 누가 주입을 실행하나(둘의 생명주기·소유권).
 - **에이전트별 실제 동작 검증:** 주입 텍스트를 에이전트가 사용자 입력으로 처리하는가(Phase 1.5 수동 매트릭스 미완 — Claude Code부터 채운다).
 
-**Binding on impl:** R22에서 Fable 5가 확정(pending-review 초안).
+**Binding on impl (R22 M-1…M-6 locks — 구현 필수):**
+- **M-1 (High):** auto-inject 경로 **코드상 부재.** `injectIntoStdin` 호출부는 `--inject-handoffs` **AND** 명시 `accept`/`claim` 뒤에만 도달. flag off → 미호출 **테스트 필수**.
+- **M-2 (High):** **no-auto-submit** — trailing `\n` 금지(paste-only, bracketed-paste), 제출은 사람 Enter. `prepareInjectText`의 `\n` 강제를 이 모드에서 우회. (권한 프롬프트 자동 승인 차단 — 이 lock 없이는 approve 불가.)
+- **M-3 (High):** **fail-safe = no-inject.** hook 부재·불확실·busy면 취소 + 큐 유지(손실 없음). **buffer-and-apply-later 금지**(Phase 1.5 `busy_sleep_then_read` 실패 모드). accept당 **at-most-once**.
+- **M-4 (High):** 주입 페이로드는 **`prepareInjectText` 산출물만**(sanitize + untrusted 마커). 임의 텍스트 주입 불가.
+- **M-5 (Med):** 제어 채널은 **로컬 same-UID 전용**(0600 socket/pipe). **relay 발 트리거 금지.**
+- **M-6 (Med):** 기본 큐+폴링 경로 + flag 없는 `loom run` **회귀 테스트 불변.**
 
-**FREEZE 관계:** 오너 pull에 의한 **명시적 예외**(2026-07-11). 나머지 백로그(work-watch·MCP·C1/C2)는 **동결 유지** — 팀 실사용 pull 전엔 열지 않음.
+**Approved by:** Fable 5 (fable-advisor) R22 — `pending-revision` → PATCH 0.21.1에 M-1…M-6 lock → **author-close `approved`** (Fable 사전 승인, no R22b). 구현 다음(레인 위임 — 세션 모델 직접 코딩 금지).
+
+**FREEZE 관계:** 오너 pull에 의한 **명시적 예외**(2026-07-11) — 이 게이트 **하나만**. 나머지 백로그(work-watch·MCP·C1/C2)는 **동결 유지** — 팀 실사용 pull 전엔 열지 않음.
 
 #### 0.20.0 — 2026-07-11 (`approved` R21 — **Tier A3: `loom doctor` 자가진단** · 구현 다음 세션)
 

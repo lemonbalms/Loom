@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R22** | **v0.21.0** | **pending-review (awaiting Fable 5)** | **PTY handoff inject** — 원래 설계 유보 수신 경로 고도화(Claude-first · opt-in · accept+idle-gated). 수신 모델 새 경로 + R1 결정적 리스크 영역. 와이어 변경 없음. FREEZE 예외=오너 pull. |
+| **R22** | **v0.21.0→0.21.1** | **closed (pending-revision → PATCH author-close `approved`)** | **PTY handoff inject** — Claude-first · opt-in · accept-gated · **no-auto-submit paste**. M-1…M-6 locks PLAN에 반영. Fable 5 사전 승인(no R22b). 와이어 변경 없음. FREEZE 예외=오너 pull(타당). 구현 대기(레인 위임). |
 | **R21** | **v0.20.0** | **closed (approved→shipped `c15de88`)** | Tier A3 `loom doctor` (read-only 진단) — no wire change. All binding M-1..M-4 met (architect-verified: bun test 180/0, live run exit 0), L-1..L-3 author-closed. Implemented via codex-impl lane. |
 | R20 | v0.19.0 | closed (approved→shipped `a9cefd0`) | Tier A1 install script — install/doc/string surface, zero relay coupling. M-1..M-4 impl-bound (done), L-1..L-4 author-close. Docker harness caught + fixed a bash-login `set -e` abort. |
 | R19 | v0.18.0 | closed (approved→shipped `2b59dee`) | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. |
@@ -22,26 +22,32 @@
 
 ## Open (blocking)
 
-| ID | Sev | 요약 | 상태 |
-|----|-----|------|------|
-| **R22** | Review | PLAN **v0.21.0** PTY handoff inject (MINOR, 수신 모델 + R1 결정적 리스크) | **Fable 5 검토 대기** |
+_(none)_ — **R22 closed** (v0.21.0→0.21.1 PTY handoff inject): Fable 5 `pending-revision` → M-1…M-6 locks를 PLAN 텍스트에 반영 → **author-close `approved`** (Fable 사전 승인, no R22b). 구현 대기(레인 위임). (R21/v0.20.0 shipped `c15de88`.)
 
 ---
 
-## Review R22 — Plan v0.21.0 (요청)
+## Review R22 — Plan v0.21.0 → 0.21.1 (PTY handoff inject)
 
-**검토 대상:** `docs/PLAN.md` `#### 0.21.0` changelog (PTY handoff inject) + header block + `docs/UNKNOWNS.md` §0.21.0 + `docs/ORIGIN.md` §1(원래 설계)·Phase 1.5 verdict(`docs/spikes/PHASE-1.5-PTY.md`)
-**검토자:** Fable 5 (fable-advisor) — **claude-rev가 R{n} 작성 전 필수 컨설트**
+**검토 대상:** `docs/PLAN.md` `#### 0.21.0→0.21.1` changelog + header + `docs/UNKNOWNS.md` §0.21.0 + `docs/ORIGIN.md` §1·§2 + Phase 1.5 verdict(`docs/spikes/PHASE-1.5-PTY.md`) + `packages/host/src/handoff-inject.ts`
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
 **날짜:** 2026-07-11
-**결론:** _(대기)_
+**결론:** **`pending-revision` → PATCH 0.21.1 (M-1…M-6) → author-close `approved`** (Fable 사전 승인, no R22b). FREEZE 예외 타당(오너 pull, 이 게이트 하나만).
 
-### 저자 체크리스트 (검토 관점 제안)
-- [ ] **R1 결정적 리스크 재현 방지** — idle-gated 완화가 실제로 입력 레이스/의도치 않은 제출을 막는가. Claude hooks vs 출력 quiescence 휴리스틱 중 신뢰 가능한 것은? 오탐 시 fail-safe(주입 취소)인가.
-- [ ] **accept-gated 무결성** — auto-inject 경로가 정말 없는가(사람 accept/claim 없이는 주입 불가). opt-in 플래그 없으면 코드 미도달인가.
-- [ ] **Sanitize** — 주입 텍스트가 `prepareInjectText`로 정화되고 untrusted 마커가 붙는가. 에이전트 입력 스트림에 ESC/CSI 주입 불가한가.
-- [ ] **범위 규율** — Claude-first가 타당한가(Codex/Grok idle 신호 부재). busy 주입·auto·다른 에이전트가 확실히 out인가.
-- [ ] **회귀 없음** — 기본 수신 경로(큐+폴링)와 `loom run`(플래그 없음)이 불변인가.
-- [ ] **FREEZE 예외 타당성** — 오너 pull이 이 예외를 정당화하는가, 아니면 더 좁혀야 하는가.
+### 결정적 발견 (성패 지점)
+권한 승인 프롬프트 대기 중은 quiescence로 "유휴"처럼 보이나, `prepareInjectText`의 **trailing `\n`이 대기 중 위험 액션을 자동 승인**함 = R1 "의도치 않은 제출"의 최악형. → **M-2 no-auto-submit(paste-only, 사람 Enter)**가 이를 구조적으로 차단. 이 lock 없이는 approve 불가.
+
+### Findings (Sev: High|Med|Low) — binding locks
+- **M-1 (High):** auto-inject 경로 코드상 부재 — `injectIntoStdin` 호출부는 `--inject-handoffs` AND 명시 accept/claim 뒤에만 도달; flag off → 미호출 테스트.
+- **M-2 (High):** no-auto-submit — trailing `\n` 금지(bracketed-paste), 제출은 사람 Enter. `prepareInjectText` `\n` 강제 우회.
+- **M-3 (High):** fail-safe = no-inject — hook 부재·불확실·busy면 취소+큐 유지; buffer-and-apply-later 금지(Phase 1.5 `busy_sleep_then_read`); accept당 at-most-once. 1차 신호=Claude hooks, quiescence는 AND-보조.
+- **M-4 (High):** 페이로드는 `prepareInjectText` 산출물만(sanitize+untrusted 마커).
+- **M-5 (Med):** 제어 채널 로컬 same-UID 0600 socket/pipe; relay 발 트리거 금지.
+- **M-6 (Med):** 기본 큐+폴링 + flag 없는 `loom run` 회귀 불변.
+
+### 스코프 판정
+Claude-first 타당(Codex/Grok ratatui idle 신호 불명확). "알림만" 슬라이스는 불필요(이미 존재). no-auto-submit paste가 **배송 가치(복붙 제거) 유지 + R1 리스크 구조적 제거**의 안전한 최소.
+
+**Implement next** under 0.21.1 (레인 위임 — 세션 모델 직접 코딩 금지). 재리뷰 불요.
 
 ---
 
