@@ -40,6 +40,7 @@
 ## Tier B — 최신 기능 도그푸드 + UC 신설 ★ 착수 지점
 
 > 이미 shipped됐지만 시나리오가 없어 실전 검증 미완. UC를 쓰고 도그푸드로 채운다.
+> **진행(2026-07-11):** UC-12/13/14 초안 작성 완료 + `dogfood:up` 실구동 라이브 검증(핵심 경로 ✅). 초안 오류 2건·중복 peer 실피해 1건 수정/기록. 미검증: work watch·MCP 경로·claim 계약. 상세=`TEST_PLAN.md` 실행 기록.
 
 | # | 항목 | 유형 | 근거 | UC |
 |---|------|------|------|-----|
@@ -54,6 +55,7 @@
 | C1 | **크래시 후 orphan host 정리** (`down`이 `meta.pid`로 강건) | 빌드 | UNKNOWNS §0.17.0 | UC-3/12 확장 |
 | C2 | **에이전트가 stderr/handoff 배너 무시** (수신 경로 신뢰성 갭) | 조사→빌드 | UNKNOWNS §0.15.0 | UC-5 확장 |
 | C3 | `dogfood:up --watch` work-watch 데몬 (opt-in, L-31 CPU clamp) | 빌드(선택) | PLAN 0.17 pillar 3 | UC-13 연계 |
+| C4 | **중복 peer dedup / 재조인 정리** — 같은 표시명이 여러 peer id로 누적, notify가 stale offline 사본으로 오배송(queued/notified=false) | 빌드 | 2026-07-11 도그푸드 발견 (TEST_PLAN 실행 기록) | UC-12/13 확장 |
 
 ## Tier D — Low 백로그 (전략 푸시 이후)
 

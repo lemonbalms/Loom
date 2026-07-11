@@ -405,7 +405,7 @@ bun run desktop
 | # | 단계 | 기대 | 자동 |
 |---|------|------|------|
 | 13.C1 | `board add "y" --as bob --no-notify` | `added …` 만, notify 줄 없음 | 🖐 |
-| 13.C2 | `board add "z" --as ghost` (room에 없는 이름) | stderr `notify failed: peer_unknown: ghost` + **exit 1** (태스크는 생성됨) | 🖐 |
+| 13.C2 | `board add "z" --as ghost` (room에 없는 이름) | stderr `notify failed: No peer matching "@ghost"` + **exit 1** (태스크는 생성됨) | 🖐 |
 
 ### 13.D — `loom work` (inbox + 내 보드 태스크 병합)
 
@@ -487,7 +487,7 @@ bun run desktop
 |---|------|------|------|
 | 14.E1 | `handoff @bob "[R-REQUEST] 리뷰 요청"` | 전송 성공; body에 태그 보존 | 🖐 |
 | 14.E2 | bob `loom work` | inbox 줄에 `[R-REQUEST]` 태그 표시 | 🖐 |
-| 14.E3 | bob `loom inbox` | **태그 미표시**(inbox 렌더는 status/id/from/preview만) — `work` 피드에서만 태그 노출 | 🖐 선택 |
+| 14.E3 | bob `loom inbox` | body preview에 대괄호가 **raw text**로는 보이나, **파싱된 태그 필드/컬럼은 없음**(inbox 렌더=status/id/from/mode/preview). 태그 파싱·분리 표시는 `loom work`만 | 🖐 선택 |
 | 14.E4 | 허용 태그 | `[GOAL] [R-REQUEST] [R-RESULT] [VERIFY] [DONE]` (대소문자 무시), 첫 태그가 primary | 🖐 선택 |
 
 ### 14.F — receive-path claim 계약 (0.15.1)
@@ -641,6 +641,57 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 
 **Blockers:** none.  
 **Launcher:** pre-0.13.12 Bun→Bun Claude stdio inherit crashed (`EINVAL kqueue`). **0.13.12** `script` PTY — **Owner confirmed `loom run claude` works** (2026-07-10).
+
+### Test run — 2026-07-11 (UC-12 Launcher UX / dogfood:up 실구동)
+
+| Field | Value |
+|-------|--------|
+| **Date** | 2026-07-11 |
+| **Tester** | Claude session (Opus 4.8 architect) |
+| **Build** | loom **0.17.1** · `fc97674` |
+| **Automations** | `bun test` 167 pass / 0 fail · `bun run status` 0.17.1 approved |
+
+| UC | Result | Notes |
+|----|--------|-------|
+| 12.H1 | ✅ 🖐 | `bun run dogfood:room` — room `loom-dev` 재조인, 5 프로필 join, `.loom/dogfood-room.env` 기록 |
+| 12.H2 | ✅ 🖐 | `bun run dogfood:up` — `loom up` 5 호스트 online (pid 95443–95447), 푸터 배너 정확 |
+| 12.C2/C3 | ✅ 🖐 | 헤더 `loom up — sticky hosts:` + `online   pid …  <displayName> @ loom-dev`, 푸터 `Peers stay online …` |
+| 12.D1/H3 | ✅ 🖐 | `dogfood:up --status` → 5 프로필 `online   pid …` (스폰 없이 조회) |
+| 12.A2 | ✅ 🖐 | `host status` → `sticky host: running` + meta/pid/ipc/peer/room/since + `relay: connected` |
+| 12.I1 | ✅ 🖐 | meta `~/.loom/profiles/impl.host.json` 존재 |
+
+**Blockers:** none.
+**미검증(이번 패스):** 12.A(auto-host on create/join 신규 로그 — dogfood는 `LOOM_NO_AUTO_HOST=1`로 우회), 12.B(opt-out), 12.E(down), 12.F(M-27), 12.G(F-2).
+
+**⚠ 발견 (신규):** room `loom-dev` peers view가 **6 peers** — `claude-impl` 표시명이 **두 peer id**로 중복(`p_4028652d`, `p_a822d441`, 색상도 상이 #95E1D3/#AA96DA). 프로필은 5개인데 peer는 6개. 재조인 시 stale peer 누적 의심. → `DOGFOOD_FEATURES.md` Tier C 후보(피어 dedup / 재조인 정리). 비차단.
+
+### Test run — 2026-07-11 (UC-13 Work bus / UC-14 Purpose·verify 실구동)
+
+| Field | Value |
+|-------|--------|
+| **Date** | 2026-07-11 |
+| **Tester** | Claude session (Opus 4.8) — dogfood room `loom-dev`, 발신 `impl`, 수신 `codex-impl` |
+| **Build** | loom **0.17.1** · `fc97674` |
+
+| UC | Result | Notes |
+|----|--------|-------|
+| 13.A1 | ✅ 🖐 | `added task_… [todo] UC13 t1` (assignee 없음, notify 안 함) |
+| 13.B1 | ✅ 🖐 | `notified handoff ho_… (status=delivered, notified=true)` — 수신 host online이라 delivered |
+| 13.B2 | ✅ 🖐 | codex-impl `work` → `Inbox (1):` `ho_… [GOAL] …assignee: @codex-impl`, `My open board tasks` 에 `ho=` 링크 |
+| 13.C1 | ✅ 🖐 | `--no-notify` → added만, notify 줄 없음 |
+| 13.C2 | ✅* 🖐 | exit 1 확인. **초안 문자열 수정**: 실제 `notify failed: No peer matching "@ghost"` (초안 `peer_unknown: ghost` 오류였음) |
+| 14.A1/A2/A3 | ✅ 🖐 | show(unset)→set→`--verify` 반영(`Verify recipes (1) [CLI-only write]`); `set "text" --verify` 시 purpose 텍스트 보존 확인 |
+| 14.B1 | ✅ 🖐 | purpose 파일 퍼미션 `-rw-------` (0600) |
+| 14.C2 | ✅ 🖐 | 비-TTY 미-ack verify → M-25 메시지 + **exit 2** (정확) |
+| 14.C3/C4 | ✅ 🖐 | `--yes` 실행 exit 0; 재실행 `(recipe already acknowledged; --yes noted)` |
+| 14.A5 | ✅ 🖐 | `Purpose cleared (empty card written).` |
+| 14.E1/E2 | ✅ 🖐 | `[R-REQUEST]` handoff → `work` 피드에 태그 파싱 표시 |
+| 14.E3 | ✅* 🖐 | **초안 문구 정정**: `inbox`는 대괄호가 raw body로는 보이나 파싱 태그 필드는 없음 (초안 "태그 미표시"는 오해 소지) |
+
+**Blockers:** none.
+**⚠ 발견 (중복 peer 실피해):** `board add "…" --as claude-impl`(중복 표시명) → `status=queued, notified=false` — claude-impl host는 online인데도 **stale offline 중복 peer로 라우팅**됨. 중복 peer 버그가 notify 오배송을 유발. Tier C 우선순위 ↑.
+**미검증:** 13.E(work watch), 13.F(MCP notify 기본값), 14.F(claim 계약), 14.G(MCP M-24) — MCP/장시간 감시는 별도 패스.
+**정리 필요:** dogfood 보드에 `UC13 *` 테스트 태스크 잔존(비차단).
 
 ---
 
