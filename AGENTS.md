@@ -73,6 +73,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
 | Claude R{n} | **Must** consult the **`fable-advisor`** subagent before writing R{n} |
+| **Impl delegation** | Session model (architect) **does not hand-code an approved/locked spec.** Check lane availability, escalate down: **`grok-impl` → `codex-impl` → (both down) a lower-tier model subagent** (`Agent`, `model: sonnet`/`haiku`). "Default lane down" ⇒ move down the chain, **never** hand-code by the session model. Session model = spec author + reviewer + verifier only. Detail: `docs/DOGFOOD_LOOP.md §1.2`. |
 
 ### Pause only when (true blockers)
 

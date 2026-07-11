@@ -122,6 +122,24 @@ Outside the sandbox, commands **fail** instead of asking — safer than `--dange
 **Reviewer boot prompt (paste as first message):**  
 `scripts/dogfood-reviewer-boot.txt` — forces `check_handoffs` → claim `[R-REQUEST]`.
 
+### 1.2 Impl lane escalation — the session model does NOT hand-code a locked spec
+
+The architect (session model, e.g. Opus/Fable) authors specs, reviews, and
+verifies. It **does not write product code from an approved/locked spec** —
+implementation is delegated. When work is ready to implement, pick a lane by
+**availability**, escalating down this chain (check first, don't assume from a
+stale HANDOFF note):
+
+1. **Default:** `grok-impl` (Grok) — verify auth (`grok` CLI logged in). If expired, don't stop here.
+2. **Cross-vendor fallback:** `codex-impl` (Codex / GPT-5.x) — verify `codex` CLI installed + authenticated. Use when grok is down or a second model family is wanted.
+3. **Last resort — neither external CLI lane available:** the architect **still does not hand-code**. Spawn a **lower-tier in-harness model** subagent to implement from the locked spec — `Agent` with `model: sonnet` (or `haiku` for trivial mechanical edits), given the full five-part spec. The session model then reviews the diff and verifies.
+
+Rule of thumb: **check available lanes → delegate to the highest available →
+only escalate to a lower-tier model, never to hand-coding by the session
+model.** "The default lane is down" is a reason to move down the chain, *not* a
+license for the architect to implement directly. (Lesson: 2026-07-11 —
+`tasks/lessons.md`.)
+
 ---
 
 ## 2. Claude Code — **must** consult the `fable-advisor` subagent for reviews
