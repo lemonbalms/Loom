@@ -17,7 +17,8 @@
 | 파일 | 요약 | 최종 업데이트 | 커밋 |
 |------|------|:---:|:---:|
 | `HANDOFF.md` | **다음 세션 진입점.** 상단 ⭐ 블록에 즉시 할 일. 세션 시작 시 첫 참조 | 2026-07-11 | 56 |
-| `docs/PLAN.md` | **제품 로드맵 SSOT.** Multiplayer AI Terminal 마일스톤·버전(v0.17.x)·P0~P2 | 2026-07-11 | 46 |
+| `docs/ORIGIN.md` | **⛔불변 baseline.** 최초 설계안(v0.1.0) 복원 + delta 추적. PLAN이 제자리 덮어써 소멸시킨 원래 여정. **로드맵을 원래 목적지와 대조할 때 필수** | 2026-07-11 | 신규 |
+| `docs/PLAN.md` | **제품 로드맵 SSOT.** Multiplayer AI Terminal 마일스톤·버전(v0.20.x). ⚠️원래 설계는 `ORIGIN.md` 참조(PLAN은 as-built) | 2026-07-11 | 46 |
 | `docs/PRIORITIES.md` | 우선순위 표 — 기능 리스트업의 출발점 | 2026-07-10 | 11 |
 | `tasks/todo.md` | 현재 작업 목록 (0.17.0 Launcher UX 등) | 2026-07-10 | 24 |
 | `docs/DOGFOOD_FEATURES.md` | **도그푸드 기능 리스트업.** TEST_PLAN UC + 미결 작업 종합, Tier A~D 우선순위. 착수=Tier B(최신 기능 UC 신설) | 2026-07-11 | 신규 |
