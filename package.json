@@ -10,6 +10,9 @@
     "build": "bun run --filter '*' build",
     "test": "bun test",
     "typecheck": "bun run --filter '*' typecheck",
+    "lint": "biome lint .",
+    "deadcode": "knip",
+    "shell": "shellcheck scripts/*.sh",
     "loom": "bun run packages/cli/src/index.ts",
     "status": "bun run scripts/session-status.ts",
     "link:loom": "bash scripts/link-loom.sh",
@@ -27,8 +30,10 @@
     "relay:lan": "LOOM_RELAY_HOST=0.0.0.0 LOOM_RELAY_TOKEN=${LOOM_RELAY_TOKEN:?set LOOM_RELAY_TOKEN} bun run packages/relay/src/cli.ts"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
     "@tauri-apps/cli": "^2.11.4",
     "@types/bun": "latest",
+    "knip": "^6.26.0",
     "typescript": "^5.8.3"
   }
 }

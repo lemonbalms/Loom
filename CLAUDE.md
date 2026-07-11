@@ -37,3 +37,13 @@ both run Claude Code — do not mix them in one terminal.
 - Unknowns: `docs/UNKNOWNS.md` (template; not PLAN SSOT)
 - Deviations: `implementation-notes.md`
 - Status script: `bun run status`
+
+## Health Stack
+
+Used by `/health` (code quality dashboard). Each also has a `bun run` alias.
+
+- typecheck: bun run --filter '*' typecheck
+- test: bun test
+- lint: biome lint .
+- deadcode: knip
+- shell: shellcheck scripts/*.sh
