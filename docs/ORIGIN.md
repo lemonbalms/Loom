@@ -83,8 +83,8 @@ Phase 5  UX polish
 |-----------|----------|------|-----------|
 | Mosaic 벤치마크 + 코어 재현 | 🔴 명시적 벤치마크 기록 없음 | **미검증 — 결정된 적 없음** | — (원래 목표, 추적 소멸) |
 | 차별점 "다인 + 이종 에이전트" | 🟢 유지 (Claude·Codex·Grok·shell 이종 지원) | 유지 | as-built |
-| PTY 미들웨어 wrap | 🟡 PTY는 TUI 실행용으로만 잔존 (`run-with-pty.py`), 주입 아님 | 축소 | R1 #1 |
-| **handoff 수신 = PTY stdin 주입** | ❌ 폐기 → 큐 + `check_handoffs` 폴링 | **의식적 폐기 (올바름)** | R1 #1 · Phase 1.5 spike no-go |
+| PTY 미들웨어 wrap | 🟡 TUI 실행 wrap으로만 잔존 (`run-with-pty.py`), 주입 아님 | 축소 | R1 #1 |
+| **handoff 수신 = PTY stdin 주입** | 🟡 **유보(deferred) — 기반코드 존재** (`handoff-inject.ts` `injectIntoStdin` experimental 뒤), 기본경로는 큐+폴링 | **❗유보 ≠ 폐기 — 고도화 대상** | R1 #1 · Phase 1.5 verdict: **default no-go, opt-in deferred** (idle 감지+accept 우선 필요) |
 | handoff 수신 = MCP 도구 | 🟢 배송 (`check_handoffs`/`claim_handoff`) | 유지·강화 | as-built |
 | **handoff 수신 = 슬래시 인터셉트 fallback** | ❌ 소멸 (`/fable` 슬래시가 rename 0.10.0에서 제거됨) | **rename 부수효과 — 명시적 결정 아님** | 0.10.0 |
 | **presence 컬러 오버레이** | ❌ 미배송 (roster online/offline + color만, TUI 오버레이 없음) | **미룸에 의한 사고적 누락 (귀환 게이트 부재)** | R1 #2 "비목표" |
@@ -123,6 +123,7 @@ Phase 4.0a sticky host → 4.1 context pack → 4.2 task board → 4.3a board sh
 
 | 원래 요소 | 결정 필요 |
 |-----------|-----------|
+| **PTY 주입 수신 = 고도화 (실작업)** | ⛏ **유보 → 착수.** Phase 1.5가 정의한 안전 경로대로: ①유휴 감지(Claude hooks) ②사람 수락 우선 ③`loom run --inject-handoffs` opt-in. 기반코드(`injectIntoStdin`)는 이미 있음. R1 "가장 어려운 부분" → 별도 PLAN 게이트 필요 |
 | **presence 컬러 오버레이** | (A) 복원해 "완성"에 포함 / (B) 의식적 폐기(사유 기록). Mosaic-parity 핵심 차별점이었음 |
 | **Phase 4 협업 품질** | 원래 의미를 정의·복원할지, 아니면 as-built(work bus 등)로 대체 확정할지 |
 | **Phase 5 UX polish** | 내부 팀 채택에 필요한 UX 최소선을 정의할지 |
