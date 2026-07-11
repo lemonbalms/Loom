@@ -78,8 +78,10 @@
 | 방향 자문 | `fable-advisor`(Fable 5): A1 = **Option 1 설치 스크립트** 커밋(②=fallback 텍스트, ③ 바이너리 유보). 판정 리스크=**PATH 활성화**. repo PUBLIC 확인(익명 clone). |
 | **게이트** | PLAN **0.19.0** 작성 → **R20 approved**(fable-advisor, binding M-1..M-4) → UNKNOWNS 로그 → plan_review R20 기록 → 커밋(`a711478`) |
 | **구현**(`a9cefd0`) | `scripts/install.sh`(curl\|bash: Bun→clone→link→verify→PATH, M-1..M-4/L-1/L-2/L-4) · `loomCmd()` helper + 표시 힌트 스윕(실행 spawn·self-ref 제외, M-3) · README 원라이너 · VERSION 0.19.0(CLI+MCP) · impl-notes L-1..L-4 |
-| 검증 | 6 pkg typecheck green · `bun test` 175 pass/0 fail · shellcheck clean · **격리 install.sh 라이브 smoke**(clone→install→link→verify→rc append→M-2 안내) · loomCmd 양쪽 분기 |
+| 검증 | 6 pkg typecheck green · `bun test` 175 pass/0 fail · shellcheck clean · **격리 install.sh 라이브 smoke** · loomCmd 양쪽 분기 |
 | 정리 | smoke의 `bun link`가 글로벌 `@loom/cli`를 임시 dir로 재지정 → real repo에서 **재링크 복구**(`loom v0.19.0` 정상) |
+| **Docker 드라이런 하네스**(`3b6cc0c`) | `test/docker/` — Test A(clean ubuntu:24.04 install 냉시동, M-4) + Test B(relay+peerA+peerB 냉설치→**컨테이너 간 오프라인 handoff 수신**). **둘 다 통과.** = 2머신 드라이런의 단일호스트 대역(QA, 수요검증 아님) |
+| **하네스가 잡은 버그** | install.sh `ensure_path` bash 분기가 `.bash_profile` 부재 시 1 반환 → `set -e`로 설치가 ✅ 직전 중단. Linux bash-login 전멸 버그(macOS zsh라 smoke가 못 잡음). 수정: `return 0` + `~/.profile`(로그인 셸). +`LOOM_INSTALL_REPO`·unzip 힌트 |
 
 ### ⚠ 운영 노트 (다음 세션 주의)
 - **grok CLI 인증 만료** — 기본 impl 레인 사용 불가. 복구: `! grok login` (사용자 실행). (이번 세션은 아키텍트 직접 구현.)
