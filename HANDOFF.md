@@ -7,6 +7,18 @@
 
 ---
 
+## ⭐ Next action (strategic — read first)
+
+> **2026-07-11 전략 검토 완료 → `docs/LOOM_PURPOSE_REVIEW.md`.**
+> 판정: 현 단계(학습/도그푸드 벡터) 타당하나 **제품 검증은 아직 0**. 2인 검토(Opus +
+> fable-advisor/Fable 5, PARTIALLY AGREE).
+> **단일 최고가치 다음 수 = 기능 추가가 아니라 "며칠 내 다른 머신의 실제 사람 ≥2명에게
+> 태우기"** (1인 도그푸드로는 이 멀티휴먼 제품을 구조적으로 검증 불가).
+> 선행: 최소 배포 경로(설치 5분) + 첫-5분 마찰 제거 + 수요 신호 1줄 기록.
+> 상세·트립와이어·리스크: `docs/LOOM_PURPOSE_REVIEW.md`.
+
+---
+
 ## One-line resume
 
 > PLAN **0.17.1** `approved` (author-close, R18 M-27/M-28 locks) — **Launcher UX shipped**:  
@@ -68,9 +80,10 @@ bun run dogfood:up -- --status     # report only
 # or full: bun run dogfood:up   →   bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev
 ```
 
-### 3) No open blocking. Next work = Owner priorities (docs/PRIORITIES.md)
-Launcher UX (P after work bus) is done. Candidate next: L-30/L-28/L-29 Low backlog,
-or a new MINOR — open a PLAN version + R{n} gate first (WORKFLOW §5.1).
+### 3) No feature blocking — but the priority is STRATEGIC, not the next feature
+전략 검토(`docs/LOOM_PURPOSE_REVIEW.md`) 결론: **기능을 더 얹지 말고 "실제 사람 ≥2명에게
+태우기"가 단일 최고가치.** 그 선행 작업(최소 배포 경로 + 첫-5분 마찰 제거)을 먼저.
+Low 백로그(L-30/L-28/L-29)나 새 MINOR는 그 다음 — 필요 시 PLAN 버전 + R{n} 게이트(WORKFLOW §5.1).
 
 ---
 
