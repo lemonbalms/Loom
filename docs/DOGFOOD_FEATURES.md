@@ -55,7 +55,7 @@
 | C1 | **크래시 후 orphan host 정리** (`down`이 `meta.pid`로 강건) | 빌드 | UNKNOWNS §0.17.0 | UC-3/12 확장 |
 | C2 | **에이전트가 stderr/handoff 배너 무시** (수신 경로 신뢰성 갭) | 조사→빌드 | UNKNOWNS §0.15.0 | UC-5 확장 |
 | C3 | `dogfood:up --watch` work-watch 데몬 (opt-in, L-31 CPU clamp) | 빌드(선택) | PLAN 0.17 pillar 3 | UC-13 연계 |
-| C4 | **중복 peer dedup / 재조인 정리** — 같은 표시명이 여러 peer id로 누적, notify가 stale offline 사본으로 오배송(queued/notified=false) | 빌드 | 2026-07-11 도그푸드 발견 (TEST_PLAN 실행 기록) | UC-12/13 확장 |
+| C4 | ✅ **[FIXED `bcd7504`]** 중복 peer — room join이 재조인 시 정체성 재사용(peer_auth_failed fallback) + relay findPeerByName online 우선. 라이브 재현 검증(join×2→동일 peerId). ↳ 남은 유보: 기존 stale 중복 GC(L-29), name-dedup-on-join | 빌드 | 2026-07-11 도그푸드 발견·수정 | UC-12/13 |
 
 ## Tier D — Low 백로그 (전략 푸시 이후)
 
