@@ -1,0 +1,27 @@
+# Prebaked loom infra image — for Test B relay + peerA (NOT the install path
+# under test; that is Test A / peerB). Bun via the official installer (same path
+# users take), loom from pushed main, linked onto PATH for every shell.
+FROM ubuntu:24.04
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      curl git ca-certificates unzip \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV SHELL=/bin/bash
+ENV BUN_INSTALL=/root/.bun
+ENV PATH=/root/.bun/bin:$PATH
+
+RUN curl -fsSL https://bun.sh/install | bash
+
+# Clone the pushed product (default: main). Override with --build-arg LOOM_REF=<sha>.
+ARG LOOM_REF=main
+RUN git clone --depth 1 --branch "$LOOM_REF" \
+      https://github.com/lemonbalms/Loom.git /opt/loom \
+ && cd /opt/loom \
+ && bun install \
+ && cd packages/cli && bun link \
+ && ln -sf /root/.bun/bin/loom /usr/local/bin/loom
+
+WORKDIR /opt/loom
+CMD ["bash"]

@@ -7,6 +7,8 @@
 # Overrides:
 #   LOOM_INSTALL_DIR   checkout dir           (default: ~/.loom-src)
 #   LOOM_INSTALL_REF   branch/tag/SHA to use  (default: main)
+#   LOOM_INSTALL_REPO  git URL or local path  (default: GitHub lemonbalms/Loom)
+#                      — lets an offline/CI harness clone a local checkout
 #
 # What it does: ensure Bun → clone/update the repo → bun install → bun link →
 # verify `loom` via absolute path → idempotently add Bun's bin dir to your shell
@@ -53,8 +55,8 @@ ensure_path() {
       _append "$HOME/.zshrc" "export PATH=\"$bindir:\$PATH\""
       ;;
     bash)
-      _append "$HOME/.bashrc" "export PATH=\"$bindir:\$PATH\""
-      [ -e "$HOME/.bash_profile" ] && _append "$HOME/.bash_profile" "export PATH=\"$bindir:\$PATH\""
+      _append "$HOME/.bashrc" "export PATH=\"$bindir:\$PATH\"" # interactive (new terminal)
+      _append "$HOME/.profile" "export PATH=\"$bindir:\$PATH\"" # login shells (ssh, bash -l)
       ;;
     *) # unknown shell: cover the common rc files that already exist
       local any=0
@@ -64,6 +66,8 @@ ensure_path() {
       [ "$any" = 1 ] || _append "$HOME/.profile" "export PATH=\"$bindir:\$PATH\""
       ;;
   esac
+  # Never let a trailing test's exit status abort a `set -e` caller.
+  return 0
 }
 
 main() {
@@ -77,6 +81,9 @@ main() {
 
   # 1) Bun — install if missing, then put it on THIS script's PATH (M-4)
   if ! command -v bun >/dev/null 2>&1; then
+    # Bun's installer unpacks a zip — a bare box (e.g. minimal Ubuntu) lacks unzip.
+    command -v unzip >/dev/null 2>&1 \
+      || say "note: Bun's installer needs 'unzip' — if the next step fails, install it (e.g. sudo apt-get install -y unzip) and re-run"
     say "Bun not found — installing from https://bun.sh (official installer) …"
     curl -fsSL https://bun.sh/install | bash
     export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
@@ -115,7 +122,7 @@ main() {
 
   # 5) Verify via absolute path (deciding-risk mitigation — do not rely on PATH yet)
   if [ -x "$BIN_DIR/loom" ]; then
-    say "Verified: loom $("$BIN_DIR/loom" --version) at $BIN_DIR/loom"
+    say "Verified: $("$BIN_DIR/loom" --version 2>/dev/null | head -1) at $BIN_DIR/loom"
   else
     die "loom not found at $BIN_DIR/loom after link — try: cd $INSTALL_DIR/packages/cli && bun link"
   fi

@@ -1,0 +1,13 @@
+# Clean "stranger dev box" — Ubuntu 24.04 with curl/git/ca-certificates/unzip
+# but deliberately NO Bun and NO loom. install.sh must bootstrap Bun itself here
+# (exercises R20 M-4, the bun-from-scratch path the macOS smoke never ran).
+FROM ubuntu:24.04
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      curl git ca-certificates unzip \
+ && rm -rf /var/lib/apt/lists/*
+
+# Deterministic shell so scripts/install.sh picks the bash rc branch.
+ENV SHELL=/bin/bash
+CMD ["bash"]
