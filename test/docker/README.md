@@ -20,6 +20,7 @@ stand-in for two machines.
 bash test/docker/run-all.sh            # A then B
 bash test/docker/run-install-test.sh   # A only
 bash test/docker/run-join-test.sh      # B only
+bash test/docker/run-lan-check.sh      # LAN plumbing (relay on real LAN IP; args: [LAN_IP] [PORT])
 ```
 
 ## Images
@@ -60,6 +61,29 @@ the clean, Bun-less image.
 Proves: install→join stranger journey, self-contained invite (0.18.0), non-loopback
 relay + token transport (R19 M-2), durable offline handoff (0.14) — end to end,
 across container boundaries.
+
+## LAN check — `run-lan-check.sh`
+
+Ladder step **2** (between Docker-vnet and real two machines). Test B fakes the
+network via Docker's internal DNS (`ws://loom-relay:7842`); this runs the relay on
+the **host's real LAN IP** (`0.0.0.0` bind) and has a container join over that
+routable address:
+
+1. host-side `curl` on both loopback and the real LAN IP → proves the `0.0.0.0`
+   bind + firewall allow.
+2. room created on the host; the blob carries `ws://<LAN_IP>:<PORT>` (routable, not loopback).
+3. container `curl`s the relay over the real LAN IP → proves external routing.
+4. container joins via the blob; host hands off → container reads it back.
+
+```bash
+bash test/docker/run-lan-check.sh              # auto-detect LAN IP (en0), port 7900
+bash test/docker/run-lan-check.sh 192.168.1.42 7900
+```
+
+Isolated: a temp `LOOM_TEST_HOME` + a distinct port — does **not** touch `~/.loom`
+or a relay already listening on another port (e.g. 7842). What it still does NOT
+cover: a genuinely separate machine, a different network/NAT, and a real person
+(ladder step 3 — the `LOOM_PURPOSE_REVIEW` goal).
 
 ## Cleanup
 
