@@ -132,7 +132,11 @@ stale HANDOFF note):
 
 1. **Default:** `grok-impl` (Grok) — verify auth (`grok` CLI logged in). If expired, don't stop here.
 2. **Cross-vendor fallback:** `codex-impl` (Codex / GPT-5.x) — verify `codex` CLI installed + authenticated. Use when grok is down or a second model family is wanted.
-3. **Last resort — neither external CLI lane available:** the architect **still does not hand-code**. Spawn a **lower-tier in-harness model** subagent to implement from the locked spec — `Agent` with `model: sonnet` (or `haiku` for trivial mechanical edits), given the full five-part spec. The session model then reviews the diff and verifies.
+3. **Last resort — neither external CLI lane available:** the architect **still does not hand-code**. Spawn a **lower-tier in-harness model** subagent (`Agent` / `Workflow`) to implement from the locked spec, given the full five-part spec. The session model then reviews the diff and verifies. Effort applies **only at this tier** (cross-vendor lanes carry their own reasoning config — do not try to set Anthropic `effort` on them). Defaults:
+   - **Locked-spec implementation** → `model: sonnet`, `effort: high`.
+   - **Trivial mechanical edit** → `model: haiku`, `effort: low`.
+
+**The criterion is spec-lockedness, not raw difficulty.** Intelligence is spent at plan time (approved PLAN + R{n} locks), so a locked spec tolerates a mid-tier implementer. **Corollary:** if a task seems to need Opus/`xhigh` *to implement*, the spec is not actually locked — send it back to the architect as **spec work** (PLAN/R{n}), do not raise the implementer tier to compensate. (Adversarial verify/judge tiers are governed by §2 / Standing rules, not this step.)
 
 Rule of thumb: **check available lanes → delegate to the highest available →
 only escalate to a lower-tier model, never to hand-coding by the session
