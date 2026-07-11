@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.17.1** |
-| **Status** | **`approved`** (author-close, R18 M-27/M-28 locks applied; **no R18b**) — Launcher UX: up / host-default / work-first (MINOR) |
-| **Supersedes** | 0.17.0 |
-| **Last updated** | 2026-07-10 |
-| **Approval** | **R18 done** — `pending-revision` (see `docs/plan_review.md` R18); PATCH **0.17.1** applied M-27 (down kill-safety identity check) + M-28 (multi-profile `up` sequential) + L-33/L-34/L-35 as Failure/security lock rows → **author-close per R18 Decision notes (no R18b)**. Implement allowed under 0.17.1. |
-| **Fable 5 when** | **Required** — changes default online lifecycle, dogfood entry, background daemons. |
+| **Version** | **0.18.0** |
+| **Status** | **`approved`** (R19) — Self-contained invite (portable join blob): one-command cross-machine join (MINOR). **M-1/M-2 binding on impl** |
+| **Supersedes** | 0.17.1 |
+| **Last updated** | 2026-07-11 |
+| **Approval** | **R19 `approved`** (`docs/plan_review.md`) — with binding constraints M-1 (`loom://join/` prefix + bare-code shape check before blob decode) + M-2 (`invite --link` warn/refuse loopback); L-1/L-2 author-close after Low fixes. Implement allowed under 0.18.0. |
+| **Fable 5 when** | **Required** — new invite surface + relay token embedded in portable blob (security/trust boundary, H-5 interaction). |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Related** | `docs/WORKFLOW.md` (작업 규칙·§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/plan_review.md`, `docs/ARCHITECTURE.md`, `docs/PROTOCOL.md` |
@@ -48,6 +48,35 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.18.0 — 2026-07-11 (`approved` R19 — **Self-contained invite (portable join blob)**)
+
+**Product one-liner:** 낯선 사람을 다른 머신에서 **한 명령으로** 방에 넣는다 — `loom room join <blob>`.
+
+**Why:** 전략 최우선(Tier A1, `docs/DOGFOOD_FEATURES.md` · `LOOM_PURPOSE_REVIEW`)은 "다른 머신의 실제 사람 ≥2명 태우기". 지금 원격 온보딩은 **비밀 3개 수동 전달**(invite `LOOM-XXXX` + `--relay ws://…` + `--token …`, cli `index.ts:160,180`)이 필요해 5분 안에 불가. 초대 하나에 relay 도달정보를 담으면 join이 단일 명령이 된다. (Fable 자문 R-consult: binary는 spawn 경로가 `.ts` 소스를 파일시스템에서 찾아 `bun compile`에서 깨지므로 **유보**; repo-clone(~3분)은 첫 사용자에 수용 가능. 진짜 병목은 3-비밀.)
+
+**What (범위):**
+| 항목 | 내용 |
+|------|------|
+| **Portable invite blob** | `{ relayUrl, token, inviteCode }`(현 `index.ts:473`이 이미 shell 문자열로 조립하는 3종)을 단일 문자열로 인코딩 — `loom://join/<base64url>` 또는 base64url blob |
+| **`loom room invite --link`** | **opt-in** 명령: 현재 세션의 portable blob 출력. 기본 share 라인은 **token-less 유지**(UC-10.5 불변) — blob은 명시적 opt-in에서만 |
+| **`room join <blob>`** | bare `LOOM-XXXX`(기존) **또는** blob 수용. blob이면 relayUrl+token+code 파싱해 `--relay`/`--token` 수동 없이 join |
+
+**Security / trust (R{n} 필수 이유):**
+- blob이 relay **token**을 운반 → 토큰 경로 변경. **H-5 불변**(non-loopback bind은 여전히 token 요구), 기본 share는 token-less 유지, blob은 bearer capability로 **명시적 opt-in**만. `LOOM-XXXX`도 이미 bearer secret(Fable 자문: H-5 안 깨짐).
+- 새 제품 표면(`room invite --link`, invite 포맷).
+
+**Review impact:** 프로토콜 **와이어 변경 없음**(join envelope 불변, blob은 CLI측 인코딩). 새 표면 + 토큰 경로 → **R19 필수**.
+
+**Out of scope (이 버전 아님):**
+- Prebuilt binary / `bun compile` (유보 — spawn이 `.ts` 경로 참조, 리팩터 선행). VPS relay 배포(ops). npm/npx publish. per-user 토큰 rotation·계정(멀티테넌트 유보 유지). 기본 share 라인에 토큰 자동 삽입(금지 — blob opt-in만).
+
+**Unknowns (§3.5, MINOR 권장):**
+- blob 포맷 `loom://` URL vs bare base64url — 파싱·복붙 견고성.
+- 터미널/히스토리에 token 노출(blob) — 신뢰 코호트엔 수용, bearer secret임을 안내로 명시할지.
+- relayUrl 정규화(ws:// vs wss://, 호스트 도달성) 검증 범위.
+
+**Approved by:** Fable 5 (fable-advisor) R19 `approved`, 2026-07-11 — binding: M-1 (`loom://join/` prefix + parse order), M-2 (loopback guard); L-1/L-2 author-close.
 
 #### 0.17.1 — 2026-07-10 (`approved` — **author-close**, R18 M-27/M-28 + L-33/L-34/L-35 locks)
 

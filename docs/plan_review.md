@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.17.1** `approved` (author-close) — Launcher UX (up / host-default / work-first). **R18 M-27/M-28 locks applied** (WORKFLOW §5.1; no R18b).  
+> **최신:** PLAN **v0.18.0** `approved` (R19) — Self-contained invite (portable join blob). **M-1/M-2 binding on impl**; L-1/L-2 author-close after Low fixes (WORKFLOW §5.1).  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,13 +13,40 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R18** | **v0.17.1** | **closed (author-close)** | Launcher UX — M-27 (down kill-safety) + M-28 (multi-profile session isolation) locked in PLAN 0.17.1 Failure/security locks + L-33/L-34/L-35. **Implement allowed under 0.17.1** (no R18b). |
+| **R19** | **v0.18.0** | **approved** | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. **Binding on impl:** M-1 (`loom://join/` prefix + bare-code shape check **before** blob decode), M-2 (`invite --link` warn/refuse loopback relayUrl). L-1/L-2 author-close after Low fixes; no re-review unless blob carries fields beyond `{relayUrl,token,inviteCode}`. |
+| R18 | v0.17.1 | closed (author-close) | Launcher UX — M-27/M-28 locks in 0.17.1 (see Recent follow-ups). |
 
 ---
 
 ## Open (blocking)
 
-_(none)_ — R18 **M-27/M-28** locked in PLAN **0.17.1** Failure/security locks (down 신원 확인 + multi-profile up 순차); L-33/L-34/L-35 applied. Implement allowed under 0.17.1.
+_(none)_ — **R19 approved** (v0.18.0). Implementation must honor **M-1** (blob prefix + parse order) + **M-2** (loopback guard); **L-1/L-2** author-close fixes. See R19 body below.
+
+---
+
+## Review R19 — Plan v0.18.0
+**검토 대상:** `docs/PLAN.md` v0.18.0 `#### 0.18.0` changelog (portable join blob) + header block
+**검토자:** Fable 5 (fable-advisor)
+**날짜:** 2026-07-11
+**결론:** approved
+
+### Checklist
+- [x] **Token-in-blob vs H-5/UC-10.5** — sound. H-5 enforcement is server-side bind refusal (`packages/relay/src/server.ts:81-91`, tested `auth.integration.test.ts:133-141`); blob changes nothing there. Default share line stays token-less: token only printed under `--show-token` gate (`packages/cli/src/index.ts:469-480`), blob strictly opt-in via `invite --link` (PLAN.md 기본 share 토큰 자동 삽입 금지). `LOOM-XXXX` is already a bearer secret (`codes.ts:4-11`). No new leak surface: token already persists in session file 0600 (`index.ts:450,556`), not in presence/roster.
+- [x] **"No wire change" claim** — verified. Join request `{type:"join", inviteCode, peer}` (`envelope.ts:190-196`); relay token travels as transport auth (Bearer/`?token=`, `server.ts:203-210`), never in the envelope. relayUrl+token flow via `relayOptsFromFlags`→`ensureRelay` (`index.ts:268-275,502`), saved to session (`index.ts:449-450,555-556`). Blob = pure CLI-side encoding of `index.ts:473`'s three fields.
+- [x] **Scope** — bounded MINOR. New surface = one subcommand + one arg-parser branch (`index.ts:2352-2358`). No accounts/rotation/hosted-relay code pulled in.
+- [x] **Backward compat** — bare `LOOM-XXXX` path unchanged (`cmdRoomJoin` index.ts:497-527); blob path supplies relayFlag/tokenFlag before the same call.
+- [x] **Binary deferral** — correct. Auto-daemon spawns `["bun","run",relayCli]` resolving a `.ts` file (`relay-daemon.ts:87-92`) → breaks under `bun compile`; defer + refactor-first is right.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (Med):** blob/invite-code parse ambiguity is real — `LOOM-7K2M` (alphabet `codes.ts:1`) is itself valid base64url. A "try base64-decode first" parser silently mis-parses bare codes.
+- **M-2 (Med):** loopback blob footgun — `invite --link` against `ws://127.0.0.1` emits a blob dead on other machines. `isLoopbackHost` exists (`server.ts:42`, exported `relay/src/index.ts:11`).
+- **L-1 (Low):** precedence undefined when both a blob and explicit `--relay`/`--token` are passed to `room join`.
+- **L-2 (Low):** token in shell history via blob (ack'd in Unknowns) — add "bearer secret" notice to `invite --link` output.
+
+### Decision notes
+- **Approved for implementation** with two binding constraints resolving the plan's own Unknowns: (1) blobs **must** carry `loom://join/` prefix; parser checks `^LOOM-[A-Z2-9-]+$` bare-code shape **before** blob decode — never bare base64url (closes M-1). (2) `invite --link` warns/refuses on loopback relayUrl (closes M-2).
+- L-1/L-2 are implementation-time fixes; **author-close allowed** after Low fixes with a note in `implementation-notes.md`. No re-review unless the blob carries fields beyond `{relayUrl, token, inviteCode}`.
+- Advisor: fable-advisor consulted: yes.
 
 ---
 
@@ -27,6 +54,10 @@ _(none)_ — R18 **M-27/M-28** locked in PLAN **0.17.1** Failure/security locks 
 
 | ID | Sev | 요약 | 상태 |
 |----|-----|------|------|
+| M-1 | Med | R19/0.18.0 blob·invite-code 파싱 모호성 — `LOOM-7K2M`이 그 자체로 유효 base64url | **binding on impl** — blob은 `loom://join/` 프리픽스 필수, 파서는 `^LOOM-[A-Z2-9-]+$` bare 형태를 blob 디코드 **전에** 검사 |
+| M-2 | Med | R19/0.18.0 loopback relayUrl로 만든 blob은 타 머신에서 죽음(footgun) | **binding on impl** — `invite --link`는 `isLoopbackHost`(`server.ts:42`)로 경고/거부 |
+| L-1 | Low | R19/0.18.0 blob + 명시 `--relay`/`--token` 동시 전달 시 우선순위 미정 | author-close — 우선순위 정하고(예: 명시 flag 우선/에러) 문서화 |
+| L-2 | Low | R19/0.18.0 blob의 token이 shell 히스토리 노출 | author-close — `invite --link` 출력에 "bearer secret" 1줄 안내 |
 | L-35 | Low | 0.17.0 acceptance 목록이 idempotent double-up / `LOOM_NO_AUTO_HOST` 경로 / down-safety 단위테스트를 명시 안 함 | **done 0.17.1** — acceptance #7–#9 추가 |
 | L-34 | Low | 0.17.0 auto-host on join이 기존 `stopStickyBeforeSessionChange`(join 시 구세션 host 정지) 위에 겹침 — 문서화 필요, 8s 지연 가능성도 명시 필요 | **done 0.17.1** — locks 표 + docs 명시, 성공 안내 문구 |
 | L-33 | Low | 0.17.0 auto-host 기본 on이 `bun test`/CI에서 데몬을 조용히 띄울 위험 | **done 0.17.1** — 테스트 하네스 `LOOM_NO_AUTO_HOST=1` 기본 + acceptance #9 |
@@ -48,6 +79,7 @@ _(none)_ — R18 **M-27/M-28** locked in PLAN **0.17.1** Failure/security locks 
 
 | Finding | 처리 |
 |---------|------|
+| **R19 M-1/M-2** | **approved 0.18.0** — self-contained invite blob. Binding on impl: M-1 (`loom://join/` prefix + parse order), M-2 (loopback guard); L-1/L-2 author-close. Implement pending. |
 | **R18 M-27/M-28** | **0.17.1 done** — PLAN Failure/security locks: down 프로세스 신원 검증(cmdline `sticky-main.ts`) + multi-profile up 순차(no Promise.all); L-33/L-34/L-35 ride-along; author-close (no R18b) |
 | **R17 M-26** | **0.16.1 (required)** PLAN Failure/security locks — 템플릿 단일행 필드 개행 제거 + watch interval 클램프 + MCP notify 기본 off; then author-close (no R17b) |
 | **R16 M-24/M-25** | **0.15.1 done** — locks author-close; implement next |
