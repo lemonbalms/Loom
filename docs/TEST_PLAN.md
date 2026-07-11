@@ -87,6 +87,8 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 | 10 | LAN/원격 | auth.integration (부분) | P2 2머신 |
 | 11 | 회귀 묶음 | **smoke:desktop + bun test + smoke:uc** | — |
 | 12 | Launcher UX (up/down/auto-host) | sticky-host.integration (부분) | **P1 수동** |
+| 13 | Work bus (board add --as / work / watch) | work-bus 단위 + smoke:uc(부분) | **P1 수동** |
+| 14 | Purpose + verify (purpose / verify / intent) | purpose 단위 + handoff-contract | **P1 수동** |
 
 ```bash
 # 전체 자동 (CI 로컬 대응)
@@ -372,6 +374,141 @@ bun run desktop
 **통과 기준:** 12.A1–A3, 12.C2–C3, 12.D1, 12.E1–E2, 12.H2 ✅. (12.F2·12.A4는 선택/재현 난이도)
 **관련 자동:** `sticky-host.integration`, `sticky-meta` 단위(M-27), `smoke:desktop`(RPC).
 **공백(자동화 미비):** `up`/`down`/`--status`/auto-host 전용 스모크 없음 — 대부분 수동. → `smoke:uc`에 UC-12 블록 추가 검토(후속).
+
+---
+
+## UC-13 — Work bus: board add --as → notify · work / watch (P1) · 제품 0.16
+
+**대상:** 0.16 Work bus — `board add --as @peer`가 handoff notify를 발사하고, `loom work`(inbox+내 보드 태스크 병합 뷰)와 `loom work watch`(폴링 감시)로 수신.
+**전제:** 2 프로필이 같은 room에 join(assignee는 **알려진 peer**여야 함). notify는 sticky host 있으면 그 경로, 없으면 one-shot relay로 폴백(호스트 불필요).
+**참조 구현:** `packages/cli/src/index.ts`(`cmdBoard`/`cmdWork`), `packages/host/src/work-bus.ts`, `packages/mcp-server/src/tools.ts`.
+
+### 13.A — board add 기본 (assignee 없음)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 13.A1 | `bun run loom --profile alice board add "t1"` | `added <id>  [todo]  t1` (assignee 없으니 notify 안 함) | 🤖 단위 + 🖐 |
+| 13.A2 | 빈 제목 `board add` | `Usage: loom board add "title" [--as assignee] [--notify|--no-notify]` | 🖐 선택 |
+| 13.A3 | 빈 보드에서 `board` | `(empty)  Tip: loom board add "title" [--as name]` | 🖐 선택 |
+
+### 13.B — board add --as → notify handoff (기본 on)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 13.B1 | `bun run loom --profile alice board add "do X" --as bob` | `added <id>  [todo]  do X` **그리고** `notified handoff <ho_id> (status=<queued|delivered>, notified=<bool>)` | 🖐 |
+| 13.B2 | bob `bun run loom --profile bob work` | Inbox에 해당 handoff, `[GOAL]` 태그, body에 `task:<id>` / `title: do X` / `assignee: @bob` | 🖐 |
+| 13.B3 | 알림 body 하단 | `(Untrusted handoff — review before acting.)` 포함 (M-26 flatten) | 🖐 선택 |
+| 13.B4 | alice `board` | 태스크에 `ho=<ho_id>` 링크(핸드오프 id 역기록) | 🖐 선택 |
+
+### 13.C — notify off / 미지 peer
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 13.C1 | `board add "y" --as bob --no-notify` | `added …` 만, notify 줄 없음 | 🖐 |
+| 13.C2 | `board add "z" --as ghost` (room에 없는 이름) | stderr `notify failed: peer_unknown: ghost` + **exit 1** (태스크는 생성됨) | 🖐 |
+
+### 13.D — `loom work` (inbox + 내 보드 태스크 병합)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 13.D1 | 세션 없이 `loom work` | `No session. Create or join a room first.` exit 1 | 🖐 선택 |
+| 13.D2 | bob `loom work` (13.B 이후) | 헤더 `Inbox (<n>):` + `  <ho_id> [GOAL]  <body 80자>`; 헤더 `My open board tasks (<n>):` + `  (none)` 또는 `  <id>  [<status>]  <title>[  ho=<ho_id>]` | 🖐 |
+| 13.D3 | 비어있을 때 | `Inbox (0):` → `  (empty)`, `My open board tasks (0):` → `  (none)` | 🖐 선택 |
+
+### 13.E — `loom work watch` (폴링 감시, L-31 clamp)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 13.E1 | bob `bun run loom --profile bob work watch` | 시작줄 `work watch every 2000ms (Ctrl+C to stop)` | 🖐 |
+| 13.E2 | watch 중 alice가 `board add "new" --as bob` | 노랑 `[+task] …` 또는 `[+inbox] <ho_id> [GOAL] <body 60자>` 신규만 출력 | 🖐 |
+| 13.E3 | `work watch --interval 50` | stderr `watch interval clamped to 250ms (L-31 min 250ms; default 2000)` (최소 250) | 🖐 선택 |
+| 13.E4 | Ctrl+C | 종료 (무한 루프 정상 탈출) | 🖐 |
+
+### 13.F — MCP add_task notify 기본값 분기 (L-32)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 13.F1 | MCP `add_task {title, assignee}` (notify 미지정) | 태스크만, **notify 안 함** (MCP 기본 false = L-32; CLI 기본 on과 반대) | 🤖 smoke:uc + 🖐 |
+| 13.F2 | MCP `add_task {…, notify:true}` | handoff 발사, `handoffId` 반환 | 🤖 smoke:uc |
+| 13.F3 | MCP `update_task` | 상태/assignee 변경, **notify 없음** | 🤖 |
+
+**통과 기준:** 13.A1, 13.B1–B2, 13.C2, 13.D2, 13.E1–E2 ✅.
+**관련 자동:** `bun test packages/host`(work-bus), `smoke:uc` UC-9(MCP add_task/update_task).
+**함정:** notify 기본값이 **CLI=on(--as 있을 때) / MCP=off**(L-32)로 다름. assignee는 반드시 room의 알려진 peer.
+
+---
+
+## UC-14 — Purpose card + loom verify + intent 태그 (P1) · 제품 0.15
+
+**대상:** 0.15 — `loom purpose`(카드 show/set/clear), `loom verify`(M-25 ack 게이트), handoff intent 태그(body 규약), receive-path claim 계약.
+**전제:** 활성 세션(room). purpose/verify 모두 세션 없으면 `No session. Create or join a room first.` exit 1.
+**핵심 제약:** `verify[]`는 **CLI 전용 쓰기**(M-24) — MCP `set_purpose`로는 못 심음.
+**참조 구현:** `packages/cli/src/index.ts`(`cmdPurpose`/`cmdVerify`), `packages/host/src/purpose.ts`, `packages/protocol/src/handoff-contract.ts`, `packages/mcp-server/src/tools.ts`.
+
+### 14.A — purpose set / show / clear
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 14.A1 | `bun run loom --profile alice purpose show` (미설정) | `No purpose set. Use: loom purpose set "one-line purpose"` | 🖐 |
+| 14.A2 | `purpose set "ship dogfood UC-12~14"` | `formatPurpose` 출력 (`Purpose (room …)`, `file:`, `updated:`, `Purpose:` 블록) | 🖐 |
+| 14.A3 | `purpose set --verify "bun test"` | 카드에 `Verify recipes (1) [CLI-only write]:` → `  $ bun test` | 🖐 |
+| 14.A4 | 텍스트도 `--verify`도 없이 `purpose set` | `Usage: loom purpose set "one-line purpose" [--verify "bun test"]` exit 1 | 🖐 선택 |
+| 14.A5 | `purpose clear` | `Purpose cleared (empty card written).` | 🖐 |
+
+### 14.B — 저장/스코프 불변식
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 14.B1 | set 후 파일 확인 | `~/.loom/purposes/<sha256(roomId)[0:16]>.json` 존재, 퍼미션 **0600** | 🖐 선택 |
+| 14.B2 | 같은 room, 다른 프로필(같은 UID)에서 `purpose show` | **동일 카드** 조회(스코프=roomId) | 🖐 선택 |
+| 14.B3 | 한도 초과 (purpose >500자 / verify >8개) | 거부/절단 (`purpose.ts` 한도) | 🖐 선택 |
+
+### 14.C — loom verify: M-25 ack 게이트
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 14.C1 | verify 레시피 없이 `loom verify` | `No verify recipes on purpose (empty). Nothing to run.` exit 0 | 🖐 |
+| 14.C2 | 14.A3 후 `loom verify` (비-TTY, --yes 없음) | 헤더 `Commands to run (purpose.verify[]):` + `  $ bun test`, 그다음 stderr `verify[] changed or not yet acknowledged. Re-run with --yes after reviewing the list above (M-25).` **exit 2** | 🖐 |
+| 14.C3 | `loom verify --yes` | 목록 출력 후 실행; ack 해시 기록 | 🖐 |
+| 14.C4 | 이미 ack된 상태 재 `loom verify --yes` | `(recipe already acknowledged; --yes noted)` 후 실행 | 🖐 선택 |
+| 14.C5 | `--verify` 레시피 변경 후 재 verify | 해시 바뀌어 M-25 게이트 **재발동** (다시 --yes 필요) | 🖐 선택 |
+
+### 14.D — verify 실행 결과 / exit code
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 14.D1 | 통과 레시피(`bun test`) verify --yes | 각 명령 앞 `→ <cmd>`, 전부 성공 시 **exit 0** (literal "PASS" 없음) | 🖐 |
+| 14.D2 | 실패 레시피(`false` 등) | stderr `Command failed (exit <code>): <cmd>`, 중단, **exit = 실패 코드** | 🖐 선택 |
+| 14.D3 | 실행 cwd | `process.cwd()`(실행한 디렉터리)에서 shell 실행 — 레시피 cwd 의존 주의 | 🖐 선택 |
+
+### 14.E — intent 태그 (body 규약, wire 변경 없음)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 14.E1 | `handoff @bob "[R-REQUEST] 리뷰 요청"` | 전송 성공; body에 태그 보존 | 🖐 |
+| 14.E2 | bob `loom work` | inbox 줄에 `[R-REQUEST]` 태그 표시 | 🖐 |
+| 14.E3 | bob `loom inbox` | **태그 미표시**(inbox 렌더는 status/id/from/preview만) — `work` 피드에서만 태그 노출 | 🖐 선택 |
+| 14.E4 | 허용 태그 | `[GOAL] [R-REQUEST] [R-RESULT] [VERIFY] [DONE]` (대소문자 무시), 첫 태그가 primary | 🖐 선택 |
+
+### 14.F — receive-path claim 계약 (0.15.1)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 14.F1 | bob `inbox accept <ho_id>` | `formatIncomingHandoff` + `(accepted as <displayName>, status=<status>)` | 🖐 |
+| 14.F2 | accept 시 배너 | `⚠ Untrusted handoff content — review before acting`(태그 무관 항상) | 🖐 |
+| 14.F3 | 같은 id 재 accept/claim | first-wins(이미 claim/항목 없음) — auto-claim 없음, durable 큐 불변 | 🖐 선택 |
+
+### 14.G — MCP 제약 (M-24) + --with-purpose
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 14.G1 | MCP `set_purpose {verify:[…]}` | 거부: `verify[] cannot be set via MCP set_purpose (M-24). Use CLI: loom purpose set --verify …` | 🤖 + 🖐 |
+| 14.G2 | MCP verify 도구 탐색 | **없음**(verify는 CLI 전용, MCP 미노출) | 🖐 선택 |
+| 14.G3 | `handoff @bob "p" --with-purpose` | purpose 있으면 `(purpose card attached)` / 비었으면 `(purpose empty — nothing attached)`, 첨부 `loom-purpose-v1` | 🖐 선택 |
+
+**통과 기준:** 14.A1–A3·A5, 14.C1–C3, 14.D1, 14.E1–E2, 14.F1–F2 ✅.
+**관련 자동:** `bun test`(purpose 단위, handoff-contract), `smoke:uc`(MCP get/set_purpose).
+**함정:** `verify[]`는 CLI로만 심어짐(M-24). M-25는 비-TTY에서 미-ack 시 **exit 2**. 태그는 `loom work`에만 보이고 `loom inbox`엔 안 보임.
 
 ---
 
