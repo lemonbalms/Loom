@@ -99,7 +99,27 @@ Agent CLIs ──MCP/CLI──► Host ──WebSocket──► Relay
 
 ---
 
-## Quick start (two peers, one machine)
+## Quick start
+
+### Join a room in one line (invited user — fastest)
+
+You were given a `loom://join/…` invite blob. Install and join:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lemonbalms/Loom/main/scripts/install.sh | bash
+exec $SHELL                       # activate PATH (or open a new terminal)
+loom room join <blob>             # the loom://join/... invite you were given
+```
+
+`install.sh` ensures [Bun](https://bun.sh), clones the repo to `~/.loom-src`, links
+`loom` onto your PATH, and verifies it — no manual `bun install`/PATH steps. It
+touches only your home dir + shell rc (no sudo). Overrides: `LOOM_INSTALL_DIR`,
+`LOOM_INSTALL_REF`. (`curl | bash` runs a remote script — read it first if you
+prefer: [`scripts/install.sh`](./scripts/install.sh).)
+
+---
+
+### Manual setup (two peers, one machine)
 
 **Requirements:** [Bun](https://bun.sh) 1.x.
 
@@ -109,7 +129,7 @@ cd Loom
 bun install
 ```
 
-### Make `loom` available (pick one)
+#### Make `loom` available (pick one)
 
 | 방식 | 명령 | 설명 |
 |------|------|------|

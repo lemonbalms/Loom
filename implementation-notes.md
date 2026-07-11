@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-11 (0.18.0 invite link implementation notes) |
+| **Last updated** | 2026-07-11 (0.19.0 install script + loomCmd sweep) |
 
 ---
 
@@ -54,6 +54,10 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-09 | plan_review hygiene | Deferred table open-only; R12 checklist marked as-reviewed @0.10.0 + follow-up table | Prevent “M-17 still open” false reads | Done |
 | 2026-07-09 | 0.10.2 bins | Removed `fable` / `fable-mcp` bins and root `fable` script | Product surface = loom only; kept invite/board/MCP strip | Done |
 | 2026-07-11 | R19 L-1/L-2 | `room join` explicit `--relay` / `--token` flags override embedded invite-link values with stderr notes; `room invite --link` prints a bearer-secret notice | Least surprise: an explicitly typed CLI flag should win over a pasted blob; bearer-secret notice keeps token-bearing output visible as sensitive | Done 0.18.0 |
+| 2026-07-11 | R20 L-1 | `scripts/install.sh` body wrapped in `main(){…}; main "$@"` + `need_cmd git`/`curl` guards | Truncated `curl\|bash` download can't execute a partial function body; explicit tool checks fail fast with a clear message | Done 0.19.0 |
+| 2026-07-11 | R20 L-2 | Pin = `main` via `LOOM_INSTALL_REF` (default main), clone the same ref the raw URL serves; overridable to a tag/SHA | Trusted-cohort dogfood; raw URL is `.../main/scripts/install.sh` so default matches. Tag pin available when a release exists | Done 0.19.0 |
+| 2026-07-11 | R20 L-3 | `loomCmd()` display helper resolves `loom` vs `bun run loom` via `Bun.which("loom")`; the "if loom is not on PATH…" note now only prints when not installed | Heuristic is acceptable — post-install strangers have `loom`; fallback preserved for repo-only users. Executed spawn (`index.ts` REPL) intentionally excluded (R20 M-3) | Done 0.19.0 |
+| 2026-07-11 | R20 L-4 | fish handled via `fish_add_path` in `~/.config/fish/config.fish` with a marker-line idempotence guard | fish does not read POSIX rc PATH syntax; `fish_add_path` is the idiomatic path mutation | Done 0.19.0 |
 
 ### Earlier waves (pointer only)
 

@@ -95,7 +95,7 @@ import {
 } from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.18.0";
+const VERSION = "0.19.0";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -125,6 +125,24 @@ function print(msg: string): void {
       /* */
     }
   }
+}
+
+/**
+ * How the user should invoke loom in hint/share strings.
+ * `loom` when it resolves on PATH (0.19.0 install script links it), else the
+ * repo fallback `bun run loom`. Display-only — never used for executed spawns
+ * (R20 M-3: those keep their explicit invocation).
+ */
+let _loomCmdCache: string | undefined;
+function loomCmd(): string {
+  if (_loomCmdCache === undefined) {
+    _loomCmdCache = Bun.which("loom") ? "loom" : "bun run loom";
+  }
+  return _loomCmdCache;
+}
+/** True when `loom` is not on PATH — gate the "use bun run loom" hint note. */
+function loomOnPath(): boolean {
+  return loomCmd() === "loom";
 }
 
 /** Flags that never take a value (must not swallow following positionals). */
@@ -285,7 +303,7 @@ async function stopStickyBeforeSessionChange() {
   if (!alive) return;
   await stopStickyHostProcess();
   process.stderr.write(
-    "\x1b[2mStopped sticky host (room session changing — run `bun run loom host start` again)\x1b[0m\n",
+    `\x1b[2mStopped sticky host (room session changing — run \`${loomCmd()} host start\` again)\x1b[0m\n`,
   );
 }
 
@@ -314,7 +332,7 @@ async function autoHostAfterSession(
       );
     } else {
       console.log(
-        `\x1b[2mhost auto-start skipped: ${r.error} — try \`bun run loom host start\` / \`host status\`\x1b[0m`,
+        `\x1b[2mhost auto-start skipped: ${r.error} — try \`${loomCmd()} host start\` / \`host status\`\x1b[0m`,
       );
     }
   } catch (e) {
@@ -379,7 +397,7 @@ async function cmdUp(flags: Record<string, string | boolean>) {
       "loom up: no profiles with a session under ~/.loom/profiles/.",
     );
     console.error(
-      "Create/join first (bun run loom --profile impl room create --as impl) or pass --profiles a,b.",
+      `Create/join first (${loomCmd()} --profile impl room create --as impl) or pass --profiles a,b.`,
     );
     process.exit(1);
   }
@@ -403,7 +421,7 @@ async function cmdUp(flags: Record<string, string | boolean>) {
   console.log("Peers stay online in the background (closing the terminal is OK).");
   console.log('Send:    loom board add "…" --as @peer   |   loom handoff @peer "…"');
   console.log("Process: loom --profile <name> run <agent>   (only when working)");
-  console.log("Stop:    bun run loom down");
+  console.log(`Stop:    ${loomCmd()} down`);
 }
 
 /** 0.17 `loom down` — stop sticky hosts. M-28: sequential per profile. */
@@ -475,8 +493,8 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
   const tokenPart =
     showToken && endpoint.token ? ` --token ${endpoint.token}` : "";
   const joinHint = needsRelayFlags
-    ? `bun run loom --relay ${baseRelay}${tokenPart} room join ${env.inviteCode}`
-    : `bun run loom room join ${env.inviteCode}`;
+    ? `${loomCmd()} --relay ${baseRelay}${tokenPart} room join ${env.inviteCode}`
+    : `${loomCmd()} room join ${env.inviteCode}`;
   console.log(`Share: ${joinHint}`);
   if (endpoint.token && !showToken) {
     console.log(
@@ -489,11 +507,13 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
   );
   console.log("");
   console.log(
-    "Next: bun run loom listen   or   bun run loom run claude",
+    `Next: ${loomCmd()} listen   or   ${loomCmd()} run claude`,
   );
-  console.log(
-    "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root)\x1b[0m",
-  );
+  if (!loomOnPath()) {
+    console.log(
+      "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root — or run scripts/install.sh)\x1b[0m",
+    );
+  }
   client.close();
   await autoHostAfterSession(flags);
   process.exit(0);
@@ -598,11 +618,13 @@ async function cmdRoomJoin(
   console.log(`Session: ${sessionPath()}`);
   console.log(`Relay: ${url}${remote ? " (remote)" : " (local)"}`);
   console.log(
-    "Next: bun run loom listen   or   bun run loom run claude",
+    `Next: ${loomCmd()} listen   or   ${loomCmd()} run claude`,
   );
-  console.log(
-    "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root)\x1b[0m",
-  );
+  if (!loomOnPath()) {
+    console.log(
+      "\x1b[2m(if `loom` is not on PATH, always use `bun run loom` from repo root — or run scripts/install.sh)\x1b[0m",
+    );
+  }
   client.close();
   await autoHostAfterSession(flags);
   process.exit(0);
@@ -1406,7 +1428,7 @@ async function cmdHost(sub: string | undefined) {
     console.log(
       "CLI/MCP handoff·peers·inbox will use this host (peer stays online).",
     );
-    console.log("Stop with: bun run loom host stop");
+    console.log(`Stop with: ${loomCmd()} host stop`);
     console.log("(use the same --profile as start)");
     return;
   }
@@ -1415,7 +1437,7 @@ async function cmdHost(sub: string | undefined) {
     console.log(r.message);
     if (/no sticky host/i.test(r.message)) {
       console.log(
-        "Tip: use the same --profile as host start, e.g. bun run loom --profile alice host stop",
+        `Tip: use the same --profile as host start, e.g. ${loomCmd()} --profile alice host stop`,
       );
     }
     return;
@@ -1432,12 +1454,12 @@ async function cmdHost(sub: string | undefined) {
       }
     } else if (!resolveAliveHostMeta()) {
       console.log(
-        "Tip: bun run loom host start  — keep peer online without listen",
+        `Tip: ${loomCmd()} host start  — keep peer online without listen`,
       );
     }
     return;
   }
-  console.error("Usage: bun run loom host start|stop|status");
+  console.error(`Usage: ${loomCmd()} host start|stop|status`);
   process.exit(1);
 }
 
@@ -1969,7 +1991,7 @@ async function cmdRun(
       } else {
         eprint(
           "\x1b[1mLoom shell\x1b[0m — room session stays online.\n" +
-            "  peers | inbox | handoff …  (or full: bun run loom …)\n" +
+            `  peers | inbox | handoff …  (or full: ${loomCmd()} …)\n` +
             "  Type \x1b[1mexit\x1b[0m to leave.\n\n",
         );
         code = await runLoomShellRepl(spec);
@@ -2214,7 +2236,7 @@ async function runShellAgent(spec: AgentSpec): Promise<number> {
 
   process.stderr.write(
     "\x1b[33mNested $SHELL exited immediately. Falling back to Loom shell REPL.\x1b[0m\n" +
-      "Session stays active. Type commands (e.g. bun run loom peers). exit to leave.\n\n",
+      `Session stays active. Type commands (e.g. ${loomCmd()} peers). exit to leave.\n\n`,
   );
   return runLoomShellRepl(spec);
 }
