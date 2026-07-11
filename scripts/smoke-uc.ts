@@ -101,8 +101,9 @@ class McpClient {
         const { done, value } = await reader.read();
         if (done) break;
         this.buf += dec.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = this.buf.indexOf("\n")) >= 0) {
+        while (true) {
+          const idx = this.buf.indexOf("\n");
+          if (idx < 0) break;
           const line = this.buf.slice(0, idx).trim();
           this.buf = this.buf.slice(idx + 1);
           if (!line) continue;

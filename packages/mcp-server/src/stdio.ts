@@ -406,8 +406,9 @@ process.stdin.on("data", (chunk) => {
 });
 
 function processNdjson() {
-  let idx: number;
-  while ((idx = buffer.indexOf("\n")) >= 0) {
+  while (true) {
+    const idx = buffer.indexOf("\n");
+    if (idx < 0) break;
     const line = buffer.slice(0, idx).trim();
     buffer = buffer.slice(idx + 1);
     if (!line) continue;

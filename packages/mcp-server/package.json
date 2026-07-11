@@ -19,8 +19,7 @@
   },
   "dependencies": {
     "@loom/host": "workspace:*",
-    "@loom/protocol": "workspace:*",
-    "zod": "^3.24.2"
+    "@loom/protocol": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

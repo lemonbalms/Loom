@@ -46,10 +46,6 @@ const openBlock = (() => {
   return plain.length ? plain.slice(0, 5).join(" · ") : "있음 (plan_review Open 표 확인)";
 })();
 
-const nextAction = match1(
-  handoff,
-  /(?:다음 액션|Immediate next steps|Preferred[^\n]*\*\*([^*]+)\*\*)/i,
-);
 // Prefer one-line resume from HANDOFF
 const resume = match1(handoff, />\s*`?([^`<\n]{20,200})`?/);
 const resumeLine =

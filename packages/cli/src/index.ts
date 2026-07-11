@@ -104,6 +104,7 @@ function eprint(msg: string): void {
     writeSync(2, msg);
   } catch {
     try {
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: \x1b is the ANSI ESC char; the regex deliberately strips color escape sequences
       console.error(msg.replace(/\x1b\[[0-9;]*m/g, "").replace(/\n$/, ""));
     } catch {
       /* last resort: silence */
@@ -859,7 +860,7 @@ async function cmdVerify(flags: Record<string, string | boolean>) {
     process.exit(1);
   }
   const session = loadSession()!;
-  let p;
+  let p: ReturnType<typeof loadPurpose>;
   try {
     p = loadPurpose();
   } catch (e) {
@@ -1130,7 +1131,7 @@ async function cmdBoard(
       }
       const inbox = await opsListInbox();
       // M-12: exact → unique suffix (same as resolveTaskIndex)
-      let entry;
+      let entry: (typeof inbox.entries)[number];
       try {
         const idx = resolveHandoffEntryIndex(inbox.entries, hoId);
         entry = inbox.entries[idx]!;
@@ -1630,8 +1631,9 @@ async function cmdListen() {
       continue;
     }
     lineBuf += decoder.decode(buf.subarray(0, n), { stream: true });
-    let idx: number;
-    while ((idx = lineBuf.indexOf("\n")) >= 0) {
+    while (true) {
+      const idx = lineBuf.indexOf("\n");
+      if (idx < 0) break;
       const line = lineBuf.slice(0, idx);
       lineBuf = lineBuf.slice(idx + 1);
       await handleLine(line);
@@ -1651,7 +1653,7 @@ async function cmdRun(
     process.exit(1);
   }
 
-  let adapter;
+  let adapter: Awaited<ReturnType<typeof getAdapter>>;
   if (!agentIdRaw || agentIdRaw === "auto") {
     adapter = await pickDefaultAdapter();
     process.stderr.write(
@@ -2245,8 +2247,9 @@ async function runLoomShellRepl(spec: AgentSpec): Promise<number> {
         break;
       }
       lineBuf += chunk.toString("utf8", 0, n);
-      let idx: number;
-      while ((idx = lineBuf.indexOf("\n")) >= 0) {
+      while (true) {
+        const idx = lineBuf.indexOf("\n");
+        if (idx < 0) break;
         const line = lineBuf.slice(0, idx).replace(/\r$/, "");
         lineBuf = lineBuf.slice(idx + 1);
         const t = line.trim();

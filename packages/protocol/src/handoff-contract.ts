@@ -31,9 +31,10 @@ const TAG_RE = /\[(GOAL|R-REQUEST|R-RESULT|VERIFY|DONE)\]/gi;
 export function parseHandoffContract(body: string): HandoffContractParse {
   const tags: HandoffContractTag[] = [];
   const seen = new Set<string>();
-  let m: RegExpExecArray | null;
   const re = new RegExp(TAG_RE.source, "gi");
-  while ((m = re.exec(body)) !== null) {
+  while (true) {
+    const m = re.exec(body);
+    if (m === null) break;
     const t = m[1]!.toUpperCase() as HandoffContractTag;
     if (!seen.has(t)) {
       seen.add(t);

@@ -95,7 +95,7 @@ function collectLivePidsUnder(dir: string): number[] {
     }
     for (const name of entries) {
       const full = join(d, name);
-      let st;
+      let st: ReturnType<typeof statSync>;
       try {
         st = statSync(full);
       } catch {
