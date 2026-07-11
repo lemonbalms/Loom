@@ -136,7 +136,7 @@ stale HANDOFF note):
    - **Locked-spec implementation** → `model: sonnet`, `effort: xhigh` (a locked spec is coding/agentic work, for which `xhigh` is the documented default — Claude Code's own default).
    - **Trivial mechanical edit** → `model: haiku` — **pass no `effort` param** (Haiku 4.5 has no effort knob; setting `effort` is a hard API error).
 
-   Do **not** invert this into a "lower tier → higher effort" ladder: Haiku has no bottom rung (it takes no effort), and the mirror image would run verify/judge tiers at low effort — exactly backwards. Verify/judge stays `high`/`max` per §2.
+   Do **not** invert this into a "lower tier → higher effort" ladder: Haiku has no bottom rung (it takes no effort), and the mirror image would run verify/judge tiers at low effort — exactly backwards. Verify/judge stays at `high` (the API default when `effort` is omitted) or `max` for adversarial judging.
 
 **The criterion is spec-lockedness, not raw difficulty.** Intelligence is spent at plan time (approved PLAN + R{n} locks), so a locked spec tolerates a mid-tier implementer. **Corollary:** if a task seems to need the **Opus/Fable tier** *to implement* (not merely `xhigh` — `xhigh` is the normal locked-spec effort above), the spec is not actually locked — send it back to the architect as **spec work** (PLAN/R{n}), do not raise the implementer tier to compensate. (Adversarial verify/judge tiers are governed by §2 / Standing rules, not this step.)
 
