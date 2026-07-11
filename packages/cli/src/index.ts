@@ -65,6 +65,9 @@ import {
   DEFAULT_RELAY_PORT,
   type AgentKind,
   ansiFg,
+  encodeInviteLink,
+  parseInviteArg,
+  parseRelayUrl,
   sanitizePeerName,
   sanitizePeerText,
   parseHandoffContract,
@@ -92,7 +95,7 @@ import {
 } from "node:fs";
 import { join as pathJoin } from "node:path";
 
-const VERSION = "0.17.1";
+const VERSION = "0.18.0";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -149,6 +152,7 @@ const BOOLEAN_FLAGS = new Set([
   "replace",
   "force",
   "no-host",
+  "link",
   "status",
 ]);
 
@@ -159,6 +163,7 @@ loom v${VERSION} — Loom multiplayer AI terminal (PLAN ${VERSION})
 Usage:
   loom [--profile <name>] [--relay <url>] [--token <secret>] room create …
   loom [--profile <name>] [--relay <url>] [--token <secret>] room join <code>
+  loom room invite --link
   loom room leave
   loom peers | chat | handoff | inbox | listen | run | status | agents
   loom pack show | set | add | remove | note | clear   # room context pack
@@ -498,8 +503,32 @@ async function cmdRoomJoin(
   code: string,
   flags: Record<string, string | boolean>,
 ) {
+  const parsed = parseInviteArg(code);
+  if (parsed.kind === "invalid") {
+    console.error(`Error: invalid invite (${parsed.reason})`);
+    process.exit(1);
+  }
+  let effectiveInviteCode: string;
+  let relayOpts: ReturnType<typeof relayOptsFromFlags>;
+  if (parsed.kind === "code") {
+    effectiveInviteCode = parsed.code;
+    relayOpts = relayOptsFromFlags(flags);
+  } else {
+    effectiveInviteCode = parsed.inviteCode;
+    let relayFlag = parsed.relayUrl;
+    let tokenFlag = parsed.token;
+    if (typeof flags.relay === "string") {
+      relayFlag = flags.relay;
+      console.error("Note: --relay overrides the link's embedded relay URL");
+    }
+    if (typeof flags.token === "string") {
+      tokenFlag = flags.token;
+      console.error("Note: --token overrides the link's embedded token");
+    }
+    relayOpts = { relayFlag, tokenFlag };
+  }
   await stopStickyBeforeSessionChange();
-  const { url, endpoint, remote } = await ensureRelay(relayOptsFromFlags(flags));
+  const { url, endpoint, remote } = await ensureRelay(relayOpts);
   const displayName = sanitizePeerName(
     String(flags.as || defaultDisplayName()),
   );
@@ -508,26 +537,26 @@ async function cmdRoomJoin(
   const reuse = Boolean(
     session?.peerId &&
       session?.inviteCode &&
-      session.inviteCode.toUpperCase() === code.toUpperCase(),
+      session.inviteCode.toUpperCase() === effectiveInviteCode.toUpperCase(),
   );
   let env = await client.joinRoom(
     reuse && session
       ? {
-          inviteCode: code,
+          inviteCode: effectiveInviteCode,
           displayName,
           agentKind: "unknown",
           peerId: session.peerId,
           peerSecret: session.peerSecret,
         }
       : {
-          inviteCode: code,
+          inviteCode: effectiveInviteCode,
           displayName,
           agentKind: "unknown",
         },
   );
   if (reuse && env.type === "error" && env.code === "peer_auth_failed") {
     env = await client.joinRoom({
-      inviteCode: code,
+      inviteCode: effectiveInviteCode,
       displayName,
       agentKind: "unknown",
     });
@@ -547,7 +576,7 @@ async function cmdRoomJoin(
   saveSession({
     roomId: env.roomId,
     roomName: env.roomName ?? "room",
-    inviteCode: env.inviteCode ?? code,
+    inviteCode: env.inviteCode ?? effectiveInviteCode,
     peerId: me.id,
     displayName: me.displayName,
     color: me.color,
@@ -576,6 +605,37 @@ async function cmdRoomJoin(
   );
   client.close();
   await autoHostAfterSession(flags);
+  process.exit(0);
+}
+
+async function cmdRoomInvite(flags: Record<string, string | boolean>) {
+  const session = loadSession();
+  if (!session) {
+    console.log("No session. Create or join a room first.");
+    process.exit(1);
+  }
+  if (!flags.link) {
+    console.log(`Invite code: ${session.inviteCode}`);
+    console.log("Run with --link for a portable cross-machine join blob.");
+    process.exit(0);
+  }
+
+  const { isLoopbackHost } = await import("@loom/relay");
+  const host = parseRelayUrl(session.relayUrl).host;
+  if (isLoopbackHost(host)) {
+    console.error(
+      "\x1b[33mWarning: this invite link only works on this machine; run the relay on a reachable host for others to join.\x1b[0m",
+    );
+  }
+  const link = encodeInviteLink({
+    relayUrl: session.relayUrl,
+    token: session.relayToken,
+    inviteCode: session.inviteCode,
+  });
+  console.log(link);
+  console.log(
+    "\x1b[2mThis blob is a bearer secret; whoever has it can join as invited.\x1b[0m",
+  );
   process.exit(0);
 }
 
@@ -2356,6 +2416,10 @@ async function main() {
       process.exit(1);
     }
     await cmdRoomJoin(code, flags);
+    return;
+  }
+  if (cmd === "room" && sub === "invite") {
+    await cmdRoomInvite(flags);
     return;
   }
   if (cmd === "room" && sub === "leave") {

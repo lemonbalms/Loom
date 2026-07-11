@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-09 (0.11.1 plan locks; no desktop code yet) |
+| **Last updated** | 2026-07-11 (0.18.0 invite link implementation notes) |
 
 ---
 
@@ -53,6 +53,7 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-09 | Codex entry | AGENTS.md + `bun run status` + systemHint line | Codex natively loads AGENTS.md | Done |
 | 2026-07-09 | plan_review hygiene | Deferred table open-only; R12 checklist marked as-reviewed @0.10.0 + follow-up table | Prevent “M-17 still open” false reads | Done |
 | 2026-07-09 | 0.10.2 bins | Removed `fable` / `fable-mcp` bins and root `fable` script | Product surface = loom only; kept invite/board/MCP strip | Done |
+| 2026-07-11 | R19 L-1/L-2 | `room join` explicit `--relay` / `--token` flags override embedded invite-link values with stderr notes; `room invite --link` prints a bearer-secret notice | Least surprise: an explicitly typed CLI flag should win over a pasted blob; bearer-secret notice keeps token-bearing output visible as sensitive | Done 0.18.0 |
 
 ### Earlier waves (pointer only)
 
