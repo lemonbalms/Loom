@@ -7,7 +7,14 @@
 
 ---
 
-## ⭐ Next action (strategic — read first)
+## ⭐ Current action (read first)
+
+> **✅ v0.21.1 PTY handoff inject — implemented + committed (`d05d714`) + pushed.** codex-impl 레인(GPT-5.5) 구현 → 아키텍트 독립 검증(bun test **190/0**, 6-pkg typecheck, biome touched clean, M-1..M-6 전부 TS·python 코드 확인). `loom run claude --inject-handoffs`(opt-in, Claude 전용): 로컬 0600 Unix 소켓 제어, accept/claim 트리거 sanitized paste, Stop-hook idle 마커 + PTY 출력 quiescence, bracketed paste **no-auto-submit**. VERSION 0.21.1(CLI+MCP).
+>
+> **⚠ 남은 검증 = 라이브 스모크:** python 주입 경로(`run-with-pty.py`)는 코드리뷰만, 런타임 미실행(repo에 python 테스트 러너 없음). **팀에 `--inject-handoffs` 개방 전** 실제 `loom run claude --inject-handoffs`로 accept→paste-not-submit + busy-중 no-inject 확인 권장(`implementation-notes.md`).
+> **Note:** `.playwright-mcp/`·`scripts/__pycache__/`는 untracked 로컬 상태(gitignore 추가됨), 커밋 제외.
+
+## Strategic context
 
 > **🎯 목적지 재확정 (오너 공리 + Fable 5 재판정, 2026-07-11).** Loom = **오너 6인 팀 전용 내부 도구.** 효용은 **확정된 전제**(외부 시장 수요 검증 대상 아님). → `LOOM_PURPOSE_REVIEW`의 "수요 검증/트립와이어" 프레임은 **목적지로서 폐기.** 새 "완성" = **팀 6인 온보딩 + relay 상시가동 + 실제 핸드오프 매일 왕복하며 Slack 회귀 없이 1~2주 지속(=adoption).**
 >
@@ -50,11 +57,11 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.20.0** (`loom doctor` read-only 진단) — shipped |
-| **PLAN** | **v0.20.0** `approved`→**shipped** (R21, `c15de88`) — `loom doctor`. 0.19.0(R20) shipped |
-| **Open blocking** | **none** — R21 shipped, 검증 완료 |
-| **Tests** | `bun test` **180 pass / 0 fail** · 6 pkg typecheck green · biome clean · 라이브 `loom doctor` exit 0 확인 |
-| **Latest** | `c15de88` loom doctor · `80e951e` host test 격리 · `b2f9d75`+`dc83d2b`..`ac6e460` 위임/effort 프로세스 규칙 |
+| **CLI / code** | **0.21.1** (`loom run claude --inject-handoffs`) — implemented, committed `d05d714`, pushed |
+| **PLAN** | **v0.21.1** `approved` → implemented (R22, `d05d714`) — PTY handoff inject |
+| **Open blocking** | **none** — R22 implemented·verified. 라이브 스모크만 권장(flag 개방 전) |
+| **Tests** | `bun test` **190 pass / 0 fail** · 6 pkg typecheck green · biome touched clean · py_compile OK |
+| **Latest** | `d05d714` PTY inject (0.21.1) · `c15de88` loom doctor (0.20.0) |
 
 ### Already shipped (context, don't redo)
 

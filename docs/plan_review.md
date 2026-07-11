@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R22** | **v0.21.0→0.21.1** | **closed (pending-revision → PATCH author-close `approved`)** | **PTY handoff inject** — Claude-first · opt-in · accept-gated · **no-auto-submit paste**. M-1…M-6 locks PLAN에 반영. Fable 5 사전 승인(no R22b). 와이어 변경 없음. FREEZE 예외=오너 pull(타당). 구현 대기(레인 위임). |
+| **R22** | **v0.21.0→0.21.1** | **closed (approved → implemented `d05d714`)** | **PTY handoff inject** — Claude-first · opt-in · accept-gated · **no-auto-submit paste**. M-1…M-6 locks. Fable 5 사전 승인(no R22b). codex-impl 구현 → 아키텍트 독립 검증(bun test 190/0, M-1..M-6 코드 확인). 와이어 변경 없음. FREEZE 예외=오너 pull. |
 | **R21** | **v0.20.0** | **closed (approved→shipped `c15de88`)** | Tier A3 `loom doctor` (read-only 진단) — no wire change. All binding M-1..M-4 met (architect-verified: bun test 180/0, live run exit 0), L-1..L-3 author-closed. Implemented via codex-impl lane. |
 | R20 | v0.19.0 | closed (approved→shipped `a9cefd0`) | Tier A1 install script — install/doc/string surface, zero relay coupling. M-1..M-4 impl-bound (done), L-1..L-4 author-close. Docker harness caught + fixed a bash-login `set -e` abort. |
 | R19 | v0.18.0 | closed (approved→shipped `2b59dee`) | Self-contained invite (portable join blob) — no wire change; token-in-blob sound vs H-5/UC-10.5. |
@@ -22,7 +22,7 @@
 
 ## Open (blocking)
 
-_(none)_ — **R22 closed** (v0.21.0→0.21.1 PTY handoff inject): Fable 5 `pending-revision` → M-1…M-6 locks를 PLAN 텍스트에 반영 → **author-close `approved`** (Fable 사전 승인, no R22b). 구현 대기(레인 위임). (R21/v0.20.0 shipped `c15de88`.)
+_(none)_ — **R22 implemented** (v0.21.1 PTY handoff inject, `d05d714`): Fable 5 `pending-revision` → M-1…M-6 locks → author-close `approved` → **codex-impl 구현 + 아키텍트 독립 검증**(bun test 190/0, M-1..M-6 코드 확인). 알려진 갭: python 주입 경로 런타임 미실행(라이브 스모크 권장). (R21/v0.20.0 shipped `c15de88`.)
 
 ---
 

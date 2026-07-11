@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.21.1** |
-| **Status** | **`approved`** (author-close after R22 `pending-revision` + M-1…M-6 locks) — **PTY handoff inject** (원래 설계 유보 수신 경로 고도화, Claude-first · opt-in · accept-gated · **no-auto-submit paste**) (MINOR). **FREEZE 예외 = 오너 pull.** 구현 대기(레인 위임). 0.20.0(R21) shipped `c15de88`. |
+| **Status** | **`approved` → implemented** (`d05d714`) — **PTY handoff inject** (원래 설계 유보 수신 경로 고도화, Claude-first · opt-in · accept-gated · **no-auto-submit paste**) (MINOR). R22 author-close + M-1…M-6 locks. **codex-impl 레인 구현, 아키텍트 독립 검증**(bun test 190/0, 6-pkg typecheck, M-1..M-6 코드 확인). **FREEZE 예외 = 오너 pull.** 0.20.0(R21) shipped `c15de88`. |
 | **Supersedes** | 0.20.0 |
 | **Last updated** | 2026-07-11 |
 | **Approval** | **R22 `pending-revision` → PATCH 0.21.1 locks → author-close `approved`** (Fable 5 사전 승인, no R22b). Binding: **M-1** auto-inject 경로 부재, **M-2** no-auto-submit(trailing `\n` 금지, paste-only, 사람 Enter), **M-3** fail-safe=no-inject(buffer-later 금지, at-most-once), **M-4** sanitize 페이로드만, **M-5** 제어채널 로컬 same-UID 0600, **M-6** 기본 큐+폴링 회귀 불변. |
@@ -87,7 +87,9 @@
 - **M-5 (Med):** 제어 채널은 **로컬 same-UID 전용**(0600 socket/pipe). **relay 발 트리거 금지.**
 - **M-6 (Med):** 기본 큐+폴링 경로 + flag 없는 `loom run` **회귀 테스트 불변.**
 
-**Approved by:** Fable 5 (fable-advisor) R22 — `pending-revision` → PATCH 0.21.1에 M-1…M-6 lock → **author-close `approved`** (Fable 사전 승인, no R22b). 구현 다음(레인 위임 — 세션 모델 직접 코딩 금지).
+**Approved by:** Fable 5 (fable-advisor) R22 — `pending-revision` → PATCH 0.21.1에 M-1…M-6 lock → **author-close `approved`** (Fable 사전 승인, no R22b).
+
+**Implemented as of `d05d714`** (2026-07-12) — via codex-impl lane (GPT-5.5), 아키텍트 독립 검증. 신규: `inject-control.ts`(로컬 0600 소켓 제어채널)·`inject-handoffs.ts`(flag+Stop-hook). `handoff-inject.ts` paste 함수군, `run-with-pty.py` env-gated 주입(마커 ≤30s + quiescence ≥300ms + bracketed-paste no-newline). **M-1..M-6 전부 TS·python 양 레이어 코드 확인.** `bun test` 190 pass/0 fail, 6-pkg typecheck, biome(touched) clean, VERSION 0.21.1(CLI+MCP). **알려진 갭:** python 주입 경로는 코드리뷰만(런타임 미실행) — flag 활성화 전 라이브 스모크 권장(`implementation-notes.md`).
 
 **FREEZE 관계:** 오너 pull에 의한 **명시적 예외**(2026-07-11) — 이 게이트 **하나만**. 나머지 백로그(work-watch·MCP·C1/C2)는 **동결 유지** — 팀 실사용 pull 전엔 열지 않음.
 
