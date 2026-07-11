@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-11 (0.19.0 install script + loomCmd sweep) |
+| **Last updated** | 2026-07-11 (0.20.0 loom doctor) |
 
 ---
 
@@ -62,6 +62,8 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-11 | 0.19.0 install.sh testability | Added `LOOM_INSTALL_REPO` (git URL or local path; default GitHub) so the Docker harness clones the local checkout offline | Additive optional env, sibling to `LOOM_INSTALL_DIR`/`_REF`; author-close Low | Done 0.19.0 |
 | 2026-07-11 | 0.19.0 install.sh unzip hint | Before installing Bun, if `unzip` absent print a hint (Bun installer unpacks a zip) | Docker A2 diagnostic: minimal Ubuntu lacks unzip → Bun install failed opaquely | Done 0.19.0 |
 | 2026-07-11 | Docker dry-run harness | `test/docker/` — Test A (install.sh cold-start on clean ubuntu:24.04, M-4) + Test B (relay + peerA + cold-install peerB → offline handoff across containers). Both pass | Single-host stand-in for the 2-machine dry-run; QA not demand-validation (LOOM_PURPOSE_REVIEW). Caught the ensure_path bug above | Done 0.19.0 |
+| 2026-07-11 | R21 A3 `loom doctor` read-only | `cmdDoctor` resolves the expected `~/.loom` home/session path without calling `loomDir()`/`sessionPath()`/`loadSession()`, because those helpers may migrate legacy state as part of normal operation | Stronger read-only interpretation: diagnosis must not rename/copy/delete state even on first run or legacy homes | Done 0.20.0 |
+| 2026-07-11 | R21 L-1/L-2/L-3 | Writable check uses `accessSync(home, W_OK)` only; renderer redacts `token` query params defensively; host RPC uses `stickyRpc({ op: "status" }, { meta, timeoutMs: 2500 })` | Closes all R21 Low items without expanding scope or adding mutation | Done 0.20.0 |
 
 ### Earlier waves (pointer only)
 

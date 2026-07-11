@@ -2,6 +2,7 @@
 import {
   ensureRelay,
   loadSession,
+  normalizeSession,
   saveSession,
   clearSession,
   setActiveProfile,
@@ -21,6 +22,9 @@ import {
   resolveAliveHostMeta,
   describeHostMeta,
   stickyRpc,
+  loadStickyMeta,
+  isPidAlive,
+  type LoomSession,
   opsListPeers,
   opsHandoff,
   opsChat,
@@ -92,10 +96,25 @@ import {
   readSync,
   existsSync,
   readdirSync,
+  readFileSync,
+  accessSync,
+  constants as fsConstants,
 } from "node:fs";
 import { join as pathJoin } from "node:path";
+import { homedir } from "node:os";
+import {
+  doctorExitCode,
+  homeProfileSection,
+  hostSection,
+  installEnvSection,
+  relaySection,
+  renderDoctor,
+  sessionSection,
+  type HostRpcProbe,
+  type RelayProbe,
+} from "./doctor";
 
-const VERSION = "0.19.0";
+const VERSION = "0.20.0";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -183,7 +202,7 @@ Usage:
   loom [--profile <name>] [--relay <url>] [--token <secret>] room join <code>
   loom room invite --link
   loom room leave
-  loom peers | chat | handoff | inbox | listen | run | status | agents
+  loom peers | chat | handoff | inbox | listen | run | status | doctor | agents
   loom pack show | set | add | remove | note | clear   # room context pack
   loom purpose show | set | clear   # room purpose card (0.15)
   loom verify [--yes]               # run purpose.verify[] (M-25 gate)
@@ -1506,6 +1525,177 @@ async function cmdStatus() {
   }
 }
 
+function readOnlyLoomHome(): string {
+  const root = process.env.LOOM_TEST_HOME || homedir();
+  return pathJoin(root, ".loom");
+}
+
+function readOnlySessionPath(
+  home: string,
+  flags: Record<string, string | boolean>,
+): string {
+  const explicitProfile =
+    typeof flags.profile === "string" && flags.profile.length > 0
+      ? flags.profile
+      : null;
+  if (explicitProfile) {
+    return pathJoin(home, "profiles", `${explicitProfile}.json`);
+  }
+  if (process.env.LOOM_SESSION) return process.env.LOOM_SESSION;
+  const profile = getActiveProfile();
+  if (profile) return pathJoin(home, "profiles", `${profile}.json`);
+  return pathJoin(home, "session.json");
+}
+
+function loadSessionReadOnly(file: string): LoomSession | null {
+  if (!existsSync(file)) return null;
+  try {
+    const text = readFileSync(file, "utf8").trim();
+    if (!text) return null;
+    return normalizeSession(JSON.parse(text) as LoomSession);
+  } catch {
+    return null;
+  }
+}
+
+function homeWritableStatus(home: string): {
+  homeExists: boolean;
+  homeWritable: boolean | null;
+} {
+  const homeExists = existsSync(home);
+  if (!homeExists) return { homeExists, homeWritable: null };
+  try {
+    accessSync(home, fsConstants.W_OK);
+    return { homeExists, homeWritable: true };
+  } catch {
+    return { homeExists, homeWritable: false };
+  }
+}
+
+/**
+ * Tier A3 read-only doctor.
+ *
+ * M-1: relay reachability never calls ensureRelay; it only fetches
+ *      parseRelayUrl(session.relayUrl, {token}).httpOrigin + "/health" with
+ *      AbortSignal.timeout(3000).
+ * M-2: host status never calls resolveAliveHostMeta/resolveLiveHostMeta; it
+ *      reads loadStickyMeta(...) and checks isPidAlive(meta.pid), reporting
+ *      stale/mismatch without mutating files.
+ * M-3: exit 1 only when at least one rendered line is fail; warn/info/ok exit 0.
+ * M-4: no-session is informational for Session/Relay/Host, never fail.
+ */
+async function cmdDoctor(flags: Record<string, string | boolean>) {
+  const home = readOnlyLoomHome();
+  const sessionFile = readOnlySessionPath(home, flags);
+  const profile =
+    typeof flags.profile === "string" && flags.profile.length > 0
+      ? flags.profile
+      : getActiveProfile();
+  const session = loadSessionReadOnly(sessionFile);
+  const writable = homeWritableStatus(home);
+
+  let relayEndpoint:
+    | {
+        wsUrl: string;
+        httpOrigin: string;
+        host: string;
+        token?: string;
+        isLocal?: boolean;
+      }
+    | undefined;
+  let relayProbe: RelayProbe | undefined;
+  let relayParseError: string | undefined;
+  if (session) {
+    try {
+      const ep = parseRelayUrl(session.relayUrl, { token: session.relayToken });
+      relayEndpoint = ep;
+      try {
+        // biome-ignore lint/style/useTemplate: R21 M-1 locks this exact direct health fetch shape.
+        const res = await fetch(ep.httpOrigin + "/health", {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            auth?: boolean;
+            version?: unknown;
+          };
+          relayProbe = {
+            kind: "ok",
+            status: res.status,
+            auth: body.auth,
+            version: body.version,
+          };
+        } else {
+          relayProbe = {
+            kind: "http_error",
+            status: res.status,
+            body: await res.text().catch(() => ""),
+          };
+        }
+      } catch (e) {
+        relayProbe = {
+          kind: "error",
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    } catch (e) {
+      relayParseError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  const meta = loadStickyMeta(sessionFile);
+  const pidAlive = meta ? isPidAlive(meta.pid) : false;
+  let hostRpc: HostRpcProbe = { kind: "skipped" };
+  if (
+    session &&
+    meta &&
+    pidAlive &&
+    meta.roomId === session.roomId &&
+    meta.peerId === session.peerId
+  ) {
+    const st = await stickyRpc({ op: "status" }, { meta, timeoutMs: 2500 });
+    if (st.ok && st.op === "status") {
+      hostRpc = { kind: "status", relayConnected: st.relayConnected };
+    } else {
+      hostRpc = {
+        kind: "error",
+        error: st.ok ? "unexpected host response" : st.error,
+      };
+    }
+  }
+
+  const sections = [
+    installEnvSection({
+      version: VERSION,
+      loomOnPath: loomOnPath(),
+      loomCommand: loomCmd(),
+      bunPath: Bun.which("bun") ?? null,
+    }),
+    homeProfileSection({
+      home,
+      sessionPath: sessionFile,
+      profile,
+      homeExists: writable.homeExists,
+      homeWritable: writable.homeWritable,
+    }),
+    sessionSection(session),
+    relaySection({
+      session,
+      endpoint: relayEndpoint,
+      probe: relayProbe,
+      parseError: relayParseError,
+    }),
+    hostSection({
+      session,
+      meta,
+      pidAlive,
+      rpc: hostRpc,
+    }),
+  ];
+  process.stdout.write(renderDoctor(sections));
+  process.exit(doctorExitCode(sections));
+}
+
 async function cmdAgents(flags: Record<string, string | boolean>) {
   console.log("Adapters:");
   for (const a of listAdapters()) {
@@ -2515,6 +2705,10 @@ async function main() {
   }
   if (cmd === "status") {
     await cmdStatus();
+    return;
+  }
+  if (cmd === "doctor") {
+    await cmdDoctor(flags);
     return;
   }
   if (cmd === "host") {

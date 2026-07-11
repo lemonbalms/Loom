@@ -4,7 +4,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.13.0** / desktop UI **v0.12.2** 기준 |
+| **제품 버전** | CLI **v0.20.0** / desktop UI **v0.12.2** 기준 |
 | **관련** | [README](../README.md) · [TEST_PLAN](./TEST_PLAN.md) (사례별 검증) · [ADAPTERS](./ADAPTERS.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 이 문서는 **지금까지 구현된 기능으로 실제로 할 수 있는 일**을 시나리오 중심으로 정리합니다.  
@@ -32,6 +32,7 @@ bun install
 bun run link:loom
 export PATH="${BUN_INSTALL:-$HOME/.bun}/bin:$PATH"
 loom --version
+loom doctor
 ```
 
 아래 예시는 **`bun run loom`** 기준 (A). 링크 후엔 `loom` 으로 바꿔 쓰면 됩니다.  
@@ -71,6 +72,7 @@ bun run loom peers
 bun test                 # 유닛/통합
 bun run smoke:desktop    # sticky RPC + board + handoff (GUI 없음)
 bun run loom --version
+bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 ```
 
 ---
