@@ -389,7 +389,7 @@ Atomic write pattern = host `atomic-json` (same as board/pack). Scope = **roomId
 | Prefix | Intent | Expected receiver action |
 |--------|--------|---------------------------|
 | `[GOAL]` | Align / set work against purpose | Read purpose; optionally `purpose set` only if owner role |
-| `[R-REQUEST]` | Plan/code review request | Reviewer: `/advisor fable` if Claude; write plan_review; no product implement |
+| `[R-REQUEST]` | Plan/code review request | Reviewer: `fable-advisor` subagent if Claude; write plan_review; no product implement |
 | `[R-RESULT]` | Review outcome | Implementer: apply Open blocking only or ship |
 | `[VERIFY]` | Evidence of DoD | Record pass/fail; do not invent green |
 | `[DONE]` | Claim work complete | Point to evidence (sha, tests) |

@@ -129,14 +129,14 @@ bun run loom --profile claude-impl run claude
 # A3 — Codex implementer (parallel lane; claim board task first)
 bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
 
-# B — Claude primary reviewer (/advisor fable required for R{n})
+# B — Claude primary reviewer (fable-advisor subagent required for R{n})
 bun run loom --profile claude-rev run claude
 
 # C — Codex second opinion (review only — not the same as codex-impl)
 bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
 
 Review request (from any implementer):
-  bun run loom --profile impl handoff @claude-review "[R-REQUEST] … YOU MUST: /advisor fable first …"
+  bun run loom --profile impl handoff @claude-review "[R-REQUEST] … YOU MUST: fable-advisor subagent first …"
   bun run loom --profile impl handoff @codex-review  "[R-REQUEST] adversarial …"
 
 Three implementers (impl=Grok, claude-impl=Claude, codex-impl=Codex) share the

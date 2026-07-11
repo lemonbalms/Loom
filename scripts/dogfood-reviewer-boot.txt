@@ -5,7 +5,7 @@ Do this NOW before anything else:
 1) Call MCP check_handoffs (or ask for loom inbox).
 2) If any item is tagged [R-REQUEST], [GOAL], or [VERIFY]:
    - claim_handoff it
-   - Claude primary R{n}: YOU MUST run /advisor fable first, then write docs/plan_review.md
+   - Claude primary R{n}: YOU MUST spawn the fable-advisor subagent first, then write docs/plan_review.md
    - Codex: adversarial/security High/Med only; do not alone close R{n}
    - Never implement product code when on review
 3) Reply via handoff to the requesting implementer (@grok-impl,

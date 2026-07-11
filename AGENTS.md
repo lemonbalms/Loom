@@ -66,13 +66,13 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Deviations | `implementation-notes.md` → **Deviations** (pick conservative option) |
 | Unknowns | `docs/WORKFLOW.md` §3.5 + `docs/UNKNOWNS.md` — MINOR/new surface before R{n}; not a PLAN SSOT |
 | **Autonomy (default)** | **Do not ask permission between steps.** Brief → execute next gate → verify → docs → ship when wave complete. Report progress after work, not before each click. |
-| “진행해” / “단계적으로” / “자율적으로” / “이어서” | **Full current wave:** next gate(s) until a natural stop (tests green + docs + usually **commit + push** to `main`). No mid-wave “해도 될까요?” |
+| “진행해” / “단계적으로” / “자율적으로” / “이어서” | **Full current wave**, no mid-wave approval — see `docs/WORKFLOW.md` §3 |
 | Verify | `bun test` green before claiming done; related smoke when the gate touches that surface |
 | Remote | `https://github.com/lemonbalms/Loom.git` (user lemonbalms) |
 | Commit/push | **Default at end of a completed gate wave** (green tests + docs sync). Do not ask “커밋할까요?” — do it. Exception: user said “커밋 금지” / dry-run only. |
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
-| Claude R{n} | **Must** run **`/advisor fable`** (or `fable-advisor` agent) before writing R{n} |
+| Claude R{n} | **Must** consult the **`fable-advisor`** subagent before writing R{n} |
 
 ### Pause only when (true blockers)
 
