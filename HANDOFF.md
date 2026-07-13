@@ -1,6 +1,6 @@
 # HANDOFF — Loom (next session)
 
-**Date:** 2026-07-11 (PM)  
+**Date:** 2026-07-13 (PM)  
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
 **GitHub:** https://github.com/lemonbalms/Loom (`main`)  
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
@@ -9,10 +9,14 @@
 
 ## ⭐ Current action (read first)
 
-> **✅ v0.21.1 PTY handoff inject — implemented + committed (`d05d714`) + pushed.** codex-impl 레인(GPT-5.5) 구현 → 아키텍트 독립 검증(bun test **190/0**, 6-pkg typecheck, biome touched clean, M-1..M-6 전부 TS·python 코드 확인). `loom run claude --inject-handoffs`(opt-in, Claude 전용): 로컬 0600 Unix 소켓 제어, accept/claim 트리거 sanitized paste, Stop-hook idle 마커 + PTY 출력 quiescence, bracketed paste **no-auto-submit**. VERSION 0.21.1(CLI+MCP).
+> **✅ v0.21.1 PTY handoff inject — 완전 검증됨 (구현 `d05d714` + 검증 `08ddb98`·`2fb8f6a`, all pushed).** 더 이상 런타임 미검증 지점 없음. `loom run claude --inject-handoffs`(opt-in, Claude 전용): 로컬 0600 Unix 소켓 제어, accept/claim 트리거 sanitized paste, Stop-hook idle 마커 + PTY quiescence, bracketed paste **no-auto-submit**. VERSION 0.21.1(CLI+MCP).
 >
-> **⚠ 남은 검증 = 라이브 스모크:** python 주입 경로(`run-with-pty.py`)는 코드리뷰만, 런타임 미실행(repo에 python 테스트 러너 없음). **팀에 `--inject-handoffs` 개방 전** 실제 `loom run claude --inject-handoffs`로 accept→paste-not-submit + busy-중 no-inject 확인 권장(`implementation-notes.md`).
-> **Note:** `.playwright-mcp/`·`scripts/__pycache__/`는 untracked 로컬 상태(gitignore 추가됨), 커밋 제외.
+> **✅ 라이브 스모크 = 이번 세션 완료 (더는 권장사항 아님, 실제로 함):**
+> ① 정식 통합 테스트 `packages/host/src/inject-live.test.ts`(`08ddb98`) — 실 `run-with-pty.py` PTY spawn, 프레임 안착·no-auto-submit·dedup·stale·**breakout 방어** 검증. `bun test` **195/0**. python3 부재/Windows skip 가드.
+> ② **실 `claude` 바이너리 프로브** — idle Ink TUI가 300ms quiescence 게이트 통과(400ms 0 bytes), inject `ok:true`, handoff가 `❯` 입력창 안착 + **미제출** 확인. → Ink 수용까지 닫힘. (일회성 검증, repo 아티팩트 없음.)
+>
+> **🧭 프로세스 규칙 추가(`2fb8f6a`) — Next-action test:** 스스로 고른 액션은 "실패하면 뭘 새로 배우나"에 답해야 함. **실패 불가능한 액션(이미 green 재실행·오너 대기·문서정리)은 다음 액션 자격 박탈** — 가장 무서운 검증 가능한 것부터. 오너에게 수동 스크립트 넘기는 건 최후 수단. (`AGENTS.md` Standing rules + `tasks/lessons.md` 5번째. Fable 5 진단 = 이번 세션 반복 회피의 근본원인 = selector 고장.)
+> **Note:** `.playwright-mcp/`는 untracked 로컬 상태, 커밋 제외.
 
 ## Strategic context
 
@@ -57,11 +61,11 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.21.1** (`loom run claude --inject-handoffs`) — implemented, committed `d05d714`, pushed |
+| **CLI / code** | **0.21.1** (`loom run claude --inject-handoffs`) — implemented + **fully verified** (mechanical + real-Ink), pushed |
 | **PLAN** | **v0.21.1** `approved` → implemented (R22, `d05d714`) — PTY handoff inject |
-| **Open blocking** | **none** — R22 implemented·verified. 라이브 스모크만 권장(flag 개방 전) |
-| **Tests** | `bun test` **190 pass / 0 fail** · 6 pkg typecheck green · biome touched clean · py_compile OK |
-| **Latest** | `d05d714` PTY inject (0.21.1) · `c15de88` loom doctor (0.20.0) |
+| **Open blocking** | **none** — R22 구현·검증·라이브 스모크 전부 완료. flag 개방 가능 |
+| **Tests** | `bun test` **195 pass / 0 fail** (+5 `inject-live.test.ts`) · 6 pkg typecheck green · biome touched clean |
+| **Latest** | `a5808dc` A2 관찰 항목 2개(runbook) · `2fb8f6a` Next-action rule + real-claude smoke · `08ddb98` inject-live test · `d05d714` PTY inject (0.21.1) |
 
 ### Already shipped (context, don't redo)
 
@@ -89,6 +93,16 @@
 | **Script** | `scripts/dogfood-up.sh` + `dogfood:up` alias (join-all w/ auto-host suppressed, then batched `loom up`) |
 | **Tests** | `packages/host/src/sticky-down-safety.test.ts` (M-27 guard: unrelated alive pid not killed) |
 | **Docs** | USER_GUIDE §3 (host default + up/down), DOGFOOD_LOOP §1 (dogfood:up journey + L-34 8s note), PLAN 0.17.1, plan_review R18 closed, VERSION 0.17.1 (CLI + MCP) |
+
+---
+
+## This session (2026-07-13 PM) — 외부 비교분석(Loom vs MoAI) 검증 + A2 관찰 항목 등록
+
+| 영역 | 결과 |
+|------|------|
+| **외부 분석 검증** | 오너가 가져온 Loom↔MoAI(tmux) 비교 분석의 Loom 쪽 피드백 3건을 코드 대조. ① **chat 미persist = 의도된 설계 확인**(`relay/persist.ts` `RoomSnapshotV1` = room/members/inboxes만 — 미구현 아님) ② **envelope 모델/effort 힌트 필드 = 기각** — `envelope.ts` Zod 스키마가 non-strict(strip)라 optional 필드는 나중에도 v2 없이 하위호환 추가 가능 + 오너가 이미 effort 매트릭스를 드리프트로 판정 ③ **보드 로컬 파일(relay 미동기) = 유일한 유효 구조 갭**(`task-board.ts:6` 주석 자인) — 단 FREEZE라 구현 대신 관찰 등록 |
+| **A2 관찰 항목 등록**(`a5808dc`) | `docs/DRY_RUN_RUNBOOK.md` Step 4 표에 2행 추가: **보드 불일치 체감?** / **chat 유실 아쉬움?** — dry-run에서 팀이 겪으면 팀-pull 요구로 승격(FREEZE 통과 경로), 안 겪으면 안 만들 근거. docs-only, pushed |
+| 코드 변경 | **없음** (FREEZE 준수) |
 
 ---
 
