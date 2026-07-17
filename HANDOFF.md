@@ -19,10 +19,11 @@
 >
 > **🕸 (이전) Loom×Herdr 설계서** `docs/HERDR_DESIGN.md` (`85e7829`). Windows=타워 / herdr=노드 / `loom bridge` / relay wire 무변경.
 >
+> **✅ Step 0 WSL/Windows 네트워킹 = go (2026-07-17).** Windows prep `0f968be` + Mac SSH 연속 실측. ③ WSL→`172.27.80.1:7842/health` OK · ⑤ join `LOOM-D3FT` (tower+wslnode). Win10이라 mirrored N/A·NAT 경로. 상세 `docs/spikes/STEP0-MAC-CONTINUATION.md` · `STEP0-WINDOWS-RESULT.md`.
+>
 > **⏩ 다음 순서:**
-> ① **Step 0 — WSL2/Windows 네트워킹** — Tailscale L3 **확인됨** (`DESKTOP-LG99QSS` = `100.65.103.113`, ping/direct OK). **SSH 미개방**(22 closed, RDP/SMB only) → 호스트 원격실행 불가. 오너: OpenSSH 켜기 **또는** `docs/spikes/scripts/step0-windows.ps1` 실행 후 결과 붙여넣기. 스파이크 초안 `docs/spikes/STEP0-WSL2-NETWORKING.md`.
-> ② PLAN **0.22.0** `pending-review` — FREEZE 예외 오너 확인 → R23 → 본구현.
-> ③ (선택) WSL Step 0.5 재실행.
+> ① PLAN **0.22.0** `pending-review` — **FREEZE 예외 = 오너 pull 한 줄 명시** 필요 → R23 → `loom bridge` 본구현 (fixtures `herdr-v0.7.4` + NAT attach 모델).
+> ② (선택) Win11 업그레이드 시 mirrored 재검증 · WSL herdr 실측 · Mac TS:7842 방화벽.
 >
 > **🕷 부수:** 브랜드 에셋 `assets/brand/` (`c825808`·`eccc23a`).
 >

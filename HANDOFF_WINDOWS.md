@@ -9,9 +9,21 @@
 | **Repo** | https://github.com/lemonbalms/Loom (`main`) |
 | **Windows host** | `DESKTOP-LG99QSS` · Tailscale `100.65.103.113` · `desktop-lg99qss.tail536996.ts.net` |
 | **Mac peer** | `kyoungsik` · Tailscale `100.69.230.114` · `kyoungsik.tail536996.ts.net` |
-| **Gate** | **Step 0** — WSL ↔ Windows-host Loom relay 네트워킹 PoC |
-| **이미 끝남** | Step 0.5 herdr 실측 (Mac) · Loom 0.21.1 · Herdr 설계서 |
-| **코드 구현** | 아직 **FREEZE** — 브릿지 코드 치지 말 것. 이 문서는 **측정·스크립트만**. |
+| **Gate** | **Step 0 = go** (2026-07-17) — 다음 제품 게이트는 PLAN 0.22.0 (FREEZE 예외 필요) |
+| **이미 끝남** | Step 0.5 herdr · Step 0 네트워킹 · Loom 0.21.1 · Herdr 설계서 |
+| **코드 구현** | 아직 **FREEZE** — 브릿지 코드는 R23 승인 전 금지 |
+
+### Step 0 결과 (이 PC에서 검증됨)
+
+| 항목 | 결과 |
+|------|------|
+| OpenSSH + Mac 키 | ✅ `34970` |
+| loom relay `0.0.0.0:7842` | ✅ (Scheduled Task 권장 — SSH 일회 프로세스는 죽음) |
+| WSL health | ✅ `curl http://172.27.80.1:7842/health` → version 1 |
+| room join | ✅ `LOOM-D3FT` · tower + wslnode |
+| mirrored localhost | ❌ Win10에서는 무시됨 — **NAT 게이트웨이 IP 사용** |
+
+상세: `docs/spikes/STEP0-WINDOWS-RESULT.md` · `docs/spikes/STEP0-MAC-CONTINUATION.md`
 
 ---
 
