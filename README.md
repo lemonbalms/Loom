@@ -1,4 +1,4 @@
-# Loom
+# Loom <img src="assets/brand/web-colorful.svg" width="28" align="top" alt="Loom web mark">
 
 **Multiplayer AI terminal** — *connect your agents — and your teammates.*
 
@@ -267,3 +267,8 @@ Private/experimental monorepo under active development (0.x).
 Issues and collaboration: use this GitHub repository.
 
 **Maintainer remote:** https://github.com/lemonbalms/Loom
+
+## Credits
+
+Spider and web marks are adapted from [Twemoji](https://github.com/twitter/twemoji),
+© Twitter, licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
