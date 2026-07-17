@@ -1,6 +1,6 @@
 # HANDOFF — Loom (next session)
 
-**Date:** 2026-07-13 (PM)  
+**Date:** 2026-07-17 (PM)  
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
 **GitHub:** https://github.com/lemonbalms/Loom (`main`)  
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
@@ -9,7 +9,18 @@
 
 ## ⭐ Current action (read first)
 
-> **✅ v0.21.1 PTY handoff inject — 완전 검증됨 (구현 `d05d714` + 검증 `08ddb98`·`2fb8f6a`, all pushed).** 더 이상 런타임 미검증 지점 없음. `loom run claude --inject-handoffs`(opt-in, Claude 전용): 로컬 0600 Unix 소켓 제어, accept/claim 트리거 sanitized paste, Stop-hook idle 마커 + PTY quiescence, bracketed paste **no-auto-submit**. VERSION 0.21.1(CLI+MCP).
+> **🕸 NEW (2026-07-17): Loom×Herdr 노드 브릿지 설계서 완료 (`85e7829`, pushed).** **`docs/HERDR_DESIGN.md`** — Windows=Loom 컨트롤 타워 / herdr(Rust 에이전트 멀티플렉서)=Linux·Mac·WSL 노드 전용 / 노드별 브릿지 데몬(`loom bridge` 서브커맨드) 필수. **relay 와이어(protocol v1) 무변경** — 카드 dispatch/done은 기존 `mode:'task'` handoff + `loom-card-dispatch`/`loom-card-result` 라벨 attachment 컨벤션. 카드는 타워 board 소유(local-only 유지), 완료 감지는 herdr push 이벤트 드리븐(폴링 없음). 멀티에이전트 워크플로(정찰4+초안4+적대적 코드검증4)로 작성 — 검증이 잡은 사실오류 5건 교정 반영. 권고 원문 아카이브 = `docs/loom-herdr-architecture.html`.
+>
+> **⏩ 다음 순서 (설계서 §5·§6에 성문화):**
+> ① **Step 0 — WSL2 네트워킹 PoC** (오너 Windows 머신 필요): `.wslconfig` mirrored + relay LAN 바인딩(`bun run relay:lan`) + WSL 안에서 인바운드 join 왕복. 산출물 `docs/spikes/STEP0-WSL2-NETWORKING.md`. **"여기가 안 뚫리면 나머지 무의미."**
+> ② **Step 0.5 — herdr 실측**: 설계서의 herdr 쪽 사실은 **전부 [가정-H]**(외부 권고 문서 인용, 이 레포에서 미검증 — §0.1이 일괄 마커). 소켓 프레이밍·메서드·이벤트·seq·라이선스 실물 대조 + fixture 캡처. **이거 전에 브릿지 코드 착수 금지.**
+> ③ PLAN **0.22.0** `pending-review` 편입 — **FREEZE 예외 = 오너 pull 한 줄 명시 필요**(이 요구는 오너가 직접 가져온 것이므로 해당됨, 단 명시적 확인 필요) → ④ R23 리뷰 → approved 후 본구현.
+>
+> **🕷 부수 작업(같은 날):** 브랜드 에셋 6종 `assets/brand/`(Twemoji 기반 거미/거미줄, CC-BY 4.0 — README Credits 추가됨) + README 마스코트 + 데스크톱 파비콘 + Tauri 앱 아이콘 세트 재생성 (`c825808`·`eccc23a`).
+>
+> ---
+>
+> **✅ (이전 상태 유지) v0.21.1 PTY handoff inject — 완전 검증됨 (구현 `d05d714` + 검증 `08ddb98`·`2fb8f6a`, all pushed).** 더 이상 런타임 미검증 지점 없음. `loom run claude --inject-handoffs`(opt-in, Claude 전용): 로컬 0600 Unix 소켓 제어, accept/claim 트리거 sanitized paste, Stop-hook idle 마커 + PTY quiescence, bracketed paste **no-auto-submit**. VERSION 0.21.1(CLI+MCP).
 >
 > **✅ 라이브 스모크 = 이번 세션 완료 (더는 권장사항 아님, 실제로 함):**
 > ① 정식 통합 테스트 `packages/host/src/inject-live.test.ts`(`08ddb98`) — 실 `run-with-pty.py` PTY spawn, 프레임 안착·no-auto-submit·dedup·stale·**breakout 방어** 검증. `bun test` **195/0**. python3 부재/Windows skip 가드.
@@ -48,7 +59,9 @@
 
 ## One-line resume
 
-> **⏩ 목적지 재확정 = 내부 6인 팀 채택(adoption).** 효용 확정 전제(내부 도구) → 수요검증 프레임 폐기, FREEZE는 "팀-pull된 요구만 구현"으로 근거 교체. **다음 2갈래:** ①팀-pull 유일 실기능 = **Windows 온보딩 경로**(팀에 Windows 사용자 있음 확인 · `install.sh` bash 전용 → PLAN 게이트 후 구현, 접근법 오너 확인) ②**relay 공용 호스트(VPS) 확보 = 오너 블로커**(아직 없음). 런북 = `docs/DRY_RUN_RUNBOOK.md`(팀 온보딩판). 코드 3종(설치·invite·doctor) 완비, bun test 180/0. 상세 판정 = ⭐ 블록.
+> **⏩ 이번 세션(07-17) = Loom×Herdr 브릿지 설계서 shipped (`85e7829`).** 다음 = **Step 0 WSL2 PoC**(오너 Windows 머신) → **Step 0.5 herdr 실측** → PLAN 0.22.0 게이트(FREEZE 예외 오너 확인) → R23 → 구현. 설계서 = `docs/HERDR_DESIGN.md`(§0 요약·§5 롤아웃·§6 게이트가 진입점). 코드 변경 없음(docs+brand만), bun test 195/0 그대로. VPS 블로커는 별개 트랙으로 여전히 오픈.
+>
+> **(이전) 목적지 재확정 = 내부 6인 팀 채택(adoption).** 효용 확정 전제(내부 도구) → 수요검증 프레임 폐기, FREEZE는 "팀-pull된 요구만 구현"으로 근거 교체. **다음 2갈래:** ①팀-pull 유일 실기능 = **Windows 온보딩 경로**(팀에 Windows 사용자 있음 확인 · `install.sh` bash 전용 → PLAN 게이트 후 구현, 접근법 오너 확인) ②**relay 공용 호스트(VPS) 확보 = 오너 블로커**(아직 없음). 런북 = `docs/DRY_RUN_RUNBOOK.md`(팀 온보딩판). 코드 3종(설치·invite·doctor) 완비, bun test 180/0. 상세 판정 = ⭐ 블록.
 >
 > PLAN **0.19.0** `approved` (R20) — **Tier A1 5분 설치 경로 shipped (code)**:  
 > `scripts/install.sh` (`curl \| bash`): Bun 확보→clone(~/.loom-src)→`bun link`→절대경로 verify→shell rc PATH append. `loomCmd()` helper로 share/next 힌트를 설치 시 `loom`으로 표시(미설치 시 `bun run loom` fallback). R20 binding M-1..M-4 준수, L-1..L-4 author-close.  
@@ -65,7 +78,8 @@
 | **PLAN** | **v0.21.1** `approved` → implemented (R22, `d05d714`) — PTY handoff inject |
 | **Open blocking** | **none** — R22 구현·검증·라이브 스모크 전부 완료. flag 개방 가능 |
 | **Tests** | `bun test` **195 pass / 0 fail** (+5 `inject-live.test.ts`) · 6 pkg typecheck green · biome touched clean |
-| **Latest** | `a5808dc` A2 관찰 항목 2개(runbook) · `2fb8f6a` Next-action rule + real-claude smoke · `08ddb98` inject-live test · `d05d714` PTY inject (0.21.1) |
+| **Latest** | `85e7829` **Herdr 브릿지 설계서** · `eccc23a`/`c825808` 브랜드 에셋(마스코트·파비콘·앱아이콘) · `f795c81` handoff · `a5808dc` A2 관찰 항목(runbook) |
+| **Design queue** | `docs/HERDR_DESIGN.md` — Step 0 WSL2 PoC → Step 0.5 herdr 실측 → PLAN 0.22.0(`pending-review` 예정) → R23 |
 
 ### Already shipped (context, don't redo)
 
@@ -93,6 +107,19 @@
 | **Script** | `scripts/dogfood-up.sh` + `dogfood:up` alias (join-all w/ auto-host suppressed, then batched `loom up`) |
 | **Tests** | `packages/host/src/sticky-down-safety.test.ts` (M-27 guard: unrelated alive pid not killed) |
 | **Docs** | USER_GUIDE §3 (host default + up/down), DOGFOOD_LOOP §1 (dogfood:up journey + L-34 8s note), PLAN 0.17.1, plan_review R18 closed, VERSION 0.17.1 (CLI + MCP) |
+
+---
+
+## This session (2026-07-17 PM) — Herdr 브릿지 설계서 + 브랜드 에셋
+
+| 영역 | 결과 |
+|------|------|
+| **브랜드 에셋**(`c825808`·`eccc23a`) | `assets/brand/` 6종(Twemoji 기반 spider/web, 커스텀 컬러, CC-BY 4.0) · README 제목 마스코트 + Credits 절 · 데스크톱 파비콘(`apps/desktop/ui/` — frontendDist가 `../ui`라 상대경로) · `bunx tauri icon`으로 앱 아이콘 17종 재생성(SVG 소스라 전 크기 선명). android/ios 생성분은 삭제(데스크톱 전용 유지) |
+| **Herdr 권고 문서 분석** | 오너가 가져온 `loom-herdr-architecture.html`(Loom×Herdr 분산 오케스트레이션 권고) 정독 — Windows=타워/herdr=Linux·Mac·WSL만/브릿지 필수/이벤트 드리븐/카드는 board 소유. → `docs/`에 아카이브 |
+| **설계서 작성**(`85e7829`) | **오케스트레이션 워크플로 12 에이전트**: 정찰 4(protocol/relay·MCP/board·adapters/CLI·docs 관례, 전 사실 file:line) → 섹션 초안 4(브릿지 데몬·계약·생애주기/보안·롤아웃) → 적대적 검증 4(초안 주장 vs 실코드 grep 대조). **검증이 잡은 WRONG 5건 교정**: ①`[GOAL] intent:` 한 줄 형식은 파서(줄-시작 정규식) 미매치 → 헤더 독립 줄 + `task:` 키 통일 ②peerSecret은 rejoin에도 매번 응답 ③TASK_ID_RE 위치 ④MCP 배열 인자 선례(set_purpose) ⑤attachment 소비 패턴 인용 라인 |
+| **설계 충돌 2건 판정** | wire에 argv 금지(agentKind만, argv는 브릿지 로컬 allowlist — 임의명령 원격실행 차단, M-24 동형) · 슬라이스는 at-most-once(crash 저널은 §2.6 확장 1순위로 보존) |
+| **[가정-H] 등급화** | herdr 쪽 주장 전부(소켓/메서드/이벤트/seq/AGPL/버전)는 권고 문서 인용일 뿐 레포 미검증 → 설계서 §0.1 일괄 마커 + **Step 0.5 실측 게이트** 신설 |
+| 코드 변경 | **없음** (docs+assets만, FREEZE 준수 — herdr 구현은 PLAN 0.22.0 게이트 통과 후) |
 
 ---
 
@@ -178,20 +205,19 @@ bun run dogfood:up -- --status     # report only
 # or full: bun run dogfood:up   →   bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev
 ```
 
-### 3) 다음 세션 큐 = A3 `loom doctor` 구현 (R21 approved, 사용자 지시)
-게이트 완료됨(PLAN 0.20.0 approved, R21, M-1..M-4 잠금). 바로 구현:
-1. `cmdDoctor` — read-only 5섹션(install/home/session/relay/host), 섹션별 ok/warn/fail + 다음-조치 힌트.
-2. **M-1 `ensureRelay` 금지** → 직접 `fetch(origin+"/health",{signal:AbortSignal.timeout(3000)})`. **M-2 `resolveAliveHostMeta` 금지** → `loadStickyMeta`+`isPidAlive`로 stale 보고만.
-3. **M-3** exit: fail≥1→1, warn만→0. **M-4** no-session=`info`(fail 아님). token 값 출력 금지.
-4. dispatch(`cmd === "doctor"`) + 테스트 + VERSION 0.20.0(CLI+MCP) + docs. L-1..L-3 author-close.
-5. 검증: `bun test` + `test/docker/run-install-test.sh`(설치 직후 doctor 첫 실행 케이스 확인).
+### 3) 다음 세션 큐 = Herdr 브릿지 트랙 (설계서 §5·§6 순서 고정)
+설계서 `docs/HERDR_DESIGN.md` — §0 요약 먼저 읽을 것. 순서:
+1. **Step 0 — WSL2 네트워킹 PoC** (오너 Windows 머신 필요, §5.1 체크리스트 ①~⑥ 그대로): mirrored 모드 → relay LAN 바인딩 → WSL 안 `/health` + `loom room join` 왕복 → 30분 장기 연결 관찰. 산출물 `docs/spikes/STEP0-WSL2-NETWORKING.md` (PHASE-1.5-PTY 골격). **no-go면 본 설계 밀지 말고 역방향 배치를 다음 spike로.**
+2. **Step 0.5 — herdr 실측** (§5.2 체크리스트): [가정-H] 전량 재확정 + 실물 요청/응답 fixture 캡처(fake herdr 테스트의 근거). **이 전에 브릿지 코드 착수 금지.** 어긋난 항목은 설계서부터 갱신.
+3. **PLAN 0.22.0 편입** (§6.1): `pending-review` + **FREEZE 예외 = 오너 pull 한 줄 필수** + UNKNOWNS Gate log(§6.2 초안 복사) → R23(claude-rev + fable-advisor 필수) → approved 후 구현.
+- ⚠ Step 0·0.5 둘 다 오너 환경(Windows/WSL) 필요 — 이 Mac에서 자율 진행 가능한 부분은 없음. 오너 없이는 fake herdr 테스트 하네스 사전 구축도 fixture 없이는 Next-action test 위반(상상 속 프로토콜 검증) 소지 — 하지 말 것.
 
-### 4) 그다음 전략 = OPS 2머신 dry-run (사용자/2nd 머신 필요)
-relay 배포 → `room invite --link` blob → 2번째 머신 `curl … install.sh | bash` → join → 5분 측정 · A2/A4 기록. 네트워크 배관은 `test/docker/run-lan-check.sh`로 사전 검증 가능.
+### 4) 병행 트랙 = OPS 2머신 dry-run (VPS = 오너 블로커, 여전히 오픈)
+relay 배포 → `room invite --link` blob → 2번째 머신 `curl … install.sh | bash` → join → 5분 측정 · A2/A4 기록. 네트워크 배관은 `test/docker/run-lan-check.sh`로 사전 검증 가능. **Step 0 PoC와 같은 Windows 머신 세팅을 공유하므로 오너 시간 확보 시 묶어서 진행 권장.**
 
 ---
 
 ## Plan pointer
-Read: `docs/PLAN.md` Changelog **0.20.0** (Tier A3 `loom doctor`, M-1..M-4 locks, **구현 대기**) + **0.19.0** (install script, shipped).  
-Review: `docs/plan_review.md` **R21** (approved, v0.20.0, implement next session) · R20/R19 (closed, shipped).  
+Read: **`docs/HERDR_DESIGN.md`** (신규 설계서 — §0 요약·§5 롤아웃·§6 게이트) · `docs/PLAN.md` Changelog **0.21.1** (PTY inject, shipped+verified — 최신 approved 게이트).  
+Review: `docs/plan_review.md` **R22** (closed, shipped) — 다음 게이트는 **R23**(PLAN 0.22.0 herdr 브릿지, Step 0/0.5 통과 후 오픈 예정).  
 Harness: `test/docker/` (install 냉시동 · 2컨테이너 join · LAN 배관) — 전부 green.
