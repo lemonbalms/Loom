@@ -30,9 +30,9 @@ export type BridgeMeta = {
 export function bridgeMetaPath(forSessionPath?: string): string {
   const sp = forSessionPath ?? sessionPath();
   if (sp.endsWith(".json")) {
-    return sp.slice(0, -".json".length) + ".bridge.json";
+    return `${sp.slice(0, -".json".length)}.bridge.json`;
   }
-  return sp + ".bridge.json";
+  return `${sp}.bridge.json`;
 }
 
 export function generateBridgeToken(): string {
@@ -43,7 +43,7 @@ export function writeBridgeMeta(meta: BridgeMeta): void {
   ensureFableDir();
   const p = bridgeMetaPath(meta.sessionPath);
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(meta, null, 2) + "\n", {
+  writeFileSync(p, `${JSON.stringify(meta, null, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600,
   });

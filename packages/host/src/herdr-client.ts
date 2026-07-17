@@ -173,7 +173,7 @@ export class HerdrClient {
         reject(new Error(`herdr ${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      const line = JSON.stringify({ id, method, params }) + "\n";
+      const line = `${JSON.stringify({ id, method, params })}\n`;
       this.socket!.write(line, (err) => {
         if (err) {
           clearTimeout(timer);
@@ -259,7 +259,10 @@ export class HerdrClient {
 export function stripAnsi(text: string): string {
   // CSI, OSC, and simple ESC sequences
   return text
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
     .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
     .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
     .replace(/\u001b[@-Z\\-_]/g, "");
 }

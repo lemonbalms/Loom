@@ -14,6 +14,7 @@ import {
   serializeCardAttachment,
   cardPayloadFromAttachments,
   type DispatchAgentKind,
+  type HandoffAttachment,
 } from "@loom/protocol";
 import { loadSession } from "./session-store";
 import { opsHandoff } from "./room-ops";
@@ -81,7 +82,7 @@ export async function dispatchCard(args: {
     };
   }
 
-  let attachment;
+  let attachment: HandoffAttachment;
   try {
     attachment = serializeCardAttachment(CARD_DISPATCH_LABEL, parsed.data);
   } catch (e) {

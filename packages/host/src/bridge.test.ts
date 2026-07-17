@@ -18,7 +18,12 @@ import { RelayClient } from "./relay-client";
 import { HerdrClient, BARE_ENTER } from "./herdr-client";
 import { startFakeHerdr } from "./fake-herdr";
 import { startBridgeRuntime } from "./bridge-runtime";
-import { isAuthorizedDispatcher, type BridgeConfig } from "./bridge-config";
+import {
+  isAuthorizedDispatcher,
+  resolveAgentArgv,
+  defaultBridgeConfig,
+  type BridgeConfig,
+} from "./bridge-config";
 import { applyCardResult } from "./card-ops";
 import {
   resetStateHomeDirCache,
@@ -44,6 +49,17 @@ describe("M-1 dispatcher allowlist", () => {
     };
     expect(isAuthorizedDispatcher(cfg, "p_tower")).toBe(true);
     expect(isAuthorizedDispatcher(cfg, "p_evil")).toBe(false);
+  });
+  test("resolveAgentArgv rejects shell even when misconfigured as claude", () => {
+    const cfg: BridgeConfig = {
+      authorizedDispatchers: [],
+      herdrSocketPath: "/tmp/x",
+      agentArgv: { claude: ["bash"] },
+    };
+    expect(resolveAgentArgv(cfg, "claude")).toBeNull();
+    expect(resolveAgentArgv(defaultBridgeConfig(), "claude")).toEqual([
+      "claude",
+    ]);
   });
 });
 

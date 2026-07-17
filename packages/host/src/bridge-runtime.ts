@@ -27,6 +27,7 @@ import {
   HerdrClient,
   stripAnsi,
   HERDR_PROTOCOL_EXPECTED,
+  type HerdrAgentStarted,
 } from "./herdr-client";
 import {
   loadBridgeConfig,
@@ -285,7 +286,7 @@ export async function startBridgeRuntime(opts?: {
 
   async function processInboxEntry(entry: InboxEntry): Promise<void> {
     const h = entry.handoff;
-    if (!h || h.mode !== "task") return;
+    if (h?.mode !== "task") return;
     if (!hasDispatchLabel(h)) return;
     if (processedHandoffs.has(h.id)) return;
 
@@ -362,7 +363,7 @@ export async function startBridgeRuntime(opts?: {
     }
 
     const startedAt = new Date().toISOString();
-    let agent;
+    let agent: HerdrAgentStarted;
     try {
       agent = await herdr.agentStart({
         name: `loom-${payload.cardId.slice(0, 20)}`,
@@ -467,7 +468,7 @@ export async function startBridgeRuntime(opts?: {
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
       flights.delete(paneId);
-      void finishCard(flight, status === "done" ? "done" : "done", undefined);
+      void finishCard(flight, "done", undefined);
     }
   }
 

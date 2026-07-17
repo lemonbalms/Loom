@@ -77,7 +77,7 @@ export function saveBridgeConfig(profile: string, cfg: BridgeConfig): void {
   const dir = bridgeConfigDir();
   mkdirSync(dir, { recursive: true });
   const p = bridgeConfigPath(profile);
-  writeFileSync(p, JSON.stringify(cfg, null, 2) + "\n", {
+  writeFileSync(p, `${JSON.stringify(cfg, null, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600,
   });
@@ -103,10 +103,10 @@ export function resolveAgentArgv(
   kind: DispatchAgentKind,
 ): string[] | null {
   const argv = cfg.agentArgv[kind];
-  if (!argv || !argv.length) return null;
+  if (!argv?.length) return null;
   // Permanent: shell never allowed even if misconfigured
   if (argv[0] === "shell" || argv.some((a) => a === "sh" || a === "bash")) {
-    if (kind !== "claude") return null;
+    return null;
   }
   return argv;
 }

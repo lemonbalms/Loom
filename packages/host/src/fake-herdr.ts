@@ -67,14 +67,14 @@ export async function startFakeHerdr(
         calls.push({ method, params });
 
         const reply = (result: unknown) => {
-          sock.write(JSON.stringify({ id, result }) + "\n");
+          sock.write(`${JSON.stringify({ id, result })}\n`);
         };
         const err = (message: string) => {
           sock.write(
-            JSON.stringify({
+            `${JSON.stringify({
               id,
               error: { code: "invalid_request", message },
-            }) + "\n",
+            })}\n`,
           );
         };
 
@@ -132,21 +132,21 @@ export async function startFakeHerdr(
                     // For idle path, emit working first then idle so sawWorking works
                     if (auto === "done" || auto === "blocked") {
                       sock.write(
-                        JSON.stringify({ event, data }) + "\n",
+                        `${JSON.stringify({ event, data })}\n`,
                       );
                     } else if (auto === "idle") {
                       sock.write(
-                        JSON.stringify({
+                        `${JSON.stringify({
                           event,
                           data: { ...data, agent_status: "working" },
-                        }) + "\n",
+                        })}\n`,
                       );
                       setTimeout(() => {
                         sock.write(
-                          JSON.stringify({
+                          `${JSON.stringify({
                             event,
                             data: { ...data, agent_status: "idle" },
-                          }) + "\n",
+                          })}\n`,
                         );
                       }, 10);
                     }
@@ -199,7 +199,7 @@ export async function startFakeHerdr(
     socketPath: opts.socketPath,
     calls,
     pushEvent(event, data) {
-      const line = JSON.stringify({ event, data }) + "\n";
+      const line = `${JSON.stringify({ event, data })}\n`;
       for (const s of sockets) {
         try {
           s.write(line);
