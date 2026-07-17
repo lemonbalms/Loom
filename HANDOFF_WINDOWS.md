@@ -72,7 +72,9 @@ Mac에서 이미 확인한 것:
 
 ## 2) 지금 할 일 — 두 갈래 중 하나
 
-### 갈래 A (권장) — OpenSSH 켜기 → Mac 에이전트가 원격으로 마무리
+### 갈래 A (권장) — OpenSSH + Mac 공개키 → Mac 에이전트가 원격으로 마무리
+
+#### A1. OpenSSH 서버
 
 **관리자 PowerShell:**
 
@@ -81,23 +83,67 @@ Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
 Start-Service sshd
 Set-Service -Name sshd -StartupType Automatic
 Get-Service sshd
-# 방화벽은 capability가 보통 처리. 확인:
 Get-NetFirewallRule -Name *OpenSSH* | Format-Table DisplayName, Enabled
 ```
 
-키 로그인 (선택, 편함):
+#### A2. Mac 공개키 등록 (키 인증 — 준비됨 2026-07-17)
 
-```powershell
-# 사용자 키 방식 예
-mkdir $env:USERPROFILE\.ssh -Force
-# Mac의 ~/.ssh/*.pub 내용을 authorized_keys에 한 줄 추가
-notepad $env:USERPROFILE\.ssh\authorized_keys
+Mac 전용 키: `~/.ssh/id_ed25519_loom_windows`  
+**아래 한 줄을 그대로** `authorized_keys`에 넣습니다 (줄바꿈 없이 1줄).
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC8tV+XLiEuWg06S2Wi072aShc8ppd9i7w97yiLV7xtZ loom-windows-kyoungsiklee@KYOUNGSIKui-noteubug
 ```
 
-끝나면 Mac/채팅에 한 줄만:
+**일반 사용자 계정** (대부분의 경우 — 관리자 PowerShell 불필요):
+
+```powershell
+# 현재 로그인 사용자에 키 등록
+$dir = "$env:USERPROFILE\.ssh"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+$pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC8tV+XLiEuWg06S2Wi072aShc8ppd9i7w97yiLV7xtZ loom-windows-kyoungsiklee@KYOUNGSIKui-noteubug"
+$ak = Join-Path $dir "authorized_keys"
+if (-not (Test-Path $ak) -or -not (Select-String -Path $ak -Pattern "loom-windows-kyoungsiklee" -Quiet)) {
+  Add-Content -Path $ak -Value $pub -Encoding ascii
+}
+# OpenSSH on Windows: authorized_keys must not be overly open
+icacls $ak /inheritance:r
+icacls $ak /grant:r "$env:USERNAME:(R)"
+icacls $dir /inheritance:r
+icacls $dir /grant:r "$env:USERNAME:(OI)(CI)(F)"
+Write-Host "registered. user=$env:USERNAME"
+Write-Host "tell Mac: OpenSSH on. user=$env:USERNAME"
+Get-Content $ak
+```
+
+**Administrators 그룹 계정**으로 로그인하는 경우 (키 무시되면):
+
+```powershell
+# 관리자 PowerShell
+$pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC8tV+XLiEuWg06S2Wi072aShc8ppd9i7w97yiLV7xtZ loom-windows-kyoungsiklee@KYOUNGSIKui-noteubug"
+$ak = "C:\ProgramData\ssh\administrators_authorized_keys"
+Add-Content -Path $ak -Value $pub -Encoding ascii
+icacls $ak /inheritance:r
+icacls $ak /grant "Administrators:F"
+icacls $ak /grant "SYSTEM:F"
+# sshd_config: 관리자 키 경로 확인 (기본이 위 파일인 경우가 많음)
+Get-Content C:\ProgramData\ssh\sshd_config | Select-String -Pattern "admin|Authorized"
+Restart-Service sshd
+```
+
+#### A3. Mac에 알려 줄 한 줄
 
 ```text
 OpenSSH on. user=<Windows사용자명>
+```
+
+예: `OpenSSH on. user=kyoungsiklee`  
+Mac은 그 이름으로:
+
+```bash
+ssh -i ~/.ssh/id_ed25519_loom_windows USER@100.65.103.113
+# 또는 Host 별칭 (User를 실제 이름으로 바꾼 뒤):
+# ssh desktop-lg99qss
 ```
 
 ### 갈래 B — SSH 없이 이 PC에서 스크립트 실행 후 결과 붙여넣기
