@@ -6,7 +6,8 @@
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
 
 > ### Windows에서 볼 때
-> **→ [`HANDOFF_WINDOWS.md`](./HANDOFF_WINDOWS.md)** — Step 0 완료 요약 · SSH · NAT 경로.  
+> **→ [`HANDOFF_WINDOWS.md`](./HANDOFF_WINDOWS.md)** — **git pull 후 Windows 전용 실행 핸드오프**  
+> (Step 0 사실 + ⭐ **Tailscale 팀 공용 relay 상시화** 복붙 절차). 제품 코드는 Mac만.  
 > 이 파일(`HANDOFF.md`) = Mac/다음 세션 에이전트 진입점.
 
 ---
@@ -27,7 +28,10 @@
 >
 > **1) ~~(권장 검증) 실물 herdr 라이브 스모크~~ → 완료 (2026-07-17).** 5라운드 실행, 실버그 5건 수정, 최종 무개입 36초 왕복 성공. 상세 = `implementation-notes.md` 2026-07-17 rows + `docs/spikes/STEP0.5-HERDR.md` C4.
 >
-> **2) (오너 OPS, 코드 아님)** VPS/공용 relay · 팀 6인 dry-run (`docs/DRY_RUN_RUNBOOK.md`)
+> **2) (오너 OPS, 코드 아님)** 팀 공용 relay + 6인 dry-run  
+> - **권장(지금):** Windows Tailscale relay — 절차 전부 **[`HANDOFF_WINDOWS.md`](./HANDOFF_WINDOWS.md)** (`git pull` → §2 Task). URL `ws://100.65.103.113:7842`  
+> - 대안: VPS (`docs/DRY_RUN_RUNBOOK.md` Step 0)  
+> - 온보딩 Step 1–4: `docs/DRY_RUN_RUNBOOK.md`
 >
 > **3) FREEZE 유지** — work-watch·MCP 확대·C1/C2 등 신규 PLAN 오픈 금지(팀 pull 전).
 >
@@ -42,7 +46,7 @@
 
 ## One-line resume
 
-> **PLAN 0.22.0 implemented + 검증 + 라이브 스모크 완주 (2026-07-17).** `loom bridge` + MCP dispatch/apply + M-1/M-2. 라이브 스모크 실버그 5건 수정(C4 transport·CR·submit 검증-재시도 등), 최종 무개입 36초 왕복 성공. `bun test` **218/0**, VERSION **0.22.0**. 다음 = 오너 VPS/팀 온보딩만. FREEZE 유지.
+> **PLAN 0.22.0 implemented + 검증 + 라이브 스모크 완주 (2026-07-17).** `loom bridge` + MCP dispatch/apply + M-1/M-2. 라이브 스모크 실버그 5건 수정, 최종 무개입 36초 왕복 성공. `bun test` **218/0**, VERSION **0.22.0**. 다음 = 오너 OPS: **Windows Tailscale 팀 relay** (`HANDOFF_WINDOWS.md`) + 팀 dry-run. FREEZE 유지.
 
 ---
 
@@ -103,9 +107,10 @@ herdr status   # or: herdr server
 
 ## Strategic context (unchanged)
 
-> Loom = 오너 6인 팀 내부 도구. FREEZE = 팀-pull 요구만. **남은 오너 블로커 = VPS/공용 relay.** 런북 `docs/DRY_RUN_RUNBOOK.md`.
+> Loom = 오너 6인 팀 내부 도구. FREEZE = 팀-pull 요구만. **남은 오너 블로커 = 팀 공용 relay 상시화.**  
+> 권장 = Windows Tailscale (`HANDOFF_WINDOWS.md`). 대안 = VPS. 온보딩 = `docs/DRY_RUN_RUNBOOK.md`.
 >
-> 0.22.0은 FREEZE **예외 한 건**(오너 pull) — 브릿지 수직 슬라이스만. 저널·supervision·멀티노드·wire 변경은 out of scope.
+> 0.22.0은 FREEZE **예외 한 건**(오너 pull) — 브릿지 수직 슬라이스 **shipped**. 저널·supervision·멀티노드·wire 변경은 out of scope.
 
 ---
 

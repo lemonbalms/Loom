@@ -6,22 +6,24 @@
 - [x] Herdr design `docs/HERDR_DESIGN.md` (`85e7829`)
 - [x] Step 0.5 herdr v0.7.4 실측 + fixtures (`30ec344`)
 - [x] Step 0 Windows prep + Mac NAT health/join go (`0f968be` · `a6b9b37`)
-- [x] Handoff docs for next session (this update)
+- [x] PLAN **0.22.0** R23 + `loom bridge` implement + live herdr smoke (`5e2c058` 등)
+- [x] HANDOFF_WINDOWS — Tailscale 팀 relay git-pull 실행 핸드오프 (docs)
 
-## Next session
+## Next
 
-1. [ ] **오너 FREEZE 예외 한 줄** — `"0.22.0 Loom×Herdr bridge — 오너 pull, FREEZE 예외 승인"`
-2. [ ] PLAN **0.22.0** draft → `pending-review` (`docs/PLAN.md` + `docs/UNKNOWNS.md` §0.22.0)
-3. [ ] **R23** Fable 5 (`docs/plan_review.md`)
-4. [ ] approved 후 구현 레인 위임 — `loom bridge` (fake herdr fixtures · wire 무변경)
-5. [ ] (병렬/오너) VPS + `docs/DRY_RUN_RUNBOOK.md` 팀 온보딩
+1. [ ] **(Windows OPS)** `HANDOFF_WINDOWS.md` §2 — Tailscale 공용 relay Task + 재부팅 health
+2. [ ] **(Mac 오너)** room create + invite · 팀 1명 handoff 왕복
+3. [ ] **(팀)** 6인 onboarding + 1–2주 채택 (`docs/DRY_RUN_RUNBOOK.md` Step 1–4)
+4. [ ] (대안) VPS relay — Windows Tailscale 경로 불충분할 때만
 
 ## FREEZE
 
-신규 기능 = 팀 pull만. 0.22.0은 오너 pull 예외 **명시 후에만** 게이트 오픈.
-백로그 work-watch·MCP·C1/C2 동결 유지.
+신규 기능 = 팀 pull만. 백로그 work-watch·MCP·C1/C2 동결 유지.  
+0.22.0 bridge는 shipped — 추가 제품 게이트 열지 말 것.
 
 ## Don't redo
 
 - Step 0 / 0.5 re-measure (go)
 - 0.21.1 inject re-verify
+- R23 / 0.22.0 bridge re-implement
+- Windows에서 제품 코드 / loom bridge 구현
