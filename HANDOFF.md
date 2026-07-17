@@ -16,9 +16,9 @@
 > **🕸 (이전) Loom×Herdr 설계서** `docs/HERDR_DESIGN.md` (`85e7829`). Windows=타워 / herdr=노드 / `loom bridge` / relay wire 무변경.
 >
 > **⏩ 다음 순서:**
-> ① **Step 0 — WSL2 네트워킹 PoC** (오너 Windows 머신 필요) — 아직 미실시. 산출물 `docs/spikes/STEP0-WSL2-NETWORKING.md`.
-> ② PLAN **0.22.0** `pending-review` — **FREEZE 예외 = 오너 pull 한 줄 명시 필요** → R23 → approved 후 본구현( fake herdr = 위 fixture ).
-> ③ (선택) WSL에서 Step 0.5 매트릭스 재실행 · 실 Claude/Codex detection `done` 캡처.
+> ① **Step 0 — WSL2/Windows 네트워킹** — Tailscale L3 **확인됨** (`DESKTOP-LG99QSS` = `100.65.103.113`, ping/direct OK). **SSH 미개방**(22 closed, RDP/SMB only) → 호스트 원격실행 불가. 오너: OpenSSH 켜기 **또는** `docs/spikes/scripts/step0-windows.ps1` 실행 후 결과 붙여넣기. 스파이크 초안 `docs/spikes/STEP0-WSL2-NETWORKING.md`.
+> ② PLAN **0.22.0** `pending-review` — FREEZE 예외 오너 확인 → R23 → 본구현.
+> ③ (선택) WSL Step 0.5 재실행.
 >
 > **🕷 부수:** 브랜드 에셋 `assets/brand/` (`c825808`·`eccc23a`).
 >
