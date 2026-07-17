@@ -56,12 +56,10 @@
       "version": "0.1.0",
       "bin": {
         "loom-mcp": "./src/stdio.ts",
-        "fable-mcp": "./src/stdio.ts",
       },
       "dependencies": {
         "@loom/host": "workspace:*",
         "@loom/protocol": "workspace:*",
-        "zod": "^3.24.2",
       },
       "devDependencies": {
         "typescript": "^5.8.3",
