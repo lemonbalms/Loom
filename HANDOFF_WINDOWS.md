@@ -320,7 +320,7 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC8tV+XLiEuWg06S2Wi072aShc8ppd9i7w97yiLV7xtZ
 
 | 날짜 | 결과 | 비고 |
 |------|------|------|
-| _yyyy-mm-dd_ | _pending_ | health Mac OK? 재부팅 OK? Task 이름? IP 변경? |
+| 2026-07-17 | **Windows측 상시화 done** | Task `LoomRelayTeam` (AtLogOn·RestartCount5) · relay=**bun 프로세스**(loom.exe가 bun 런타임 → `Get-Process loom` 안 잡힘, `Get-NetTCPConnection -LocalPort 7842`로 확인) · `0.0.0.0:7842` health `ok+auth:true` · 방화벽 7842 = **Tailscale(100.64/10)+WSL 사설만** (Step 0의 `Remote=Any` 규칙 2개 삭제, WSL 172.16/12·172.27/16 유지) · 토큰 `~/.loom/relay-token.txt` 생성(48자). **오너 미검증: ① Mac `curl http://100.65.103.113:7842/health` ② 재부팅 1회 후 health ③ 절전 금지.** IP 변동 없음(100.65.103.113). 다음=§3 room create+invite |
 
 ---
 
