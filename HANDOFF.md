@@ -13,7 +13,7 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 0.22.0 `loom bridge` shipped (implemented).** 다음 = 아키텍트 검증 잔여(실물 herdr 라이브 스모크 수동 1회) 또는 **오너 OPS 트랙**(VPS/팀 dry-run).
+> **🎯 0.22.0 `loom bridge` shipped + 아키텍트 독립 검증 완료 (`89dbe34`).** M-1/M-2·L-1..L-3 코드 확인, `bun test` **214/0**, typecheck·biome clean. 검증 중 발견·수정: `resolveAgentArgv` shell 가드 no-op(레인 위임 수정 + 회귀 테스트). 남은 것 = **실물 herdr 라이브 스모크 수동 1회**(오너) 또는 **오너 OPS 트랙**(VPS/팀 dry-run).
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 | 산출물 |
@@ -42,7 +42,7 @@
 
 ## One-line resume
 
-> **PLAN 0.22.0 implemented (2026-07-17).** `loom bridge` + MCP dispatch/apply + M-1/M-2. `bun test` **213/0**, VERSION **0.22.0**. 다음 = 실물 herdr 수동 스모크 또는 오너 VPS/팀 온보딩. FREEZE 유지.
+> **PLAN 0.22.0 implemented + 아키텍트 검증 완료 (2026-07-17, `a8de571`+`89dbe34`).** `loom bridge` + MCP dispatch/apply + M-1/M-2. `bun test` **214/0**, VERSION **0.22.0**, pushed. 다음 = 실물 herdr 수동 스모크 또는 오너 VPS/팀 온보딩. FREEZE 유지.
 
 ---
 
@@ -53,10 +53,10 @@
 | **CLI / code** | **0.22.0** — `loom bridge` + MCP card tools |
 | **PLAN** | **v0.22.0** `approved` → **implemented** |
 | **Open blocking** | none |
-| **Tests** | `bun test` **213 pass / 0 fail** · 6 pkg typecheck green |
+| **Tests** | `bun test` **214 pass / 0 fail** · 6 pkg typecheck green · biome bridge files clean |
 | **Herdr design** | `docs/HERDR_DESIGN.md` |
 | **Step 0 / 0.5** | **go** |
-| **Remote** | ship after this session commit |
+| **Remote** | `origin/main` synced (`89dbe34`) |
 
 ### Access cheat-sheet
 
