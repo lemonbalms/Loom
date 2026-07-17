@@ -1,6 +1,6 @@
 # HANDOFF — Loom (next session)
 
-**Date:** 2026-07-17  
+**Date:** 2026-07-18  
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
 **GitHub:** https://github.com/lemonbalms/Loom (`main`)  
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
@@ -14,29 +14,27 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 시연 — 실물 herdr 준비 완료 → Windows bun.lock dispatch 대기.**  
+> **🎯 dispatch 시연 §3-2 완료 — M-4 거부(설계대로) + bun.lock 신뢰경로로 완수 (`1811aa9`).**  
 > 문서: **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md)** §3-2.
 >
 > | 단계 | 상태 |
 > |------|------|
 > | fake dispatch 시연 | ✅ board done |
 > | **Mac 실물 herdr 0.7.4 + bridge** | ✅ `herdrOk:true` · `~/.config/herdr/herdr.sock` · repo cwd server · allow win peer |
-> | **Windows `dispatchCard(task_5b240cad…)`** | ⬅ **다음** — 서술형 prompt · node `mac` |
-> | 기대 | 실 Claude spawn → bun.lock 작업 **또는** M-4 untrusted 거부(둘 다 유효) |
+> | **Windows §3-2 `dispatchCard(bun.lock)`** | ✅ 실행 → Fable 5 워커 spawn → **M-4 untrusted 거부**(설계대로) |
+> | **bun.lock sync (신뢰경로)** | ✅ 오너 직접 커밋·푸시 **`1811aa9`** — Windows·origin·Mac 3곳 정렬 |
 >
-> ### Windows에서 할 일
-> ```powershell
-> cd E:\projects\Loom
-> git pull --ff-only origin main
-> # docs/spikes/DISPATCH-DEMO.md §3-2 (bun.lock 카드)
-> ```
+> ### 이번 세션 학습 (중요)
+> - **카드 상태-회신 = 짧은 요약만 신뢰** (~35s 왕복). raw/긴 출력은 결과-캡처(pane 스크레이프)가 붕괴 → 쓰지 말 것.
+> - **Mac↔Windows Taildrop 불가**(양방향). Mac App Store Tailscale: 샌드박스 앱 CLI 파일 못 읽음 + homebrew 1.94.1↔daemon 1.98.8 스큐 no-op. 같은 user·active-direct라 네트워크/ACL 아님.
+> - **Mac status/파일 = SSH/scp가 정답.** `ssh -i ~/.ssh/id_mac_auto kyoungsiklee@100.69.230.114` (herdr·bridge 정상 직접 확인: herdrOk:true·inFlight:0).
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 | 산출물 |
 > |------|------|--------|
 > | PLAN 0.22.0 + R23 + live herdr smoke | shipped | tests **218/0** |
-> | Windows relay · fake 시연 | ✅ | DISPATCH-DEMO |
-> | **Mac §3 실물 herdr 전환** | ✅ | fake stop · real server · bridge restart |
+> | Windows relay · fake+실물 dispatch 시연 | ✅ | DISPATCH-DEMO |
+> | **§3-2 dispatch + bun.lock 완수** | ✅ | M-4 거부 실증 · `1811aa9` 3곳 정렬 |
 >
 > ### 병렬 / 이후
 > - 팀 6인 dry-run 온보딩: `docs/DRY_RUN_RUNBOOK.md` (시연 room `demo`와 **별개**)
@@ -46,6 +44,7 @@
 > ### 하지 말 것
 > - R23 재리뷰 / Step 0·0.5 재실행 / relay wire 변경
 > - 시연을 제품 게이트로 승격 · fake herdr를 실사용 경로로 문서화
+> - **카드 채널로 raw/긴 출력 받기 · Mac↔Win Taildrop 재시도** (둘 다 불가 확정 — SSH/scp 사용)
 > - M-1 없이 label-only 라우팅 · `pane.run` prompt 보간
 >
 > **Note:** `.playwright-mcp/` untracked — 커밋 제외. 시연 토큰/세션은 `~/.loom` · **미커밋**.
@@ -54,7 +53,7 @@
 
 ## One-line resume
 
-> **0.22.0 shipped.** fake dispatch ✅. **Mac 실물 herdr+bridge ready** → **Windows §3-2 bun.lock `dispatchCard`**. FREEZE 유지.
+> **0.22.0 shipped.** dispatch 시연 §3-2 **완료** — M-4 거부 실증 + bun.lock 신뢰경로 완수(`1811aa9`, Windows·origin·Mac 정렬). Mac status/파일은 **SSH/scp**(카드캡처·Taildrop 불가). FREEZE 유지.
 
 ---
 
@@ -68,7 +67,7 @@
 | **Tests** | `bun test` **218 pass / 0 fail** · 6 pkg typecheck green · biome bridge files clean |
 | **Herdr design** | `docs/HERDR_DESIGN.md` |
 | **Step 0 / 0.5** | **go** |
-| **Remote** | `origin/main` (see `git log -1`) · 시연 문서 `docs/spikes/DISPATCH-DEMO.md` |
+| **Remote** | `origin/main` **`1811aa9`** (Windows·Mac 정렬) · 시연 `docs/spikes/DISPATCH-DEMO.md` |
 
 ### Access cheat-sheet
 
