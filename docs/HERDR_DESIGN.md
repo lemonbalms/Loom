@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| **Status** | **PLAN 0.22.0 편입됨** (2026-07-17, R23 `approved` — binding **M-1 dispatcher 인가 · M-2 제출 분리**, `docs/plan_review.md` R23). 버전·status SSOT = `docs/PLAN.md` |
+| **Status** | **PLAN 0.22.0 implemented** (2026-07-17, R23 M-1/M-2). 버전·status SSOT = `docs/PLAN.md` |
 | **Date** | 2026-07-17 |
 | **Scope** | 수직 슬라이스(노드 1개, WSL2) 통과에 필요한 최소 설계. 확장은 각 절 "이후"로 분리 |
 | **Related** | [`loom-herdr-architecture.html`](./loom-herdr-architecture.html) (외부 권고 문서 아카이브) · [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §3.5 · [`UNKNOWNS.md`](./UNKNOWNS.md) · [`DRY_RUN_RUNBOOK.md`](./DRY_RUN_RUNBOOK.md) |

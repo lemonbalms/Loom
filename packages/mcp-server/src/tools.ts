@@ -17,6 +17,8 @@ import {
   setPurpose,
   formatPurpose,
   addTaskWithOptionalNotify,
+  dispatchCard,
+  applyCardResult,
   type ContextPack,
   type TaskBoard,
   type TaskItem,
@@ -296,4 +298,54 @@ export async function toolClaimHandoff(args: {
     error: result.error,
     via: result.source,
   };
+}
+
+/** PLAN 0.22.0 — dispatch existing board card to a herdr bridge peer. */
+export async function toolDispatchCard(args: {
+  taskId: string;
+  node: string;
+  prompt: string;
+  agentKind?: string;
+}): Promise<Record<string, unknown>> {
+  if (!loadSession()) {
+    throw new Error("No Loom session.");
+  }
+  const r = await dispatchCard({
+    taskId: args.taskId,
+    node: args.node,
+    prompt: args.prompt,
+    agentKind: args.agentKind,
+  });
+  if (!r.ok) {
+    throw new Error(r.error);
+  }
+  return {
+    status: r.status,
+    handoffId: r.handoffId,
+    taskId: r.taskId,
+    notified: r.notified,
+  };
+}
+
+/**
+ * PLAN 0.22.0 — apply claimed loom-card-result JSON to local board.
+ * L-2: pass fromPeerId/fromNode from the claimed handoff when available.
+ */
+export async function toolApplyCardResult(args: {
+  resultJson: string;
+  fromPeerId?: string;
+  fromNode?: string;
+}): Promise<Record<string, unknown>> {
+  if (!loadSession()) {
+    throw new Error("No Loom session.");
+  }
+  const r = applyCardResult({
+    resultJson: args.resultJson,
+    fromPeerId: args.fromPeerId,
+    fromNode: args.fromNode,
+  });
+  if (!r.ok) {
+    throw new Error(r.error);
+  }
+  return { task: r.task, status: r.status };
 }

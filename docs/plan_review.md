@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.22.0** `approved` (R23 `pending-revision` → M-1/M-2 locks → author-close, Fable 사전 승인) — **Loom×Herdr 노드 브릿지** 수직 슬라이스(`loom bridge`). 와이어 protocol v1 무변경. FREEZE 예외 = 오너 pull(2026-07-17). **구현 미착수**(레인 위임 대기). (0.21.1/R22 shipped `d05d714`.)  
+> **최신:** PLAN **v0.22.0** `approved` → **implemented** (R23 M-1/M-2) — **Loom×Herdr 노드 브릿지** 수직 슬라이스(`loom bridge`). 와이어 protocol v1 무변경. FREEZE 예외 = 오너 pull(2026-07-17). (0.21.1/R22 shipped `d05d714`.)  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R23** | **v0.22.0** | **closed (approved — 구현 대기)** | **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스) — 새 데몬 표면 + MCP `dispatch_card`/`apply_card_result` + 원격 프롬프트 주입 신뢰 경계. `pending-revision` → M-1(dispatcher 인가)/M-2(제출 분리) locks → author-close(Fable 사전 승인). L-1..L-3 author-close. 와이어 무변경. FREEZE 예외=오너 pull. |
+| **R23** | **v0.22.0** | **closed (approved → implemented 2026-07-17)** | **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스) — 새 데몬 표면 + MCP `dispatch_card`/`apply_card_result` + 원격 프롬프트 주입 신뢰 경계. M-1/M-2 locks 충족(코드+테스트). L-1..L-3 author-close. 와이어 무변경. FREEZE 예외=오너 pull. |
 | **R22** | **v0.21.0→0.21.1** | **closed (approved → implemented `d05d714`)** | **PTY handoff inject** — Claude-first · opt-in · accept-gated · **no-auto-submit paste**. M-1…M-6 locks. Fable 5 사전 승인(no R22b). codex-impl 구현 → 아키텍트 독립 검증(bun test 190/0, M-1..M-6 코드 확인). 와이어 변경 없음. FREEZE 예외=오너 pull. |
 | **R21** | **v0.20.0** | **closed (approved→shipped `c15de88`)** | Tier A3 `loom doctor` (read-only 진단) — no wire change. All binding M-1..M-4 met (architect-verified: bun test 180/0, live run exit 0), L-1..L-3 author-closed. Implemented via codex-impl lane. |
 | R20 | v0.19.0 | closed (approved→shipped `a9cefd0`) | Tier A1 install script — install/doc/string surface, zero relay coupling. M-1..M-4 impl-bound (done), L-1..L-4 author-close. Docker harness caught + fixed a bash-login `set -e` abort. |
@@ -23,7 +23,7 @@
 
 ## Open (blocking)
 
-_(none)_ — **R23 closed `approved`** (v0.22.0 Loom×Herdr 노드 브릿지): Fable 5 `pending-revision` → M-1(dispatcher 인가)/M-2(제출 분리) locks PLAN 반영 → author-close(사전 승인, no R23b). **구현 미착수** — approved 후 레인 위임으로만(binding M-1/M-2 + L-1..L-3 author-close). (R22/v0.21.1 shipped `d05d714`.)
+_(none)_ — **R23 closed `approved` → implemented** (v0.22.0 Loom×Herdr 노드 브릿지): M-1/M-2 + L-1..L-3 충족, `bun test` 213/0. 실물 herdr 라이브 스모크는 수동 1회 권장. (R22/v0.21.1 shipped `d05d714`.)
 
 ---
 

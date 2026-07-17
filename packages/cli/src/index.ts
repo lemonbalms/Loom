@@ -24,6 +24,11 @@ import {
   stickyRpc,
   loadStickyMeta,
   isPidAlive,
+  startBridgeProcess,
+  stopBridgeProcess,
+  bridgeStatus,
+  loadBridgeConfig,
+  saveBridgeConfig,
   type LoomSession,
   opsListPeers,
   opsHandoff,
@@ -121,7 +126,7 @@ import {
   shouldActivateHandoffInject,
 } from "./inject-handoffs";
 
-const VERSION = "0.21.1";
+const VERSION = "0.22.0";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -219,6 +224,7 @@ Usage:
   loom up [--profiles a,b] [--status]   # background sticky host per profile (0.17)
   loom down [--profiles a,b]            # stop sticky hosts (idempotent)
   loom host start | stop | status   # sticky long-lived relay connection (advanced)
+  loom bridge start | stop | status # herdr node bridge daemon (0.22)
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
@@ -379,6 +385,7 @@ function profilesWithSession(): string[] {
   for (const name of readdirSync(dir)) {
     if (!name.endsWith(".json")) continue;
     if (name.endsWith(".host.json")) continue; // skip sticky meta files
+    if (name.endsWith(".bridge.json")) continue; // skip bridge meta files (0.22)
     out.push(name.slice(0, -".json".length));
   }
   return out.sort();
@@ -1436,6 +1443,81 @@ async function cmdInboxAccept(id: string) {
     `(accepted as ${result.session.displayName}, status=${result.entry.status})`,
   );
   process.exit(0);
+}
+
+async function cmdBridge(sub: string | undefined, rest: string[]) {
+  if (sub === "start") {
+    if (!loadSession()) {
+      console.error("No session. Create or join a room first.");
+      process.exit(1);
+    }
+    const profile = getActiveProfile() ?? loadSession()!.displayName ?? "default";
+    // Optional: loom bridge start --allow <peerId>[,peerId]
+    const allowFlag = rest.find((a) => a.startsWith("--allow="));
+    const allowIdx = rest.indexOf("--allow");
+    const allowRaw =
+      allowFlag?.slice("--allow=".length) ||
+      (allowIdx >= 0 ? rest[allowIdx + 1] : undefined);
+    if (allowRaw) {
+      const cfg = loadBridgeConfig(profile);
+      const ids = allowRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      cfg.authorizedDispatchers = [
+        ...new Set([...cfg.authorizedDispatchers, ...ids]),
+      ];
+      saveBridgeConfig(profile, cfg);
+      console.log(
+        `Authorized dispatchers (${profile}): ${cfg.authorizedDispatchers.join(", ")}`,
+      );
+    }
+    const cfg = loadBridgeConfig(profile);
+    if (!cfg.authorizedDispatchers.length) {
+      console.error(
+        "M-1: authorizedDispatchers empty — default deny. Set with:\n" +
+          `  ${loomCmd()} bridge start --allow <towerPeerId>\n` +
+          `  or edit ${profile} bridge config under ~/.loom/bridge/`,
+      );
+      process.exit(1);
+    }
+    const r = await startBridgeProcess();
+    if (!r.ok) {
+      console.error(r.error);
+      process.exit(1);
+    }
+    console.log(
+      r.alreadyRunning
+        ? `Bridge already running (pid ${r.meta.pid}, port ${r.meta.port})`
+        : `Bridge started (pid ${r.meta.pid}, port ${r.meta.port})`,
+    );
+    console.log(`herdr: ${r.meta.herdrSocketPath}`);
+    console.log(`Stop with: ${loomCmd()} bridge stop`);
+    return;
+  }
+  if (sub === "stop") {
+    const r = await stopBridgeProcess();
+    console.log(r.message);
+    return;
+  }
+  if (sub === "status" || !sub) {
+    const st = await bridgeStatus();
+    if (!st.running) {
+      console.log("bridge: offline");
+      console.log(`Tip: ${loomCmd()} bridge start --allow <towerPeerId>`);
+      return;
+    }
+    console.log(
+      `bridge: online pid=${st.meta?.pid} port=${st.meta?.port} peer=${st.meta?.displayName}`,
+    );
+    console.log(`  herdr: ${st.meta?.herdrSocketPath}`);
+    if (st.health && typeof st.health === "object") {
+      console.log(`  health: ${JSON.stringify(st.health)}`);
+    }
+    return;
+  }
+  console.error("Usage: loom bridge start|stop|status [--allow <peerId>]");
+  process.exit(1);
 }
 
 async function cmdHost(sub: string | undefined) {
@@ -2743,6 +2825,10 @@ async function main() {
   }
   if (cmd === "host") {
     await cmdHost(sub);
+    return;
+  }
+  if (cmd === "bridge") {
+    await cmdBridge(sub, rest);
     return;
   }
   if (cmd === "up") {

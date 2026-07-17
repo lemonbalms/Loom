@@ -4,10 +4,10 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.22.0** |
-| **Status** | **`approved`** (R23 `pending-revision` → M-1/M-2 locks → author-close, Fable 사전 승인) — **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스: 카드 dispatch → 원격 herdr pane 실행 → `[DONE]` 회신) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/HERDR_DESIGN.md` · 선행 게이트 Step 0/0.5 둘 다 **go**. **FREEZE 예외 = 오너 pull (2026-07-17).** 구현 미착수(레인 위임 대기). 0.21.1(R22) shipped `d05d714`. |
+| **Status** | **`approved` → implemented** (R23 M-1/M-2) — **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스: 카드 dispatch → 원격 herdr pane 실행 → `[DONE]` 회신) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/HERDR_DESIGN.md` · Step 0/0.5 go · FREEZE 예외 = 오너 pull (2026-07-17). 0.21.1(R22) shipped `d05d714`. |
 | **Supersedes** | 0.21.1 |
 | **Last updated** | 2026-07-17 |
-| **Approval** | **R23 `pending-revision` → M-1/M-2 locks 반영 → author-close `approved`** (Fable 5 사전 승인, no R23b). Binding: **M-1** dispatcher 인가(fromPeerId allowlist, label 단독 실행 금지, 기본 거부), **M-2** 제출 분리(`agent.send` 리터럴만 + bare-Enter 별도 호출, `pane.run` 보간 영구 금지). L-1..L-3 author-close. |
+| **Approval** | **R23 `pending-revision` → M-1/M-2 locks 반영 → author-close `approved`** (Fable 5 사전 승인, no R23b). Binding: **M-1** dispatcher 인가(fromPeerId allowlist, label 단독 실행 금지, 기본 거부), **M-2** 제출 분리(`agent.send` 리터럴만 + bare-Enter 별도 호출, `pane.run` 보간 영구 금지). L-1..L-3 author-close. **Implemented 2026-07-17** (Grok impl lane). |
 | **Fable 5 when** | **Required** — 새 제품 표면 + 보안·신뢰 경계 변경 (§5.1). **R23 done.** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -89,7 +89,9 @@
 - **L-2 (author-close):** `apply_card_result`는 claim한 handoff의 `fromPeerId`/`node`를 카드 `assignee`와 대조 — 불일치 시 경고·거부(위조 `[DONE]` 차단).
 - **L-3 (author-close):** attachment 크기 사슬 보정 — relay는 초과 attachment를 truncate가 아니라 **거부**(bad_message)하므로 송신 측(타워·브릿지)이 직렬화 후 크기를 사전 검증. zero-width/bidi는 JSON.stringify가 이스케이프하지 않음(파싱 안전, 내용 무손실은 아님). 스키마 초안 `.nonneg()` → `.nonnegative()`.
 
-**Approved by:** Fable 5 (fable-advisor) R23 — `pending-revision` → M-1/M-2 locks 본문 반영 → **author-close `approved`** (Fable 사전 승인, no R23b), 2026-07-17. **구현은 레인 위임**(세션 모델 직접 코딩 금지, DOGFOOD_LOOP §1.2).
+**Approved by:** Fable 5 (fable-advisor) R23 — `pending-revision` → M-1/M-2 locks 본문 반영 → **author-close `approved`** (Fable 사전 승인, no R23b), 2026-07-17.
+
+**Implemented as of 2026-07-17** — Grok impl lane. 신규: `card-contract.ts` · `herdr-client.ts` · `bridge-{config,meta,runtime,main,spawn}.ts` · `card-ops.ts` · MCP `dispatch_card`/`apply_card_result` · CLI `loom bridge start|stop|status`. **M-1** allowlist 기본 거부 · **M-2** `agent.send`+`BARE_ENTER` 분리 · L-1 payload_invalid 회신 · L-2 assignee/node 대조 · L-3 직렬화 사전 검증. 테스트: fake herdr + in-process relay (authorized dispatch, M-1 deny, offline queue+rejoin, fail-fast). VERSION **0.22.0** (CLI+MCP). `bun test` 213 pass/0 fail · 6-pkg typecheck green. **알려진 갭:** 실물 herdr 라이브 스모크는 수동 1회(§5.3) — 자동화는 fixture 전용.
 
 #### 0.21.0 → 0.21.1 — 2026-07-11 (`approved` author-close after R22 `pending-revision` — **PTY handoff inject (원래 설계 유보 수신 경로 고도화)**)
 

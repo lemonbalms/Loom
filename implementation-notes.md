@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-11 (0.20.0 loom doctor) |
+| **Last updated** | 2026-07-17 (0.22.0 loom bridge) |
 
 ---
 
@@ -66,6 +66,10 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-11 | R21 L-1/L-2/L-3 | Writable check uses `accessSync(home, W_OK)` only; renderer redacts `token` query params defensively; host RPC uses `stickyRpc({ op: "status" }, { meta, timeoutMs: 2500 })` | Closes all R21 Low items without expanding scope or adding mutation | Done 0.20.0 |
 | 2026-07-11 | R22 / 0.21.1 PTY inject implementation detail | `run-with-pty.py` services the inject Unix socket from the existing PTY `select` loop instead of a background daemon thread | Keeps all PTY master writes serialized in one loop while preserving the binding locks: env-gated only, no buffering, fresh Stop marker + output quiescence, bracketed paste only | Optional future refactor to daemon thread if the select-loop handler proves too much latency |
 | 2026-07-12 | R22 / 0.21.1 known limitations (disclosed) | (a) idle signal = Claude `Stop` hook marker + PTY output-quiescence AND-gate; there is **no `UserPromptSubmit`/pre-generation hook**, so marker staleness is cleared heuristically on human stdin activity. (b) The python inject path (`run-with-pty.py`) is exercised by `py_compile` + architect line-review only — **no runtime/e2e test** (no python test runner in repo). | Conservative: any uncertainty → no-inject (M-3), and the feature is opt-in/dormant unless `--inject-handoffs` (zero default-path blast radius). | **Live smoke recommended before the team enables `--inject-handoffs`**: drive a real `loom run claude --inject-handoffs`, accept a handoff, confirm paste-not-submit + no inject while busy. |
+| 2026-07-17 | R23 / 0.22.0 M-2 bare Enter | herdr socket surface has no `pane.run` (methods: `agent.send` / `pane.send_keys`…). M-2 implemented as **two `agent.send` calls**: untrusted prompt, then fixed constant `BARE_ENTER` (`"\n"`). Never interpolates prompt into a submit command. | Matches Step 0.5 “send is no-Enter”; second call is untrusted-free constant only — equivalent to bare Enter without `pane.run` prompt interpolation ban. | Live smoke with real herdr/claude to confirm Enter reaches the agent input. |
+| 2026-07-17 | R23 / 0.22.0 bridge stop semantics | `bridge stop` **disconnects without `leave`** so the peer stays on roster as offline (durable inbox + peerSecret rejoin). Explicit leave would drop the peer and make offline dispatch `peer_unknown`. | Preserves F1 offline queue durability from HERDR_DESIGN §2.4. | If permanent de-register is needed later, add `bridge leave` subcommand. |
+| 2026-07-17 | R23 / 0.22.0 author-close L-1..L-3 | L-1: zod fail → claim + `failed reason=payload_invalid` result. L-2: `apply_card_result` rejects `result.node` ≠ card `assignee` (+ optional fromNode). L-3: `serializeCardAttachment` pre-checks 256k; schema uses `.nonnegative()`. | All three author-close items implemented without scope expansion. | Done 0.22.0 |
+| 2026-07-17 | R23 / 0.22.0 inbox drain | Bridge polls `listInbox` every 1.5s in addition to initial drain (online handoff push does not always deliver full body to the bridge handler). | Conservative: at-most-once processing with `processedHandoffs` set; no journal. | Optional: sticky-style envelope push of full handoff when addressed to self. |
 
 ### Earlier waves (pointer only)
 

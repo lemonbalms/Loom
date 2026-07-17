@@ -16,6 +16,8 @@ import {
   toolUpdateTask,
   toolExportBoard,
   toolImportBoard,
+  toolDispatchCard,
+  toolApplyCardResult,
 } from "./tools";
 
 type JsonRpcReq = {
@@ -224,6 +226,60 @@ const TOOLS = [
       required: ["id"],
     },
   },
+  {
+    name: "dispatch_card",
+    description:
+      "Dispatch an existing board card to a remote herdr node bridge. Sends a mode:task handoff with a loom-card-dispatch attachment, then moves the card to doing with assignee/handoffId set.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "Board task id (task_<hex>; unique suffix accepted)",
+        },
+        node: {
+          type: "string",
+          description: "Target bridge peer displayName, e.g. node/wsl-1",
+        },
+        prompt: {
+          type: "string",
+          description:
+            "Literal prompt text injected into the remote agent (no trailing newline)",
+        },
+        agentKind: {
+          type: "string",
+          description:
+            'Agent kind from the dispatch allowlist (default "claude"). Not an argv — mapping lives in bridge-local config.',
+        },
+      },
+      required: ["taskId", "node", "prompt"],
+    },
+  },
+  {
+    name: "apply_card_result",
+    description:
+      "Apply a claimed card result (loom-card-result attachment JSON) to the local board: done → done, failed → blocked, summary → notes. Pass fromPeerId/fromNode from the claimed handoff for L-2 forgery checks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resultJson: {
+          type: "string",
+          description:
+            "Raw content of the loom-card-result attachment from the claimed handoff",
+        },
+        fromPeerId: {
+          type: "string",
+          description: "Claimed handoff fromPeerId (L-2 optional check)",
+        },
+        fromNode: {
+          type: "string",
+          description:
+            "Claimed sender displayName / node for L-2 assignee match",
+        },
+      },
+      required: ["resultJson"],
+    },
+  },
 ];
 
 function respond(id: string | number | null | undefined, result: unknown) {
@@ -250,7 +306,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.21.1" },
+        serverInfo: { name: "loom", version: "0.22.0" },
       });
       return;
     case "notifications/initialized":
@@ -364,6 +420,36 @@ async function handle(req: JsonRpcReq) {
         } else if (name === "claim_handoff") {
           text = JSON.stringify(
             await toolClaimHandoff({ id: String(args.id ?? "") }),
+            null,
+            2,
+          );
+        } else if (name === "dispatch_card") {
+          text = JSON.stringify(
+            await toolDispatchCard({
+              taskId: String(args.taskId ?? ""),
+              node: String(args.node ?? ""),
+              prompt: String(args.prompt ?? ""),
+              agentKind:
+                args.agentKind !== undefined
+                  ? String(args.agentKind)
+                  : undefined,
+            }),
+            null,
+            2,
+          );
+        } else if (name === "apply_card_result") {
+          text = JSON.stringify(
+            await toolApplyCardResult({
+              resultJson: String(args.resultJson ?? ""),
+              fromPeerId:
+                args.fromPeerId !== undefined
+                  ? String(args.fromPeerId)
+                  : undefined,
+              fromNode:
+                args.fromNode !== undefined
+                  ? String(args.fromNode)
+                  : undefined,
+            }),
             null,
             2,
           );
