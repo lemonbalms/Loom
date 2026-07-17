@@ -8,6 +8,7 @@
 | **Date** | 2026-07-17 |
 | **Related** | [`HERDR_DESIGN.md`](../HERDR_DESIGN.md) §5.1 · Step 0.5 [`STEP0.5-HERDR.md`](./STEP0.5-HERDR.md) |
 | **Scripts** | [`scripts/step0-windows.ps1`](./scripts/step0-windows.ps1) · [`scripts/step0-wsl.sh`](./scripts/step0-wsl.sh) |
+| **Windows handoff** | 레포 루트 [`HANDOFF_WINDOWS.md`](../../HANDOFF_WINDOWS.md) — Windows에서 `git pull` 후 이 파일부터 |
 
 ## Goal
 

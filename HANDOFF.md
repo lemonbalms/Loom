@@ -5,6 +5,10 @@
 **GitHub:** https://github.com/lemonbalms/Loom (`main`)  
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
 
+> ### Windows에서 볼 때
+> **→ [`HANDOFF_WINDOWS.md`](./HANDOFF_WINDOWS.md)** 만 보면 됨 (Step 0 체크리스트 · PowerShell/WSL · git pull 안내).  
+> 이 파일(`HANDOFF.md`)은 전체 세션/Mac 에이전트용.
+
 ---
 
 ## ⭐ Current action (read first)
