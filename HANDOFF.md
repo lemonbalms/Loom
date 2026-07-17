@@ -1,42 +1,135 @@
 # HANDOFF — Loom (next session)
 
-**Date:** 2026-07-17 (PM)  
+**Date:** 2026-07-17 (EOD)  
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
 **GitHub:** https://github.com/lemonbalms/Loom (`main`)  
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
 
 > ### Windows에서 볼 때
-> **→ [`HANDOFF_WINDOWS.md`](./HANDOFF_WINDOWS.md)** 만 보면 됨 (Step 0 체크리스트 · PowerShell/WSL · git pull 안내).  
-> 이 파일(`HANDOFF.md`)은 전체 세션/Mac 에이전트용.
+> **→ [`HANDOFF_WINDOWS.md`](./HANDOFF_WINDOWS.md)** — Step 0 완료 요약 · SSH · NAT 경로.  
+> 이 파일(`HANDOFF.md`) = Mac/다음 세션 에이전트 진입점.
 
 ---
 
 ## ⭐ Current action (read first)
 
-> **✅ Step 0.5 herdr 실측 완료 (2026-07-17, 이 세션).** 공식 바이너리 **herdr v0.7.4** 설치(`~/.local/bin/herdr`, `curl -fsSL https://herdr.dev/install.sh | sh`) · GitHub [`ogulcancelik/herdr`](https://github.com/ogulcancelik/herdr) · AGPL-3.0-or-later+commercial dual. 산출물: **`docs/spikes/STEP0.5-HERDR.md`** + fixture **`docs/spikes/fixtures/herdr-v0.7.4/`** (NDJSON 원문·schema protocol 16). Verdict **go** + 보정 **C1–C3** (`HERDR_DESIGN` §0.1 갱신).
+> **🎯 다음 게이트 = PLAN 0.22.0 (`loom bridge`) — FREEZE 예외 오너 확인 대기.**
 >
-> **핵심 실측:** 소켓 `~/.config/herdr/herdr.sock` 0600 · NDJSON `{id,method,params}` · `agent.start` env + `HERDR_PANE_ID` 자동주입 · `agent.send` no-Enter · `events.subscribe`/`events.wait` · status 이벤트 **본문 없음** → `pane.read source=recent` · `session.snapshot` reconcile. **C1:** `done`은 관측 enum에만 있고 `report_agent` 쓰기 불가. **C2:** subscribe=dotted `type` / push·wait=underscore `event`. **C3:** metadata seq 필드 있음·낮은 seq 거절 미확인.
+> ### 이미 끝난 것 (다시 하지 말 것)
+> | 항목 | 상태 | 산출물 |
+> |------|------|--------|
+> | Loom product | **0.21.1** PTY inject 검증 완료 | `d05d714` · `bun test` 195/0 |
+> | Herdr 설계서 | shipped | `docs/HERDR_DESIGN.md` (`85e7829`) |
+> | **Step 0.5 herdr 실측** | **go** · v0.7.4 · protocol 16 | `docs/spikes/STEP0.5-HERDR.md` · `docs/spikes/fixtures/herdr-v0.7.4/` |
+> | **Step 0 WSL/Windows 네트워킹** | **go** | `docs/spikes/STEP0-WINDOWS-RESULT.md` · `STEP0-MAC-CONTINUATION.md` · `STEP0-WSL2-NETWORKING.md` |
 >
-> **🕸 (이전) Loom×Herdr 설계서** `docs/HERDR_DESIGN.md` (`85e7829`). Windows=타워 / herdr=노드 / `loom bridge` / relay wire 무변경.
+> ### Step 0 핵심 사실 (브릿지 설계 입력)
+> - **Windows 타워:** `DESKTOP-LG99QSS` · user **`34970`** · Tailscale **`100.65.103.113`**
+> - **SSH (Mac→Win):** `ssh -i ~/.ssh/id_ed25519_loom_windows 34970@100.65.103.113` (Host alias `desktop-lg99qss`)
+> - **WSL→relay:** NAT 게이트웨이 **`ws://172.27.80.1:7842/ws`** (Win10 → mirrored **불가/무시**)
+> - **③** health `{"ok":true,"version":1,"auth":true}` · **⑤** join `LOOM-D3FT` peers `tower`+`wslnode`
+> - **Relay 상시:** SSH 일회 프로세스는 죽음 → Scheduled Task `LoomRelayStep0` 패턴
+> - **herdr:** `~/.local/bin/herdr` v0.7.4 · 소켓 `~/.config/herdr/herdr.sock` · C1–C3 보정 반영됨
 >
-> **✅ Step 0 WSL/Windows 네트워킹 = go (2026-07-17).** Windows prep `0f968be` + Mac SSH 연속 실측. ③ WSL→`172.27.80.1:7842/health` OK · ⑤ join `LOOM-D3FT` (tower+wslnode). Win10이라 mirrored N/A·NAT 경로. 상세 `docs/spikes/STEP0-MAC-CONTINUATION.md` · `STEP0-WINDOWS-RESULT.md`.
+> ### ⏩ 다음 세션이 할 일 (순서 고정)
 >
-> **⏩ 다음 순서:**
-> ① PLAN **0.22.0** `pending-review` — **FREEZE 예외 = 오너 pull 한 줄 명시** 필요 → R23 → `loom bridge` 본구현 (fixtures `herdr-v0.7.4` + NAT attach 모델).
-> ② (선택) Win11 업그레이드 시 mirrored 재검증 · WSL herdr 실측 · Mac TS:7842 방화벽.
+> **0) 오너 한 줄 (블로커)**  
+> FREEZE 예외 명시: *"0.22.0 Loom×Herdr bridge — 오너 pull, FREEZE 예외 승인"*  
+> 없으면 PLAN `pending-review` 열지 말 것 (HERDR_DESIGN §6.1 · PLAN 0.21.1 선례).
 >
-> **🕷 부수:** 브랜드 에셋 `assets/brand/` (`c825808`·`eccc23a`).
+> **1) PLAN 0.22.0 draft → `pending-review`**  
+> - SSOT: `docs/PLAN.md` changelog 0.21.1 패턴  
+> - Related: `docs/HERDR_DESIGN.md` + Step 0/0.5 spikes  
+> - What: `loom bridge` 데몬 · dispatch/done handoff 컨벤션 · **wire protocol v1 무변경**  
+> - Network lock: WSL attach = host NAT IP (not 127.0.0.1 on Win10)  
+> - herdr locks: NDJSON + C1–C3 · fixtures `docs/spikes/fixtures/herdr-v0.7.4/`  
+> - Unknowns → `docs/UNKNOWNS.md` §0.22.0  
+> - Binding M-locks + Security (untrusted handoff → agent prompt)
 >
-> ---
+> **2) R23** — Fable 5 필수 (`docs/WORKFLOW.md` §5.0–5.1). claude-rev는 `fable-advisor` 컨설트 후 `docs/plan_review.md` R23.
 >
-> **✅ (이전 상태 유지) v0.21.1 PTY handoff inject — 완전 검증됨 (구현 `d05d714` + 검증 `08ddb98`·`2fb8f6a`, all pushed).** 더 이상 런타임 미검증 지점 없음. `loom run claude --inject-handoffs`(opt-in, Claude 전용): 로컬 0600 Unix 소켓 제어, accept/claim 트리거 sanitized paste, Stop-hook idle 마커 + PTY quiescence, bracketed paste **no-auto-submit**. VERSION 0.21.1(CLI+MCP).
+> **3) approved 후에만 구현** — 세션 모델 직접 코딩 금지. 레인: grok-impl → codex-impl → 하위 서브에이전트 (`docs/DOGFOOD_LOOP.md` §1.2).  
+> 테스트: fake herdr from fixtures · relay in-process · at-most-once.
 >
-> **✅ 라이브 스모크 = 이번 세션 완료 (더는 권장사항 아님, 실제로 함):**
-> ① 정식 통합 테스트 `packages/host/src/inject-live.test.ts`(`08ddb98`) — 실 `run-with-pty.py` PTY spawn, 프레임 안착·no-auto-submit·dedup·stale·**breakout 방어** 검증. `bun test` **195/0**. python3 부재/Windows skip 가드.
-> ② **실 `claude` 바이너리 프로브** — idle Ink TUI가 300ms quiescence 게이트 통과(400ms 0 bytes), inject `ok:true`, handoff가 `❯` 입력창 안착 + **미제출** 확인. → Ink 수용까지 닫힘. (일회성 검증, repo 아티팩트 없음.)
+> **4) (병렬 가능, 코드 아님)**  
+> - VPS/공용 relay · 팀 6인 dry-run (`docs/DRY_RUN_RUNBOOK.md`) — 오너  
+> - (선택) WSL에 herdr 설치 후 Step 0.5 재확인 · Win11 mirrored
 >
-> **🧭 프로세스 규칙 추가(`2fb8f6a`) — Next-action test:** 스스로 고른 액션은 "실패하면 뭘 새로 배우나"에 답해야 함. **실패 불가능한 액션(이미 green 재실행·오너 대기·문서정리)은 다음 액션 자격 박탈** — 가장 무서운 검증 가능한 것부터. 오너에게 수동 스크립트 넘기는 건 최후 수단. (`AGENTS.md` Standing rules + `tasks/lessons.md` 5번째. Fable 5 진단 = 이번 세션 반복 회피의 근본원인 = selector 고장.)
-> **Note:** `.playwright-mcp/`는 untracked 로컬 상태, 커밋 제외.
+> ### 하지 말 것
+> - FREEZE 예외 없이 브릿지 코드 작성  
+> - Step 0 / 0.5 재실행(이미 go)  
+> - relay wire / envelope 스키마 변경  
+> - herdr 소스 벤더링 (AGPL — 소켓 호출만)
+>
+> **Note:** `.playwright-mcp/` untracked — 커밋 제외.
+
+---
+
+## One-line resume
+
+> **Step 0 + Step 0.5 = go.** 다음 = 오너 FREEZE 예외 한 줄 → PLAN **0.22.0** pending-review → R23 → `loom bridge` 구현. 제품 CLI **0.21.1**. 설계 `docs/HERDR_DESIGN.md`. 브릿지 코드 없음. VPS/팀 온보딩은 별 트랙.
+
+---
+
+## Where we are
+
+| Item | Value |
+|------|--------|
+| **CLI / code** | **0.21.1** — PTY inject fully verified · `bun test` **195/0** |
+| **PLAN** | **v0.21.1** `approved` · **next draft target 0.22.0** (not opened) |
+| **Open blocking (product)** | none on 0.21.1 |
+| **Open blocking (0.22)** | **FREEZE 예외 오너 확인** |
+| **Herdr design** | `docs/HERDR_DESIGN.md` draft · PLAN 미편입 |
+| **Step 0** | **go** · Win10 NAT · SSH `34970@100.65.103.113` |
+| **Step 0.5** | **go** · herdr v0.7.4 · fixtures protocol 16 |
+| **Latest commits** | `a6b9b37` Step 0 go · `0f968be` Windows prep · `30ec344` herdr fixtures |
+| **Remote** | `origin/main` synced |
+
+### Access cheat-sheet (next session)
+
+```bash
+# Mac → Windows
+ssh -i ~/.ssh/id_ed25519_loom_windows 34970@100.65.103.113
+# or: ssh desktop-lg99qss
+
+# WSL → Windows relay (when task running)
+curl -s http://172.27.80.1:7842/health
+
+# herdr local (Mac)
+herdr status   # or: herdr server
+```
+
+### Already shipped (don't redo)
+
+| Area | Version / note |
+|------|----------------|
+| Durable inbox | 0.14.x |
+| Purpose + verify | 0.15.1 |
+| Work bus | 0.16.1 |
+| Launcher UX | 0.17.1 |
+| Invite blob | 0.18.0 |
+| install.sh | 0.19.0 |
+| loom doctor | 0.20.0 |
+| PTY inject | **0.21.1** |
+| Step 0 / 0.5 spikes | **done 2026-07-17** |
+
+### Naming
+**Loom** = product · **Fable 5** = review agent
+
+---
+
+## This wave (2026-07-17) — Herdr + Step 0/0.5
+
+| 영역 | 결과 | Commit |
+|------|------|--------|
+| 설계서 | Loom×Herdr 브릿지 | `85e7829` |
+| 브랜드 | spider assets | `c825808`·`eccc23a` |
+| Step 0.5 | herdr v0.7.4 실측 + fixtures + C1–C3 | `30ec344` |
+| Windows handoff | `HANDOFF_WINDOWS.md` + pubkey | `023055a`·`de04f97` |
+| Step 0 prep (Win) | OpenSSH, WSL Ubuntu, loom, firewall | `0f968be` |
+| Step 0 go (Mac) | NAT health + join LOOM-D3FT | `a6b9b37` |
+
+---
 
 ## Strategic context
 
