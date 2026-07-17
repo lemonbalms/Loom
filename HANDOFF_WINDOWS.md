@@ -12,30 +12,29 @@
 | **Clone path (typical)** | `E:\projects\Loom` (없으면 아래 §0-B) |
 | **Step 0 (WSL↔host relay)** | **go** — 재실행 금지. 상세 `docs/spikes/STEP0-WINDOWS-RESULT.md` |
 | **제품** | **0.22.0 shipped** (`loom bridge` 등). Windows OPS만 남음 |
-| **지금 Windows 할 일** | **⭐ Tailscale 팀 공용 relay 상시화** (VPS 대신) |
+| **지금 Windows 할 일** | **⭐ 시연 dispatch** — [`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) **§2** (`dispatchCard`). relay 상시화는 ✅ |
 
 ---
 
 ## ⭐ Current action (Windows — read first)
 
-> **목표:** 이 PC를 **팀 6인 dry-run용 공용 relay** 로 고정한다.  
-> 접속 URL = **`ws://100.65.103.113:7842`** (Tailscale 사설망만 · **공인 포트포워드 금지**).  
-> 완료 정의: (1) 재부팅 후에도 health OK (2) Mac에서 `curl http://100.65.103.113:7842/health` → `ok`+`auth:true` (3) Mac에서 room create + invite 가능.
+> **🎯 다음 = 시연 `dispatchCard()` 트리거.**  
+> Mac bridge+fake herdr **준비 완료** (2026-07-17).  
+> → **`git pull`** 후 **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) §2** 만 실행.  
+> 기대: 무개입 `[DONE]` → Windows `loom inbox` / board `done`.
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 |
 > |------|------|
-> | Step 0 WSL↔Windows relay 네트워킹 | **go** |
-> | OpenSSH · Mac 키 · 방화벽 7842 Allow | 완료 |
-> | PLAN 0.22.0 / R23 / `loom bridge` 코드 | **Mac에서 shipped** — Windows에서 구현·재리뷰 금지 |
-> | 실물 herdr 라이브 스모크 | Mac 측 완료 |
+> | Step 0 · relay Task `LoomRelayTeam` · 방화벽 Tailscale-only | ✅ |
+> | room `demo` 양방향 handoff/board | ✅ |
+> | Mac §1 fake herdr + bridge + M-1 allow | ✅ (Mac 재세팅 금지) |
+> | PLAN/코드 / R23 / live herdr smoke | Mac shipped — Windows 코딩 금지 |
 >
 > ### 하지 말 것
-> - `packages/**` / `apps/**` 제품 코드 수정 · 신규 PLAN
-> - `loom bridge` 구현·디버그 (Mac HANDOFF 영역)
-> - relay wire/envelope 변경 · herdr 벤더링
-> - `--insecure-open` · 공유기 7842 포트포워드
-> - Step 0 / 0.5 재측정
+> - `packages/**` / `apps/**` 제품 코드 · 신규 PLAN
+> - Mac bridge 재기동·`--allow` 재실험 (이미 online)
+> - `--insecure-open` · 공인 포트포워드 · Step 0 재측정
 
 ---
 

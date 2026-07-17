@@ -2,28 +2,27 @@
 
 ## Done (recent)
 
-- [x] PLAN **v0.21.1** PTY inject + live verify (`d05d714` · `08ddb98`)
-- [x] Herdr design `docs/HERDR_DESIGN.md` (`85e7829`)
-- [x] Step 0.5 herdr v0.7.4 실측 + fixtures (`30ec344`)
-- [x] Step 0 Windows prep + Mac NAT health/join go (`0f968be` · `a6b9b37`)
-- [x] PLAN **0.22.0** R23 + `loom bridge` implement + live herdr smoke (`5e2c058` 등)
-- [x] HANDOFF_WINDOWS — Tailscale 팀 relay git-pull 실행 핸드오프 (docs)
+- [x] PLAN **0.22.0** R23 + `loom bridge` + live herdr smoke · tests 218/0
+- [x] Windows Tailscale 팀 relay 상시화 (`LoomRelayTeam`)
+- [x] Mac health + token + room create 실측
+- [x] 시연 room `demo` 양방향 handoff/board (Windows)
+- [x] Mac bridge + fake herdr + allowlist (시연 §1)
+- [x] HANDOFF / DISPATCH-DEMO Mac-ready 인계 docs
 
 ## Next
 
-1. [ ] **(Windows OPS)** `HANDOFF_WINDOWS.md` §2 — Tailscale 공용 relay Task + 재부팅 health
-2. [ ] **(Mac 오너)** room create + invite · 팀 1명 handoff 왕복
-3. [ ] **(팀)** 6인 onboarding + 1–2주 채택 (`docs/DRY_RUN_RUNBOOK.md` Step 1–4)
-4. [ ] (대안) VPS relay — Windows Tailscale 경로 불충분할 때만
+1. [ ] **(Windows)** `docs/spikes/DISPATCH-DEMO.md` **§2** — `dispatchCard()` → node `mac` · 카드 `task_cfac95cfe6c70763`
+2. [ ] 시연 결과 기록: Windows inbox `[DONE]` · board done · DISPATCH-DEMO 상태표 갱신
+3. [ ] (병렬) 팀 6인 dry-run 온보딩 — `docs/DRY_RUN_RUNBOOK.md` (room **≠** `demo`)
+4. [ ] Windows 재부팅 후 relay health · 절전 정책
 
 ## FREEZE
 
-신규 기능 = 팀 pull만. 백로그 work-watch·MCP·C1/C2 동결 유지.  
-0.22.0 bridge는 shipped — 추가 제품 게이트 열지 말 것.
+신규 기능 = 팀 pull만. 시연(fake herdr)은 제품 게이트 아님.  
+백로그 work-watch·MCP·C1/C2 동결.
 
 ## Don't redo
 
-- Step 0 / 0.5 re-measure (go)
-- 0.21.1 inject re-verify
-- R23 / 0.22.0 bridge re-implement
-- Windows에서 제품 코드 / loom bridge 구현
+- Step 0 / 0.5 · R23 · 0.22.0 bridge re-implement
+- Windows에서 제품 코드
+- Mac §1 bridge 재세팅 (이미 herdrOk)

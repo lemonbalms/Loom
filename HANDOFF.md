@@ -14,42 +14,49 @@
 
 ## ⭐ Current action (read first)
 
-> **✅ Windows Tailscale 팀 relay 상시화 완료 (2026-07-17, Windows 세션).** `LoomRelayTeam` Scheduled Task(AtLogOn) · relay 기동 `ws://100.65.103.113:7842` · health `ok+auth:true` · 방화벽 7842 = Tailscale(100.64/10) 제한(전체개방 규칙 삭제) · 토큰 `~/.loom/relay-token.txt` 생성 → **Taildrop으로 Mac(`kyoungsik`) 전송됨** — Mac에서 `tailscale file get ~/Downloads/` 로 수령 후 §3 `LOOM_RELAY_TOKEN`에 사용.
-> **→ 오너(Mac) 다음 할 일:** ① `curl http://100.65.103.113:7842/health` 로 팀 접근 검증(Tailscale on) → ② `HANDOFF_WINDOWS.md` §3 `room create`+`invite --link` → ③ `docs/DRY_RUN_RUNBOOK.md` 온보딩. **오너 미검증(Windows측): 재부팅 후 health · 절전 금지.** 상세 = `HANDOFF_WINDOWS.md` §5.
-
-> **🎯 0.22.0 `loom bridge` shipped + 아키텍트 검증 + 실물 herdr 라이브 스모크 완료.** 라이브 스모크가 실버그 5건을 잡아 전부 수정(레인 위임): CLI `--allow` 배선 · **C4 transport**(herdr = 1 RPC/연결) · `BARE_ENTER` CR · submit 지연 · **submit 검증-재시도** + agent명 seq. 최종 라운드 **무개입 36초 왕복**(dispatch→spawn→auto-submit→[DONE]→board done). `bun test` **218/0**. 워커의 인젝션 거부 = M-4 설계 정상(S578 일치). 남은 것 = **오너 OPS 트랙**(VPS/팀 dry-run)만. Follow-up: seq-리셋(재시작 후 동일 카드 재dispatch) — implementation-notes 참조.
+> **🎯 시연 인계 진행 중 — Mac bridge 준비 완료 → Windows dispatch 대기.**  
+> 문서: **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md)** (제품 PLAN 아님 · FREEZE 무관 데모).
+>
+> | 단계 | 상태 |
+> |------|------|
+> | Windows Tailscale relay | ✅ `ws://100.65.103.113:7842` |
+> | room `demo` + 양방향 handoff/board | ✅ `LOOM-4HXU` |
+> | **Mac fake herdr + `loom bridge`** | ✅ `herdrOk:true` · allow `p_1f01c881dc5598d7` · peer `mac` |
+> | **Windows `dispatchCard()`** | ⬅ **다음** — DISPATCH-DEMO §2 복붙 (카드 `task_cfac95cfe6c70763` → node `mac`) |
+> | 기대 | 무개입: claim → fake spawn → `[DONE]` → Windows inbox / board done |
+>
+> ### Windows에서 할 일
+> ```powershell
+> cd E:\projects\Loom
+> git pull --ff-only origin main
+> # docs/spikes/DISPATCH-DEMO.md §2 실행
+> ```
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 | 산출물 |
 > |------|------|--------|
-> | Loom product 0.21.1 | PTY inject | `d05d714` |
-> | Step 0 / 0.5 | **go** | spikes + fixtures |
-> | PLAN 0.22.0 + R23 | **approved → implemented** | M-1/M-2 locks |
-> | **`loom bridge` 구현** | **shipped** | herdr client · bridge daemon · MCP `dispatch_card`/`apply_card_result` · CLI · tests 213/0 |
+> | PLAN 0.22.0 + R23 + live herdr smoke | shipped | `5e2c058` 등 · tests **218/0** |
+> | Windows relay 상시화 | ✅ | `LoomRelayTeam` · Taildrop token |
+> | Mac health + token room create 검증 | ✅ | 2026-07-17 Mac 실측 |
+> | **Mac §1 bridge+fake herdr (시연)** | ✅ | 재기동 불필요(살아 있음) |
 >
-> ### ⏩ 다음 세션 후보
->
-> **1) ~~(권장 검증) 실물 herdr 라이브 스모크~~ → 완료 (2026-07-17).** 5라운드 실행, 실버그 5건 수정, 최종 무개입 36초 왕복 성공. 상세 = `implementation-notes.md` 2026-07-17 rows + `docs/spikes/STEP0.5-HERDR.md` C4.
->
-> **2) (오너 OPS, 코드 아님)** 팀 공용 relay + 6인 dry-run  
-> - **권장(지금):** Windows Tailscale relay — 절차 전부 **[`HANDOFF_WINDOWS.md`](./HANDOFF_WINDOWS.md)** (`git pull` → §2 Task). URL `ws://100.65.103.113:7842`  
-> - 대안: VPS (`docs/DRY_RUN_RUNBOOK.md` Step 0)  
-> - 온보딩 Step 1–4: `docs/DRY_RUN_RUNBOOK.md`
->
-> **3) FREEZE 유지** — work-watch·MCP 확대·C1/C2 등 신규 PLAN 오픈 금지(팀 pull 전).
+> ### 병렬 / 이후
+> - 팀 6인 dry-run 온보딩: `docs/DRY_RUN_RUNBOOK.md` (시연 room `demo`와 **별개**)
+> - Windows 재부팅 후 relay health · 절전 금지 (아직 미검증)
+> - **FREEZE 유지** — 신규 PLAN / work-watch·MCP 확대 금지
 >
 > ### 하지 말 것
-> - R23 재리뷰 / Step 0·0.5 재실행
-> - relay wire/envelope 변경 · herdr 벤더링
-> - M-1 없이 label-only 라우팅 재도입 · `pane.run`에 prompt 보간
+> - R23 재리뷰 / Step 0·0.5 재실행 / relay wire 변경
+> - 시연을 제품 게이트로 승격 · fake herdr를 실사용 경로로 문서화
+> - M-1 없이 label-only 라우팅 · `pane.run` prompt 보간
 >
-> **Note:** `.playwright-mcp/` untracked — 커밋 제외.
+> **Note:** `.playwright-mcp/` untracked — 커밋 제외. 시연 토큰/세션은 `~/.loom` · **미커밋**.
 
 ---
 
 ## One-line resume
 
-> **PLAN 0.22.0 implemented + 검증 + 라이브 스모크 완주 (2026-07-17).** `loom bridge` + MCP dispatch/apply + M-1/M-2. 라이브 스모크 실버그 5건 수정, 최종 무개입 36초 왕복 성공. `bun test` **218/0**, VERSION **0.22.0**. 다음 = 오너 OPS: **Windows Tailscale 팀 relay** (`HANDOFF_WINDOWS.md`) + 팀 dry-run. FREEZE 유지.
+> **0.22.0 shipped (218/0).** Windows Tailscale relay + room `demo` 양방향 OK. **Mac bridge+fake herdr ready** → **Windows `dispatchCard()` (§2 DISPATCH-DEMO)** 가 다음. FREEZE 유지.
 
 ---
 
@@ -63,7 +70,7 @@
 | **Tests** | `bun test` **218 pass / 0 fail** · 6 pkg typecheck green · biome bridge files clean |
 | **Herdr design** | `docs/HERDR_DESIGN.md` |
 | **Step 0 / 0.5** | **go** |
-| **Remote** | `origin/main` synced (`89dbe34`) |
+| **Remote** | `origin/main` (see `git log -1`) · 시연 문서 `docs/spikes/DISPATCH-DEMO.md` |
 
 ### Access cheat-sheet
 
@@ -110,10 +117,11 @@ herdr status   # or: herdr server
 
 ## Strategic context (unchanged)
 
-> Loom = 오너 6인 팀 내부 도구. FREEZE = 팀-pull 요구만. **남은 오너 블로커 = 팀 공용 relay 상시화.**  
-> 권장 = Windows Tailscale (`HANDOFF_WINDOWS.md`). 대안 = VPS. 온보딩 = `docs/DRY_RUN_RUNBOOK.md`.
+> Loom = 오너 6인 팀 내부 도구. FREEZE = 팀-pull 요구만.  
+> **공용 relay** = Windows Tailscale 상시화 완료. 온보딩 = `docs/DRY_RUN_RUNBOOK.md` (팀 room; 시연 `demo`와 분리).  
+> **지금 시연 트랙** = `docs/spikes/DISPATCH-DEMO.md` (fake herdr 배관 실증 · 제품 게이트 아님).
 >
-> 0.22.0은 FREEZE **예외 한 건**(오너 pull) — 브릿지 수직 슬라이스 **shipped**. 저널·supervision·멀티노드·wire 변경은 out of scope.
+> 0.22.0 브릿지 수직 슬라이스 **shipped**. 저널·supervision·멀티노드·wire 변경은 out of scope.
 
 ---
 

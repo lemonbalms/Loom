@@ -14,11 +14,12 @@
 |------|------|
 | relay 상시화 (Windows) | ✅ `ws://100.65.103.113:7842` (`LoomRelayTeam` Task) |
 | room `demo` 생성 | ✅ `LOOM-4HXU` (`room_b8ea4daa12aef875`) |
-| Mac join (`--as mac`) | ✅ |
+| Mac join (`--as mac`) | ✅ peer `p_d04369463772e026` · displayName `mac` |
 | Windows → Mac 직접 handoff | ✅ 전달·수신 (`ho_56beff67`) |
 | board add + assign → mac (+notify) | ✅ (`ho_29b1ea03`) |
 | Mac → Windows 역방향 handoff | ✅ 수신 (`ho_017520f3`) |
-| **dispatch_card 자동실행** | ⬅ **지금 이 단계 (Mac 세팅 대기)** |
+| **Mac bridge + fake herdr** | ✅ **2026-07-17 Mac 처리** — `herdrOk:true` · allow `p_1f01c881dc5598d7` · sock `/tmp/loom-fake-herdr.sock` |
+| **dispatch_card 자동실행** | ⬅ **지금: Windows §2 `dispatchCard()` 트리거** (Mac 대기 중) |
 
 ---
 
@@ -62,9 +63,20 @@ loom --profile mac bridge status
 
 `bridge status`가 **online + herdr 연결**이면 준비 완료 → Windows에 알림.
 
+### Mac 처리 기록 (2026-07-17)
+
+```text
+bridge: online · peer=mac · herdr=/tmp/loom-fake-herdr.sock · herdrOk=true · inFlight=0
+~/.loom/bridge/mac.json authorizedDispatchers = ["p_1f01c881dc5598d7"]
+room demo / LOOM-4HXU · relay ws://100.65.103.113:7842 up
+```
+
+Windows는 **§2만** 실행하면 된다. Mac 재세팅 불필요(bridge·fake herdr 이미 기동).  
+재부팅/크래시 후에만 §1을 다시 돌린다.
+
 ---
 
-## 2) Windows 측 — dispatch 트리거 (dispatcher가 실행)
+## 2) Windows 측 — dispatch 트리거 (dispatcher가 실행) ⬅ **다음 액션**
 
 CLI에 dispatch 서브커맨드가 **없어서** `@loom/host`의 `dispatchCard()`를 직접 호출한다.
 (사전조건: 대상 카드 `task_cfac95cfe6c70763`가 로컬 board에 존재 — 이미 생성됨.)
