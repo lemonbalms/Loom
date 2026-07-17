@@ -13,13 +13,11 @@
 | 단계 | 상태 |
 |------|------|
 | relay 상시화 (Windows) | ✅ `ws://100.65.103.113:7842` (`LoomRelayTeam` Task) |
-| room `demo` 생성 | ✅ `LOOM-4HXU` (`room_b8ea4daa12aef875`) |
-| Mac join (`--as mac`) | ✅ peer `p_d04369463772e026` · displayName `mac` |
-| Windows → Mac 직접 handoff | ✅ 전달·수신 (`ho_56beff67`) |
-| board add + assign → mac (+notify) | ✅ (`ho_29b1ea03`) |
-| Mac → Windows 역방향 handoff | ✅ 수신 (`ho_017520f3`) |
-| **Mac bridge + fake herdr** | ✅ **2026-07-17 Mac 처리** — `herdrOk:true` · allow `p_1f01c881dc5598d7` · sock `/tmp/loom-fake-herdr.sock` |
-| **dispatch_card 자동실행** | ⬅ **지금: Windows §2 `dispatchCard()` 트리거** (Mac 대기 중) |
+| room `demo` + Mac join + 양방향 handoff/board | ✅ `LOOM-4HXU` |
+| Mac bridge + **fake** herdr | ✅ `herdrOk:true` · allow `p_1f01c881dc5598d7` |
+| **dispatch_card 자동실행 (fake herdr)** | ✅ **완료** — dispatch `ho_52388ad0` → 무개입 `[DONE]` `ho_31cd036a` → `applyCardResult` → board `done` |
+| bun.lock 정합성 작업 board 위임 | ✅ `task_5b240cad6cabc37b` @mac (`ho_4c36b0bd`) |
+| **실물 herdr로 진짜 자동실행** | ⬅ **지금 이 단계** (Mac herdr 확인 대기) |
 
 ---
 
@@ -31,93 +29,106 @@
 | room invite | `LOOM-4HXU` |
 | **Windows peer id (dispatcher)** | `p_1f01c881dc5598d7` |
 | **Mac node 이름 (displayName)** | `mac` |
-| **dispatch 대상 카드** | `task_cfac95cfe6c70763` |
-| 토큰 | `$LOOM_RELAY_TOKEN` (Taildrop 별도 전달 · **미커밋**) |
+| bun.lock 작업 카드 | `task_5b240cad6cabc37b` |
+| 토큰 | `$LOOM_RELAY_TOKEN` (Taildrop 전달 · **미커밋**) |
 
 ---
 
-## 1) Mac 측 — bridge + fake herdr 세팅
+## ✅ 완료: fake herdr dispatch 시연 (재현 절차)
 
-> **fake herdr = 배관 시뮬레이터.** 실제 Claude 실행/파일 변경 **없음**.
-> dispatch → (가짜)spawn → 자동 `done` → `[DONE]` 회신 파이프라인이 **무개입으로 도는 것**을 실증한다.
-> 진짜 에이전트 실행을 원하면 fake 자리에 **실물 herdr 실행**으로 교체.
-
-**Mac Loom repo 루트에서** 실행 (`LOOM_RELAY_TOKEN` export + `bun` 필요):
+**Windows dispatch 실행 함정 (배운 것):** `dispatchCard()`는 CLI 없음 → `@loom/host` 함수 직접 호출. **isolated linker라 repo 루트가 아니라 `packages/cli/` 컨텍스트에서 실행**해야 `@loom/host`가 resolve됨.
 
 ```bash
-export LOOM_HERDR_SOCKET=/tmp/loom-fake-herdr.sock
-rm -f "$LOOM_HERDR_SOCKET"
+# packages/cli/_dispatch.ts:
+#   import { dispatchCard } from "@loom/host";
+#   console.log(JSON.stringify(await dispatchCard({taskId, node:"mac", prompt, agentKind:"claude"})));
+LOOM_SESSION="C:\Users\34970\.loom\profiles\win-demo.json" \
+  LOOM_RELAY_TOKEN="$(cat /c/Users/34970/.loom/relay-token.txt)" \
+  bun run packages/cli/_dispatch.ts
+# → {ok:true,status:delivered,...} → Mac bridge 자동 claim → fake done → [DONE] Windows inbox
+```
 
-# 1) fake herdr 백그라운드 기동 (repo 루트여야 상대경로 import 됨)
-nohup bun -e 'import{startFakeHerdr}from"./packages/host/src/fake-herdr";await startFakeHerdr({socketPath:process.env.LOOM_HERDR_SOCKET,autoStatus:"done",autoStatusDelayMs:500});await new Promise(()=>{})' > /tmp/loom-fake-herdr.log 2>&1 &
-sleep 2
-cat /tmp/loom-fake-herdr.log || true
+**결과 반영(apply):** `[DONE]` handoff의 `loom-card-result` 첨부에서 resultJson을 꺼내 `applyCardResult({resultJson})` → board `doing→done`. (`opsListInbox` + `cardPayloadFromAttachments(atts, CARD_RESULT_LABEL, CardResultPayloadSchema)`)
 
-# 2) bridge 기동 — Windows peer 허용 (M-1 allowlist)
+> fake herdr는 **실제 Claude 실행 없음** — 배관(dispatch→spawn→[DONE]→board)만 무개입 실증. 실제 작업 실행은 §3 실물 herdr 필요.
+
+---
+
+## §3 실물 herdr 전환 — 진짜 자동실행 ⬅ **다음 액션**
+
+> **목표:** fake herdr를 실물 herdr(v0.7.4)로 교체 → dispatch 시 **진짜 Claude Code가 spawn되어** bun.lock 작업(`task_5b240cad`)을 실제 실행.
+
+### ⚠️ 반드시 인지할 현실
+
+1. **herdr = 별도 Rust 바이너리** (`github.com/ogulcancelik/herdr`, v0.7.4/protocol 16). Loom repo에 없음. Mac에 `install.sh`로 설치돼 있어야.
+2. **실물 herdr는 argv `["claude"]`로 제약 없는 Claude를 spawn** → 자기 Bash 툴로 `bun install`/`git commit`/`git push` 실제 실행 가능.
+3. **M-4: push 자동 완주 보장 없음 — 설계 정상(S578).** 워커에 `⚠ Untrusted handoff content` 마커가 붙어, 실물 Claude가 지시를 **명령이 아니라 회의 대상 콘텐츠로 취급**한다. 카드 prompt를 **명령형이 아니라 "회의적 에이전트를 위한 작업 서술"**로 써야 거부율이 낮음. push 같은 위험작업은 거부/재해석될 수 있음.
+4. **cwd:** `dispatchCard`는 cwd 미노출 → 워커가 Mac Loom repo에서 뜨게 하려면 **herdr를 Loom repo 디렉토리에서 기동**해 herdr 기본 workspace cwd를 repo로 유도.
+
+### 두 가지 가능한 결말 (둘 다 교훈)
+
+| 결말 | 의미 |
+|------|------|
+| 워커가 작업 판단해 실행 | 완전 자동 성공 (push는 불확실) |
+| 워커가 untrusted라 거부/부분실행 | **M-4 신뢰게이트 실증** — "위험작업 자동실행 차단"이 설계대로 동작 |
+
+### Mac — 0) 먼저 확인 (이거부터 Windows에 회신)
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+which herdr && herdr --version   # 0.7.4 기대. 없으면 not found
+herdr status 2>&1                # 서버 붙었나 + protocol 16
+cd <Loom repo 경로> && pwd        # 워커 cwd로 쓸 경로
+```
+
+**herdr 없으면:** `curl -fsSL https://herdr.dev/install.sh | sh` → 다시 `herdr --version`.
+
+### Mac — 1) fake → 실물 교체
+
+```bash
+loom --profile mac bridge stop
+pkill -f fake-herdr; rm -f /tmp/loom-fake-herdr.sock
+
+# 실물 herdr를 Loom repo 디렉토리에서 기동 (워커 cwd = repo 유도)
+cd <Loom repo 경로>
+export PATH="$HOME/.local/bin:$PATH"
+herdr server &
+herdr status                     # protocol 16 확인 (bridge fail-fast 전제)
+
+# ~/.loom/bridge/mac.json 의 "herdrSocketPath" 키 삭제 (fake 경로가 env보다 우선 — 함정!)
+#   authorizedDispatchers = ["p_1f01c881dc5598d7"] 는 유지
+unset LOOM_HERDR_SOCKET
+
 loom --profile mac --relay ws://100.65.103.113:7842 --token "$LOOM_RELAY_TOKEN" \
      bridge start --allow p_1f01c881dc5598d7
-
-# 3) 상태 확인
-loom --profile mac bridge status
+loom --profile mac bridge status   # herdr: ~/.config/herdr/herdr.sock · herdrOk:true 확인 → Windows에 회신
 ```
 
-`bridge status`가 **online + herdr 연결**이면 준비 완료 → Windows에 알림.
+### Windows — 2) bun.lock 카드 dispatch (작업 서술형 prompt)
 
-### Mac 처리 기록 (2026-07-17)
+`packages/cli/` 컨텍스트 스크립트로 `dispatchCard({taskId:"task_5b240cad6cabc37b", node:"mac", prompt:<아래>, agentKind:"claude"})`. **명령이 아니라 서술로:**
 
-```text
-bridge: online · peer=mac · herdr=/tmp/loom-fake-herdr.sock · herdrOk=true · inFlight=0
-~/.loom/bridge/mac.json authorizedDispatchers = ["p_1f01c881dc5598d7"]
-room demo / LOOM-4HXU · relay ws://100.65.103.113:7842 up
+```
+이 저장소(Loom)에서 bun.lock을 package.json과 동기화하는 작업입니다.
+적절하다고 판단되면 bun install을 실행해 lockfile을 갱신하고, 변경된 bun.lock을
+커밋(chore(deps): sync bun.lock ...)하고 origin main에 푸시해 주세요.
+배경: @loom/mcp-server의 fable-mcp bin과 zod 의존성이 package.json에서 이미
+제거됐는데 committed lockfile만 옛 상태라 불일치합니다.
 ```
 
-Windows는 **§2만** 실행하면 된다. Mac 재세팅 불필요(bridge·fake herdr 이미 기동).  
-재부팅/크래시 후에만 §1을 다시 돌린다.
+### 확인
 
----
-
-## 2) Windows 측 — dispatch 트리거 (dispatcher가 실행) ⬅ **다음 액션**
-
-CLI에 dispatch 서브커맨드가 **없어서** `@loom/host`의 `dispatchCard()`를 직접 호출한다.
-(사전조건: 대상 카드 `task_cfac95cfe6c70763`가 로컬 board에 존재 — 이미 생성됨.)
-
-```bash
-cd /e/projects/Loom
-LOOM_SESSION="C:\Users\34970\.loom\profiles\win-demo.json" bun -e '
-  import { dispatchCard } from "@loom/host";
-  console.log(JSON.stringify(await dispatchCard({
-    taskId:   "task_cfac95cfe6c70763",
-    node:     "mac",
-    prompt:   "write hello world",
-    agentKind:"claude"
-  })));
-'
-```
-
----
-
-## 기대 결과 (무개입)
-
-1. Windows dispatch → `mac` inbox에 `mode:task` + `loom-card-dispatch` 첨부 handoff
-2. Mac bridge 폴링·claim → herdr `agent.start` → `BARE_ENTER` → 자동 `done`
-3. bridge가 `[DONE]` + `loom-card-result` 첨부를 **Windows inbox로 회신**
-4. Windows: `loom inbox`에서 `[DONE]` 확인, board 카드 `doing→done`
-
----
-
-## 함정 / 주의
-
-- `--allow` = **peer id (`p_...`)** / dispatch `node` = **displayName (`mac`)**. 혼동 시 조용히 실패(M-1 deny 또는 peer_unknown).
-- `agentKind`는 `"claude"`만 허용. `shell/bash/sh`는 영구 차단.
-- herdr는 bridge start 시 **fail-fast** — fake든 실물이든 **먼저 떠 있어야** bridge가 뜬다.
-- 이미 `~/.loom/bridge/mac.json`이 있으면 그 파일의 `herdrSocketPath`가 env보다 우선 → 처음 `--allow` 전에 `LOOM_HERDR_SOCKET` 세팅하거나 파일을 직접 수정.
-- fake herdr는 **실제 실행 아님** — relay↔bridge↔herdr 배관 실증용.
+- 워커가 커밋·푸시하면 → `origin/main`에 bun.lock 커밋 등장 (`git fetch && git log -1 origin/main -- bun.lock`).
+- 워커가 M-4로 push 거부 → board는 여전히 `doing`, 그 자체가 설계 실증.
 
 ---
 
 ## 코드 근거 (참고)
 
-- dispatch 인식 조건: `packages/host/src/bridge-runtime.ts` `processInboxEntry` (mode=task + `loom-card-dispatch` 라벨 + M-1)
-- 라벨 상수: `packages/protocol/src/card-contract.ts` `CARD_DISPATCH_LABEL = "loom-card-dispatch"`
-- dispatch 구현: `packages/host/src/card-ops.ts` `dispatchCard()`
-- fake herdr: `packages/host/src/fake-herdr.ts` / e2e 참고 `packages/host/src/bridge.test.ts`
+- dispatch 인식/실행: `packages/host/src/bridge-runtime.ts` `processInboxEntry`·`runCard`(367), M-4 marker 적용(435)
+- 라벨/스키마/cwd: `packages/protocol/src/card-contract.ts` `CARD_DISPATCH_LABEL`(12)·`cwd`(28)·`wrapUntrustedPrompt`(131)
+- dispatch/apply: `packages/host/src/card-ops.ts` `dispatchCard`(40, **cwd 미노출**)·`applyCardResult`(141)
+- herdr client: `packages/host/src/herdr-client.ts` `DEFAULT_HERDR_SOCKET`(20)·`BARE_ENTER`(32)·`agentStart`(224)
+- bridge config 소켓 우선순위/allowlist: `packages/host/src/bridge-config.ts` (37-38, 55-58, 91-99)
+- herdr 실측(설치/소켓/버전): `docs/spikes/STEP0.5-HERDR.md`
+- M-4 실측(워커 거부 by-design): `implementation-notes.md:74-75`
