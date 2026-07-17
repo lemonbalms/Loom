@@ -4,7 +4,7 @@
 |-------|--------|
 | **Phase** | Loom × Herdr 브릿지 선행 게이트 (HERDR_DESIGN §5.2) |
 | **Status** | **done** (macOS aarch64 live probe) · WSL 재현 권장(동일 바이너리 경로) |
-| **Verdict** | **go for bridge design** — 핵심 [가정-H] 해소. 보정 3건 설계서에 반영 필요 |
+| **Verdict** | **go for bridge design** — 핵심 [가정-H] 해소. 보정 4건 설계서에 반영 필요 (C4는 0.22.0 라이브 스모크에서 추가) |
 | **Date** | 2026-07-17 |
 | **herdr** | **v0.7.4** stable · protocol **16** |
 | **Platform** | macOS aarch64 (Apple Silicon). herdr는 Linux/Mac/WSL 대상 — 본 실측은 **Mac 노드**. WSL2는 Step 0 네트워킹과 별개로 동일 API 재확인 권장 |
@@ -57,13 +57,14 @@ Fixtures under `fixtures/herdr-v0.7.4/` were captured against a live `herdr serv
 | 8 | `pane.report_metadata` seq | **PARTIAL** · method + `seq` 필드 존재 · **낮은 seq 거부는 이 프로브에서 관찰 실패**(여전히 `ok`) | `rpc-11`–`13` |
 | 9 | fixture 캡처 | **OK** | `fixtures/herdr-v0.7.4/` |
 
-### 보정 3건 (설계 가정 vs 실측)
+### 보정 4건 (설계 가정 vs 실측)
 
 | ID | 가정 (권고/설계) | 실측 | 설계 영향 |
 |----|------------------|------|-----------|
 | **C1** | `pane.report_agent` / 대기로 `done` 상태를 직접 씀 | `PaneAgentState` = `idle\|working\|blocked\|unknown` 만 허용. **`done` report 시 invalid_request**. `AgentStatus` enum에는 `done` 존재(관측/롤업용) | 완료 감지는 **detection 롤업 `done` 이벤트** 또는 idle/exit 조합으로 설계. `report_agent(state=done)` 의존 금지 |
 | **C2** | 이벤트 이름 단일 표기 | **subscribe** 필터: dotted (`pane.agent_status_changed`) + `type` 키 · **wait/match & push**: underscored (`pane_agent_status_changed`) + `event` 키 | 브릿지/fake는 두 네이밍을 구분 구현 |
 | **C3** | `agent.wait`가 소켓 method | CLI 전용 래퍼. 소켓은 **`events.wait`** (`match_event.event` + `timeout_ms`) | 브릿지는 `events.subscribe` 장기 구독 또는 `events.wait` 사용 |
+| **C4** | 단일 지속 연결에 RPC 다중화 (2026-07-17 라이브 스모크 실측) | **RPC 1건 = 연결 1개.** 모든 요청은 응답 직후 **서버 FIN**으로 종료. 유일 예외 `events.subscribe`(push용 연결 유지) — 단 그 연결로 추가 RPC 전송 시 무응답 FIN. 연속 요청은 in-flight FIN과 경합해 `This socket has been ended by the other party` | 클라이언트 = **요청별 신규 연결** + 구독 전용 장기 연결(끊김 시 재구독). fake herdr도 FIN-per-response 재현 필수(지속 연결 fake는 이 버그를 놓침 — 0.22.0 라이브 스모크에서 `prompt_inject_failed`로 발현) |
 
 ## Wire contract (locked for fake herdr)
 

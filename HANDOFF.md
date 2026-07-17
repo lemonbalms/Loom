@@ -13,7 +13,7 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 0.22.0 `loom bridge` shipped + 아키텍트 독립 검증 완료 (`89dbe34`).** M-1/M-2·L-1..L-3 코드 확인, `bun test` **214/0**, typecheck·biome clean. 검증 중 발견·수정: `resolveAgentArgv` shell 가드 no-op(레인 위임 수정 + 회귀 테스트). 남은 것 = **실물 herdr 라이브 스모크 수동 1회**(오너) 또는 **오너 OPS 트랙**(VPS/팀 dry-run).
+> **🎯 0.22.0 `loom bridge` shipped + 아키텍트 검증 + 실물 herdr 라이브 스모크 완료.** 라이브 스모크가 실버그 5건을 잡아 전부 수정(레인 위임): CLI `--allow` 배선 · **C4 transport**(herdr = 1 RPC/연결) · `BARE_ENTER` CR · submit 지연 · **submit 검증-재시도** + agent명 seq. 최종 라운드 **무개입 36초 왕복**(dispatch→spawn→auto-submit→[DONE]→board done). `bun test` **218/0**. 워커의 인젝션 거부 = M-4 설계 정상(S578 일치). 남은 것 = **오너 OPS 트랙**(VPS/팀 dry-run)만. Follow-up: seq-리셋(재시작 후 동일 카드 재dispatch) — implementation-notes 참조.
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 | 산출물 |
@@ -25,7 +25,7 @@
 >
 > ### ⏩ 다음 세션 후보
 >
-> **1) (권장 검증)** 실물 herdr 라이브 스모크 1회 — `herdr server` 기동 → bridge config allowlist → `loom bridge start --allow <towerPeerId>` → 타워에서 `dispatch_card` → `[DONE]` + `apply_card_result`. (§5.3 이원화; 자동화는 fixture 전용)
+> **1) ~~(권장 검증) 실물 herdr 라이브 스모크~~ → 완료 (2026-07-17).** 5라운드 실행, 실버그 5건 수정, 최종 무개입 36초 왕복 성공. 상세 = `implementation-notes.md` 2026-07-17 rows + `docs/spikes/STEP0.5-HERDR.md` C4.
 >
 > **2) (오너 OPS, 코드 아님)** VPS/공용 relay · 팀 6인 dry-run (`docs/DRY_RUN_RUNBOOK.md`)
 >
@@ -42,7 +42,7 @@
 
 ## One-line resume
 
-> **PLAN 0.22.0 implemented + 아키텍트 검증 완료 (2026-07-17, `a8de571`+`89dbe34`).** `loom bridge` + MCP dispatch/apply + M-1/M-2. `bun test` **214/0**, VERSION **0.22.0**, pushed. 다음 = 실물 herdr 수동 스모크 또는 오너 VPS/팀 온보딩. FREEZE 유지.
+> **PLAN 0.22.0 implemented + 검증 + 라이브 스모크 완주 (2026-07-17).** `loom bridge` + MCP dispatch/apply + M-1/M-2. 라이브 스모크 실버그 5건 수정(C4 transport·CR·submit 검증-재시도 등), 최종 무개입 36초 왕복 성공. `bun test` **218/0**, VERSION **0.22.0**. 다음 = 오너 VPS/팀 온보딩만. FREEZE 유지.
 
 ---
 
@@ -53,7 +53,7 @@
 | **CLI / code** | **0.22.0** — `loom bridge` + MCP card tools |
 | **PLAN** | **v0.22.0** `approved` → **implemented** |
 | **Open blocking** | none |
-| **Tests** | `bun test` **214 pass / 0 fail** · 6 pkg typecheck green · biome bridge files clean |
+| **Tests** | `bun test` **218 pass / 0 fail** · 6 pkg typecheck green · biome bridge files clean |
 | **Herdr design** | `docs/HERDR_DESIGN.md` |
 | **Step 0 / 0.5** | **go** |
 | **Remote** | `origin/main` synced (`89dbe34`) |

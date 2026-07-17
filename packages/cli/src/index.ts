@@ -1445,7 +1445,11 @@ async function cmdInboxAccept(id: string) {
   process.exit(0);
 }
 
-async function cmdBridge(sub: string | undefined, rest: string[]) {
+async function cmdBridge(
+  sub: string | undefined,
+  _rest: string[],
+  flags: Record<string, string | boolean>,
+) {
   if (sub === "start") {
     if (!loadSession()) {
       console.error("No session. Create or join a room first.");
@@ -1453,11 +1457,11 @@ async function cmdBridge(sub: string | undefined, rest: string[]) {
     }
     const profile = getActiveProfile() ?? loadSession()!.displayName ?? "default";
     // Optional: loom bridge start --allow <peerId>[,peerId]
-    const allowFlag = rest.find((a) => a.startsWith("--allow="));
-    const allowIdx = rest.indexOf("--allow");
-    const allowRaw =
-      allowFlag?.slice("--allow=".length) ||
-      (allowIdx >= 0 ? rest[allowIdx + 1] : undefined);
+    if (flags.allow === true) {
+      console.error("--allow requires a peer id");
+      process.exit(1);
+    }
+    const allowRaw = typeof flags.allow === "string" ? flags.allow : undefined;
     if (allowRaw) {
       const cfg = loadBridgeConfig(profile);
       const ids = allowRaw
@@ -2828,7 +2832,7 @@ async function main() {
     return;
   }
   if (cmd === "bridge") {
-    await cmdBridge(sub, rest);
+    await cmdBridge(sub, rest, flags);
     return;
   }
   if (cmd === "up") {

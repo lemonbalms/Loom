@@ -1,10 +1,19 @@
 /**
  * Fixture-shaped fake herdr Unix NDJSON server for tests (protocol 16).
+ *
+ * Transport-honest per measured real herdr v0.7.4 behavior: every RPC gets
+ * exactly one response then the server ends the connection (FIN). The one
+ * exception is `events.subscribe`, whose connection stays open to carry
+ * `{event,data}` pushes. Async pushes (e.g. the auto-status-after-send
+ * timers below) are therefore broadcast to whatever sockets are still open
+ * — in practice only the events.subscribe connection, since request
+ * connections are ended right after their response.
  */
 import { unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Server } from "node:net";
+import type { Server, Socket } from "node:net";
 import { createServer } from "node:net";
+import { BARE_ENTER } from "./herdr-client";
 
 export type FakeHerdrOptions = {
   socketPath: string;
@@ -27,7 +36,7 @@ export async function startFakeHerdr(
   opts: FakeHerdrOptions,
 ): Promise<FakeHerdr> {
   const calls: FakeHerdr["calls"] = [];
-  const sockets = new Set<import("node:net").Socket>();
+  const sockets = new Set<Socket>();
   let paneCounter = 0;
   const panes = new Map<
     string,
@@ -42,6 +51,19 @@ export async function startFakeHerdr(
     }
   }
   mkdirSync(dirname(opts.socketPath), { recursive: true });
+
+  /** Broadcast to every socket still open — real herdr only has the
+   * events.subscribe connection alive by the time async pushes fire. */
+  function broadcast(event: string, data: unknown): void {
+    const line = `${JSON.stringify({ event, data })}\n`;
+    for (const s of sockets) {
+      try {
+        s.write(line);
+      } catch {
+        /* */
+      }
+    }
+  }
 
   const server: Server = createServer((sock) => {
     sockets.add(sock);
@@ -85,6 +107,7 @@ export async function startFakeHerdr(
             protocol: opts.protocol ?? 16,
             capabilities: { live_handoff: true },
           });
+          sock.end();
           continue;
         }
         if (method === "agent.start") {
@@ -105,49 +128,33 @@ export async function startFakeHerdr(
               agent_status: "unknown",
             },
           });
+          sock.end();
           continue;
         }
         if (method === "agent.send") {
           const target = String(params.target ?? "");
           const text = String(params.text ?? "");
-          for (const [, p] of panes) {
+          for (const [paneId, p] of panes) {
             if (p.terminal_id === target) {
               p.text += text;
-              // M-2: bare Enter is separate call — when we see \n after content, mark working
-              if (text === "\n") {
+              // M-2: bare Enter is separate call — when we see BARE_ENTER (CR,
+              // the terminal Enter key) after content, mark working
+              if (text === BARE_ENTER) {
                 p.status = "working";
                 const auto = opts.autoStatus ?? "done";
                 if (auto !== "none") {
                   const delay = opts.autoStatusDelayMs ?? 30;
                   setTimeout(() => {
                     p.status = auto === "idle" ? "idle" : auto;
-                    const event =
-                      auto === "done"
-                        ? "pane_agent_status_changed"
-                        : "pane_agent_status_changed";
-                    const data = {
-                      pane_id: [...panes.entries()].find(([, v]) => v === p)?.[0],
-                      agent_status: auto === "idle" ? "idle" : auto,
-                    };
+                    const event = "pane_agent_status_changed";
+                    const data = { pane_id: paneId, agent_status: auto === "idle" ? "idle" : auto };
                     // For idle path, emit working first then idle so sawWorking works
                     if (auto === "done" || auto === "blocked") {
-                      sock.write(
-                        `${JSON.stringify({ event, data })}\n`,
-                      );
+                      broadcast(event, data);
                     } else if (auto === "idle") {
-                      sock.write(
-                        `${JSON.stringify({
-                          event,
-                          data: { ...data, agent_status: "working" },
-                        })}\n`,
-                      );
+                      broadcast(event, { ...data, agent_status: "working" });
                       setTimeout(() => {
-                        sock.write(
-                          `${JSON.stringify({
-                            event,
-                            data: { ...data, agent_status: "idle" },
-                          })}\n`,
-                        );
+                        broadcast(event, { ...data, agent_status: "idle" });
                       }, 10);
                     }
                   }, delay);
@@ -156,10 +163,12 @@ export async function startFakeHerdr(
             }
           }
           reply({ type: "ok" });
+          sock.end();
           continue;
         }
         if (method === "events.subscribe") {
           reply({ type: "subscription_started" });
+          // Connection stays open — real herdr carries pushes on it.
           continue;
         }
         if (method === "pane.read") {
@@ -175,6 +184,7 @@ export async function startFakeHerdr(
               truncated: false,
             },
           });
+          sock.end();
           continue;
         }
         if (method === "session.snapshot") {
@@ -182,12 +192,15 @@ export async function startFakeHerdr(
             type: "snapshot",
             workspaces: [],
           });
+          sock.end();
           continue;
         }
         err(`unknown method ${method}`);
+        sock.end();
       }
     });
     sock.on("close", () => sockets.delete(sock));
+    sock.on("error", () => sockets.delete(sock));
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -198,16 +211,7 @@ export async function startFakeHerdr(
   return {
     socketPath: opts.socketPath,
     calls,
-    pushEvent(event, data) {
-      const line = `${JSON.stringify({ event, data })}\n`;
-      for (const s of sockets) {
-        try {
-          s.write(line);
-        } catch {
-          /* */
-        }
-      }
-    },
+    pushEvent: broadcast,
     async close() {
       for (const s of sockets) {
         try {

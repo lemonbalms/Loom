@@ -27,6 +27,7 @@ import {
   HerdrClient,
   stripAnsi,
   HERDR_PROTOCOL_EXPECTED,
+  BARE_ENTER,
   type HerdrAgentStarted,
 } from "./herdr-client";
 import {
@@ -48,6 +49,18 @@ export type BridgeRuntime = {
   meta: BridgeMeta;
   stop: () => Promise<void>;
 };
+
+/**
+ * M-2 submit verify + retry (live-measured): Claude Code's paste-grouping
+ * window can absorb a bare-Enter CR arriving too soon after a multi-line
+ * paste, and the window varies with spawn-time load — a single fixed delay
+ * (herdr-client's submitDelayMs) is not reliably enough. After the initial
+ * inject+submit, verify via the already-subscribed status stream and resend
+ * BARE_ENTER (constant only — still M-2 compliant) if the pane never reaches
+ * "working".
+ */
+const SUBMIT_VERIFY_MS = 4_000;
+const SUBMIT_RETRIES = 3;
 
 type Flight = {
   cardId: string;
@@ -79,6 +92,8 @@ export async function startBridgeRuntime(opts?: {
   /** Test injection */
   herdr?: HerdrClient;
   config?: BridgeConfig;
+  /** M-2 submit verify tuning (test injection); defaults to production values. */
+  submitVerify?: { waitMs: number; retries: number };
 }): Promise<BridgeRuntime> {
   let session = opts?.session ?? loadSession();
   if (!session) {
@@ -89,6 +104,10 @@ export async function startBridgeRuntime(opts?: {
   const profile =
     opts?.profile ?? getActiveProfile() ?? session.displayName ?? "default";
   const cfg = opts?.config ?? loadBridgeConfig(profile);
+  const submitVerify = opts?.submitVerify ?? {
+    waitMs: SUBMIT_VERIFY_MS,
+    retries: SUBMIT_RETRIES,
+  };
 
   const flights = new Map<string, Flight>(); // paneId → flight
   const cardSeq = new Map<string, number>();
@@ -363,10 +382,17 @@ export async function startBridgeRuntime(opts?: {
     }
 
     const startedAt = new Date().toISOString();
+    // Fix 2 (live-measured): compute seq before spawn and fold it into the
+    // agent name so each dispatch ATTEMPT gets a unique herdr agent name —
+    // re-dispatching the same card while a prior pane is still alive
+    // otherwise collides on "agent name loom-task_... is already used".
+    const seq = (cardSeq.get(payload.cardId) ?? 0) + 1;
+    cardSeq.set(payload.cardId, seq);
+
     let agent: HerdrAgentStarted;
     try {
       agent = await herdr.agentStart({
-        name: `loom-${payload.cardId.slice(0, 20)}`,
+        name: `loom-${payload.cardId.slice(0, 20)}-${seq}`,
         argv,
         env: { LOOM_CARD: payload.cardId },
         cwd: payload.cwd,
@@ -382,9 +408,6 @@ export async function startBridgeRuntime(opts?: {
       });
       return;
     }
-
-    const seq = (cardSeq.get(payload.cardId) ?? 0) + 1;
-    cardSeq.set(payload.cardId, seq);
 
     const flight: Flight = {
       cardId: payload.cardId,
@@ -421,6 +444,54 @@ export async function startBridgeRuntime(opts?: {
         detail: e instanceof Error ? e.message : String(e),
         paneId: agent.pane_id,
       });
+      return;
+    }
+
+    await verifySubmitOrRetry(agent.pane_id, agent.terminal_id);
+  }
+
+  /**
+   * M-2 submit verify + retry (live-measured, see module header): wait for
+   * the pane to report "working" via the already-subscribed status stream;
+   * if it doesn't, resend the bare-Enter constant and wait again, up to
+   * `submitVerify.retries` resends. A flight already gone from the map means
+   * the card finished (or failed) before verify caught up — treat as
+   * success and stop. If still unconfirmed after all retries, log and move
+   * on without failing the card: a stray extra Enter on an already-submitted
+   * composer is a harmless no-op, and the silence could just as easily be
+   * herdr status-detection latency.
+   */
+  async function verifySubmitOrRetry(paneId: string, terminalId: string): Promise<void> {
+    const pollMs = Math.max(10, Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10));
+    async function waitForWorkingOrGone(): Promise<"working" | "gone" | "timeout"> {
+      const deadline = Date.now() + submitVerify.waitMs;
+      while (Date.now() < deadline) {
+        const f = flights.get(paneId);
+        if (!f) return "gone";
+        if (f.sawWorking) return "working";
+        await new Promise((r) => setTimeout(r, pollMs));
+      }
+      const f = flights.get(paneId);
+      if (!f) return "gone";
+      return f.sawWorking ? "working" : "timeout";
+    }
+
+    let outcome = await waitForWorkingOrGone();
+    let attempt = 0;
+    while (outcome === "timeout" && attempt < submitVerify.retries) {
+      attempt++;
+      try {
+        await herdr.agentSend(terminalId, BARE_ENTER);
+      } catch (e) {
+        log(`M-2 resend attempt ${attempt} failed:`, e);
+      }
+      outcome = await waitForWorkingOrGone();
+    }
+    if (outcome === "timeout") {
+      log(
+        `M-2 submit unconfirmed after ${submitVerify.retries} retries — pane may need manual Enter`,
+        paneId,
+      );
     }
   }
 

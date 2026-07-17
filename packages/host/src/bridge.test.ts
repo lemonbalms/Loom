@@ -64,8 +64,8 @@ describe("M-1 dispatcher allowlist", () => {
 });
 
 describe("M-2 bare enter constant", () => {
-  test("BARE_ENTER is newline only", () => {
-    expect(BARE_ENTER).toBe("\n");
+  test("BARE_ENTER is a bare carriage return (terminal Enter)", () => {
+    expect(BARE_ENTER).toBe("\r");
     expect(BARE_ENTER.includes("Untrusted")).toBe(false);
   });
 });
@@ -160,7 +160,7 @@ describe("herdr client + fake server", () => {
   });
 
   test("ping + start + send M-2 separation", async () => {
-    const c = new HerdrClient({ socketPath: sock });
+    const c = new HerdrClient({ socketPath: sock, submitDelayMs: 0 });
     const pong = await c.ping();
     expect(pong.protocol).toBe(16);
     const agent = await c.agentStart({
@@ -178,9 +178,45 @@ describe("herdr client + fake server", () => {
     const sends = fake.calls.filter((x) => x.method === "agent.send");
     expect(sends.length).toBeGreaterThanOrEqual(2);
     expect(sends[0]!.params.text).toBe("hello-prompt");
-    expect(sends[1]!.params.text).toBe("\n");
+    expect(sends[1]!.params.text).toBe(BARE_ENTER);
     // No pane.run with prompt
     expect(fake.calls.every((x) => x.method !== "pane.run")).toBe(true);
+    c.close();
+  });
+
+  test("sequential RPCs survive per-response FIN (ping → agentSend → agentSend)", async () => {
+    // Real herdr closes (FIN) each connection right after its response; the
+    // client must open a fresh connection per call rather than reuse one.
+    const c = new HerdrClient({ socketPath: sock });
+    const pong = await c.ping();
+    expect(pong.protocol).toBe(16);
+    const agent = await c.agentStart({ name: "seq", argv: ["claude"] });
+    await c.agentSend(agent.terminal_id, "one");
+    await c.agentSend(agent.terminal_id, "two");
+    const sends = fake.calls.filter(
+      (x) => x.method === "agent.send" && x.params.target === agent.terminal_id,
+    );
+    expect(sends.length).toBe(2);
+    expect(sends[0]!.params.text).toBe("one");
+    expect(sends[1]!.params.text).toBe("two");
+    c.close();
+  });
+
+  test("events.subscribe stays open and delivers pushes to onEvent", async () => {
+    const events: { event: string; data: unknown }[] = [];
+    const c = new HerdrClient({
+      socketPath: sock,
+      onEvent: (event, data) => events.push({ event, data }),
+    });
+    await c.eventsSubscribe([{ type: "pane.agent_status_changed" }]);
+    fake.pushEvent("pane_agent_status_changed", {
+      pane_id: "w1:p_test",
+      agent_status: "done",
+    });
+    await Bun.sleep(30);
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(events[0]!.event).toBe("pane_agent_status_changed");
+    expect((events[0]!.data as { pane_id: string }).pane_id).toBe("w1:p_test");
     c.close();
   });
 
@@ -267,7 +303,9 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       config: cfg,
       herdr: new HerdrClient({
         socketPath: herdrSock,
+        submitDelayMs: 0,
       }),
+      submitVerify: { waitMs: 300, retries: 1 },
     });
 
     // Keep tower secret for rejoin test
@@ -344,13 +382,53 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
 
     // M-2: inject used separate send for enter
     const sends = fake.calls.filter((c) => c.method === "agent.send");
-    expect(sends.some((s) => s.params.text === "\n")).toBe(true);
+    expect(sends.some((s) => s.params.text === BARE_ENTER)).toBe(true);
     const promptSend = sends.find(
       (s) =>
         typeof s.params.text === "string" &&
         String(s.params.text).includes("write hello"),
     );
     expect(promptSend).toBeTruthy();
+  });
+
+  test("re-dispatch of same card uses a unique agent.start name per attempt", async () => {
+    // Live-measured bug: re-dispatching the same cardId while a prior pane
+    // is alive collided on herdr's "agent name ... is already used" — the
+    // fix folds the per-card seq into the name so each attempt is unique.
+    const cardId = "task_beef00112233aa";
+    const dispatchOnce = async (prompt: string) => {
+      const payload = {
+        v: CARD_CONTRACT_VERSION,
+        cardId,
+        sourceRoomId: session.roomId,
+        prompt,
+        agentKind: "claude" as const,
+      };
+      await tower!.handoff({
+        to: "@node/wsl-1",
+        body: buildDispatchBody({ title: "reseq", cardId, node: "node/wsl-1" }),
+        mode: "task",
+        attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, payload)],
+      });
+    };
+
+    await dispatchOnce("first");
+    await dispatchOnce("second");
+
+    let starts: typeof fake.calls = [];
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(100);
+      starts = fake.calls.filter(
+        (c) =>
+          c.method === "agent.start" &&
+          (c.params.env as { LOOM_CARD?: string } | undefined)?.LOOM_CARD ===
+            cardId,
+      );
+      if (starts.length >= 2) break;
+    }
+    expect(starts.length).toBeGreaterThanOrEqual(2);
+    const names = starts.map((s) => s.params.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   test("M-1: unauthorized dispatcher ignored (no result)", async () => {
@@ -453,7 +531,8 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
         herdrSocketPath: herdrSock,
         agentArgv: { claude: ["claude"] },
       },
-      herdr: new HerdrClient({ socketPath: herdrSock }),
+      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      submitVerify: { waitMs: 300, retries: 1 },
     });
 
     let found = false;
@@ -474,6 +553,115 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       }
     }
     expect(found).toBe(true);
+  });
+});
+
+describe("M-2 submit verify + retry", () => {
+  const port2 = 19900 + Math.floor(Math.random() * 300);
+  const dir2 = join(tmpdir(), `loom-bridge-verify-${Date.now()}`);
+  const sessionFile2 = join(dir2, "session.json");
+  const herdrSock2 = join(dir2, "herdr.sock");
+  const relay2 = new RelayServer({ host: "127.0.0.1", port: port2 });
+  let fake2: Awaited<ReturnType<typeof startFakeHerdr>>;
+  let bridge2: Awaited<ReturnType<typeof startBridgeRuntime>> | null = null;
+  let tower2: RelayClient | null = null;
+  let session2: FableSession;
+
+  beforeAll(async () => {
+    mkdirSync(dir2, { recursive: true });
+    process.env.LOOM_TEST_HOME = dir2;
+    process.env.LOOM_SESSION = sessionFile2;
+    process.env.LOOM_NO_AUTO_HOST = "1";
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    relay2.start();
+    // autoStatus "none": the pane never reports "working" — forces the
+    // verify loop to time out and resend BARE_ENTER (live-measured M-2 fix).
+    fake2 = await startFakeHerdr({
+      socketPath: herdrSock2,
+      autoStatus: "none",
+    });
+
+    tower2 = new RelayClient({ url: `ws://127.0.0.1:${port2}/ws` });
+    const created = await tower2.createRoom({
+      roomName: "bridge-verify-test",
+      displayName: "tower",
+      agentKind: "shell",
+      peerId: "p_tower",
+    });
+    if (created.type !== "room.state") throw new Error("create failed");
+    session2 = {
+      roomId: created.roomId,
+      roomName: created.roomName ?? "bridge-verify-test",
+      inviteCode: created.inviteCode ?? "",
+      peerId: "p_node",
+      displayName: "node/wsl-1",
+      color: "#0f0",
+      agentKind: "shell",
+      relayUrl: `ws://127.0.0.1:${port2}/ws`,
+      peerSecret: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    writeFileSync(sessionFile2, JSON.stringify(session2), "utf8");
+
+    bridge2 = await startBridgeRuntime({
+      session: session2,
+      profile: "node-verify",
+      config: {
+        authorizedDispatchers: ["p_tower"],
+        herdrSocketPath: herdrSock2,
+        agentArgv: { claude: ["claude"] },
+      },
+      herdr: new HerdrClient({ socketPath: herdrSock2, submitDelayMs: 0 }),
+      // Test-tuned: tiny waitMs so the suite doesn't pay the production
+      // SUBMIT_VERIFY_MS/SUBMIT_RETRIES cost.
+      submitVerify: { waitMs: 40, retries: 2 },
+    });
+  });
+
+  afterAll(async () => {
+    if (bridge2) await bridge2.stop();
+    tower2?.close();
+    await fake2.close();
+    relay2.stop();
+    delete process.env.LOOM_TEST_HOME;
+    delete process.env.LOOM_SESSION;
+    resetStateHomeDirCache();
+    try {
+      rmSync(dir2, { recursive: true, force: true });
+    } catch {
+      /* */
+    }
+  });
+
+  test("unconfirmed submit (no working event) resends BARE_ENTER up to retries", async () => {
+    const cardId = "task_facade00112233";
+    const payload = {
+      v: CARD_CONTRACT_VERSION,
+      cardId,
+      sourceRoomId: session2.roomId,
+      prompt: "stuck",
+      agentKind: "claude" as const,
+    };
+    await tower2!.handoff({
+      to: "@node/wsl-1",
+      body: buildDispatchBody({ title: "stuck", cardId, node: "node/wsl-1" }),
+      mode: "task",
+      attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, payload)],
+    });
+
+    // Poll like the other dispatch tests (bridge inbox poll interval is
+    // 1500ms) until the initial submit + at least one resend land, since
+    // "working" never arrives with autoStatus "none".
+    let sends: typeof fake2.calls = [];
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(100);
+      sends = fake2.calls.filter(
+        (c) => c.method === "agent.send" && c.params.text === BARE_ENTER,
+      );
+      if (sends.length >= 2) break;
+    }
+    expect(sends.length).toBeGreaterThanOrEqual(2);
   });
 });
 

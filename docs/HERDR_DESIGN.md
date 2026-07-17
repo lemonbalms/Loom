@@ -138,6 +138,8 @@ CLI 등록 지점(수동 디스패치 구조): ① `main()` if-체인에 `cmd ==
 
 **(b) herdr 소켓 끊김** — 지수 백오프 재연결. 재연결 시 순서가 중요하다: **① 재핸드셰이크(ping/버전) → ② `events.subscribe` 재등록 → ③ 진행 중(in-flight) pane 상태 스냅샷 조회로 격차 보정(reconcile)**. 구독을 먼저 걸고 스냅샷을 나중에 읽어야 "끊김~재구독 사이에 done이 지나간" 이벤트 공백이 닫힌다. 스냅샷에서 이미 done인 pane은 즉시 `pane.read`로 진행(§2.5의 6단계로 점프). **[가정]** herdr가 pane 목록+상태 스냅샷 조회(`herdr status` 상당)를 소켓으로 제공한다 — Step 0.5 확인 대상.
 
+> **C4 보정 (2026-07-17 라이브 스모크 실측, STEP0.5-HERDR §보정 참조):** herdr v0.7.4의 소켓은 **RPC 다중화 장기 연결이 아니다** — 모든 RPC는 응답 직후 서버 FIN으로 닫힌다(1 RPC = 1 연결). 유일하게 `events.subscribe` 연결만 push용으로 유지된다. 따라서 "herdr 쪽 장수명 연결"은 **구독 전용 연결 하나**를 의미하고, 나머지 RPC(ping/agent.start/agent.send/pane.read)는 요청별 신규 연결로 수행한다. (b)의 재연결 순서 원칙은 구독 연결에 그대로 적용.
+
 ### 2.5 카드 dispatch → done 처리 흐름
 
 와이어 계약의 정본은 §3. 흐름 요약:
