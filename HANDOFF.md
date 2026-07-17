@@ -14,7 +14,7 @@
 
 ## ⭐ Current action (read first)
 
-> **✅ Windows Tailscale 팀 relay 상시화 완료 (2026-07-17, Windows 세션).** `LoomRelayTeam` Scheduled Task(AtLogOn) · relay 기동 `ws://100.65.103.113:7842` · health `ok+auth:true` · 방화벽 7842 = Tailscale(100.64/10) 제한(전체개방 규칙 삭제) · 토큰 `~/.loom/relay-token.txt` 생성.
+> **✅ Windows Tailscale 팀 relay 상시화 완료 (2026-07-17, Windows 세션).** `LoomRelayTeam` Scheduled Task(AtLogOn) · relay 기동 `ws://100.65.103.113:7842` · health `ok+auth:true` · 방화벽 7842 = Tailscale(100.64/10) 제한(전체개방 규칙 삭제) · 토큰 `~/.loom/relay-token.txt` 생성 → **Taildrop으로 Mac(`kyoungsik`) 전송됨** — Mac에서 `tailscale file get ~/Downloads/` 로 수령 후 §3 `LOOM_RELAY_TOKEN`에 사용.
 > **→ 오너(Mac) 다음 할 일:** ① `curl http://100.65.103.113:7842/health` 로 팀 접근 검증(Tailscale on) → ② `HANDOFF_WINDOWS.md` §3 `room create`+`invite --link` → ③ `docs/DRY_RUN_RUNBOOK.md` 온보딩. **오너 미검증(Windows측): 재부팅 후 health · 절전 금지.** 상세 = `HANDOFF_WINDOWS.md` §5.
 
 > **🎯 0.22.0 `loom bridge` shipped + 아키텍트 검증 + 실물 herdr 라이브 스모크 완료.** 라이브 스모크가 실버그 5건을 잡아 전부 수정(레인 위임): CLI `--allow` 배선 · **C4 transport**(herdr = 1 RPC/연결) · `BARE_ENTER` CR · submit 지연 · **submit 검증-재시도** + agent명 seq. 최종 라운드 **무개입 36초 왕복**(dispatch→spawn→auto-submit→[DONE]→board done). `bun test` **218/0**. 워커의 인젝션 거부 = M-4 설계 정상(S578 일치). 남은 것 = **오너 OPS 트랙**(VPS/팀 dry-run)만. Follow-up: seq-리셋(재시작 후 동일 카드 재dispatch) — implementation-notes 참조.
