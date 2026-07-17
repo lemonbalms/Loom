@@ -12,29 +12,28 @@
 | **Clone path (typical)** | `E:\projects\Loom` (없으면 아래 §0-B) |
 | **Step 0 (WSL↔host relay)** | **go** — 재실행 금지. 상세 `docs/spikes/STEP0-WINDOWS-RESULT.md` |
 | **제품** | **0.22.0 shipped** (`loom bridge` 등). Windows OPS만 남음 |
-| **지금 Windows 할 일** | **⭐ 시연 dispatch** — [`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) **§2** (`dispatchCard`). relay 상시화는 ✅ |
+| **지금 Windows 할 일** | **⭐ 실물 herdr dispatch** — [`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) **§3-2** (`task_5b240cad…` bun.lock). Mac 실물 herdr ✅ |
 
 ---
 
 ## ⭐ Current action (Windows — read first)
 
-> **🎯 다음 = 시연 `dispatchCard()` 트리거.**  
-> Mac bridge+fake herdr **준비 완료** (2026-07-17).  
-> → **`git pull`** 후 **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) §2** 만 실행.  
-> 기대: 무개입 `[DONE]` → Windows `loom inbox` / board `done`.
+> **🎯 다음 = §3-2 실물 herdr `dispatchCard(bun.lock 카드)`.**  
+> Mac: 실물 herdr 0.7.4 + bridge **ready** (fake 아님).  
+> → **`git pull`** 후 **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) §3-2** (서술형 prompt).  
+> 기대: 실 Claude 작업 **또는** M-4 거부(둘 다 OK).
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 |
 > |------|------|
-> | Step 0 · relay Task `LoomRelayTeam` · 방화벽 Tailscale-only | ✅ |
-> | room `demo` 양방향 handoff/board | ✅ |
-> | Mac §1 fake herdr + bridge + M-1 allow | ✅ (Mac 재세팅 금지) |
-> | PLAN/코드 / R23 / live herdr smoke | Mac shipped — Windows 코딩 금지 |
+> | relay Task · room `demo` · fake dispatch 시연 | ✅ |
+> | Mac §3 실물 herdr 전환 | ✅ (재세팅 금지) |
+> | PLAN/코드 수정 | Windows 코딩 금지 |
 >
 > ### 하지 말 것
-> - `packages/**` / `apps/**` 제품 코드 · 신규 PLAN
-> - Mac bridge 재기동·`--allow` 재실험 (이미 online)
-> - `--insecure-open` · 공인 포트포워드 · Step 0 재측정
+> - Mac bridge/herdr 재기동 요청 (이미 real sock)
+> - 명령형 prompt로 push 강제 (M-4 — 서술형 사용)
+> - `--insecure-open` · 제품 코드 수정
 
 ---
 

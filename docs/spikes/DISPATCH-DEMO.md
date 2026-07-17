@@ -17,7 +17,8 @@
 | Mac bridge + **fake** herdr | ✅ `herdrOk:true` · allow `p_1f01c881dc5598d7` |
 | **dispatch_card 자동실행 (fake herdr)** | ✅ **완료** — dispatch `ho_52388ad0` → 무개입 `[DONE]` `ho_31cd036a` → `applyCardResult` → board `done` |
 | bun.lock 정합성 작업 board 위임 | ✅ `task_5b240cad6cabc37b` @mac (`ho_4c36b0bd`) |
-| **실물 herdr로 진짜 자동실행** | ⬅ **지금 이 단계** (Mac herdr 확인 대기) |
+| **Mac 실물 herdr + bridge 전환** | ✅ **2026-07-17 Mac** — herdr **0.7.4**/protocol **16** · sock `~/.config/herdr/herdr.sock` · `herdrOk:true` · allow 유지 · repo cwd에서 server 기동 · claude **2.1.212** PATH |
+| **실물 herdr dispatch (bun.lock 카드)** | ⬅ **지금: Windows §3-2** `dispatchCard(task_5b240cad…)` |
 
 ---
 
@@ -54,9 +55,23 @@ LOOM_SESSION="C:\Users\34970\.loom\profiles\win-demo.json" \
 
 ---
 
-## §3 실물 herdr 전환 — 진짜 자동실행 ⬅ **다음 액션**
+## §3 실물 herdr 전환 — 진짜 자동실행
 
 > **목표:** fake herdr를 실물 herdr(v0.7.4)로 교체 → dispatch 시 **진짜 Claude Code가 spawn되어** bun.lock 작업(`task_5b240cad`)을 실제 실행.
+
+### Mac 처리 기록 (2026-07-17) — §3-0/1 완료
+
+```text
+herdr: 0.7.4 · protocol 16 · running
+socket: /Users/kyoungsiklee/.config/herdr/herdr.sock
+server started from: /Users/kyoungsiklee/projects/fable-advisor  (워커 cwd 유도)
+bridge: online · peer=mac · herdrOk=true · herdr=real sock (not /tmp/loom-fake-*)
+allow: p_1f01c881dc5598d7
+claude: /Users/kyoungsiklee/.local/bin/claude · 2.1.212
+fake: stopped · /tmp/loom-fake-herdr.sock removed
+```
+
+**Windows는 §3-2 dispatch만 실행.** Mac 재세팅 불필요(bridge·실물 herdr 기동 중).
 
 ### ⚠️ 반드시 인지할 현실
 
@@ -104,7 +119,7 @@ loom --profile mac --relay ws://100.65.103.113:7842 --token "$LOOM_RELAY_TOKEN" 
 loom --profile mac bridge status   # herdr: ~/.config/herdr/herdr.sock · herdrOk:true 확인 → Windows에 회신
 ```
 
-### Windows — 2) bun.lock 카드 dispatch (작업 서술형 prompt)
+### Windows — 2) bun.lock 카드 dispatch (작업 서술형 prompt) ⬅ **다음 액션**
 
 `packages/cli/` 컨텍스트 스크립트로 `dispatchCard({taskId:"task_5b240cad6cabc37b", node:"mac", prompt:<아래>, agentKind:"claude"})`. **명령이 아니라 서술로:**
 

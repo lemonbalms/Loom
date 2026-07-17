@@ -14,31 +14,29 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 시연 인계 진행 중 — Mac bridge 준비 완료 → Windows dispatch 대기.**  
-> 문서: **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md)** (제품 PLAN 아님 · FREEZE 무관 데모).
+> **🎯 시연 — 실물 herdr 준비 완료 → Windows bun.lock dispatch 대기.**  
+> 문서: **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md)** §3-2.
 >
 > | 단계 | 상태 |
 > |------|------|
-> | Windows Tailscale relay | ✅ `ws://100.65.103.113:7842` |
-> | room `demo` + 양방향 handoff/board | ✅ `LOOM-4HXU` |
-> | **Mac fake herdr + `loom bridge`** | ✅ `herdrOk:true` · allow `p_1f01c881dc5598d7` · peer `mac` |
-> | **Windows `dispatchCard()`** | ⬅ **다음** — DISPATCH-DEMO §2 복붙 (카드 `task_cfac95cfe6c70763` → node `mac`) |
-> | 기대 | 무개입: claim → fake spawn → `[DONE]` → Windows inbox / board done |
+> | fake dispatch 시연 | ✅ board done |
+> | **Mac 실물 herdr 0.7.4 + bridge** | ✅ `herdrOk:true` · `~/.config/herdr/herdr.sock` · repo cwd server · allow win peer |
+> | **Windows `dispatchCard(task_5b240cad…)`** | ⬅ **다음** — 서술형 prompt · node `mac` |
+> | 기대 | 실 Claude spawn → bun.lock 작업 **또는** M-4 untrusted 거부(둘 다 유효) |
 >
 > ### Windows에서 할 일
 > ```powershell
 > cd E:\projects\Loom
 > git pull --ff-only origin main
-> # docs/spikes/DISPATCH-DEMO.md §2 실행
+> # docs/spikes/DISPATCH-DEMO.md §3-2 (bun.lock 카드)
 > ```
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 | 산출물 |
 > |------|------|--------|
-> | PLAN 0.22.0 + R23 + live herdr smoke | shipped | `5e2c058` 등 · tests **218/0** |
-> | Windows relay 상시화 | ✅ | `LoomRelayTeam` · Taildrop token |
-> | Mac health + token room create 검증 | ✅ | 2026-07-17 Mac 실측 |
-> | **Mac §1 bridge+fake herdr (시연)** | ✅ | 재기동 불필요(살아 있음) |
+> | PLAN 0.22.0 + R23 + live herdr smoke | shipped | tests **218/0** |
+> | Windows relay · fake 시연 | ✅ | DISPATCH-DEMO |
+> | **Mac §3 실물 herdr 전환** | ✅ | fake stop · real server · bridge restart |
 >
 > ### 병렬 / 이후
 > - 팀 6인 dry-run 온보딩: `docs/DRY_RUN_RUNBOOK.md` (시연 room `demo`와 **별개**)
@@ -56,7 +54,7 @@
 
 ## One-line resume
 
-> **0.22.0 shipped (218/0).** Windows Tailscale relay + room `demo` 양방향 OK. **Mac bridge+fake herdr ready** → **Windows `dispatchCard()` (§2 DISPATCH-DEMO)** 가 다음. FREEZE 유지.
+> **0.22.0 shipped.** fake dispatch ✅. **Mac 실물 herdr+bridge ready** → **Windows §3-2 bun.lock `dispatchCard`**. FREEZE 유지.
 
 ---
 
