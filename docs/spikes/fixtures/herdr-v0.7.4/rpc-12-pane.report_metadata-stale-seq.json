@@ -1,0 +1,21 @@
+{
+  "request": {
+    "id": "probe-48a3ba3c",
+    "method": "pane.report_metadata",
+    "params": {
+      "pane_id": "w1:p1",
+      "source": "loom-probe",
+      "title": "stale",
+      "seq": 0
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-48a3ba3c",
+      "result": {
+        "type": "ok"
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-48a3ba3c\",\"result\":{\"type\":\"ok\"}}\n"
+}

@@ -1,0 +1,31 @@
+{
+  "request": {
+    "id": "probe-cab95157",
+    "method": "pane.read",
+    "params": {
+      "pane_id": "w1:p1",
+      "source": "recent_unwrapped",
+      "format": "text",
+      "lines": 50
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-cab95157",
+      "result": {
+        "type": "pane_read",
+        "read": {
+          "pane_id": "w1:p1",
+          "workspace_id": "w1",
+          "tab_id": "w1:t1",
+          "source": "recent_unwrapped",
+          "format": "text",
+          "text": "HERDR_PANE_ID=w1:p1\nLOOM_CARD=card-probe-001\nREADY",
+          "revision": 0,
+          "truncated": false
+        }
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-cab95157\",\"result\":{\"type\":\"pane_read\",\"read\":{\"pane_id\":\"w1:p1\",\"workspace_id\":\"w1\",\"tab_id\":\"w1:t1\",\"source\":\"recent_unwrapped\",\"format\":\"text\",\"text\":\"HERDR_PANE_ID=w1:p1\\nLOOM_CARD=card-probe-001\\nREADY\",\"revision\":0,\"truncated\":false}}}\n"
+}

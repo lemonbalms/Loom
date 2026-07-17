@@ -1,0 +1,35 @@
+{
+  "request": {
+    "id": "probe-c6d4345e",
+    "method": "pane.list",
+    "params": {}
+  },
+  "responses": [
+    {
+      "id": "probe-c6d4345e",
+      "result": {
+        "type": "pane_list",
+        "panes": [
+          {
+            "pane_id": "w1:p1",
+            "terminal_id": "term_656c9f8934e231",
+            "workspace_id": "w1",
+            "tab_id": "w1:t1",
+            "focused": true,
+            "cwd": "/Users/kyoungsiklee/projects/fable-advisor",
+            "foreground_cwd": "/Users/kyoungsiklee/projects/fable-advisor",
+            "label": "loom-probe",
+            "agent_status": "unknown",
+            "scroll": {
+              "offset_from_bottom": 0,
+              "max_offset_from_bottom": 0,
+              "viewport_rows": 23
+            },
+            "revision": 0
+          }
+        ]
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-c6d4345e\",\"result\":{\"type\":\"pane_list\",\"panes\":[{\"pane_id\":\"w1:p1\",\"terminal_id\":\"term_656c9f8934e231\",\"workspace_id\":\"w1\",\"tab_id\":\"w1:t1\",\"focused\":true,\"cwd\":\"/Users/kyoungsiklee/projects/fable-advisor\",\"foreground_cwd\":\"/Users/kyoungsiklee/projects/fable-advisor\",\"label\":\"loom-probe\",\"agent_status\":\"unknown\",\"scroll\":{\"offset_from_bottom\":0,\"max_offset_from_bottom\":0,\"viewport_rows\":23},\"revision\":0}]}}\n"
+}

@@ -1,0 +1,19 @@
+{
+  "request": {
+    "id": "probe-5520a76c",
+    "method": "agent.send",
+    "params": {
+      "target": "term_656c9f8934e231",
+      "text": "literal-no-enter-PROBE"
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-5520a76c",
+      "result": {
+        "type": "ok"
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-5520a76c\",\"result\":{\"type\":\"ok\"}}\n"
+}

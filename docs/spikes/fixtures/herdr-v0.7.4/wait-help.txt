@@ -1,0 +1,3 @@
+herdr wait commands:
+  herdr wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]
+  herdr wait agent-status <pane_id> --status <idle|working|blocked|done|unknown> [--timeout MS]

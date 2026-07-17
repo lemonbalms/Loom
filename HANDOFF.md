@@ -9,14 +9,18 @@
 
 ## ⭐ Current action (read first)
 
-> **🕸 NEW (2026-07-17): Loom×Herdr 노드 브릿지 설계서 완료 (`85e7829`, pushed).** **`docs/HERDR_DESIGN.md`** — Windows=Loom 컨트롤 타워 / herdr(Rust 에이전트 멀티플렉서)=Linux·Mac·WSL 노드 전용 / 노드별 브릿지 데몬(`loom bridge` 서브커맨드) 필수. **relay 와이어(protocol v1) 무변경** — 카드 dispatch/done은 기존 `mode:'task'` handoff + `loom-card-dispatch`/`loom-card-result` 라벨 attachment 컨벤션. 카드는 타워 board 소유(local-only 유지), 완료 감지는 herdr push 이벤트 드리븐(폴링 없음). 멀티에이전트 워크플로(정찰4+초안4+적대적 코드검증4)로 작성 — 검증이 잡은 사실오류 5건 교정 반영. 권고 원문 아카이브 = `docs/loom-herdr-architecture.html`.
+> **✅ Step 0.5 herdr 실측 완료 (2026-07-17, 이 세션).** 공식 바이너리 **herdr v0.7.4** 설치(`~/.local/bin/herdr`, `curl -fsSL https://herdr.dev/install.sh | sh`) · GitHub [`ogulcancelik/herdr`](https://github.com/ogulcancelik/herdr) · AGPL-3.0-or-later+commercial dual. 산출물: **`docs/spikes/STEP0.5-HERDR.md`** + fixture **`docs/spikes/fixtures/herdr-v0.7.4/`** (NDJSON 원문·schema protocol 16). Verdict **go** + 보정 **C1–C3** (`HERDR_DESIGN` §0.1 갱신).
 >
-> **⏩ 다음 순서 (설계서 §5·§6에 성문화):**
-> ① **Step 0 — WSL2 네트워킹 PoC** (오너 Windows 머신 필요): `.wslconfig` mirrored + relay LAN 바인딩(`bun run relay:lan`) + WSL 안에서 인바운드 join 왕복. 산출물 `docs/spikes/STEP0-WSL2-NETWORKING.md`. **"여기가 안 뚫리면 나머지 무의미."**
-> ② **Step 0.5 — herdr 실측**: 설계서의 herdr 쪽 사실은 **전부 [가정-H]**(외부 권고 문서 인용, 이 레포에서 미검증 — §0.1이 일괄 마커). 소켓 프레이밍·메서드·이벤트·seq·라이선스 실물 대조 + fixture 캡처. **이거 전에 브릿지 코드 착수 금지.**
-> ③ PLAN **0.22.0** `pending-review` 편입 — **FREEZE 예외 = 오너 pull 한 줄 명시 필요**(이 요구는 오너가 직접 가져온 것이므로 해당됨, 단 명시적 확인 필요) → ④ R23 리뷰 → approved 후 본구현.
+> **핵심 실측:** 소켓 `~/.config/herdr/herdr.sock` 0600 · NDJSON `{id,method,params}` · `agent.start` env + `HERDR_PANE_ID` 자동주입 · `agent.send` no-Enter · `events.subscribe`/`events.wait` · status 이벤트 **본문 없음** → `pane.read source=recent` · `session.snapshot` reconcile. **C1:** `done`은 관측 enum에만 있고 `report_agent` 쓰기 불가. **C2:** subscribe=dotted `type` / push·wait=underscore `event`. **C3:** metadata seq 필드 있음·낮은 seq 거절 미확인.
 >
-> **🕷 부수 작업(같은 날):** 브랜드 에셋 6종 `assets/brand/`(Twemoji 기반 거미/거미줄, CC-BY 4.0 — README Credits 추가됨) + README 마스코트 + 데스크톱 파비콘 + Tauri 앱 아이콘 세트 재생성 (`c825808`·`eccc23a`).
+> **🕸 (이전) Loom×Herdr 설계서** `docs/HERDR_DESIGN.md` (`85e7829`). Windows=타워 / herdr=노드 / `loom bridge` / relay wire 무변경.
+>
+> **⏩ 다음 순서:**
+> ① **Step 0 — WSL2 네트워킹 PoC** (오너 Windows 머신 필요) — 아직 미실시. 산출물 `docs/spikes/STEP0-WSL2-NETWORKING.md`.
+> ② PLAN **0.22.0** `pending-review` — **FREEZE 예외 = 오너 pull 한 줄 명시 필요** → R23 → approved 후 본구현( fake herdr = 위 fixture ).
+> ③ (선택) WSL에서 Step 0.5 매트릭스 재실행 · 실 Claude/Codex detection `done` 캡처.
+>
+> **🕷 부수:** 브랜드 에셋 `assets/brand/` (`c825808`·`eccc23a`).
 >
 > ---
 >
@@ -59,7 +63,7 @@
 
 ## One-line resume
 
-> **⏩ 이번 세션(07-17) = Loom×Herdr 브릿지 설계서 shipped (`85e7829`).** 다음 = **Step 0 WSL2 PoC**(오너 Windows 머신) → **Step 0.5 herdr 실측** → PLAN 0.22.0 게이트(FREEZE 예외 오너 확인) → R23 → 구현. 설계서 = `docs/HERDR_DESIGN.md`(§0 요약·§5 롤아웃·§6 게이트가 진입점). 코드 변경 없음(docs+brand만), bun test 195/0 그대로. VPS 블로커는 별개 트랙으로 여전히 오픈.
+> **⏩ 이번 세션(07-17 후속) = Step 0.5 herdr 실측 shipped.** herdr v0.7.4 설치 + live RPC fixture + `STEP0.5-HERDR.md` + `HERDR_DESIGN` §0.1/§5.2 갱신. 다음 = **Step 0 WSL2**(오너 Windows) 및/또는 FREEZE 예외 확인 후 PLAN **0.22.0**. 브릿지 코드 아직 없음(FREEZE). VPS 블로커는 별개 트랙.
 >
 > **(이전) 목적지 재확정 = 내부 6인 팀 채택(adoption).** 효용 확정 전제(내부 도구) → 수요검증 프레임 폐기, FREEZE는 "팀-pull된 요구만 구현"으로 근거 교체. **다음 2갈래:** ①팀-pull 유일 실기능 = **Windows 온보딩 경로**(팀에 Windows 사용자 있음 확인 · `install.sh` bash 전용 → PLAN 게이트 후 구현, 접근법 오너 확인) ②**relay 공용 호스트(VPS) 확보 = 오너 블로커**(아직 없음). 런북 = `docs/DRY_RUN_RUNBOOK.md`(팀 온보딩판). 코드 3종(설치·invite·doctor) 완비, bun test 180/0. 상세 판정 = ⭐ 블록.
 >
@@ -79,7 +83,7 @@
 | **Open blocking** | **none** — R22 구현·검증·라이브 스모크 전부 완료. flag 개방 가능 |
 | **Tests** | `bun test` **195 pass / 0 fail** (+5 `inject-live.test.ts`) · 6 pkg typecheck green · biome touched clean |
 | **Latest** | `85e7829` **Herdr 브릿지 설계서** · `eccc23a`/`c825808` 브랜드 에셋(마스코트·파비콘·앱아이콘) · `f795c81` handoff · `a5808dc` A2 관찰 항목(runbook) |
-| **Design queue** | `docs/HERDR_DESIGN.md` — Step 0 WSL2 PoC → Step 0.5 herdr 실측 → PLAN 0.22.0(`pending-review` 예정) → R23 |
+| **Design queue** | Step 0.5 **done** · `docs/spikes/STEP0.5-HERDR.md` · fixtures `herdr-v0.7.4` · 다음 Step 0 WSL2 / PLAN 0.22.0(R23, FREEZE 예외 필요) |
 
 ### Already shipped (context, don't redo)
 
@@ -110,16 +114,24 @@
 
 ---
 
+## This session (2026-07-17 후속) — Step 0.5 herdr 실측
+
+| 영역 | 결과 |
+|------|------|
+| **설치** | 공식 설치 `https://herdr.dev/install.sh` → `~/.local/bin/herdr` **v0.7.4** · GitHub `ogulcancelik/herdr` · 라이선스 AGPL-3.0-or-later + commercial dual |
+| **서버** | `herdr server` headless · socket `~/.config/herdr/herdr.sock` 0600 · protocol 16 |
+| **실측** | NDJSON 프레이밍 · ping/agent.start(+env, HERDR_PANE_ID)/agent.send(no-Enter)/pane.read/session.snapshot/events.subscribe/events.wait/report_metadata · fixture 캡처 |
+| **보정 C1–C3** | done 쓰기 불가 · 이벤트 dotted vs underscore · seq 거절 미확인 |
+| **문서** | `docs/spikes/STEP0.5-HERDR.md` · `docs/spikes/fixtures/herdr-v0.7.4/` · `HERDR_DESIGN` §0.1·§5.2 갱신 · HANDOFF |
+| 코드 변경 | **없음** (docs/spike/fixture만, FREEZE 준수) |
+
 ## This session (2026-07-17 PM) — Herdr 브릿지 설계서 + 브랜드 에셋
 
 | 영역 | 결과 |
 |------|------|
-| **브랜드 에셋**(`c825808`·`eccc23a`) | `assets/brand/` 6종(Twemoji 기반 spider/web, 커스텀 컬러, CC-BY 4.0) · README 제목 마스코트 + Credits 절 · 데스크톱 파비콘(`apps/desktop/ui/` — frontendDist가 `../ui`라 상대경로) · `bunx tauri icon`으로 앱 아이콘 17종 재생성(SVG 소스라 전 크기 선명). android/ios 생성분은 삭제(데스크톱 전용 유지) |
-| **Herdr 권고 문서 분석** | 오너가 가져온 `loom-herdr-architecture.html`(Loom×Herdr 분산 오케스트레이션 권고) 정독 — Windows=타워/herdr=Linux·Mac·WSL만/브릿지 필수/이벤트 드리븐/카드는 board 소유. → `docs/`에 아카이브 |
-| **설계서 작성**(`85e7829`) | **오케스트레이션 워크플로 12 에이전트**: 정찰 4(protocol/relay·MCP/board·adapters/CLI·docs 관례, 전 사실 file:line) → 섹션 초안 4(브릿지 데몬·계약·생애주기/보안·롤아웃) → 적대적 검증 4(초안 주장 vs 실코드 grep 대조). **검증이 잡은 WRONG 5건 교정**: ①`[GOAL] intent:` 한 줄 형식은 파서(줄-시작 정규식) 미매치 → 헤더 독립 줄 + `task:` 키 통일 ②peerSecret은 rejoin에도 매번 응답 ③TASK_ID_RE 위치 ④MCP 배열 인자 선례(set_purpose) ⑤attachment 소비 패턴 인용 라인 |
-| **설계 충돌 2건 판정** | wire에 argv 금지(agentKind만, argv는 브릿지 로컬 allowlist — 임의명령 원격실행 차단, M-24 동형) · 슬라이스는 at-most-once(crash 저널은 §2.6 확장 1순위로 보존) |
-| **[가정-H] 등급화** | herdr 쪽 주장 전부(소켓/메서드/이벤트/seq/AGPL/버전)는 권고 문서 인용일 뿐 레포 미검증 → 설계서 §0.1 일괄 마커 + **Step 0.5 실측 게이트** 신설 |
-| 코드 변경 | **없음** (docs+assets만, FREEZE 준수 — herdr 구현은 PLAN 0.22.0 게이트 통과 후) |
+| **브랜드 에셋**(`c825808`·`eccc23a`) | `assets/brand/` 6종(Twemoji 기반 spider/web, 커스텀 컬러, CC-BY 4.0) · README 제목 마스코트 + Credits 절 · 데스크톱 파비콘 · Tauri 앱 아이콘 재생성 |
+| **설계서 작성**(`85e7829`) | `docs/HERDR_DESIGN.md` — 정찰4+초안4+적대 검증4 · wire 무변경 · `loom bridge` |
+| 코드 변경 | **없음** (docs+assets만) |
 
 ---
 

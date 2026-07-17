@@ -1,0 +1,24 @@
+{
+  "request": {
+    "id": "sub1",
+    "method": "events.subscribe",
+    "params": {
+      "subscriptions": [
+        {
+          "type": "pane.agent_status_changed",
+          "pane_id": "w1:p1"
+        },
+        {
+          "type": "pane.created"
+        },
+        {
+          "type": "pane.closed"
+        },
+        {
+          "type": "pane.updated"
+        }
+      ]
+    }
+  },
+  "raw": "{\"id\":\"sub1\",\"result\":{\"type\":\"subscription_started\"}}\n"
+}

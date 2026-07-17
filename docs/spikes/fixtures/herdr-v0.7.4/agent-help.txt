@@ -1,0 +1,14 @@
+herdr agent commands:
+  herdr agent list
+  herdr agent get <target>
+  herdr agent read <target> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]
+  herdr agent send <target> <text>
+  herdr agent rename <target> <name>|--clear
+  herdr agent focus <target>
+  herdr agent wait <target> --status <idle|working|blocked|unknown> [--timeout MS]
+  herdr agent attach <target> [--takeover]
+  herdr agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--env KEY=VALUE] [--focus|--no-focus] -- <argv...>
+  herdr agent explain <target> [--json]
+  herdr agent explain --file PATH --agent LABEL [--json]
+  targets accept terminal ids, unique agent names, detected/reported agent labels, and legacy pane ids
+  agent send writes literal text; use pane run when you want command text plus Enter

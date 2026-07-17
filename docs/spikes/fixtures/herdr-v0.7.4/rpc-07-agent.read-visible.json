@@ -1,0 +1,31 @@
+{
+  "request": {
+    "id": "probe-fa4a04ef",
+    "method": "agent.read",
+    "params": {
+      "target": "term_656c9f8934e231",
+      "source": "visible",
+      "format": "text",
+      "lines": 50
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-fa4a04ef",
+      "result": {
+        "type": "pane_read",
+        "read": {
+          "pane_id": "w1:p1",
+          "workspace_id": "w1",
+          "tab_id": "w1:t1",
+          "source": "visible",
+          "format": "text",
+          "text": "HERDR_PANE_ID=w1:p1\nLOOM_CARD=card-probe-001\nREADY\n",
+          "revision": 0,
+          "truncated": false
+        }
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-fa4a04ef\",\"result\":{\"type\":\"pane_read\",\"read\":{\"pane_id\":\"w1:p1\",\"workspace_id\":\"w1\",\"tab_id\":\"w1:t1\",\"source\":\"visible\",\"format\":\"text\",\"text\":\"HERDR_PANE_ID=w1:p1\\nLOOM_CARD=card-probe-001\\nREADY\\n\",\"revision\":0,\"truncated\":false}}}\n"
+}

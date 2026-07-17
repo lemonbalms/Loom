@@ -1,0 +1,23 @@
+{
+  "request": {
+    "id": "probe-dee651fa",
+    "method": "pane.report_agent",
+    "params": {
+      "pane_id": "w1:p1",
+      "source": "loom-probe",
+      "agent": "bash",
+      "state": "done",
+      "seq": 2
+    }
+  },
+  "responses": [
+    {
+      "id": "",
+      "error": {
+        "code": "invalid_request",
+        "message": "invalid request: unknown variant `done`, expected one of `idle`, `working`, `blocked`, `unknown` at line 1 column 141"
+      }
+    }
+  ],
+  "raw": "{\"id\":\"\",\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid request: unknown variant `done`, expected one of `idle`, `working`, `blocked`, `unknown` at line 1 column 141\"}}\n"
+}

@@ -1,0 +1,61 @@
+{
+  "events": [
+    {
+      "data": {
+        "pane": {
+          "agent_status": "unknown",
+          "cwd": "/Users/kyoungsiklee/projects/fable-advisor",
+          "focused": true,
+          "foreground_cwd": "/Users/kyoungsiklee/projects/fable-advisor",
+          "label": "loom-probe",
+          "pane_id": "w1:p1",
+          "revision": 1,
+          "scroll": {
+            "max_offset_from_bottom": 0,
+            "offset_from_bottom": 0,
+            "viewport_rows": 23
+          },
+          "tab_id": "w1:t1",
+          "terminal_id": "term_656c9f8934e231",
+          "title": "probe-title",
+          "tokens": {
+            "LOOM_CARD": "card-probe-001"
+          },
+          "workspace_id": "w1"
+        },
+        "type": "pane_updated"
+      },
+      "event": "pane_updated"
+    },
+    {
+      "data": {
+        "agent": "bash",
+        "agent_status": "blocked",
+        "pane_id": "w1:p1",
+        "title": "higher",
+        "workspace_id": "w1"
+      },
+      "event": "pane.agent_status_changed"
+    },
+    {
+      "data": {
+        "agent": "bash",
+        "agent_status": "idle",
+        "pane_id": "w1:p1",
+        "title": "higher",
+        "workspace_id": "w1"
+      },
+      "event": "pane.agent_status_changed"
+    },
+    {
+      "data": {
+        "agent": "bash",
+        "agent_status": "unknown",
+        "pane_id": "w1:p1",
+        "title": "higher",
+        "workspace_id": "w1"
+      },
+      "event": "pane.agent_status_changed"
+    }
+  ]
+}

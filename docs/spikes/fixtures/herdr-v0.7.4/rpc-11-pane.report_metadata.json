@@ -1,0 +1,24 @@
+{
+  "request": {
+    "id": "probe-805e9018",
+    "method": "pane.report_metadata",
+    "params": {
+      "pane_id": "w1:p1",
+      "source": "loom-probe",
+      "title": "probe-title",
+      "seq": 1,
+      "tokens": {
+        "LOOM_CARD": "card-probe-001"
+      }
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-805e9018",
+      "result": {
+        "type": "ok"
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-805e9018\",\"result\":{\"type\":\"ok\"}}\n"
+}

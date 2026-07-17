@@ -1,0 +1,21 @@
+{
+  "request": {
+    "id": "93b86d40",
+    "method": "events.wait",
+    "params": {
+      "match_event": {
+        "event": "pane_agent_status_changed",
+        "pane_id": "w2:p1",
+        "agent_status": "blocked"
+      },
+      "timeout_ms": 300
+    }
+  },
+  "response": {
+    "id": "93b86d40",
+    "error": {
+      "code": "timeout",
+      "message": "timed out waiting for event match"
+    }
+  }
+}

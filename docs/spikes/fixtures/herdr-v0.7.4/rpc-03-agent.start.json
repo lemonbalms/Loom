@@ -1,0 +1,45 @@
+{
+  "request": {
+    "id": "probe-008ece8b",
+    "method": "agent.start",
+    "params": {
+      "name": "loom-probe",
+      "argv": [
+        "bash",
+        "-lc",
+        "echo HERDR_PANE_ID=$HERDR_PANE_ID; echo LOOM_CARD=$LOOM_CARD; echo READY; while true; do sleep 1; done"
+      ],
+      "env": {
+        "LOOM_CARD": "card-probe-001",
+        "LOOM_PROBE": "1"
+      },
+      "focus": false
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-008ece8b",
+      "result": {
+        "type": "agent_started",
+        "agent": {
+          "terminal_id": "term_656c9f8934e231",
+          "name": "loom-probe",
+          "agent_status": "unknown",
+          "workspace_id": "w1",
+          "tab_id": "w1:t1",
+          "pane_id": "w1:p1",
+          "focused": true,
+          "cwd": "/Users/kyoungsiklee/projects/fable-advisor",
+          "foreground_cwd": "/Users/kyoungsiklee/projects/fable-advisor",
+          "revision": 0
+        },
+        "argv": [
+          "bash",
+          "-lc",
+          "echo HERDR_PANE_ID=$HERDR_PANE_ID; echo LOOM_CARD=$LOOM_CARD; echo READY; while true; do sleep 1; done"
+        ]
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-008ece8b\",\"result\":{\"type\":\"agent_started\",\"agent\":{\"terminal_id\":\"term_656c9f8934e231\",\"name\":\"loom-probe\",\"agent_status\":\"unknown\",\"workspace_id\":\"w1\",\"tab_id\":\"w1:t1\",\"pane_id\":\"w1:p1\",\"focused\":true,\"cwd\":\"/Users/kyoungsiklee/projects/fable-advisor\",\"foreground_cwd\":\"/Users/kyoungsiklee/projects/fable-advisor\",\"revision\":0},\"argv\":[\"bash\",\"-lc\",\"echo HERDR_PANE_ID=$HERDR_PANE_ID; echo LOOM_CARD=$LOOM_CARD; echo READY; while true; do sleep 1; done\"]}}\n"
+}

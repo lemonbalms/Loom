@@ -1,0 +1,21 @@
+{
+  "request": {
+    "id": "probe-a9cc0fd4",
+    "method": "pane.report_metadata",
+    "params": {
+      "pane_id": "w1:p1",
+      "source": "loom-probe",
+      "title": "higher",
+      "seq": 2
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-a9cc0fd4",
+      "result": {
+        "type": "ok"
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-a9cc0fd4\",\"result\":{\"type\":\"ok\"}}\n"
+}

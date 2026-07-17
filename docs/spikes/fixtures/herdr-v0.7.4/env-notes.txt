@@ -1,0 +1,8 @@
+HERDR_SOCKET_PATH=
+socket_path_from_status=/Users/kyoungsiklee/.config/herdr/herdr.sock
+total 8
+drwxr-xr-x@  5 kyoungsiklee  staff  160  7월 17 17:01 [1m[36m.[39;49m[0m
+drwxr-xr-x@ 13 kyoungsiklee  staff  416  7월 17 17:01 [1m[36m..[39;49m[0m
+srw-------@  1 kyoungsiklee  staff    0  7월 17 17:01 [32mherdr-client.sock[39;49m[0m
+-rw-r--r--@  1 kyoungsiklee  staff  862  7월 17 17:01 herdr-server.log
+srw-------@  1 kyoungsiklee  staff    0  7월 17 17:01 [32mherdr.sock[39;49m[0m

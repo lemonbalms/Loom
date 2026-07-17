@@ -1,0 +1,22 @@
+{
+  "request": {
+    "id": "probe-a837b451",
+    "method": "pane.report_agent",
+    "params": {
+      "pane_id": "w1:p1",
+      "source": "loom-probe",
+      "agent": "bash",
+      "state": "working",
+      "seq": 1
+    }
+  },
+  "responses": [
+    {
+      "id": "probe-a837b451",
+      "result": {
+        "type": "ok"
+      }
+    }
+  ],
+  "raw": "{\"id\":\"probe-a837b451\",\"result\":{\"type\":\"ok\"}}\n"
+}

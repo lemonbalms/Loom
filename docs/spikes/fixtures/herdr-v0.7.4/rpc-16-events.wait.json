@@ -1,0 +1,30 @@
+{
+  "req": {
+    "id": "1bc79b32",
+    "method": "events.wait",
+    "params": {
+      "match_event": {
+        "event": "pane_agent_status_changed",
+        "pane_id": "w2:p1",
+        "agent_status": "idle"
+      },
+      "timeout_ms": 5000
+    }
+  },
+  "resp": {
+    "id": "1bc79b32",
+    "result": {
+      "type": "wait_matched",
+      "event": {
+        "event": "pane_agent_status_changed",
+        "data": {
+          "type": "pane_agent_status_changed",
+          "pane_id": "w2:p1",
+          "workspace_id": "w2",
+          "agent_status": "idle",
+          "agent": "bash"
+        }
+      }
+    }
+  }
+}

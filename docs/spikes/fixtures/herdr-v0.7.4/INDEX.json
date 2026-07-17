@@ -1,0 +1,106 @@
+{
+  "herdr_version": "0.7.4",
+  "protocol": 16,
+  "date": "2026-07-17",
+  "platform": "macos-aarch64",
+  "socket_path": "/Users/kyoungsiklee/.config/herdr/herdr.sock",
+  "socket_mode": "0600 unix domain",
+  "license": "AGPL-3.0-or-later + commercial dual (github.com/ogulcancelik/herdr)",
+  "github": "https://github.com/ogulcancelik/herdr",
+  "install": "curl -fsSL https://herdr.dev/install.sh | sh  -> ~/.local/bin/herdr",
+  "framing": {
+    "style": "NDJSON (newline-delimited JSON)",
+    "request": {
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "notes": "params required even if empty object"
+    },
+    "success": {
+      "shape": {
+        "id": "string",
+        "result": "object with type field"
+      }
+    },
+    "error": {
+      "shape": {
+        "id": "string",
+        "error": {
+          "code": "string",
+          "message": "string"
+        }
+      }
+    },
+    "events": {
+      "shape": {
+        "event": "string",
+        "data": "object"
+      },
+      "notes": "pushed on the same connection after events.subscribe; no output body on pane.agent_status_changed"
+    }
+  },
+  "agent_status_observed": [
+    "idle",
+    "working",
+    "blocked",
+    "done",
+    "unknown"
+  ],
+  "pane_report_agent_state_allowed": [
+    "idle",
+    "working",
+    "blocked",
+    "unknown"
+  ],
+  "notes": [
+    "done is in AgentStatus enum for observation but pane.report_agent rejects state=done",
+    "HERDR_PANE_ID is auto-injected (=pane_id)",
+    "agent.start env map is applied (LOOM_CARD observed in pane)",
+    "agent.send is literal text without Enter (CLI help + live probe)",
+    "session.snapshot provides reconcile snapshot (agents/panes/tabs/workspaces)",
+    "stale lower seq on pane.report_metadata still returned ok in this probe \u2014 seq semantics need more care for multi-source"
+  ],
+  "files": [
+    "INDEX.json",
+    "agent-help.txt",
+    "agent-list-empty.txt",
+    "env-notes.txt",
+    "methods.json",
+    "pane-help.txt",
+    "pane-list-empty.txt",
+    "rpc-01-ping.json",
+    "rpc-02-session.snapshot.json",
+    "rpc-03-agent.start.json",
+    "rpc-04-agent.list.json",
+    "rpc-05-pane.list.json",
+    "rpc-06-pane.read-recent.json",
+    "rpc-06-pane.read-recent_unwrapped.json",
+    "rpc-06-pane.read-visible.json",
+    "rpc-07-agent.read-recent.json",
+    "rpc-07-agent.read-recent_unwrapped.json",
+    "rpc-07-agent.read-visible.json",
+    "rpc-08-agent.send.json",
+    "rpc-09-pane.read-after-send.json",
+    "rpc-10-events.subscribe-try.json",
+    "rpc-10b-events.subscribe-ok.json",
+    "rpc-11-pane.report_metadata.json",
+    "rpc-12-pane.report_metadata-stale-seq.json",
+    "rpc-13-pane.report_metadata-seq2.json",
+    "rpc-14-pane.report_agent-done.json",
+    "rpc-14-pane.report_agent-working.json",
+    "rpc-15-subscription-events.json",
+    "rpc-16-events.wait.json",
+    "rpc-17-events.wait-timeout.json",
+    "schema.err",
+    "schema.json",
+    "snapshot.err",
+    "snapshot.json",
+    "status.txt",
+    "version.txt",
+    "wait-help.txt",
+    "workspace-help.txt",
+    "workspace-list.txt"
+  ]
+}
