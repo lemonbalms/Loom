@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| **Status** | draft — PLAN 미편입 (편입 제안: §6) |
+| **Status** | **PLAN 0.22.0 편입됨** (2026-07-17, R23 `approved` — binding **M-1 dispatcher 인가 · M-2 제출 분리**, `docs/plan_review.md` R23). 버전·status SSOT = `docs/PLAN.md` |
 | **Date** | 2026-07-17 |
 | **Scope** | 수직 슬라이스(노드 1개, WSL2) 통과에 필요한 최소 설계. 확장은 각 절 "이후"로 분리 |
 | **Related** | [`loom-herdr-architecture.html`](./loom-herdr-architecture.html) (외부 권고 문서 아카이브) · [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §3.5 · [`UNKNOWNS.md`](./UNKNOWNS.md) · [`DRY_RUN_RUNBOOK.md`](./DRY_RUN_RUNBOOK.md) |
@@ -22,6 +22,10 @@ Windows 호스트는 **Loom relay(컨트롤 타워)만** 돌리고, herdr는 **L
 | 완료 감지 | herdr `events.subscribe` push — **폴링 루프 없음**; status 이벤트에 본문 없음 → 상태 변화 직후 `pane.read` 단발 1회. **`done`은 report_agent로 쓸 수 없음**(C1) — detection/`done` 이벤트 또는 idle·exit 조합 | 권고 문서의 이벤트 드리븐 원칙 (§2.5) + Step 0.5 C1 |
 | 실행 보안 | wire에 argv **금지** — `agentKind`만 싣고 argv 매핑은 브릿지 로컬 allowlist | 임의-argv 원격 실행 데몬화 방지, M-24 관행과 동형 (§4.4.2) |
 | 슬라이스 전달 시맨틱 | **at-most-once** (브릿지 저널 없음) — stuck 카드는 사람이 board에서 재발행 | 과잉 구현 방지. 저널 설계는 확장 1순위로 §2.6에 보존 |
+
+> **⚠ R23 binding 보정 (2026-07-17, `docs/plan_review.md` R23):**
+> - **M-1 dispatcher 인가:** 아래 본문의 "label로만 라우팅"(§2.5-1, §3.2)은 **불충분** — label은 room 내 모든 peer가 붙일 수 있다. 브릿지는 dispatch handoff의 `fromPeerId`가 **브릿지 로컬 authorized-dispatcher allowlist**(타워 peer id)에 있을 때만 실행한다. 비인가 dispatch는 무시+로그, 설정 부재 시 기본 거부.
+> - **M-2 제출 분리:** §2.5-4의 "`agent.send <prompt>` + 제출"에서 제출은 **untrusted 내용을 전혀 포함하지 않는 고정 상수 입력(bare Enter)의 별도 호출**로만 — prompt를 `pane.run` 인자로 보간하는 것 영구 금지(§4.4.1과 정합).
 
 ### 0.1 출처 및 검증 상태 — 읽기 전 필수
 

@@ -13,15 +13,16 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 다음 게이트 = PLAN 0.22.0 (`loom bridge`) — FREEZE 예외 오너 확인 대기.**
+> **🎯 다음 게이트 = 0.22.0 `loom bridge` 구현 — 레인 위임 (approved, 코드 미착수).**
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 | 산출물 |
 > |------|------|--------|
 > | Loom product | **0.21.1** PTY inject 검증 완료 | `d05d714` · `bun test` 195/0 |
-> | Herdr 설계서 | shipped | `docs/HERDR_DESIGN.md` (`85e7829`) |
+> | Herdr 설계서 | shipped + R23 보정 | `docs/HERDR_DESIGN.md` (`85e7829`) |
 > | **Step 0.5 herdr 실측** | **go** · v0.7.4 · protocol 16 | `docs/spikes/STEP0.5-HERDR.md` · `docs/spikes/fixtures/herdr-v0.7.4/` |
 > | **Step 0 WSL/Windows 네트워킹** | **go** | `docs/spikes/STEP0-WINDOWS-RESULT.md` · `STEP0-MAC-CONTINUATION.md` · `STEP0-WSL2-NETWORKING.md` |
+> | **PLAN 0.22.0 + R23** | **`approved`** (2026-07-17) — FREEZE 예외 오너 승인 → draft → fable-advisor 컨설트 → `pending-revision` → M-1/M-2 locks → author-close | `docs/PLAN.md` 0.22.0 · `docs/plan_review.md` R23 · `docs/UNKNOWNS.md` §0.22.0 |
 >
 > ### Step 0 핵심 사실 (브릿지 설계 입력)
 > - **Windows 타워:** `DESKTOP-LG99QSS` · user **`34970`** · Tailscale **`100.65.103.113`**
@@ -33,31 +34,21 @@
 >
 > ### ⏩ 다음 세션이 할 일 (순서 고정)
 >
-> **0) 오너 한 줄 (블로커)**  
-> FREEZE 예외 명시: *"0.22.0 Loom×Herdr bridge — 오너 pull, FREEZE 예외 승인"*  
-> 없으면 PLAN `pending-review` 열지 말 것 (HERDR_DESIGN §6.1 · PLAN 0.21.1 선례).
+> **1) 0.22.0 구현 — 레인 위임만** (세션 모델 직접 코딩 금지, `docs/DOGFOOD_LOOP.md` §1.2)  
+> - 레인: grok-impl → codex-impl → 하위 서브에이전트. 매 세션 레인 가용성 새로 확인.  
+> - 스펙 정본: `docs/PLAN.md` 0.22.0 What 표 + **binding M-1(dispatcher 인가)/M-2(제출 분리)** + L-1..L-3 author-close + `docs/HERDR_DESIGN.md` §2–§5 (R23 보정 블록 §0 포함).  
+> - 테스트: fake herdr from `docs/spikes/fixtures/herdr-v0.7.4/` · relay in-process · at-most-once · 오프라인 dispatch/peerSecret rejoin 내구성 2건.  
+> - VERSION 0.22.x 동기화(CLI+MCP) · implementation-notes에 author-close 기록.
 >
-> **1) PLAN 0.22.0 draft → `pending-review`**  
-> - SSOT: `docs/PLAN.md` changelog 0.21.1 패턴  
-> - Related: `docs/HERDR_DESIGN.md` + Step 0/0.5 spikes  
-> - What: `loom bridge` 데몬 · dispatch/done handoff 컨벤션 · **wire protocol v1 무변경**  
-> - Network lock: WSL attach = host NAT IP (not 127.0.0.1 on Win10)  
-> - herdr locks: NDJSON + C1–C3 · fixtures `docs/spikes/fixtures/herdr-v0.7.4/`  
-> - Unknowns → `docs/UNKNOWNS.md` §0.22.0  
-> - Binding M-locks + Security (untrusted handoff → agent prompt)
+> **2) 구현 후 아키텍트 독립 검증** — M-1/M-2 코드 확인 · bun test/typecheck/biome · 라이브 스모크(실물 herdr)는 수동 1회(§5.3 이원화).
 >
-> **2) R23** — Fable 5 필수 (`docs/WORKFLOW.md` §5.0–5.1). claude-rev는 `fable-advisor` 컨설트 후 `docs/plan_review.md` R23.
->
-> **3) approved 후에만 구현** — 세션 모델 직접 코딩 금지. 레인: grok-impl → codex-impl → 하위 서브에이전트 (`docs/DOGFOOD_LOOP.md` §1.2).  
-> 테스트: fake herdr from fixtures · relay in-process · at-most-once.
->
-> **4) (병렬 가능, 코드 아님)**  
+> **3) (병렬 가능, 코드 아님)**  
 > - VPS/공용 relay · 팀 6인 dry-run (`docs/DRY_RUN_RUNBOOK.md`) — 오너  
 > - (선택) WSL에 herdr 설치 후 Step 0.5 재확인 · Win11 mirrored
 >
 > ### 하지 말 것
-> - FREEZE 예외 없이 브릿지 코드 작성  
-> - Step 0 / 0.5 재실행(이미 go)  
+> - M-1/M-2 lock 미충족 구현(특히 label-단독 라우팅·`pane.run` 프롬프트 보간)  
+> - Step 0 / 0.5 재실행(이미 go) · R23 재리뷰(no R23b — author-close 완료)  
 > - relay wire / envelope 스키마 변경  
 > - herdr 소스 벤더링 (AGPL — 소켓 호출만)
 >
@@ -67,7 +58,7 @@
 
 ## One-line resume
 
-> **Step 0 + Step 0.5 = go.** 다음 = 오너 FREEZE 예외 한 줄 → PLAN **0.22.0** pending-review → R23 → `loom bridge` 구현. 제품 CLI **0.21.1**. 설계 `docs/HERDR_DESIGN.md`. 브릿지 코드 없음. VPS/팀 온보딩은 별 트랙.
+> **PLAN 0.22.0 `approved` (R23 closed, 2026-07-17).** 오너 FREEZE 예외 승인 → draft → fable-advisor 컨설트 → M-1/M-2 locks → author-close 완주. 다음 = **`loom bridge` 구현(레인 위임만)**. 제품 CLI **0.21.1**. 설계 `docs/HERDR_DESIGN.md`(R23 보정 포함). 브릿지 코드 아직 없음. VPS/팀 온보딩은 별 트랙.
 
 ---
 
@@ -76,13 +67,13 @@
 | Item | Value |
 |------|--------|
 | **CLI / code** | **0.21.1** — PTY inject fully verified · `bun test` **195/0** |
-| **PLAN** | **v0.21.1** `approved` · **next draft target 0.22.0** (not opened) |
+| **PLAN** | **v0.22.0 `approved`** (R23 author-close) — Loom×Herdr 노드 브릿지 · **구현 미착수** |
 | **Open blocking (product)** | none on 0.21.1 |
-| **Open blocking (0.22)** | **FREEZE 예외 오너 확인** |
-| **Herdr design** | `docs/HERDR_DESIGN.md` draft · PLAN 미편입 |
+| **Open blocking (0.22)** | none — 구현 레인 위임 대기 (binding M-1/M-2) |
+| **Herdr design** | `docs/HERDR_DESIGN.md` — PLAN 0.22.0 편입 + R23 보정(M-1/M-2) |
 | **Step 0** | **go** · Win10 NAT · SSH `34970@100.65.103.113` |
 | **Step 0.5** | **go** · herdr v0.7.4 · fixtures protocol 16 |
-| **Latest commits** | `a6b9b37` Step 0 go · `0f968be` Windows prep · `30ec344` herdr fixtures |
+| **Latest commits** | (this session) PLAN 0.22.0 게이트 docs · `d69abdc` handoff packet · `a6b9b37` Step 0 go |
 | **Remote** | `origin/main` synced |
 
 ### Access cheat-sheet (next session)
@@ -117,6 +108,16 @@ herdr status   # or: herdr server
 **Loom** = product · **Fable 5** = review agent
 
 ---
+
+## This session (2026-07-17 EOD) — PLAN 0.22.0 게이트 완주 (docs-only)
+
+| 영역 | 결과 |
+|------|------|
+| **FREEZE 예외** | 오너 세션 승인: *"0.22.0 Loom×Herdr bridge — 오너 pull, FREEZE 예외 승인"* — PLAN Changelog에 성문화 |
+| **PLAN 0.22.0** | draft → `pending-review` → R23 → **`approved`** (author-close). 0.21.1 패턴 준수: one-liner/Why/What 표/Out of scope/Security/Review impact/Unknowns/Binding locks |
+| **R23** | fable-advisor 필수 컨설트 완료(코드 대조 리뷰). 판정 `pending-revision` → **M-1 dispatcher 인가**(label 단독 라우팅은 room 내 임의 peer의 원격 실행 허용 — fromPeerId allowlist·기본 거부) + **M-2 제출 분리**(send 리터럴 + bare-Enter 별도 호출, `pane.run` 보간 금지) → locks PLAN 반영 → author-close(Fable 사전 승인, no R23b). L-1..L-3 author-close |
+| **문서 갱신** | `docs/UNKNOWNS.md` §0.22.0 Gate log · `docs/plan_review.md` R23 본문+인덱스+backlog(BR-M1..L3) · `docs/HERDR_DESIGN.md` Status+R23 보정 블록 |
+| 코드 변경 | **없음** (구현은 다음 세션 레인 위임 — 오너 지시 "구현은 하지마" 준수) |
 
 ## This wave (2026-07-17) — Herdr + Step 0/0.5
 
@@ -328,6 +329,6 @@ relay 배포 → `room invite --link` blob → 2번째 머신 `curl … install.
 ---
 
 ## Plan pointer
-Read: **`docs/HERDR_DESIGN.md`** (신규 설계서 — §0 요약·§5 롤아웃·§6 게이트) · `docs/PLAN.md` Changelog **0.21.1** (PTY inject, shipped+verified — 최신 approved 게이트).  
-Review: `docs/plan_review.md` **R22** (closed, shipped) — 다음 게이트는 **R23**(PLAN 0.22.0 herdr 브릿지, Step 0/0.5 통과 후 오픈 예정).  
+Read: `docs/PLAN.md` Changelog **0.22.0** (Loom×Herdr 노드 브릿지 — **최신 approved 게이트**, binding M-1/M-2) · **`docs/HERDR_DESIGN.md`** (설계 정본 — §0 R23 보정 블록 먼저).  
+Review: `docs/plan_review.md` **R23** (closed `approved` — 구현 대기). 다음 게이트는 구현 완료 후 아키텍트 검증(리뷰 아님, no R23b).  
 Harness: `test/docker/` (install 냉시동 · 2컨테이너 join · LAN 배관) — 전부 green.

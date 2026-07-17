@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-07-09 |
+| **Last updated** | 2026-07-17 |
 
 ---
 
@@ -41,6 +41,23 @@
 ---
 
 ## Gate log
+
+### 0.22.0 — Loom×Herdr 노드 브릿지 (수직 슬라이스)
+
+| Field | Value |
+|-------|--------|
+| **PLAN** | v0.22.0 (`pending-review`) |
+| **Date** | 2026-07-17 |
+| **Review** | R23 required (새 데몬 표면 + MCP 표면 확대 + 원격 프롬프트 주입 신뢰 경계) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | handoff는 durable inbox로 전달 보장(persist fail-closed); peerSecret rejoin(M-7); 데몬 관례 완비(메타 사이드카·Bearer IPC·M-27 안전 stop); work-bus `[GOAL]`/`[DONE]` 태그 dispatch 선례; **Step 0 go** — WSL→Windows relay는 Win10 NAT 게이트웨이 IP 경로(health `version:1` + join 왕복 실측); **Step 0.5 go** — herdr v0.7.4 NDJSON 소켓 표면 실측 + fixture 고정(보정 C1–C3 설계 반영) |
+| Known unknowns | (1) 장기 `events.subscribe` 구독 안정성 — 절단 시 재구독·이벤트 유실·at-most-once dispatch 보장(재연결 순서 ①재핸드셰이크→②재구독→③스냅샷 reconcile로 설계, 실증 미완); (2) inbox 100건 trim vs 장기 오프라인 브릿지의 카드 유실 허용 여부; (3) 워커 pane 자동 제출이 M-2와 별도 신뢰 모델로 승인 가능한가(R23 판단); (4) 브릿지 AgentKind — `bridge` enum 확장 vs `shell` 유지(슬라이스는 shell, 확장은 와이어 인접이라 별도 게이트); (5) 실제 Claude/Codex detection이 `done`을 언제 emit하는가(Step 0.5 잔여 — 배시 프로브만 검증됨) |
+| Unknown knowns | herdr `done` 롤업의 정확도 — 에이전트가 정말 끝났는가 vs idle 오판(PTY spike의 idle 감지 교훈이 이 경계에도 적용될 것); "이벤트에 출력 본문 없음 = 백프레셔 설계"라는 권고 문서 해석의 타당성 |
+| Unknown unknowns | WSL 절전·Windows 재부팅 시 브릿지/소켓 생존(Step 0 ⑥ 30m soak 생략됨); herdr AGPL 결합 경계가 배포 형태에 따라 달라지는 지점; Bun WS 클라이언트 장시간 연결의 미지 동작; herdr pre-1.0 와이어 변동(protocol 16 기준 fixture 고정으로 완화) |
+
+**Next:** R23(claude-rev + fable-advisor 필수) → approved 후에만 구현(레인 위임). fake herdr는 `docs/spikes/fixtures/herdr-v0.7.4/` 고정.
 
 ### 0.21.0 — PTY handoff inject (pending-review R22)
 | 분면 | 내용 |
@@ -184,3 +201,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-10 | 0.15.0 purpose-based sprint 1 unknowns |
 | 2026-07-10 | 0.16.0 work bus unknowns |
 | 2026-07-10 | 0.17.0 launcher UX unknowns |
+| 2026-07-17 | 0.22.0 Loom×Herdr 노드 브릿지 unknowns (Step 0/0.5 go 반영) |

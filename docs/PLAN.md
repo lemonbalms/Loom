@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.21.1** |
-| **Status** | **`approved` → implemented** (`d05d714`) — **PTY handoff inject** (원래 설계 유보 수신 경로 고도화, Claude-first · opt-in · accept-gated · **no-auto-submit paste**) (MINOR). R22 author-close + M-1…M-6 locks. **codex-impl 레인 구현, 아키텍트 독립 검증**(bun test 190/0, 6-pkg typecheck, M-1..M-6 코드 확인). **FREEZE 예외 = 오너 pull.** 0.20.0(R21) shipped `c15de88`. |
-| **Supersedes** | 0.20.0 |
-| **Last updated** | 2026-07-11 |
-| **Approval** | **R22 `pending-revision` → PATCH 0.21.1 locks → author-close `approved`** (Fable 5 사전 승인, no R22b). Binding: **M-1** auto-inject 경로 부재, **M-2** no-auto-submit(trailing `\n` 금지, paste-only, 사람 Enter), **M-3** fail-safe=no-inject(buffer-later 금지, at-most-once), **M-4** sanitize 페이로드만, **M-5** 제어채널 로컬 same-UID 0600, **M-6** 기본 큐+폴링 회귀 불변. |
-| **Fable 5 when** | **Required** — 수신 모델 변경(새 receive 경로) + R1이 "가장 어려운 부분"으로 유보한 영역 (§5.1). **R22 done.** |
+| **Version** | **0.22.0** |
+| **Status** | **`approved`** (R23 `pending-revision` → M-1/M-2 locks → author-close, Fable 사전 승인) — **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스: 카드 dispatch → 원격 herdr pane 실행 → `[DONE]` 회신) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/HERDR_DESIGN.md` · 선행 게이트 Step 0/0.5 둘 다 **go**. **FREEZE 예외 = 오너 pull (2026-07-17).** 구현 미착수(레인 위임 대기). 0.21.1(R22) shipped `d05d714`. |
+| **Supersedes** | 0.21.1 |
+| **Last updated** | 2026-07-17 |
+| **Approval** | **R23 `pending-revision` → M-1/M-2 locks 반영 → author-close `approved`** (Fable 5 사전 승인, no R23b). Binding: **M-1** dispatcher 인가(fromPeerId allowlist, label 단독 실행 금지, 기본 거부), **M-2** 제출 분리(`agent.send` 리터럴만 + bare-Enter 별도 호출, `pane.run` 보간 영구 금지). L-1..L-3 author-close. |
+| **Fable 5 when** | **Required** — 새 제품 표면 + 보안·신뢰 경계 변경 (§5.1). **R23 done.** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,47 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.22.0 — 2026-07-17 (`pending-review` R23 — **Loom×Herdr 노드 브릿지 수직 슬라이스 (`loom bridge`)**)
+
+**Product one-liner:** 오너가 board 카드 한 장을 `dispatch_card`로 원격 노드에 보내면, 그 노드의 `loom bridge` 데몬이 herdr pane에서 에이전트를 실행하고 `[DONE]` 결과가 durable handoff로 돌아온다 — **relay 와이어(protocol v1) 무변경.**
+
+**FREEZE 관계:** 오너 pull에 의한 **명시적 예외**(2026-07-17, 오너 승인: *"0.22.0 Loom×Herdr bridge — 오너 pull, FREEZE 예외 승인"*) — 이 게이트 **하나만**. 나머지 백로그(work-watch·MCP·C1/C2)는 동결 유지.
+
+**Why:** Loom(휴먼 컨트롤 타워)과 herdr(에이전트 실행 멀티플렉서)의 결합점은 handoff 계층이고, herdr 소켓이 로컬 전용이라 각 노드에 브릿지가 구조적으로 강제된다 — 설계 전체는 **`docs/HERDR_DESIGN.md`**(멀티에이전트 워크플로 작성, 적대적 코드 대조 검증 반영). 선행 게이트 둘 다 **go**: **Step 0** WSL→Windows relay 인바운드 네트워킹(`docs/spikes/STEP0-WSL2-NETWORKING.md` — Win10 NAT 경로, health `version:1` + `LOOM-D3FT` join 왕복) + **Step 0.5** herdr 실측(`docs/spikes/STEP0.5-HERDR.md` — v0.7.4 / protocol 16, NDJSON 프레이밍, 보정 C1–C3, fixture `docs/spikes/fixtures/herdr-v0.7.4/`).
+
+**What (범위 — 노드 1개 WSL 수직 슬라이스; 설계 정본 = HERDR_DESIGN §2–§5):**
+| 항목 | 내용 |
+|------|------|
+| **`loom bridge` 데몬** | CLI 서브커맨드 + detach 데몬(별도 바이너리 아님). sticky host 데몬 관례 3종 재사용: spawn+unref+ping 폴링, `<session>.bridge.json` 메타 사이드카(0600, `profilesWithSession()` 제외 필터 1줄 동반), M-27형 안전 stop. herdr `ping` 성공 후에만 room join(fail-fast) (§2.1–§2.3) |
+| **dispatch/done 컨트랙트** | 새 envelope 타입 **없음** — `mode:'task'` handoff + `[GOAL]`/`[DONE]` body 태그 + `intent:`/`task:`/`seq:` 독립 줄 헤더 + 라벨된 JSON attachment(`loom-card-dispatch`/`loom-card-result`). 상관관계 키 = `cardId`(M-9: handoff id 사용 불가). 클라이언트 로컬 zod 계약 `card-contract.ts` (§3.1–§3.3) |
+| **herdr 클라이언트** | NDJSON 소켓(Step 0.5 fixture 고정) — `ping`/`agent.start`(env `LOOM_CARD`만)/`agent.send`(no-Enter)/`events.subscribe`(C2 이원 네이밍)/`pane.read` 단발/`session.snapshot` reconcile. 완료 감지는 C1 반영(report `done` 쓰기 불가 → detection/idle 조합) (§2.3–§2.5) |
+| **네트워크 lock** | WSL 브릿지의 relay attach = **host NAT 게이트웨이 IP**(Win10, mirrored 불가 — Step 0 실측 `ws://172.27.80.1:7842/ws` 패턴). `127.0.0.1` 가정 금지 |
+| **MCP 도구 (타워 측)** | `dispatch_card`(카드→handoff 발행 + `doing`/assignee/handoffId 기록) · `apply_card_result`(result JSON→board 반영: done→`done`, failed→`blocked`). 기존 3단계 등록 관례 (§3.6) |
+| **보드 매핑** | `TaskStatus` 5종 그대로(컬럼 신설 없음). board는 local-only 유지 — `[DONE]` 반영은 오너 노드 로컬 갱신만 (§3.5) |
+| **전달 시맨틱** | **at-most-once**(저널 없음) — claim 후 crash는 사람이 board에서 재발행. 타임아웃·자동재시도·supervision 의도적 생략 (§4.2–§4.3) |
+| **테스트** | relay는 **in-process 실물**(ephemeral port), herdr는 **fixture 기반 fake 소켓 서버**(`Bun.listen({unix})`) — 오프라인 dispatch·peerSecret rejoin·fail-fast 부정 경로 포함. 실물 herdr는 수동 라이브 스모크 1회 (§5.3–§5.4) |
+
+**Out of scope (이 버전 아님 — HERDR_DESIGN §7):** 진행 로그 스트리밍(pane.read 루프); 멀티 노드/Mac·Linux 복제; Windows 네이티브 herdr(named pipe — 구조적 회피가 존재 이유); relay 와이어·envelope 스키마 변경(별도 R{n}); board relay 동기화; 브릿지 supervision/자동 재시작; herdr 포크·벤더링(AGPL — 소켓 호출만); 카드발 argv/env 전달(영구 금지); crash 복구 저널(확장 1순위 §2.6).
+
+**Security / trust (R23 필수 이유):**
+- **원격 프롬프트 주입 신뢰 경계(판정 대상):** untrusted handoff body가 원격 노드의 에이전트 프롬프트로 주입됨. 브릿지 워커 pane은 **자율 실행 전용**(오너의 dispatch 행위 = 실행 승인)이라 0.21.1 M-2(no-auto-submit)와 **별도 신뢰 모델** — 이 구분 자체가 R23 명시 승인 대상(§2.5-4, §4.4.1). M-4의 절반(sanitize 산출물만 + `⚠ Untrusted` 마커)은 유지.
+- **임의-argv 원격 실행 차단:** wire에 argv **금지** — `agentKind`만 싣고 argv 매핑은 브릿지 로컬 allowlist(슬라이스: `claude` 하나, `shell` 영구 제외). env는 브릿지 생성 `LOOM_CARD` 하나만 (§4.4.2).
+- **자격증명:** relayToken(Bearer 헤더, URL 금지 H-6)·peerSecret(M-7 rejoin 열쇠) 0600 영속, `loomDir()` 경유(M-14) (§4.4.3).
+- **AGPL 경계:** herdr는 무수정 바이너리 + 소켓 호출만 — 링크·벤더링 금지 (§4.4.4).
+
+**Review impact:** 새 데몬 표면 + MCP 표면 확대 + 신뢰 경계 → **R23 필수(Fable 5)** (§5.1 기준 3중 해당). **relay 와이어 protocol v1 무변경** — handoff 옵셔널 필드 추가가 필요해지는 순간 별도 R{n}으로 분리(HERDR_DESIGN §3.1 비교표: 옵셔널 필드도 `resolveHandoff` 재구성 수정을 강제).
+
+**Unknowns (§3.5 → `docs/UNKNOWNS.md` §0.22.0):** 장기 `events.subscribe` 구독 안정성(절단→재구독 공백); inbox 100건 trim vs 장기 오프라인 노드 유실 수용; 워커 pane 자동 제출의 별도 신뢰 모델 승인 가능성(R23 판단); herdr `done` 롤업 정확도(실제 Claude/Codex detection 미검증 — Step 0.5 잔여); WSL 절전/Windows 재부팅 시 소켓 생존.
+
+**Binding on impl (R23 M-1…M-2 locks — 구현 필수):**
+- **M-1 (High):** **dispatcher 인가** — 브릿지는 dispatch handoff의 `fromPeerId`가 브릿지 로컬 설정의 **authorized-dispatcher allowlist**(타워 peer id)에 있을 때만 실행한다. **label 매치 단독으로 실행 금지.** 비인가 dispatch는 무시+로그. 설정 부재 시 **기본 거부**. (근거: attachment label은 room 내 **모든** peer가 붙일 수 있어 "오너 dispatch = 실행 승인" 전제가 미집행 — `fromPeerId`는 서버 지정·peerSecret 없이 탈취 불가(room.ts:443, 241-251)이므로 집행 원시는 존재.)
+- **M-2 (Med):** **제출 분리** — untrusted 텍스트는 오직 `agent.send` **리터럴로만** 전달. 제출은 untrusted 내용을 전혀 포함하지 않는 **고정 상수 입력(bare Enter)의 별도 호출**로 수행 — prompt를 `pane.run` 인자로 보간하는 것 **영구 금지**. 실제 제출 메커니즘은 fixture 검증 + 라이브 스모크로 확인. (근거: `agent.send`는 no-Enter 리터럴(Step 0.5 실측)인데 설계 §2.5-4 "send + 제출"의 제출 방식이 미정의 + §4.4.1 `pane.run` 금지와 자기모순이었음.)
+- **L-1 (author-close):** label 매치 + zod 파싱 실패 시 조용한 무시 금지 — `failed reason=payload_invalid` 결과 회신(카드 `doing` 고착 방지).
+- **L-2 (author-close):** `apply_card_result`는 claim한 handoff의 `fromPeerId`/`node`를 카드 `assignee`와 대조 — 불일치 시 경고·거부(위조 `[DONE]` 차단).
+- **L-3 (author-close):** attachment 크기 사슬 보정 — relay는 초과 attachment를 truncate가 아니라 **거부**(bad_message)하므로 송신 측(타워·브릿지)이 직렬화 후 크기를 사전 검증. zero-width/bidi는 JSON.stringify가 이스케이프하지 않음(파싱 안전, 내용 무손실은 아님). 스키마 초안 `.nonneg()` → `.nonnegative()`.
+
+**Approved by:** Fable 5 (fable-advisor) R23 — `pending-revision` → M-1/M-2 locks 본문 반영 → **author-close `approved`** (Fable 사전 승인, no R23b), 2026-07-17. **구현은 레인 위임**(세션 모델 직접 코딩 금지, DOGFOOD_LOOP §1.2).
 
 #### 0.21.0 → 0.21.1 — 2026-07-11 (`approved` author-close after R22 `pending-revision` — **PTY handoff inject (원래 설계 유보 수신 경로 고도화)**)
 
