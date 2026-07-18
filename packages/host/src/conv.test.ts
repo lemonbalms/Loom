@@ -13,6 +13,7 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 import { RelayServer } from "@loom/relay";
 import {
   CONV_CONTRACT_VERSION,
@@ -21,6 +22,7 @@ import {
   serializeConvAttachment,
   buildConvOpenBody,
   generateConvId,
+  MAX_CONV_TURN_INLINE_CHARS,
   type HandoffAttachment,
 } from "@loom/protocol";
 import { RelayClient } from "./relay-client";
@@ -31,11 +33,13 @@ import type { BridgeConfig } from "./bridge-config";
 import {
   resetStateHomeDirCache,
   setActiveProfile,
+  loomDir,
   type FableSession,
 } from "./session-store";
 import { convOpen, convSendTurn, convAwait, convClose } from "./conv-ops";
 import { loadConvState } from "./conv-state";
 import { loadTaskBoard } from "./task-board";
+import { saveConvNodeHosts } from "./conv-node-hosts";
 
 describe("conv (multiturn) vertical slice", () => {
   const port = 21200 + Math.floor(Math.random() * 300);
@@ -225,6 +229,9 @@ describe("conv (multiturn) vertical slice", () => {
       if (turnResult.status === "turn") {
         expect(turnResult.seq).toBe(3); // accept(1) → worker's next odd
         expect(turnResult.kind).toBe("normal");
+        // §5.1 regression: ≤32k inline path carries no artifacts (R26).
+        expect(turnResult.artifacts).toBeUndefined();
+        expect(turnResult.artifactCommands).toBeUndefined();
       }
 
       // R23 M-2 applied to the initial injection too: separate agent.send + BARE_ENTER.
@@ -478,6 +485,105 @@ describe("conv (multiturn) vertical slice", () => {
       // The replay itself must not have been counted: turnCount only grew
       // by the number of *distinct* legitimate turns actually observed.
       expect(stateAfterReplay?.turnCount).toBe(turnCountAfterFirst + seenSeqs.length);
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    20_000,
+  );
+
+  test(
+    "R26 §5.2: >32k pane scrape is packaged as an artifact, not truncated — full E2E through fake herdr",
+    async () => {
+      useTowerSession();
+      // M-1: receiver-local mapping must exist for the presented scp
+      // command to assemble at all (fail-closed otherwise — covered at the
+      // unit level in conv-artifact-present.test.ts / conv-contract.test.ts).
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      const opened = await convOpen({ node: "node/wsl-1", goal: "produce big output" });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+
+      await convAwait({ convId: opened.convId, timeoutSec: 15 }); // accept
+
+      // The initial goal-prompt inject cycle (small content) runs
+      // concurrently with — and typically finishes well before — this
+      // test's own polling ever gets a chance to intervene (accept itself
+      // is only observed via convAwait's 700ms inbox poll). Worse: this
+      // fixture's autoStatus never broadcasts a "working" event, so
+      // verifyConvSubmitOrRetry always times out and resends BARE_ENTER
+      // once — meaning that *one* initial inject naturally yields *two*
+      // small turns already queued by the time we get here. Drain them
+      // (short timeouts — nothing else pending) before staging the big
+      // payload for a turn *we* trigger.
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+      const bigOutput = "L".repeat(50_000);
+      fake.setPaneText(paneId!, bigOutput);
+
+      // A tower-sent turn triggers a fresh re-inject (§4.2) — the fixture's
+      // agent.send accumulates onto the pane text we just staged, so the
+      // resulting worker turn(s) read back >32k regardless of the same
+      // resend-duplication behavior noted above.
+      const sent = await convSendTurn({ convId: opened.convId, text: "continue with big output" });
+      expect(sent.ok).toBe(true);
+
+      let packagedTurn: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn" && r.artifacts?.length) {
+          packagedTurn = r;
+          break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(packagedTurn?.status).toBe("turn");
+      if (packagedTurn?.status !== "turn") return;
+
+      // §5.1: inline text stays within the 32k budget — no truncation of
+      // the *artifact*, only a bounded gist inline.
+      expect(packagedTurn.text.length).toBeLessThanOrEqual(MAX_CONV_TURN_INLINE_CHARS);
+      expect(packagedTurn.text).toContain("recovery-window");
+
+      expect(packagedTurn.artifacts).toHaveLength(1);
+      const ref = packagedTurn.artifacts![0]!;
+      expect(ref.transport).toBe("scp");
+      const wirePath = `~/.loom/artifacts/${opened.convId}/turn-${packagedTurn.seq}.txt`;
+      expect((ref.ref as { path: string }).path).toBe(wirePath);
+
+      // The artifact file actually exists on disk (shared loomDir() in this
+      // in-process fixture) and its content matches the announced sha256/chars.
+      const filePath = join(
+        loomDir(),
+        "artifacts",
+        opened.convId,
+        `turn-${packagedTurn.seq}.txt`,
+      );
+      const onDisk = readFileSync(filePath, "utf8");
+      expect(onDisk.length).toBeGreaterThan(MAX_CONV_TURN_INLINE_CHARS);
+      expect(onDisk).toContain(bigOutput); // full recovered scrape preserved, not truncated
+      expect(ref.chars).toBeDefined();
+      expect(ref.sha256).toBeDefined();
+      expect(onDisk.length).toBe(ref.chars as number);
+      expect(createHash("sha256").update(onDisk, "utf8").digest("hex")).toBe(
+        ref.sha256 as string,
+      );
+
+      // M-2 consumption: the tower presents a ready-to-review scp command
+      // using the *locally mapped* host, never the wire-reported one.
+      expect(packagedTurn.artifactCommands).toHaveLength(1);
+      const cmd = packagedTurn.artifactCommands![0]!;
+      expect(cmd.ok).toBe(true);
+      if (cmd.ok) {
+        expect(cmd.command).toContain("node-alias:");
+        expect(cmd.command).toContain(wirePath);
+        expect(cmd.command).not.toContain("$("); // sanity: nothing to inject here
+      }
 
       await convClose({ convId: opened.convId, reason: "abort" });
     },

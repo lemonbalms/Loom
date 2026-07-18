@@ -30,6 +30,12 @@ export type FakeHerdr = {
   /** Recorded RPC methods in order */
   calls: { method: string; params: Record<string, unknown> }[];
   pushEvent: (event: string, data: unknown) => void;
+  /** Test-only: force a pane's stored text (e.g. to simulate a >32k scrape). */
+  setPaneText: (paneId: string, text: string) => void;
+  /** Test-only: read back a pane's currently stored text. */
+  getPaneText: (paneId: string) => string | undefined;
+  /** Test-only: pane_id assigned to the most recent agent.start carrying this LOOM_CONV env. */
+  paneIdForConv: (convId: string) => string | undefined;
 };
 
 export async function startFakeHerdr(
@@ -42,6 +48,7 @@ export async function startFakeHerdr(
     string,
     { terminal_id: string; text: string; status: string }
   >();
+  const paneIdByConv = new Map<string, string>();
 
   if (existsSync(opts.socketPath)) {
     try {
@@ -119,6 +126,8 @@ export async function startFakeHerdr(
             text: "",
             status: "unknown",
           });
+          const env = (params.env ?? {}) as Record<string, string>;
+          if (env.LOOM_CONV) paneIdByConv.set(env.LOOM_CONV, pane_id);
           reply({
             type: "agent_started",
             agent: {
@@ -212,6 +221,16 @@ export async function startFakeHerdr(
     socketPath: opts.socketPath,
     calls,
     pushEvent: broadcast,
+    setPaneText(paneId: string, text: string) {
+      const p = panes.get(paneId);
+      if (p) p.text = text;
+    },
+    getPaneText(paneId: string) {
+      return panes.get(paneId)?.text;
+    },
+    paneIdForConv(convId: string) {
+      return paneIdByConv.get(convId);
+    },
     async close() {
       for (const s of sockets) {
         try {

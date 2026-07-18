@@ -324,7 +324,7 @@ const TOOLS = [
   {
     name: "conv_await",
     description:
-      "Block until the next conv intent (accept/reject/turn) arrives, or timeoutSec elapses. Reuses check/claim internally (M-6 unchanged) — no separate conv_apply.",
+      "Block until the next conv intent (accept/reject/turn) arrives, or timeoutSec elapses. Reuses check/claim internally (M-6 unchanged) — no separate conv_apply. When a turn carries artifacts[] (§5.1 32k overflow), the result also includes artifactCommands[] — one presented (validated, POSIX-quoted, never executed) fetch command per artifact ref, or a fail-closed reason (e.g. no local scp host mapping — R26 M-1/M-2). Review before running.",
     inputSchema: {
       type: "object",
       properties: {
@@ -373,7 +373,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.22.0" },
+        serverInfo: { name: "loom", version: "0.23.1" },
       });
       return;
     case "notifications/initialized":

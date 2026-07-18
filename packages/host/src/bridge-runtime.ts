@@ -40,6 +40,7 @@ import {
   type ConvTurnPayload,
   type ConvClosePayload,
   type ConvKind,
+  type ArtifactRefEntry,
 } from "@loom/protocol";
 import {
   loadConvState,
@@ -51,6 +52,7 @@ import {
   logPinMismatch,
   type ConvState,
 } from "./conv-state";
+import { packageConvTurnArtifact } from "./conv-artifact-pack";
 import {
   loadSession,
   saveSession,
@@ -798,18 +800,16 @@ export async function startBridgeRuntime(opts?: {
     if (state.status === "closed") return;
 
     let output = "";
-    let truncated = false;
+    let scrapeFailed = false;
     try {
       const raw = await herdr.paneRead(flight.paneId, {
         source: "recent",
         lines: 200,
       });
-      const stripped = stripAnsi(raw);
-      const t = truncateTail(stripped, MAX_CONV_TURN_INLINE_CHARS);
-      output = t.text;
-      truncated = t.truncated;
+      output = stripAnsi(raw);
     } catch (e) {
       output = `(pane.read failed: ${e instanceof Error ? e.message : e})`;
+      scrapeFailed = true;
     }
 
     let kind: ConvKind;
@@ -821,22 +821,38 @@ export async function startBridgeRuntime(opts?: {
       kind = "normal";
     }
 
-    let text = output;
-    if (truncated) {
-      text = `${text}\n\n(bridge note: output tail-truncated to ${MAX_CONV_TURN_INLINE_CHARS} chars — §5.1 artifact-ref packaging is a documented MVP gap, see implementation-notes.md)`;
+    const seq = nextOwnSeq(state.lastOwnSeq);
+
+    // §5.1 "no truncation": over the inline threshold, package the full
+    // recovered scrape out-of-band (§5.2 scp convention) instead of
+    // tail-truncating (R26 — replaces the 0.22.0-era MVP-gap fallback).
+    let text: string;
+    let artifacts: ArtifactRefEntry[] | undefined;
+    if (!scrapeFailed && output.length > MAX_CONV_TURN_INLINE_CHARS) {
+      const packaged = packageConvTurnArtifact({
+        convId: flight.convId,
+        seq,
+        fullText: output,
+        bridgeDisplayName: session!.displayName,
+        recoveryWindowDescription: "pane.read recovery-window (recent 200 lines)",
+      });
+      text = packaged.text;
+      artifacts = packaged.artifacts;
+    } else {
+      text = output;
     }
     if (note) {
       text = `${text}\n\n(bridge note: ${note})`;
     }
     text = text.slice(0, MAX_CONV_TURN_INLINE_CHARS);
 
-    const seq = nextOwnSeq(state.lastOwnSeq);
     const parsed = ConvTurnPayloadSchema.safeParse({
       v: CONV_CONTRACT_VERSION,
       convId: flight.convId,
       seq,
       kind,
       text,
+      artifacts,
     });
     if (!parsed.success) {
       log("worker turn payload invalid:", parsed.error.message);

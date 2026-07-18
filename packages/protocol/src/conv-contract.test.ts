@@ -21,6 +21,10 @@ import {
   MAX_CONV_TURN_INLINE_CHARS,
   validateGitArtifactRef,
   validateScpArtifactRef,
+  posixSingleQuote,
+  presentGitFetchCommand,
+  presentScpFetchCommand,
+  convArtifactsRootLiteral,
   convLabelOf,
   peekConvIdFromAttachments,
   convPayloadFromAttachments,
@@ -309,6 +313,119 @@ describe("R24/R25 M-2: artifact ref validation", () => {
       const r = validateScpArtifactRef(
         convId,
         { path: "/home/user/.loom/artifacts/other-conv/out.log" },
+        resolveHost,
+        root,
+      );
+      expect(r.ok).toBe(false);
+    });
+  });
+});
+
+describe("R26 M-2: presented fetch command rendering", () => {
+  const convId = generateConvId();
+
+  test("posixSingleQuote escapes embedded single quotes", () => {
+    expect(posixSingleQuote("plain")).toBe("'plain'");
+    expect(posixSingleQuote("it's")).toBe(`'it'\\''s'`);
+  });
+
+  test("convArtifactsRootLiteral is the canonical tilde-literal form", () => {
+    expect(convArtifactsRootLiteral(convId)).toBe(`~/.loom/artifacts/${convId}`);
+  });
+
+  describe("git", () => {
+    test("valid ref renders a single-quoted git fetch command", () => {
+      const r = presentGitFetchCommand(
+        convId,
+        { branch: `conv/${convId}/patch-1` },
+        ["origin"],
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.command).toBe(
+          `git fetch 'origin' -- 'conv/${convId}/patch-1'`,
+        );
+        expect(r.note).toMatch(/untrusted/i);
+      }
+    });
+
+    test("fails render (not just argv-validate) when M-2 validation already rejects", () => {
+      const r = presentGitFetchCommand(convId, { branch: "main" }, ["origin"]);
+      expect(r.ok).toBe(false);
+    });
+
+    test("charset allowlist rejects a suffix carrying shell metacharacters that argv-validation alone would pass", () => {
+      // `--` separator + no leading '-' both hold here, so validateGitArtifactRef
+      // alone would accept this — the render-time charset allowlist is the
+      // layer that actually stops it from being presented.
+      const branch = `conv/${convId}/$(rm -rf /)`;
+      const argvLevel = validateGitArtifactRef(convId, { branch }, ["origin"]);
+      expect(argvLevel.ok).toBe(true);
+      const r = presentGitFetchCommand(convId, { branch }, ["origin"]);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(/charset allowlist/);
+    });
+
+    test("rejects a branch segment with a leading '-' after the convId prefix", () => {
+      const r = presentGitFetchCommand(
+        convId,
+        { branch: `conv/${convId}/-evil` },
+        ["origin"],
+      );
+      expect(r.ok).toBe(false);
+    });
+  });
+
+  describe("scp", () => {
+    const root = convArtifactsRootLiteral(convId);
+    const resolveHost = (id: string) => (id === convId ? "node-alias" : null);
+
+    test("valid ref renders a single-quoted scp command with the resolved (local-mapping) host, not the wire host", () => {
+      const r = presentScpFetchCommand(
+        convId,
+        { host: "attacker.evil.example.com", path: `${root}/turn-3.txt` },
+        resolveHost,
+        root,
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.command).toBe(`scp 'node-alias:${root}/turn-3.txt' '.'`);
+        expect(r.command).not.toContain("attacker.evil.example.com");
+      }
+    });
+
+    test("fail-closed: no local host mapping ⇒ command not assembled, reason given", () => {
+      const r = presentScpFetchCommand(
+        convId,
+        { path: `${root}/turn-3.txt` },
+        () => null,
+        root,
+      );
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(/mapping/);
+    });
+
+    test("charset allowlist rejects a path suffix outside [A-Za-z0-9._/-]", () => {
+      const path = `${root}/turn-3;rm -rf ~.txt`;
+      const r = presentScpFetchCommand(convId, { path }, resolveHost, root);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(/charset allowlist/);
+    });
+
+    test("rejects a path segment with a leading '-' after the convId-root prefix", () => {
+      const r = presentScpFetchCommand(
+        convId,
+        { path: `${root}/-evil.txt` },
+        resolveHost,
+        root,
+      );
+      expect(r.ok).toBe(false);
+    });
+
+    test("rejects path traversal (argv-level validation still applies)", () => {
+      const r = presentScpFetchCommand(
+        convId,
+        { path: `${root}/../../etc/passwd` },
         resolveHost,
         root,
       );

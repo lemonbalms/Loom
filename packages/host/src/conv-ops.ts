@@ -32,6 +32,7 @@ import {
   type ConvCloseReason,
   type ArtifactRefEntry,
   type HandoffAttachment,
+  type PresentedFetchCommand,
 } from "@loom/protocol";
 import { loadSession } from "./session-store";
 import { opsHandoff, opsListPeers, opsListInbox, opsClaim } from "./room-ops";
@@ -47,6 +48,7 @@ import {
   logPinMismatch,
   type ConvState,
 } from "./conv-state";
+import { presentArtifactCommands } from "./conv-artifact-present";
 
 export type ConvOpenResult =
   | {
@@ -331,6 +333,12 @@ export type ConvAwaitResult =
       kind: ConvKind;
       text: string;
       artifacts?: ArtifactRefEntry[];
+      /**
+       * R26 M-2 consumption: one PresentedFetchCommand per artifacts[]
+       * entry (same order), validated + render-hardened. Present only —
+       * never executed. Undefined when the turn carries no artifacts.
+       */
+      artifactCommands?: PresentedFetchCommand[];
     };
 
 /**
@@ -511,6 +519,9 @@ function applyIncomingConvIntent(
       kind: payload.kind,
       text: payload.text,
       artifacts: payload.artifacts,
+      artifactCommands: payload.artifacts?.length
+        ? presentArtifactCommands(payload.convId, payload.artifacts)
+        : undefined,
     };
   }
 

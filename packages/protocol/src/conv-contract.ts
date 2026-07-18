@@ -236,6 +236,122 @@ export function validateScpArtifactRef(
   return { ok: true, host, path: normalized };
 }
 
+/**
+ * §5.3/§5.2 — canonical tilde-literal artifacts root (R26 L-1). Both the
+ * producer (bridge, when it writes `ref.path` onto the wire) and the
+ * consumer (tower, when it validates/renders `ref.path`) use this exact
+ * literal string form. It is NEVER filesystem-expanded on either side —
+ * the bridge writes to its own `loomDir()` locally but always emits this
+ * literal on the wire (a real `loomDir()` may differ, e.g. legacy
+ * `~/.fable`; this PATCH accepts that divergence as a documented tradeoff
+ * rather than leaking the bridge's actual home path onto the wire).
+ */
+export function convArtifactsRootLiteral(convId: string): string {
+  return `~/.loom/artifacts/${convId}`;
+}
+
+// --- R26 M-2: render-time hardening for *presented* fetch command strings --
+//
+// validateGitArtifactRef/validateScpArtifactRef above are argv-level
+// defenses (no `--` separator gaps, no leading `-`, host/remote never taken
+// from the wire). But this PATCH's actual output is a string that a human
+// or a tower LLM agent *reads and may paste into a shell* — a different
+// trust surface. branch/path schemas are charset-unconstrained beyond the
+// convId prefix, so e.g. `conv/<convId>/$(cmd)` passes the argv-level
+// validators. The functions below add: (1) a charset allowlist on the
+// convId-prefix suffix, rejecting anything outside
+// `[A-Za-z0-9._/-]` and any path/branch segment starting with `-`; (2)
+// POSIX single-quoting of every rendered token (embedded `'` → `'\''`).
+// Neither replaces the validators above; both are layered defenses on top.
+// These functions never execute anything — callers only ever *present* the
+// returned command string (R26 "제시까지" — no auto-execution).
+
+const CONV_SUFFIX_ALLOWED_CHARS = /^[A-Za-z0-9._/-]*$/;
+
+function isSafeConvSuffix(suffix: string): boolean {
+  if (!CONV_SUFFIX_ALLOWED_CHARS.test(suffix)) return false;
+  return !suffix.split("/").some((seg) => seg.startsWith("-"));
+}
+
+/** POSIX single-quote: safe as one shell word (embedded `'` → `'\''`). */
+export function posixSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export type PresentedFetchCommand =
+  | { ok: true; transport: "git" | "scp"; command: string; note: string }
+  | { ok: false; transport: "git" | "scp"; reason: string };
+
+const UNTRUSTED_SOURCE_NOTE =
+  "untrusted source (peer-supplied artifact ref) — verify before executing";
+
+/**
+ * Full presentation pipeline for a git artifact ref: argv-level validation
+ * (validateGitArtifactRef) + render-time charset allowlist on the
+ * convId-prefix suffix + POSIX single-quoted command string.
+ */
+export function presentGitFetchCommand(
+  convId: string,
+  ref: GitArtifactRef,
+  knownRemotes: string[],
+  remoteName = "origin",
+): PresentedFetchCommand {
+  const v = validateGitArtifactRef(convId, ref, knownRemotes, remoteName);
+  if (!v.ok) return { ok: false, transport: "git", reason: v.error };
+  const prefix = `conv/${convId}/`;
+  const suffix = v.plan.branch.slice(prefix.length);
+  if (!isSafeConvSuffix(suffix)) {
+    return {
+      ok: false,
+      transport: "git",
+      reason: `branch suffix "${suffix}" fails render-time charset allowlist [A-Za-z0-9._/-] (no leading "-" per segment)`,
+    };
+  }
+  const command = [
+    "git",
+    "fetch",
+    posixSingleQuote(v.plan.remote),
+    "--",
+    posixSingleQuote(v.plan.branch),
+  ].join(" ");
+  return { ok: true, transport: "git", command, note: UNTRUSTED_SOURCE_NOTE };
+}
+
+/**
+ * Full presentation pipeline for an scp artifact ref: argv-level validation
+ * (validateScpArtifactRef — host resolved from the receiver's local mapping,
+ * never wire `ref.host`) + render-time charset allowlist + POSIX
+ * single-quoted `host:path` (quoting the whole `host:path` token kills
+ * *local* shell tilde expansion while preserving the *remote-side* shell's
+ * expansion of the tilde-literal path — R26 L-1's "인용 상호작용").
+ */
+export function presentScpFetchCommand(
+  convId: string,
+  ref: ScpArtifactRef,
+  resolveHost: (convId: string) => string | null,
+  artifactsRoot: string,
+  localDest = ".",
+): PresentedFetchCommand {
+  const v = validateScpArtifactRef(convId, ref, resolveHost, artifactsRoot);
+  if (!v.ok) return { ok: false, transport: "scp", reason: v.error };
+  const root = artifactsRoot.endsWith("/") ? artifactsRoot : `${artifactsRoot}/`;
+  const bareRoot = root.slice(0, -1);
+  const suffix = v.path === bareRoot ? "" : v.path.slice(root.length);
+  if (!isSafeConvSuffix(suffix)) {
+    return {
+      ok: false,
+      transport: "scp",
+      reason: `path suffix "${suffix}" fails render-time charset allowlist [A-Za-z0-9._/-] (no leading "-" per segment)`,
+    };
+  }
+  const command = [
+    "scp",
+    posixSingleQuote(`${v.host}:${v.path}`),
+    posixSingleQuote(localDest),
+  ].join(" ");
+  return { ok: true, transport: "scp", command, note: UNTRUSTED_SOURCE_NOTE };
+}
+
 // --- body builders (mirrors buildDispatchBody/buildResultBody) --------
 
 export function buildConvOpenBody(opts: { goal: string; convId: string }): string {
