@@ -655,4 +655,591 @@ describe("conv (multiturn) vertical slice", () => {
     },
     20_000,
   );
+
+  test(
+    "R28 §5.1: worker [ARTIFACT] marker → file ref emitted; LOOM_ARTIFACTS_DIR env + convention prompt (0.23.3)",
+    async () => {
+      useTowerSession();
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "write a large artifact file",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+
+      await convAwait({ convId: opened.convId, timeoutSec: 15 }); // accept
+
+      // R28 L-2: agent.start must carry LOOM_ARTIFACTS_DIR = measured path
+      let starts: typeof fake.calls = [];
+      for (let i = 0; i < 40; i++) {
+        await Bun.sleep(100);
+        starts = fake.calls.filter(
+          (c) =>
+            c.method === "agent.start" &&
+            (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
+              opened.convId,
+        );
+        if (starts.length >= 1) break;
+      }
+      expect(starts.length).toBeGreaterThanOrEqual(1);
+      const env = starts[0]!.params.env as {
+        LOOM_CONV?: string;
+        LOOM_ARTIFACTS_DIR?: string;
+      };
+      expect(env.LOOM_ARTIFACTS_DIR).toBe(
+        join(loomDir(), "artifacts", opened.convId),
+      );
+
+      // Drain the initial goal-prompt turn(s)
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+
+      // Worker wrote the file into the measured artifacts dir + marker line
+      const artDir = join(loomDir(), "artifacts", opened.convId);
+      mkdirSync(artDir, { recursive: true, mode: 0o700 });
+      const filename = "worker-report.md";
+      const body = "WORKER_FILE_BODY_" + "W".repeat(500);
+      writeFileSync(join(artDir, filename), body, "utf8");
+      const expectedSha = createHash("sha256").update(body, "utf8").digest("hex");
+
+      // Trailing newline required: agent.send appends the tower inject onto
+      // pane text; without a final \n the marker line would glue to the
+      // untrusted-wrapper chrome and fail the exact-line anchor (R28 L-1).
+      const scrape = [
+        "I wrote the large output to disk.",
+        `[ARTIFACT] ${filename}`,
+        "",
+      ].join("\n");
+      fake.setPaneText(paneId!, scrape);
+
+      const sent = await convSendTurn({
+        convId: opened.convId,
+        text: "continue — deliver the artifact",
+      });
+      expect(sent.ok).toBe(true);
+
+      let packagedTurn: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn" && r.artifacts?.length) {
+          packagedTurn = r;
+          break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(packagedTurn?.status).toBe("turn");
+      if (packagedTurn?.status !== "turn") return;
+
+      // R28 M-1: ONLY file-based refs → inline text keeps scrape (not file tail)
+      expect(packagedTurn.text).toContain("I wrote the large output");
+      expect(packagedTurn.text).toContain(`[ARTIFACT] ${filename}`);
+      expect(packagedTurn.text).toContain(`file=${filename}`);
+      expect(packagedTurn.text).not.toContain(body); // no file-tail substitution
+      expect(packagedTurn.text.length).toBeLessThanOrEqual(MAX_CONV_TURN_INLINE_CHARS);
+
+      expect(packagedTurn.artifacts).toHaveLength(1);
+      const ref = packagedTurn.artifacts![0]!;
+      expect(ref.transport).toBe("scp");
+      expect((ref.ref as { path: string }).path).toBe(
+        `~/.loom/artifacts/${opened.convId}/${filename}`,
+      );
+      expect(ref.sha256).toBe(expectedSha);
+      expect(ref.chars).toBe(body.length);
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    25_000,
+  );
+
+  test(
+    "R28: missing artifact file → turn proceeds with bridge note, no artifact (0.23.3)",
+    async () => {
+      useTowerSession();
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "claim an artifact that does not exist",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+      await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+      fake.setPaneText(
+        paneId!,
+        "done\n[ARTIFACT] missing-file.md\n",
+      );
+
+      const sent = await convSendTurn({
+        convId: opened.convId,
+        text: "deliver",
+      });
+      expect(sent.ok).toBe(true);
+
+      let turn: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn") {
+          // Prefer the turn that carries the missing-file note
+          if (r.text.includes("file_not_found") || r.text.includes("missing-file")) {
+            turn = r;
+            break;
+          }
+          turn = r;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(turn?.status).toBe("turn");
+      if (turn?.status !== "turn") return;
+      expect(turn.artifacts ?? []).toHaveLength(0);
+      expect(turn.text).toMatch(/bridge note:.*file_not_found/s);
+      // Turn itself still progressed (scrape content present)
+      expect(turn.text).toContain("done");
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    25_000,
+  );
+
+  test(
+    "R28 M-1: measured 32k trigger + marker same turn → both refs coexist (0.23.3)",
+    async () => {
+      useTowerSession();
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "huge scrape plus worker file",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+      await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+
+      const artDir = join(loomDir(), "artifacts", opened.convId);
+      mkdirSync(artDir, { recursive: true, mode: 0o700 });
+      const workerFile = "extra-payload.bin";
+      const workerBody = "EXTRA_" + "E".repeat(200);
+      writeFileSync(join(artDir, workerFile), workerBody, "utf8");
+      const workerSha = createHash("sha256").update(workerBody, "utf8").digest("hex");
+
+      // Scrape >32k AND ends with a marker line
+      const big = "L".repeat(50_000);
+      fake.setPaneText(paneId!, `${big}\n[ARTIFACT] ${workerFile}\n`);
+
+      const sent = await convSendTurn({
+        convId: opened.convId,
+        text: "continue big",
+      });
+      expect(sent.ok).toBe(true);
+
+      let turn: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn" && (r.artifacts?.length ?? 0) >= 2) {
+          turn = r;
+          break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(turn?.status).toBe("turn");
+      if (turn?.status !== "turn") return;
+      expect(turn.artifacts!.length).toBeGreaterThanOrEqual(2);
+
+      const paths = turn.artifacts!.map((a) => (a.ref as { path: string }).path);
+      // Measured trigger uses turn-<seq>.txt; marker uses worker filename
+      expect(paths.some((p) => p.endsWith(`turn-${turn!.seq}.txt`))).toBe(true);
+      expect(paths.some((p) => p.endsWith(`/${workerFile}`))).toBe(true);
+
+      const workerRef = turn.artifacts!.find((a) =>
+        (a.ref as { path: string }).path.endsWith(`/${workerFile}`),
+      );
+      expect(workerRef?.sha256).toBe(workerSha);
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    25_000,
+  );
+
+  test(
+    "R28 L-1: stale marker re-detect same sha → no dup; changed sha → re-emit (0.23.3)",
+    async () => {
+      useTowerSession();
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "dedup memory across turns",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+      await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+      const artDir = join(loomDir(), "artifacts", opened.convId);
+      mkdirSync(artDir, { recursive: true, mode: 0o700 });
+      const filename = "live.md";
+      const body1 = "version-one-content";
+      writeFileSync(join(artDir, filename), body1, "utf8");
+      const sha1 = createHash("sha256").update(body1, "utf8").digest("hex");
+
+      fake.setPaneText(paneId!, `first\n[ARTIFACT] ${filename}\n`);
+      expect(
+        (await convSendTurn({ convId: opened.convId, text: "t1" })).ok,
+      ).toBe(true);
+
+      let first: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn" && r.artifacts?.length) {
+          first = r;
+          break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(first?.status).toBe("turn");
+      if (first?.status !== "turn") return;
+      expect(first.artifacts).toHaveLength(1);
+      expect(first.artifacts![0]!.sha256).toBe(sha1);
+
+      // Same scrape residual (marker still visible) + same file content → no new ref
+      fake.setPaneText(
+        paneId!,
+        `first\n[ARTIFACT] ${filename}\nsecond turn residual\n`,
+      );
+      expect(
+        (await convSendTurn({ convId: opened.convId, text: "t2" })).ok,
+      ).toBe(true);
+
+      let second: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn") {
+          second = r;
+          // Prefer a turn without artifacts (dedup skip)
+          if (!r.artifacts?.length) break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(second?.status).toBe("turn");
+      if (second?.status !== "turn") return;
+      expect(second.artifacts ?? []).toHaveLength(0);
+
+      // File updated → sha changes → legitimate re-emit
+      const body2 = "version-two-UPDATED-content";
+      writeFileSync(join(artDir, filename), body2, "utf8");
+      const sha2 = createHash("sha256").update(body2, "utf8").digest("hex");
+      fake.setPaneText(
+        paneId!,
+        `updated\n[ARTIFACT] ${filename}\n`,
+      );
+      expect(
+        (await convSendTurn({ convId: opened.convId, text: "t3" })).ok,
+      ).toBe(true);
+
+      let third: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn" && r.artifacts?.length) {
+          third = r;
+          break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(third?.status).toBe("turn");
+      if (third?.status !== "turn") return;
+      expect(third.artifacts).toHaveLength(1);
+      expect(third.artifacts![0]!.sha256).toBe(sha2);
+      expect(third.artifacts![0]!.sha256).not.toBe(sha1);
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    40_000,
+  );
+
+  test(
+    "R28: multi-marker cap 4 + excess noted; ≤32k no marker = inline regression (0.23.3)",
+    async () => {
+      useTowerSession();
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      // --- multi-marker cap ---
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "many markers",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+      await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+      const artDir = join(loomDir(), "artifacts", opened.convId);
+      mkdirSync(artDir, { recursive: true, mode: 0o700 });
+      const names = ["f1.md", "f2.md", "f3.md", "f4.md", "f5.md"];
+      for (const n of names) {
+        writeFileSync(join(artDir, n), `body-of-${n}`, "utf8");
+      }
+      fake.setPaneText(
+        paneId!,
+        // trailing \n keeps the last marker an exact line after inject append
+        names.map((n) => `[ARTIFACT] ${n}`).join("\n") + "\n",
+      );
+      expect(
+        (await convSendTurn({ convId: opened.convId, text: "all five" })).ok,
+      ).toBe(true);
+
+      let multi: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn" && (r.artifacts?.length ?? 0) >= 4) {
+          multi = r;
+          break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(multi?.status).toBe("turn");
+      if (multi?.status !== "turn") return;
+      expect(multi.artifacts).toHaveLength(4);
+      expect(multi.text).toMatch(/excess ignored/i);
+      const multiPaths = multi.artifacts!.map(
+        (a) => (a.ref as { path: string }).path,
+      );
+      expect(multiPaths.every((p) => !p.endsWith("/f5.md"))).toBe(true);
+      expect(new Set(multi.artifacts!.map((a) => a.sha256)).size).toBe(4);
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+
+      // --- ≤32k no marker regression ---
+      const opened2 = await convOpen({
+        node: "node/wsl-1",
+        goal: "small inline only",
+      });
+      expect(opened2.ok).toBe(true);
+      if (!opened2.ok) return;
+      await convAwait({ convId: opened2.convId, timeoutSec: 15 });
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened2.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+      const paneId2 = fake.paneIdForConv(opened2.convId);
+      expect(paneId2).toBeTruthy();
+      const small = "just a short reply, no artifacts";
+      fake.setPaneText(paneId2!, small);
+      expect(
+        (await convSendTurn({ convId: opened2.convId, text: "ok" })).ok,
+      ).toBe(true);
+
+      let smallTurn: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened2.convId, timeoutSec: 15 });
+        if (r.status === "turn" && r.text.includes("short reply")) {
+          smallTurn = r;
+          break;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(smallTurn?.status).toBe("turn");
+      if (smallTurn?.status !== "turn") return;
+      expect(smallTurn.artifacts ?? []).toHaveLength(0);
+      expect(smallTurn.text).toContain(small);
+
+      await convClose({ convId: opened2.convId, reason: "abort" });
+    },
+    40_000,
+  );
+
+  test(
+    "R28: invalid marker filename (../x) → bridge note filename_charset, no artifact (0.23.3)",
+    async () => {
+      useTowerSession();
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "bad path marker",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+      await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+      fake.setPaneText(paneId!, "done\n[ARTIFACT] ../x\n");
+
+      expect(
+        (await convSendTurn({ convId: opened.convId, text: "deliver bad" })).ok,
+      ).toBe(true);
+
+      let turn: Awaited<ReturnType<typeof convAwait>> | null = null;
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+        if (r.status === "turn") {
+          if (
+            r.text.includes("filename_charset") ||
+            r.text.includes("artifact marker rejected")
+          ) {
+            turn = r;
+            break;
+          }
+          turn = r;
+        }
+        if (r.status === "timeout") break;
+      }
+      expect(turn?.status).toBe("turn");
+      if (turn?.status !== "turn") return;
+      expect(turn.artifacts ?? []).toHaveLength(0);
+      expect(turn.text).toMatch(/bridge note:.*artifact marker rejected \(\.\.\/x\): filename_charset/s);
+      expect(turn.text).toContain("done");
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    25_000,
+  );
+
+  test(
+    "R28 L-1: failed send does not commit dedup — same marker re-emits on next scrape (0.23.3)",
+    async () => {
+      useTowerSession();
+      saveConvNodeHosts({ [workerSession.peerId]: "node-alias" });
+
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "dedup only after successful handoff",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+      await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      for (let i = 0; i < 4; i++) {
+        const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+        if (r.status === "timeout") break;
+      }
+
+      const paneId = fake.paneIdForConv(opened.convId);
+      expect(paneId).toBeTruthy();
+      const artDir = join(loomDir(), "artifacts", opened.convId);
+      mkdirSync(artDir, { recursive: true, mode: 0o700 });
+      const filename = "retry-after-fail.md";
+      const body = "CONTENT_AFTER_FAILED_SEND";
+      writeFileSync(join(artDir, filename), body, "utf8");
+      const expectedSha = createHash("sha256").update(body, "utf8").digest("hex");
+
+      // Block ALL worker→tower turn handoffs while the first scrape runs, so
+      // sendWorkerTurnFromPane always catches and never commits emittedArtifacts.
+      // (fail-once races with multi-status auto-sends; a hard block is reliable.)
+      // Tower→worker uses to=worker peerId and is unaffected.
+      const origHandoff = RelayClient.prototype.handoff;
+      let blockWorkerTurns = true;
+      let failCount = 0;
+      RelayClient.prototype.handoff = async function (
+        this: RelayClient,
+        partial: {
+          to: string;
+          body: string;
+          mode?: "message" | "task";
+          attachments?: HandoffAttachment[];
+        },
+      ) {
+        if (
+          blockWorkerTurns &&
+          partial.to === towerSession.peerId &&
+          partial.body.includes("intent: conv.turn")
+        ) {
+          failCount++;
+          throw new Error("simulated worker turn handoff failure");
+        }
+        return origHandoff.call(this, partial);
+      };
+
+      try {
+        fake.setPaneText(paneId!, `first\n[ARTIFACT] ${filename}\n`);
+        expect(
+          (await convSendTurn({ convId: opened.convId, text: "t-fail" })).ok,
+        ).toBe(true);
+
+        // Wait for at least one failed worker send attempt (and any status retries)
+        for (let i = 0; i < 20 && failCount === 0; i++) {
+          await Bun.sleep(100);
+        }
+        expect(failCount).toBeGreaterThanOrEqual(1);
+
+        // No worker turn with this artifact should have arrived while blocked
+        let leaked: Awaited<ReturnType<typeof convAwait>> | null = null;
+        for (let i = 0; i < 2; i++) {
+          const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
+          if (r.status === "turn" && r.artifacts?.length) {
+            leaked = r;
+            break;
+          }
+          if (r.status === "timeout") break;
+        }
+        expect(leaked).toBeNull();
+
+        // Unblock; same marker residual + same sha must still emit (map never committed)
+        blockWorkerTurns = false;
+        fake.setPaneText(
+          paneId!,
+          `first\n[ARTIFACT] ${filename}\nretry scrape\n`,
+        );
+        expect(
+          (await convSendTurn({ convId: opened.convId, text: "t-retry" })).ok,
+        ).toBe(true);
+
+        let second: Awaited<ReturnType<typeof convAwait>> | null = null;
+        for (let i = 0; i < 4; i++) {
+          const r = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+          if (r.status === "turn" && r.artifacts?.length) {
+            second = r;
+            break;
+          }
+          if (r.status === "timeout") break;
+        }
+        expect(second?.status).toBe("turn");
+        if (second?.status !== "turn") return;
+        expect(second.artifacts).toHaveLength(1);
+        expect(second.artifacts![0]!.sha256).toBe(expectedSha);
+        expect((second.artifacts![0]!.ref as { path: string }).path).toContain(
+          filename,
+        );
+      } finally {
+        blockWorkerTurns = false;
+        RelayClient.prototype.handoff = origHandoff;
+      }
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    40_000,
+  );
 });

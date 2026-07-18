@@ -52,7 +52,15 @@ import {
   logPinMismatch,
   type ConvState,
 } from "./conv-state";
-import { packageConvTurnArtifact } from "./conv-artifact-pack";
+import {
+  packageConvTurnArtifact,
+  convArtifactsDir,
+  scanArtifactMarkers,
+  validateArtifactMarkerFilename,
+  packageWorkerFileArtifact,
+  workerArtifactInlineNotice,
+  MAX_WORKER_ARTIFACTS_PER_TURN,
+} from "./conv-artifact-pack";
 import {
   loadSession,
   saveSession,
@@ -118,6 +126,8 @@ type ConvFlight = {
   paneId: string;
   terminalId: string;
   sawWorking: boolean;
+  /** R28 L-1: filename → sha256 of already-emitted worker file artifacts (stale-marker dedup). */
+  emittedArtifacts?: Map<string, string>;
 };
 
 function log(...args: unknown[]): void {
@@ -698,12 +708,18 @@ export async function startBridgeRuntime(opts?: {
     fromPeerId: string,
     argv: string[],
   ): Promise<void> {
+    // R28 L-2: pass measured artifacts dir (not a hardcoded ~/.loom literal)
+    // so legacy loomDir() divergence still lands markers where the bridge reads.
+    const artifactsDir = convArtifactsDir(payload.convId);
     let agent: HerdrAgentStarted;
     try {
       agent = await herdr.agentStart({
         name: `loom-conv-${payload.convId.slice(5, 21)}`,
         argv,
-        env: { LOOM_CONV: payload.convId },
+        env: {
+          LOOM_CONV: payload.convId,
+          LOOM_ARTIFACTS_DIR: artifactsDir,
+        },
         cwd: payload.scope.cwd,
         focus: false,
       });
@@ -734,7 +750,21 @@ export async function startBridgeRuntime(opts?: {
     try {
       // Goal doubles as the first turn's prompt — the worker starts on
       // accept, mirroring card dispatch's prompt-on-start.
-      const prompt = wrapUntrustedPrompt(payload.goal);
+      // R28 L-2 / §5.1: bridge-authored artifact convention OUTSIDE the
+      // untrusted wrapper (bridge authors it; goal stays untrusted).
+      const untrusted = wrapUntrustedPrompt(payload.goal);
+      const artifactConvention = [
+        "",
+        "--- Loom conv artifact convention (§5.1 / PLAN 0.23.3) ---",
+        "If an output exceeds 32k characters (or cannot be fully conveyed via the pane),",
+        `write the full content to the artifacts directory: ${artifactsDir}`,
+        "(also available as $LOOM_ARTIFACTS_DIR). Create it with `mkdir -p -m 700` if needed.",
+        "Then print a final line exactly: [ARTIFACT] <filename>",
+        "Filename rules: filename only (no path separators); charset [A-Za-z0-9._-];",
+        "must not start with - or .; must not match turn-* (bridge-reserved).",
+        "--- end convention ---",
+      ].join("\n");
+      const prompt = `${untrusted}${artifactConvention}`;
       await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
     } catch (e) {
       log("conv initial inject failed:", e);
@@ -823,9 +853,64 @@ export async function startBridgeRuntime(opts?: {
 
     const seq = nextOwnSeq(state.lastOwnSeq);
 
+    // PLAN 0.23.3 / R28 M-1: worker-declared file markers BEFORE the 32k
+    // measured trigger. Failures never fail the turn — collect reasons into
+    // the bridge note. Dedup memory (R28 L-1): same filename+sha → skip.
+    const noteParts: string[] = [];
+    if (note) noteParts.push(note);
+    const fileRefs: ArtifactRefEntry[] = [];
+    // R28 L-1: only READ the dedup map while building the turn; commit
+    // (filename, sha) pairs AFTER handoff succeeds. Committing before send
+    // permanently suppresses a re-detect when handoff throws.
+    const pendingDedup: Array<[string, string]> = [];
+    if (!scrapeFailed) {
+      const markers = scanArtifactMarkers(output);
+      if (markers.length > 0) {
+        flight.emittedArtifacts ??= new Map();
+        let accepted = 0;
+        let excess = 0;
+        for (const filename of markers) {
+          if (accepted >= MAX_WORKER_ARTIFACTS_PER_TURN) {
+            excess++;
+            continue;
+          }
+          const v = validateArtifactMarkerFilename(filename);
+          if (!v.ok) {
+            noteParts.push(`artifact marker rejected (${filename}): ${v.reason}`);
+            continue;
+          }
+          const packed = packageWorkerFileArtifact({
+            convId: flight.convId,
+            filename,
+            bridgeDisplayName: session!.displayName,
+          });
+          if (!packed.ok) {
+            noteParts.push(`artifact ${filename}: ${packed.reason}`);
+            continue;
+          }
+          const sha = packed.ref.sha256 ?? "";
+          const prev = flight.emittedArtifacts.get(filename);
+          if (prev !== undefined && prev === sha) {
+            // R28 L-1: stale marker re-detect with same sha — skip silently
+            continue;
+          }
+          // sha differs (or first time) → emit; remember only after send success
+          pendingDedup.push([filename, sha]);
+          fileRefs.push(packed.ref);
+          accepted++;
+        }
+        if (excess > 0) {
+          noteParts.push(
+            `artifact markers excess ignored (${excess} beyond cap ${MAX_WORKER_ARTIFACTS_PER_TURN})`,
+          );
+        }
+      }
+    }
+
     // §5.1 "no truncation": over the inline threshold, package the full
     // recovered scrape out-of-band (§5.2 scp convention) instead of
     // tail-truncating (R26 — replaces the 0.22.0-era MVP-gap fallback).
+    // R28 M-1: measured trigger coexists with file-based refs (turn-* reserved).
     let text: string;
     let artifacts: ArtifactRefEntry[] | undefined;
     if (!scrapeFailed && output.length > MAX_CONV_TURN_INLINE_CHARS) {
@@ -837,12 +922,19 @@ export async function startBridgeRuntime(opts?: {
         recoveryWindowDescription: "pane.read recovery-window (recent 200 lines)",
       });
       text = packaged.text;
-      artifacts = packaged.artifacts;
+      artifacts = [...packaged.artifacts, ...fileRefs];
     } else {
+      // R28 M-1: ONLY file-based refs → keep original scrape (markers included)
+      // + short notice per ref; do NOT replace text with a file tail.
       text = output;
+      if (fileRefs.length > 0) {
+        const notices = fileRefs.map((r) => workerArtifactInlineNotice(r)).join("\n");
+        text = `${text}\n\n${notices}`;
+        artifacts = fileRefs;
+      }
     }
-    if (note) {
-      text = `${text}\n\n(bridge note: ${note})`;
+    if (noteParts.length > 0) {
+      text = `${text}\n\n(bridge note: ${noteParts.join("; ")})`;
     }
     text = text.slice(0, MAX_CONV_TURN_INLINE_CHARS);
 
@@ -871,6 +963,13 @@ export async function startBridgeRuntime(opts?: {
         s.lastOwnSeq = seq;
         s.turnCount += 1;
       });
+      // Commit dedup memory only after successful send (mirror lastOwnSeq pattern)
+      if (pendingDedup.length > 0) {
+        flight.emittedArtifacts ??= new Map();
+        for (const [filename, sha] of pendingDedup) {
+          flight.emittedArtifacts.set(filename, sha);
+        }
+      }
     } catch (e) {
       log("sendWorkerTurnFromPane failed:", e);
     }
