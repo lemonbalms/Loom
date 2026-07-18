@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.23.2** |
-| **Status** | **`approved`** (R27 즉시 승인, 2026-07-18) — **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH): `DispatchAgentKindSchema`를 `claude` 1종에서 `claude·codex·grok` 3종으로 확장. 실행은 각 브릿지 오퍼레이터가 로컬 설정 `agentArgv`에 해당 kind의 argv를 **명시 등록한 노드에서만** 성립(기본값 미등록 = fail-closed) — wire에는 여전히 argv가 실리지 않는다(HERDR_DESIGN §4.4.2 유지). **relay 와이어 protocol v1 무변경.** |
-| **Supersedes** | 0.23.1 |
+| **Version** | **0.23.3** |
+| **Status** | **`pending-review`** (R28 대기, 2026-07-18) — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH): 실측 확정된 구조적 블로커(Claude Ink TUI pane 스크레이프 ~5.3k 상한 → 브릿지 측정 32k 트리거 라이브 도달 불가)를 해소한다. 워커가 대용량 산출물을 규약 디렉터리에 **직접 파일로 쓰고** 마커 라인으로 알리면, 브릿지가 파일명 검증 후 기존 0.23.1 패키징 경로로 artifacts[] ref를 방출한다. **relay 와이어 protocol v1 무변경 · M-2 소비부 무변경.** |
+| **Supersedes** | 0.23.2 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | **R27 `approved`** (즉시 승인 2026-07-18, M-lock 없음) — fail-closed 불변식(기본 미등록 = 0.23.1 동일 동작 + wire argv 금지)이 코드로 보증됨을 확인. L-1(`agentArgv` 비배열 값 필터+테스트)·L-2(설정 예시 등록 고지) **author-close 완료**(구현 PATCH 포함, `docs/plan_review.md` R27). 직전: R26 author-close `approved`(0.23.1) → implemented `e5ccc4d`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음). |
-| **Fable 5 when** | **Required** — 인가된 dispatcher(M-1)가 원격 브릿지에 스폰 지정할 수 있는 에이전트 CLI 집합의 확장 = **원격 실행 표면 확대** (§5.1 보안·신뢰 경계 변경). **R27 완료(`approved`).** |
+| **Approval** | **R28 대기** — 직전: R27 `approved`(0.23.2) → implemented `91bee75` · R26 author-close `approved`(0.23.1) → implemented `e5ccc4d`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 §5.1 "워커 CLI가 프롬프트 규약만으로 자가 적용" 원의도에 구현을 정렬하는 것). |
+| **Fable 5 when** | **Required** — 워커 제어 입력(마커 파일명)이 브릿지의 파일 읽기·전송을 유도하는 **신뢰 경계 인접** 경로 신설 + §5.2 트리거 의미 변경 (§5.1 보수 판단). **R28 요청 중.** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,32 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.23.3 — 2026-07-18 (`pending-review` R28 — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH))
+
+**Product one-liner:** 32k 초과 산출물을 워커가 규약 디렉터리(`~/.loom/artifacts/<convId>/`)에 직접 파일로 쓰고 턴 끝에 `[ARTIFACT] <파일명>` 마커로 알리면, 브릿지가 파일명 검증 후 기존 0.23.1 패키징 경로(sha256·chars·틸드-리터럴 ref)로 artifacts[] ref를 회신한다 — pane 스크레이프 상한과 무관하게 §5.1 "절단 금지"가 라이브에서 실제로 성립한다.
+
+**Why (후보 ⑩ 조사 결론, 2026-07-18 실측):** 0.23.1의 artifact 트리거는 브릿지가 pane 스크레이프 길이(>32k)를 측정하는 구조인데, 실물 스모크에서 **Claude Ink TUI pane 스크레이프는 소스 모드(`visible|recent|recent-unwrapped`)·요청 줄수 무관 ~5.3k 상한**이 실측됐다(TUI가 트랜스크립트를 접어 렌더 버퍼만 남김 — 원시 shell pane은 `recent 500`=51.7k로 스크롤백 보존, 차이 원인은 herdr가 아니라 TUI). 따라서 32k 측정 트리거는 **라이브에서 구조적으로 도달 불가**. 옵션 검토: **(b) herdr 노출 확대** — herdr 0.7.4의 `pane.read` 소스 3종 전부 렌더 버퍼 종속, 더 깊은 raw 모드 없음(upstream 기능 요청 외 불가, 기각) · **(c) 임계 하향(~5k)** — CONV_SPEC §5.1(32k) 위반 + TUI chrome 오염 스크레이프(관찰 ⑤ⓒ)를 패키징하게 됨(기각) · **(a) 워커 직접 파일 쓰기** — CONV_SPEC §5.1이 애초에 *"판정이 기계적이라 워커 CLI가 프롬프트 규약만으로 자가 적용"*으로 명시한 원의도와 일치(**채택**). 부수 효과: capable 모델(Sonnet 5/Opus 4.8) 워커가 injection형 대량 filler 지시를 거부하던 스모크 블로커(후보 ⑪)도 benign "실파일 artifact 전달"형으로 함께 해소된다.
+
+**What (범위 — PATCH; 설계 정본 = CONV_SPEC §5, 스펙 재론 없음):**
+| 항목 | 내용 |
+|------|------|
+| **워커 프롬프트 규약 (§5.1 자가 적용)** | conv goal 프롬프트(브릿지가 워커 pane에 주입하는 규약 문구)에 추가: 산출물이 인라인 32k를 초과하거나 pane 표시로 온전 전달이 불가능하면, 전문을 `~/.loom/artifacts/<convId>/<파일명>`에 직접 기록하고 턴 마지막에 **`[ARTIFACT] <파일명>`** 라인을 출력하라. `<convId>`는 기존 `LOOM_CONV` env로 워커에 이미 전달됨(0.23.0). 파일명 규약: **파일명만**(경로 구분자 금지), charset `[A-Za-z0-9._-]`, 선행 `-`·`.` 금지. |
+| **브릿지 — 마커 소비부** | `sendWorkerTurnFromPane` 스크레이프에서 `[ARTIFACT] <파일명>` 라인 탐지(마커는 턴 말미라 ~5.3k 접힘 창에도 잔존) → 파일명 검증(위 규약 — 위반 시 해당 마커 무시 + bridge note 사유 회신) → `loomDir()/artifacts/<convId>/<파일명>`로만 해석(**realpath containment**: 해석 결과가 conv 디렉터리 내부임을 심링크 추적 후 확인, 탈출 시 fail-closed) → 크기 상한(10MB, 초과 fail-closed) → 파일 읽어 sha256·chars 계산 → **기존 0.23.1 방출 경로 재사용**(`packageConvTurnArtifact` 계약: 틸드-리터럴 ref.path(R26 L-1)·gist 안내 문구·scp transport). 파일 부재/검증 실패 시 턴 자체는 정상 진행(artifact 미방출 + note 사유). 마커 다건 허용(파일별 ref 1건, 상한 예: 턴당 4건). |
+| **기존 트리거 유지 (회귀 없음)** | 브릿지 측정 32k 트리거(`output.length > MAX_CONV_TURN_INLINE_CHARS`)는 그대로 유지 — 스크레이프가 실제로 32k를 넘는 환경(비 TUI 워커 등)에서는 여전히 동작. |
+| **스모크 재설계 (후보 ⑪ 흡수)** | §5.2 라이브 스모크 페이로드를 benign형으로 교체: "repo의 실제 대용량 파일(예: docs/PLAN.md, 154k) 전문을 artifact 규약으로 전달하라" — capable 모델이 거부할 이유가 없는 정상 작업으로 32k+ 전달을 실증. |
+| **테스트** | 마커 탐지 → artifact 파일 읽기·sha256/chars·ref 방출(틸드-리터럴형) fake herdr fixture; 파일명 검증 거부 케이스(경로 구분자·`..`·선행 `-`/`.`·charset 위반·빈 이름); realpath 탈출(심링크로 conv 디렉터리 밖 지시) fail-closed; 파일 부재 → note 회신·턴 정상 진행; 크기 상한 초과 fail-closed; 마커 다건·상한; 기존 32k 스크레이프 트리거 회귀(무변경 확인); 32k 이하 + 마커 없음 = 기존 인라인 경로 회귀. |
+
+**Out of scope (이 버전 아님):** herdr upstream raw 스크롤백 노출 모드(⑩(b) — 기각이 아니라 upstream 관찰 대상); 워커 턴 pane 스크레이프 delta화(⑤)·close 시 pane 정리 정책(⑥)·`loom conv-hosts set` CLI(⑦)·브릿지 주입 verify 루프 개선(⑨); artifact fetch 자동 실행(0.23.0 원칙 승계 — 제시까지만); 단발 card result 경로의 파일 규약 적용(§5.5 별도 유지 — conv 한정); 브릿지 자동 git push(0.23.1 Out 승계).
+
+**Security / trust (R28 판단 대상):**
+- **워커 제어 입력이 브릿지 파일 읽기를 유도한다** — 신설 신뢰 경계. 방어 4계층: ① 파일명-only(경로 구분자·`..` 금지) ② charset allowlist + 선행 `-`/`.` 금지 ③ realpath containment(`loomDir()/artifacts/<convId>/` 밖 해석 = fail-closed, 심링크 포함) ④ 크기 상한. 워커는 이미 해당 노드에서 자율 실행 중인 로컬 프로세스이므로(R23 신뢰 모델) 워커가 읽을 수 있는 파일은 원리상 pane 출력으로도 전달 가능 — 이 PATCH가 새로 주는 능력은 "브릿지가 전송 주체가 되는 것"뿐이고, 위 검증으로 워커 홈 임의 파일 지정 경로를 차단한다.
+- **wire 무변경:** artifacts[] 스키마·M-2 수신 검증·타워 제시 표면(0.23.1) 전부 무변경 — 생산 트리거만 추가.
+- **마커 위조:** conv pane에 제3자가 쓸 수 없다(herdr pane은 브릿지 스폰 전용, M-2 주입 경로 공용) — 마커 출처는 워커 자신뿐이며 워커는 이미 신뢰 모델상 자율 주체.
+
+**Review impact:** 와이어 무변경·MCP 도구 수 무변경. M-2 신뢰 경계 **인접**(artifact 생산 트리거에 워커 제어 입력 도입) + §5.2 트리거 의미 변경 → §5.1 보수 판단으로 **R28 요청**.
+
+**R28 질의:** *(현재 없음.)*
 
 #### 0.23.2 — 2026-07-18 (`approved` R27 즉시 승인 — **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH))
 
