@@ -14,7 +14,13 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 진행 중: v0.23.6 (후보 ⑤ 스크레이프 delta화+chrome 필터) — PLAN draft `pending-review`, R31 리뷰 게이트 대기.** 직전: v0.23.5 완주(R30→구현→자문 7건→`8148642`→브릿지 재기동→레이스 자동복구 라이브 실증) + **후보 ⑩ 조사 종결**(아래).
+> **🎯 v0.23.6 완주 (2026-07-19 새벽) — R31 게이트(pending-revision→author-close approved) → grok 구현 → 커밋 `5bdeae7` push.** 스크레이프 delta화+chrome 필터+settle 재독 shipped. 직전: v0.23.5 완주 + 후보 ⑩ 조사 종결(아래).
+>
+> ### ⚠️ v0.23.6 웨이브 잔여·관찰 (다음 세션)
+> - **Follow-up(Low)**: `inject-verify.test.ts` ③ — card 결과 수신 직후 `pane.close` 즉시 어서션 레이스(~1/3 플레이키, 0.23.5 잠재 테스트측 결함). waitFor 대기로 수정 카드 1건.
+> - **codex 자문(ADV-0236) 공회전 신규 관찰**: 검증(전체 스위트 374 pass·typecheck·lint·회귀 경로)은 완주했으나 **verdict 보고 단계에서 턴이 스텝-리셋 반복으로 영구 미완**(컨텍스트 69% 여유, 촉구 2회+Esc 인터럽트에도 재발, 총 6h+) → pane close로 부분 종결. Med finding 표면화 없음. 관찰 ⓔ(승인 고착)와 별개의 실패 모드 — codex 자문 카드에 **턴당 데드라인+부분 보고 회수** 운영 절차 필요.
+> - **브릿지 라이브 미배포**: 현재 브릿지는 0.23.5 코드 가동 중 — 다음 세션에서 재기동 + conv 턴에서 `delta: kept N/M chars` note 라이브 관찰.
+> - **relay 다운 지속**(Windows 호스트 오프라인, 2026-07-18 저녁~): R31·구현·자문 카드는 수동 pane 레인으로 완주. 보드 북키핑(R31 card.done 미클레임) relay 복귀 후 정리.
 >
 > ### ✅ 후보 ⑩ 조사 종결 (2026-07-18 저녁 — 재조사 금지)
 > - **워커 TUI 3종 스크레이프 상한 라이브 실측**: claude ~5.3k(0.23.1) / **grok ~2.2k** / **codex ~1.4k**(오늘 — `cat docs/PLAN.md` 147k 프로브, 소스 3종·줄수 200/500/1000 무관 포화). grok·codex TUI는 툴 출력을 접힌 블록(`◆ Run …`)으로만 렌더 — 전문이 트랜스크립트에 아예 안 펼쳐짐.
@@ -86,7 +92,7 @@
 
 ## One-line resume
 
-> **v0.23.6 R31 게이트 진행 중 (2026-07-18 저녁).** 당일 체인: R24 → … → **R30/0.23.5 완주**(`8148642`, 레이스 자동복구 라이브 실증) → **후보 ⑩ 조사 종결**(TUI 3종 스크레이프 상한 실측 — §5.1이 정답 경로 확정) → **0.23.6 draft**(후보 ⑤ delta화+chrome 필터+settle 재독) `pending-review`. bun test 361/0 · 6패키지 typecheck green. **다음 = R31 리뷰 회수 → author-close → grok 구현 → codex 자문 → 커밋.** 룸 `LOOM-SGLR`+브릿지 온라인(**0.23.5 코드**, pid 87939). mac-node config에 claude·grok·codex 3종 등록 유지. `~/.loom/conv-node-hosts.json` 매핑 등록 유지.
+> **v0.23.6 완주 상태로 세션 종료 (2026-07-19 새벽).** 체인: … → R30/0.23.5 완주(`8148642`) → 후보 ⑩ 조사 종결 → **R31/0.23.6 완주**(delta화+chrome 필터+settle — M-1 카드 output 무필터·M-2 인덱스 맵 lock, 구현 `5bdeae7`, bun test 374/0). R31·구현·자문 전부 **수동 pane 레인**(relay 다운). 자문은 공회전으로 부분 종결(Med 없음). **다음 세션 = ⭐ 잔여 3건**(테스트 ③ 플레이키 수정 카드 · 브릿지 0.23.6 재기동+delta note 라이브 관찰 · relay 복귀 시 보드 정리). 룸 `LOOM-SGLR`+브릿지 온라인(**0.23.5 코드** — 0.23.6 미배포). mac-node config 3종 등록·conv-node-hosts 매핑 유지.
 
 ---
 
