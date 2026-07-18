@@ -17,11 +17,11 @@
 > **🎯 v0.23.3 conv 워커 파일-기반 artifact 트리거 (§5.1 자가 적용) — R28 게이트→구현 완주. `implemented` (`95cc81e`), bun test 335/0.**  
 > 체인(당일 5연속): … 0.23.2 `91bee75` → **후보 ⑩ 조사**((a) 채택 — CONV_SPEC §5.1 "워커 자가 적용" 원의도 정렬 · (b) herdr 노출확대 불가·(c) 임계하향 기각) → PLAN 0.23.3 R28 `pending-revision`(M-1: 방출 계약만 재사용 lock + L-1..L-3) → author-close `approved`(`1ad0810`) → **구현·자문·수정 전부 herdr pane 레인**(오너 지시): grok pane 구현 → codex pane 자문 REJECT 2건(dedup 선기록·위반 마커 무음 무시) → grok pane 수정 → `95cc81e`. 후보 ⑪(capable 모델 benign 페이로드)은 ⑩(a)가 흡수.
 >
-> ### ⚠️ 신규 후보 ⑫ (상위 — 조사 카드 진행 중): 브릿지 card.done 모니터링 유실
-> **같은 브릿지 프로세스에서 2번째+ 카드 pane의 herdr 이벤트가 전부 유실**되는 패턴 2회 실증(69732: claude OK→grok 유실 / 98952: codex OK→grok 유실. herdr 자체는 이벤트 정상 방출 — 오전 probe 실증). 결과: card.done 미발행·inFlight 고착 → 보드 수동 정리 필요. 브릿지 데몬 stderr가 `"ignore"`(bridge-spawn.ts:64)라 프로덕션 로그 0. 의심 지점: `HerdrClient.eventsSubscribe` 증분 재구독(소켓 전체 재구축) 레이스. **codex pane 조사 카드 발행됨**(task_fb7ccef484de4114) — 결과는 pane `[INVESTIGATE-DONE]` 마커 직접 확인(이 카드 자체도 card.done 유실 가능성). 워크어라운드: 카드 결과는 인박스 의존 말고 pane 마커/작업트리 직접 검증.
+> ### ⚠️ 후보 ⑫ (상위 — **root cause 확정**, codex pane 조사 완료 2026-07-18): 브릿지 card.done 유실 + "스타트업 레이스"의 실체
+> **원인: `HerdrClient` 구독 리스트가 append-only** (`herdr-client.ts:278`) — 닫힌 pane의 구독이 남아, 다음 카드의 `eventsSubscribe` 재개설 리스트를 오염 → herdr가 무효 스트림을 **ACK 전에 close** → close 핸들러가 pending promise를 reject 안 함(`:357`) → **await 영구 미정착** + 재연결도 오염 리스트 재전송(`:306`)으로 백오프 무한. **`bridge-runtime.ts:496` 구독 await 뒤 `:507` 주입이라 프롬프트 주입 자체가 미실행 — grok/codex "스타트업 레이스"(composer 빈 현상)의 실체가 이 버그**(첫 pane close 후 dispatch한 카드에서만 재현된 이유 일치). 재현·반증: A 생존 시 B ACK 106ms 정상 / A 닫힌 후 B 타임아웃·이벤트 0 / A 구독 prune 시 즉시 복구. 부차: `pane.closed`는 글로벌 스키마인데 pane별 중복 구독. **수정 방향**: 살아있는 flight 집합으로 재개설 리스트 재구성(or pane_closed 시 prune) + pane.closed 글로벌 1회 + pre-ACK close reject·ACK 타임아웃 + bridge status에 `eventConnected`/`lastSubscribeAck` 노출·stderr 유한 로그. 워크어라운드(수정 전): 카드 결과는 인박스 의존 말고 pane 마커/작업트리 직접 검증 + 새 카드 전 브릿지 재시작이 안전.
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **후보 ⑫ 조사 결과 처리** → 신규 PATCH 게이트(R29) 여부 판단.
+> 1. **PLAN 0.23.4 (후보 ⑫ 수정) 게이트** — 위 수정 방향으로 PATCH 스펙 작성 → R29 리뷰(pane 레인) → 구현. 후보 ⑨(주입 verify)와 원인 공유분 정리 필요(⑫ 수정 시 레이스 상당수 소멸 예상 — ⑨는 잔여분만).
 > 2. **0.23.3 실물 스모크** — benign 페이로드로 §5.1 마커 경로 라이브 실증(예: "docs/PLAN.md 전문을 artifact로 전달"). conv 레인 + `LOOM_ARTIFACTS_DIR` env·규약 프롬프트 확인.
 > 3. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI ⑨ **브릿지 주입 verify 루프 개선**(스타트업 레이스 — 오늘 누계 6회+: grok 3·codex 2 재현, 수동 복구 절차 lessons. ⑫와 인접 가능성. **관찰 ⓓ 신규**: "텍스트는 composer에 들어갔는데 제출만 실패(입력만 됨·pane idle)" 상태 실존 — codex TUI에서 `pane send-keys Enter` 미제출 실증, CR 리터럴 `agent send $'\r'`만 신뢰 가능. 현행 verify 루프는 working 전이만 대기하므로 이 상태를 **감지·복구 못 하고**, 실패해도 카드 상태 무변화+stderr ignore라 **무신호** — verify는 (a) composer 빈 경우=재주입, (b) composer 채워진 채 idle=CR 재전송, (c) 소진 시 failed result 발행(fail-visible)로 확장 필요).
 >
