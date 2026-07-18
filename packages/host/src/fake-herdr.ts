@@ -47,6 +47,12 @@ export type FakeHerdrOptions = {
    * Closed set is tracked via pane.close / markPaneClosed.
    */
   failSubscribeOnClosedPane?: boolean;
+  /**
+   * PLAN 0.23.5: when true, agent.send of non-BARE_ENTER does not append to
+   * the pane text used by pane.read (simulates TUI startup paste loss —
+   * inject lands nowhere visible). BARE_ENTER still flips status / autoStatus.
+   */
+  discardInjects?: boolean;
 };
 
 export type FakeHerdr = {
@@ -70,6 +76,20 @@ export type FakeHerdr = {
    * drop so the client backoff reconnect path fires — test ④).
    */
   disconnectEventSockets: () => void;
+  /**
+   * PLAN 0.23.5 composer scrape override: pane.read returns `text` for this
+   * pane (or for all panes when paneId is "*") instead of accumulated injects.
+   * Pass null to clear the override.
+   */
+  setPaneReadText: (paneId: string, text: string | null) => void;
+  /**
+   * PLAN 0.23.5: next `count` pane.read RPCs reply with an error (then recover).
+   */
+  failPaneReads: (count: number) => void;
+  /** PLAN 0.23.5: how many pane.read RPCs have been served. */
+  paneReadCount: () => number;
+  /** Toggle discardInjects at runtime (paste-loss simulation). */
+  setDiscardInjects: (discard: boolean) => void;
 };
 
 export async function startFakeHerdr(
@@ -89,6 +109,12 @@ export async function startFakeHerdr(
   >();
   const closedPanes = new Set<string>();
   const paneIdByConv = new Map<string, string>();
+  // PLAN 0.23.5 composer simulation
+  const paneReadOverrides = new Map<string, string>();
+  let defaultPaneReadOverride: string | null = null;
+  let paneReadFailRemaining = 0;
+  let paneReadCalls = 0;
+  let discardInjects = opts.discardInjects === true;
 
   if (existsSync(opts.socketPath)) {
     try {
@@ -192,7 +218,10 @@ export async function startFakeHerdr(
           const text = String(params.text ?? "");
           for (const [paneId, p] of panes) {
             if (p.terminal_id === target) {
-              p.text += text;
+              // PLAN 0.23.5: discardInjects simulates paste-loss (empty composer)
+              if (!(discardInjects && text !== BARE_ENTER)) {
+                p.text += text;
+              }
               // M-2: bare Enter is separate call — when we see BARE_ENTER (CR,
               // the terminal Enter key) after content, mark working
               if (text === BARE_ENTER) {
@@ -203,16 +232,19 @@ export async function startFakeHerdr(
                   setTimeout(() => {
                     p.status = auto === "idle" ? "idle" : auto;
                     const event = "pane_agent_status_changed";
-                    const data = { pane_id: paneId, agent_status: auto === "idle" ? "idle" : auto };
-                    // For idle path, emit working first then idle so sawWorking works
-                    if (auto === "done" || auto === "blocked") {
-                      broadcast(event, data);
-                    } else if (auto === "idle") {
-                      broadcast(event, { ...data, agent_status: "working" });
-                      setTimeout(() => {
-                        broadcast(event, { ...data, agent_status: "idle" });
-                      }, 10);
-                    }
+                    const finalStatus = auto === "idle" ? "idle" : auto;
+                    // Always emit working first so M-2 / 0.23.5 verify sees
+                    // sawWorking (real herdr: working → idle/done/blocked).
+                    broadcast(event, {
+                      pane_id: paneId,
+                      agent_status: "working",
+                    });
+                    setTimeout(() => {
+                      broadcast(event, {
+                        pane_id: paneId,
+                        agent_status: finalStatus,
+                      });
+                    }, 10);
                   }, delay);
                 }
               }
@@ -273,15 +305,30 @@ export async function startFakeHerdr(
           continue;
         }
         if (method === "pane.read") {
+          paneReadCalls += 1;
           const pane_id = String(params.pane_id ?? "");
+          if (paneReadFailRemaining > 0) {
+            paneReadFailRemaining -= 1;
+            err("pane read failed (test hook)");
+            sock.end();
+            continue;
+          }
           const p = panes.get(pane_id);
+          let text = p?.text ?? "READY\n";
+          if (paneReadOverrides.has(pane_id)) {
+            text = paneReadOverrides.get(pane_id)!;
+          } else if (paneReadOverrides.has("*")) {
+            text = paneReadOverrides.get("*")!;
+          } else if (defaultPaneReadOverride !== null) {
+            text = defaultPaneReadOverride;
+          }
           reply({
             type: "pane_read",
             read: {
               pane_id,
               source: params.source ?? "recent",
               format: "text",
-              text: p?.text ?? "READY\n",
+              text,
               truncated: false,
             },
           });
@@ -337,6 +384,32 @@ export async function startFakeHerdr(
           /* */
         }
       }
+    },
+    setPaneReadText(paneId: string, text: string | null) {
+      if (text === null) {
+        if (paneId === "*") {
+          defaultPaneReadOverride = null;
+          paneReadOverrides.delete("*");
+        } else {
+          paneReadOverrides.delete(paneId);
+        }
+        return;
+      }
+      if (paneId === "*") {
+        defaultPaneReadOverride = text;
+        paneReadOverrides.set("*", text);
+      } else {
+        paneReadOverrides.set(paneId, text);
+      }
+    },
+    failPaneReads(count: number) {
+      paneReadFailRemaining = Math.max(0, count);
+    },
+    paneReadCount() {
+      return paneReadCalls;
+    },
+    setDiscardInjects(discard: boolean) {
+      discardInjects = discard;
     },
     async close() {
       for (const s of sockets) {

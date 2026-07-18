@@ -97,16 +97,41 @@ export type BridgeRuntime = {
 };
 
 /**
- * M-2 submit verify + retry (live-measured): Claude Code's paste-grouping
- * window can absorb a bare-Enter CR arriving too soon after a multi-line
- * paste, and the window varies with spawn-time load — a single fixed delay
- * (herdr-client's submitDelayMs) is not reliably enough. After the initial
- * inject+submit, verify via the already-subscribed status stream and resend
- * BARE_ENTER (constant only — still M-2 compliant) if the pane never reaches
- * "working".
+ * M-2 / PLAN 0.23.5 inject verify: after initial inject+submit, wait for
+ * "working" on the status stream. On timeout, observe composer via paneRead
+ * and branch: (a) probe miss → reinject cached prompt once + CR (b) probe hit
+ * (incl. paste placeholder) or read-fail → CR resend (c) retries exhausted →
+ * fail-visible. Prompt body is never re-derived (R30 L-1) or logged.
  */
 const SUBMIT_VERIFY_MS = 4_000;
 const SUBMIT_RETRIES = 3;
+/** R30 M-1: Claude Ink folds multi-line paste into a placeholder — treat as hit. */
+const PASTE_PLACEHOLDER_MARKER = "[Pasted text";
+const PROBE_TAIL_CHARS = 48;
+
+/** Whitespace-normalize for TUI wrap-tolerant probe matching. */
+function normalizeForProbe(s: string): string {
+  return s.replace(/\s+/g, "");
+}
+
+/** Last 48 chars of whitespace-normalized prompt (or full string if shorter). */
+function injectProbeTail(prompt: string): string {
+  const n = normalizeForProbe(prompt);
+  return n.length <= PROBE_TAIL_CHARS ? n : n.slice(-PROBE_TAIL_CHARS);
+}
+
+/**
+ * Probe hit if scrape contains the prompt tail (ws-normalized) OR a paste
+ * placeholder pattern (R30 M-1 — safe-side routing to CR, not reinject).
+ * Placeholder match is wrap-tolerant: TUI may split "[Pasted text" across lines.
+ */
+function isInjectProbeHit(scrape: string, prompt: string): boolean {
+  const norm = normalizeForProbe(scrape);
+  if (norm.includes(normalizeForProbe(PASTE_PLACEHOLDER_MARKER))) return true;
+  const probe = injectProbeTail(prompt);
+  if (!probe) return false;
+  return norm.includes(probe);
+}
 
 type Flight = {
   cardId: string;
@@ -536,9 +561,10 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
+    let prompt: string;
     try {
       // M-2: untrusted prompt via agent.send only; bare Enter separate constant
-      const prompt = wrapUntrustedPrompt(payload.prompt);
+      prompt = wrapUntrustedPrompt(payload.prompt);
       await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
     } catch (e) {
       flights.delete(agent.pane_id);
@@ -554,7 +580,13 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
-    await verifySubmitOrRetry(agent.pane_id, agent.terminal_id);
+    // PLAN 0.23.5: pass the exact inject cache string (no re-derive — R30 L-1)
+    await verifyInjectOrRetry({
+      kind: "card",
+      paneId: agent.pane_id,
+      terminalId: agent.terminal_id,
+      prompt,
+    });
   }
 
   // --- conv (multiturn) worker-side path — PLAN 0.23.0 / CONV_SPEC ---------
@@ -694,16 +726,23 @@ export async function startBridgeRuntime(opts?: {
         );
         return;
       }
+      let prompt: string;
       try {
         // R23 M-2 applies every turn (R24/R25 L-4), not just the first prompt.
-        const prompt = wrapUntrustedPrompt(payload.text);
+        prompt = wrapUntrustedPrompt(payload.text);
         flight.sawWorking = false;
         await herdr.injectPromptAndSubmit(flight.terminalId, prompt);
       } catch (e) {
         log("conv turn inject failed:", e);
         return;
       }
-      await verifyConvSubmitOrRetry(flight);
+      // PLAN 0.23.5: per-turn probe from this inject's cache string (R30 L-1)
+      await verifyInjectOrRetry({
+        kind: "conv",
+        paneId: flight.paneId,
+        terminalId: flight.terminalId,
+        prompt,
+      });
       return;
     }
 
@@ -790,6 +829,7 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
+    let prompt: string;
     try {
       // Goal doubles as the first turn's prompt — the worker starts on
       // accept, mirroring card dispatch's prompt-on-start.
@@ -807,7 +847,8 @@ export async function startBridgeRuntime(opts?: {
         "must not start with - or .; must not match turn-* (bridge-reserved).",
         "--- end convention ---",
       ].join("\n");
-      const prompt = `${untrusted}${artifactConvention}`;
+      // Full inject cache includes artifact convention suffix (R30 L-1 / L-2)
+      prompt = `${untrusted}${artifactConvention}`;
       await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
     } catch (e) {
       log("conv initial inject failed:", e);
@@ -816,41 +857,12 @@ export async function startBridgeRuntime(opts?: {
       herdr.eventsPrune(agent.pane_id);
       return;
     }
-    await verifyConvSubmitOrRetry(flight);
-  }
-
-  /** Conv analogue of verifySubmitOrRetry (R23 M-2), keyed on convFlights. */
-  async function verifyConvSubmitOrRetry(flight: ConvFlight): Promise<void> {
-    const pollMs = Math.max(10, Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10));
-    async function waitForWorkingOrGone(): Promise<"working" | "gone" | "timeout"> {
-      const deadline = Date.now() + submitVerify.waitMs;
-      while (Date.now() < deadline) {
-        const f = convFlights.get(flight.paneId);
-        if (!f) return "gone";
-        if (f.sawWorking) return "working";
-        await new Promise((r) => setTimeout(r, pollMs));
-      }
-      const f = convFlights.get(flight.paneId);
-      if (!f) return "gone";
-      return f.sawWorking ? "working" : "timeout";
-    }
-    let outcome = await waitForWorkingOrGone();
-    let attempt = 0;
-    while (outcome === "timeout" && attempt < submitVerify.retries) {
-      attempt++;
-      try {
-        await herdr.agentSend(flight.terminalId, BARE_ENTER);
-      } catch (e) {
-        log(`conv M-2 resend attempt ${attempt} failed:`, e);
-      }
-      outcome = await waitForWorkingOrGone();
-    }
-    if (outcome === "timeout") {
-      log(
-        `conv submit unconfirmed after ${submitVerify.retries} retries — pane may need manual Enter`,
-        flight.paneId,
-      );
-    }
+    await verifyInjectOrRetry({
+      kind: "conv",
+      paneId: agent.pane_id,
+      terminalId: agent.terminal_id,
+      prompt,
+    });
   }
 
   /**
@@ -1020,47 +1032,132 @@ export async function startBridgeRuntime(opts?: {
   }
 
   /**
-   * M-2 submit verify + retry (live-measured, see module header): wait for
-   * the pane to report "working" via the already-subscribed status stream;
-   * if it doesn't, resend the bare-Enter constant and wait again, up to
-   * `submitVerify.retries` resends. A flight already gone from the map means
-   * the card finished (or failed) before verify caught up — treat as
-   * success and stop. If still unconfirmed after all retries, log and move
-   * on without failing the card: a stray extra Enter on an already-submitted
-   * composer is a harmless no-op, and the silence could just as easily be
-   * herdr status-detection latency.
+   * PLAN 0.23.5 unified inject verify (card + conv).
+   * `prompt` is the exact string last passed to injectPromptAndSubmit — never
+   * re-derived (R30 L-1). Reinject at most once per verify call (R30 M-2).
+   * Flight gone between timeout and action = success (R30 L-3).
    */
-  async function verifySubmitOrRetry(paneId: string, terminalId: string): Promise<void> {
-    const pollMs = Math.max(10, Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10));
+  async function verifyInjectOrRetry(opts: {
+    kind: "card" | "conv";
+    paneId: string;
+    terminalId: string;
+    prompt: string;
+  }): Promise<void> {
+    const { kind, paneId, terminalId, prompt } = opts;
+    const pollMs = Math.max(
+      10,
+      Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10),
+    );
+
+    function flightAlive(): boolean {
+      return kind === "card" ? flights.has(paneId) : convFlights.has(paneId);
+    }
+
+    function sawWorking(): boolean {
+      if (kind === "card") return flights.get(paneId)?.sawWorking === true;
+      return convFlights.get(paneId)?.sawWorking === true;
+    }
+
     async function waitForWorkingOrGone(): Promise<"working" | "gone" | "timeout"> {
       const deadline = Date.now() + submitVerify.waitMs;
       while (Date.now() < deadline) {
-        const f = flights.get(paneId);
-        if (!f) return "gone";
-        if (f.sawWorking) return "working";
+        if (!flightAlive()) return "gone";
+        if (sawWorking()) return "working";
         await new Promise((r) => setTimeout(r, pollMs));
       }
-      const f = flights.get(paneId);
-      if (!f) return "gone";
-      return f.sawWorking ? "working" : "timeout";
+      if (!flightAlive()) return "gone";
+      return sawWorking() ? "working" : "timeout";
     }
 
+    // M-2: reinject budget is per verify call (inject attempt), not per flight
+    let reinjectUsed = false;
     let outcome = await waitForWorkingOrGone();
     let attempt = 0;
+    /** Last observed probe this verify call; "none" if exhausted before any paneRead. */
+    let lastProbe: "hit" | "miss" | "read-fail" | "none" = "none";
+
     while (outcome === "timeout" && attempt < submitVerify.retries) {
       attempt++;
+      // L-3: re-check before acting — card may have finished / conv closed
+      if (!flightAlive()) return;
+
+      let probe: "hit" | "miss" | "read-fail" = "read-fail";
+      let action: "reinject" | "cr" = "cr";
+
       try {
-        await herdr.agentSend(terminalId, BARE_ENTER);
-      } catch (e) {
-        log(`M-2 resend attempt ${attempt} failed:`, e);
+        const scrape = await herdr.paneRead(paneId, {
+          source: "recent",
+          lines: 60,
+        });
+        probe = isInjectProbeHit(scrape, prompt) ? "hit" : "miss";
+      } catch {
+        // Scrape failure ≠ inject failure — fall back to CR (existing path)
+        probe = "read-fail";
       }
+      lastProbe = probe;
+
+      if (probe === "miss" && !reinjectUsed) {
+        action = "reinject";
+        reinjectUsed = true;
+      } else {
+        // hit (incl. placeholder), read-fail, or miss after reinject budget → CR
+        action = "cr";
+      }
+
+      // F-3 / L-3: re-check after paneRead wait — flight may have ended mid-RPC
+      if (!flightAlive()) return;
+
+      if (action === "reinject") {
+        try {
+          // Same cached string only — no re-derive (R30 L-1); separate CR
+          await herdr.agentSend(terminalId, prompt);
+          await herdr.agentSend(terminalId, BARE_ENTER);
+        } catch (e) {
+          log(`verify reinject attempt ${attempt} failed:`, e);
+        }
+      } else {
+        try {
+          await herdr.agentSend(terminalId, BARE_ENTER);
+        } catch (e) {
+          log(`verify CR attempt ${attempt} failed:`, e);
+        }
+      }
+
+      // Observability: branch only — never log prompt body or probe string
+      log(`verify round ${attempt}: probe=${probe} action=${action}`);
       outcome = await waitForWorkingOrGone();
     }
+
     if (outcome === "timeout") {
-      log(
-        `M-2 submit unconfirmed after ${submitVerify.retries} retries — pane may need manual Enter`,
-        paneId,
-      );
+      if (!flightAlive()) return; // L-3: gone after last wait = success
+      // (c) exhausted — fail-visible (card tear-down / conv blocked turn)
+      const failRound = Math.max(attempt, 1);
+      log(`verify round ${failRound}: probe=${lastProbe} action=fail`);
+      if (kind === "card") {
+        const flight = flights.get(paneId);
+        flights.delete(paneId);
+        herdr.eventsPrune(paneId);
+        if (flight) {
+          await sendFailedResult({
+            cardId: flight.cardId,
+            fromPeerId: flight.fromPeerId,
+            dispatchHandoffId: flight.dispatchHandoffId,
+            reason: "inject_unconfirmed",
+            paneId,
+          });
+        }
+        try {
+          await herdr.request("pane.close", { pane_id: paneId });
+        } catch {
+          /* best-effort close — same class as events_subscribe_failed */
+        }
+      } else {
+        // Conv: blocked turn only — keep convFlight + pane for tower retry
+        const flight = convFlights.get(paneId);
+        if (flight) {
+          await sendWorkerTurnFromPane(flight, "blocked", "inject_unconfirmed");
+        }
+      }
     }
   }
 
