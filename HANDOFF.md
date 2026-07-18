@@ -58,7 +58,7 @@
 
 ## One-line resume
 
-> **v0.23.3 implemented (`95cc81e`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → **R28/0.23.3**(파일-기반 artifact 트리거 — TUI 스크레이프 ~5k 상한 블로커를 §5.1 워커 자가 적용으로 해소, 후보 ⑩(a)·⑪ 동시 해결). **오늘부터 구현·자문·리뷰 전 레인 herdr pane dispatch**(오너 지시 — headless 서브에이전트 대신): R28 리뷰=claude pane, 구현·수정=grok pane, 자문=codex pane(GPT-5.6, fable-advisor 대체·토큰 절약). 다음 = **후보 ⑫**(브릿지 card.done 유실 — 조사 카드 결과 확인) → **0.23.3 실물 스모크** → ②③⑤⑥⑦⑨. 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status`. **mac-node config에 claude·grok·codex 3종 전부 등록됨** — codex는 자문 레인용으로 이번 세션에 opt-in, fail-closed 검증용 미등록 상태 종료).
+> **v0.23.3 implemented (`95cc81e`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → **R28/0.23.3**(파일-기반 artifact 트리거 — TUI 스크레이프 ~5k 상한 블로커를 §5.1 워커 자가 적용으로 해소, 후보 ⑩(a)·⑪ 동시 해결). **오늘부터 구현·자문·리뷰 전 레인 herdr pane dispatch**(오너 지시 — headless 서브에이전트 대신): R28 리뷰=claude pane, 구현·수정=grok pane, 자문=codex pane(GPT-5.6, fable-advisor 대체·토큰 절약). 다음 = **PLAN 0.23.4**(후보 ⑫ 수정 — root cause 확정됨, ⭐ 블록 수정 방향 참조) → R29 리뷰(pane 레인) → 구현 → **0.23.3 실물 스모크**(⑫ 수정 후가 안전 — 수정 전엔 카드마다 브릿지 재시작 워크어라운드) → ②③⑤⑥⑦⑨(⑨는 ⑫ 수정 후 잔여분 재평가). 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status`. **mac-node config에 claude·grok·codex 3종 전부 등록됨** — codex는 자문 레인용으로 이번 세션에 opt-in, fail-closed 검증용 미등록 상태 종료).
 
 ---
 
