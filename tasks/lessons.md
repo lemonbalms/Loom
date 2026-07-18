@@ -56,6 +56,8 @@
 
 **갱신 2 (2026-07-18 0.23.3 세션):** 수동 복구의 제출 단계에서 `herdr pane send-keys <pane> Enter`는 **codex TUI에서 미제출**(grok에선 통함 — TUI별 상이). 신뢰 경로는 lessons 원문대로 `herdr agent send <target> $'\r'`(실제 CR) — 에이전트 불문 이것만 쓸 것.
 
+**갱신 3 (2026-07-18 ⑩ 프로브):** codex TUI는 프롬프트 주입 후 **"Create a plan?" 제안 오버레이가 첫 CR을 소비**할 수 있다 — composer에 텍스트가 담긴 채 미제출로 남음(관찰 ⓓ 변형). 두 번째 `agent send $'\r'`로 정상 제출·working 전이 확인. codex 대상 수동/자동 주입 후엔 working 전이를 확인하고, 미전이면 CR 1회 추가 전송.
+
 **갱신 (2026-07-18 0.23.2 스모크):** grok TUI에서도 동일 레이스 재현 — **에이전트 무관**(claude 2회 + grok 1회, 3회째). 동일 수동 복구가 grok에도 그대로 통함: `herdr pane read`로 composer 빈 것 확인 → `herdr agent send <terminal_id> "<wrapped prompt>"` → 별도 `herdr agent send <terminal_id> $'\r'`(실제 CR 문자 — 리터럴 `"\r"` 문자열 아님) → working 전이 확인. 브릿지 verify 루프 개선(재주입)은 이제 특정 CLI 이슈가 아니라 **모든 pane 레인 공통 요구**로 승격.
 
 **해소 (2026-07-18, 0.23.5 `8148642`):** verify 루프 3분기(probe miss→캐시 프롬프트 재주입 1회/hit→CR/소진→fail-visible) 구현·배포. **라이브 실증**: 배포 직후 첫 스모크 카드에서 레이스 실발화 → stderr `verify round 1: probe=miss action=reinject` → 자동 복구·정상 완료. **0.23.5+ 브릿지에서는 수동 복구 불필요** — 위 수동 절차는 0.23.4 이하 브릿지 또는 fail-visible(`inject_unconfirmed`) 후 진단용으로만 유지. 재주입 프롬프트는 `wrapUntrustedPrompt` 산출 캐시 문자열 그대로(마커 `⚠ Untrusted handoff content\n\n` 접두).

@@ -14,7 +14,12 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.23.5 완주 (2026-07-18 저녁) — R30 승인 → 구현 → codex 자문 7건 반영 → 커밋 `8148642` → 브릿지 0.23.5 재기동 → 라이브 스모크에서 레이스 실발화·자동 복구 실증.** 다음 세션 = 아래 "다음 액션" 후보 중 선택 (진행 중 웨이브 없음).
+> **🎯 진행 중: v0.23.6 (후보 ⑤ 스크레이프 delta화+chrome 필터) — PLAN draft `pending-review`, R31 리뷰 게이트 대기.** 직전: v0.23.5 완주(R30→구현→자문 7건→`8148642`→브릿지 재기동→레이스 자동복구 라이브 실증) + **후보 ⑩ 조사 종결**(아래).
+>
+> ### ✅ 후보 ⑩ 조사 종결 (2026-07-18 저녁 — 재조사 금지)
+> - **워커 TUI 3종 스크레이프 상한 라이브 실측**: claude ~5.3k(0.23.1) / **grok ~2.2k** / **codex ~1.4k**(오늘 — `cat docs/PLAN.md` 147k 프로브, 소스 3종·줄수 200/500/1000 무관 포화). grok·codex TUI는 툴 출력을 접힌 블록(`◆ Run …`)으로만 렌더 — 전문이 트랜스크립트에 아예 안 펼쳐짐.
+> - **결론**: (a) 워커 직접 파일 쓰기 = **§5.1로 이미 shipped·179KB 라이브 실증(0.23.3)** — 정답 경로 / (b) herdr 심층 스크롤백 = CLI 표면 부재(`pane read` 소스 visible/recent/recent-unwrapped뿐, `agent-session-path`는 에이전트 자가-보고 훅이라 기본 미보고) / (c) 32k 임계 하향 = 접힌 스크레이프 패키징이라 기각. **§5.2 32k 분기는 방어적 잔존(삭제 아님)**. ⑪(capable 워커 benign 페이로드)은 §5.2 목적으론 무의미해짐 — Sonnet/Opus 워커의 benign §5.1 작업 수행 여부만 선택적 미지로 잔존.
+> - 부수 발견: **codex "Create a plan?" 오버레이가 주입 후 첫 CR을 소비** — 미제출 잔류(관찰 ⓓ 변형). 두 번째 CR로 제출됨(lessons (2) 갱신).
 >
 > ### ✅ 0.23.5 웨이브 마무리 기록 (이번 세션 — 재작업 금지)
 > 1. **수정 카드**: `.loom-fix-0235-brief.md`(F-1 Med + F-3..F-7 Low)를 grok pane 디스패치 → 스폰 주입 레이스 재현(당시 브릿지 0.23.4) → lessons (2) 수동 복구 → `[FIX-0235-DONE] tests=361/0 typecheck=ok` + card.done 정상 회수(⑫ 신뢰 4연속) → 보드 done·pane close.
@@ -43,9 +48,10 @@
 > - **dedup(R28 L-1)**: 2번째 턴 스크레이프 창에 이전 `[ARTIFACT] plan-full.md` 잔존했으나 재방출 없음 — 신규 `smoke-note.txt` ref 1건만 방출(sha 일치 확인).
 > - **부수 재확인**: 스폰 주입 1발 성공(이번엔 ⑨ 레이스 미발생 — 간헐 재확인), conv 2턴 왕복 동일 브릿지 정상(⑫ 회귀 무), close 후 `eventSubscriptions` 글로벌만 복귀·inFlight=0, 보드 task done 자동 전이. 워커 pane 수동 close(후보 ⑥ 미구현 관례).
 >
-> ### 다음 액션 (우선순위 순 — 진행 중 웨이브 없음)
-> 1. **후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(매핑 파일은 스모크에서 수동 등록됨) ⑩ §5.2 32k 트리거 전제 재검토(TUI 스크레이프 상한) ⑪ capable 워커용 benign 페이로드(⑩ 선결).
-> 2. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
+> ### 다음 액션 (우선순위 순)
+> 1. **v0.23.6 웨이브 진행 중**: PLAN draft(후보 ⑤ — delta화+chrome 필터+settle 재독) → **R31 리뷰 카드(claude pane) 디스패치** → author-close → grok 구현 카드 → codex 자문 카드 → 검증·커밋.
+> 2. **잔여 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(매핑 파일은 스모크에서 수동 등록됨). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
+> 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
 > ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
 > - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
@@ -80,7 +86,7 @@
 
 ## One-line resume
 
-> **v0.23.5 완주 상태로 세션 종료 (2026-07-18 저녁).** 당일 체인: R24 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → R28/0.23.3 → R29/0.23.4 → 0.23.3 실물 스모크 → **R30/0.23.5 완주**(후보 ⑨+ⓓ 주입 verify 3분기 — 승인 `cf02728` → 구현+자문 F-1..F-7 반영 커밋 **`8148642`** → PLAN Implemented+M-1 표 기록 → 브릿지 0.23.5 재기동 → **라이브 스모크에서 레이스 실발화·`probe=miss action=reinject` 자동 복구 실증**). bun test 361/0 · 6패키지 typecheck green. **다음 세션 = ⭐ "다음 액션" 후보 선택** (진행 중 웨이브 없음). 룸 `LOOM-SGLR`+브릿지 온라인(**0.23.5 코드**, pid 87939). mac-node config에 claude·grok·codex 3종 등록 유지. `~/.loom/conv-node-hosts.json` 매핑 등록 유지.
+> **v0.23.6 R31 게이트 진행 중 (2026-07-18 저녁).** 당일 체인: R24 → … → **R30/0.23.5 완주**(`8148642`, 레이스 자동복구 라이브 실증) → **후보 ⑩ 조사 종결**(TUI 3종 스크레이프 상한 실측 — §5.1이 정답 경로 확정) → **0.23.6 draft**(후보 ⑤ delta화+chrome 필터+settle 재독) `pending-review`. bun test 361/0 · 6패키지 typecheck green. **다음 = R31 리뷰 회수 → author-close → grok 구현 → codex 자문 → 커밋.** 룸 `LOOM-SGLR`+브릿지 온라인(**0.23.5 코드**, pid 87939). mac-node config에 claude·grok·codex 3종 등록 유지. `~/.loom/conv-node-hosts.json` 매핑 등록 유지.
 
 ---
 
