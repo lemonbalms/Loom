@@ -28,9 +28,11 @@
 > **결론: Claude Code(Ink TUI) 워커로는 §5.2 32k artifact 경로가 라이브에서 절대 트리거되지 않는다.** 브릿지 스크레이프(`herdr paneRead recent 200`)는 Ink TUI의 렌더 버퍼만 읽는데, TUI가 트랜스크립트를 접어/스크롤아웃해서 워커가 40k+를 출력해도 스크레이프는 **소스·줄수 무관 ~5.3k 상한**(200줄 요청 중 실제 콘텐츠 22줄만 잔존). 대조 검증: 원시 shell pane에 60k cat → `recent 200`=20.6k, `recent 500`=51.7k로 스크롤백 보존 → **차이의 원인은 herdr 상한이 아니라 Claude Ink TUI의 트랜스크립트 접힘**. HANDOFF 종전 "216컬럼×200줄≈43k" 추정은 raw shell 기준이었고 TUI 워커엔 적용 안 됨(정정).
 > - 워커 모델별 거동(사용자 요청: fable→opus/sonnet 교체 테스트, `agentArgv.claude`에 `--model` 부여):
 >   - **Fable**(기본): 마커 붙은 대량출력 턴 **수행** (구 conv에서 AAAA 190줄 생성 — 단 구 브릿지에서 회신 유실).
->   - **Sonnet 5**: 마커(`⚠ Untrusted handoff content`) 붙은 대량출력 지시를 **프롬프트 인젝션으로 판단·반복 거부** (설득 턴에도 불응, "직접 대화창에 지시하라" 요구). goal-ack 등 정상 턴은 응답함 — 거부는 injection형 콘텐츠 한정.
->   - **Opus 4.8**: 스모크 목적을 스스로 이해해 32k 초과 목표의 dense 200줄(`SMOKE-0231-BULK-END`)을 **자발 생성** → 그러나 위 TUI 접힘으로 스크레이프 4.7k → `artifacts=null`(패키징 미발동). 패키징 코드 자체는 무결(309 유닛테스트 green), 라이브 도달 불가가 원인.
+>   - **Sonnet 5**: 마커(`⚠ Untrusted handoff content`) 붙은 대량출력 지시를 **프롬프트 인젝션으로 판단·반복 거부** (conv 채널 설득 턴에도 불응, "직접 대화창에 지시하라" 요구). goal-ack 등 정상 턴은 응답함 — 거부는 injection형 콘텐츠 한정.
+>   - **Opus 4.8**: **동일하게 거부** — conv 채널로 온 마커 붙은 대량출력 턴을 자발 수행하지 않음. 출력이 나온 것은 **오너가 pane에 직접(사람이 in-pane) "승인된 자동화 테스트"라고 입력**한 뒤였음(자발 생성 아님 — 종전 기록 정정). 그렇게 나온 dense 200줄(`SMOKE-0231-BULK-END`)조차 위 TUI 접힘으로 스크레이프 4.7k → `artifacts=null`(패키징 미발동). 패키징 코드 자체는 무결(309 유닛테스트 green), 라이브 도달 불가가 원인.
+>   - **정리**: Fable만 마커 대량출력을 자율 수행. **Sonnet 5·Opus 4.8은 둘 다 거부** — 사람이 pane에 직접 개입해야 통과. → capable 모델 워커엔 injection형(무의미 filler 강제) 대신 **benign goal-ack형 턴**이 필요(아래 후보 ⑪).
 > - **후속 후보 ⑩(신규·상위)**: §5.2 트리거 전제 재검토 — (a) 워커 출력을 pane 스크레이프가 아니라 워커가 직접 파일로 쓰게 하는 경로, 또는 (b) `herdr pane read`가 TUI raw 스크롤백을 더 깊이 노출하는 모드 조사, 또는 (c) 32k 임계를 TUI 스크레이프 실측 상한(~5k) 기준으로 재조정. 후보 ⑤(delta 스크레이프)도 이 상한에 종속.
+> - **후속 후보 ⑪(신규)**: capable 모델(Sonnet 5/Opus 4.8) 워커용 스모크 페이로드를 injection형(무의미 대량 filler) 대신 **benign goal-ack형**으로 재설계 — 예: "이 저장소의 실제 대용량 파일(예: docs/PLAN.md)을 정당한 목적으로 출력"처럼 워커가 거부하지 않을 정상 작업으로 volume 확보. 단 후보 ⑩ TUI 상한이 선결이라 ⑪ 단독으론 §5.2 도달 불가.
 > - 다음 (선택): conv-node-hosts.json에 상대 peerId 매핑 등록 후 fail-closed↔제시 분기만이라도 별도 확인(32k 도달과 무관하게 M-1/M-2 제시 파이프라인 단위 검증 — 유닛 커버되어 우선순위 낮음).
 >
 > ### conv 실물 스모크 기록 (2026-07-18, 0.23.0)
