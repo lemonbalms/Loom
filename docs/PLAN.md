@@ -119,6 +119,8 @@
 
 **Implemented as of `95cc81e` (2026-07-18, grok pane 레인 · 아키텍트 독립 검증 · codex pane 자문):** 6파일 +1,151줄 — `scanArtifactMarkers`/`validateArtifactMarkerFilename`/`packageWorkerFileArtifact`/`workerArtifactInlineNotice`(`conv-artifact-pack.ts`)·`sendWorkerTurnFromPane` 마커 소비부+`ConvFlight.emittedArtifacts`·`startConvPane` `LOOM_ARTIFACTS_DIR` env+규약 프롬프트(`bridge-runtime.ts`)·VERSION 0.23.3(CLI+MCP). 구현·자문·수정 전부 herdr pane 레인(오너 지시): grok pane 구현 → **codex pane 자문(GPT-5.6, 오너 지시로 fable-advisor 대체) REJECT 2건** — ① dedup 메모리 전송-성공-전 기록(전송 실패 시 미전달 artifact 영구 억제) → commit-after-send로 수정 ② 위반 파일명 마커가 스캔 정규식에 걸러져 검증 미도달(무음 무시, R28-lock "note 회신" 위반) → 스캔 `\S+` 확장으로 수정 → grok pane 수정 적용. `bun test` **335/0**(+26) · 6패키지 typecheck green · biome clean. 이탈 없음. **관찰(신규 후보 ⑫ 근거): grok pane 카드 2건 모두 브릿지 card.done 유실**(브릿지당 2번째+ pane 이벤트 구독 사망 가설) — 수동 보드 정리, 별도 조사 카드 진행.
 
+**라이브 스모크 (2026-07-18 저녁, ⑫ 해소 후):** `conv_50f5fa521d5d9687` — benign 페이로드(docs/PLAN.md 전문 179KB)로 §5.1 마커 경로 전 구간 실증: 규약 프롬프트 실경로 주입(L-2)·`[ARTIFACT]` 마커 소비·틸드-리터럴 ref·sha256 로컬 파일 정확 일치·원본 바이트 동일·M-2 fail-closed↔제시(conv-node-hosts 매핑 등록 후) 양 분기·잔존 마커 dedup(L-1, 2번째 턴 신규 ref만 방출). capable 워커 거부 없음(후보 ⑪ benign 설계 실증). 상세 `HANDOFF.md`.
+
 #### 0.23.2 — 2026-07-18 (`approved` R27 즉시 승인 — **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH))
 
 **Product one-liner:** 타워가 카드 dispatch와 `conv.open`에서 `agentKind`로 codex/grok 워커를 지정할 수 있다 — 실행은 각 브릿지 오퍼레이터가 로컬 설정(`agentArgv`)에 해당 kind의 argv를 명시 등록한 노드에서만 성립하고(기본 fail-closed), wire에는 여전히 argv가 실리지 않는다(HERDR_DESIGN §4.4.2 원칙 유지).

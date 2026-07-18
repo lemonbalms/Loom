@@ -20,11 +20,18 @@
 > ### ✅ 후보 ⑫ 해소 (2026-07-18, 0.23.4) — 라이브 검증 3종 완료
 > `eventsPrune`(flight 종료 시 구독 정리) + M-1 롤백 + pre-ACK reject/ACK 타임아웃 + `pane.closed` 글로벌 1회(기동 fail-fast) + fail-visible(`events_subscribe_failed`) + 관측성(`bridge status`에 `eventConnected`/`lastSubscribeAck`/`eventSubscriptions` · stderr `loomDir()/bridge/<profile>.stderr.log` 0600). **라이브 증거**: ① 동일 브릿지 2번째 카드 구독 성립·card.done 정상 도착(수정 전 2회 연속 유실 시나리오 그대로 통과) ② flight 종료 후 `eventSubscriptions` 글로벌만으로 복귀 ③ L-3 프로브 — herdr는 established 스트림을 강제 종료하지 않음(prune-without-reopen 전제 실증). **워크어라운드 해제: 새 카드 전 브릿지 재시작 불필요. 카드 결과 인박스(card.done) 신뢰 회복.** pane 마커 감시는 이중 방어로 유지 권장.
 >
+> ### ✅ 0.23.3 실물 스모크 완료 (2026-07-18 저녁) — §5.1 마커 경로 라이브 실증
+> `conv_50f5fa521d5d9687` (tower=claude-impl → mac-node, 워커 claude/Fable, benign 페이로드 "docs/PLAN.md 전문 artifact 전달"):
+> - **규약 프롬프트·env**: 브릿지가 실측 경로(`~/.loom/artifacts/<convId>`) 삽입된 §5.1 규약 블록 주입 확인(R28 L-2). 워커는 untrusted 마커를 보고 로컬 근거 확인 후 자율 수행 — **benign 페이로드는 capable 모델 거부 없음(후보 ⑪ 설계 실증)**.
+> - **마커 소비**: `[ARTIFACT] plan-full.md` → artifacts[] ref 방출 — 틸드-리터럴 path·sha256 **로컬 파일과 정확 일치**·chars=147,258(UTF-8 코드포인트; 바이트 178,996)·gist. inline text = pane 스크레이프+notice(파일 tail 아님). 파일은 원본 docs/PLAN.md와 **바이트 동일**, 디렉터리 0700. §5.1 "절단 금지"가 32k 초과 실물(179KB)에서 성립.
+> - **M-2 양 분기**: 매핑 부재 시 `artifactCommands ok=false "no local conv→node mapping"`(fail-closed) → `~/.loom/conv-node-hosts.json`에 `{p_ae186d3ee88d1037: kyoungsiklee@localhost}` 등록 후 2번째 턴에서 `ok=true` POSIX-quoted scp 명령 제시(로컬 매핑 기반, wire host 미사용, untrusted note 포함). **매핑은 등록 유지**(후보 ⑦ CLI 선행 상태).
+> - **dedup(R28 L-1)**: 2번째 턴 스크레이프 창에 이전 `[ARTIFACT] plan-full.md` 잔존했으나 재방출 없음 — 신규 `smoke-note.txt` ref 1건만 방출(sha 일치 확인).
+> - **부수 재확인**: 스폰 주입 1발 성공(이번엔 ⑨ 레이스 미발생 — 간헐 재확인), conv 2턴 왕복 동일 브릿지 정상(⑫ 회귀 무), close 후 `eventSubscriptions` 글로벌만 복귀·inFlight=0, 보드 task done 자동 전이. 워커 pane 수동 close(후보 ⑥ 미구현 관례).
+>
 > ### 다음 액션 (우선순위 순)
-> 1. **0.23.3 실물 스모크** — ⑫ 해소로 이제 안전. benign 페이로드로 §5.1 마커 경로 라이브 실증(예: "docs/PLAN.md 전문을 artifact로 전달"). conv 레인 + `LOOM_ARTIFACTS_DIR` env·규약 프롬프트 확인.
-> 2. **후보 ⑨ (주입 verify 루프 확장) — ⑫ 수정 후에도 잔여 실존 확인됨**: 0.23.4 세션에서 grok pane 스폰 직후 주입 유실 2회 추가 재현(구독은 정상 성립한 상태 — 즉 ⑫와 별개의 순수 TUI 스타트업 레이스 잔존). 수동 복구(리터럴 재주입+`$'\r'`)는 매회 유효. verify 루프 (a) composer 빈 경우=재주입 (b) composer 잔류+idle=CR 재전송 (c) 소진 시 failed result(fail-visible) 3분기 확장 필요(관찰 ⓓ 포함).
-> 3. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI.
-> 4. **관찰 ⓔ (신규, Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4 자문 카드 실증 — 마커는 정상 출력, 보드만 수동 done 정리). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
+> 1. **후보 ⑨ (주입 verify 루프 확장) — ⑫ 수정 후에도 잔여 실존 확인됨**: 0.23.4 세션에서 grok pane 스폰 직후 주입 유실 2회 추가 재현(구독은 정상 성립한 상태 — 즉 ⑫와 별개의 순수 TUI 스타트업 레이스 잔존; 0.23.3 스모크에선 미발생 — 간헐). 수동 복구(리터럴 재주입+`$'\r'`)는 매회 유효. verify 루프 (a) composer 빈 경우=재주입 (b) composer 잔류+idle=CR 재전송 (c) 소진 시 failed result(fail-visible) 3분기 확장 필요(관찰 ⓓ 포함). PLAN PATCH + R30 게이트.
+> 2. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(매핑 파일은 스모크에서 수동 등록됨).
+> 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4 자문 카드 실증 — 마커는 정상 출력, 보드만 수동 done 정리). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
 > ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
 > - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
@@ -59,7 +66,7 @@
 
 ## One-line resume
 
-> **v0.23.4 implemented (`c7df503`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → R28/0.23.3 → **R29/0.23.4**(후보 ⑫ HerdrClient 구독 수명주기 수정 — card.done 유실·주입 고착의 root cause 해소, **라이브 검증 3종 완료**, 워크어라운드(카드마다 브릿지 재시작) 해제). 전 레인 herdr pane dispatch(오너 지시): R29 리뷰=claude pane, 구현·수정=grok pane, 자문=codex pane(GPT-5.6, REJECT 5건 → 수정 반영). 다음 = **0.23.3 실물 스모크**(⑫ 해소로 이제 안전 — §5.1 artifact 마커 경로 benign 페이로드 라이브 실증) → **후보 ⑨**(주입 verify 3분기 — ⑫ 수정 후에도 grok 스폰 직후 주입 유실 2회 재현, 순수 TUI 레이스 잔존 확인) → ②③⑤⑥⑦ + 관찰 ⓔ(codex 승인 프롬프트 → 가짜 agent_blocked 회신). 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status` — 신규: `eventConnected`/`lastSubscribeAck`/`eventSubscriptions` 노출·stderr 로그 `~/.loom/bridge/mac-node.stderr.log`). mac-node config에 claude·grok·codex 3종 등록 유지.
+> **v0.23.4 implemented (`c7df503`) + 0.23.3 실물 스모크 완료 (2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → R28/0.23.3 → R29/0.23.4(후보 ⑫ 구독 수명주기 수정, 라이브 검증 3종) → **0.23.3 실물 스모크 완주**(`conv_50f5fa521d5d9687` — §5.1 마커 경로: 179KB PLAN.md 전문 artifact 왕복, sha256 로컬 일치, M-2 fail-closed↔제시 양 분기, R28 L-1 dedup, benign 페이로드 무거부 실증. `~/.loom/conv-node-hosts.json` 매핑 등록 유지). 다음 = **후보 ⑨**(주입 verify 3분기 — ⑫ 수정 후에도 grok 스폰 직후 주입 유실 2회 재현·순수 TUI 레이스 잔존, 0.23.3 스모크에선 미발생(간헐). PLAN PATCH + R30 게이트) → ②③⑤⑥⑦ + 관찰 ⓔ(codex 승인 프롬프트 → 가짜 agent_blocked 회신). 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status` — `eventConnected`/`lastSubscribeAck`/`eventSubscriptions` 노출·stderr 로그 `~/.loom/bridge/mac-node.stderr.log`). mac-node config에 claude·grok·codex 3종 등록 유지.
 
 ---
 
