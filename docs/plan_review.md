@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R28** PLAN **v0.23.3**(conv 워커 산출물 파일-기반 artifact 트리거 — §5.1 자가 적용 규약, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18) — 갭 실재(TUI 스크레이프 ~5.3k 상한 실측 → 32k 측정 트리거 라이브 도달 불가)·§5.1 원의도 정렬·보안 4계층(파일명-only·charset·realpath containment·크기 상한) 설계 타당·소비부 무변경 주장 코드 실증. M-1(방출 계약만 재사용 — `packageConvTurnArtifact` 파일 쓰기 생략·ref 파일명=마커 파일명·다건 누적·`turn-*` 예약) lock 본문 반영 + L-1..L-3 author-close 완료(no R28b, Fable 사전 승인). 직전: R27 v0.23.2 `approved` → implemented `91bee75`.  
+> **최신:** **R29** PLAN **v0.23.4**(HerdrClient 이벤트 구독 수명주기 수정 — 후보 ⑫, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18) — root cause 서술 코드 전수 실증·prune-without-reopen 설계 타당·글로벌 `pane.closed` 전환 소비부 무변경 실증·fail-visible 보수성 우월. M-1(신설 구독-실패 경로 자기 재감염 — `eventsSubscribe` 선-push `:279-285` + reject 롤백 부재) **lock 본문 반영** + L-1(superseded 신세대 결과 채택)·L-2(기동 글로벌 구독 실패 fail-fast)·L-3(established 강제 종료 라이브 검증 명시)·L-4(ACK 타이머 정착 시 해제 + 테스트 ⑭)·L-5(테스트 ⑤ 단위 한정) **author-close 완료** → 사전 승인 경로대로 재리뷰 없이 `approved`(no R29b). 직전: R28 v0.23.3 author-close `approved` → implemented `95cc81e`.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,6 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R29** | **v0.23.4** | **closed (pending-revision → author-close approved 2026-07-18)** | **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫ — card.done 유실 / "스타트업 레이스" 실체)** (PATCH) — 구독 prune + pre-ACK reject/ACK 타임아웃 + `pane.closed` 글로벌 1회 + fail-visible + 관측성. root cause·라인 참조 전수 실증, 설계 건전. M-1: `eventsSubscribe` 선-push(`:279-285`) + reject 롤백 부재 → 신설 실패 경로가 pane 닫고 구독 잔존 = 자기 재감염(이후 dispatch 연쇄 실패) → reject-시-롤백 문안 lock 반영 + L-1..L-5 author-close. |
 | **R28** | **v0.23.3** | **closed (pending-revision → author-close approved 2026-07-18)** | **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH) — 워커 직접 파일 쓰기 + `[ARTIFACT] <파일명>` 마커 → 브릿지 4계층 검증 후 기존 방출 경로로 ref. 갭 실재(TUI ~5.3k 실측)·스펙 정렬·소비부 무변경 확인. M-1: 방출 경로 "재사용" 문안이 `packageConvTurnArtifact` 실계약과 모순(다건 마커 클로버·inline text 대체·파일명 불일치 + `turn-*` 네임스페이스 충돌 미규정) → 문안 lock. |
 | **R27** | **v0.23.2** | **closed (approved 즉시 승인 2026-07-18)** | **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH) — 공용 enum 1→3종, 실행 게이트는 브릿지 로컬 `agentArgv` 명시 등록(기본 미등록 = 0.23.1 동일 fail-closed)·wire argv 금지(§4.4.2) 유지. M-lock 없음(보수 결정이 본문 기명문 + 원시 기존재). L-1(`agentArgv` 형상 필터)·L-2(등록 고지) author-close → 구현 PATCH 포함. |
 | **R26** | **v0.23.1** | **closed (pending-revision → author-close approved 2026-07-18)** | **§5.2 artifact 패키징 호출부** (PATCH) — 브릿지 truncate 폴백 제거→scp 규약 패키징(전문 보존) + 타워 M-2 검증 통과 fetch 명령 **제시**(자동 실행 없음). 갭 실재·§5 이전 충실·스코프(자동 git push 유예 포함) 확인. 단 scp host 해석 출처가 "로컬 conv state"로 옮겨져 §5.3③ "수신측 로컬 설정" 왜곡(M-1) + 셸 복붙이 예정된 제시 문자열 표면의 안전 규약 미규정(M-2) → PLAN 문안 lock 2건 + L-1·L-2 author-close 완료. |
@@ -28,7 +29,47 @@
 
 ## Open (blocking)
 
-*(현재 없음 — R28 M-1 lock은 2026-07-18 PLAN v0.23.3 본문 반영 완료, 아래 R28 Author-close 완료 참조.)*
+*(현재 없음 — R29 author-close `approved` 완료, 2026-07-18.)*
+
+---
+
+## Review R29 — Plan v0.23.4 (HerdrClient 이벤트 구독 수명주기 수정 — 후보 ⑫, PATCH)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.4` changelog + header + 코드 대조(`packages/host/src/herdr-client.ts` — `:278-286` `eventsSubscribe` append-only 병합·**`:279-285` 연결 개설 전 리스트 push(M-1 근거)**, `:288-365` `openEventConnection` — `:306` 재개설 시 저장 리스트 전체 재전송·`:307-346` ACK promise 정착 경로·`:348-356` error 핸들러(정착함)·`:357-363` close 핸들러(**pre-ACK 무정착·ACK 타임아웃 부재 — root cause ② 실증**)·`:359` superseded 세대 조기 return(무정착)·`:362` `if (this.subscriptions.length)` 재연결 가드, `:367-378` `scheduleEventReconnect` 백오프, `packages/host/src/bridge-runtime.ts` — `:495-502` 카드 구독(catch 후 log-만-하고 blind 진행)·`:496` await→`:507` 주입 순서(고착 지점)·`:741-748` conv 구독 동형·`:1023-1040` `onHerdrEvent` paneId→flights/convFlights 맵 라우팅·flight 제거 전수 grep(`:509`·`:699-700`·`:771-772`·`:1050`·`:1079`·`:1084`·`:1104-1105` — 스펙 열거 7지점과 일치, 현행 코드 기준 완전)·`:271-282` status op(현행 `inFlight`만), `packages/host/src/bridge-spawn.ts:61-67` — `:64-65` `stdout/stderr: "ignore"` 실증) + `HANDOFF.md` ⭐ 후보 ⑫ 블록(codex pane 조사 — 재현·반증 3종: A 생존 시 B ACK 106ms / A 닫힌 후 B 타임아웃·이벤트 0 / A prune 시 즉시 복구) + `docs/plan_review.md` R28(직전 형식·M 기준 선례)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`pending-revision`** — M-1 lock 본문 반영 + L-1..L-5 author-close 후 **재리뷰 없이 `approved` 전환 가능** (Fable 사전 승인, no R29b).
+
+**Author-close 완료 (2026-07-18, claude-impl):** M-1 — PLAN 0.23.4 What 표에 "구독 실패 롤백 (R29 M-1 lock)" 행 신설(reject-시 신규 추가분 롤백·기존 항목 유지·불변식 클라이언트 한 곳·호출부별 prune 의존 금지) + prune 행에 "신설 실패 경로 오염은 M-1 롤백이 클라이언트 측 커버" 명시 + 테스트 ⑬(자기 재감염 회귀). L-1 — pre-ACK 행에 superseded promise 신세대-결과-채택 문안(advisor 권고 채택). L-2 — 글로벌 1회 행에 기동 구독 실패 fail-fast 문안(advisor 권고 채택). L-3 — Out of scope에 established 스트림 강제 종료 미검증 명시 + 구현 시 events-probe 라이브 검증 1회·재연결 안전망(테스트 ④) 기록. L-4 — pre-ACK 행에 "정착 시 타이머 해제" + 테스트 ⑭(fake timer). L-5 — 테스트 ⑤를 HerdrClient 단위(글로벌 구독 부재 조건) 한정으로 교체. 사전 승인 경로(no R29b)에 따라 재리뷰 없이 `approved` 전환.
+
+### 결정적 발견 (성패 지점)
+이 PATCH의 핵심 신설물은 **"구독 실패 fail-visible"** 인데, 바로 그 신설 경로가 **이 PATCH가 제거하려는 오염을 재생산**한다. `eventsSubscribe`는 연결 개설 **전에** 신규 구독을 저장 리스트에 push 하고(`herdr-client.ts:279-285`) reject 시 롤백이 없다. 스펙의 실패 처리 문안("flight 정리 + `sendFailedResult(events_subscribe_failed)` + pane close 시도")을 문자 그대로 구현하면: 구독 실패 → pane close → **방금 push된 구독이 닫힌 pane을 참조한 채 리스트에 잔존** → 다음 dispatch의 `eventsSubscribe`가 오염 리스트로 재개설 → herdr pre-ACK close → (신설 reject 덕에 가시적이긴 하나) **연쇄 실패가 브릿지 재시작까지 지속** + 백그라운드 `scheduleEventReconnect` 백오프도 오염 리스트로 무한. 스펙의 prune 원칙("flight가 맵에서 제거되는 **모든** 지점")은 이 신설 제거 지점을 포괄한다고 읽을 수 있으나, 열거된 7지점(현행 코드의 제거 지점 전수와 일치함은 확인)에 **이 PATCH 자신이 만드는 8번째 지점이 빠져 있고** 실패 처리 행 문안에도 prune이 없다 — R25/R26/R28 M 기준("문안대로 구현하면 결함이 스펙 준수의 결과물") 정확히 부합 → M-1.
+
+### Checklist
+- [x] **root cause 서술 = 코드 실증 (라인 전수 검증)** — append-only 병합(`:278-286`), pre-ACK close 무정착 + ACK 타임아웃 부재(`:357-363` — close 핸들러에 resolve/reject 없음; error 핸들러 `:348-356`는 정착하지만 herdr의 정상 FIN close는 error 없이 close만 발화), 재개설 시 오염 리스트 재전송(`:306` + `scheduleEventReconnect`→`openEventConnection` 재호출), `bridge-runtime.ts:496` await → `:507` 주입 순서(고착 시 주입 미실행 — "스타트업 레이스" 실체 주장과 정합), stderr `"ignore"`(`bridge-spawn.ts:64-65`). HANDOFF 재현·반증 3종과 서술 일치.
+- [x] **prune-without-reopen 설계 타당** — 열린 연결의 잔존 구독은 이벤트를 내지 않는 pane이라 무해하고, 오염은 재개설 요청 payload로만 전파되므로 저장 리스트 정리로 충분하다는 논증 성립. herdr가 닫힌 pane 구독을 가진 **열린** 스트림을 나중에 강제 종료하는지는 미검증(조사서는 신규 subscribe의 pre-ACK close만 실증)이나, 강제 종료가 실재해도 재연결이 prune된 리스트로 복구(테스트 ④가 이 안전망을 커버) — 잔여 리스크는 재연결 백오프 동안의 이벤트 갭뿐이며 L-3으로 명시.
+- [x] **prune 호출 지점 열거 완전성** — grep 전수 대조: 카드 `:509`/`:1050`/`:1079`/`:1084` + conv `:699-700`/`:771-772`/`:1104-1105` = 현행 코드의 flight 제거 지점 전부. 단 **신설 실패 경로가 8번째 제거 지점**(M-1).
+- [x] **`pane.closed` 글로벌 1회 전환 — 소비부 무변경 주장 실증** — `onHerdrEvent`(`:1023-1040`)는 paneId로 flights/convFlights 맵을 조회해 라우팅하고 맵 미스는 무시 → 글로벌 구독으로 비관리 pane의 pane.closed가 유입돼도 no-op. 카드/conv 핸들러(`:1049`/`:1103`)도 paneId 키 동작. 주장 성립.
+- [x] **promise 정착 경로** — pre-ACK close reject + ACK 타임아웃 + superseded 자기-promise 정착으로 현행 3개 무정착 경로(FIN close·타임아웃 부재·세대 교체 `:359` 조기 return) 전부 커버. 이중 정착은 기존 `settled` 가드 패턴으로 방지 가능 — 단 superseded reject의 오탐 각도(L-1)와 타임아웃 타이머 해제(L-4) 문안 보강 필요.
+- [x] **fail-visible 보수성** — 오탐(일시 herdr 재시작 중 dispatch) 시 failed 회신은 현행 "무음 doing 고착 + 수동 정리" 대비 우월(재-dispatch 가능, 카드 상태 SSOT 정합). conv 쪽 blocked 턴도 기존 pane_closed 표면 재사용이라 타워 소비부 무변경. 방향 타당.
+- [x] **stderr 유한 로그 보안·프라이버시** — 신설 표면은 로컬 `loomDir()/bridge/<profile>.stderr.log`뿐(0600·truncate-on-spawn 유한 보장·stdout ignore 유지). 현행 `[loom-bridge]` log() 호출은 에러·상태·paneId만 — 프롬프트 본문·핸드오프 body 비기록 원칙과 정합(스펙이 회귀 확인 항목으로 자체 명시). wire·MCP·herdr RPC 무변경 주장 성립. 격상 없음.
+- [x] **테스트 12항목** — 버그 재현(⑩ 통합)·오염 재전송 회귀(④)·prune payload(①)·reject 전파(②③)·fail-visible(⑦⑧)·관측성(⑨)·정상 회귀(⑪)·정리(⑤⑫) 커버. 단 M-1 케이스(⑬ 신설 필요)·⑤ 문안 내부 모순(L-5)·타임아웃 타이머 해제(L-4 — ⑪은 15s를 안 기다려 못 잡음) 보강 필요.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (Med, binding — PLAN 문안 lock): 신설 구독-실패 fail-visible 경로의 자기 재감염 — `eventsSubscribe` 선-push(`herdr-client.ts:279-285`) + reject 롤백 부재.** 근거는 결정적 발견 참조. 잠글 문안: **"`eventsSubscribe`는 reject 시 이번 호출이 새로 추가한 구독 항목을 저장 리스트에서 롤백한다(기존 `exists` 중복 체크가 신규분을 식별하므로 추가분만 제거 — 이전부터 있던 항목은 유지). 이로써 실패 정리 경로(카드/conv)가 pane을 닫아도 오염이 잔존하지 않는다. 불변식을 클라이언트 한 곳에 두어 카드·conv·미래 호출자를 일괄 커버한다(호출부별 prune 의존 금지)."** + 테스트 ⑬ 추가: "subscribe 실패(pre-ACK close) → 저장 리스트에 이번 호출 추가분 부재 → 다음 dispatch의 `eventsSubscribe` 정상". High 아님: 실패가 가시적(failed result)이고 브릿지 재시작으로 복구 가능하며 트리거가 이미 비정상 조건. (advisor 확정 — 롤백 위치를 호출부 prune이 아닌 `eventsSubscribe` 자체로 두는 설계는 advisor 권고.)
+- **L-1 (Low, author-close): superseded 세대 자기-promise reject의 구조적 오탐.** 동시 `eventsSubscribe` 경합 시(카드 A 대기 중 카드 B가 재개설) A의 구독은 이미 리스트에 병합돼 B의 연결에서 실제 성립하는데도 A는 reject → 오탐 failed. 인박스 처리 직렬이라 희귀하나, 닫기: superseded promise는 reject 대신 **신세대 연결의 결과를 채택**(신세대 ACK 성공 = resolve)하는 문안으로 교체 — 또는 현행 reject 유지 시 "오탐 재-dispatch 수용" 명시. (advisor 보강 — 신세대 결과 채택 권고.)
+- **L-2 (Low, author-close): 브릿지 시작 시 글로벌 `pane.closed` 구독 실패 동작 미규정.** 이벤트를 못 받는 브릿지는 카드/conv 완료를 전달할 수 없으므로 **fail-fast(기동 실패) 권고** — 최소한 status `eventConnected:false` 노출과 함께 어느 쪽인지 본문에 한 줄 고정.
+- **L-3 (Low, author-close): herdr의 열린-스트림 강제 종료 경로 미검증.** 조사서는 신규 subscribe의 pre-ACK close만 실증. 닫힌 pane 구독을 가진 established 스트림을 herdr가 나중에 close하는 경우 재연결(prune된 리스트)로 복구되지만 백오프 동안 이벤트 갭(동시 진행 카드의 done 유실 가능). 구현 시 라이브 검증 한 줄 명시(events-probe 재사용) — heartbeat/능동 재구독은 스펙 명시대로 out-of-scope 유지.
+- **L-4 (Low, author-close): ACK 타임아웃 타이머의 정착-시 해제 미명시.** 스펙은 "초과 시 reject + destroy"만 명시 — 정상 ACK 후 타이머를 해제하지 않으면 15s 뒤 건강한 소켓을 destroy. 문안에 "정착(resolve/reject) 시 타이머 해제" 한 줄 + fake-timer 테스트 1건(테스트 ⑪은 15s를 안 기다려 못 잡음). (advisor 발견.)
+- **L-5 (Low, author-close): 테스트 ⑤ 문안 내부 모순.** 글로벌 `pane.closed` 항목은 prune 비대상이므로 운용 중 브릿지의 리스트는 빌 수 없음 — "마지막 pane prune → 소켓 close + 타이머 취소"는 글로벌 구독이 없는 클라이언트 단위 테스트로만 성립. ⑤를 "HerdrClient 단위(글로벌 구독 부재 조건)" 명시로 교체. (advisor 발견.)
+
+### Decision notes
+- **verdict 구조 (R25/R26/R28 동형):** M-1은 "문안대로 구현하면 결함이 스펙 준수의 결과물" 부류 — PATCH의 핵심 신설물(fail-visible)이 PATCH의 제거 대상(오염 잔존)을 재생산하는 내부 모순이라 즉시 approved 부적합. 재리뷰 필수까지 갈 사유는 없음 — lock은 설계 재작업이 아닌 롤백 불변식 1줄 + 테스트 1건이고, 나머지 설계(prune-without-reopen·글로벌 1회·fail-visible·관측성)는 전부 건전함을 코드 대조로 확인. M-1 반영 + L-1..L-5 author-close 후 재리뷰 없이 `approved` 전환 (no R29b).
+- **결정을 가르는 리스크:** 신설 실패 경로가 pane은 닫으면서 구독은 남겨 자기 자신을 재감염시키는 것 — 이것만 잠그면 나머지는 문구·테스트 보강.
+- **보안 판단 요지:** 신뢰 경계 무변경 주장 성립 — 신설 표면은 로컬 stderr 로그뿐(0600·truncate·프롬프트 비기록), 이벤트 소켓은 기존 로컬 herdr 유닉스 소켓 신뢰 모델 그대로. 실패 의미 변경(무음→fail-visible)은 보수성 강화 방향. 격상 finding 없음.
+- **스펙-코드 정합:** 스펙의 모든 라인 참조(herdr-client·bridge-runtime·bridge-spawn) 전수 실코드 일치 — 검토 대상 절 참조. flight 제거 7지점 열거도 현행 코드 기준 완전(신설 8번째 지점만 M-1).
+- **PATCH 적용자는 implementer** — 리뷰어는 plan_review.md + PLAN 헤더 Status/Approval 동기화만 수행(헤더 `pending-revision` 전환은 이 리뷰에서 반영). M-1 문안·L-1..L-5 닫기와 author-close 후 `approved` 전환은 구현 PATCH에 포함할 것.
+- Advisor: fable-advisor consulted: yes. (verdict 일치: pending-revision, M-1 캘리브레이션 "M 유지 — High도 L도 아님" 확정. 롤백-위치-클라이언트 설계·L-1 신세대 결과 채택·L-2 fail-fast 권고는 advisor 보강, L-4 타이머 해제·L-5 테스트 ⑤ 모순은 advisor 발견.)
 
 ---
 
