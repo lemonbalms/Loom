@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.23.4** |
-| **Status** | **`approved`** (R29 `pending-revision` → M-1 lock 본문 반영 + L-1..L-5 author-close 완료 → author-close `approved`, no R29b — Fable 사전 승인, 2026-07-18, `docs/plan_review.md` R29) — **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫ — 브릿지 card.done 유실 / "스타트업 레이스" 실체)** (PATCH): 닫힌 pane의 구독이 append-only 리스트에 잔존해 다음 `eventsSubscribe` 재개설을 오염시키고(herdr가 무효 스트림을 ACK 전에 close), close 핸들러가 pending promise를 정착시키지 않아 브릿지가 구독 await에 영구 고착 → 프롬프트 주입 자체가 미실행되는 버그를 수정한다. 구독 리스트 prune + pre-ACK close reject/ACK 타임아웃 + `pane.closed` 글로벌 1회 구독 + 구독 실패 fail-visible + 관측성(`eventConnected`/stderr 유한 로그). **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
-| **Supersedes** | 0.23.3 |
+| **Version** | **0.23.5** |
+| **Status** | **`pending-review`** (R30 대기) — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류의 fail-visible 복구)** (PATCH): 현행 M-2 verify 루프는 working 미도달 시 bare-Enter 재전송만 반복해 paste 자체가 유실된 경우(스타트업 레이스, ⑫ 수정 후에도 잔여 재현) 복구 불가·소진 후 무음 포기(카드 doing 영구 고착)다. pane read로 composer 상태를 직접 관찰해 (a) 프로브 부재=paste 유실 → 동일 프롬프트 재주입(1회 상한) (b) 프로브 존재=미제출 잔류/status 지연 → CR 재전송(현행) (c) 소진 → fail-visible(카드 `inject_unconfirmed` failed result / conv blocked 턴)로 확장한다. **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
+| **Supersedes** | 0.23.4 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | **R29 author-close `approved`** (2026-07-18, Fable 5/fable-advisor consulted — `pending-revision` → M-1(구독-실패 경로 자기 재감염 — `eventsSubscribe` reject-시-롤백) lock 본문 반영 + L-1..L-5 author-close 완료, no R29b). 직전: R28 author-close `approved`(0.23.3) → implemented `95cc81e` · R27 `approved`(0.23.2) → implemented `91bee75`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 내부 이벤트 전달 신뢰성 수정, conv/card 프로토콜 의미 무변경). |
-| **Fable 5 when** | **Required** — 신뢰 경계 변화는 없으나 카드/conv 완료 전달의 핵심 경로(이벤트 스트림) 수명주기 재설계 + 실패 의미 변경(무음 blind 진행 → fail-visible failed result). **R29 완료(2026-07-18): `pending-revision` → author-close `approved`(M-1 lock 반영 + L-1..L-5), `docs/plan_review.md` R29.** |
+| **Approval** | 직전: **R29 author-close `approved`**(0.23.4) → implemented `c7df503` + 라이브 검증 3종 · R28 author-close `approved`(0.23.3) → implemented `95cc81e` + 라이브 스모크(§5.1 마커 경로) 완료. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 주입 신뢰성 수정, conv/card 프로토콜 의미 무변경). |
+| **Fable 5 when** | **Required — R30** — M-2(주입 verify 루프가 보낼 수 있는 것) 불변식 확장(BARE_ENTER 상수만 → +동일 `prepareInjectText` 산출물 재주입 1회) + 실패 의미 변경(무음 포기 → fail-visible) + 중복 제출 리스크 신설. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -50,7 +50,38 @@
 
 ### Changelog
 
-#### 0.23.4 — 2026-07-18 (`pending-revision` R29 — **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫)** (PATCH))
+#### 0.23.5 — 2026-07-18 (`pending-review` R30 — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ)** (PATCH))
+
+**Product one-liner:** 워커 pane에 주입한 프롬프트가 TUI 스타트업 레이스로 통째로 유실되거나 composer에 담긴 채 미제출로 방치될 때, 브릿지가 composer 상태를 직접 관찰해 재주입·CR 재전송으로 자가 복구하고, 소진 시엔 무음 포기 대신 fail-visible 실패를 발행한다 — "주입 유실 = 무신호 고착"의 제거.
+
+**Why (후보 ⑨ + 관찰 ⓓ — 2026-07-18 누적 실측):**
+- **⑫ 수정 후에도 잔여 레이스 실존**: 0.23.4 세션에서 grok pane 스폰 직후 주입 유실 2회 추가 재현(이벤트 구독은 정상 성립 — ⑫와 무관한 순수 TUI 스타트업 레이스). 에이전트 무관(claude 2회·grok 3회 누적). 0.23.3 스모크에선 미발생 — 간헐.
+- **현행 verify 루프는 paste 유실을 복구 못 한다**: `verifySubmitOrRetry`/`verifyConvSubmitOrRetry`(`bridge-runtime.ts:1033,823`)는 working 미도달 시 `BARE_ENTER`만 재전송(4s×3). paste 자체가 유실됐으면 빈 composer에 Enter만 반복 — 소진 후 **log 한 줄 남기고 무음 포기**(카드는 doing 영구 고착, 수동 보드 정리 필요). 수동 복구 절차(리터럴 재주입 + 별도 `$'\r'`)는 5회+ 전회 유효 실증(lessons (2)).
+- **관찰 ⓓ (미제출 잔류 사각지대)**: composer에 텍스트가 담긴 채 미제출인 상태는 어떤 모니터링에도 안 잡힌다(0.23.3 조사 카드 실증 — pane은 조용한 idle, 브릿지 verify는 소진 후 무신호, stderr는 당시 ignore). `pane send-keys Enter`는 codex TUI에서 미제출 — 신뢰 경로는 `agentSend`의 실제 CR뿐(lessons (2) 갱신 2).
+
+**What (범위 — PATCH; wire·MCP·herdr RPC 표면 무변경):**
+| 항목 | 내용 |
+|------|------|
+| **공용 verify 헬퍼 통합** | `verifySubmitOrRetry`(카드)·`verifyConvSubmitOrRetry`(conv)를 단일 헬퍼로 통합(플라이트 조회·정리 콜백만 분리). 호출부는 **주입 프롬프트 원문(최초 `injectPromptAndSubmit`에 넘긴 동일 문자열)** 을 헬퍼에 전달한다(재주입·프로브 계산용 — conv는 턴마다 재계산). |
+| **verify 라운드 3분기** | working 대기 timeout 시 매 라운드: ① `paneRead(paneId, {source:"recent", lines:60})` — **read 실패 시 현행 CR 재전송 폴백**(스크레이프 불가 ≠ 주입 실패) ② **프로브 매치**: 주입 프롬프트와 스크레이프 양쪽을 공백 정규화(모든 연속 whitespace 제거)한 뒤 프로브 substring 존재 확인(TUI 자동 줄바꿈 대응) ③ 분기 — **(a) 프로브 부재 = paste 유실** → 동일 프롬프트 재주입: `agentSend(prompt)` → 별도 `agentSend(BARE_ENTER)`(수동 복구 실증 경로 그대로; **flight당 재주입 최대 1회** — 아래 Security) · **(b) 프로브 존재 = 미제출 잔류(관찰 ⓓ) 또는 제출-후 status 지연** → `BARE_ENTER` 재전송(현행 동작, 이미-제출 composer엔 무해 no-op) · **(c) retries 소진** → fail-visible(아래 행). working/gone 감지 시 즉시 종료(현행 fast-path 유지). |
+| **프로브 정의** | 공백 정규화된 주입 프롬프트의 **마지막 48자 슬라이스**. 앞부분은 `⚠ Untrusted handoff content` 상수 마커 + 규약 문구라 이전 턴 echo·규약 재주입과 구분 불가 — 꼬리가 goal/턴 본문 특이적. 48자 미만 프롬프트는 전문을 프로브로 사용. |
+| **fail-visible (c) — 카드** | `sendFailedResult(reason: "inject_unconfirmed")` + flight 제거 + `eventsPrune` + pane close 시도 — 0.23.4 `events_subscribe_failed` 정리 계열과 동일(자유 문자열 reason 필드 재사용, wire 스키마 무변경). 현행 "log 후 방치"(doing 영구 고착) 폐기. |
+| **fail-visible (c) — conv** | `sendWorkerTurnFromPane(flight, "blocked", "inject_unconfirmed")` — 타워에 blocked 턴으로 통지. **convFlight·pane은 유지**(conv는 타워가 턴을 다시 보내 재시도 가능 — 카드와 달리 flight 파기 불필요, §1.4 conv.close는 타워 전권). |
+| **관측성** | 각 라운드의 분기 결과를 stderr 로그에 기록(`[loom-bridge] verify round N: probe=hit|miss|read-fail action=reinject|cr|fail`) — **프롬프트 본문·프로브 문자열은 비기록**(본문 비기록 원칙 유지, 매치 여부만). |
+| **테스트** | fake herdr에 composer 시뮬레이션 훅(paneRead 반환 제어 + agentSend 호출 기록): ① 빈 composer(프로브 부재) → 재주입(프롬프트+CR 분리 2호출) 후 working = 복구 성공 ② composer 잔류(프로브 존재)+idle → CR만 재전송 ③ 카드 소진 → `inject_unconfirmed` failed result + flight 제거 + prune + pane close ④ conv 소진 → blocked 턴 + convFlight 유지 ⑤ **재주입 1회 상한**: 재주입 후에도 프로브 부재면 재주입 반복 없이 CR/소진 경로 ⑥ 첫 대기 내 working = paneRead 미호출(fast-path 회귀) ⑦ paneRead 실패 → CR 폴백 ⑧ gone(flight 소멸) = 성공 처리 회귀 ⑨ 프로브 공백 정규화 — TUI 줄바꿈으로 쪼개진 프롬프트 매치 ⑩ conv 2번째 턴 — 턴별 프로브 재계산(1턴 프롬프트 echo가 있어도 2턴 프로브로 판정) ⑪ 기존 M-2 정상 제출 경로 회귀(주입→working 즉시). |
+
+**Out of scope (이 버전 아님):** TUI 스타트업 레이스 자체의 근본 해결(워커 CLI upstream 영역) · 후보 ⑩(pane 스크레이프 상한 재설계) · ②③⑤⑥⑦ 기존 후보 · 관찰 ⓔ(codex 승인 프롬프트 → 가짜 `agent_blocked`) · 재주입 상한 초과 시의 지수 백오프류 고도화(1회 상한 + fail-visible로 충분, 필요 시 후속).
+
+**Security / trust (R30 판단 대상):**
+- **M-2 불변식 확장이 핵심**: 현행 "verify 루프 재전송은 `BARE_ENTER` 상수만" → "+ 최초 주입과 **동일한 `prepareInjectText` 산출물**(호출부가 캐시한 동일 문자열) 재주입 최대 1회". 임의/신규 텍스트 표면은 열리지 않는다 — 재주입 페이로드는 이미 M-4(sanitize + untrusted 마커)를 통과한 그 문자열 그대로다.
+- **중복 제출 리스크 신설**: 프로브 오탐(프롬프트가 실제로는 pane에 있는데 부재 판정 — 예: 스크레이프 창 밖 스크롤아웃)이면 동일 프롬프트가 2회 제출될 수 있다. 완충: ① 재주입 flight당 1회 상한 ② 프로브는 composer 영역에 남는 꼬리 48자(트랜스크립트 접힘은 composer에 미적용 — 0.23.1 실측상 접힘은 트랜스크립트 영역) ③ working 감지 시 즉시 중단. 최악 결과는 동일 지시 중복 수행(중복 카드 결과는 기존 `processedHandoffs` dedup·conv seq 단조성으로 와이어 측 무해).
+- **실패 의미 변경**: 무음 포기(doing 영구 고착 + 수동 정리) → fail-visible(재-dispatch/턴 재전송 가능). 오탐 시에도 현행 고착보다 보수적으로 우월 — 0.23.4 `events_subscribe_failed`와 동일 논리.
+
+**Review impact:** protocol v1 무변경 · MCP 도구 수 무변경 · reason 어휘만 신설(자유 문자열 필드). M-2 주입 불변식 확장 + 중복 제출 리스크 → **R30 요청** (§5.1 보수 판단 — 신뢰 경계 인접).
+
+**R30 질의:** *(현재 없음.)*
+
+#### 0.23.4 — 2026-07-18 (`approved` — **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫)** (PATCH))
 
 **Product one-liner:** 같은 브릿지에서 첫 pane이 닫힌 뒤 dispatch한 카드/conv가 이벤트 구독 고착으로 프롬프트 주입조차 못 받던 버그(card.done 유실 + "스타트업 레이스"로 오인되던 composer 빈 현상의 실체)를 수정한다 — 닫힌 pane 구독 정리, 구독 실패의 즉시 정착(fail-visible), 이벤트 스트림 상태의 관측성 확보.
 
