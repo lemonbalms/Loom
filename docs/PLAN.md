@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.23.6** |
-| **Status** | **`approved` → implemented `5bdeae7`** (R31 author-close `approved` no R31b · 구현+독립 검증 완료, codex 자문 부분 종결(공회전 — Med 표면화 없음), M-1 라이브 검증 불요 — §0.23.6 Implemented 참조) — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH): conv 워커 턴·카드 결과가 pane 최근 200줄 전체를 매번 실어 보내 이전 턴 전문·TUI chrome이 좁은 스크레이프 창(실측 상한 claude ~5.3k/grok ~2.2k/codex ~1.4k)을 잠식한다. delta 앵커(직전 턴 꼬리, 공백-정규화 매치)로 신규 내용만 싣고, 명백한 chrome 줄(box-drawing·키 힌트)을 보수 필터하며, idle 직후 렌더 미완 스크레이프를 settle 재독으로 안정화한다. **wire·MCP·herdr RPC 표면 무변경, 신규 신뢰 표면 없음(untrusted 콘텐츠 read-only shaping).** 직전: 0.23.5 `approved` R30 → implemented `8148642` — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류의 fail-visible 복구)** (PATCH): 현행 M-2 verify 루프는 working 미도달 시 bare-Enter 재전송만 반복해 paste 자체가 유실된 경우(스타트업 레이스, ⑫ 수정 후에도 잔여 재현) 복구 불가·소진 후 무음 포기(카드 doing 영구 고착)다. pane read로 composer 상태를 직접 관찰해 (a) 프로브 부재=paste 유실 → 동일 프롬프트 재주입(주입 시도당 1회) (b) 프로브 존재(플레이스홀더 hit 포함)=미제출 잔류/status 지연 → CR 재전송(현행) (c) 소진 → fail-visible(카드 `inject_unconfirmed` failed result / conv blocked 턴)로 확장한다. **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
-| **Supersedes** | 0.23.5 |
-| **Last updated** | 2026-07-18 |
+| **Version** | **0.23.7** |
+| **Status** | **`pending-review` (R32 대기)** — **카드 완료 판정 still-running 유예 (card.done 조기 회신 수정)** (PATCH): herdr가 워커 백그라운드 커맨드 실행 중에도 idle을 방출해 브릿지가 미완 화면("1 command still running")을 그대로 card.done `output`으로 조기 회신한다(2026-07-19 카드 웨이브 라이브 2회 실증 — 실완주는 ~4분 뒤). 완료 판정 시 스크레이프 말미의 still-running 지표를 보수 감지하면 결과 회신을 상한부 유예(폴링)하고, 유예 사실을 additive optional `note`로 관측 가능하게 한다. **herdr RPC 표면 무변경 · MCP 도구 무변경 · wire는 additive optional 1필드(`note`)만.** 직전: 0.23.6 **`approved` → implemented `5bdeae7`** (R31 author-close `approved` no R31b · 구현+독립 검증 완료, codex 자문 부분 종결(공회전 — Med 표면화 없음), M-1 라이브 검증 불요 — §0.23.6 Implemented 참조) — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH): conv 워커 턴·카드 결과가 pane 최근 200줄 전체를 매번 실어 보내 이전 턴 전문·TUI chrome이 좁은 스크레이프 창(실측 상한 claude ~5.3k/grok ~2.2k/codex ~1.4k)을 잠식한다. delta 앵커(직전 턴 꼬리, 공백-정규화 매치)로 신규 내용만 싣고, 명백한 chrome 줄(box-drawing·키 힌트)을 보수 필터하며, idle 직후 렌더 미완 스크레이프를 settle 재독으로 안정화한다. **wire·MCP·herdr RPC 표면 무변경, 신규 신뢰 표면 없음(untrusted 콘텐츠 read-only shaping).** 직전: 0.23.5 `approved` R30 → implemented `8148642` — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류의 fail-visible 복구)** (PATCH): 현행 M-2 verify 루프는 working 미도달 시 bare-Enter 재전송만 반복해 paste 자체가 유실된 경우(스타트업 레이스, ⑫ 수정 후에도 잔여 재현) 복구 불가·소진 후 무음 포기(카드 doing 영구 고착)다. pane read로 composer 상태를 직접 관찰해 (a) 프로브 부재=paste 유실 → 동일 프롬프트 재주입(주입 시도당 1회) (b) 프로브 존재(플레이스홀더 hit 포함)=미제출 잔류/status 지연 → CR 재전송(현행) (c) 소진 → fail-visible(카드 `inject_unconfirmed` failed result / conv blocked 턴)로 확장한다. **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
+| **Supersedes** | 0.23.6 |
+| **Last updated** | 2026-07-19 |
 | **Approval** | **R30 author-close `approved`**(0.23.5) → implemented `8148642` + codex 자문 REJECT 7건(F-1..F-7) 반영 + M-1 TUI 3종 라이브 검증 · 직전: **R29 author-close `approved`**(0.23.4) → implemented `c7df503` + 라이브 검증 3종 · R28 author-close `approved`(0.23.3) → implemented `95cc81e` + 라이브 스모크(§5.1 마커 경로) 완료. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 주입 신뢰성 수정, conv/card 프로토콜 의미 무변경). |
-| **Fable 5 when** | **Required — R31 완료(2026-07-18)**: 스크레이프→wire 콘텐츠 shaping(chrome 필터·delta 선별). `pending-revision` → author-close `approved`(M-1·M-2 lock + L-1..L-5), `docs/plan_review.md` R31. 직전: R30 완료 → implemented `8148642`. |
+| **Fable 5 when** | **Required — R32 요청(2026-07-19)**: 카드 완료 판정 의미(회신 타이밍) 변경 + 스크레이프 기반 판정 + wire additive optional 1필드 — R30/R31 전례(스크레이프 기반 판정·shaping)에 따름. 직전: R31 완료(2026-07-18) `pending-revision` → author-close `approved`(M-1·M-2 lock + L-1..L-5) → implemented `5bdeae7`. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,37 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.23.7 — 2026-07-19 (`pending-review` R32 — **카드 완료 판정 still-running 유예 (card.done 조기 회신 수정)** (PATCH))
+
+**Product one-liner:** herdr가 워커 백그라운드 커맨드 실행 중에도 idle을 방출해 브릿지가 미완 화면("1 command still running")을 card.done으로 조기 회신하던 것을 — 완료 판정 시 스크레이프 말미의 still-running 지표를 보수 감지하면 결과 회신을 상한부 유예(폴링)해 실제 완료 화면을 싣는다.
+
+**Why (2026-07-19 카드 웨이브 라이브 2회 실증 — `tasks/lessons.md` 2026-07-19 (2)):**
+- **FIX-0236 카드**: 워커가 백그라운드 테스트 루프 실행 중인데 herdr가 idle 방출 → 브릿지가 "Worked for 48s. 1 command still running" 화면을 스크레이프해 card.done 회신. **실제 완주 마커는 ~4분 뒤** pane 출력 — 결과 `output`이 미완 상태 스냅샷으로 확정됨.
+- **BUNX-FIX 카드**: 동일 패턴 재현(1m15s 시점 "1 command still running") — 아키텍트의 pane 마커 재확인(이중 방어)으로만 조기 클레임을 방지.
+- **0.23.6 settle 재독은 계층이 다르다**: settle(≤3독, settleMs 간격)은 idle 직후 **렌더 미완**(수백 ms) 완충이고, 이 결함은 **작업 미완**(분 단위 백그라운드 커맨드) — settle 상수를 키워도 구조적으로 커버 불가. 완료 판정 자체가 지표를 봐야 한다.
+
+**What (범위 — PATCH; herdr RPC 표면 무변경 · MCP 도구 무변경 · wire는 additive optional 1필드만):**
+| 항목 | 내용 |
+|------|------|
+| **still-running 지표 감지** | 헬퍼 `hasStillRunningIndicator(scrape)`: stripAnsi 스크레이프의 **말미 비공백 10줄** 내에서 공백-정규화 매치 `\d+ command(s) still running`(대소문자 무시) — 실측된 TUI 상태 문구만(보수적 최소 셋, 상수 배열로 유지). 미지 TUI/무매치 = 현행 즉시 회신. **말미 한정**은 브리프 echo(본문 인용— 이 레포의 lessons 자체가 해당 문자열 포함) 위양성 축소. |
+| **완료 유예(deferral)** | `onCardHerdrEvent` 완료 분기(status `done` / `idle`&&sawWorking)에서 flight 삭제·`eventsPrune`·`finishCard` **전에** settle 스크레이프로 지표 검사. hit → **flight 유지**(삭제·prune 안 함) + 유예 폴링 진입: `stillRunningPollMs`(기본 10s) 간격 pane 재독 — 지표 소거 시 정상 `finishCard`(그 시점 스크레이프 사용), 폴링 중 `working` 재전이 관찰 시 폴링 취소·통상 이벤트 흐름 복귀(재-idle에서 재판정). |
+| **유예 상한 (fail-visible)** | `stillRunningMaxMs`(기본 5분) 소진 시 그 시점 스크레이프로 `finishCard`(status 판정 유지) + note `still_running deferral exhausted (Ns)` — 무한 대기 금지. 지표 위양성의 최악 결과 = **상한 bounded 지연**(내용 손실·상태 오판 없음). |
+| **관측성 note** | `CardResultPayload`에 **additive optional** `note?: string(≤500)` — 유예 발생 시 `completion deferred Ns (still-running indicator)` / 상한 소진 시 위 exhausted 문구. zod strip 호환(구 타워는 무시, `CARD_CONTRACT_VERSION` 무변경). `applyCardResult`는 note 존재 시 보드 태스크 노트에 병기(표시 전용). note 값은 **브릿지 생성 문자열만** — 스크레이프 본문 미인용. |
+| **실패 경로 무변경** | `blocked`·`pane_closed` 분기는 유예 없이 현행 즉시 회신 — 유예는 성공 판정에만. |
+| **conv 경로 무변경** | conv 턴 조기 회신(~7–10s 관찰)은 멀티턴 후속 턴으로 자연 복구 — 스코프 밖(관찰 지속). |
+| **타이머 주입** | `stillRunningPollMs`/`stillRunningMaxMs`는 `startBridgeRuntime` opts 주입(테스트는 소값 실타이머 — fake-timer 불요, 0.23.4 ⑭ 교훈). 유예 타이머는 flight 삭제 전 경로(pane_closed·bridge stop) 전부에서 정리. |
+| **테스트** | fake-herdr paneRead 시퀀스 제어로: ① 지표 hit → 유예 → 소거 후 done(`output`=완료본·note 기록) ② 유예 중 working 재전이 → 폴링 취소·후속 idle 재판정 ③ 상한 소진 → exhausted note와 회신 ④ 지표 없음 = 현행 즉시 회신(회귀) ⑤ 말미 밖(스크롤백 echo) 지표 = 미유예 ⑥ blocked 즉시 회신 유지(유예 없음) ⑦ 유예 중 pane_closed → 타이머 정리·failed 회신(누수 없음) ⑧ note additive 파싱 왕복 + 구 스키마(필드 부재) 호환. |
+
+**Out of scope:** conv 턴 settle/조기 회신 타이밍 · herdr 자체의 agent_status 판정 수정(브릿지-로컬 완충만) · 지표 패턴 망라 수집(미지 TUI는 통과가 기본) · 후보 ②③⑥⑦.
+
+**Security / trust (R32 판단 대상):**
+- **신규 신뢰 표면 없음**: untrusted 스크레이프 텍스트를 **회신 타이밍 판단에만** 사용 — 콘텐츠 shaping 없음, 주입 경로(M-2/M-4)·herdr RPC·MCP 도구 무변경.
+- **악의/우연 지표 잔존**(워커가 말미에 지표 문자열을 지속 노출) → 회신 지연 최대 `stillRunningMaxMs`로 bounded. 현행도 워커가 working을 지속하면 무기한 미회신이므로 **악화 아님**; 유예는 소진 시 반드시 회신(fail-visible note)한다.
+- **note는 브릿지 생성 문자열만**(고정 문구 + 경과 초) — 스크레이프 본문을 note에 인용하지 않아 보드 노트 오염 표면 없음.
+- 타이머 수명: 유예 타이머는 flight 정리 경로 전부에서 해제(테스트 ⑦) — 0.23.4 superseded 타이머 누수 교훈 반영.
+
+**Review impact:** 카드 완료 판정 의미(회신 타이밍) 변경 + 스크레이프 기반 판정 신설 — R30(스크레이프 기반 verify)·R31(스크레이프 shaping) 전례에 따라 **R32 요청**(§5.1 보수 관례). wire는 additive optional 1필드(Low class)나 판정 변경과 결합돼 게이트에 포함.
 
 #### 0.23.6 — 2026-07-18 (`approved` R31 — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH))
 
