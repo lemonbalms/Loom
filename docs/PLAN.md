@@ -77,6 +77,8 @@
 
 **Approved by:** Fable 5 (fable-advisor) R26 — `pending-revision` → M-1(scp host 해석 출처 = 수신측 로컬 명시 구성 + 매핑 부재 fail-closed)/M-2(제시 문자열 POSIX 단일인용 + charset allowlist) locks PLAN 본문 반영 → **author-close `approved`**(Fable 사전 승인, no R26b), 2026-07-18. L-1(ref.path 틸드-리터럴 규약형 — 브릿지 방출·타워 검증 양형 고정 + 인용 상호작용)·L-2("전문"=회수 스크레이프 전문 한정, gist 안내 문구에 회수 창 명시) author-close.
 
+**Implemented as of `e5ccc4d` (2026-07-18, grok-impl 레인 · 아키텍트 독립 검증):** 16파일 +1,060줄 — 신규 `conv-artifact-pack.ts`(브릿지 패키징)·`conv-artifact-present.ts`(타워 제시)·`conv-node-hosts.ts`(M-1 로컬 매핑, `loomDir()/conv-node-hosts.json` 0600, **pinned peerId 키잉**) 각 +tests·계약 렌더 함수(`posixSingleQuote`/`presentGit|ScpFetchCommand`/`convArtifactsRootLiteral`)·`bridge-runtime.ts` truncate 폴백 제거·`conv_await` `artifactCommands[]`·VERSION 0.23.1(CLI+MCP — MCP 0.22.0 드리프트 동시 정정). `bun test` **294/0** · 6패키지 typecheck green. M-lock 코드 확인: M-1 fail-closed(`conv-node-hosts.ts:67-72` + pinnedPeerId 해석 `conv-artifact-present.ts:25-29`), M-2 렌더(`conv-contract.ts` allowlist+단일인용, 제시-only). 이탈 5건 `implementation-notes.md` §0.23.1. **Follow-up(후속 PATCH 후보):** `loom conv-hosts set` CLI 서브커맨드(현재 conv-node-hosts.json 수동 편집 — fail-closed 기본값과 일관하나 UX 갭).
+
 #### 0.23.0 — 2026-07-18 (`approved` author-close after R25 `pending-revision` — **conv 멀티턴 수직 슬라이스**)
 
 **Product one-liner:** 타워 에이전트와 원격 워커 에이전트가 하나의 목표를 두고 `conv.open`→`conv.accept` 개시 후 **엄격 교대 half-duplex**로 여러 턴을 왕복하며, 원격 done-제안을 타워가 검증·확정한다 — `docs/CONV_SPEC.md`(approved, R24 author-close 2026-07-18)의 1단계 스펙을 relay 와이어 protocol v1 무변경으로 구현한다.

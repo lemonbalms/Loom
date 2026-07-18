@@ -14,13 +14,16 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.23.0 conv 멀티턴 수직 슬라이스 — 스펙(R24)→PLAN(R25)→구현까지 하루 완주. `implemented` (`e4dab9e`), bun test 261/0.**  
-> 체인: CONV_SPEC approved(`f7adfdc`) → PLAN v0.23.0 approved(`9a9a67f`, R25 author-close) → 구현 `e4dab9e` (grok-impl 레인 · 아키텍트 독립 검증). 전 리뷰(R24·R25)는 **herdr dispatch로 스폰된 claude 워커**가 fable-advisor 자문 포함 수행 — 브릿지 경로 실전 2회 성공.
+> **🎯 v0.23.1 §5.2 artifact 패키징 호출부 — R26 게이트→구현 완주. `implemented` (`e5ccc4d`), bun test 294/0.**  
+> 체인(당일 3연속): 0.23.0 구현 `e4dab9e` → **conv 실물 스모크 통과** → PLAN 0.23.1 approved(`ad8466f`, R26 author-close — 리뷰는 herdr dispatch claude 워커+fable-advisor, 실전 3회째) → 구현 `e5ccc4d` (grok-impl 레인 · 아키텍트 독립 검증). truncate 폴백 제거(§5.1 절단 금지 회복), M-1 로컬 host 매핑(fail-closed)·M-2 제시 렌더링(단일인용+allowlist) 코드 확인.
 >
 > ### 다음 액션 (우선순위 순)
-> 1. ~~conv 실물 스모크~~ — ✅ **2026-07-18 완료** (`conv_ec40e20b1ea246ba`): conv_open → accept → 실물 herdr pane 스폰(`loom-conv-*`, cwd·`LOOM_CONV` env 확인) → turn 왕복 **3회**(워커 실작업: 읽기 전용 조사·보고) → conv_close(reason done, 보드 task done). 양측 pin·seq 단조(타워 own 4/peer 7, 워커 대칭)·`inFlight` 0 복귀 전부 실증. 스타트업 레이스 이번엔 미발생(주입 성공). **관찰 2건**: ⓐ 워커 턴 = pane 최근 200줄 스크레이프라 claude-mem 스타트업 노이즈+이전 턴 전문이 매 턴 누적 반복됨 → "마지막 턴 이후 delta만" 스크레이프가 후속 개선 후보 ⓑ conv.close 후 워커 pane은 살아남음(코드 의도대로, UNKNOWNS pane/conv 수명 불일치) — 수동 `herdr pane close` 필요.
-> 2. **후속 PATCH 후보** (PLAN 0.23.0 "Implemented as of" 블록 참조): ① §5.2 artifact 패키징 호출부(M-2 검증 함수 존재, 호출 코드 미구현 — 32k tail-truncate 폴백을 §5.1 "절단 금지" 정합으로 회복) ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ④ dispatch allowlist codex/grok 확장 ⑤ (스모크 관찰 ⓐ) 워커 턴 pane 스크레이프 delta화 ⑥ (관찰 ⓑ) close 시 pane 정리 정책.
+> 1. **후속 PATCH 후보** (구 ①=artifact 패키징은 0.23.1로 완료): ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ④ dispatch allowlist codex/grok 확장 ⑤ 워커 턴 pane 스크레이프 delta화(스모크 관찰 ⓐ — claude-mem 노이즈+이전 턴 누적 반복) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(0.23.1 follow-up — conv-node-hosts.json 현재 수동 편집).
+> 2. (선택) 0.23.1 실물 스모크 — 32k 초과 턴 유도해 artifact 파일 생성·conv_await artifactCommands 제시 라이브 확인. conv-node-hosts.json에 상대 peerId 매핑 수동 등록 필요(없으면 fail-closed 사유 표시 — 그것도 정상 동작 확인임).
 > 3. 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
+>
+> ### conv 실물 스모크 기록 (2026-07-18, 0.23.0)
+> `conv_ec40e20b1ea246ba`: conv_open → accept → 실물 herdr pane 스폰(cwd·`LOOM_CONV` env 확인) → turn 왕복 3회 → conv_close(보드 task done). 양측 pin·seq 단조·`inFlight` 0 복귀 실증. R26 리뷰 dispatch에서는 스타트업 레이스 재발 → lessons 수동 복구 절차(리터럴 재주입+별도 Enter) 2회째 실증.
 >
 > ### 실측 제약·교훈 (재확인 금지 — 상세 `tasks/lessons.md` 2026-07-18)
 > - herdr dispatch allowlist = `claude`만 (`card-contract.ts:19`). codex/grok은 headless 레인(grok-implementer 서브에이전트)으로 위임 — 오너 승인된 방식.
