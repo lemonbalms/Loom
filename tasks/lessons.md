@@ -69,3 +69,13 @@
 → **Fable만 자율 수행, Sonnet 5·Opus 4.8은 둘 다 거부**(사람이 pane 직접 개입해야 통과). 마커는 유용한 보안장치지만, injection-저항이 강한 capable 모델을 워커로 쓰면 injection형 conv 턴은 사람 개입 없이는 막힘 → capable 워커 스모크는 **benign goal-ack형 페이로드**로 설계해야 함(후속 후보 ⑪: 정당한 대용량 파일 출력 등 워커가 거부 안 할 정상 작업으로 volume 확보). 단 §5.2 도달은 후보 ⑩(TUI 스크레이프 상한)이 선결.
 
 **Rule:** §5.2 라이브 검증은 pane 스크레이프 전제부터 재설계 필요(후속 후보 ⑩): (a) 워커가 출력을 직접 파일로 쓰는 경로, (b) TUI raw 스크롤백을 깊게 노출하는 herdr 모드 조사, (c) 32k 임계를 TUI 실측 상한 기준 재조정 중 택. 패키징/제시 코드 자체는 무결(309 유닛테스트 green)이므로 코드 버그로 오인 말 것 — 문제는 **입력이 임계에 도달하지 못함**.
+
+## 2026-07-18 (4) — 브릿지 card.done 유실: 같은 브릿지의 2번째+ 카드 pane 이벤트 구독 사망 (후보 ⑫)
+
+**발견 (0.23.3 구현 세션):** 같은 브릿지 프로세스에서 **첫 카드 pane 이벤트는 정상, 2번째부터 전부 유실** 2회 실증 — 69732: claude(R28) OK → grok(구현) 유실 / 98952(재시작 직후): codex(자문) OK → grok(수정) 유실. herdr 자체는 이벤트를 정상 방출(오전 probe·스냅샷 폴링으로 상태 전이 관찰됨). 결과: working→idle을 브릿지가 못 봐 card.done 미발행·`inFlight` 고착 — 보드 태스크 수동 정리 필요. 브릿지 데몬은 stderr `"ignore"`(bridge-spawn.ts:64-65)라 프로덕션 로그가 전무해 원인 관찰 불가. 의심: `HerdrClient.eventsSubscribe` 증분 재구독(호출마다 이벤트 소켓 전체 재구축) 레이스.
+
+**Rule (워크어라운드):** pane 카드의 완료 판정을 **인박스 card.done에만 의존하지 말 것** — 워커에게 최종 라인 마커(`[IMPL-DONE]`/`[FIX-DONE]` 등)를 스펙으로 강제하고, 모니터는 `herdr pane read`로 그 마커를 직접 감시 + 작업 트리/검증 명령으로 실물 확인. 고착된 카드는 보드 수동 done + pane 수동 close + (필요 시) 브릿지 재시작.
+
+## 2026-07-18 (5) — 오너 레인 지시: 구현·자문 전부 herdr pane dispatch로 (headless 서브에이전트 대신)
+
+**지시 (2026-07-18, 0.23.3 세션):** ① 자문(advisor)은 fable-advisor(Fable 5) 대신 **codex(GPT-5.6)** — 토큰 한도 절약. ② 구현·자문 모두 **herdr pane dispatch 레인**으로 진행(dogfood 겸). 실행 형태: 긴 스펙은 파일로 저장하고 pane엔 "파일 읽고 수행"의 짧은 프롬프트만 주입(레이스 유실 리스크 축소, 실증 유효). codex는 mac-node config에 opt-in 등록됨(fail-closed 검증용 미등록 상태 종료). **공식 R{n} 리뷰의 fable-advisor 필수 규정(DOGFOOD_LOOP §2)과 지시 ①이 충돌하면 오너에게 확인 또는 codex-review 레인 대체를 리뷰 기록에 명기.**

@@ -14,11 +14,16 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.23.2 dispatch/conv agentKind allowlist 확장 (codex·grok) — R27 게이트→구현 완주. `implemented` (`91bee75`), bun test 309/0.**  
-> 체인(당일 4연속): 0.23.0 구현 → conv 실물 스모크 → 0.23.1 구현 `e5ccc4d` → **PLAN 0.23.2 R27 즉시 approved**(M-lock 없음 — 리뷰는 herdr dispatch claude 워커+fable-advisor, 실전 4회째, 이번엔 스타트업 레이스 없이 완주) → 구현 `91bee75` (grok-impl 레인 · 아키텍트 독립 검증). enum 3종 확장 + 브릿지 로컬 argv opt-in(기본 미등록 = fail-closed, DEFAULT는 claude만) + L-1 `sanitizeAgentArgv`·L-2 등록 고지 author-close.
+> **🎯 v0.23.3 conv 워커 파일-기반 artifact 트리거 (§5.1 자가 적용) — R28 게이트→구현 완주. `implemented` (`95cc81e`), bun test 335/0.**  
+> 체인(당일 5연속): … 0.23.2 `91bee75` → **후보 ⑩ 조사**((a) 채택 — CONV_SPEC §5.1 "워커 자가 적용" 원의도 정렬 · (b) herdr 노출확대 불가·(c) 임계하향 기각) → PLAN 0.23.3 R28 `pending-revision`(M-1: 방출 계약만 재사용 lock + L-1..L-3) → author-close `approved`(`1ad0810`) → **구현·자문·수정 전부 herdr pane 레인**(오너 지시): grok pane 구현 → codex pane 자문 REJECT 2건(dedup 선기록·위반 마커 무음 무시) → grok pane 수정 → `95cc81e`. 후보 ⑪(capable 모델 benign 페이로드)은 ⑩(a)가 흡수.
+>
+> ### ⚠️ 신규 후보 ⑫ (상위 — 조사 카드 진행 중): 브릿지 card.done 모니터링 유실
+> **같은 브릿지 프로세스에서 2번째+ 카드 pane의 herdr 이벤트가 전부 유실**되는 패턴 2회 실증(69732: claude OK→grok 유실 / 98952: codex OK→grok 유실. herdr 자체는 이벤트 정상 방출 — 오전 probe 실증). 결과: card.done 미발행·inFlight 고착 → 보드 수동 정리 필요. 브릿지 데몬 stderr가 `"ignore"`(bridge-spawn.ts:64)라 프로덕션 로그 0. 의심 지점: `HerdrClient.eventsSubscribe` 증분 재구독(소켓 전체 재구축) 레이스. **codex pane 조사 카드 발행됨**(task_fb7ccef484de4114) — 결과는 pane `[INVESTIGATE-DONE]` 마커 직접 확인(이 카드 자체도 card.done 유실 가능성). 워크어라운드: 카드 결과는 인박스 의존 말고 pane 마커/작업트리 직접 검증.
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **후속 PATCH 후보** (구 ④=agentKind 확장은 0.23.2로, 구 ⑧=codex/grok 스모크는 완료): ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐ claude-mem 노이즈+이전 턴 누적 반복 · **관찰 ⓒ** grok 스모크에서 idle-scrape가 최종 답 줄을 중간 절단 + summary가 TUI chrome("Shift+Tab:mode…")으로 오염 — 카드 lane도 동일 개선 필요) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(0.23.1 follow-up — conv-node-hosts.json 현재 수동 편집) ⑨ **브릿지 주입 verify 루프 개선**(composer 비면 프롬프트 재주입 — 레이스 수동 복구 3회째, grok에서도 재현 확정).
+> 1. **후보 ⑫ 조사 결과 처리** → 신규 PATCH 게이트(R29) 여부 판단.
+> 2. **0.23.3 실물 스모크** — benign 페이로드로 §5.1 마커 경로 라이브 실증(예: "docs/PLAN.md 전문을 artifact로 전달"). conv 레인 + `LOOM_ARTIFACTS_DIR` env·규약 프롬프트 확인.
+> 3. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI ⑨ **브릿지 주입 verify 루프 개선**(스타트업 레이스 — 오늘 누계 6회: grok 3·codex 1 재현, 수동 복구 절차 lessons. ⑫와 인접 가능성).
 >
 > ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
 > - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
@@ -53,7 +58,7 @@
 
 ## One-line resume
 
-> **v0.23.2 implemented (`91bee75`) + 실물 스모크 완료 (2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 구현 → conv 실물 스모크 → R26/0.23.1(artifact 패키징) → R27/0.23.2(agentKind codex·grok 확장) → **0.23.2 스모크 A/B 완주**(codex fail-closed + grok 라이브 pane) → **0.23.1 스모크 시도**(⚠️ Claude Ink TUI 스크레이프 ~5k 상한으로 §5.2 32k 라이브 미도달 — ⭐ 블록 "0.23.1 실물 스모크 시도 기록" + 후보 ⑩ 참조. fable/sonnet/opus 워커 거동 차이도 기록). 다음 = **후속 후보 ⑩**(§5.2 트리거 전제 재검토, 상위) 또는 ②③⑤⑥⑦⑨. 룸 `LOOM-SGLR`+브릿지 **0.23.2 코드·기본 argv로 온라인**(pid는 세션마다 다름 — `loom --profile mac-node bridge status`로 확인. mac-node config엔 grok argv 등록 유지, claude는 기본 `["claude"]`로 복원됨).
+> **v0.23.3 implemented (`95cc81e`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → **R28/0.23.3**(파일-기반 artifact 트리거 — TUI 스크레이프 ~5k 상한 블로커를 §5.1 워커 자가 적용으로 해소, 후보 ⑩(a)·⑪ 동시 해결). **오늘부터 구현·자문·리뷰 전 레인 herdr pane dispatch**(오너 지시 — headless 서브에이전트 대신): R28 리뷰=claude pane, 구현·수정=grok pane, 자문=codex pane(GPT-5.6, fable-advisor 대체·토큰 절약). 다음 = **후보 ⑫**(브릿지 card.done 유실 — 조사 카드 결과 확인) → **0.23.3 실물 스모크** → ②③⑤⑥⑦⑨. 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status`. **mac-node config에 claude·grok·codex 3종 전부 등록됨** — codex는 자문 레인용으로 이번 세션에 opt-in, fail-closed 검증용 미등록 상태 종료).
 
 ---
 
