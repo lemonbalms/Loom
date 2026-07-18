@@ -4711,7 +4711,8 @@ var init_card_contract = __esm(() => {
     summary: exports_external.string().max(900),
     startedAt: exports_external.string().datetime().optional(),
     finishedAt: exports_external.string().datetime(),
-    reason: exports_external.string().max(200).optional()
+    reason: exports_external.string().max(200).optional(),
+    note: exports_external.string().max(500).optional()
   });
 });
 
@@ -9400,6 +9401,7 @@ var MAX_WORKER_ARTIFACT_BYTES = 10 * 1024 * 1024;
 init_session_store();
 init_src();
 init_session_store();
+var STILL_RUNNING_MAX_MS = 5 * 60000;
 // packages/host/src/card-ops.ts
 init_src();
 init_session_store();
