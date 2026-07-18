@@ -2,6 +2,7 @@
  * Herdr NDJSON Unix-socket client (v0.7.4 / protocol 16 fixtures).
  * AGPL boundary: socket RPC only — no herdr source vendoring.
  * PLAN 0.22.0 / HERDR_DESIGN §2.3
+ * PLAN 0.23.4 — subscription lifecycle (prune, pre-ACK reject, ACK timeout, M-1 rollback).
  *
  * Transport note (measured against real herdr v0.7.4): the socket is
  * one-RPC-per-connection — any request gets a response then the server
@@ -63,7 +64,13 @@ export type HerdrClientOptions = {
   onError?: (err: Error) => void;
 };
 
-type HerdrEventSubscription = { type: string; pane_id?: string };
+export type HerdrEventSubscription = { type: string; pane_id?: string };
+
+type EventConnectDeferred = {
+  resolve: () => void;
+  reject: (err: Error) => void;
+  promise: Promise<void>;
+};
 
 function parseNdjsonLines(
   buf: { text: string },
@@ -97,6 +104,10 @@ function isEventPush(msg: Record<string, unknown>): msg is {
   );
 }
 
+function subKey(s: HerdrEventSubscription): string {
+  return `${s.type}\0${s.pane_id ?? ""}`;
+}
+
 export class HerdrClient {
   private opts: HerdrClientOptions;
   private closed = false;
@@ -108,6 +119,14 @@ export class HerdrClient {
   private eventReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private eventReconnectDelay = EVENT_RECONNECT_BASE_MS;
   private subscriptions: HerdrEventSubscription[] = [];
+  /** True only after a successful events.subscribe ACK on the current socket. */
+  private eventEstablished = false;
+  private _lastSubscribeAck: string | null = null;
+  /**
+   * Shared waiters for in-flight openEventConnection (R29 L-1):
+   * superseded generations adopt the newest generation's settle result.
+   */
+  private eventConnectDeferred: EventConnectDeferred | null = null;
 
   constructor(opts: HerdrClientOptions) {
     this.opts = opts;
@@ -122,6 +141,28 @@ export class HerdrClient {
     return this.opts.socketPath;
   }
 
+  /** Event socket has received subscribe ACK and is still open. */
+  get eventConnected(): boolean {
+    return this.eventEstablished && this.eventSocket != null && !this.closed;
+  }
+
+  /** ISO timestamp of the last successful events.subscribe ACK, or null. */
+  get lastSubscribeAck(): string | null {
+    return this._lastSubscribeAck;
+  }
+
+  /** Number of stored event subscriptions (including global entries). */
+  get eventSubscriptions(): number {
+    return this.subscriptions.length;
+  }
+
+  /** Test/observability: snapshot of the stored subscription list. */
+  getSubscriptionSnapshot(): HerdrEventSubscription[] {
+    return this.subscriptions.map((s) =>
+      s.pane_id !== undefined ? { type: s.type, pane_id: s.pane_id } : { type: s.type },
+    );
+  }
+
   /**
    * Compat no-op: per-request connections (see file header) make an explicit
    * "connect" step meaningless. Kept so existing call sites (e.g.
@@ -134,6 +175,8 @@ export class HerdrClient {
 
   close(): void {
     this.closed = true;
+    this.subscriptions = [];
+    this.eventEstablished = false;
     if (this.eventReconnectTimer) {
       clearTimeout(this.eventReconnectTimer);
       this.eventReconnectTimer = null;
@@ -146,6 +189,43 @@ export class HerdrClient {
         /* */
       }
       this.eventSocket = null;
+    }
+    const pending = this.eventConnectDeferred;
+    this.eventConnectDeferred = null;
+    if (pending) {
+      pending.reject(new Error("herdr client closed"));
+    }
+  }
+
+  /**
+   * Remove stored subscriptions for `paneId` (PLAN 0.23.4).
+   * Does not reopen the event socket. Global entries without pane_id are
+   * left alone. If the list becomes empty: destroy the event socket and
+   * cancel any reconnect timer (prevent empty-list reconnect loops).
+   */
+  eventsPrune(paneId: string): void {
+    this.subscriptions = this.subscriptions.filter((s) => s.pane_id !== paneId);
+    if (this.subscriptions.length === 0) {
+      if (this.eventReconnectTimer) {
+        clearTimeout(this.eventReconnectTimer);
+        this.eventReconnectTimer = null;
+      }
+      this.eventGeneration += 1;
+      this.eventEstablished = false;
+      if (this.eventSocket) {
+        try {
+          this.eventSocket.destroy();
+        } catch {
+          /* */
+        }
+        this.eventSocket = null;
+      }
+      // Drop pending connect waiters — nothing left to subscribe to.
+      const pending = this.eventConnectDeferred;
+      this.eventConnectDeferred = null;
+      if (pending) {
+        pending.reject(new Error("herdr events pruned to empty"));
+      }
     }
   }
 
@@ -274,21 +354,62 @@ export class HerdrClient {
    * of them. Because the real socket accepts no second request on an
    * already-open subscribe connection, extending the set requires opening a
    * fresh connection with the full merged list.
+   *
+   * R29 M-1: on reject, roll back only the entries newly added by this call.
    */
   async eventsSubscribe(subscriptions: HerdrEventSubscription[]): Promise<void> {
+    if (this.closed) throw new Error("herdr client closed");
+    const added: HerdrEventSubscription[] = [];
     for (const s of subscriptions) {
       const exists = this.subscriptions.some(
         (x) => x.type === s.type && x.pane_id === s.pane_id,
       );
-      if (!exists) this.subscriptions.push(s);
+      if (!exists) {
+        this.subscriptions.push(s);
+        added.push(s);
+      }
     }
-    await this.openEventConnection();
+    try {
+      await this.openEventConnection();
+    } catch (e) {
+      // M-1 lock: roll back only this call's additions
+      if (added.length) {
+        const drop = new Set(added.map(subKey));
+        this.subscriptions = this.subscriptions.filter((x) => !drop.has(subKey(x)));
+      }
+      throw e;
+    }
+  }
+
+  private ensureEventConnectDeferred(): EventConnectDeferred {
+    if (!this.eventConnectDeferred) {
+      let resolve!: () => void;
+      let reject!: (err: Error) => void;
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      this.eventConnectDeferred = { resolve, reject, promise };
+    }
+    return this.eventConnectDeferred;
+  }
+
+  private finishEventConnect(err?: Error): void {
+    const d = this.eventConnectDeferred;
+    if (!d) return;
+    this.eventConnectDeferred = null;
+    if (err) d.reject(err);
+    else d.resolve();
   }
 
   private openEventConnection(): Promise<void> {
-    if (this.closed) return Promise.resolve();
+    if (this.closed) {
+      return Promise.reject(new Error("herdr client closed"));
+    }
+    const deferred = this.ensureEventConnectDeferred();
     this.eventGeneration += 1;
     const myGeneration = this.eventGeneration;
+    this.eventEstablished = false;
     if (this.eventReconnectTimer) {
       clearTimeout(this.eventReconnectTimer);
       this.eventReconnectTimer = null;
@@ -303,73 +424,151 @@ export class HerdrClient {
       }
     }
     const id = this.nextId();
-    const subscriptions = this.subscriptions;
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const buf = { text: "" };
-      const sock = createConnection(this.opts.socketPath);
-      this.eventSocket = sock;
-      sock.setEncoding("utf8");
-      sock.on("connect", () => {
-        const line = `${JSON.stringify({
-          id,
-          method: "events.subscribe",
-          params: { subscriptions },
-        })}\n`;
-        sock.write(line);
-      });
-      sock.on("data", (chunk: string) => {
-        buf.text += chunk;
-        parseNdjsonLines(buf, (msg) => {
-          if (!settled) {
-            const msgId = msg.id != null ? String(msg.id) : "";
-            if (msgId === id) {
-              settled = true;
-              if (msg.error) {
-                const err = msg.error as { message?: string; code?: string };
-                try {
-                  sock.destroy();
-                } catch {
-                  /* */
-                }
-                reject(new Error(err.message ?? `herdr events.subscribe error ${err.code ?? "unknown"}`));
-                return;
+    // Snapshot list for this request payload (reopen uses current stored list).
+    const subscriptions = this.subscriptions.slice();
+    const timeoutMs = this.opts.timeoutMs ?? 15_000;
+    let settled = false;
+    const sock = createConnection(this.opts.socketPath);
+    this.eventSocket = sock;
+
+    // Declared early so finishLocal can always clear it (incl. superseded gen).
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finishLocal = (err?: Error): void => {
+      // PLAN 0.23.4 F-4: clear this generation's ACK timer even when superseded
+      // so the timeout callback cannot fire after a newer openEventConnection.
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      // Only the current generation may settle the shared deferred (L-1).
+      if (myGeneration !== this.eventGeneration) return;
+      if (settled) return;
+      settled = true;
+      if (err) {
+        this.eventEstablished = false;
+        this.finishEventConnect(err);
+      } else {
+        this.eventEstablished = true;
+        this._lastSubscribeAck = new Date().toISOString();
+        this.eventReconnectDelay = EVENT_RECONNECT_BASE_MS;
+        this.finishEventConnect();
+      }
+    };
+
+    timer = setTimeout(() => {
+      if (myGeneration !== this.eventGeneration) {
+        // Superseded — drop our timer reference (may already be cleared).
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        return;
+      }
+      if (settled) return;
+      try {
+        sock.destroy();
+      } catch {
+        /* */
+      }
+      finishLocal(
+        new Error(`herdr events.subscribe timed out after ${timeoutMs}ms`),
+      );
+    }, timeoutMs);
+
+    sock.setEncoding("utf8");
+    const buf = { text: "" };
+    sock.on("connect", () => {
+      const line = `${JSON.stringify({
+        id,
+        method: "events.subscribe",
+        params: { subscriptions },
+      })}\n`;
+      sock.write(line);
+    });
+    sock.on("data", (chunk: string) => {
+      buf.text += chunk;
+      parseNdjsonLines(buf, (msg) => {
+        if (!settled) {
+          const msgId = msg.id != null ? String(msg.id) : "";
+          if (msgId === id) {
+            if (msg.error) {
+              const err = msg.error as { message?: string; code?: string };
+              try {
+                sock.destroy();
+              } catch {
+                /* */
               }
-              this.eventReconnectDelay = EVENT_RECONNECT_BASE_MS;
-              resolve();
+              finishLocal(
+                new Error(
+                  err.message ??
+                    `herdr events.subscribe error ${err.code ?? "unknown"}`,
+                ),
+              );
               return;
             }
+            finishLocal();
+            return;
           }
-          if (isEventPush(msg)) {
-            this.opts.onEvent?.(msg.event, msg.data);
-          }
-        });
-      });
-      sock.on("error", (err) => {
-        const e = err instanceof Error ? err : new Error(String(err));
-        if (!settled) {
-          settled = true;
-          reject(e);
-        } else {
-          this.opts.onError?.(e);
+        }
+        if (isEventPush(msg)) {
+          this.opts.onEvent?.(msg.event, msg.data);
         }
       });
-      sock.on("close", () => {
-        if (this.eventSocket === sock) this.eventSocket = null;
-        if (myGeneration !== this.eventGeneration) return; // superseded intentionally
-        if (this.closed) return;
-        this.opts.onClose?.();
-        if (this.subscriptions.length) this.scheduleEventReconnect();
-      });
     });
+    sock.on("error", (err) => {
+      const e = err instanceof Error ? err : new Error(String(err));
+      if (!settled) {
+        finishLocal(e);
+      } else if (myGeneration === this.eventGeneration) {
+        this.opts.onError?.(e);
+      }
+    });
+    sock.on("close", () => {
+      if (this.eventSocket === sock) this.eventSocket = null;
+      // Superseded generation: clear local ACK timer; do not settle (L-1 / F-4).
+      if (myGeneration !== this.eventGeneration) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        return;
+      }
+      if (this.closed) return;
+      if (!settled) {
+        // Pre-ACK close → reject (root cause fix for permanent hang).
+        finishLocal(
+          new Error("herdr events connection closed before subscribe ACK"),
+        );
+        // After reject, if subscriptions remain, keep reconnect backoff.
+        if (this.subscriptions.length) this.scheduleEventReconnect();
+        return;
+      }
+      // Established socket dropped — timer already cleared on ACK, but be safe.
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      this.eventEstablished = false;
+      this.opts.onClose?.();
+      if (this.subscriptions.length) this.scheduleEventReconnect();
+    });
+
+    return deferred.promise;
   }
 
   private scheduleEventReconnect(): void {
     if (this.eventReconnectTimer || this.closed) return;
+    if (!this.subscriptions.length) return;
     const delay = this.eventReconnectDelay;
     this.eventReconnectTimer = setTimeout(() => {
       this.eventReconnectTimer = null;
-      this.eventReconnectDelay = Math.min(this.eventReconnectDelay * 2, EVENT_RECONNECT_MAX_MS);
+      // Re-check: M-1 rollback or eventsPrune may have emptied the list
+      // between schedule and fire.
+      if (this.closed || !this.subscriptions.length) return;
+      this.eventReconnectDelay = Math.min(
+        this.eventReconnectDelay * 2,
+        EVENT_RECONNECT_MAX_MS,
+      );
       this.openEventConnection().catch((e) => {
         this.opts.onError?.(e instanceof Error ? e : new Error(String(e)));
         this.scheduleEventReconnect();

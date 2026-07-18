@@ -22,6 +22,31 @@ export type FakeHerdrOptions = {
   autoStatusDelayMs?: number;
   protocol?: number;
   version?: string;
+  /**
+   * PLAN 0.23.4 test hooks for events.subscribe lifecycle:
+   * - "normal": ACK and keep open (default)
+   * - "pre_ack_close": FIN without ACK (herdr closes invalid streams pre-ACK)
+   * - "never_ack": keep open, never reply (ACK timeout path)
+   */
+  subscribeMode?: "normal" | "pre_ack_close" | "never_ack";
+  /**
+   * If set, the Nth events.subscribe call (1-based) and later use
+   * `subscribeMode` (or pre_ack_close if mode is normal). Earlier calls ACK.
+   * Useful when bridge startup global subscribe must succeed first.
+   */
+  subscribeFailFromCall?: number;
+  /**
+   * How many consecutive subscribe calls to fail starting at
+   * `subscribeFailFromCall` (default: all subsequent). Set to 1 to fail a
+   * single call then recover (M-1 self-reinfection regression).
+   */
+  subscribeFailCount?: number;
+  /**
+   * PLAN 0.23.4 F-3: when true, events.subscribe that includes any already
+   * closed pane_id gets pre-ACK FIN (real herdr rejects invalid streams).
+   * Closed set is tracked via pane.close / markPaneClosed.
+   */
+  failSubscribeOnClosedPane?: boolean;
 };
 
 export type FakeHerdr = {
@@ -36,6 +61,15 @@ export type FakeHerdr = {
   getPaneText: (paneId: string) => string | undefined;
   /** Test-only: pane_id assigned to the most recent agent.start carrying this LOOM_CONV env. */
   paneIdForConv: (convId: string) => string | undefined;
+  /** Test-only: all pane ids currently tracked (not yet closed). */
+  listPaneIds: () => string[];
+  /** Test-only: mark a pane closed without RPC (same as pane.close for subscribe checks). */
+  markPaneClosed: (paneId: string) => void;
+  /**
+   * Test-only: destroy all open sockets (forces established events connection
+   * drop so the client backoff reconnect path fires — test ④).
+   */
+  disconnectEventSockets: () => void;
 };
 
 export async function startFakeHerdr(
@@ -44,10 +78,16 @@ export async function startFakeHerdr(
   const calls: FakeHerdr["calls"] = [];
   const sockets = new Set<Socket>();
   let paneCounter = 0;
+  let subscribeCallCount = 0;
+  let subscribeFailsRemaining =
+    opts.subscribeFailFromCall != null
+      ? (opts.subscribeFailCount ?? Number.POSITIVE_INFINITY)
+      : 0;
   const panes = new Map<
     string,
     { terminal_id: string; text: string; status: string }
   >();
+  const closedPanes = new Set<string>();
   const paneIdByConv = new Map<string, string>();
 
   if (existsSync(opts.socketPath)) {
@@ -70,6 +110,12 @@ export async function startFakeHerdr(
         /* */
       }
     }
+  }
+
+  function markClosed(paneId: string): void {
+    if (!paneId) return;
+    closedPanes.add(paneId);
+    panes.delete(paneId);
   }
 
   const server: Server = createServer((sock) => {
@@ -126,6 +172,7 @@ export async function startFakeHerdr(
             text: "",
             status: "unknown",
           });
+          closedPanes.delete(pane_id);
           const env = (params.env ?? {}) as Record<string, string>;
           if (env.LOOM_CONV) paneIdByConv.set(env.LOOM_CONV, pane_id);
           reply({
@@ -175,7 +222,52 @@ export async function startFakeHerdr(
           sock.end();
           continue;
         }
+        if (method === "pane.close") {
+          const pane_id = String(params.pane_id ?? "");
+          markClosed(pane_id);
+          reply({ type: "ok" });
+          sock.end();
+          continue;
+        }
         if (method === "events.subscribe") {
+          subscribeCallCount += 1;
+          const mode = opts.subscribeMode ?? "normal";
+          const failFrom = opts.subscribeFailFromCall;
+          let shouldFail = false;
+          if (failFrom != null && subscribeCallCount >= failFrom) {
+            if (subscribeFailsRemaining > 0) {
+              shouldFail = true;
+              subscribeFailsRemaining -= 1;
+            }
+          } else if (failFrom == null && mode !== "normal") {
+            shouldFail = true;
+          }
+          // F-3: closed-pane list contamination → pre-ACK FIN (real herdr).
+          if (!shouldFail && opts.failSubscribeOnClosedPane) {
+            const subs = (params.subscriptions ?? []) as {
+              type?: string;
+              pane_id?: string;
+            }[];
+            if (subs.some((s) => s.pane_id != null && closedPanes.has(s.pane_id))) {
+              sock.end();
+              continue;
+            }
+          }
+          if (shouldFail) {
+            const failMode =
+              mode === "never_ack"
+                ? "never_ack"
+                : mode === "pre_ack_close" || failFrom != null
+                  ? "pre_ack_close"
+                  : mode;
+            if (failMode === "never_ack") {
+              // Stay open, never ACK — client timeout path.
+              continue;
+            }
+            // pre_ack_close: FIN without ACK (root-cause reproduction).
+            sock.end();
+            continue;
+          }
           reply({ type: "subscription_started" });
           // Connection stays open — real herdr carries pushes on it.
           continue;
@@ -230,6 +322,21 @@ export async function startFakeHerdr(
     },
     paneIdForConv(convId: string) {
       return paneIdByConv.get(convId);
+    },
+    listPaneIds() {
+      return [...panes.keys()];
+    },
+    markPaneClosed(paneId: string) {
+      markClosed(paneId);
+    },
+    disconnectEventSockets() {
+      for (const s of [...sockets]) {
+        try {
+          s.destroy();
+        } catch {
+          /* */
+        }
+      }
     },
     async close() {
       for (const s of sockets) {

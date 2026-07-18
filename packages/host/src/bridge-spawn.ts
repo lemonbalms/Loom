@@ -1,8 +1,9 @@
 /**
  * Start/stop bridge daemon (sticky-host pattern + M-27 identity).
+ * PLAN 0.23.4: stderr → finite log file under loomDir()/bridge/.
  */
 import { spawn } from "bun";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, closeSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -13,7 +14,17 @@ import {
   type BridgeMeta,
 } from "./bridge-meta";
 import { isPidAlive } from "./session-store";
-import { getActiveProfile, sessionPath } from "./session-store";
+import { getActiveProfile, sessionPath, loomDir } from "./session-store";
+
+/**
+ * PLAN 0.23.4: map profile to a filename-safe token so stderr logs stay under
+ * loomDir()/bridge/ (slash profiles, "..", leading dot/dash, empty after strip).
+ */
+export function sanitizeProfileLogName(profile: string): string {
+  let s = profile.replace(/[^A-Za-z0-9._-]/g, "-");
+  s = s.replace(/^[.\-]+/, (m) => "_".repeat(m.length));
+  return s.length > 0 ? s : "default";
+}
 
 function bridgeMainPath(): string {
   const here = fileURLToPath(new URL(".", import.meta.url));
@@ -55,16 +66,42 @@ export async function startBridgeProcess(): Promise<BridgeStartResult> {
     ...process.env,
     LOOM_SESSION: sp,
   };
-  const profile = getActiveProfile();
-  if (profile) env.LOOM_PROFILE = profile;
+  const profile = getActiveProfile() ?? "default";
+  if (getActiveProfile()) env.LOOM_PROFILE = profile;
+
+  // PLAN 0.23.4: finite stderr log (truncate on each spawn, mode 0600).
+  // stdout stays ignore — only bridge diagnostic logs need a sink.
+  // Sanitize profile for filename so slash profiles / ".." cannot escape logDir.
+  const safeProfile = sanitizeProfileLogName(profile);
+  const logDir = join(loomDir(), "bridge");
+  mkdirSync(logDir, { recursive: true });
+  const stderrPath = join(logDir, `${safeProfile}.stderr.log`);
+  let stderrFd: number | undefined;
+  try {
+    stderrFd = openSync(stderrPath, "w", 0o600);
+    try {
+      chmodSync(stderrPath, 0o600);
+    } catch {
+      /* best-effort on platforms that ignore mode at open */
+    }
+  } catch {
+    stderrFd = undefined;
+  }
 
   const proc = spawn({
     cmd: ["bun", "run", main],
     env,
     stdout: "ignore",
-    stderr: "ignore",
+    stderr: stderrFd !== undefined ? stderrFd : "ignore",
     stdin: "ignore",
   });
+  if (stderrFd !== undefined) {
+    try {
+      closeSync(stderrFd);
+    } catch {
+      /* child owns the fd after spawn */
+    }
+  }
   proc.unref();
 
   const deadline = Date.now() + 12_000;

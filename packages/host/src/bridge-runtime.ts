@@ -201,6 +201,19 @@ export async function startBridgeRuntime(opts?: {
     );
   }
 
+  // PLAN 0.23.4 / R29 L-2: global pane.closed once at startup — fail-fast if
+  // the event stream cannot be established (same class as herdr ping fail-fast).
+  try {
+    await herdr.eventsSubscribe([{ type: "pane.closed" }]);
+  } catch (e) {
+    herdr.close();
+    throw new Error(
+      `herdr events.subscribe (pane.closed) failed: ${
+        e instanceof Error ? e.message : e
+      }`,
+    );
+  }
+
   const client = new RelayClient({
     ...relayClientOptsFromSession(session),
     autoReconnect: true,
@@ -278,6 +291,10 @@ export async function startBridgeRuntime(opts?: {
             herdrSocketPath: cfg.herdrSocketPath,
             herdrOk,
             inFlight: flights.size,
+            // PLAN 0.23.4 observability
+            eventConnected: herdr.eventConnected,
+            lastSubscribeAck: herdr.lastSubscribeAck,
+            eventSubscriptions: herdr.eventSubscriptions,
           });
         }
         if (body.op === "stop") {
@@ -492,13 +509,31 @@ export async function startBridgeRuntime(opts?: {
     };
     flights.set(agent.pane_id, flight);
 
+    // PLAN 0.23.4: per-pane status only — pane.closed is global at startup.
     try {
       await herdr.eventsSubscribe([
         { type: "pane.agent_status_changed", pane_id: agent.pane_id },
-        { type: "pane.closed", pane_id: agent.pane_id },
       ]);
     } catch (e) {
+      // Fail-visible: no blind progress without event delivery (M-1 rollback
+      // on the client covers the failed subscription entry — no prune here).
       log("events.subscribe failed:", e);
+      flights.delete(agent.pane_id);
+      await sendFailedResult({
+        cardId: payload.cardId,
+        fromPeerId,
+        dispatchHandoffId,
+        reason: "events_subscribe_failed",
+        detail: e instanceof Error ? e.message : String(e),
+        paneId: agent.pane_id,
+      });
+      // PLAN 0.23.4: best-effort pane close after card subscribe failure.
+      try {
+        await herdr.request("pane.close", { pane_id: agent.pane_id });
+      } catch {
+        /* ignore — close is best-effort */
+      }
+      return;
     }
 
     try {
@@ -507,6 +542,7 @@ export async function startBridgeRuntime(opts?: {
       await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
     } catch (e) {
       flights.delete(agent.pane_id);
+      herdr.eventsPrune(agent.pane_id);
       await sendFailedResult({
         cardId: payload.cardId,
         fromPeerId,
@@ -698,6 +734,7 @@ export async function startBridgeRuntime(opts?: {
       if (paneId) {
         convFlights.delete(paneId);
         convPaneByConvId.delete(payload.convId);
+        herdr.eventsPrune(paneId);
       }
       return;
     }
@@ -738,13 +775,19 @@ export async function startBridgeRuntime(opts?: {
     convFlights.set(agent.pane_id, flight);
     convPaneByConvId.set(payload.convId, agent.pane_id);
 
+    // PLAN 0.23.4: per-pane status only — pane.closed is global at startup.
     try {
       await herdr.eventsSubscribe([
         { type: "pane.agent_status_changed", pane_id: agent.pane_id },
-        { type: "pane.closed", pane_id: agent.pane_id },
       ]);
     } catch (e) {
+      // Fail-visible: clean flights + blocked turn (M-1 client rollback covers
+      // the failed subscription entry — no prune here).
       log("conv events.subscribe failed:", e);
+      convFlights.delete(agent.pane_id);
+      convPaneByConvId.delete(payload.convId);
+      void sendWorkerTurnFromPane(flight, "blocked", "events_subscribe_failed");
+      return;
     }
 
     try {
@@ -770,6 +813,7 @@ export async function startBridgeRuntime(opts?: {
       log("conv initial inject failed:", e);
       convFlights.delete(agent.pane_id);
       convPaneByConvId.delete(payload.convId);
+      herdr.eventsPrune(agent.pane_id);
       return;
     }
     await verifyConvSubmitOrRetry(flight);
@@ -1048,6 +1092,7 @@ export async function startBridgeRuntime(opts?: {
   ): void {
     if (ev === "pane_closed" || event === "pane.closed") {
       flights.delete(paneId);
+      herdr.eventsPrune(paneId);
       void sendFailedResult({
         cardId: flight.cardId,
         fromPeerId: flight.fromPeerId,
@@ -1077,11 +1122,13 @@ export async function startBridgeRuntime(opts?: {
     // C1: done may arrive from detection; also accept idle after working, blocked → failed
     if (status === "blocked") {
       flights.delete(paneId);
+      herdr.eventsPrune(paneId);
       void finishCard(flight, "failed", "agent_blocked");
       return;
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
       flights.delete(paneId);
+      herdr.eventsPrune(paneId);
       void finishCard(flight, "done", undefined);
     }
   }
@@ -1103,6 +1150,7 @@ export async function startBridgeRuntime(opts?: {
     if (ev === "pane_closed" || event === "pane.closed") {
       convFlights.delete(paneId);
       convPaneByConvId.delete(flight.convId);
+      herdr.eventsPrune(paneId);
       void sendWorkerTurnFromPane(flight, "blocked", "pane_closed");
       return;
     }
