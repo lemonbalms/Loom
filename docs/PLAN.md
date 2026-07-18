@@ -4,11 +4,11 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.23.0** |
-| **Status** | **`pending-review`** — R25 게이트 대기 — **conv 멀티턴 수직 슬라이스**(타워↔워커 1:1 대화 왕복 — `conv.open`/`accept`→`turn`(반복)→`done_proposal`/`close`) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/CONV_SPEC.md`(**approved**, R24 author-close 2026-07-18). FREEZE 해제(오너, 2026-07-18) — conv 멀티턴 트랙 진행 승인(HANDOFF.md). 0.22.0(R23) implemented — 브릿지 수직 슬라이스 선행. |
+| **Status** | **`approved`**(R25 author-close, 2026-07-18) — **conv 멀티턴 수직 슬라이스**(타워↔워커 1:1 대화 왕복 — `conv.open`/`accept`→`turn`(반복)→`done_proposal`/`close`) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/CONV_SPEC.md`(**approved**, R24 author-close 2026-07-18). FREEZE 해제(오너, 2026-07-18) — conv 멀티턴 트랙 진행 승인(HANDOFF.md). 0.22.0(R23) implemented — 브릿지 수직 슬라이스 선행. |
 | **Supersedes** | 0.22.0 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | **R25 필요** — 새 MINOR 제품 표면(MCP `conv_open/send/await/close` 4도구) + **보안·신뢰 경계 변경**(M-1 conv↔peer pin·M-2 artifact ref 검증 규약을 코드로 집행) + **와이어 인접**(artifact fetch 명령의 로컬 조립 표면) → §5.1 3중 해당. `docs/CONV_SPEC.md`의 R24 M-1/M-2 locks가 이 PLAN 구현의 전제 조건(스펙은 이미 approved — 이 PLAN은 그 구현 계획이며 스펙 재론 아님). |
-| **Fable 5 when** | **Required** — 새 제품 표면 + 보안·신뢰 경계 변경 (§5.1). **R25 pending.** |
+| **Approval** | **R25 `pending-revision` → M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)/M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 → author-close `approved`**(Fable 5 사전 승인, no R25b). L-1..L-4 author-close. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음). |
+| **Fable 5 when** | **Required** — 새 제품 표면 + 보안·신뢰 경계 변경 (§5.1). **R25 done.** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -50,7 +50,7 @@
 
 ### Changelog
 
-#### 0.23.0 — 2026-07-18 (`pending-review` R25 — **conv 멀티턴 수직 슬라이스**)
+#### 0.23.0 — 2026-07-18 (`approved` author-close after R25 `pending-revision` — **conv 멀티턴 수직 슬라이스**)
 
 **Product one-liner:** 타워 에이전트와 원격 워커 에이전트가 하나의 목표를 두고 `conv.open`→`conv.accept` 개시 후 **엄격 교대 half-duplex**로 여러 턴을 왕복하며, 원격 done-제안을 타워가 검증·확정한다 — `docs/CONV_SPEC.md`(approved, R24 author-close 2026-07-18)의 1단계 스펙을 relay 와이어 protocol v1 무변경으로 구현한다.
 
@@ -61,14 +61,16 @@
 **What (범위 — 타워↔워커 1:1 대화 왕복이 실제로 도는 최소 수직 슬라이스; 설계 정본 = `docs/CONV_SPEC.md` §1–§6):**
 | 항목 | 내용 |
 |------|------|
-| **protocol — conv 계약** | `card-contract.ts`(0.22.0) 선례를 미러하는 신규 클라이언트 로컬 zod 계약(`conv-contract.ts` **[가정]**, `packages/protocol`) — `loom-conv-open\|accept\|reject\|turn\|close` label attachment payload, `convId` 형식 `conv_[a-f0-9]{16}`(CONV_SPEC §1.1·§5.3①), `turnSeq` 배정 규약(open=0 타워/accept=1 워커/이후 짝=타워·홀=워커, §3.3), `kind: normal\|blocked\|done_proposal`(§1.3), artifact ref 스키마(§5.3) + **M-2 검증 함수**(②git ref는 `conv/<convId>/` prefix 매치 + `--` 구분자 + 선행 `-` 거부 + remote는 로컬 기존 remote만, ③scp host는 로컬 conv 상대 노드 매핑에서 해석 + path는 `~/.loom/artifacts/<convId>/` prefix 강제, ④sha256은 fetch 후 무결성 검증일 뿐). **relay 와이어 protocol v1 무변경** — 전부 attachment 컨벤션(CONV_SPEC §0). |
+| **protocol — conv 계약** | `card-contract.ts`(0.22.0) 선례를 미러하는 신규 클라이언트 로컬 zod 계약(`conv-contract.ts` **[가정]**, `packages/protocol`) — `loom-conv-open\|accept\|reject\|turn\|close` label attachment payload, `convId` 형식 `conv_[a-f0-9]{16}`(CONV_SPEC §1.1(개념)·§5.3①(형식), R25 L-2), `turnSeq` 배정 규약(open=0 타워/accept=1 워커/이후 짝=타워·홀=워커, §3.3), `kind: normal\|blocked\|done_proposal`(§1.3), artifact ref 스키마(§5.3) + **M-2 검증 함수**(②git ref는 `conv/<convId>/` prefix 매치 + `--` 구분자 + 선행 `-` 거부 + remote는 로컬 기존 remote만, ③scp host는 로컬 conv 상대 노드 매핑에서 해석 + path는 **정규화 후**(R25 L-3) `~/.loom/artifacts/<convId>/` prefix 강제, ④sha256은 fetch 후 무결성 검증일 뿐). **relay 와이어 protocol v1 무변경** — 전부 attachment 컨벤션(CONV_SPEC §0). |
 | **host(타워 측) — conv 세션 상태** | conv별 상태 저장: **pin된 상대 peerId**(M-1, §2.1·§3.3) · last-seen `turnSeq`(멱등 폐기, §3.3) · 한도 카운터(턴 20·2h, §2.2). **M-1 pin 집행** — `turn`·`close`·`done_proposal` 등 모든 intent에서 pin된 peerId 불일치 시 무시+로그(R23 M-1 dispatcher 인가의 타워 측 대칭 짝). 한도 초과 시 **타워 로컬 보드 전이**로 pause(§2.2 — pause는 wire 어휘 아님, 워커 측은 advisory blocked 턴). 보드 매핑 = 대화 전체 카드 1장(§3.4, TaskStatus 5종 재사용·신규 컬럼 없음). 32k 인라인 임계 초과 턴은 artifact ref 강제(§5.1) — 절단 금지. |
-| **host(워커/브릿지 측) — bridge-runtime 확장** | `bridge-runtime.ts`(0.22.0)에 conv 경로 추가: `conv.open` 수신 시 scope를 authorizedDispatchers·로컬 allowlist와 대조 후 `conv.accept`/`conv.reject`(§3.1 — M-1 dispatcher 인가 재사용). **conv.open 중복/재전달**은 이미 active/closed인 convId면 기존 accept 재송신 또는 reject(§4.1.3 멱등 확장). 2번째 이후 턴은 `conv_await` 폴링이 아니라 브릿지가 herdr `agent send`로 워커 pane에 직접 주입(§4.2) — **R23 M-2(제출 분리 — untrusted는 리터럴 send, 제출은 고정 상수 별도 호출)가 첫 프롬프트뿐 아니라 매 턴 적용**. |
+| **host(워커/브릿지 측) — bridge-runtime 확장** | `bridge-runtime.ts`(0.22.0)에 conv 경로 추가: `conv.open` 수신 시 scope를 authorizedDispatchers·로컬 allowlist와 대조 후 `conv.accept`/`conv.reject`(§3.1 — M-1 dispatcher 인가 재사용). **conv↔peer pin (R25 M-1):** 브릿지는 `conv.open` 수신(accept) 시 `fromPeerId`를 해당 conv에 pin하고, 이후 `turn`·`close`는 pin 불일치 시 무시+로그; 브릿지 측도 conv별 last-seen `turnSeq`를 유지하며 `seq ≤ last` 멱등 폐기한다 — CONV_SPEC §2.1 "양측이 고정"·§3.3 "수신측은 conv별 last-seen 유지"(양측 수신자)의 브릿지 측 집행이며, 0.22.0 `bridge-runtime.ts:314-320`의 authorizedDispatchers **집합** 검사와는 별도로 **conv별 pin** 대조가 필요하다(인가 dispatcher 2명 시나리오에서 집합 검사만으로는 상호 conv 주입을 막지 못함). **conv.open 중복/재전달**은 이미 active/closed인 convId면 기존 accept 재송신 또는 reject(§4.1.3 멱등 확장). 2번째 이후 턴은 `conv_await` 폴링이 아니라 브릿지가 herdr `agent send`로 워커 pane에 직접 주입(§4.2) — **R23 M-2(제출 분리 — untrusted는 리터럴 send, 제출은 고정 상수 별도 호출)가 첫 프롬프트뿐 아니라 매 턴 적용**. |
 | **mcp-server — 4도구** | `conv_open` / `conv_send` / `conv_await`(블로킹, timeoutSec) / `conv_close`만(CONV_SPEC §4.1). 내부는 기존 경로 재사용(opsHandoff sticky-RPC 우선·claim·mutateBoard·resolveTaskIndex) + §3.4 board 전이 자동 처리. 별도 conv_apply 없음 — `conv_await`가 claim+파싱+보드 반영 후 payload 반환(M-6 수신 경로 불변). 노드 조회는 기존 `list_peers`의 `node/` prefix 필터 재사용. |
 | **artifact 전달(§5.2)** | git push/pull(conv 전용 throwaway 브랜치 `conv/<convId>/…`) 주수단, scp 폴백(`~/.loom/artifacts/<convId>/`). **1단계는 M-2 검증을 통과한 fetch 명령 문자열을 조립해 제시하는 데까지** — 자동 실행은 하지 않는다(실행은 에이전트/사람 판단, 비-스코프 참조). |
-| **테스트** | `bun test` — conv 계약 스키마 왕복(open/accept/reject/turn/close), M-1 pin 위조 거부(불일치 peerId 무시+로그), turnSeq 멱등 폐기 + 배정 규약(짝/홀 검증), M-2 검증 함수 부정 케이스(선행 `-` 브랜치명·`conv/<convId>/` prefix 불일치·path traversal·wire의 host/URL 신뢰 거부), §3.4 보드 매핑 전이, 브릿지 턴 주입은 기존 fake herdr fixture(`docs/spikes/fixtures/herdr-v0.7.4/`) 재사용. |
+| **테스트** | `bun test` — conv 계약 스키마 왕복(open/accept/reject/turn/close), **M-1 pin 위조 거부 — 타워 수신 + 브릿지 수신 양측 케이스**(불일치 peerId 무시+로그, R25 M-1), turnSeq 멱등 폐기 + 배정 규약(짝/홀 검증), M-2 검증 함수 부정 케이스(선행 `-` 브랜치명·`conv/<convId>/` prefix 불일치·path traversal·wire의 host/URL 신뢰 거부), **미지 convId fail-closed 거부**(pin 상태 없는 convId의 turn/close/done_proposal 무시+로그, R25 M-2), §3.4 보드 매핑 전이, **L-5 중복 `conv.open` → accept 재송신 케이스**, **한도 초과 시 pause 보드 전이 케이스**(R25 L-1), 브릿지 턴 주입은 기존 fake herdr fixture(`docs/spikes/fixtures/herdr-v0.7.4/`) 재사용. |
 
-**Out of scope (이 버전 아님 — `docs/CONV_SPEC.md` §8 승계 + 아키텍트 확정):** agentKind allowlist 확장(codex/grok 등 — 0.22.0과 동일하게 슬라이스는 `claude` 유지, 확장은 후속 PATCH); **artifact fetch 자동 실행**(M-2는 명령 조립을 방어하지 실행 여부를 결정하지 않음 — 1단계는 제시까지); 2+3 직결 채널(시그널링·재연결·폴백 상세 — §6 가드만 고정); crash 저널·bridge supervision(0.22.0과 동일 유보); 타워 stateless-relaunch(§4.2 — 2+3 진화 옵션 기록만); 실시간 관전 UX; 멀티파티 conv(1:1만, §8).
+**Fail-closed 기본값 (R25 M-2):** 타워/브릿지가 모르는(pin 상태가 없는) convId의 `turn`/`close`/`done_proposal`은 무시+로그 — **재시작으로 상태를 잃은 경우 포함**. 미지 convId 수신을 계기로 발신자에게 re-pin하는 관대한 재입양(re-adopt)은 금지한다. 영속화 설계 자체(재시작 시 conv 상태를 어디까지 보존할지)는 이 PLAN이 고정하지 않는다 — 구현 중 결정(in-memory 수용형 vs 최소 영속형 어느 쪽이든 이 기본값 하에서 보안 성질이 보존된다). 근거: R24 M-1 "pin 부재 = 거부"의 자연 귀결 + R23 M-1 "설정 부재 시 기본 거부"의 대칭.
+
+**Out of scope (이 버전 아님 — `docs/CONV_SPEC.md` §8 승계 + 아키텍트 확정):** agentKind allowlist 확장(codex/grok 등 — 0.22.0과 동일하게 슬라이스는 `claude` 유지, 확장은 후속 PATCH); **artifact fetch 자동 실행**(M-2는 명령 조립을 방어하지 실행 여부를 결정하지 않음 — 1단계는 제시까지); 2+3 직결 채널(시그널링·재연결·폴백 상세 — §6 가드만 고정); crash 저널·bridge supervision(0.22.0과 동일 유보); 타워 stateless-relaunch(§4.2 — 2+3 진화 옵션 기록만); 실시간 관전 UX; 멀티파티 conv(1:1만, §8); **§5.4 정리(7일 삭제) 자동화**(R25 L-4 — 이 슬라이스는 삭제를 자동화하지 않는다; 1단계 삭제는 수동/생성측 판단, Security 섹션의 "위조 close = 삭제 시계 조기 가동" 논거는 그 수동 시계에 대한 것).
 
 **Security / trust (R25 필수 이유):**
 - **conv↔peer pin 미집행 시 위험(M-1, §2.1·§3.3):** authorizedDispatchers는 집합 검사라 인가 dispatcher가 2명이면 상호 conv 주입이 가능하다. 위조 턴은 타워 에이전트의 대화 입력으로 반복 소비되는 프롬프트 주입면이고, 위조 close는 §5.4의 7일 삭제 시계를 조기 가동(데이터 손실 인접)한다. `fromPeerId` 서버 지정(M-9)이라 집행 원시는 이미 존재 — 이 PLAN이 그 집행을 코드로 옮긴다.
@@ -79,7 +81,9 @@
 
 **Unknowns (§3.5 → `docs/UNKNOWNS.md` §0.23.0):** `conv_await` 블로킹의 MCP 클라이언트별 tool-call 타임아웃 상호작용(실측 필요); 워커 pane 수명과 conv 수명 불일치(pane이 죽으면 conv는 pause인가 abort인가 — CONV_SPEC 미명시); 32k 임계 판정에서 herdr pane 스크레이프 기반 요약 회신과의 정합(`pane.read` 단발 회수가 실시간 턴 크기를 정확히 반영하는가); artifact fetch 명령 "제시"의 UX 표면(워커 CLI 프롬프트 노출 vs 사람 승인 큐 — 미정).
 
-**R25 질의:** *(현재 없음 — 구현 착수 전 초안 단계. R25 검토 또는 실제 구현 중 CONV_SPEC과 충돌을 발견하면 이 항목에 기록하고 해당 부분 구현을 보류한다.)*
+**R25 질의:** *(현재 없음. R25 검토는 PLAN 문안 lock 2건(M-1/M-2)으로 종결됐다 — 실제 구현 중 CONV_SPEC과 충돌을 발견하면 이 항목에 기록하고 해당 부분 구현을 보류한다.)*
+
+**Approved by:** Fable 5 (fable-advisor) R25 — `pending-revision` → M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)/M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 → **author-close `approved`**(Fable 사전 승인, no R25b), 2026-07-18. L-1(테스트 열거 보강)·L-2(convId 형식 출처 표기)·L-3("정규화 후" 문구 복원)·L-4(§5.4 삭제 자동화 out-of-scope 명시) author-close.
 
 #### 0.22.0 — 2026-07-17 (`pending-review` R23 — **Loom×Herdr 노드 브릿지 수직 슬라이스 (`loom bridge`)**)
 

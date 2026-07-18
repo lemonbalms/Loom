@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R24** `docs/CONV_SPEC.md`(멀티턴 대화 1단계 스펙) **`approved`**(author-close, 2026-07-18) — M-1(conv↔peer pin)·M-2(artifact ref 검증 규약) 스펙 문안 lock 반영 완료 + L-1..L-5 author-close 완료(no R24b). FREEZE 해제(오너 2026-07-18). (PLAN v0.22.0 R23 implemented — 브릿지 수직 슬라이스.)  
+> **최신:** **R25** PLAN **v0.23.0**(conv 멀티턴 수직 슬라이스) **`approved`**(author-close, 2026-07-18) — M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)·M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 완료 + L-1..L-4 author-close 완료(no R25b). 스펙 정본 CONV_SPEC은 R24 approved 유지.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,6 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R25** | **v0.23.0** | **closed (pending-revision → author-close approved 2026-07-18)** | **conv 멀티턴 수직 슬라이스** — approved CONV_SPEC(R24)의 구현 PLAN. 스펙 이전 충실·스코프 minimal-but-sufficient·왜곡 없음. 단 R24 M-1 "양측 pin"의 **브릿지 측 집행 서술 공백**(M-1) + **미지 convId fail-closed 기본값 미고정**(M-2) → PLAN 문안 lock 2건 + L-1..L-4 author-close. |
 | **R24** | **CONV_SPEC v1 (스펙 문서, PLAN 버전 아님)** | **closed (pending-revision → author-close approved 2026-07-18)** | **크로스머신 CLI 멀티턴 대화 1단계 스펙** — 티켓 #2·#5·#6·#7·#8·#9 결정 통합 충실·relay 무변경 원칙 일관. 단 선언된 M-4 경계가 신규 표면 2곳에 미적용: **M-1 conv↔peer pin**(타워 측 턴 발신자 바인딩) + **M-2 artifact ref 검증 규약**(fetch 명령 기계 조립 방어). L-1..L-5 author-close. 구현 PLAN은 locks 반영 스펙 기준. |
 | **R23** | **v0.22.0** | **closed (approved → implemented 2026-07-17)** | **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스) — 새 데몬 표면 + MCP `dispatch_card`/`apply_card_result` + 원격 프롬프트 주입 신뢰 경계. M-1/M-2 locks 충족(코드+테스트). L-1..L-3 author-close. 와이어 무변경. FREEZE 예외=오너 pull. |
 | **R22** | **v0.21.0→0.21.1** | **closed (approved → implemented `d05d714`)** | **PTY handoff inject** — Claude-first · opt-in · accept-gated · **no-auto-submit paste**. M-1…M-6 locks. Fable 5 사전 승인(no R22b). codex-impl 구현 → 아키텍트 독립 검증(bun test 190/0, M-1..M-6 코드 확인). 와이어 변경 없음. FREEZE 예외=오너 pull. |
@@ -24,7 +25,46 @@
 
 ## Open (blocking)
 
-_(none)_ — R24 author-close approved (M-1/M-2 문안 반영 + L-1..L-5 author-close 완료).
+_(none)_ — R25 author-close approved (M-1/M-2 PLAN 문안 반영 + L-1..L-4 author-close 완료).
+
+---
+
+## Review R25 — Plan v0.23.0 (conv 멀티턴 수직 슬라이스)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.0` changelog + header + `docs/UNKNOWNS.md` §0.23.0 + `docs/CONV_SPEC.md`(approved 정본 — 스펙 결정 재론 없음, 이전 충실도만 심사) + `docs/plan_review.md` R23·R24 locks 선례 + 코드 대조(`packages/protocol/src/card-contract.ts` 전문, `packages/host/src/bridge-runtime.ts:314-320` authorizedDispatchers 집합 검사·`:112-114` in-memory 상태 선례, `packages/protocol/src/sanitize.ts:18-50`)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`pending-revision` → M-1/M-2 locks PLAN 본문 반영 + L-1..L-4 author-close → author-close `approved`** (Fable 사전 승인, no R25b).
+
+**Author-close 완료 (2026-07-18):** grok-impl이 M-1(브릿지 측 conv↔peer pin·last-seen 집행)을 `docs/PLAN.md` 0.23.0 "host(워커/브릿지 측)" 행에, M-2(미지 convId fail-closed 기본값)를 What 표 직후 신설 단락("Fail-closed 기본값")에 반영. L-1(테스트 열거에 L-5 재송신 케이스 + 한도초과 pause 전이 케이스 명시)·L-2(convId 형식 출처를 "§1.1(개념)·§5.3①(형식)"로 정정)·L-3("정규화 후" 문구 복원)·L-4(§5.4 삭제 자동화 out-of-scope 명시)를 author-close 완료. 사전 승인 경로(no R25b)에 따라 재리뷰 없이 `approved` 전환.
+
+### 결정적 발견 (성패 지점)
+CONV_SPEC R24 M-1은 "conv.open/accept 시점에 convId↔상대 fromPeerId를 **양측이** 고정(pin)"인데, PLAN의 pin·last-seen·불일치 무시+로그 서술은 **host(타워 측) 행에만** 있다("타워 측 대칭 짝" 프레이밍). 브릿지 행은 open 시점 authorizedDispatchers 대조 + L-5 멱등만 — 이후 `turn`/`close`에 대한 브릿지 측 per-conv pin 대조·last-seen turnSeq가 없다. 이 공백은 실질적이다: (a) 브릿지가 수신하는 `turn`은 pane 주입으로 **매 턴 반복되는 프롬프트 주입면**이고 위조 `close`는 생성측(워커)의 §5.4 7일 삭제 시계를 가동한다. (b) authorizedDispatchers는 **집합** 검사라 인가 dispatcher 2명 시나리오 — M-1의 존재 이유 — 가 브릿지 측에서 정확히 미방어로 남는다. (c) PLAN이 미러 대상으로 지정한 0.22.0 코드(bridge-runtime.ts:314-320)가 바로 set-membership만 검사하는 선례라 "pin은 타워만" 오독이 우연이 아니라 유도된다. 문안 lock으로 닫히고 wire 변경 불요.
+
+### Checklist
+- [x] **스펙 이전 충실도(핵심 질문 a)** — turnSeq 배정 규약(L-1: open=0 타워/accept=1 워커/짝=타워·홀=워커)·kind 3종·M-2 ①~④·32k 절단 금지·한도/pause=타워 로컬 보드 전이(L-3)·L-4 매 턴 제출 분리·L-5 open 멱등·§3.4 카드 1장·4도구/no conv_apply 전부 충실, **왜곡 없음**. 누락은 M-1 브릿지 측(아래)과 "정규화 후" 문구(L-3)뿐.
+- [x] **M-2 집행 계획 스펙 일치(핵심 질문 b)** — ①convId charset ②git ref prefix+`--`+선행 `-` 거부+로컬 기존 remote만 ③scp host 로컬 매핑 해석+path prefix ④sha256=post-fetch 전부 §5.3 문안 그대로. 검증 함수의 protocol 패키지 공유 배치 타당(양측 수신자 동일 함수).
+- [x] **스코프 minimal-but-sufficient(핵심 질문 c)** — 계약·타워 상태·브릿지 확장·4도구·테스트 각각이 왕복 성립의 필요 조건 — 추가 절삭 불가. "fetch 명령 제시까지, 자동 실행 안 함"은 스펙보다 보수적 절삭으로 정당. agentKind `claude` 유지·직결 유보는 0.22.0 선례와 일관. 필수 추가는 lock 문안 외 없음.
+- [x] **Unknowns 해소 시점(핵심 질문 d)** — 4건 모두 구현 중 해소 가능: ①conv_await 타임아웃은 timeoutSec 파라미터로 방어된 실측 문제 ②pane 수명은 스펙이 골격 제공(워커 일방 종료 불가 → pane 사망 = 브릿지 발 advisory blocked 턴, 타워가 continue/abort — 0.22.0 pane_closed→failed의 conv 버전; 선택을 `implementation-notes.md`에 기록) ③32k 정합 실측 ④제시 UX는 자동 실행 배제로 저위험. Unknown unknowns 중 **영속화는 M-2 lock으로 안전 기본값만 고정 후 구현 중 결정**, pane 컨텍스트 누적은 dogfood 관찰 사안.
+- [x] **보안 섹션 위협 서술 정확** — 집합 검사·sanitize 한계(제어문자·ESC만 제거) 주장 코드 대조로 사실 확인.
+- [ ] **R24 M-1 "양측 pin"의 브릿지 측 집행 명문화** — binding lock (M-1).
+- [ ] **미지 convId fail-closed 기본값** — binding lock (M-2).
+
+### Findings (Sev: High|Med|Low) — binding locks
+- **M-1 (Med, binding): 브릿지 측 conv↔peer pin + last-seen 명문화.** PLAN 브릿지 행에 추가: "브릿지는 `conv.open` 수신(accept) 시 fromPeerId를 해당 conv에 pin하고, 이후 `turn`·`close`는 pin 불일치 시 무시+로그; 브릿지 측도 conv별 last-seen turnSeq를 유지하며 `seq ≤ last` 멱등 폐기." 테스트 열거의 "M-1 pin 위조 거부"도 **양측**(타워 수신 + 브릿지 수신) 케이스로 명시. 근거: CONV_SPEC §2.1 "양측이 고정" + §3.3 "수신측은 conv별 last-seen 유지"(양측 수신자) — 스펙 문안의 충실 이전이지 신규 결정 아님.
+- **M-2 (Med, binding): 미지 convId fail-closed 기본값.** PLAN 본문에 한 줄 고정: "타워/브릿지가 모르는(pin 상태가 없는) convId의 `turn`/`close`/`done_proposal`은 무시+로그 — **재시작으로 상태를 잃은 경우 포함**. 미지 convId 수신을 계기로 발신자에게 re-pin하는 관대한 재입양(re-adopt) 금지." 영속화 설계 전체는 고정하지 않음 — 이 기본값만 고정되면 in-memory 수용(재시작 = conv 사망 → 재-open) vs 최소 영속 어느 쪽이든 보안 성질이 보존되어 구현 중 결정으로 안전. 근거: R24 M-1 "pin 부재 = 거부"의 자연 귀결 + R23 M-1 "설정 부재 시 기본 거부"의 대칭. UNKNOWNS 기록만으로는 부족 — 발명 방향 하나(re-adopt)가 재시작 후 하이재킹을 연다.
+- **L-1 (Low): 테스트 열거 보강** — L-5(중복 `conv.open` → accept 재송신) 케이스와 한도 초과 pause 보드 전이 케이스 명시 추가("§3.4 보드 매핑 전이"에 묵시 포함이나 명시가 낫다). author-close.
+- **L-2 (Low): convId 형식 출처 표기** — PLAN의 "§1.1·§5.3①"에서 §1.1엔 형식 규정 없음(개념만) — `§5.3①` 단독 또는 "§1.1(개념)·§5.3①(형식)"으로 정정. author-close.
+- **L-3 (Low): "정규화 후" 문구 복원** — CONV_SPEC §5.3③은 "path는 **정규화 후** prefix 강제"인데 PLAN protocol 행은 "prefix 강제"만. 정규화 없는 prefix 검사는 `…/<convId>/../../` traversal을 통과시키므로 이 문구가 load-bearing(테스트 열거의 traversal 부정 케이스로 의도는 보존됐으나 문안 복원 필요). author-close.
+- **L-4 (Low): §5.4 정리(7일 삭제)의 스코프 명시** — 이번 슬라이스가 삭제 자동화를 포함하는지 in/out 어디에도 없음. Security 섹션이 "위조 close = 삭제 시계 조기 가동"을 논거로 쓰므로 스코프 명시가 논거·구현 정합 조건 — 권고: out-of-scope 명시(1단계 삭제는 수동/생성측 판단). author-close.
+
+### Decision notes
+- **verdict 구조:** R23/R24 선례 — **M-lock 문안이 PLAN 본문에 그대로 들어가는 것**이 author-close 조건. 즉시 approved(R20/R21형)는 부적합: M-1이 스펙 왜곡(누락) 교정이라 본문 반영 전 구현 착수 시 오독이 유도됨. Med 2건 반영 + Low 4건 author-close 후 재리뷰 없이 `approved` 전환(no R25b). PATCH 적용자는 implementer(claude-impl) — 리뷰어는 plan_review.md 외 수정 금지이므로 PLAN 헤더 Status(`pending-review` → `pending-revision` → author-close 후 `approved`) 동기화도 PATCH에 포함할 것.
+- **M-1 심각도 근거 (High 아님):** R24 M-1과 동일 논거(멀티턴 증폭으로 Med) — 단 이번엔 스펙이 이미 "양측"을 확정했으므로 신규 결정이 아니라 이전 누락 교정. 인가 dispatcher가 현재 dogfood 룸에서 1명이라 즉발 위험은 낮으나 M-1의 존재 이유가 2명 시나리오이므로 Low 불가.
+- **M-2 심각도 근거:** 스펙 재론 아님 — 영속화 여부는 스펙이 침묵하는 영역이고, lock은 그 침묵 하에서도 보안 성질이 보존되는 기본값만 고정(WORKFLOW §3.5 Unknown을 안전하게 좁히는 전형).
+- **(참고, non-finding)** conv 계약 열거에 `close`의 `reason: done|abort` 필드 미명시 — "§3.2 미러" 원칙과 스키마 왕복 테스트로 커버, 조치 불요.
+- **결정을 가르는 리스크:** 인가 dispatcher 2명 시나리오에서 브릿지 측 pin 부재 — M-1이 존재하는 이유인 시나리오가 PLAN 문안대로 구현하면 워커 쪽(위조 턴이 pane에 매 턴 주입되는 반복성 프롬프트 주입면)에서 그대로 열린 채 남는다. 이것이 즉시 approved와 pending-revision을 가른다.
+- Advisor: fable-advisor consulted: yes.
 
 ---
 
