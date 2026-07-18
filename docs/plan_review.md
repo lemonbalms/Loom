@@ -1,8 +1,8 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R31** PLAN **v0.23.6**(워커 pane 스크레이프 delta화 + TUI chrome 필터 — 후보 ⑤+관찰 ⓐⓒ, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18, M-1·M-2 문안 lock + L-1..L-5 author-close + 테스트 ④ 보강·⑩⑪ 신설, no R31b) — 갭 실재(스크레이프 상한 실측 claude ~5.3k/grok ~2.2k/codex ~1.4k + 이전 턴 누적·summary chrome 오염 실증)·delta fail-open 폴백·보수 필터 총론·artifact 마커 pre-filter 원문 스캔·앵커 send-성공-후 갱신 전부 타당. M-1(chrome 필터 substring 매치를 **카드 결과 output 본문**에 적용 — 카드 lane은 artifact 복구 경로 부재(§5.5 out of scope)라 손실 비가역인데 Security 최악-결과 주장("artifact로 복구 가능")이 conv 전제·이 dogfood 레포 자체가 키-힌트 문자열을 본문 인용) + M-2(delta 슬라이스 "0.23.5 프로브와 동일 기법" 지칭 오류 — 프로브는 존재-검사 boolean(`.includes`)뿐, delta는 **위치**가 필요: 정규화 오프셋→원문 오프셋 인덱스 맵 없이는 공백-파괴 슬라이스 또는 re-wrap에 깨지는 라인 매치가 스펙 준수의 결과물) **문안 lock 2건** + L-1..L-5. 직전: R30 v0.23.5 author-close `approved` → implemented `8148642`.
-> **직전:** **R30** PLAN **v0.23.5**(브릿지 주입 verify 루프 3분기 확장 — 후보 ⑨+관찰 ⓓ, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18, M-1(플레이스홀더=probe-hit + TUI 3종 라이브 검증)·M-2(재주입 상한 주입 시도당 1회) lock + L-1..L-3 + 테스트 ⑫⑬, no R30b) → **implemented `8148642`**(codex 자문 F-1..F-7 반영 + M-1 라이브 검증 표 + 라이브 스모크 재주입 복구 실증). 직전: R29 v0.23.4 author-close `approved` → implemented `c7df503`.  
+> **최신:** **R32** PLAN **v0.23.7**(카드 완료 판정 still-running 유예 — card.done 조기 회신 수정, PATCH) **`pending-revision` → author-close `approved`**(2026-07-19, M-1·M-2 문안 lock + L-1 author-close + 테스트 ⑨⑩⑪ 신설, no R32b) — 갭 실재(라이브 2회 실증 + `finishCard`가 이미 settle 재독을 쓰는데도 재현 = idle 이벤트 자체가 조기, settle 계층 커버 불가 주장 성립)·지표 보수 감지 방향성(위양성 최악 = 5분 bounded 지연·내용 손실 없음, 위음성 = 현행 후퇴)·blocked/pane_closed 무유예·conv out of scope·note zod-strip 호환 전부 타당. M-1(유예 재진입 가드 미규정 — 현행 완료 분기의 **동기 flight 삭제**(`:1400-1404`)가 중복 done/idle 이벤트의 유일한 자연 가드인데, 비동기 지표 검사 + flight 유지가 그 가드를 제거: 검사창 병렬 재진입·다중 폴링 루프·유예 중 blocked 미규정) + M-2(note "보드 노트 병기" 문안이 `applyCardResult` notes 1000자 캡(`card-ops.ts:205-208`)의 **말미 `last_seq=` 토큰을 절단** 가능 — seq 멱등성 가드(`:191`) 무음 파손 = M-1 중복 송신의 최후 방어 상실) **문안 lock 2건** + L-1(폴링 재독·최종 output 스크레이프 소스 단일화). 직전: R31 v0.23.6 author-close `approved` → implemented `5bdeae7`.
+> **직전:** **R31** PLAN **v0.23.6**(워커 pane 스크레이프 delta화 + TUI chrome 필터 — 후보 ⑤+관찰 ⓐⓒ, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18, M-1(카드 output 본문 chrome 필터 제외 — artifact 복구 경로 없는 lane의 비가역 손실)·M-2(delta 슬라이스 정규화↔원문 오프셋 인덱스 맵 명시) lock + L-1..L-5 + 테스트 ④ 보강·⑩⑪ 신설, no R31b) → **implemented `5bdeae7`**. 직전: R30 v0.23.5 author-close `approved` → implemented `8148642`.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -14,6 +14,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R32** | **v0.23.7** | **closed (pending-revision → author-close approved 2026-07-19)** | **카드 완료 판정 still-running 유예 (card.done 조기 회신 수정)** (PATCH) — 완료 판정 시 settle 스크레이프 말미 10줄에서 `\d+ command(s) still running` 보수 감지 → flight 유지 + 10s 폴링, 소거 시 finishCard, working 재전이 시 취소, 5분 상한 + note fail-visible. `CardResultPayload`에 additive optional `note`(≤500, 브릿지 생성 문자열만). 갭 실재·감지 방향성·bounded 유예·wire 호환 총론 타당. M-1: 유예 재진입 가드 미규정 — 동기 flight 삭제(현행 유일 가드) 제거 후 중복 done/idle·blocked 이벤트 처리 lock 필요. M-2: note 병기가 notes 1000자 캡 말미 `last_seq=` 토큰 절단 가능 — seq 멱등성 가드 보존 lock 필요. |
 | **R31** | **v0.23.6** | **closed (pending-revision → author-close approved 2026-07-18)** | **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH) — `stripTuiChrome`(box-drawing·키 힌트 보수 필터) + conv 턴 delta 앵커(꼬리 ≤3줄 공백-정규화, fail-open 폴백) + settle 재독 + summary 정합. 갭 실재(상한 실측·오염 실증)·총론 타당. M-1: 카드 output 본문 필터 = artifact 복구 경로 없는 lane의 비가역 손실 + Security 주장 conv 전제 → 카드 output 본문 필터 제외(summary 입력만) lock. M-2: delta 슬라이스는 위치 필요 — 정규화↔원문 오프셋 인덱스 맵 명시 lock("프로브 동일 기법" 인용은 존재-검사 boolean이라 부적합). |
 | **R30** | **v0.23.5** | **closed (pending-revision → author-close approved 2026-07-18)** | **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류 fail-visible 복구)** (PATCH) — 프로브(공백 정규화 꼬리 48자) 기반 (a) 재주입 1회 (b) CR 재전송 (c) fail-visible. 갭 실재·설계 총론·보안(동일 캐시 문자열 재주입) 타당. M-1: Claude Ink composer paste-플레이스홀더로 프로브 (b) 분기 구조적 도달 불가 + 비어 있지 않은 composer 이중 append → 플레이스홀더=hit 판정 + TUI별 composer 가시성 라이브 검증 lock. M-2: 재주입 상한 "flight당"이 conv 멀티턴 flight에서 1턴 소진 → "verify 호출당 1회"로 lock. |
 | **R29** | **v0.23.4** | **closed (pending-revision → author-close approved 2026-07-18)** | **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫ — card.done 유실 / "스타트업 레이스" 실체)** (PATCH) — 구독 prune + pre-ACK reject/ACK 타임아웃 + `pane.closed` 글로벌 1회 + fail-visible + 관측성. root cause·라인 참조 전수 실증, 설계 건전. M-1: `eventsSubscribe` 선-push(`:279-285`) + reject 롤백 부재 → 신설 실패 경로가 pane 닫고 구독 잔존 = 자기 재감염(이후 dispatch 연쇄 실패) → reject-시-롤백 문안 lock 반영 + L-1..L-5 author-close. |
@@ -32,7 +33,14 @@
 
 ## Open (blocking)
 
-*(없음 — R31 M-1·M-2 lock + L-1..L-5 author-close 완료, 2026-07-18. 상세 R31 author-close 로그.)*
+*(없음 — R32 M-1·M-2 lock + L-1 author-close 완료, 2026-07-19. 상세 R32 author-close 로그.)*
+
+### R32 author-close 로그 (2026-07-19, 아키텍트)
+
+- **M-1 반영**: PLAN 0.23.7 "완료 유예(deferral)" 행에 유예 재진입 가드 lock 문안 명기(진입 플래그 `await` 전 동기 설정 · 유예 중 done/idle = no-op(판정 소유권 = 폴링 단일 경로) · 유예 중 blocked = 폴링·타이머 정리 후 즉시 failed · working 재전이 = 취소·플래그 해제·통상 복귀) + 테스트 ⑨(중복 done/idle → 회신 1회·폴링 단일)·⑩(유예 중 blocked → 타이머 정리 + failed 1회) 신설.
+- **M-2 반영**: "관측성 note" 행에 `last_seq` 생존 lock 문안 명기(notes 조립 시 `last_seq=` 토큰 절단 배제 — note는 잔여 예산 내에서만 병기, seq 멱등성 가드 파싱 생존이 조립 불변식) + 테스트 ⑪(note 500자 병기에도 `last_seq` 파싱 생존) 신설.
+- **L-1**: "완료 유예" 행에 재독·output 소스 단일화 명기(폴링 재독 = `settlePaneRead`, 소거 판정 독본을 `finishCard` 파라미터로 전달 — 재스크레이프 없음).
+- PLAN 헤더 Status·섹션 헤더·Approved by 갱신 → **`approved`** (no R32b, Fable 사전 승인 조건 충족).
 
 ### R31 author-close 로그 (2026-07-18, 아키텍트)
 
@@ -40,6 +48,47 @@
 - **M-2 반영**: "conv 턴 delta화" 행에 슬라이스 메커니즘 단락(정규화 오프셋→원문 오프셋 인덱스 맵 동반 구축 → 마지막 출현 매치 끝의 원문 오프셋에서 원문 슬라이스, 정규화본 슬라이스 금지) + "0.23.5 프로브 동일 기법" 인용을 매칭 원리 한정으로 정정 · 테스트 ④에 슬라이스 원문 무결성 어서션 보강.
 - **L-1**: "32k 트리거와의 관계" 행 신설(임계 판정·패키징 입력 = 필터 후 full scrape·delta 미적용·앵커는 패키징 턴에도 갱신) + 테스트 ⑪ 신설. **L-2**: delta 적용 턴 상시 통계 note `delta: kept N/M chars` 명기 + Security ② 정정. **L-3**: 빈 delta note `delta empty (no new output)` 명기. **L-4**: "done_proposal 판정 입력" 행 신설(delta 텍스트 선두 기준 + 폴백 턴 현행 유지 — 권고안 채택). **L-5**: settle 비교 = `stripAnsi` 후 텍스트 기준 명기.
 - PLAN 헤더 Status/Fable-when·섹션 헤더·Approved by 갱신 → **`approved`** (no R31b, Fable 사전 승인 조건 충족).
+
+---
+
+## Review R32 — Plan v0.23.7 (카드 완료 판정 still-running 유예 — card.done 조기 회신 수정, PATCH)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.7` changelog(:53-82) + header(드래프트 커밋 `3706a71`) + 코드 대조(`packages/host/src/bridge-runtime.ts` — `:1001-1012` `settlePaneRead`(0.23.6 settle 재독 — 렌더 완충 계층, "settle 상수 확대로 커버 불가" 주장의 대조점) / `:1357-1405` `onCardHerdrEvent`(`:1364-1374` pane_closed 분기 — flight 삭제 + `sendFailedResult` / `:1394-1398` blocked 분기 — **동기 flight 삭제 + failed** / `:1400-1404` 완료 분기 — **동기 `flights.delete` + `eventsPrune` 후 `void finishCard`; 이 동기 삭제가 중복 done/idle 이벤트의 유일한 자연 no-op 가드**(M-1 근거) — 이벤트 라우팅은 `:1344-1348` flight 존재 기준) / `:1453-1499` `finishCard`(`:1462` **자체 `settlePaneRead` 재독** — L-1의 "그 시점 스크레이프" 전달 관계 근거·갭 실증의 "settle 있어도 재현" 근거 / `:1485-1499` payload 조립 — `note` 삽입 지점) / `:285-313` `startBridgeRuntime` opts(`settleMs` 주입 기존 패턴 — `stillRunningPollMs`/`stillRunningMaxMs` 동형 주입 성립), `packages/host/src/card-ops.ts:190-197` seq 멱등성 가드(`/last_seq=(\d+)/` regex — 타워측 중복 결과 최후 방어)·`:205-208` notes 조립 `` `${summary}${reason} last_seq=${seq}`.slice(0,1000) ``(**`last_seq=`가 말미 — note ≤500 병기 시 캡 초과 절단 = M-2 근거**), `packages/protocol/src/card-contract.ts:36-53` `CardResultPayloadSchema`(비-strict `z.object` — zod strip으로 구 타워 미지 키 무시·optional 부재 허용·`CARD_CONTRACT_VERSION` literal 무변경 — note 하위 호환 주장 성립 근거)) + `tasks/lessons.md` "2026-07-19 (2)"(FIX-0236·BUNX-FIX 라이브 2회 실증) + `docs/plan_review.md` R30·R31(스크레이프 기반 판정·shaping 전례 + M 기준 선례)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-19
+**결론:** **`pending-revision`** — M-1·M-2 문안 lock + L-1 author-close 후 **재리뷰 없이 `approved` 전환 가능** (Fable 사전 승인, no R32b).
+
+### 결정적 발견 (성패 지점)
+현행 완료 분기(`:1400-1404`)의 **동기 `flights.delete`** 는 단순한 정리가 아니라 재진입 가드다 — 이벤트 라우팅(`:1344-1348`)이 flight 존재로 분기하므로, 삭제 후 도착하는 중복 done/idle 이벤트는 자연 no-op이 된다. PLAN 문안("flight 삭제·`eventsPrune`·`finishCard` **전에** settle 스크레이프로 지표 검사, hit 시 **flight 유지** + 유예 폴링")을 충실히 구현하면 완료 분기가 비동기가 되고 flight가 살아남아 이 가드가 사라진다: (a) settle 검사창(~250-500ms + 2독) 중 후속 done/idle 재진입 → 병렬 지표 검사·중복 `finishCard`, (b) 유예 폴링 중 중복 idle → 다중 폴링 루프(타이머 중복), (c) 유예 중 blocked 이벤트 처리 미규정(타이머 정리 열거는 "pane_closed·bridge stop"뿐). 스펙이 규정한 상태 전이는 working 재전이·pane_closed·상한 소진 3종뿐이고 완료-계열 중복·blocked가 빠졌다 — R25–R31 M 기준("문안대로 구현하면 결함이 스펙 준수의 결과물") 부합 → M-1. 이를 격화시키는 것이 M-2: 중복 송신의 타워측 최후 방어는 `card-ops.ts:190-197` seq 멱등성인데, note "병기" 문안대로면 notes 1000자 캡(`:205-208`)에서 말미 `last_seq=` 토큰이 절단돼 그 방어가 무음 파손된다(summary ≤900 + note ≤500 = 캡 초과 구조적). M-1×M-2 복합의 최악은 bounded 지연이 아니라 **무음 보드 상태 오염**(중복 결과 재적용)이다.
+
+### Checklist
+- [x] **갭 실재 — 라이브·코드 이중 확인** — lessons "2026-07-19 (2)" FIX-0236("Worked for 48s. 1 command still running" 스크레이프로 card.done, 실완주 ~4분 뒤)·BUNX-FIX(1m15s 재현) 2회 실증. `finishCard`는 **이미** `settlePaneRead`(`:1462`)를 쓰는데도 재현 — 조기의 원인이 렌더가 아니라 **idle 이벤트 자체**임이 코드로 확증되고, "settle 상수 확대로 구조적 커버 불가·완료 판정이 지표를 봐야 한다"는 Why 절 논증 성립.
+- [x] **지표 감지 방향성·최악-결과 서술 정확** — 말미 비공백 10줄 한정 + 실측 문구만(`\d+ command(s) still running`, 공백-정규화·대소문자 무시)의 보수 셋: **위양성**(워커 출력이 지표 문자열을 말미 인용 — 이 dogfood 레포의 lessons·PLAN 자체가 해당 문자열 포함) 최악 = `stillRunningMaxMs`(5분) bounded 지연 + exhausted note, **내용 손실·상태 오판 없음** — 서술 정확. **위음성**(미지 TUI 문구) = 현행 즉시 회신으로 후퇴 — 악화 없음, "미지 TUI는 통과가 기본" 스코프 명시와 정합. 말미 한정이 브리프 echo 위양성을 축소하는 논증도 성립(스크롤백 인용은 tail 밖).
+- [x] **유예 상태기계 — 규정된 전이는 건전, 재진입이 공백** — working 재전이 취소·복귀(재-idle 재판정), 상한 소진 fail-visible(무한 대기 금지), 타이머 opts 주입(`:285-313` `settleMs` 동형 — 실타이머 소값 테스트, 0.23.4 ⑭ 교훈 반영)·flight 정리 경로 타이머 해제 전부 타당. 단 유예 pending 중 완료-계열 중복 이벤트·blocked 처리 미규정 → M-1.
+- [x] **note wire 호환 주장 성립 (브릿지→와이어 구간)** — `CardResultPayloadSchema`(`card-contract.ts:36-53`)는 비-strict `z.object` → 구 타워는 zod strip으로 `note` 무시, 신 타워는 optional이라 부재 허용, `CARD_CONTRACT_VERSION` literal 무변경 — additive 주장 성립. note 값 = 브릿지 생성 고정 문구 + 경과 초만(스크레이프 본문 미인용) — 보드 노트 오염 표면 없음 성립. 단 **타워측 병기 문안**이 `last_seq` 가드와 충돌 → M-2.
+- [x] **blocked/pane_closed 무유예 타당** — blocked는 입력 대기 상태라 유예가 가시성만 지연(즉시 회신이 복구 경로), pane_closed는 재독 자체 불가. "유예는 성공 판정에만" 경계 합리적.
+- [x] **Out of scope 경계 타당** — conv 턴 조기 회신은 멀티턴 후속 턴으로 자연 복구(관찰 지속 스코프 밖 — lessons 기록과 정합), 카드는 flight당 결과 1회라 유예가 유일 방어 = 카드 한정이 정확한 절단. herdr agent_status 판정 수정 배제(브릿지-로컬 완충만)도 표면 최소화 방향.
+- [x] **테스트 표 ①–⑧** — hit→유예→소거(①)·working 재전이(②)·상한 소진(③)·무지표 회귀(④)·말미 밖 echo(⑤)·blocked 무유예(⑥)·유예 중 pane_closed 타이머 정리(⑦)·note 왕복+구 스키마 호환(⑧) 커버. 단 **중복 완료 이벤트**(M-1)·**note 병기 last_seq 생존**(M-2) 케이스 부재 → lock과 함께 보강.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (Med, binding — PLAN 문안 lock): 유예 재진입 가드 미규정 — 동기 flight 삭제(현행 유일한 중복 이벤트 가드)를 제거하면서 대체 가드를 규정하지 않음.** 근거는 결정적 발견 참조. 잠글 문안: **"유예 진입 플래그는 settle 검사 `await` 전에 flight에 동기 설정한다. 플래그 설정 중(검사·폴링 포함) 도착하는 done/idle 완료-계열 이벤트는 no-op — 완료 판정 소유권은 유예 폴링 단일 경로. 유예 중 blocked 이벤트 = 폴링·타이머 정리 후 현행 즉시 failed 회신. 유예 중 working 재전이 = (기존 문안대로) 폴링 취소·플래그 해제·통상 복귀."** + 테스트: 유예 중 중복 idle/done → 회신 1회·폴링 단일, 유예 중 blocked → 타이머 정리 + failed 1회. High 아님: 최악(중복 송신)은 타워 seq 가드가 방어 가능한 부류이나 그 가드가 M-2와 결합해 파손될 수 있어 Med 유지. (advisor 일치 — "동기 삭제가 유일한 재진입 가드" 코드 확증 + M-1×M-2 복합 격화 논증 일치.)
+- **M-2 (Med, binding — PLAN 문안 lock): note "보드 노트 병기" 문안이 `applyCardResult`의 seq 멱등성 가드를 절단 가능.** 현행 notes 조립(`card-ops.ts:205-208`) = `` `${summary}${reason} last_seq=${seq}`.slice(0,1000) `` — 현행 최악 ~912자로 캡 내이나, note ≤500 병기 시 최대 ~1412자로 **캡 구조적 초과** → slice가 말미를 자르고, `last_seq=`가 말미에 있으면 멱등성 regex(`:191`)가 무음 실패 → 이후 중복/재전송 결과가 재적용(보드 상태 오염). M-1의 중복 송신 시나리오에서 최후 방어가 사라지는 결합이 심각도 근거. 잠글 문안: **"notes 조립 시 `last_seq=` 토큰은 절단에서 항상 생존해야 한다 — note는 잔여 예산 내에서만 병기(예: `last_seq=`를 선두/고정 위치에 두거나 note를 마지막에 두되 note 몫만 절단)."** + 테스트: note 최대 길이(500자) 병기에도 `last_seq` 파싱 생존. High 아님: 발화 조건이 note 존재 + 긴 summary 결합이고 절단 방향에 따라 미발화 가능 — 그러나 문안 무규정 상태로는 구현 복불복. (advisor 일치 — 현행 ~912자/병기 ~1412자 산정 일치.)
+- **L-1 (Low, author-close): 폴링 재독·최종 output 스크레이프 소스 미규정.** ① 유예 폴링 재독이 `settlePaneRead`인지 bare `paneRead`인지 미규정 — bare 재독이 mid-render 프레임에서 지표 줄을 놓치면 미완 화면 회신 = 원결함의 축소 재현. ② "지표 소거 시 정상 `finishCard`(그 시점 스크레이프 사용)"인데 `finishCard`는 내부에서 **자체** `settlePaneRead`(`:1462`)를 수행 — 전달 없이는 문안 구현 불가이고, 재독하면 소거 판정 독본과 output 독본이 어긋난다(재독 시 지표 재출현 처리도 모호). 닫기 한 줄: **폴링 재독 = `settlePaneRead`, 지표 소거를 판정한 그 settle 독본을 `finishCard`에 파라미터로 전달해 output으로 사용(재스크레이프 없음).** (advisor 일치 — "현행 시그니처로는 문안 구현 불가" 확증.)
+
+### Decision notes
+- **verdict 구조 (R25–R31 동형):** M-1·M-2 모두 "문안대로 구현하면 결함이 스펙 준수의 결과물" 부류 — M-1은 스펙이 명시한 "flight 유지"가 현행 코드의 암묵 가드를 제거하는데 대체 규정이 없고, M-2는 스펙이 명시한 "병기"가 기존 캡·토큰 배치와 충돌한다. 둘 다 설계 재작업이 아닌 문안 lock(재진입 한 단락 + notes 조립 한 줄) + 테스트 2건이고, 나머지 설계(보수 감지·bounded 유예·fail-visible·무유예 실패 경로·타이머 주입·wire additive) 전부 건전함을 코드 대조로 확인. M-1·M-2 반영 + L-1 author-close 후 재리뷰 없이 `approved` 전환 (no R32b).
+- **결정을 가르는 리스크:** as-is approve 시 implementer가 재진입 의미론을 즉흥 결정하고 M-1×M-2 복합(중복 송신 + dedup 가드 파손)이 배송될 수 있다 — 그 최악은 스펙이 주장하는 "bounded 지연"이 아니라 **무음 보드 상태 오염**. lock 두 건이 이 급을 bounded로 되돌린다.
+- **보안 판단 요지:** 신규 신뢰 표면 없음 주장 성립 — 지표는 untrusted 스크레이프를 **회신 타이밍 판단에만** 사용(콘텐츠 shaping 없음), 주입 경로(M-2/M-4)·herdr RPC·MCP 무접촉, note는 브릿지 생성 문자열만(스크레이프 미인용). 악의 지표 잔존 = `stillRunningMaxMs` bounded + 현행(무기한 미회신) 대비 악화 아님 — 서술 정확. 격상 finding 없음. 위험의 실체는 보안이 아니라 **프로토콜 위생**(중복 결과·멱등성) — M-1·M-2가 그 경계.
+- **스펙-코드 정합:** 스펙 라인 참조(완료 분기 ~:1399·`finishCard` ~:1453·`settlePaneRead` ~:1001) 실코드 일치(`:1400-1404`/`:1453`/`:1001`). opts 주입 전례(`:285-313` `settleMs`)·seq 가드(`card-ops.ts:190-197`)·스키마 strip(`card-contract.ts:36-53`) 대조 완료.
+- **수정 파일 범위:** 이 리뷰는 `docs/plan_review.md` + PLAN 헤더 Status `pending-revision` 동기화만 수정(디스패치 브리프 지시 — commit/push 없음). M/L 문안 반영·author-close·`approved` 전환은 아키텍트/implementer 수행.
+- Advisor: fable-advisor consulted: yes. (verdict 일치: pending-revision, M-1·M-2·L-1 3건 전부 확증 — "동기 삭제가 유일한 재진입 가드"·notes 캡 산정(현행 ~912자/병기 ~1412자)·"finishCard 시그니처로는 '그 시점 스크레이프' 구현 불가" 코드 확증 및 M-1×M-2 복합(중복 송신 + dedup 파손 = 무음 보드 오염) 격화 논증은 advisor 보강. 설계 선택지 6종(말미 10줄·bounded 최악·무유예 실패 경로·conv 스코프 밖·타이머 주입·zod strip 호환) 전부 타당 일치, 추가 리스크 없음.)
+
+### Author-close (2026-07-19, plan author)
+
+- **M-1 반영**: "완료 유예(deferral)" 행 — 유예 재진입 가드 문안(플래그 `await` 전 동기 설정 · 유예 중 done/idle no-op · 유예 중 blocked 정리 후 즉시 failed · working 재전이 취소·해제·복귀) lock 반영. 테스트 ⑨⑩ 추가.
+- **M-2 반영**: "관측성 note" 행 — `last_seq=` 토큰 절단 배제(잔여 예산 내 병기, 멱등성 가드 파싱 생존 = 조립 불변식) lock 반영. 테스트 ⑪ 추가.
+- **L-1**: 폴링 재독 = `settlePaneRead` + 소거 판정 독본을 `finishCard` 파라미터로 전달(재스크레이프 없음) 명시.
+- PLAN Status `pending-revision` → **`approved`** (사전 승인 경로, no R32b).
 
 ---
 
