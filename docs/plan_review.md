@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R25** PLAN **v0.23.0**(conv 멀티턴 수직 슬라이스) **`approved`**(author-close, 2026-07-18) — M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)·M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 완료 + L-1..L-4 author-close 완료(no R25b). 스펙 정본 CONV_SPEC은 R24 approved 유지.  
+> **최신:** **R25** PLAN **v0.23.0**(conv 멀티턴 수직 슬라이스) **`approved` → implemented `e4dab9e`**(author-close 2026-07-18, grok-impl 구현 · 아키텍트 검증 bun test 261/0) — M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)·M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 완료 + L-1..L-4 author-close 완료(no R25b). 스펙 정본 CONV_SPEC은 R24 approved 유지.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,7 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
-| **R25** | **v0.23.0** | **closed (pending-revision → author-close approved 2026-07-18)** | **conv 멀티턴 수직 슬라이스** — approved CONV_SPEC(R24)의 구현 PLAN. 스펙 이전 충실·스코프 minimal-but-sufficient·왜곡 없음. 단 R24 M-1 "양측 pin"의 **브릿지 측 집행 서술 공백**(M-1) + **미지 convId fail-closed 기본값 미고정**(M-2) → PLAN 문안 lock 2건 + L-1..L-4 author-close. |
+| **R25** | **v0.23.0** | **closed (approved → implemented `e4dab9e` 2026-07-18)** | **conv 멀티턴 수직 슬라이스** — approved CONV_SPEC(R24)의 구현 PLAN. 스펙 이전 충실·스코프 minimal-but-sufficient·왜곡 없음. 단 R24 M-1 "양측 pin"의 **브릿지 측 집행 서술 공백**(M-1) + **미지 convId fail-closed 기본값 미고정**(M-2) → PLAN 문안 lock 2건 + L-1..L-4 author-close. |
 | **R24** | **CONV_SPEC v1 (스펙 문서, PLAN 버전 아님)** | **closed (pending-revision → author-close approved 2026-07-18)** | **크로스머신 CLI 멀티턴 대화 1단계 스펙** — 티켓 #2·#5·#6·#7·#8·#9 결정 통합 충실·relay 무변경 원칙 일관. 단 선언된 M-4 경계가 신규 표면 2곳에 미적용: **M-1 conv↔peer pin**(타워 측 턴 발신자 바인딩) + **M-2 artifact ref 검증 규약**(fetch 명령 기계 조립 방어). L-1..L-5 author-close. 구현 PLAN은 locks 반영 스펙 기준. |
 | **R23** | **v0.22.0** | **closed (approved → implemented 2026-07-17)** | **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스) — 새 데몬 표면 + MCP `dispatch_card`/`apply_card_result` + 원격 프롬프트 주입 신뢰 경계. M-1/M-2 locks 충족(코드+테스트). L-1..L-3 author-close. 와이어 무변경. FREEZE 예외=오너 pull. |
 | **R22** | **v0.21.0→0.21.1** | **closed (approved → implemented `d05d714`)** | **PTY handoff inject** — Claude-first · opt-in · accept-gated · **no-auto-submit paste**. M-1…M-6 locks. Fable 5 사전 승인(no R22b). codex-impl 구현 → 아키텍트 독립 검증(bun test 190/0, M-1..M-6 코드 확인). 와이어 변경 없음. FREEZE 예외=오너 pull. |

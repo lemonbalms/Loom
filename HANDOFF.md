@@ -14,33 +14,30 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 R24 완주: [`docs/CONV_SPEC.md`](./docs/CONV_SPEC.md) `approved` (author-close, 2026-07-18, `f7adfdc`) — 다음 = conv 멀티턴 구현 PLAN 작성.**  
-> (스펙 출처: wayfinder 맵 [#1](https://github.com/lemonbalms/Loom/issues/1) · 리뷰 상세: `docs/plan_review.md` R24 — M-1 conv↔peer pin·M-2 artifact ref 검증 규약 문안 반영 + L-1..L-5 author-close, no R24b.)
+> **🎯 v0.23.0 conv 멀티턴 수직 슬라이스 — 스펙(R24)→PLAN(R25)→구현까지 하루 완주. `implemented` (`e4dab9e`), bun test 261/0.**  
+> 체인: CONV_SPEC approved(`f7adfdc`) → PLAN v0.23.0 approved(`9a9a67f`, R25 author-close) → 구현 `e4dab9e` (grok-impl 레인 · 아키텍트 독립 검증). 전 리뷰(R24·R25)는 **herdr dispatch로 스폰된 claude 워커**가 fable-advisor 자문 포함 수행 — 브릿지 경로 실전 2회 성공.
 >
-> ### R24 사이클 실행 방식 (dogfood 실증 — 이 세션)
-> - **리뷰**: 룸 `LOOM-SGLR` 재생성 → 카드 `task_40cd8e16807e0800` → `dispatchCard`(claude-impl 타워) → **mac-node 브릿지가 herdr로 claude 워커 스폰**(M-2 프롬프트 주입) → fable-advisor 자문 포함 R24 작성 → `[R-RESULT]`+card.done 회신 → `applyCardResult`(L-2 검증) 보드 반영. **0.22.0 브릿지 경로 첫 실전 사용 성공.**
-> - **PATCH**: grok-impl 레인(카드 `task_06b468b9893a9e08`) → 아키텍트 diff 검증 → `f7adfdc` 커밋 · `[VERIFY]` 발송.
-> - 리뷰어 워커 pane 정리 완료. 브릿지(`mac-node`, pid 14480)와 sticky host 6개는 온라인 유지 — 다음 게이트에서 재사용.
+> ### 다음 액션 (우선순위 순)
+> 1. **conv 실물 스모크** — MCP 4도구로 타워↔워커 1:1 대화 왕복 라이브 1회 (0.22.0 관례: fixture green 후 실물 확인). 시나리오: conv_open → 워커 pane 스폰 → turn 왕복 2~3회 → conv_close.
+> 2. **후속 PATCH 후보** (PLAN 0.23.0 "Implemented as of" 블록 참조): ① §5.2 artifact 패키징 호출부(M-2 검증 함수 존재, 호출 코드 미구현 — 32k tail-truncate 폴백을 §5.1 "절단 금지" 정합으로 회복) ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ④ dispatch allowlist codex/grok 확장.
+> 3. 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
 >
-> ### 실측 제약 (재확인 금지)
-> - **herdr dispatch allowlist = `claude`만** (`card-contract.ts:19`). codex/grok dispatch 확장 = 구현 PLAN 후보 항목.
-> - **M-1 allowlist엔 전체 peer ID** (`~/.loom/profiles/<name>.json`의 `peerId`) — `loom peers` 표시값은 잘린 ID (`tasks/lessons.md` 2026-07-18).
-> - codex/grok 구동은 `loom run` 경로: `bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write` · `bun run loom --profile impl run grok`
->
-> ### 다음 액션
-> - **conv 멀티턴 구현 PLAN 초안** (PLAN vNext): approved CONV_SPEC 기준. 구현 lane = DOGFOOD §1.2 체인 (grok 기본). PLAN은 R{n} 게이트 필요 (MINOR+protocol 인접).
-> - 후보 스코프: conv_* MCP 4도구 · conv↔peer pin 집행 · dispatch allowlist codex/grok 확장.
-> - 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
+> ### 실측 제약·교훈 (재확인 금지 — 상세 `tasks/lessons.md` 2026-07-18)
+> - herdr dispatch allowlist = `claude`만 (`card-contract.ts:19`). codex/grok은 headless 레인(grok-implementer 서브에이전트)으로 위임 — 오너 승인된 방식.
+> - M-1 allowlist엔 **전체 peer ID** (`loom peers` 표시값은 잘린 ID).
+> - 브릿지 주입은 워커 TUI 스타트업 레이스에 질 수 있음 — composer 비면 `herdr agent send` 리터럴 재주입 + 별도 Enter로 수동 복구 (0.23.0 후속 개선 후보).
+> - 워커 pane 정리는 **card.done 수신 후** (조기 close 시 브릿지 스크레이프 회신 유실 — R25에서 실증).
+> - `bun test`는 셸에 `LOOM_RELAY_TOKEN`/`LOOM_RELAY_URL`이 있으면 relay 테스트가 깨짐 — `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`.
 >
 > ### 하지 말 것
-> - PLAN 승인(R25) 전 conv_* 구현 착수 — 스펙 approved ≠ PLAN approved
-> - 결정 재론 — 티켓 resolution + R24 본문이 SSOT · wayfinder 맵 #1 재개봉 금지
+> - R25 결정·CONV_SPEC 재론 — plan_review R24·R25 본문이 SSOT
+> - artifact 패키징 등 후속 PATCH를 리뷰 게이트 없이 착수 (M-lock 인접이면 R{n} 필요 여부 WORKFLOW §5.1 확인)
 
 ---
 
 ## One-line resume
 
-> **CONV_SPEC.md R24 `approved` (`f7adfdc`).** 리뷰=herdr dispatch 워커(브릿지 첫 실전), PATCH=grok-impl 레인, 아키텍트 검증 완료. 다음 = conv 멀티턴 **구현 PLAN 초안 → R25**. 룸 `LOOM-SGLR`+브릿지 온라인 유지.
+> **v0.23.0 implemented (`e4dab9e`).** 스펙 R24 → PLAN R25 → 구현까지 완주 — 리뷰 2회는 herdr dispatch 워커, 구현·PATCH는 grok 레인, 아키텍트 독립 검증(261/0). 다음 = **conv 실물 스모크** → 후속 PATCH(artifact 패키징 호출부 등). 룸 `LOOM-SGLR`+브릿지 온라인.
 
 ---
 
@@ -48,10 +45,10 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.22.0** — `loom bridge` + MCP card tools |
-| **PLAN** | **v0.22.0** `approved` → **implemented** |
-| **Open blocking** | none — **R24 closed `approved`** (author-close, `f7adfdc`) · GitHub Issues 전부 closed |
-| **Tests** | `bun test` **218 pass / 0 fail** · 6 pkg typecheck green |
+| **CLI / code** | **0.23.0** — conv 멀티턴 (`conv_*` 4도구) + `loom bridge` |
+| **PLAN** | **v0.23.0** `approved` → **implemented** (`e4dab9e`) |
+| **Open blocking** | none — R24·R25 모두 closed · GitHub Issues 전부 closed |
+| **Tests** | `bun test` **261 pass / 0 fail** · 6 pkg typecheck green |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** |
 | **Remote** | `origin/main` **`cc23c3d`** (스펙 커밋) · 시연 `docs/spikes/DISPATCH-DEMO.md` |
 | **Untracked (커밋 제외)** | `.playwright-mcp/` · `docs/agents/` + CLAUDE.md 수정분은 mattpocock-skills 셋업분 — 커밋 여부 오너 판단 |

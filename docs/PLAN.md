@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.23.0** |
-| **Status** | **`approved`**(R25 author-close, 2026-07-18) — **conv 멀티턴 수직 슬라이스**(타워↔워커 1:1 대화 왕복 — `conv.open`/`accept`→`turn`(반복)→`done_proposal`/`close`) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/CONV_SPEC.md`(**approved**, R24 author-close 2026-07-18). FREEZE 해제(오너, 2026-07-18) — conv 멀티턴 트랙 진행 승인(HANDOFF.md). 0.22.0(R23) implemented — 브릿지 수직 슬라이스 선행. |
+| **Status** | **`approved` → implemented** (`e4dab9e`, 2026-07-18) — **conv 멀티턴 수직 슬라이스**(타워↔워커 1:1 대화 왕복 — `conv.open`/`accept`→`turn`(반복)→`done_proposal`/`close`) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/CONV_SPEC.md`(**approved**, R24 author-close 2026-07-18). FREEZE 해제(오너, 2026-07-18) — conv 멀티턴 트랙 진행 승인(HANDOFF.md). 0.22.0(R23) implemented — 브릿지 수직 슬라이스 선행. |
 | **Supersedes** | 0.22.0 |
 | **Last updated** | 2026-07-18 |
 | **Approval** | **R25 `pending-revision` → M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)/M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 → author-close `approved`**(Fable 5 사전 승인, no R25b). L-1..L-4 author-close. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음). |
@@ -84,6 +84,8 @@
 **R25 질의:** *(현재 없음. R25 검토는 PLAN 문안 lock 2건(M-1/M-2)으로 종결됐다 — 실제 구현 중 CONV_SPEC과 충돌을 발견하면 이 항목에 기록하고 해당 부분 구현을 보류한다.)*
 
 **Approved by:** Fable 5 (fable-advisor) R25 — `pending-revision` → M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)/M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 → **author-close `approved`**(Fable 사전 승인, no R25b), 2026-07-18. L-1(테스트 열거 보강)·L-2(convId 형식 출처 표기)·L-3("정규화 후" 문구 복원)·L-4(§5.4 삭제 자동화 out-of-scope 명시) author-close.
+
+**Implemented as of `e4dab9e` (2026-07-18, grok-impl 레인 · 아키텍트 독립 검증):** 13파일 +2,636줄 — `conv-contract.ts`(+tests)·`conv-ops.ts`·`conv-state.ts`(+tests)·`bridge-runtime.ts` conv 경로·MCP 4도구·CLI 0.23.0 범프. `bun test` **261/0** · 6패키지 typecheck green. M-lock 코드 확인: 양측 pin(`conv-state.ts:107` + conv-ops/bridge-runtime 호출부), fail-closed(`conv-state.ts:61-75,137`), M-2 검증(`conv-contract.ts:166-234` — argv 배열, 셸 연결 없음). 이탈 6건 `implementation-notes.md` §0.23.0. **Follow-up(후속 PATCH 후보):** ① §5.2 artifact 패키징 호출부(M-2 검증 함수는 완성·테스트됐으나 브릿지가 git push/scp 조립을 실제 호출하지 않음 — 32k 초과는 0.22.0 관례 tail-truncate 폴백, §5.1 "절단 금지"와의 정합은 이 PATCH에서 회복) ② done_proposal 탐지 휴리스틱(`[DONE_PROPOSAL]` prefix — 스펙 침묵 영역, 기본 normal) ③ conv.open M-1 deny 시 클레임 순서(카드 관례는 미클레임 — 저위험 divergence).
 
 #### 0.22.0 — 2026-07-17 (`pending-review` R23 — **Loom×Herdr 노드 브릿지 수직 슬라이스 (`loom bridge`)**)
 
