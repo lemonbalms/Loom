@@ -78,6 +78,8 @@
 
 **Rule (워크어라운드):** pane 카드의 완료 판정을 **인박스 card.done에만 의존하지 말 것** — 워커에게 최종 라인 마커(`[IMPL-DONE]`/`[FIX-DONE]` 등)를 스펙으로 강제하고, 모니터는 `herdr pane read`로 그 마커를 직접 감시 + 작업 트리/검증 명령으로 실물 확인. 고착된 카드는 보드 수동 done + pane 수동 close + (필요 시) 브릿지 재시작.
 
+**해소 (2026-07-18, 0.23.4 `c7df503`):** root cause(HerdrClient append-only 구독 + pre-ACK close 무정착) 수정 완료 — 동일 브릿지 2번째 카드 card.done 정상 도착 라이브 실증. **"새 카드 전 브릿지 재시작" 워크어라운드 해제, card.done 인박스 신뢰 회복.** 마커 감시는 이중 방어로 유지(마커 grep은 프롬프트 echo 오탐 주의 — 지시문에 마커 형식을 쓰면 pane에 echo되므로 verdict 단어·숫자까지 매치하는 패턴 + `또는`/`or`/`<reason>` 제외 필터 필수, 이번 세션 오탐 3회). 잔여: 스폰 직후 주입 유실(순수 TUI 스타트업 레이스)은 ⑫ 수정 후에도 grok 2회 재현 — 후보 ⑨ 대상. codex pane은 승인 프롬프트 대기 중 herdr `blocked` 방출 → 브릿지가 가짜 `failed reason=agent_blocked` 회신(작업은 승인 후 완료됨, 관찰 ⓔ). grok pane 워커는 `/private/tmp` 스크래치패드 읽기 실패(샌드박스) — **긴 카드 브리프는 저장소 내부 untracked 파일로 배치**할 것.
+
 ## 2026-07-18 (5) — 오너 레인 지시: 구현·자문 전부 herdr pane dispatch로 (headless 서브에이전트 대신)
 
 **지시 (2026-07-18, 0.23.3 세션):** ① 자문(advisor)은 fable-advisor(Fable 5) 대신 **codex(GPT-5.6)** — 토큰 한도 절약. ② 구현·자문 모두 **herdr pane dispatch 레인**으로 진행(dogfood 겸). 실행 형태: 긴 스펙은 파일로 저장하고 pane엔 "파일 읽고 수행"의 짧은 프롬프트만 주입(레이스 유실 리스크 축소, 실증 유효). codex는 mac-node config에 opt-in 등록됨(fail-closed 검증용 미등록 상태 종료). **공식 R{n} 리뷰의 fable-advisor 필수 규정(DOGFOOD_LOOP §2)과 지시 ①이 충돌하면 오너에게 확인 또는 codex-review 레인 대체를 리뷰 기록에 명기.**

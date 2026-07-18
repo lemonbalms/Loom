@@ -14,16 +14,17 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.23.3 conv 워커 파일-기반 artifact 트리거 (§5.1 자가 적용) — R28 게이트→구현 완주. `implemented` (`95cc81e`), bun test 335/0.**  
-> 체인(당일 5연속): … 0.23.2 `91bee75` → **후보 ⑩ 조사**((a) 채택 — CONV_SPEC §5.1 "워커 자가 적용" 원의도 정렬 · (b) herdr 노출확대 불가·(c) 임계하향 기각) → PLAN 0.23.3 R28 `pending-revision`(M-1: 방출 계약만 재사용 lock + L-1..L-3) → author-close `approved`(`1ad0810`) → **구현·자문·수정 전부 herdr pane 레인**(오너 지시): grok pane 구현 → codex pane 자문 REJECT 2건(dedup 선기록·위반 마커 무음 무시) → grok pane 수정 → `95cc81e`. 후보 ⑪(capable 모델 benign 페이로드)은 ⑩(a)가 흡수.
+> **🎯 v0.23.4 HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫) — R29 게이트→구현→라이브 검증 완주. `implemented` (`c7df503`), bun test 348/0.**  
+> 체인(당일 6연속): … 0.23.3 `95cc81e` → **후보 ⑫ root cause 확정**(codex pane 조사) → PLAN 0.23.4 R29 `pending-revision`(M-1: `eventsSubscribe` reject-시-롤백 lock — 신설 fail-visible 경로의 자기 재감염 + L-1..L-5) → author-close `approved`(`b8eb452`) → **전 레인 herdr pane**(오너 지시): grok pane 구현 → codex pane 자문 REJECT 5건(pane close 누락·stderr profile 미검증·테스트 ④⑩ 실장애 미재현·superseded 타이머 누수+⑭ fake-timer 무효·⑧ 정리 미실증) → grok pane 수정 → `c7df503`.
 >
-> ### ⚠️ 후보 ⑫ (상위 — **root cause 확정**, codex pane 조사 완료 2026-07-18): 브릿지 card.done 유실 + "스타트업 레이스"의 실체
-> **원인: `HerdrClient` 구독 리스트가 append-only** (`herdr-client.ts:278`) — 닫힌 pane의 구독이 남아, 다음 카드의 `eventsSubscribe` 재개설 리스트를 오염 → herdr가 무효 스트림을 **ACK 전에 close** → close 핸들러가 pending promise를 reject 안 함(`:357`) → **await 영구 미정착** + 재연결도 오염 리스트 재전송(`:306`)으로 백오프 무한. **`bridge-runtime.ts:496` 구독 await 뒤 `:507` 주입이라 프롬프트 주입 자체가 미실행 — grok/codex "스타트업 레이스"(composer 빈 현상)의 실체가 이 버그**(첫 pane close 후 dispatch한 카드에서만 재현된 이유 일치). 재현·반증: A 생존 시 B ACK 106ms 정상 / A 닫힌 후 B 타임아웃·이벤트 0 / A 구독 prune 시 즉시 복구. 부차: `pane.closed`는 글로벌 스키마인데 pane별 중복 구독. **수정 방향**: 살아있는 flight 집합으로 재개설 리스트 재구성(or pane_closed 시 prune) + pane.closed 글로벌 1회 + pre-ACK close reject·ACK 타임아웃 + bridge status에 `eventConnected`/`lastSubscribeAck` 노출·stderr 유한 로그. 워크어라운드(수정 전): 카드 결과는 인박스 의존 말고 pane 마커/작업트리 직접 검증 + 새 카드 전 브릿지 재시작이 안전.
+> ### ✅ 후보 ⑫ 해소 (2026-07-18, 0.23.4) — 라이브 검증 3종 완료
+> `eventsPrune`(flight 종료 시 구독 정리) + M-1 롤백 + pre-ACK reject/ACK 타임아웃 + `pane.closed` 글로벌 1회(기동 fail-fast) + fail-visible(`events_subscribe_failed`) + 관측성(`bridge status`에 `eventConnected`/`lastSubscribeAck`/`eventSubscriptions` · stderr `loomDir()/bridge/<profile>.stderr.log` 0600). **라이브 증거**: ① 동일 브릿지 2번째 카드 구독 성립·card.done 정상 도착(수정 전 2회 연속 유실 시나리오 그대로 통과) ② flight 종료 후 `eventSubscriptions` 글로벌만으로 복귀 ③ L-3 프로브 — herdr는 established 스트림을 강제 종료하지 않음(prune-without-reopen 전제 실증). **워크어라운드 해제: 새 카드 전 브릿지 재시작 불필요. 카드 결과 인박스(card.done) 신뢰 회복.** pane 마커 감시는 이중 방어로 유지 권장.
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **PLAN 0.23.4 (후보 ⑫ 수정) 게이트** — 위 수정 방향으로 PATCH 스펙 작성 → R29 리뷰(pane 레인) → 구현. 후보 ⑨(주입 verify)와 원인 공유분 정리 필요(⑫ 수정 시 레이스 상당수 소멸 예상 — ⑨는 잔여분만).
-> 2. **0.23.3 실물 스모크** — benign 페이로드로 §5.1 마커 경로 라이브 실증(예: "docs/PLAN.md 전문을 artifact로 전달"). conv 레인 + `LOOM_ARTIFACTS_DIR` env·규약 프롬프트 확인.
-> 3. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI ⑨ **브릿지 주입 verify 루프 개선**(스타트업 레이스 — 오늘 누계 6회+: grok 3·codex 2 재현, 수동 복구 절차 lessons. ⑫와 인접 가능성. **관찰 ⓓ 신규**: "텍스트는 composer에 들어갔는데 제출만 실패(입력만 됨·pane idle)" 상태 실존 — codex TUI에서 `pane send-keys Enter` 미제출 실증, CR 리터럴 `agent send $'\r'`만 신뢰 가능. 현행 verify 루프는 working 전이만 대기하므로 이 상태를 **감지·복구 못 하고**, 실패해도 카드 상태 무변화+stderr ignore라 **무신호** — verify는 (a) composer 빈 경우=재주입, (b) composer 채워진 채 idle=CR 재전송, (c) 소진 시 failed result 발행(fail-visible)로 확장 필요).
+> 1. **0.23.3 실물 스모크** — ⑫ 해소로 이제 안전. benign 페이로드로 §5.1 마커 경로 라이브 실증(예: "docs/PLAN.md 전문을 artifact로 전달"). conv 레인 + `LOOM_ARTIFACTS_DIR` env·규약 프롬프트 확인.
+> 2. **후보 ⑨ (주입 verify 루프 확장) — ⑫ 수정 후에도 잔여 실존 확인됨**: 0.23.4 세션에서 grok pane 스폰 직후 주입 유실 2회 추가 재현(구독은 정상 성립한 상태 — 즉 ⑫와 별개의 순수 TUI 스타트업 레이스 잔존). 수동 복구(리터럴 재주입+`$'\r'`)는 매회 유효. verify 루프 (a) composer 빈 경우=재주입 (b) composer 잔류+idle=CR 재전송 (c) 소진 시 failed result(fail-visible) 3분기 확장 필요(관찰 ⓓ 포함).
+> 3. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI.
+> 4. **관찰 ⓔ (신규, Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4 자문 카드 실증 — 마커는 정상 출력, 보드만 수동 done 정리). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
 > ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
 > - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
@@ -58,7 +59,7 @@
 
 ## One-line resume
 
-> **v0.23.3 implemented (`95cc81e`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → **R28/0.23.3**(파일-기반 artifact 트리거 — TUI 스크레이프 ~5k 상한 블로커를 §5.1 워커 자가 적용으로 해소, 후보 ⑩(a)·⑪ 동시 해결). **오늘부터 구현·자문·리뷰 전 레인 herdr pane dispatch**(오너 지시 — headless 서브에이전트 대신): R28 리뷰=claude pane, 구현·수정=grok pane, 자문=codex pane(GPT-5.6, fable-advisor 대체·토큰 절약). 다음 = **PLAN 0.23.4**(후보 ⑫ 수정 — root cause 확정됨, ⭐ 블록 수정 방향 참조) → R29 리뷰(pane 레인) → 구현 → **0.23.3 실물 스모크**(⑫ 수정 후가 안전 — 수정 전엔 카드마다 브릿지 재시작 워크어라운드) → ②③⑤⑥⑦⑨(⑨는 ⑫ 수정 후 잔여분 재평가). 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status`. **mac-node config에 claude·grok·codex 3종 전부 등록됨** — codex는 자문 레인용으로 이번 세션에 opt-in, fail-closed 검증용 미등록 상태 종료).
+> **v0.23.4 implemented (`c7df503`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → R28/0.23.3 → **R29/0.23.4**(후보 ⑫ HerdrClient 구독 수명주기 수정 — card.done 유실·주입 고착의 root cause 해소, **라이브 검증 3종 완료**, 워크어라운드(카드마다 브릿지 재시작) 해제). 전 레인 herdr pane dispatch(오너 지시): R29 리뷰=claude pane, 구현·수정=grok pane, 자문=codex pane(GPT-5.6, REJECT 5건 → 수정 반영). 다음 = **0.23.3 실물 스모크**(⑫ 해소로 이제 안전 — §5.1 artifact 마커 경로 benign 페이로드 라이브 실증) → **후보 ⑨**(주입 verify 3분기 — ⑫ 수정 후에도 grok 스폰 직후 주입 유실 2회 재현, 순수 TUI 레이스 잔존 확인) → ②③⑤⑥⑦ + 관찰 ⓔ(codex 승인 프롬프트 → 가짜 agent_blocked 회신). 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status` — 신규: `eventConnected`/`lastSubscribeAck`/`eventSubscriptions` 노출·stderr 로그 `~/.loom/bridge/mac-node.stderr.log`). mac-node config에 claude·grok·codex 3종 등록 유지.
 
 ---
 
@@ -66,10 +67,10 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.23.2** — conv 멀티턴 + artifact 패키징 + agentKind 3종(codex/grok은 브릿지 로컬 opt-in) |
-| **PLAN** | **v0.23.2** `approved` (R27) → **implemented** (`91bee75`) |
-| **Open blocking** | none — R24–R27 모두 closed · GitHub Issues 전부 closed |
-| **Tests** | `bun test` **309 pass / 0 fail** · 6 pkg typecheck green |
+| **CLI / code** | **0.23.4** — conv 멀티턴 + artifact 파일-기반 트리거 + agentKind 3종 + 이벤트 구독 수명주기 수정(⑫) |
+| **PLAN** | **v0.23.4** `approved` (R29 author-close) → **implemented** (`c7df503`) |
+| **Open blocking** | none — R24–R29 모두 closed · GitHub Issues 전부 closed |
+| **Tests** | `bun test` **348 pass / 0 fail** · 6 pkg typecheck green |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** |
 | **Remote** | `origin/main` **`cc23c3d`** (스펙 커밋) · 시연 `docs/spikes/DISPATCH-DEMO.md` |
 | **Untracked (커밋 제외)** | `.playwright-mcp/` · `docs/agents/` + CLAUDE.md 수정분은 mattpocock-skills 셋업분 — 커밋 여부 오너 판단 |
