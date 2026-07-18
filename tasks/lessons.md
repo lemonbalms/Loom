@@ -82,6 +82,8 @@
 
 **지시 (2026-07-18, 0.23.3 세션):** ① 자문(advisor)은 fable-advisor(Fable 5) 대신 **codex(GPT-5.6)** — 토큰 한도 절약. ② 구현·자문 모두 **herdr pane dispatch 레인**으로 진행(dogfood 겸). 실행 형태: 긴 스펙은 파일로 저장하고 pane엔 "파일 읽고 수행"의 짧은 프롬프트만 주입(레이스 유실 리스크 축소, 실증 유효). codex는 mac-node config에 opt-in 등록됨(fail-closed 검증용 미등록 상태 종료). **공식 R{n} 리뷰의 fable-advisor 필수 규정(DOGFOOD_LOOP §2)과 지시 ①이 충돌하면 오너에게 확인 또는 codex-review 레인 대체를 리뷰 기록에 명기.**
 
+**갱신 (같은 날, 조사 카드):** codex를 기본 argv로 등록하면 **승인 프롬프트 모드**로 떠서, 명령 실행이 필요한 카드는 사람이 pane에서 승인하기 전까지 고착된다(오너가 수동 승인으로 해소 — R27 L-2 고지의 실증 사례). 무인 codex 워커가 필요하면 오퍼레이터가 argv에 자율성 플래그를 명시(예: `-a never -s workspace-write` — CLI help의 `loom run codex` 예시와 동일)하는 신뢰 결정이 선행돼야 한다. grok/claude는 기본 argv로도 자율 실행됨 — CLI별 기본 권한 모델 상이.
+
 ## 2026-07-18 (6) — "입력만 되고 미제출" 상태는 어떤 모니터링에도 안 잡힌다 (관찰 ⓓ, 후보 ⑨ 확장)
 
 **Mistake/발견 (0.23.3 조사 카드):** codex pane에 수동 재주입 후 `pane send-keys Enter`로 제출했다고 판단했으나, 실제로는 **composer에 텍스트만 담긴 채 미제출**(pane idle)로 방치됐다 — 오너가 발견. 두 겹의 실패: ① 제출 실패 자체(send-keys Enter는 codex TUI에서 무효 — lessons (2) 갱신 2), ② **그 상태를 아무도 감지 못함**: 아키텍트 모니터는 완료 마커·inbox·pane 소멸만 폴링했고(미제출=조용한 idle=대기처럼 보임), 브릿지 verify 루프도 working 전이만 기다리다 소진 후 무신호 포기(카드 상태 무변화, stderr ignore라 로그도 없음). "silence ≠ 진행 중" — 미제출·미시작 상태는 성공 경로 감시로는 영원히 안 보인다.
