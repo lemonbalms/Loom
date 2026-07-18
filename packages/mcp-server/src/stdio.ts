@@ -18,7 +18,12 @@ import {
   toolImportBoard,
   toolDispatchCard,
   toolApplyCardResult,
+  toolConvOpen,
+  toolConvSend,
+  toolConvAwait,
+  toolConvClose,
 } from "./tools";
+import type { ArtifactRefEntry } from "@loom/protocol";
 
 type JsonRpcReq = {
   jsonrpc: "2.0";
@@ -280,6 +285,68 @@ const TOOLS = [
       required: ["resultJson"],
     },
   },
+  {
+    name: "conv_open",
+    description:
+      "Open a multiturn conv (§CONV_SPEC) with a remote peer: sends conv.open, pins the peer for the conv's lifetime, and creates a linked board card (doing). node = target bridge peer displayName.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        node: { type: "string", description: "Target peer displayName, e.g. node/wsl-1" },
+        goal: { type: "string", description: "Conv goal — doubles as the worker's first-turn prompt" },
+        cwd: { type: "string", description: "Optional scope cwd (fixed at open, no mid-conv renegotiation)" },
+        writesAllowed: { type: "boolean", description: "Scope: allow writes (default false)" },
+        maxTurns: { type: "number", description: "Turn cap (default 20)" },
+        wallClockMs: { type: "number", description: "Wall-clock timeout ms (default 2h)" },
+      },
+      required: ["node", "goal"],
+    },
+  },
+  {
+    name: "conv_send",
+    description:
+      "Send a turn on an open conv (tower or worker side, per role). text over 32,000 chars requires artifacts[] (§5.1 — no truncation).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        convId: { type: "string" },
+        text: { type: "string" },
+        kind: { type: "string", enum: ["normal", "blocked", "done_proposal"] },
+        artifacts: {
+          type: "array",
+          description: "§5.3 artifact refs for out-of-band payloads",
+          items: { type: "object" },
+        },
+      },
+      required: ["convId", "text"],
+    },
+  },
+  {
+    name: "conv_await",
+    description:
+      "Block until the next conv intent (accept/reject/turn) arrives, or timeoutSec elapses. Reuses check/claim internally (M-6 unchanged) — no separate conv_apply.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        convId: { type: "string", description: "Filter to a specific conv (optional)" },
+        timeoutSec: { type: "number", description: "Default 30, max 600" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "conv_close",
+    description:
+      "Tower-only, unilateral close (§1.4/§3.2). reason=done|abort (default done). Closes locally even if delivery to the peer fails.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        convId: { type: "string" },
+        reason: { type: "string", enum: ["done", "abort"] },
+      },
+      required: ["convId"],
+    },
+  },
 ];
 
 function respond(id: string | number | null | undefined, result: unknown) {
@@ -449,6 +516,53 @@ async function handle(req: JsonRpcReq) {
                 args.fromNode !== undefined
                   ? String(args.fromNode)
                   : undefined,
+            }),
+            null,
+            2,
+          );
+        } else if (name === "conv_open") {
+          text = JSON.stringify(
+            await toolConvOpen({
+              node: String(args.node ?? ""),
+              goal: String(args.goal ?? ""),
+              cwd: args.cwd !== undefined ? String(args.cwd) : undefined,
+              writesAllowed: Boolean(args.writesAllowed),
+              maxTurns:
+                typeof args.maxTurns === "number" ? args.maxTurns : undefined,
+              wallClockMs:
+                typeof args.wallClockMs === "number" ? args.wallClockMs : undefined,
+            }),
+            null,
+            2,
+          );
+        } else if (name === "conv_send") {
+          text = JSON.stringify(
+            await toolConvSend({
+              convId: String(args.convId ?? ""),
+              text: String(args.text ?? ""),
+              kind: args.kind !== undefined ? String(args.kind) : undefined,
+              artifacts: Array.isArray(args.artifacts)
+                ? (args.artifacts as unknown as ArtifactRefEntry[])
+                : undefined,
+            }),
+            null,
+            2,
+          );
+        } else if (name === "conv_await") {
+          text = JSON.stringify(
+            await toolConvAwait({
+              convId: args.convId !== undefined ? String(args.convId) : undefined,
+              timeoutSec:
+                typeof args.timeoutSec === "number" ? args.timeoutSec : undefined,
+            }),
+            null,
+            2,
+          );
+        } else if (name === "conv_close") {
+          text = JSON.stringify(
+            await toolConvClose({
+              convId: String(args.convId ?? ""),
+              reason: args.reason !== undefined ? String(args.reason) : undefined,
             }),
             null,
             2,

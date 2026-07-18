@@ -19,6 +19,10 @@ import {
   addTaskWithOptionalNotify,
   dispatchCard,
   applyCardResult,
+  convOpen,
+  convSendTurn,
+  convAwait,
+  convClose,
   type ContextPack,
   type TaskBoard,
   type TaskItem,
@@ -26,7 +30,7 @@ import {
   type BoardSnapshot,
   type PurposeV1,
 } from "@loom/host";
-import type { PeerInfo, InboxEntry } from "@loom/protocol";
+import type { PeerInfo, InboxEntry, ArtifactRefEntry, ConvKind, ConvCloseReason } from "@loom/protocol";
 
 export async function toolListPeers(): Promise<{
   peers: PeerInfo[];
@@ -348,4 +352,84 @@ export async function toolApplyCardResult(args: {
     throw new Error(r.error);
   }
   return { task: r.task, status: r.status };
+}
+
+/**
+ * PLAN 0.23.0 / CONV_SPEC — open a conv (multiturn) with a remote peer.
+ * §4.1: 4-tool minimal surface, no separate conv_apply.
+ */
+export async function toolConvOpen(args: {
+  node: string;
+  goal: string;
+  cwd?: string;
+  writesAllowed?: boolean;
+  maxTurns?: number;
+  wallClockMs?: number;
+}): Promise<Record<string, unknown>> {
+  const r = await convOpen({
+    node: args.node,
+    goal: args.goal,
+    cwd: args.cwd,
+    writesAllowed: args.writesAllowed,
+    maxTurns: args.maxTurns,
+    wallClockMs: args.wallClockMs,
+  });
+  if (!r.ok) {
+    throw new Error(r.error);
+  }
+  return {
+    convId: r.convId,
+    handoffId: r.handoffId,
+    taskId: r.taskId,
+    notified: r.notified,
+  };
+}
+
+/** Tower-side turn send. Text over the 32k inline threshold requires artifacts[] (§5.1). */
+export async function toolConvSend(args: {
+  convId: string;
+  text: string;
+  kind?: string;
+  artifacts?: ArtifactRefEntry[];
+}): Promise<Record<string, unknown>> {
+  const kind: ConvKind | undefined =
+    args.kind === "normal" || args.kind === "blocked" || args.kind === "done_proposal"
+      ? args.kind
+      : undefined;
+  const r = await convSendTurn({
+    convId: args.convId,
+    text: args.text,
+    kind,
+    artifacts: args.artifacts,
+  });
+  if (!r.ok) {
+    throw new Error(r.error);
+  }
+  return { convId: r.convId, seq: r.seq, handoffId: r.handoffId };
+}
+
+/**
+ * Blocking wait for the next conv intent (accept/reject/turn). Internally
+ * reuses check/claim (M-6 unchanged) — §3.4 board transitions applied
+ * automatically. No separate conv_apply tool.
+ */
+export async function toolConvAwait(args: {
+  convId?: string;
+  timeoutSec?: number;
+}): Promise<Record<string, unknown>> {
+  const r = await convAwait({ convId: args.convId, timeoutSec: args.timeoutSec });
+  return r as unknown as Record<string, unknown>;
+}
+
+/** Tower-only, unilateral (§1.4/§3.2). Closes locally even if delivery to the peer fails. */
+export async function toolConvClose(args: {
+  convId: string;
+  reason?: string;
+}): Promise<Record<string, unknown>> {
+  const reason: ConvCloseReason = args.reason === "abort" ? "abort" : "done";
+  const r = await convClose({ convId: args.convId, reason });
+  if (!r.ok) {
+    throw new Error(r.error);
+  }
+  return { convId: r.convId, taskId: r.taskId };
 }

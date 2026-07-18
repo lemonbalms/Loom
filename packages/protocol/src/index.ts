@@ -9,3 +9,4 @@ export * from "./env";
 export * from "./timing-safe";
 export * from "./handoff-contract";
 export * from "./card-contract";
+export * from "./conv-contract";
