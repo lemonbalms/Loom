@@ -86,6 +86,14 @@
 
 **갱신 (같은 날, 조사 카드):** codex를 기본 argv로 등록하면 **승인 프롬프트 모드**로 떠서, 명령 실행이 필요한 카드는 사람이 pane에서 승인하기 전까지 고착된다(오너가 수동 승인으로 해소 — R27 L-2 고지의 실증 사례). 무인 codex 워커가 필요하면 오퍼레이터가 argv에 자율성 플래그를 명시(예: `-a never -s workspace-write` — CLI help의 `loom run codex` 예시와 동일)하는 신뢰 결정이 선행돼야 한다. grok/claude는 기본 argv로도 자율 실행됨 — CLI별 기본 권한 모델 상이.
 
+## 2026-07-18 (7) — TUI 3종 composer 가시성 실측 (0.23.5 M-1 라이브 검증) + 인박스 grep 잘린-ID 함정
+
+**실측 (composer에 41줄 paste 미제출 후 `pane read`):** **claude(Ink)** = `[Pasted text #1 +25 lines]` 플레이스홀더(head 접힘) + **꼬리줄 원문 노출**, 소형(7줄)은 전체 원문 — 꼬리 프로브는 양 레짐 hit. 단 **플레이스홀더 문자열 자체가 TUI 줄바꿈으로 쪼개짐**(`[Pasted`+개행+`text #1`) — raw substring 매치 금지, 공백-정규화 후 매치할 것. 두 번째 paste는 기존 composer에 **append**(이중-append 리스크 실재). **grok/codex** = 플레이스홀더 없이 원문 전체 노출. 검증법: `herdr agent start <name> --no-focus -- <argv>` 스폰 → `agent send`(CR 없이) → `pane read` → close (LLM 턴 소비 없음).
+
+**Mistake (모니터링):** 인박스 감시 grep에 **전체 18자 task ID**를 썼는데 `loom inbox` 표시는 ID를 잘라 출력 — 영원히 미매치로 card.done 도착을 4분간 못 봄(오너 지적으로 발견). **인박스/보드 grep은 짧은 접두사**(예: `task_38d4b2c`)로. lessons (1) 잘린-ID 함정의 모니터링판.
+
+**관찰 ⓔ 재재현 (0.23.5 자문 카드):** codex 카드가 read-heavy 작업(테스트 실행 포함)을 승인 고착 없이 완주했는데도 회신은 `agent_blocked`(보드 blocked 전이) — 실작업 완료와 회신 불일치 2회째. 회수 절차: pane 마커 verdict 우선 + 보드 수동 done.
+
 ## 2026-07-18 (6) — "입력만 되고 미제출" 상태는 어떤 모니터링에도 안 잡힌다 (관찰 ⓓ, 후보 ⑨ 확장)
 
 **Mistake/발견 (0.23.3 조사 카드):** codex pane에 수동 재주입 후 `pane send-keys Enter`로 제출했다고 판단했으나, 실제로는 **composer에 텍스트만 담긴 채 미제출**(pane idle)로 방치됐다 — 오너가 발견. 두 겹의 실패: ① 제출 실패 자체(send-keys Enter는 codex TUI에서 무효 — lessons (2) 갱신 2), ② **그 상태를 아무도 감지 못함**: 아키텍트 모니터는 완료 마커·inbox·pane 소멸만 폴링했고(미제출=조용한 idle=대기처럼 보임), 브릿지 verify 루프도 working 전이만 기다리다 소진 후 무신호 포기(카드 상태 무변화, stderr ignore라 로그도 없음). "silence ≠ 진행 중" — 미제출·미시작 상태는 성공 경로 감시로는 영원히 안 보인다.

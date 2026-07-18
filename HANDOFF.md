@@ -14,7 +14,47 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.23.4 HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫) — R29 게이트→구현→라이브 검증 완주. `implemented` (`c7df503`), bun test 348/0.**  
+> **🎯 v0.23.5 주입 verify 루프 3분기 (후보 ⑨+ⓓ) — R30 게이트 closed·구현 완료·⚠️ 미커밋. codex 자문 **REJECT 7건 회수 완료**. 다음 세션 = 수정 카드부터.**
+>
+> ### ▶ 다음 세션 재개 절차 (0.23.5 웨이브 마무리 — 순서대로)
+> 1. **수정 카드 (grok pane)**: 아래 자문 findings 7건을 `.loom-fix-0235-brief.md`로 작성 → grok pane 디스패치(`.loom-dispatch-impl0235.ts` 패턴 복제). **F-1·F-2가 Med(필수)** — F-1은 아키텍트 라이브 검증(F-live-1)과 독립 이중 확인된 실결함:
+>    - **F-1 (Med)**: 플레이스홀더 검사가 raw `includes("[Pasted text")`라 TUI 줄바꿈(`[Pasted`+개행+`text`) 시 miss → 중복 재주입. **공백-정규화 스크레이프에서 매치로 수정**(`normalizeForProbe(scrape).includes("[Pastedtext")` 상당) + 테스트 ⑫에 wrap 변형 추가. (라이브 실측으로 wrap 실재 확인 — 아래 표)
+>    - **F-2 (Med)**: R30 M-1 요구 TUI 3종 composer 가시성 라이브 검증 기록이 저장소에 없음 → **커밋 시 PLAN 0.23.5 Implemented 기록에 아래 표를 옮겨 해소**(재검증 불필요 — 이번 세션 수행 완료).
+>    - F-3 (Low): flight 재확인이 paneRead 전에만 — RPC 대기 중 소멸 시 죽은 flight에 prompt/CR 전송 → send 액션 직전 재확인 추가.
+>    - F-4 (Low): 소진 로그가 항상 `probe=miss` 고정 기록(마지막 실분기와 무관) → 실제 마지막 분기 기록.
+>    - F-5 (Low): 테스트 ③이 `eventsPrune` 수행 미검증 → 어서션 추가.
+>    - F-6 (Low): 테스트 ④가 blocked 후 convFlight 유지·후속 턴 주입 미검증 → 어서션 추가.
+>    - F-7 (Low): 테스트 ②의 `crSends(fake).length - callsBefore`가 다른 단위 뺄셈 — 조건 불성립으로 매번 10s timeout 소모 → 수정.
+> 2. **검증**: `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`(기준 361/0 이상) · 6패키지 typecheck · biome(변경분).
+> 3. **커밋**: 구현+수정 일괄 `fix(bridge): 주입 verify 루프 3분기 (PLAN 0.23.5, R30)` → PLAN 0.23.5 섹션에 **Implemented as of + M-1 라이브 검증 결과 표**(아래 — F-2 해소) 기록 → HANDOFF/lessons 갱신 → push.
+> 4. **브릿지 재기동 + 라이브 관찰**: 현재 브릿지는 **0.23.4 코드로 가동 중**(0.23.5 미배포). 커밋 후 `loom --profile mac-node bridge stop/start` → 다음 dispatch에서 stderr 로그(`~/.loom/bridge/mac-node.stderr.log`)의 `verify round N: probe=... action=...` 라인 관찰(레이스는 간헐 — 발화 시 자동 복구 실증이 목표).
+>
+> ### 자문 카드 회수 기록 (이번 세션 완료 — 재작업 금지)
+> - `task_38d4b2c336a9d76c` (codex pane w3:p12): 마커 `[ADV-0235-VERDICT] result=REJECT findings=7` 회수 → **관찰 ⓔ 재재현**: card 회신은 `agent_blocked`(보드 blocked 전이)였으나 실작업 완료 — 보드 수동 done+노트, pane close 완료.
+> - **모니터링 함정(신규 교훈)**: `loom inbox` 표시는 task ID를 **잘라서** 출력 — 인박스 grep에 전체 18자 ID를 쓰면 영원히 미매치(이번 세션 4분 미탐지 실증). 짧은 접두사(예: `task_38d4b2c`)로 검색할 것. lessons (1) 잘린-ID 함정의 모니터링판.
+>
+> ### ⚠️ 미커밋 작업 트리 (0.23.5 구현 diff — 잃지 말 것)
+> - **Modified**: `packages/host/src/bridge-runtime.ts`(+227/-85 — `verifyInjectOrRetry` 통합 3분기)·`packages/host/src/fake-herdr.ts`(+97 — composer 시뮬 훅)·`packages/cli/src/index.ts`·`packages/mcp-server/src/stdio.ts`(VERSION 0.23.5)
+> - **신규**: `packages/host/src/inject-verify.test.ts`(테스트 ①–⑬)
+> - 아키텍트 독립 검증 완료: **bun test 361/0**(+13) · 6패키지 typecheck green · biome 변경분 clean · R30 M-1/M-2/L-1/L-3 diff 반영 육안 확인. 커밋은 자문+수정 반영 후(위 절차 4).
+> - untracked 스모크/디스패치 도구(커밋 금지): `.loom-r30-brief.md`·`.loom-impl-0235-brief.md`·`.loom-advise-0235-brief.md`·`.loom-dispatch-{r30,impl0235,adv0235}.ts`·`.loom-claim-r30.ts` — 웨이브 종료 시 일괄 삭제.
+>
+> ### ✅ R30 M-1 라이브 검증 완료 (TUI 3종 composer 가시성 — PLAN 기록용)
+> `herdr agent start`로 각 TUI 스폰 → 41줄 paste(미제출) → `pane read` 관찰 → close:
+> | TUI | 대형 paste composer 거동 | 꼬리 프로브 |
+> |-----|------|------|
+> | claude (Ink) | `[Pasted text #1 +25 lines]` 플레이스홀더(head 접힘) + **꼬리줄 원문 노출**. 소형(7줄)은 전체 원문. **플레이스홀더 문자열 자체가 줄바꿈으로 쪼개짐** → F-live-1 | **hit** (양 레짐) |
+> | grok | 원문 전체 노출(플레이스홀더 없음) | hit |
+> | codex | 원문 전체 노출(플레이스홀더 없음) | hit |
+> → 꼬리-48 프로브 설계는 3종 전부 유효(M-1의 "claude에서 (b) 도달 불가" 우려는 **꼬리 노출로 해소** — 플레이스홀더 hit 규칙은 이중 안전망으로 유지). 두 번째 paste가 기존 composer에 **append**되는 것도 실측(M-1 이중-append 리스크 실재 확인).
+>
+> ### 이번 세션 R30 웨이브 기록 (2026-07-18 저녁)
+> - PLAN 0.23.5 draft(`6036345`) → **R30 리뷰**(claude pane + fable-advisor 자문): `pending-revision` M-1(플레이스홀더=probe-hit + TUI 3종 라이브 검증 요구)·M-2(재주입 상한 "flight당"→**주입 시도당 1회**) + L-1(캐시 문자열 재파생 금지)·L-2(conv 최초 턴 꼬리=규약 상수)·L-3(라운드 액션 전 flight 재확인) → author-close `approved`(`cf02728`).
+> - 구현: grok pane 카드(레이스 1회 수동 복구) → 마커 `[IMPL-0235-DONE] tests=361/0 typecheck=ok` + card.done 정상 회수.
+> - **스타트업 레이스 이번 세션 3회 재현**: R30 리뷰 카드(claude)는 무사고, 구현 카드(grok)·자문 카드(codex) 유실 — codex는 프롬프트가 TUI 기동 전 터미널에 echo되고 composer 빈 변형. 수동 복구(`herdr agent send` 리터럴 + 별도 `$'\r'`) 전회 유효. ⑨ 필요성 웨이브 내내 재확인.
+> - card.done 인박스 3연속 정상(R30·구현·(자문 대기 중)) — ⑫ 수정 신뢰 유지.
+>
+> ### (참고) 직전 완료: v0.23.4 (후보 ⑫) + 0.23.3 실물 스모크  
 > 체인(당일 6연속): … 0.23.3 `95cc81e` → **후보 ⑫ root cause 확정**(codex pane 조사) → PLAN 0.23.4 R29 `pending-revision`(M-1: `eventsSubscribe` reject-시-롤백 lock — 신설 fail-visible 경로의 자기 재감염 + L-1..L-5) → author-close `approved`(`b8eb452`) → **전 레인 herdr pane**(오너 지시): grok pane 구현 → codex pane 자문 REJECT 5건(pane close 누락·stderr profile 미검증·테스트 ④⑩ 실장애 미재현·superseded 타이머 누수+⑭ fake-timer 무효·⑧ 정리 미실증) → grok pane 수정 → `c7df503`.
 >
 > ### ✅ 후보 ⑫ 해소 (2026-07-18, 0.23.4) — 라이브 검증 3종 완료
@@ -28,10 +68,10 @@
 > - **dedup(R28 L-1)**: 2번째 턴 스크레이프 창에 이전 `[ARTIFACT] plan-full.md` 잔존했으나 재방출 없음 — 신규 `smoke-note.txt` ref 1건만 방출(sha 일치 확인).
 > - **부수 재확인**: 스폰 주입 1발 성공(이번엔 ⑨ 레이스 미발생 — 간헐 재확인), conv 2턴 왕복 동일 브릿지 정상(⑫ 회귀 무), close 후 `eventSubscriptions` 글로벌만 복귀·inFlight=0, 보드 task done 자동 전이. 워커 pane 수동 close(후보 ⑥ 미구현 관례).
 >
-> ### 다음 액션 (우선순위 순)
-> 1. **후보 ⑨ (주입 verify 루프 확장) — ⑫ 수정 후에도 잔여 실존 확인됨**: 0.23.4 세션에서 grok pane 스폰 직후 주입 유실 2회 추가 재현(구독은 정상 성립한 상태 — 즉 ⑫와 별개의 순수 TUI 스타트업 레이스 잔존; 0.23.3 스모크에선 미발생 — 간헐). 수동 복구(리터럴 재주입+`$'\r'`)는 매회 유효. verify 루프 (a) composer 빈 경우=재주입 (b) composer 잔류+idle=CR 재전송 (c) 소진 시 failed result(fail-visible) 3분기 확장 필요(관찰 ⓓ 포함). PLAN PATCH + R30 게이트.
+> ### 다음 액션 (0.23.5 웨이브 마무리 후, 우선순위 순)
+> 1. **후보 ⑨ = 0.23.5로 진행 중** (상단 재개 절차 참조 — 자문 회수→수정→커밋→브릿지 재기동이 남은 전부).
 > 2. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(매핑 파일은 스모크에서 수동 등록됨).
-> 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4 자문 카드 실증 — 마커는 정상 출력, 보드만 수동 done 정리). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
+> 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4 자문 카드 실증). 이번 0.23.5 자문 카드는 read-heavy 작업까지는 승인 고착 없이 진행됨(부분 반증 — 고착은 특정 명령류에 한정 가능성). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
 > ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
 > - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
@@ -66,7 +106,7 @@
 
 ## One-line resume
 
-> **v0.23.4 implemented (`c7df503`) + 0.23.3 실물 스모크 완료 (2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → R28/0.23.3 → R29/0.23.4(후보 ⑫ 구독 수명주기 수정, 라이브 검증 3종) → **0.23.3 실물 스모크 완주**(`conv_50f5fa521d5d9687` — §5.1 마커 경로: 179KB PLAN.md 전문 artifact 왕복, sha256 로컬 일치, M-2 fail-closed↔제시 양 분기, R28 L-1 dedup, benign 페이로드 무거부 실증. `~/.loom/conv-node-hosts.json` 매핑 등록 유지). 다음 = **후보 ⑨**(주입 verify 3분기 — ⑫ 수정 후에도 grok 스폰 직후 주입 유실 2회 재현·순수 TUI 레이스 잔존, 0.23.3 스모크에선 미발생(간헐). PLAN PATCH + R30 게이트) → ②③⑤⑥⑦ + 관찰 ⓔ(codex 승인 프롬프트 → 가짜 agent_blocked 회신). 룸 `LOOM-SGLR`+브릿지 온라인(`loom --profile mac-node bridge status` — `eventConnected`/`lastSubscribeAck`/`eventSubscriptions` 노출·stderr 로그 `~/.loom/bridge/mac-node.stderr.log`). mac-node config에 claude·grok·codex 3종 등록 유지.
+> **v0.23.5 R30 approved (`cf02728`) + 구현 완료·⚠️ 미커밋 + codex 자문 REJECT 7건 회수 완료 상태로 세션 종료 (2026-07-18 저녁).** 당일 체인: R24 → R25/0.23.0 → R26/0.23.1 → R27/0.23.2 → R28/0.23.3 → R29/0.23.4 → 0.23.3 실물 스모크(§5.1 마커 경로 완주) → **R30/0.23.5**(후보 ⑨+ⓓ 주입 verify 3분기 — M-1 플레이스홀더=probe-hit·M-2 주입시도당 상한 lock, 구현 diff 작업 트리에 미커밋, bun test 361/0, 자문 F-1..F-7 회수·pane 정리 완료). **다음 세션 = ⭐ 재개 절차 1번(수정 카드 — F-1/F-2 Med 필수, F-1은 라이브 검증 이중 확인)부터** → 검증 → 커밋(+PLAN Implemented에 M-1 라이브 검증 표 이관=F-2 해소) → 브릿지 재기동. 룸 `LOOM-SGLR`+브릿지 온라인(**0.23.4 코드로 가동 중** — 0.23.5 미배포). mac-node config에 claude·grok·codex 3종 등록 유지. `~/.loom/conv-node-hosts.json` 매핑 등록 유지.
 
 ---
 
