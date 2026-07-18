@@ -96,6 +96,11 @@ export type FakeHerdr = {
   paneReadCount: () => number;
   /** Toggle discardInjects at runtime (paste-loss simulation). */
   setDiscardInjects: (discard: boolean) => void;
+  /**
+   * PLAN 0.23.8: when true, pane.close replies with error (test ⑧ close reject
+   * must not affect result flow).
+   */
+  setPaneCloseFail: (fail: boolean) => void;
 };
 
 export async function startFakeHerdr(
@@ -123,6 +128,8 @@ export async function startFakeHerdr(
   let paneReadFailRemaining = 0;
   let paneReadCalls = 0;
   let discardInjects = opts.discardInjects === true;
+  /** PLAN 0.23.8: pane.close error reply for test ⑧ */
+  let paneCloseFail = false;
 
   function nextSequenceText(paneId: string): string | undefined {
     for (const key of [paneId, "*"] as const) {
@@ -274,6 +281,11 @@ export async function startFakeHerdr(
         }
         if (method === "pane.close") {
           const pane_id = String(params.pane_id ?? "");
+          if (paneCloseFail) {
+            err("pane.close failed (test inject)");
+            sock.end();
+            continue;
+          }
           markClosed(pane_id);
           reply({ type: "ok" });
           sock.end();
@@ -439,6 +451,9 @@ export async function startFakeHerdr(
     },
     setDiscardInjects(discard: boolean) {
       discardInjects = discard;
+    },
+    setPaneCloseFail(fail: boolean) {
+      paneCloseFail = fail;
     },
     async close() {
       for (const s of sockets) {

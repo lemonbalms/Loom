@@ -115,6 +115,34 @@ describe("PLAN 0.23.6 stripTuiChrome + delta helpers (unit)", () => {
     expect(stripTuiChrome(mixed)).toContain("actual answer");
   });
 
+  test("⑪ PLAN 0.23.8 chrome known-hint 2종 + boundary preserve", () => {
+    // grok content-bearing status line (live board-note pollution)
+    const grokStatus =
+      "real answer\n╰─ Grok 4.5 (high) · 12s ─╯\nmore content";
+    const g = stripTuiChrome(grokStatus);
+    expect(g).toContain("real answer");
+    expect(g).toContain("more content");
+    expect(g).not.toContain("Grok 4.5");
+    expect(g).not.toMatch(/╰─.*─╯/);
+
+    // claude autoaccept hint
+    const claudeHint =
+      "done work\n⏵⏵ auto mode on · esc to interrupt\nShift+Tab:mode │ Ctrl+.:shortcuts";
+    const c = stripTuiChrome(claudeHint);
+    expect(c).toContain("done work");
+    expect(c).not.toContain("auto mode on");
+    expect(c).not.toContain("Shift+Tab:mode");
+
+    // Boundary: ╰─ start but no ─╯ end → content preserved
+    const openOnly = "note: ╰─ incomplete box line without closer";
+    expect(stripTuiChrome(openOnly)).toContain("incomplete box line");
+
+    // Boundary: "auto mode on" quoted without ⏵⏵ marker → preserved
+    const quoteOnly =
+      'docs say: "auto mode on" is a known chrome marker with the  arrows';
+    expect(stripTuiChrome(quoteOnly)).toContain("auto mode on");
+  });
+
   test("④ unit: wrap-deformed anchor match + original slice integrity (M-2)", () => {
     // Prior turn tail had spaces/newlines; next scrape re-wraps them.
     const prior = "hello world\n  indented  tail\nline three";

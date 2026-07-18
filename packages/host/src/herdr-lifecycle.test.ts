@@ -829,14 +829,35 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       expect(found).toBe(true);
     }
 
-    // Card A complete
+    // Card A complete — PLAN 0.23.8 auto-closes pane on confident done, so
+    // capture pane_id from agent.start (listPaneIds is empty after close).
     const panesBeforeA = new Set(fake.listPaneIds());
-    await dispatchAndAwaitDone("task_aaaaaaaa00112233", "card A");
-    const panesAfterA = fake.listPaneIds();
-    const paneA = panesAfterA.find((p) => !panesBeforeA.has(p)) ?? panesAfterA[0];
+    const startsBeforeA = fake.calls.filter((c) => c.method === "agent.start").length;
+    const dispatchA = dispatchAndAwaitDone("task_aaaaaaaa00112233", "card A");
+    // Wait briefly for spawn so we can record paneA before auto-close.
+    let paneA: string | undefined;
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(50);
+      const spawned = fake.listPaneIds().find((p) => !panesBeforeA.has(p));
+      if (spawned) {
+        paneA = spawned;
+        break;
+      }
+      // Fallback: agent.start params may already have assigned a pane_id via reply
+      const starts = fake.calls.filter((c) => c.method === "agent.start");
+      if (starts.length > startsBeforeA) break;
+    }
+    await dispatchA;
+    // Prefer live pane id; else last pane.close (auto-cleanup) target.
+    if (!paneA) {
+      const closes = fake.calls.filter((c) => c.method === "pane.close");
+      paneA = closes.length
+        ? String(closes[closes.length - 1]!.params.pane_id ?? "")
+        : undefined;
+    }
     expect(paneA).toBeTruthy();
 
-    // Close pane A (real herdr would reject later subscribe lists that still list it)
+    // Ensure pane A is in the closed set (auto-close may already have done this).
     fake.markPaneClosed(paneA!);
     try {
       await herdr.request("pane.close", { pane_id: paneA! });

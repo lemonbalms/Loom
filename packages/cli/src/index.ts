@@ -29,6 +29,13 @@ import {
   bridgeStatus,
   loadBridgeConfig,
   saveBridgeConfig,
+  loadConvNodeHosts,
+  setConvNodeHost,
+  removeConvNodeHost,
+  validateConvNodePeerId,
+  validateConvNodeHost,
+  isWellFormedConvNodeMapping,
+  convNodeHostsPath,
   type LoomSession,
   opsListPeers,
   opsHandoff,
@@ -126,7 +133,7 @@ import {
   shouldActivateHandoffInject,
 } from "./inject-handoffs";
 
-const VERSION = "0.23.6";
+const VERSION = "0.23.8";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -225,6 +232,8 @@ Usage:
   loom down [--profiles a,b]            # stop sticky hosts (idempotent)
   loom host start | stop | status   # sticky long-lived relay connection (advanced)
   loom bridge start | stop | status # herdr node bridge daemon (0.22)
+  loom conv-hosts set <peerId> <host> | list | rm <peerId>
+                                    # local scp host map for conv artifacts (0.23.8)
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
@@ -1443,6 +1452,80 @@ async function cmdInboxAccept(id: string) {
     `(accepted as ${result.session.displayName}, status=${result.entry.status})`,
   );
   process.exit(0);
+}
+
+/**
+ * PLAN 0.23.8 ⑦: tower-local conv scp host mapping CLI.
+ * Validates on set only; hand-edited entries may fail CLI rules (L-2).
+ */
+async function cmdConvHosts(
+  sub: string | undefined,
+  rest: string[],
+): Promise<void> {
+  if (sub === "set") {
+    const peerId = rest[0];
+    const host = rest[1];
+    if (!peerId || !host || rest.length > 2) {
+      console.error(
+        "Usage: loom conv-hosts set <peerId> <host>\n" +
+          "  peerId: p_ + 16 hex digits (e.g. p_a7964227d1b25e61)\n" +
+          "  host: non-empty, no leading '-', charset [A-Za-z0-9._@-] (no ':')\n" +
+          "  Ports/IPv6: use an ssh_config Host alias.",
+      );
+      process.exit(1);
+    }
+    const peerErr = validateConvNodePeerId(peerId);
+    if (peerErr) {
+      console.error(peerErr);
+      process.exit(1);
+    }
+    const hostErr = validateConvNodeHost(host);
+    if (hostErr) {
+      console.error(hostErr);
+      process.exit(1);
+    }
+    setConvNodeHost(peerId, host.trim());
+    console.log(`conv-hosts: set ${peerId} → ${host.trim()}`);
+    console.log(`  file: ${convNodeHostsPath()} (0600)`);
+    return;
+  }
+  if (sub === "list") {
+    const cfg = loadConvNodeHosts();
+    const entries = Object.entries(cfg);
+    if (entries.length === 0) {
+      console.log("conv-hosts: (empty mapping)");
+      console.log(
+        `  Tip: ${loomCmd()} conv-hosts set <peerId> <host>\n` +
+          "  Hand-edited entries bypass CLI validation (load accepts non-empty strings).",
+      );
+      return;
+    }
+    console.log(`conv-hosts: ${entries.length} mapping(s) in ${convNodeHostsPath()}`);
+    for (const [peerId, host] of entries) {
+      const ok = isWellFormedConvNodeMapping(peerId, host);
+      const mark = ok ? "" : "  ⚠ format-invalid (hand-edit; CLI set would reject)";
+      console.log(`  ${peerId} → ${host}${mark}`);
+    }
+    return;
+  }
+  if (sub === "rm") {
+    const peerId = rest[0];
+    if (!peerId || rest.length > 1) {
+      console.error("Usage: loom conv-hosts rm <peerId>");
+      process.exit(1);
+    }
+    const removed = removeConvNodeHost(peerId);
+    if (removed) {
+      console.log(`conv-hosts: removed ${peerId}`);
+    } else {
+      console.log(`conv-hosts: no mapping for ${peerId} (no-op)`);
+    }
+    return;
+  }
+  console.error(
+    "Usage: loom conv-hosts set <peerId> <host> | list | rm <peerId>",
+  );
+  process.exit(1);
 }
 
 async function cmdBridge(
@@ -2833,6 +2916,10 @@ async function main() {
   }
   if (cmd === "bridge") {
     await cmdBridge(sub, rest, flags);
+    return;
+  }
+  if (cmd === "conv-hosts") {
+    await cmdConvHosts(sub, rest);
     return;
   }
   if (cmd === "up") {

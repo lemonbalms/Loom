@@ -16,6 +16,13 @@ export type BridgeConfig = {
   agentArgv: Partial<Record<DispatchAgentKind, string[]>>;
   /** Expected herdr protocol (default 16). */
   herdrProtocol?: number;
+  /**
+   * PLAN 0.23.8: worker pane cleanup after confident completion / conv close.
+   * `"auto"` (default) = best-effort pane.close on eligible paths.
+   * `"keep"` = disable *new* auto-closes (failure-path closes still run).
+   * Load sanitizes unknown values to `"auto"`.
+   */
+  paneCleanup?: "auto" | "keep";
 };
 
 const DEFAULT_AGENT_ARGV: BridgeConfig["agentArgv"] = {
@@ -38,7 +45,13 @@ export function defaultBridgeConfig(): BridgeConfig {
       process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
     herdrProtocol: 16,
+    paneCleanup: "auto",
   };
+}
+
+/** PLAN 0.23.8: sanitize paneCleanup — only "auto"|"keep"; else default. */
+function sanitizePaneCleanup(raw: unknown): "auto" | "keep" {
+  return raw === "keep" ? "keep" : "auto";
 }
 
 /** R27 L-1: keep only well-shaped argv entries (non-empty array of non-empty strings).
@@ -85,6 +98,7 @@ export function loadBridgeConfig(profile: string): BridgeConfig {
         typeof raw.herdrProtocol === "number"
           ? raw.herdrProtocol
           : base.herdrProtocol,
+      paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
     };
   } catch {
     return base;

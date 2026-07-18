@@ -143,12 +143,21 @@ const KEY_HINT_MARKERS = [
   "Shift+Tab:mode",
   "Ctrl+.:shortcuts",
   "Ctrl+c:cancel",
+  // PLAN 0.23.8: claude autoaccept hint line (live board-note pollution)
+  "⏵⏵ auto mode on",
 ] as const;
+
+/**
+ * PLAN 0.23.8: content-bearing box bottom status line (e.g. grok
+ * `╰─ Grok 4.5 (high)…─╯`). Full-line match only — partial prose stays.
+ */
+const BOX_STATUS_LINE_RE = /^╰─.*─╯$/u;
 
 /**
  * PLAN 0.23.6: strip obvious TUI chrome lines only (box borders, composer
  * prompt, known key hints, trailing blanks). Apply to conv inline text and
  * card summary input — never to card `output` body (R31 M-1).
+ * PLAN 0.23.8: + content box status (`╰─…─╯`) + `⏵⏵ auto mode on` hint.
  */
 export function stripTuiChrome(text: string): string {
   const lines = text.split(/\r?\n/);
@@ -160,6 +169,7 @@ export function stripTuiChrome(text: string): string {
       continue;
     }
     if (BOX_DRAWING_LINE_RE.test(trimmed)) continue;
+    if (BOX_STATUS_LINE_RE.test(trimmed)) continue;
     if (COMPOSER_PROMPT_RE.test(line)) continue;
     if (KEY_HINT_MARKERS.some((m) => line.includes(m))) continue;
     kept.push(line);
@@ -496,6 +506,8 @@ export async function startBridgeRuntime(opts?: {
             eventConnected: herdr.eventConnected,
             lastSubscribeAck: herdr.lastSubscribeAck,
             eventSubscriptions: herdr.eventSubscriptions,
+            // PLAN 0.23.8 pane cleanup policy
+            paneCleanup: cfg.paneCleanup ?? "auto",
           });
         }
         if (body.op === "stop") {
@@ -947,9 +959,18 @@ export async function startBridgeRuntime(opts?: {
       });
       const paneId = convPaneByConvId.get(payload.convId);
       if (paneId) {
+        // Order: flight teardown + prune → then best-effort pane.close
+        // (PLAN 0.23.8 ⑥; mid-work kill is intentional — tower close authority).
         convFlights.delete(paneId);
         convPaneByConvId.delete(payload.convId);
         herdr.eventsPrune(paneId);
+        if ((cfg.paneCleanup ?? "auto") !== "keep") {
+          try {
+            await herdr.request("pane.close", { pane_id: paneId });
+          } catch {
+            /* best-effort — must not affect close semantics */
+          }
+        }
       }
       return;
     }
@@ -1451,10 +1472,14 @@ export async function startBridgeRuntime(opts?: {
 
     if (!hasStillRunningIndicator(scrape)) {
       // No indicator → immediate finish; pass scrape (no re-scrape).
+      // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
       clearStillRunningState(flight);
       flights.delete(paneId);
       herdr.eventsPrune(paneId);
-      await finishCard(flight, "done", undefined, { scrape });
+      await finishCard(flight, "done", undefined, {
+        scrape,
+        closePane: true,
+      });
       return;
     }
 
@@ -1503,6 +1528,7 @@ export async function startBridgeRuntime(opts?: {
 
         if (!hasStillRunningIndicator(scrape)) {
           // Indicator cleared — finish with the scrape that proved clearance (L-1).
+          // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
           const secs = Math.max(0, Math.round(elapsed / 1000));
           clearStillRunningState(flight);
           flights.delete(paneId);
@@ -1510,12 +1536,14 @@ export async function startBridgeRuntime(opts?: {
           await finishCard(flight, "done", undefined, {
             scrape,
             note: `completion deferred ${secs}s (still-running indicator)`,
+            closePane: true,
           });
           return;
         }
 
         if (elapsed >= stillRunningMaxMs) {
           // Cap exhausted — fail-visible note, still status=done with latest scrape.
+          // PLAN 0.23.8: exhausted is NOT close-eligible (R33 M-1 — work may continue).
           const secs = Math.round(stillRunningMaxMs / 1000);
           clearStillRunningState(flight);
           flights.delete(paneId);
@@ -1656,8 +1684,11 @@ export async function startBridgeRuntime(opts?: {
      * completion (indicator clearance / exhaust), pass it so finishCard does
      * not re-scrape and drift from the decision sample. `note` is bridge-
      * generated observability only (never scrape body).
+     * PLAN 0.23.8 R33 M-1: `closePane` is the *only* eligibility signal —
+     * never inferred from status/note. Set only by indicator-clear confident
+     * completion call sites (immediate no-indicator + deferred clear).
      */
-    opts?: { scrape?: string; note?: string },
+    opts?: { scrape?: string; note?: string; closePane?: boolean },
   ): Promise<void> {
     let output = "";
     let truncated = false;
@@ -1709,7 +1740,21 @@ export async function startBridgeRuntime(opts?: {
         : {}),
     };
 
-    await sendResult(flight.fromPeerId, payload);
+    // Order invariant (0.23.8): flight already removed+pruned by caller →
+    // send result → best-effort close only on success + final status done.
+    const sent = await sendResult(flight.fromPeerId, payload);
+    if (
+      opts?.closePane === true &&
+      status === "done" &&
+      sent &&
+      (cfg.paneCleanup ?? "auto") !== "keep"
+    ) {
+      try {
+        await herdr.request("pane.close", { pane_id: flight.paneId });
+      } catch {
+        /* best-effort — must not affect result delivery */
+      }
+    }
   }
 
   async function sendFailedResult(opts: {
@@ -1744,13 +1789,17 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
+  /**
+   * Returns true only when the handoff was accepted. PLAN 0.23.8 uses this so
+   * pane.close never runs after a failed/missing result send.
+   */
   async function sendResult(
     toPeerId: string,
     payload: CardResultPayload,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!toPeerId) {
       log("sendResult: missing toPeerId");
-      return;
+      return false;
     }
     try {
       const attachment = serializeCardAttachment(CARD_RESULT_LABEL, payload);
@@ -1765,8 +1814,10 @@ export async function startBridgeRuntime(opts?: {
         mode: "task",
         attachments: [attachment],
       });
+      return true;
     } catch (e) {
       log("sendResult failed:", e);
+      return false;
     }
   }
 
