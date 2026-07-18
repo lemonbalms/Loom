@@ -14,7 +14,9 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 카드 레인 웨이브 완주 (2026-07-19 아침)** — 전부 **grok pane 카드**(브릿지 0.23.6 라이브)로: ① 잔여 테스트 ③ 플레이키 해소(`fae51bc`) ② 경쟁분석 B bunx 원커맨드 설치(`5874dc3` → 번들 수정 `652a856`, **git 의존성은 workspaces 미설치** → 커밋된 `dist/loom.js` 381KB 번들로 해소, `bunx github:`·`bun install -g` **E2E 양 경로 라이브 검증**) ③ 경쟁분석 C 이미지 README(`docs/images/` mermaid 3컷 PNG + Quick start 재배치). **신규 관찰 3건 → lessons(`20a233d`)**: card.done 조기 회신 2회 실증("1 command still running" 스크레이프 — settle의 card 경로 이식 = 신규 PATCH 후보) · grok 워커 무단 커밋·push 1회(`fae51bc`, diff 무결 확인 후 유지 — brief에 금지 조항 표준화) · 카드 완료 감시는 board 폴링(자기참조) 아닌 **inbox card.done + pane 마커 이중 확인**.
+> **🎯 v0.23.7 완주 (2026-07-19 아침) — R32 게이트 → grok 구현 → 라이브 스모크 → `1160b38`.** card.done 조기 회신(직전 웨이브 2회 실증) 수정: **카드 완료 판정 still-running 유예** — 지표 감지(말미 10줄 보수 패턴) → 10s 폴링·5분 상한 → 실완료 화면 회신 + additive optional `note`. R32(claude-rev pane + fable-advisor 자문) M-1(유예 재진입 가드)·M-2(`last_seq` 절단 배제)·L-1(판정 독본 전달) lock → author-close approved(no R32b) → grok pane 구현(`bun test` 386/0) → **SMOKE-0237 라이브 실증**(브릿지 stderr `deferring completion` → `cancelled (working re-entry)` → card.done output에 실완료 마커, 미완 화면 아님). 병렬: **dist 드리프트 가드**(`eb05310` — `check:dist` + pre-push 훅, 이번 push부터 가동) · **pane 배치 규칙 §1.3**(오너 지시: 탭당 최대 4개 2×2, 초과 시 새 탭 — DOGFOOD_LOOP `79ab0f9`). 브릿지 **0.23.7 코드로 재기동 완료**(pid 28154). **신규 관찰**: 카드 summary chrome 필터 미커버 2종 — grok 상태줄(`╰─ Grok 4.5 (high)…─╯`)·claude 힌트줄(`⏵⏵ auto mode on…`) 보드 노트 유입 3회 실증(0.23.6 보수 필터의 "콘텐츠 포함 box-drawing 줄" 갭 — 후속 후보, known-hint 패턴 2종 추가면 충분).
+>
+> (직전) **🎯 카드 레인 웨이브 완주 (2026-07-19 아침)** — 전부 **grok pane 카드**(브릿지 0.23.6 라이브)로: ① 잔여 테스트 ③ 플레이키 해소(`fae51bc`) ② 경쟁분석 B bunx 원커맨드 설치(`5874dc3` → 번들 수정 `652a856`, **git 의존성은 workspaces 미설치** → 커밋된 `dist/loom.js` 381KB 번들로 해소, `bunx github:`·`bun install -g` **E2E 양 경로 라이브 검증**) ③ 경쟁분석 C 이미지 README(`docs/images/` mermaid 3컷 PNG + Quick start 재배치). **신규 관찰 3건 → lessons(`20a233d`)**: card.done 조기 회신 2회 실증("1 command still running" 스크레이프 — settle의 card 경로 이식 = 신규 PATCH 후보) · grok 워커 무단 커밋·push 1회(`fae51bc`, diff 무결 확인 후 유지 — brief에 금지 조항 표준화) · 카드 완료 감시는 board 폴링(자기참조) 아닌 **inbox card.done + pane 마커 이중 확인**.
 >
 > (직전) **v0.23.6 완주 (2026-07-19 새벽) — R31 게이트 → grok 구현 → `5bdeae7` push.** 스크레이프 delta화+chrome 필터+settle 재독 shipped. 그 전: v0.23.5 완주 + 후보 ⑩ 조사 종결(아래).
 >
@@ -58,7 +60,7 @@
 >
 > ### 다음 액션 (우선순위 순)
 > 1. **잔여 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(매핑 파일은 스모크에서 수동 등록됨). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
-> 1-b. **신규 후보 (2026-07-19 카드 웨이브 관찰발)**: card 결과 스크레이프 전 settle 재독 이식(조기 card.done 2회 실증 — 0.23.6 conv settle의 card 경로 버전) · `dist/loom.js` 재생성 드리프트 가드(pre-push 훅 or CI).
+> 1-b. **신규 후보**: ~~settle card 경로 이식(조기 card.done)~~ → **해소(0.23.7 `1160b38`, 2026-07-19 — still-running 유예)** · ~~dist 드리프트 가드~~ → **완료(`eb05310`)**. 잔여: **카드 summary chrome 필터 미커버 2종**(grok 상태줄·claude 힌트줄 — known-hint 패턴 추가, Low) · conv 턴 조기 회신(~7–10s) 관찰 지속(0.23.7 스코프 밖).
 > 2-b. **경쟁 분석발 후보 (2026-07-19, `docs/COMPETITIVE_NOTES.md` §1.3)**: ~~B bunx 온보딩~~·~~C 이미지 README~~ → **완료(2026-07-19 카드 웨이브)**. 잔여: A `scripts/pane-inject.sh`(수동 pane 레인 read-guard 원자화, R-gate 불요) · npm publish는 오너 결정.
 > 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
@@ -95,7 +97,9 @@
 
 ## One-line resume
 
-> **카드 레인 웨이브 완주 (2026-07-19 아침).** 잔여① 테스트③ 플레이키 해소(`fae51bc`) + 경쟁분석 B(bunx 원커맨드 설치 — git 의존성 workspaces 미설치 발견 → 커밋 번들 `dist/loom.js`로 해소, `5874dc3`+`652a856`, E2E 양 경로 검증) + C(이미지 README — `docs/images/` mermaid 3컷 PNG + Quick start 재배치) 전부 **grok pane 카드**로 완주. lessons 3건(`20a233d`): inbox가 완료 신호(보드 폴링 자기참조)·card.done 조기 회신 2회(settle card 경로 이식 후보)·워커 무단 ship(brief 금지 조항 표준화). 다음 = 후보 ②③⑥⑦ · settle card 이식 · dist 드리프트 가드 · 경쟁분석 A(pane-inject.sh) · npm publish 오너 결정.
+> **v0.23.7 완주 (2026-07-19 아침).** card.done 조기 회신 수정 — R32 게이트(claude-rev pane + fable-advisor, M-1·M-2 lock + L-1) → grok pane 구현(`1160b38`, 386/0) → **SMOKE-0237 라이브 실증**(유예 발화 → working 재전이 → 실완료본 회신). 병렬: dist 드리프트 가드(`eb05310`, pre-push 훅 가동) · pane 배치 규칙 §1.3(`79ab0f9`, 탭당 최대 4개 2×2). 브릿지 0.23.7 재기동(pid 28154). 다음 = 후보 ②③⑥⑦ · summary chrome 미커버 2종(Low) · 경쟁분석 A · npm publish(오너).
+>
+> (직전) **카드 레인 웨이브 완주 (2026-07-19 아침).** 잔여① 테스트③ 플레이키 해소(`fae51bc`) + 경쟁분석 B(bunx 원커맨드 설치 — git 의존성 workspaces 미설치 발견 → 커밋 번들 `dist/loom.js`로 해소, `5874dc3`+`652a856`, E2E 양 경로 검증) + C(이미지 README — `docs/images/` mermaid 3컷 PNG + Quick start 재배치) 전부 **grok pane 카드**로 완주. lessons 3건(`20a233d`): inbox가 완료 신호(보드 폴링 자기참조)·card.done 조기 회신 2회(settle card 경로 이식 후보)·워커 무단 ship(brief 금지 조항 표준화). 다음 = 후보 ②③⑥⑦ · settle card 이식 · dist 드리프트 가드 · 경쟁분석 A(pane-inject.sh) · npm publish 오너 결정.
 >
 > (직전) **v0.23.6 완주 상태로 세션 종료 (2026-07-19 새벽).** 체인: … → R30/0.23.5 완주(`8148642`) → 후보 ⑩ 조사 종결 → **R31/0.23.6 완주**(delta화+chrome 필터+settle — M-1 카드 output 무필터·M-2 인덱스 맵 lock, 구현 `5bdeae7`, bun test 374/0). R31·구현·자문 전부 **수동 pane 레인**(relay 다운). 자문은 공회전으로 부분 종결(Med 없음). **다음 세션 = ⭐ 잔여 3건**(테스트 ③ 플레이키 수정 카드 · 브릿지 0.23.6 재기동+delta note 라이브 관찰 · relay 복귀 시 보드 정리). **맥 단독 모드 전환 + 잔여 2번 해소(2026-07-19)**: 로컬 relay(127.0.0.1:7842)+로컬 룸 `LOOM-SQSB`(피어 7종, `impl`→`grok-impl` 개명·`grok-rev` 신설)+브릿지 **0.23.6 코드** 온라인, conv 스모크로 **`delta: kept N/M chars` note 라이브 관찰 완료**(miss/empty 분기 실증). 구 `LOOM-SGLR` 프로필은 `~/.loom/profiles.bak-sglr-20260719` 백업(relay 복귀 시 복원). mac-node agentArgv 3종·conv-node-hosts 매핑 유지(신규 ID 추가). 잔여 = 테스트 ③ 플레이키 수정 카드 · relay 복귀 시 보드 정리.
 
@@ -105,10 +109,10 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.23.5** — 주입 verify 루프 3분기(⑨+ⓓ, 라이브 자동복구 실증) + conv 멀티턴 + artifact 트리거 + agentKind 3종 + 이벤트 구독 수명주기(⑫) |
-| **PLAN** | **v0.23.5** `approved` (R30 author-close) → **implemented** (`8148642`) |
-| **Open blocking** | none — R24–R30 모두 closed · GitHub Issues 전부 closed |
-| **Tests** | `bun test` **361 pass / 0 fail** · 6 pkg typecheck green |
+| **CLI / code** | **0.23.7** — 카드 완료 still-running 유예(card.done 조기 회신 수정, 라이브 실증) + 스크레이프 delta화·chrome 필터(0.23.6) + 주입 verify 3분기(0.23.5) + conv 멀티턴 + artifact 트리거 + agentKind 3종 |
+| **PLAN** | **v0.23.7** `approved` (R32 author-close) → **implemented** (`1160b38`) |
+| **Open blocking** | none — R24–R32 모두 closed · GitHub Issues 전부 closed |
+| **Tests** | `bun test` **386 pass / 0 fail** · 6 pkg typecheck green |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** |
 | **Remote** | `origin/main` **`cc23c3d`** (스펙 커밋) · 시연 `docs/spikes/DISPATCH-DEMO.md` |
 | **Untracked (커밋 제외)** | `.playwright-mcp/` · `docs/agents/` + CLAUDE.md 수정분은 mattpocock-skills 셋업분 — 커밋 여부 오너 판단 |
