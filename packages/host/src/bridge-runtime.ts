@@ -107,6 +107,19 @@ const SUBMIT_VERIFY_MS = 4_000;
 const SUBMIT_RETRIES = 3;
 /** PLAN 0.23.6: settle re-read delay between pane reads (idle render settle). */
 const SETTLE_MS = 250;
+/**
+ * PLAN 0.23.7: still-running completion deferral defaults.
+ * Poll interval 10s; hard cap 5 min (fail-visible note on exhaust).
+ */
+const STILL_RUNNING_POLL_MS = 10_000;
+const STILL_RUNNING_MAX_MS = 5 * 60_000;
+/**
+ * PLAN 0.23.7: conservative still-running indicator patterns (tail match only).
+ * Real TUI status line observed live: "1 command still running" / "N commands…".
+ */
+const STILL_RUNNING_PATTERNS: RegExp[] = [
+  /\d+\s+commands?\s+still\s+running/i,
+];
 /** R30 M-1: Claude Ink folds multi-line paste into a placeholder — treat as hit. */
 const PASTE_PLACEHOLDER_MARKER = "[Pasted text";
 const PROBE_TAIL_CHARS = 48;
@@ -252,7 +265,37 @@ type Flight = {
   seq: number;
   startedAt: string;
   sawWorking: boolean;
+  /**
+   * PLAN 0.23.7 M-1: still-running completion deferral ownership flag.
+   * Set synchronously *before* any settle await so concurrent done/idle
+   * events are no-ops while this path owns the completion decision.
+   */
+  stillRunningDeferral?: boolean;
+  /** Poll timer handle; cleared on finish / cancel / pane_closed / stop. */
+  stillRunningPollTimer?: ReturnType<typeof setTimeout>;
+  /** Date.now() when deferral polling began (first indicator hit). */
+  stillRunningStartedAt?: number;
 };
+
+/**
+ * PLAN 0.23.7: detect "N command(s) still running" in the last 10 non-empty
+ * lines of a stripAnsi scrape (whitespace-normalized, case-insensitive).
+ * Tail-only to avoid false positives from brief/lessons body quotes.
+ */
+export function hasStillRunningIndicator(scrape: string): boolean {
+  const text = stripAnsi(scrape);
+  const nonEmpty = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const tail = nonEmpty.slice(-10);
+  // Normalize whitespace across the tail block so wrap/spacing variants match.
+  const normalized = tail.join(" ").replace(/\s+/g, " ");
+  for (const re of STILL_RUNNING_PATTERNS) {
+    if (re.test(normalized)) return true;
+  }
+  return false;
+}
 
 /** Conv (multiturn) worker-side pane flight — lives across many turns, unlike card Flight. */
 type ConvFlight = {
@@ -296,6 +339,16 @@ export async function startBridgeRuntime(opts?: {
    * Test injection — production default 250. Real timers only (no fake-timer).
    */
   settleMs?: number;
+  /**
+   * PLAN 0.23.7 still-running deferral poll interval (ms).
+   * Test injection — production default 10_000. Real timers only.
+   */
+  stillRunningPollMs?: number;
+  /**
+   * PLAN 0.23.7 still-running deferral hard cap (ms).
+   * Test injection — production default 300_000. Real timers only.
+   */
+  stillRunningMaxMs?: number;
 }): Promise<BridgeRuntime> {
   let session = opts?.session ?? loadSession();
   if (!session) {
@@ -311,6 +364,8 @@ export async function startBridgeRuntime(opts?: {
     retries: SUBMIT_RETRIES,
   };
   const settleMs = opts?.settleMs ?? SETTLE_MS;
+  const stillRunningPollMs = opts?.stillRunningPollMs ?? STILL_RUNNING_POLL_MS;
+  const stillRunningMaxMs = opts?.stillRunningMaxMs ?? STILL_RUNNING_MAX_MS;
 
   const flights = new Map<string, Flight>(); // paneId → flight
   const cardSeq = new Map<string, number>();
@@ -1354,6 +1409,130 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
+  function clearStillRunningTimers(flight: Flight): void {
+    if (flight.stillRunningPollTimer != null) {
+      clearTimeout(flight.stillRunningPollTimer);
+      flight.stillRunningPollTimer = undefined;
+    }
+  }
+
+  function clearStillRunningState(flight: Flight): void {
+    clearStillRunningTimers(flight);
+    flight.stillRunningDeferral = false;
+    flight.stillRunningStartedAt = undefined;
+  }
+
+  /**
+   * PLAN 0.23.7: after a completion-class status, settle-scrape and either
+   * finish immediately or enter still-running poll deferral.
+   * Ownership of completion is the poll path while stillRunningDeferral is set.
+   */
+  async function beginCardCompletion(
+    flight: Flight,
+    paneId: string,
+  ): Promise<void> {
+    let scrape: string;
+    try {
+      scrape = await settlePaneRead(paneId);
+    } catch {
+      // Settle failed — fall through to finishCard which re-reads and maps
+      // read failure to failed (same as pre-0.23.7 path).
+      if (flights.get(paneId) !== flight) return;
+      clearStillRunningState(flight);
+      flights.delete(paneId);
+      herdr.eventsPrune(paneId);
+      await finishCard(flight, "done", undefined);
+      return;
+    }
+
+    // M-1: flight may have been torn down (blocked/pane_closed/working) mid-await
+    if (flights.get(paneId) !== flight) return;
+    if (!flight.stillRunningDeferral) return;
+
+    if (!hasStillRunningIndicator(scrape)) {
+      // No indicator → immediate finish; pass scrape (no re-scrape).
+      clearStillRunningState(flight);
+      flights.delete(paneId);
+      herdr.eventsPrune(paneId);
+      await finishCard(flight, "done", undefined, { scrape });
+      return;
+    }
+
+    // Indicator hit → keep flight, enter poll (first re-read after pollMs).
+    flight.stillRunningStartedAt = Date.now();
+    log(
+      `card ${flight.cardId}: still-running indicator — deferring completion (poll ${stillRunningPollMs}ms, max ${stillRunningMaxMs}ms)`,
+    );
+    scheduleStillRunningPoll(flight, paneId);
+  }
+
+  function scheduleStillRunningPoll(flight: Flight, paneId: string): void {
+    clearStillRunningTimers(flight);
+    flight.stillRunningPollTimer = setTimeout(() => {
+      void (async () => {
+        if (flights.get(paneId) !== flight) return;
+        if (!flight.stillRunningDeferral) return;
+
+        const startedAt = flight.stillRunningStartedAt ?? Date.now();
+        const elapsed = Date.now() - startedAt;
+
+        let scrape: string;
+        try {
+          scrape = await settlePaneRead(paneId);
+        } catch {
+          // Read fail mid-poll: if cap not reached, retry next interval; else exhaust.
+          if (flights.get(paneId) !== flight || !flight.stillRunningDeferral) {
+            return;
+          }
+          if (elapsed >= stillRunningMaxMs) {
+            const secs = Math.round(stillRunningMaxMs / 1000);
+            clearStillRunningState(flight);
+            flights.delete(paneId);
+            herdr.eventsPrune(paneId);
+            await finishCard(flight, "done", undefined, {
+              note: `still_running deferral exhausted (${secs}s)`,
+            });
+          } else {
+            scheduleStillRunningPoll(flight, paneId);
+          }
+          return;
+        }
+
+        if (flights.get(paneId) !== flight) return;
+        if (!flight.stillRunningDeferral) return;
+
+        if (!hasStillRunningIndicator(scrape)) {
+          // Indicator cleared — finish with the scrape that proved clearance (L-1).
+          const secs = Math.max(0, Math.round(elapsed / 1000));
+          clearStillRunningState(flight);
+          flights.delete(paneId);
+          herdr.eventsPrune(paneId);
+          await finishCard(flight, "done", undefined, {
+            scrape,
+            note: `completion deferred ${secs}s (still-running indicator)`,
+          });
+          return;
+        }
+
+        if (elapsed >= stillRunningMaxMs) {
+          // Cap exhausted — fail-visible note, still status=done with latest scrape.
+          const secs = Math.round(stillRunningMaxMs / 1000);
+          clearStillRunningState(flight);
+          flights.delete(paneId);
+          herdr.eventsPrune(paneId);
+          await finishCard(flight, "done", undefined, {
+            scrape,
+            note: `still_running deferral exhausted (${secs}s)`,
+          });
+          return;
+        }
+
+        // Still present and under cap — schedule next poll.
+        scheduleStillRunningPoll(flight, paneId);
+      })();
+    }, stillRunningPollMs);
+  }
+
   function onCardHerdrEvent(
     flight: Flight,
     paneId: string,
@@ -1362,6 +1541,8 @@ export async function startBridgeRuntime(opts?: {
     d: Record<string, unknown>,
   ): void {
     if (ev === "pane_closed" || event === "pane.closed") {
+      // Clean deferral timers before teardown (test ⑦ / leak guard).
+      clearStillRunningState(flight);
       flights.delete(paneId);
       herdr.eventsPrune(paneId);
       void sendFailedResult({
@@ -1386,21 +1567,37 @@ export async function startBridgeRuntime(opts?: {
     ).toLowerCase();
 
     if (status === "working") {
+      // PLAN 0.23.7: working re-entry during deferral cancels poll and returns
+      // to normal event flow (next idle re-evaluates).
+      if (flight.stillRunningDeferral) {
+        clearStillRunningState(flight);
+        log(
+          `card ${flight.cardId}: still-running deferral cancelled (working re-entry)`,
+        );
+      }
       flight.sawWorking = true;
       return;
     }
 
     // C1: done may arrive from detection; also accept idle after working, blocked → failed
     if (status === "blocked") {
+      // M-1: blocked during deferral → clear poll timers then immediate failed.
+      clearStillRunningState(flight);
       flights.delete(paneId);
       herdr.eventsPrune(paneId);
       void finishCard(flight, "failed", "agent_blocked");
       return;
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
-      flights.delete(paneId);
-      herdr.eventsPrune(paneId);
-      void finishCard(flight, "done", undefined);
+      // M-1: while deferral flag is set, completion-class events are no-ops —
+      // ownership of the finish decision is the poll path alone.
+      if (flight.stillRunningDeferral) {
+        return;
+      }
+      // Set ownership flag synchronously *before* any await so concurrent
+      // done/idle events cannot re-enter beginCardCompletion.
+      flight.stillRunningDeferral = true;
+      void beginCardCompletion(flight, paneId);
     }
   }
 
@@ -1454,12 +1651,23 @@ export async function startBridgeRuntime(opts?: {
     flight: Flight,
     status: "done" | "failed",
     reason?: string,
+    /**
+     * PLAN 0.23.7 L-1: when the caller already holds the scrape that decided
+     * completion (indicator clearance / exhaust), pass it so finishCard does
+     * not re-scrape and drift from the decision sample. `note` is bridge-
+     * generated observability only (never scrape body).
+     */
+    opts?: { scrape?: string; note?: string },
   ): Promise<void> {
     let output = "";
     let truncated = false;
     try {
       // PLAN 0.23.6: settle re-read (shared with conv); output body stays unfiltered (R31 M-1).
-      const raw = await settlePaneRead(flight.paneId);
+      // PLAN 0.23.7 L-1: prefer caller-supplied scrape (no re-scrape).
+      const raw =
+        opts?.scrape !== undefined
+          ? opts.scrape
+          : await settlePaneRead(flight.paneId);
       const stripped = stripAnsi(raw);
       const t = truncateTail(stripped, 200_000);
       output = t.text;
@@ -1496,6 +1704,9 @@ export async function startBridgeRuntime(opts?: {
       startedAt: flight.startedAt,
       finishedAt: new Date().toISOString(),
       reason,
+      ...(opts?.note
+        ? { note: opts.note.slice(0, 500) }
+        : {}),
     };
 
     await sendResult(flight.fromPeerId, payload);
@@ -1564,6 +1775,11 @@ export async function startBridgeRuntime(opts?: {
     if (stopped) return;
     stopped = true;
     clearInterval(pollTimer);
+    // PLAN 0.23.7: drop any still-running poll timers on bridge stop.
+    for (const f of flights.values()) {
+      clearStillRunningState(f);
+    }
+    flights.clear();
     try {
       server.stop(true);
     } catch {

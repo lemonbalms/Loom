@@ -236,6 +236,55 @@ describe("apply_card_result L-2", () => {
     expect(good.ok).toBe(true);
     if (good.ok) expect(good.status).toBe("done");
   });
+
+  test("⑪ note max length (500) still preserves last_seq parse (0.23.7 M-2)", () => {
+    const task = addTask({
+      title: "m2-last-seq",
+      assignee: "node/wsl-1",
+      status: "doing",
+    });
+    const finishedAt = new Date().toISOString();
+    // summary already long + note 500 → total head >> 1000 without M-2 guard
+    const longSummary = "S".repeat(600);
+    const longNote = "N".repeat(500);
+    const r = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: task.id,
+        status: "done",
+        node: "node/wsl-1",
+        seq: 42,
+        output: "out",
+        summary: longSummary,
+        note: longNote,
+        finishedAt,
+      }),
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const notes = r.task.notes ?? "";
+    expect(notes.length).toBeLessThanOrEqual(1000);
+    const m = /last_seq=(\d+)/.exec(notes);
+    expect(m).toBeTruthy();
+    expect(Number(m![1])).toBe(42);
+    // Idempotency: same seq ignored
+    const again = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: task.id,
+        status: "done",
+        node: "node/wsl-1",
+        seq: 42,
+        output: "out2",
+        summary: "should-not-apply",
+        finishedAt,
+      }),
+    });
+    expect(again.ok).toBe(true);
+    if (again.ok) {
+      expect(again.task.notes).toBe(notes);
+    }
+  });
 });
 
 describe("herdr client + fake server", () => {

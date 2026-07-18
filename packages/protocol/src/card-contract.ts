@@ -49,6 +49,11 @@ export const CardResultPayloadSchema = z.object({
   finishedAt: z.string().datetime(),
   /** failed reason when status=failed (L-1 payload_invalid etc.) */
   reason: z.string().max(200).optional(),
+  /**
+   * PLAN 0.23.7: additive optional observability (bridge-generated only).
+   * Zod-strip compatible for older towers; CARD_CONTRACT_VERSION unchanged.
+   */
+  note: z.string().max(500).optional(),
 });
 export type CardResultPayload = z.infer<typeof CardResultPayloadSchema>;
 

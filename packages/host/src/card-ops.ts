@@ -202,10 +202,19 @@ export function applyCardResult(args: {
     payload.status === "failed" && payload.reason
       ? ` failed reason=${payload.reason}`
       : "";
-  const notes = `${payload.summary}${reason} last_seq=${payload.seq}`.slice(
-    0,
-    1000,
-  );
+  // PLAN 0.23.7 M-2: `last_seq=` must always survive the 1000-char notes cap.
+  // Build head (summary + reason + optional note) within residual budget, then
+  // append the seq token so the idempotency guard cannot be silently broken.
+  const NOTES_CAP = 1000;
+  const lastSeqToken = ` last_seq=${payload.seq}`;
+  const notePart =
+    payload.note && payload.note.length > 0 ? ` ${payload.note}` : "";
+  const headBudget = Math.max(0, NOTES_CAP - lastSeqToken.length);
+  let head = `${payload.summary}${reason}${notePart}`;
+  if (head.length > headBudget) {
+    head = head.slice(0, headBudget);
+  }
+  const notes = `${head}${lastSeqToken}`;
 
   const updated = updateTask(task.id, {
     status,

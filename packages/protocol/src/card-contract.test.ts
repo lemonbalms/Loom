@@ -152,4 +152,39 @@ describe("card-contract v1", () => {
   test("untrusted marker preamble", () => {
     expect(wrapUntrustedPrompt("p")).toContain(UNTRUSTED_HANDOFF_MARKER);
   });
+
+  test("⑧ note additive optional — present + absent (0.23.7)", () => {
+    const base = {
+      v: 1 as const,
+      cardId: "task_abcdef0123456789",
+      status: "done" as const,
+      node: "node/wsl-1",
+      seq: 1,
+      output: "out",
+      summary: "ok",
+      finishedAt: new Date().toISOString(),
+    };
+    // Absent field still parses (older bridge / tower compatibility)
+    const noNote = CardResultPayloadSchema.parse(base);
+    expect(noNote.note).toBeUndefined();
+
+    const withNote = CardResultPayloadSchema.parse({
+      ...base,
+      note: "completion deferred 12s (still-running indicator)",
+    });
+    expect(withNote.note).toContain("completion deferred");
+
+    // max 500 enforced
+    const tooLong = CardResultPayloadSchema.safeParse({
+      ...base,
+      note: "x".repeat(501),
+    });
+    expect(tooLong.success).toBe(false);
+
+    const atCap = CardResultPayloadSchema.parse({
+      ...base,
+      note: "y".repeat(500),
+    });
+    expect(atCap.note?.length).toBe(500);
+  });
 });
