@@ -57,6 +57,7 @@
 > ### 다음 액션 (우선순위 순)
 > 1. **v0.23.6 웨이브 진행 중**: PLAN draft(후보 ⑤ — delta화+chrome 필터+settle 재독) → **R31 리뷰 카드(claude pane) 디스패치** → author-close → grok 구현 카드 → codex 자문 카드 → 검증·커밋.
 > 2. **잔여 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(매핑 파일은 스모크에서 수동 등록됨). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
+> 2-b. **경쟁 분석발 후보 (2026-07-19, `docs/COMPETITIVE_NOTES.md` §1.3)**: A `scripts/pane-inject.sh`(수동 pane 레인 read-guard 원자화, R-gate 불요) · B bunx 원커맨드 온보딩(1단계 즉시, npm publish는 오너 결정) · C 이미지 중심 README(순서 B→C). 출처: tmux-bridge-mcp 분석.
 > 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
 > ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
