@@ -122,6 +122,7 @@ bun run loom room join "loom://join/<받은-blob>"
 # 또는: bun run link:loom   # PATH에 로컬 loom 링크
 ```
 
+- CLI/워크스페이스 코드 변경 시 `bun run build:cli`로 `dist/loom.js` 재생성 후 함께 커밋할 것(설치 경로 `bunx` / `bun install -g`가 이 번들을 사용).
 - 막히면 `loom doctor` → `fail` 섹션 스크린샷으로 오너에게.
 - 온보딩 후 팀원 host는 기본 자동 기동(0.17) → 창 닫아도 online.
 

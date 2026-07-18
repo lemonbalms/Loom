@@ -9,7 +9,8 @@
     "includes": [
       "**",
       "!**/*.d.ts",
-      "!apps/desktop"
+      "!apps/desktop",
+      "!dist"
     ]
   },
   "linter": {

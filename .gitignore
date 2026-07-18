@@ -1,5 +1,9 @@
 node_modules/
 dist/
+# Track root self-contained CLI bundle for bunx/bun install -g (workspaces not installed from git deps)
+!/dist/
+/dist/*
+!/dist/loom.js
 *.log
 .DS_Store
 .env
