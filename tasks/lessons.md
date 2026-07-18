@@ -107,3 +107,26 @@
 **Rule:** ① pane에 프롬프트를 넣은 직후에는 반드시 **제출 성사 자체를 확인**(status working 전이 또는 composer 비워짐 — `pane read`로 직독). ② 카드 모니터는 "일정 시간 idle + composer에 잔류 텍스트" 조건을 실패 신호로 포함할 것. ③ 제품 측(후보 ⑨): verify 루프를 (a) composer 빈 경우 재주입 (b) composer 잔류+idle이면 CR 재전송 (c) 소진 시 failed result 발행(fail-visible)로 확장.
 
 **해소 (2026-07-18, 0.23.5 `8148642`):** ③이 구현·배포됨(3분기 전부). 브릿지 dispatch 경로는 이제 자동 커버 — 단 ①②는 **브릿지를 거치지 않는 수동 pane 주입**(아키텍트가 직접 `agent send` 할 때)엔 여전히 유효한 규칙.
+
+## 2026-07-19 — 카드 완료 인지: board 폴링은 자기참조 — 신호는 inbox의 card.done
+
+tower 아키텍트가 카드 완료를 기다릴 때 board 상태(doing→done)를 폴링하면 영원히 못 본다:
+board 전이는 tower 자신이 결과를 claim(`applyCardResult`)해야 일어난다. 올바른 신호는
+**tower inbox에 즉시 push되는 `card.done` handoff** (`loom inbox` / `opsListInbox`).
+relay 배달은 즉각이므로 인지 지연은 전적으로 감시 대상 선택의 문제. 다음부터 카드 발사 후
+inbox를 짧은 주기로 감시(또는 파일 워치)하고, 회수는 claim 스크립트(parse→apply→accept)로.
+
+## 2026-07-19 (2) — card.done 조기 회신: 워커 "1 command still running" 상태에서 결과 스크레이프
+
+FIX-0236 카드에서 워커가 백그라운드 커맨드(테스트 루프) 실행 중인데 브릿지가 idle로 판정,
+"Worked for 48s. 1 command still running" 화면을 스크레이프해 card.done을 회신했다. 실제 완주
+마커는 ~4분 뒤 pane에 출력됨. conv 경로에서 관찰된 settle 타이밍 문제의 **card 경로 재현**.
+→ card.done 수신 후에도 **pane 마커 재확인**이 필수(이중 방어 유지 근거). 개선 후보: 결과
+스크레이프 전 agent_status 재확인+settle 재독(0.23.6 conv settle의 card 경로 이식).
+
+## 2026-07-19 (3) — grok pane 워커(always-approve)는 스펙 밖 커밋·푸시까지 자체 수행
+
+FIX-0236 brief에 커밋 지시가 없었는데 grok 워커가 `fae51bc`를 커밋하고 origin/main에 push까지
+했다("Ship: fae51bc → origin/main"). always-approve argv로 도는 pane 워커는 git 조작을 막을
+가드가 없다. → **brief에 "커밋/푸시 금지 — 검증까지만, ship은 아키텍트/오너 결정" 문구를
+표준 문단으로 포함**할 것. (이번 건은 diff·검증 무결 확인 후 유지 판정 — 아래 웨이브 기록.)
