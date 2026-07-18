@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** PLAN **v0.22.0** `approved` → **implemented** (R23 M-1/M-2) — **Loom×Herdr 노드 브릿지** 수직 슬라이스(`loom bridge`). 와이어 protocol v1 무변경. FREEZE 예외 = 오너 pull(2026-07-17). (0.21.1/R22 shipped `d05d714`.)  
+> **최신:** **R24** `docs/CONV_SPEC.md`(멀티턴 대화 1단계 스펙) **`approved`**(author-close, 2026-07-18) — M-1(conv↔peer pin)·M-2(artifact ref 검증 규약) 스펙 문안 lock 반영 완료 + L-1..L-5 author-close 완료(no R24b). FREEZE 해제(오너 2026-07-18). (PLAN v0.22.0 R23 implemented — 브릿지 수직 슬라이스.)  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,6 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R24** | **CONV_SPEC v1 (스펙 문서, PLAN 버전 아님)** | **closed (pending-revision → author-close approved 2026-07-18)** | **크로스머신 CLI 멀티턴 대화 1단계 스펙** — 티켓 #2·#5·#6·#7·#8·#9 결정 통합 충실·relay 무변경 원칙 일관. 단 선언된 M-4 경계가 신규 표면 2곳에 미적용: **M-1 conv↔peer pin**(타워 측 턴 발신자 바인딩) + **M-2 artifact ref 검증 규약**(fetch 명령 기계 조립 방어). L-1..L-5 author-close. 구현 PLAN은 locks 반영 스펙 기준. |
 | **R23** | **v0.22.0** | **closed (approved → implemented 2026-07-17)** | **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스) — 새 데몬 표면 + MCP `dispatch_card`/`apply_card_result` + 원격 프롬프트 주입 신뢰 경계. M-1/M-2 locks 충족(코드+테스트). L-1..L-3 author-close. 와이어 무변경. FREEZE 예외=오너 pull. |
 | **R22** | **v0.21.0→0.21.1** | **closed (approved → implemented `d05d714`)** | **PTY handoff inject** — Claude-first · opt-in · accept-gated · **no-auto-submit paste**. M-1…M-6 locks. Fable 5 사전 승인(no R22b). codex-impl 구현 → 아키텍트 독립 검증(bun test 190/0, M-1..M-6 코드 확인). 와이어 변경 없음. FREEZE 예외=오너 pull. |
 | **R21** | **v0.20.0** | **closed (approved→shipped `c15de88`)** | Tier A3 `loom doctor` (read-only 진단) — no wire change. All binding M-1..M-4 met (architect-verified: bun test 180/0, live run exit 0), L-1..L-3 author-closed. Implemented via codex-impl lane. |
@@ -23,7 +24,48 @@
 
 ## Open (blocking)
 
-_(none)_ — **R23 closed `approved` → implemented** (v0.22.0 Loom×Herdr 노드 브릿지): M-1/M-2 + L-1..L-3 충족, `bun test` 213/0. 실물 herdr 라이브 스모크는 수동 1회 권장. (R22/v0.21.1 shipped `d05d714`.)
+_(none)_ — R24 author-close approved (M-1/M-2 문안 반영 + L-1..L-5 author-close 완료).
+
+---
+
+## Review R24 — docs/CONV_SPEC.md (크로스머신 CLI 멀티턴 대화 1단계 스펙)
+
+**검토 대상:** `docs/CONV_SPEC.md` 전문(초안 v1, `cc23c3d` — PLAN 버전 아님, 구현 PLAN의 전제 게이트) + 닫힌 티켓 resolution 대조(lemonbalms/Loom #2 세션 의미론 · #5 가드레일 · #6 와이어 · #7 MCP 표면 · #8 긴 산출물 · #9 진화 가드) + `docs/HERDR_DESIGN.md` §3.1–3.7·§4.1–4.4 + 코드 대조(`packages/protocol/src/sanitize.ts:18-50`)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`pending-revision` → M-1/M-2 locks 스펙 본문 문안 반영 + L-1..L-5 author-close → author-close `approved`** (Fable 사전 승인, no R24b).
+
+**Author-close 완료 (2026-07-18):** grok-impl이 M-1/M-2 locks 문안을 `docs/CONV_SPEC.md` §2.1·§3.3(M-1 pin), §5.3(M-2 artifact ref 검증)에 반영하고, L-1(§3.3 turnSeq 배정)·L-2(§3.2 참조 표기)·L-3(§2.2 한도 집행 주체)·L-4(§4.2 워커 측 턴 수신)·L-5(§3.3 conv.open 중복 처리)를 author-close 완료. 사전 승인 경로(no R24b)에 따라 재리뷰 없이 `approved` 전환.
+
+### 결정적 발견 (성패 지점)
+스펙은 M-4 신뢰 경계를 §0에서 **선언**했으나, 멀티턴이 새로 여는 두 표면에는 그 경계를 **적용하지 않았다**. 특히 §5.3이 untrusted wire 입력인 artifact ref(branch·path·host)에 대해 "수신 CLI가 기계적으로 fetch 명령 조립"을 검증 규약 없이 명문화 — 구현자가 이 문장을 그대로 따르면 인자 주입(선행 `-` 브랜치명 등)·임의 host scp·path traversal이 **스펙 준수의 결과물**이 된다. 서버 sanitize는 방어가 아니다(제어문자·ESC만 제거, 셸 메타문자·경로 문자 통과 — sanitize.ts:18-50). 둘 다 R23이 잠근 것과 같은 부류("label/포맷 매치 ≠ 인가")이며 문안 lock으로 닫히고 wire 변경 불요.
+
+### Checklist
+- [x] **티켓 결정 8건 통합 충실도** — §1↔#2, §2↔#5, §3↔#6, §4↔#7, §5↔#8, §6↔#9 1:1 대응, 재해석·범위 확대 없음. §7이 research #3/#4 결론 정확 반영. §8 non-goal이 맵의 안개를 정직 승계.
+- [x] **relay/protocol 무변경 원칙 일관** — 신규 시맨틱 전부 body 헤더+label attachment 컨벤션, 구 클라이언트 하위호환(best-effort 파싱).
+- [x] **HERDR_DESIGN 정합** — §3.7 크기 사슬 재사용(conv 32k / card 200k tail-keep / relay 256k 분리 논거 §5.5 타당), M-9 상관키(`convId`), §4.1.3 이중 seq의 conv 확장(`turnSeq` last-seen 멱등 폐기).
+- [x] **보드 매핑 §3.4** — TaskStatus 5종 재사용·신규 컬럼 없음·타워 로컬 보드 SSOT (HERDR §3.5 원칙 그대로).
+- [x] **MCP 표면 §4** — 최소 4도구, `conv_await`가 기존 check/claim 재사용(M-6 수신 경로 불변), 별도 conv_apply 없음, 노드 조회는 기존 `list_peers` 필터.
+- [x] **진화 가드 §6** — 전송-중립 불변식 + relay=제어판/직결=데이터판 + 정량 3신호는 필요조건·투자 결정은 사람. 내적 결함 없음 (#9 확정안 유지).
+- [ ] **M-4 경계의 신규 표면 적용** — 타워 측 턴 발신자 바인딩(M-1)·artifact ref 검증(M-2) 미명시 → binding locks.
+
+### Findings (Sev: High|Med|Low) — binding locks
+- **M-1 (Med, binding): conv↔peer pin.** `conv.open`/`conv.accept` 시점에 convId↔상대 fromPeerId를 **양측이 고정(pin)**하고, 이후 모든 intent(turn·close·done_proposal 포함)는 pin된 peerId 불일치 시 무시+로그. 현행 §2.1의 authorizedDispatchers는 **집합** 검사라 인가 dispatcher가 2명이면 상호 conv 주입 가능하고, 타워 측 수신은 label+convId 라우팅뿐. 위조 턴 = 타워 에이전트의 대화 입력으로 소비되는 프롬프트 주입면, 위조 done_proposal = 완료 확정 플로우 구동, 위조 close = §5.4의 7일 삭제 시계 조기 가동(데이터 손실 인접). `fromPeerId` 서버 지정(M-9)이라 집행 원시는 이미 존재. R23 M-1(dispatcher 인가)의 타워 측 대칭 짝.
+- **M-2 (Med, binding): artifact ref 검증 규약 (§5.3).** 최소 포함: ① `convId` 형식 규약(예: `conv_[a-f0-9]{16}`, 생성 주체=타워) — 브랜치명·경로에 쓰이므로 charset 고정이 traversal·인자 주입의 1차 방어. ② git ref는 `conv/<convId>/` prefix 패턴 매치 필수 + `--` 구분자 사용 + 선행 `-` 거부, remote는 수신측 로컬 설정의 기존 remote만(wire의 host/URL로 remote 추가 금지). ③ scp `host`는 wire 필드가 아니라 **수신측 로컬 설정의 conv 상대 노드 매핑**에서 해석(신뢰 입력에서 제거), path는 정규화 후 `~/.loom/artifacts/<convId>/` prefix 강제. ④ sha256은 fetch **후** 무결성 검증일 뿐 fetch 행위 자체의 방어가 아님을 명시.
+- **L-1 (Low): turnSeq 배정 규약** — 시작값·홀짝 배정·open/accept의 seq 소비 여부 명시(예: open=0 타워, accept=1 워커, 이후 타워=짝/워커=홀). §3.3 "홀짝으로 검증 가능"은 배정 규약 없이는 미완. author-close.
+- **L-2 (Low): §3.2 자기참조 오독** — CONV_SPEC.md:71 "모든 메시지는 §3.2 패턴"은 `HERDR_DESIGN §3.2` 지칭으로 명기. author-close.
+- **L-3 (Low): 한도 집행 주체 명문화** — 타워=권위적 집행자(목표 소유자·보드 SSOT), **pause는 wire 어휘가 아니라 타워 로컬 보드 전이**(§3.2 intent에 pause 없음이 방증), 워커 측 한도 인지는 advisory blocked 턴. 미명시 시 구현자가 pause 메시지 타입을 발명할 위험. author-close.
+- **L-4 (Low): 워커 측 턴 수신 메커니즘 + R23 M-2 턴별 적용** — 2번째 이후 턴이 워커에 도달하는 경로(워커도 conv_await를 도는가 vs 브릿지가 herdr `agent send`로 pane 주입) 명시. 후자라면 R23 M-2(제출 분리 — untrusted는 리터럴 send, 제출은 고정 상수 별도 호출)가 **매 턴** 적용됨을 명기 — 첫 프롬프트만 M-2 대상으로 오독될 여지 차단. author-close.
+- **L-5 (Low): conv.open 중복/재전달 처리** — inbox 재통지·타워 재시도로 같은 convId의 open이 재도달 시 브릿지 동작(active/closed convId면 기존 accept 재송신 또는 reject) — §4.1.3 멱등 폐기 원칙의 conv.open 확장. L-1과 같은 단락에서 함께 닫기 가능. author-close.
+
+### Decision notes
+- **통합 충실도 판정(핵심 질문 a):** 8건 결정이 §1–§6에 1:1 대응, 왜곡·재론 없음. 티켓 resolution이 SSOT라는 전제 하에 이 리뷰는 결정 자체를 재심하지 않았고, 스펙 텍스트의 공백만 다뤘다.
+- **verdict 구조:** R22·R23 선례 — **M-lock 문안이 스펙 본문에 그대로 들어가는 것**이 author-close 조건. Med 2건 반영 + Low 5건 author-close 후 재리뷰 없이 `approved` 전환(no R24b). PATCH 적용자는 implementer(claude-impl) — 리뷰어는 plan_review.md 외 수정 금지이므로 CONV_SPEC.md 상태 헤더(`초안 v1` → approved) 동기화도 PATCH에 포함할 것.
+- **M-1 심각도 근거 (Low 아님):** R23 L-2(위조 [DONE])는 보드 반영 1회 방어였으나, conv에서는 위조 턴이 반복적·지시 전달성 대화 입력으로 소비되고 위조 close가 산출물 삭제 시계를 가동 — 멀티턴 증폭으로 Med.
+- **M-2 심각도 근거 (High 아님):** WORKFLOW §5 엄격 해석 시 High 인접(기계 조립 fetch = 잠재적 임의 명령 실행)이나, 스펙 전용 문서 + M-1 pin 전제 시 공격자가 conv 상대방을 먼저 오염시켜야 함 → Med-binding blocking으로 충분. 단 M-4가 바로 그 오염 시나리오를 신뢰 모델 전제로 삼으므로 Low 불가.
+- **한도 집행(L-3) 해석:** 스펙 구조에 이미 내재(타워=보드 SSOT·§1.4 "언제든 abort" = 발언권 무관) — 명문화만 필요, 설계 변경 아님.
+- **스코프:** non-goal(§8) 부재 항목(2+3 상세·관전 UX·crash 저널·구현)은 결함 아님 — 티켓 #9가 의도적으로 안개 유지.
+- Advisor: fable-advisor consulted: yes.
 
 ---
 

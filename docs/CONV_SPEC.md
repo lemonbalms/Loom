@@ -1,6 +1,6 @@
 # 크로스머신 CLI 멀티턴 대화 — 1단계 스펙 (relay 컨벤션)
 
-> **상태**: 초안 v1 — FREEZE 해제 후 R 사이클 투입용. 구현 없음(스펙 전용).
+> **상태**: **approved**(R24 author-close, 2026-07-18) — M-1(conv↔peer pin)·M-2(artifact ref 검증 규약) locks 문안 반영 + L-1..L-5 author-close 완료. 구현 없음(스펙 전용).
 > **출처**: wayfinder 맵 [크로스머신 CLI 멀티턴 대화 — 1단계 스펙 차팅](https://github.com/lemonbalms/Loom/issues/1)의 확정 결정 8건 통합.
 > **전제 문서**: `docs/HERDR_DESIGN.md`(카드 dispatch 설계 — §3.1 컨벤션, §3.7 크기 사슬, §4.1 상태머신·이중 seq, §4.4 M-4 신뢰 경계), `docs/spikes/DISPATCH-DEMO.md`(Mac↔Windows 실증 제약).
 
@@ -42,11 +42,12 @@
 
 - 대화 개시 때 권한 범위(cwd·쓰기 허용·agentKind)를 고정하고 **중도 확대 불가**.
 - 매 턴: authorizedDispatchers 확인 + sanitize + `⚠ Untrusted handoff content` 마커 — M-4 원칙 그대로. 검증은 싸게 매 턴, 권한 부여는 보수적으로 개시 1회.
+- **conv↔peer pin (R24 M-1):** `conv.open`/`conv.accept` 시점에 convId↔상대 `fromPeerId`를 **양측이 고정(pin)**한다. 이후 모든 intent(`turn`·`close`·`done_proposal` 포함)는 pin된 peerId와 불일치 시 무시+로그. R23 M-1(dispatcher 인가)이 카드 dispatch 시점의 발신자를 잠갔다면, 이는 그 인가의 **타워 측 대칭 짝**으로서 conv 전체 수명 동안의 발신자를 잠근다.
 
 ### 2.2 한도
 
 - 대화당 **턴 상한(기본 20)** · **벽시계 타임아웃(기본 2시간)** — 개시 시 지정, 상한 내 조정 가능.
-- 초과 시 세션을 죽이지 않고 **pause** 상태 전환 + 사람 에스컬레이션.
+- 초과 시 세션을 죽이지 않고 **pause** 상태 전환 + 사람 에스컬레이션. **집행 주체 (R24 L-3):** 타워가 목표 소유자·보드 SSOT로서 한도를 권위적으로 집행한다 — `pause`는 wire 어휘가 아니라 **타워 로컬 보드 전이**(§3.2 intent 목록에 pause가 없는 것과 일치)이며, 워커 측의 한도 인지는 advisory `blocked` 턴으로만 표현된다.
 - 토큰 예산은 CLI별 노출 편차로 1단계에서는 턴·시간으로 대리.
 
 ### 2.3 위험 작업
@@ -68,7 +69,7 @@
 
 ### 3.2 턴 인코딩 — card 패턴 + kind
 
-- 모든 메시지는 §3.2 패턴: `mode:'task'` handoff, body 헤더(`intent: conv.open|accept|reject|turn|close` + `conv: <convId>` + `seq: <turnSeq>`) + label attachment JSON 단일 첨부(`loom-conv-open`, `loom-conv-turn` 등 label 라우팅).
+- 모든 메시지는 `HERDR_DESIGN.md` §3.2 패턴: `mode:'task'` handoff, body 헤더(`intent: conv.open|accept|reject|turn|close` + `conv: <convId>` + `seq: <turnSeq>`) + label attachment JSON 단일 첨부(`loom-conv-open`, `loom-conv-turn` 등 label 라우팅).
 - 턴 종류는 payload `kind: normal | blocked | done_proposal`.
 - `conv.close`는 타워 전용, `reason: done | abort`.
 - 크기 한도는 §3.7 사슬 재사용(attachment ≤256k는 relay 최종 강제). 구 클라이언트에는 일반 메시지로 보임(하위호환, best-effort 파싱).
@@ -76,8 +77,11 @@
 ### 3.3 seq 방어
 
 - 상관관계 키는 `convId`(M-9 — handoff id는 hop마다 재생성, 페이로드 키만 안정).
+- **conv↔peer pin 집행 (R24 M-1):** §2.1에서 고정된 pin은 seq 검증과 별도로 매 intent에 적용된다 — `turn`·`close`·`done_proposal` 수신 시 발신 `fromPeerId`가 pin된 상대와 다르면 seq 값과 무관하게 무시+로그.
+- **turnSeq 배정 규약 (R24 L-1):** `conv.open`이 `turnSeq=0`(타워 배정), `conv.accept`가 `turnSeq=1`(워커 배정)을 소비한다. 이후 타워 발신 턴은 짝수, 워커 발신 턴은 홀수로 단조증가.
 - `turnSeq`는 body 헤더+payload 양쪽에 실리고, 수신측은 conv별 last-seen 유지 + `seq ≤ last` 멱등 폐기 — §4.1.3 이중 seq의 conv 확장.
-- half-duplex 발언권은 turnSeq 홀짝으로 검증 가능.
+- half-duplex 발언권은 turnSeq 홀짝으로 검증 가능(배정 규약은 위 참조).
+- **conv.open 중복/재전달 처리 (R24 L-5):** 이미 `active` 또는 `closed` 상태인 convId로 `conv.open`이 재도달하면(inbox 재통지·타워 재시도), 수신측은 기존 `conv.accept`를 재송신하거나 `conv.reject`한다 — §4.1.3 멱등 폐기 원칙의 `conv.open` 확장.
 
 ### 3.4 board 매핑 — 대화 전체 = 카드 1장
 
@@ -102,6 +106,7 @@
 - `conv_await(convId, timeoutSec)`로 다음 턴까지 대기. 내부는 기존 check/claim 재사용(M-6).
 - 타임아웃 시 `{status:"timeout"}` 반환 → 에이전트 재호출(가드레일 벽시계와 별개).
 - AFK 루프: `send → await → 처리 → send` — busy-poll 턴 낭비 없음.
+- **워커 측 턴 수신 (R24 L-4):** 2번째 이후 턴이 워커에 도달하는 경로는 `conv_await` 폴링이 아니라, 브릿지가 herdr `agent send`로 워커 pane에 직접 주입하는 방식이다(`HERDR_DESIGN.md` §3.2 card.dispatch 경로와 동형). 이 경로에서는 **R23 M-2(제출 분리 — untrusted 텍스트는 리터럴 send로만, 제출은 untrusted 무포함 고정 상수 입력으로 별도 호출)가 첫 프롬프트뿐 아니라 매 턴에 적용**된다 — 첫 프롬프트만 대상이라는 오독을 차단한다.
 - 타워 세션은 대화 동안 살아 있는 모델. **타워 stateless-relaunch**(host 상주 감시로 resume 재기동)는 2+3 진화 옵션으로 기록만 — 1단계 보수성과 충돌.
 
 ## 5. 긴 산출물 전달 규약 (#8)
@@ -126,7 +131,12 @@ artifacts: [{
 }]
 ```
 
-attachment 내부라 relay 무변경. 수신 CLI가 기계적으로 fetch 명령 조립 + sha256 무결성 검증.
+attachment 내부라 relay 무변경. 수신 CLI가 기계적으로 fetch 명령을 조립하기 전에 **artifact ref 검증 규약 (R24 M-2)** 을 강제한다:
+
+① `convId` 형식은 `conv_[a-f0-9]{16}`으로 고정(생성 주체=타워) — 브랜치명·경로 어디에도 삽입되므로 charset 고정이 traversal·인자 주입의 1차 방어다.
+② git ref는 `conv/<convId>/` prefix 패턴 매치를 필수로 하고, fetch/checkout 호출 시 `--` 구분자를 사용하며 선행 `-`로 시작하는 값은 거부한다. remote는 수신측 로컬 설정에 이미 등록된 기존 remote만 쓴다 — wire로 전달된 host/URL로 신규 remote를 추가하지 않는다.
+③ scp `host`는 wire 필드를 신뢰 입력으로 쓰지 않고 **수신측 로컬 설정의 conv 상대 노드 매핑**에서 해석한다. path는 정규화 후 `~/.loom/artifacts/<convId>/` prefix를 강제한다.
+④ sha256은 fetch **후** 콘텐츠 무결성 검증 용도일 뿐이며, fetch 행위 자체(위 ①~③)의 방어가 아니다.
 
 ### 5.4 수명
 
