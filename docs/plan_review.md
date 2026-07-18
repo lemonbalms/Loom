@@ -1,7 +1,8 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R29** PLAN **v0.23.4**(HerdrClient 이벤트 구독 수명주기 수정 — 후보 ⑫, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18) — root cause 서술 코드 전수 실증·prune-without-reopen 설계 타당·글로벌 `pane.closed` 전환 소비부 무변경 실증·fail-visible 보수성 우월. M-1(신설 구독-실패 경로 자기 재감염 — `eventsSubscribe` 선-push `:279-285` + reject 롤백 부재) **lock 본문 반영** + L-1(superseded 신세대 결과 채택)·L-2(기동 글로벌 구독 실패 fail-fast)·L-3(established 강제 종료 라이브 검증 명시)·L-4(ACK 타이머 정착 시 해제 + 테스트 ⑭)·L-5(테스트 ⑤ 단위 한정) **author-close 완료** → 사전 승인 경로대로 재리뷰 없이 `approved`(no R29b). 직전: R28 v0.23.3 author-close `approved` → implemented `95cc81e`.  
+> **최신:** **R30** PLAN **v0.23.5**(브릿지 주입 verify 루프 3분기 확장 — 후보 ⑨+관찰 ⓓ, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18, M-1·M-2 lock 본문 반영 + L-1..L-3 author-close + 테스트 ⑫⑬ 추가, no R30b) — 갭 실재(주입 유실 당일 5회+·미제출 잔류 실증)·3분기 설계 총론 타당·M-2 불변식 확장(동일 캐시 문자열 1회) 보안 수용·fail-visible 비대칭(카드 파기/conv 유지) 정합. M-1(프로브 가시성 전제 미검증 — Claude Ink composer는 멀티라인 paste를 플레이스홀더로 접어 꼬리 48자 프로브가 구조적 miss → 오분기 재주입이 비어 있지 않은 composer에 이중 append; 완충 ②가 미검사 전제를 실측처럼 인용) + M-2(재주입 상한 "flight당 1회"의 단위 모호 — ConvFlight는 멀티턴 생존이라 문자 그대로면 1턴 소진 후 전 턴 복구 불능·스펙의 conv 재시도 근거 자기모순) **문안 lock 2건** + L-1..L-3 → author-close 후 재리뷰 없이 `approved` 전환 가능(no R30b). 직전: R29 v0.23.4 author-close `approved` → implemented `c7df503`.
+> **직전:** **R29** PLAN **v0.23.4**(HerdrClient 이벤트 구독 수명주기 수정 — 후보 ⑫, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18) — root cause 서술 코드 전수 실증·prune-without-reopen 설계 타당·글로벌 `pane.closed` 전환 소비부 무변경 실증·fail-visible 보수성 우월. M-1(신설 구독-실패 경로 자기 재감염 — `eventsSubscribe` 선-push `:279-285` + reject 롤백 부재) **lock 본문 반영** + L-1(superseded 신세대 결과 채택)·L-2(기동 글로벌 구독 실패 fail-fast)·L-3(established 강제 종료 라이브 검증 명시)·L-4(ACK 타이머 정착 시 해제 + 테스트 ⑭)·L-5(테스트 ⑤ 단위 한정) **author-close 완료** → 사전 승인 경로대로 재리뷰 없이 `approved`(no R29b). 직전: R28 v0.23.3 author-close `approved` → implemented `95cc81e`.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,6 +14,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R30** | **v0.23.5** | **closed (pending-revision → author-close approved 2026-07-18)** | **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류 fail-visible 복구)** (PATCH) — 프로브(공백 정규화 꼬리 48자) 기반 (a) 재주입 1회 (b) CR 재전송 (c) fail-visible. 갭 실재·설계 총론·보안(동일 캐시 문자열 재주입) 타당. M-1: Claude Ink composer paste-플레이스홀더로 프로브 (b) 분기 구조적 도달 불가 + 비어 있지 않은 composer 이중 append → 플레이스홀더=hit 판정 + TUI별 composer 가시성 라이브 검증 lock. M-2: 재주입 상한 "flight당"이 conv 멀티턴 flight에서 1턴 소진 → "verify 호출당 1회"로 lock. |
 | **R29** | **v0.23.4** | **closed (pending-revision → author-close approved 2026-07-18)** | **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫ — card.done 유실 / "스타트업 레이스" 실체)** (PATCH) — 구독 prune + pre-ACK reject/ACK 타임아웃 + `pane.closed` 글로벌 1회 + fail-visible + 관측성. root cause·라인 참조 전수 실증, 설계 건전. M-1: `eventsSubscribe` 선-push(`:279-285`) + reject 롤백 부재 → 신설 실패 경로가 pane 닫고 구독 잔존 = 자기 재감염(이후 dispatch 연쇄 실패) → reject-시-롤백 문안 lock 반영 + L-1..L-5 author-close. |
 | **R28** | **v0.23.3** | **closed (pending-revision → author-close approved 2026-07-18)** | **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH) — 워커 직접 파일 쓰기 + `[ARTIFACT] <파일명>` 마커 → 브릿지 4계층 검증 후 기존 방출 경로로 ref. 갭 실재(TUI ~5.3k 실측)·스펙 정렬·소비부 무변경 확인. M-1: 방출 경로 "재사용" 문안이 `packageConvTurnArtifact` 실계약과 모순(다건 마커 클로버·inline text 대체·파일명 불일치 + `turn-*` 네임스페이스 충돌 미규정) → 문안 lock. |
 | **R27** | **v0.23.2** | **closed (approved 즉시 승인 2026-07-18)** | **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH) — 공용 enum 1→3종, 실행 게이트는 브릿지 로컬 `agentArgv` 명시 등록(기본 미등록 = 0.23.1 동일 fail-closed)·wire argv 금지(§4.4.2) 유지. M-lock 없음(보수 결정이 본문 기명문 + 원시 기존재). L-1(`agentArgv` 형상 필터)·L-2(등록 고지) author-close → 구현 PATCH 포함. |
@@ -29,7 +31,53 @@
 
 ## Open (blocking)
 
-*(현재 없음 — R29 author-close `approved` 완료, 2026-07-18.)*
+*(현재 없음 — R30 author-close `approved` 완료, 2026-07-18.)*
+
+---
+
+## Review R30 — Plan v0.23.5 (브릿지 주입 verify 루프 3분기 확장 — 후보 ⑨ + 관찰 ⓓ, PATCH)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.5` changelog + header + 코드 대조(`packages/host/src/bridge-runtime.ts` — `:1033-1065` `verifySubmitOrRetry`(현행: timeout 시 `BARE_ENTER`만 4s×3, `:1059-1064` 소진 시 log-만 무음 포기 실증)·`:823-854` `verifyConvSubmitOrRetry`(동형)·주입 3지점 `:541-542`(카드 `wrapUntrustedPrompt`→`injectPromptAndSubmit`)/`:699-701`(conv 턴, 턴마다 재래핑)/`:798-811`(conv 최초 — **untrusted goal 뒤에 브릿지 작성 artifact 규약 블록 접미, `"--- end convention ---"` 상수로 끝남**)·`:1228-1258` `sendFailedResult`(reason 자유 문자열 필드 — `inject_unconfirmed` 신설은 wire 스키마 무변경 주장 성립)·`:518-536` 0.23.4 `events_subscribe_failed` 정리 계열(fail-visible 카드 경로 선례)·`:111-131` Flight(주입 1회) vs ConvFlight(멀티턴 생존 — M-2 근거), `packages/host/src/herdr-client.ts` — `:329-331` `agentSend`(literal, no Enter)·`:342-347` `injectPromptAndSubmit`(paste → 500ms → 별도 `BARE_ENTER`; `bridge-runtime.ts:100` 모듈 주석 "paste-grouping window" = **paste 방식 전달 실증, M-1 근거**)·`:579-590` `paneRead`(source/lines 지원 — 스펙 호출 형태 성립)·`:33` `BARE_ENTER` 상수, `packages/protocol/src/card-contract.ts:129-134` `wrapUntrustedPrompt`(마커+본문 — 스펙이 지칭한 `prepareInjectText`는 별개 구버전 PTY 경로 `handoff-inject.ts:44`, L-1 근거)) + `tasks/lessons.md` (2)(주입 유실 5회+·수동 복구 실증 경로 = 스펙 (a) 분기와 동일)·(6)(관찰 ⓓ — codex composer 미제출 잔류 실증)·(3)(0.23.1 실측 = **트랜스크립트** 접힘만 검사, composer 렌더 거동 미검사 — Security 완충 ② 인용 초과의 근거) + `docs/plan_review.md` R29(직전 형식·M 기준 선례)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`pending-revision`** — M-1·M-2 문안 lock + L-1..L-3 author-close 후 **재리뷰 없이 `approved` 전환 가능** (Fable 사전 승인, no R30b).
+
+### 결정적 발견 (성패 지점)
+프로브 설계의 전제 — *"주입 프롬프트의 꼬리 48자가 composer 영역 스크레이프에 남는다"* — 가 **Claude Ink TUI에서 미검증이며, 유력하게 거짓**이다. 전달은 paste 방식이고(`injectPromptAndSubmit` + `bridge-runtime.ts:100` "paste-grouping window" 주석), Claude Code TUI는 멀티라인 paste를 composer에 **`[Pasted text #N +M lines]` 플레이스홀더로 접어 표시**한다(원문 비표시). 그러면 composer에 프롬프트가 실제로 담겨 있어도 프로브는 구조적으로 miss → **(b) 분기(미제출 잔류 = CR 재전송)가 claude 워커에서 도달 불가**하고, (a) 재주입이 **비어 있지 않은 composer에 두 번째 사본을 append** → 뒤따르는 CR 1회가 두 배 프롬프트를 제출한다 — 관찰 ⓓ를 잡겠다는 분기가 ⓓ 상황에서 오동작을 낳는다. Security 완충 ②("트랜스크립트 접힘은 composer에 미적용 — 0.23.1 실측")는 **0.23.1 실측이 검사하지 않은 전제**(lessons (3)은 트랜스크립트 영역만 측정)를 실측처럼 인용한다. R25/R26/R28/R29 M 기준("문안대로 구현하면 결함이 스펙 준수의 결과물") 부합 → M-1.
+
+### Checklist
+- [x] **갭 실재 — 실측·코드 이중 확인** — 현행 `verifySubmitOrRetry`/`verifyConvSubmitOrRetry`는 timeout 시 `BARE_ENTER`만 재전송하고 소진 시 log 한 줄 후 무음 복귀(`:1059-1064`·`:848-853` — 카드 doing 영구 고착 서술과 정합). 주입 유실은 당일 누적 5회+(claude/grok, lessons (2))·미제출 잔류는 codex 실증(lessons (6)·관찰 ⓓ). 수동 복구 절차(리터럴 재주입 + 별도 CR)가 5회+ 유효 — 스펙 (a) 분기는 이 실증 경로의 기계화가 맞다.
+- [x] **3분기 설계 총론 타당** — read 실패 시 CR 폴백(스크레이프 불가 ≠ 주입 실패 — 보수적), working/gone fast-path 유지(현행 회귀 없음), 프로브 공백 정규화(TUI 자동 줄바꿈 대응) 방향 성립. 단 프로브 가시성 전제가 M-1.
+- [x] **M-2 불변식 확장 보안 판단** — 재주입 페이로드는 최초 `injectPromptAndSubmit`에 넘긴 **동일 캐시 문자열**(relay sanitize + untrusted 마커 기통과)·임의/신규 텍스트 표면 없음·1회 상한·working 즉시 중단. 확장 수용 타당(advisor 일치). 단 스펙의 함수 지칭이 부정확(L-1)하고 상한 단위가 모호(M-2).
+- [x] **중복 제출 잔여 리스크 수용** — 오탐 재주입(제출 성공 + status 지연 + echo 접힘 소실) 시 동일 프롬프트 2회 제출이 최악. 상한 1회 + wire 측 `processedHandoffs` dedup·conv seq 단조성으로 유계 — 현행 무음 고착 대비 보수적으로 우월, §5.1 기준 수용 타당(advisor 일치).
+- [x] **fail-visible 정리 범위 비대칭 정합** — 카드 = flight 파기 + `eventsPrune` + pane close 시도(0.23.4 `events_subscribe_failed` 계열 `:518-536`과 동형; verify 단계는 구독 성립 후이므로 M-1 롤백 아닌 명시 prune이 맞음 — 스펙 포함 확인) / conv = blocked 턴 + convFlight·pane 유지(타워 턴 재전송 재시도 가능·§1.4 conv.close 타워 전권 정합). 타당(advisor 일치).
+- [x] **관측성** — 라운드별 `probe=hit|miss|read-fail action=...` stderr 기록, 프롬프트 본문·프로브 문자열 비기록(마커+규약이 섞인 프로브 원문도 로그 제외 — 본문 비기록 원칙 유지). 신설 표면 없음(0.23.4 stderr 로그 파일 재사용). 격상 없음.
+- [x] **reason 어휘 신설만** — `inject_unconfirmed`는 자유 문자열 필드(`sendFailedResult` `reason: string` `:1232`) 재사용 — wire 스키마 무변경 주장 성립.
+- [x] **테스트 11항목** — 유실 복구(①)·잔류 CR(②)·fail-visible 카드/conv(③④)·상한(⑤)·fast-path(⑥)·read 폴백(⑦)·gone(⑧)·정규화(⑨)·턴별 프로브(⑩)·정상 회귀(⑪) 커버. 단 M-1 플레이스홀더 시나리오(⑫ 신설)·M-2 conv 턴별 상한 리셋(⑬ 신설) 보강 필요.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (Med, binding — PLAN 문안 lock): 프로브 가시성 전제 미검증 — Claude Ink composer의 paste-플레이스홀더 접힘.** 근거는 결정적 발견 참조. 잠글 문안: **"프로브 판정은 꼬리 48자 매치에 더해 TUI paste-플레이스홀더 패턴(예: `[Pasted text`)을 probe-hit으로 인정한다(플레이스홀더 = composer에 내용 존재 = (b) CR 분기 — 안전한 쪽으로 라우팅). 구현 시 워커 TUI 3종(claude/codex/grok)별 composer 가시성(대량 paste 시 스크레이프에 무엇이 보이는지) 라이브 검증 1회 수행·결과 기록. claude에서 미제출-잔류의 내용 식별(ⓓ 정밀 감지)은 플레이스홀더 수준으로 저하됨을 본문에 명시(커버리지 주장 금지)."** + Security 완충 ② 문장을 "0.23.1 실측" 인용 없이 미검증 전제로 정정. + 테스트 ⑫: "composer가 플레이스홀더만 노출(원문 비표시) → 재주입 없이 CR 분기". High 아님: 최악이 이중 append 제출(유계·wire 무해)이고 트리거가 이미 비정상 조건 + 재주입 상한 1회. (advisor 일치 — 플레이스홀더=hit 라우팅이 안전한 쪽이라는 판단 advisor 보강.)
+- **M-2 (Med, binding — PLAN 문안 lock): 재주입 상한 "flight당 1회"의 단위 모호 — conv ConvFlight는 멀티턴 생존.** 카드는 flight=주입 1회라 무해하나, conv를 문자 그대로 구현하면 스타트업 레이스가 가장 흔한 1턴에서 상한을 소진하고 **이후 모든 턴의 paste 유실이 재주입 불가**(CR→소진→blocked 반복; 타워 재전송도 동일 경로라 스펙 자신의 (c) 근거 — "타워가 턴을 다시 보내 재시도 가능" — 가 자기모순이 된다). 중복 제출 완충으로서의 상한은 본질상 프롬프트(주입 시도)별이므로 **"verify 호출(주입 시도)당 1회"** 로 고정 — 보안 손실 없음. + 테스트 ⑬: "conv 1턴 재주입 후 2턴 paste 유실 → 2턴에서 재주입 가능(상한 리셋)". (advisor 일치 — 자기모순 지적은 advisor 보강.)
+- **L-1 (Low, author-close): 재주입 페이로드 지칭 함수 오기.** 헤더 "Fable 5 when"·Security 절의 "동일한 `prepareInjectText` 산출물"은 오기 — 실제 주입 문자열은 `wrapUntrustedPrompt` 산출물(conv 최초 턴은 + 브릿지 artifact 규약 접미, `bridge-runtime.ts:810`)이고 `prepareInjectText`는 구버전 PTY inject 경로(`handoff-inject.ts:44`)다. What 표의 "최초 `injectPromptAndSubmit`에 넘긴 동일 문자열"이 정문 — 헤더·Security도 이 표현으로 통일하고, **재주입은 그 캐시 문자열 그대로(재파생 금지)** 한 줄 명시(conv 최초 턴은 규약 접미 포함 전체가 캐시 대상).
+- **L-2 (Low, author-close): conv 최초 턴 프로브 꼬리 = 규약 상수.** conv-open 주입 문자열은 `"--- end convention ---"` 상수로 끝나므로 꼬리 48자 프로브가 goal-특이적이지 않다 — 프로브 정의 행의 근거 문장("꼬리가 goal/턴 본문 특이적")은 conv 최초 턴에 성립하지 않음(기능상 무해 — 신규 pane엔 선행 잔류물이 없어 존재-검사로는 유효). 근거 문장 정정 또는 "conv 최초 턴은 untrusted 본문 꼬리로 프로브 계산" 중 택일 명시.
+- **L-3 (Low, author-close): 라운드 액션 전 flight 재확인 미명시.** timeout 판정과 paneRead·재주입/CR 사이 창에서 flight가 소멸(카드 완료·conv.close)할 수 있다 — 각 라운드 액션 직전 flight 존재 재확인(gone = 성공 종료) 한 줄 명시. 현행 CR-만 루프에선 무해했으나 재주입은 전체 프롬프트를 보내므로 명시 가치 있음.
+
+### Decision notes
+- **verdict 구조 (R25/R26/R28/R29 동형):** M-1·M-2 모두 "문안대로 구현하면 결함이 스펙 준수의 결과물" 부류 — M-1은 신설 분기의 판정 전제가 주력 워커 TUI에서 유력하게 거짓이라 오분기·이중 제출을 낳고, M-2는 스펙 문안이 conv 재시도 근거와 자기모순. 둘 다 설계 재작업이 아닌 문안 lock(판정 규칙 1건 + 단위 1단어) + 테스트 2건이고, 나머지 설계(3분기·fail-visible 비대칭·불변식 확장·관측성)는 전부 건전함을 코드·실측 대조로 확인. M-1·M-2 반영 + L-1..L-3 author-close 후 재리뷰 없이 `approved` 전환 (no R30b).
+- **결정을 가르는 리스크:** 프로브가 "안 보임 = 없음"으로 단정하는 것 — TUI 렌더는 존재를 숨길 수 있다(플레이스홀더·접힘). miss 판정의 기본 동작이 "전체 재주입"이므로 가시성 전제는 실측으로 잠가야 한다.
+- **보안 판단 요지:** M-2 불변식 확장은 수용 — 재주입은 이미 sanitize+마커를 통과한 동일 캐시 문자열 1회뿐, 임의 텍스트 표면 없음. 신설 관측성도 매치 여부만 기록(본문 비기록 유지). 신뢰 경계 무변경·wire 무변경 주장 성립. 격상 finding 없음.
+- **스펙-코드 정합:** 스펙 라인 참조(`:1033`/`:823`/`:542`/`:701`/`:811`) 전수 실코드 일치. `paneRead` 호출 형태(`source`/`lines`) 클라이언트 지원 확인. reason 자유 문자열 주장 확인(`:1232`).
+- **수정 파일 범위:** 이 리뷰는 `docs/plan_review.md`만 수정(디스패치 브리프 지시) — PLAN 헤더 `pending-revision` 동기화·M/L 문안 반영·author-close는 아키텍트/implementer 수행.
+- Advisor: fable-advisor consulted: yes. (verdict 일치: pending-revision, M-1·M-2 확정 — "둘 다 문안 lock으로 해소 가능, 재설계 불요" 일치. M-1 플레이스홀더=hit 안전 라우팅·M-2 자기모순 논증·L-1 재파생-금지 조건은 advisor 보강.)
+
+### Author-close (2026-07-18, plan author)
+
+- **M-1 반영**: What "verify 라운드 3분기" 행 — 플레이스홀더 패턴(`[Pasted text`) = probe-hit 인정((b) CR 분기 라우팅) + claude ⓓ 정밀 감지 저하(커버리지 주장 금지) 명시 + TUI 3종(claude/codex/grok) composer 가시성 라이브 검증 1회 명시. Security 완충 ② "0.23.1 실측" 인용 제거 — "composer 렌더는 존재를 숨길 수 있다"를 전제로 명기. 테스트 ⑫ 추가.
+- **M-2 반영**: 재주입 상한 "flight당 1회" → **"verify 호출(주입 시도)당 1회"** (What·Security·헤더 전부). 테스트 ⑬ 추가.
+- **L-1**: `prepareInjectText` 지칭 오기 → "최초 `injectPromptAndSubmit`에 넘긴 동일 캐시 문자열(카드 `wrapUntrustedPrompt` 산출물 / conv 최초 턴 + 규약 접미 포함 전체)" + **재파생 금지** 명시 (What·Security·헤더).
+- **L-2**: 프로브 정의 행 — conv 최초 턴 꼬리 = 규약 상수임을 명시, 신규 pane 존재-검사로 유효(기능상 무해) + 턴 2+는 턴 본문 특이적.
+- **L-3**: verify 라운드 ①에 액션 전 flight 존재 재확인(gone = 성공 종료) 명시.
+- PLAN Status `pending-revision` → **`approved`** (사전 승인 경로, no R30b).
 
 ---
 
