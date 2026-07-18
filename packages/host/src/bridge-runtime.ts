@@ -307,6 +307,23 @@ export function hasStillRunningIndicator(scrape: string): boolean {
   return false;
 }
 
+/**
+ * PLAN 0.23.9 / R34 M-1: done_proposal is line-anchored in the last K
+ * non-empty lines of the judgment input (delta text or chrome-filtered full
+ * scrape). Whole-text-prefix detection structurally missed convention-compliant
+ * workers (tower-turn echo + mid-output precede the marker).
+ */
+export const DONE_PROPOSAL_TAIL_LINES = 3;
+
+export function hasDoneProposalMarker(text: string, k = DONE_PROPOSAL_TAIL_LINES): boolean {
+  const nonEmpty = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const tail = nonEmpty.slice(-Math.max(1, k));
+  return tail.some((l) => l.startsWith("[DONE_PROPOSAL]"));
+}
+
 /** Conv (multiturn) worker-side pane flight — lives across many turns, unlike card Flight. */
 type ConvFlight = {
   convId: string;
@@ -382,6 +399,14 @@ export async function startBridgeRuntime(opts?: {
   const processedHandoffs = new Set<string>();
   const convFlights = new Map<string, ConvFlight>(); // paneId → conv flight
   const convPaneByConvId = new Map<string, string>(); // convId → paneId
+
+  /**
+   * PLAN 0.23.9 ⑧: in-memory worker pool tab. pane.list is SSOT at spawn time;
+   * this only holds the candidate tab key + pane ids the bridge registered.
+   * Race / restart rediscovery are cosmetic (R34 L-1/L-2) — no extra machinery.
+   */
+  let workerPool: { tabId: string; paneIds: Set<string> } | null = null;
+  const POOL_MAX_WORKERS = 4;
 
   // Fail-fast: herdr ping before room join (§2.2)
   const herdr =
@@ -508,6 +533,8 @@ export async function startBridgeRuntime(opts?: {
             eventSubscriptions: herdr.eventSubscriptions,
             // PLAN 0.23.8 pane cleanup policy
             paneCleanup: cfg.paneCleanup ?? "auto",
+            // PLAN 0.23.9 worker pane placement policy
+            panePlacement: cfg.panePlacement ?? "pool",
           });
         }
         if (body.op === "stop") {
@@ -600,6 +627,16 @@ export async function startBridgeRuntime(opts?: {
     const convLbl = convLabelOf(h.attachments);
     if (convLbl) {
       if (processedHandoffs.has(h.id)) return;
+      // PLAN 0.23.9 ③: unauthorized conv.open — mark processed + log, no claim
+      // (card M-1 deny form). turn/close keep pre-claim then pin check.
+      if (
+        convLbl === CONV_OPEN_LABEL &&
+        !isAuthorizedDispatcher(cfg, h.fromPeerId)
+      ) {
+        processedHandoffs.add(h.id);
+        log(`M-1 deny conv.open (no claim) from ${h.fromPeerId}`);
+        return;
+      }
       processedHandoffs.add(h.id);
       const claim = await client.claimHandoff(h.id, "claim");
       if (!claim.ok) return;
@@ -665,6 +702,124 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
+  /**
+   * PLAN 0.23.9 ⑧: spawn a worker agent into the bridge-local pool tab.
+   * pane.list is SSOT; fail-open to one unhinted agentStart on any pool path
+   * failure. `"legacy"` bypasses the pool entirely.
+   */
+  async function spawnWorkerAgent(opts: {
+    name: string;
+    argv: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+  }): Promise<HerdrAgentStarted> {
+    const base = {
+      name: opts.name,
+      argv: opts.argv,
+      env: opts.env,
+      cwd: opts.cwd,
+      focus: false as const,
+    };
+    if ((cfg.panePlacement ?? "pool") === "legacy") {
+      return herdr.agentStart(base);
+    }
+
+    const unhintedFallback = async (why: string): Promise<HerdrAgentStarted> => {
+      log(`pane placement fallback (unhinted): ${why}`);
+      return herdr.agentStart(base);
+    };
+
+    try {
+      const listed = await herdr.paneList();
+
+      if (workerPool) {
+        const tabAlive = listed.some((p) => p.tabId === workerPool!.tabId);
+        if (!tabAlive) {
+          workerPool = null;
+        } else {
+          const liveIds = [...workerPool.paneIds].filter((id) =>
+            listed.some((p) => p.paneId === id && p.tabId === workerPool!.tabId),
+          );
+          workerPool.paneIds = new Set(liveIds);
+          if (liveIds.length >= POOL_MAX_WORKERS) {
+            // Full — drop pool so next path creates a new tab. Existing panes stay.
+            workerPool = null;
+          } else if (liveIds.length > 0) {
+            const split: "right" | "down" =
+              liveIds.length === 1 ? "right" : "down";
+            try {
+              const agent = await herdr.agentStart({
+                ...base,
+                tabId: workerPool.tabId,
+                split,
+              });
+              workerPool.paneIds.add(agent.pane_id);
+              return agent;
+            } catch (e) {
+              return unhintedFallback(
+                `hinted spawn failed: ${e instanceof Error ? e.message : e}`,
+              );
+            }
+          }
+          // liveIds.length === 0 but tab still listed (empty pool tab) —
+          // fall through to create path is wrong; reuse empty tab with split right.
+          if (workerPool && liveIds.length === 0) {
+            try {
+              const agent = await herdr.agentStart({
+                ...base,
+                tabId: workerPool.tabId,
+                split: "right",
+              });
+              workerPool.paneIds.add(agent.pane_id);
+              return agent;
+            } catch (e) {
+              workerPool = null;
+              return unhintedFallback(
+                `empty-pool spawn failed: ${e instanceof Error ? e.message : e}`,
+              );
+            }
+          }
+        }
+      }
+
+      // New pool tab: tab.create → first worker (split right) → root close.
+      try {
+        const tab = await herdr.tabCreate({
+          workspaceId: cfg.paneWorkspaceId,
+          label: "loom-workers",
+        });
+        workerPool = { tabId: tab.tabId, paneIds: new Set() };
+        try {
+          const agent = await herdr.agentStart({
+            ...base,
+            tabId: tab.tabId,
+            split: "right",
+          });
+          try {
+            await herdr.request("pane.close", { pane_id: tab.rootPaneId });
+          } catch {
+            /* best-effort — root shell only, just-created tab */
+          }
+          workerPool.paneIds.add(agent.pane_id);
+          return agent;
+        } catch (e) {
+          workerPool = null;
+          return unhintedFallback(
+            `first pool spawn failed: ${e instanceof Error ? e.message : e}`,
+          );
+        }
+      } catch (e) {
+        return unhintedFallback(
+          `tab.create failed: ${e instanceof Error ? e.message : e}`,
+        );
+      }
+    } catch (e) {
+      return unhintedFallback(
+        `pane.list failed: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+  }
+
   async function runCard(args: {
     payload: CardDispatchPayload;
     fromPeerId: string;
@@ -692,12 +847,11 @@ export async function startBridgeRuntime(opts?: {
 
     let agent: HerdrAgentStarted;
     try {
-      agent = await herdr.agentStart({
+      agent = await spawnWorkerAgent({
         name: `loom-${payload.cardId.slice(0, 20)}-${seq}`,
         argv,
         env: { LOOM_CARD: payload.cardId },
         cwd: payload.cwd,
-        focus: false,
       });
     } catch (e) {
       await sendFailedResult({
@@ -986,7 +1140,7 @@ export async function startBridgeRuntime(opts?: {
     const artifactsDir = convArtifactsDir(payload.convId);
     let agent: HerdrAgentStarted;
     try {
-      agent = await herdr.agentStart({
+      agent = await spawnWorkerAgent({
         name: `loom-conv-${payload.convId.slice(5, 21)}`,
         argv,
         env: {
@@ -994,7 +1148,6 @@ export async function startBridgeRuntime(opts?: {
           LOOM_ARTIFACTS_DIR: artifactsDir,
         },
         cwd: payload.scope.cwd,
-        focus: false,
       });
     } catch (e) {
       log("conv agentStart failed:", e);
@@ -1033,6 +1186,9 @@ export async function startBridgeRuntime(opts?: {
       // R28 L-2 / §5.1: bridge-authored artifact convention OUTSIDE the
       // untrusted wrapper (bridge authors it; goal stays untrusted).
       const untrusted = wrapUntrustedPrompt(payload.goal);
+      // PLAN 0.23.9 ② / R34 M-1: done_proposal marker must NOT lead a convention
+      // line (echo would false-positive the tail line-anchored detector). Same
+      // form as [ARTIFACT]: "print a final line exactly: …".
       const artifactConvention = [
         "",
         "--- Loom conv artifact convention (§5.1 / PLAN 0.23.3) ---",
@@ -1042,6 +1198,8 @@ export async function startBridgeRuntime(opts?: {
         "Then print a final line exactly: [ARTIFACT] <filename>",
         "Filename rules: filename only (no path separators); charset [A-Za-z0-9._-];",
         "must not start with - or .; must not match turn-* (bridge-reserved).",
+        "When you judge the goal complete, print a final line exactly: [DONE_PROPOSAL] <one-line summary>",
+        "(bridge surfaces the proposal on the board; tower accepts with conv.close reason done).",
         "--- end convention ---",
       ].join("\n");
       // Full inject cache includes artifact convention suffix (R30 L-1 / L-2)
@@ -1065,10 +1223,10 @@ export async function startBridgeRuntime(opts?: {
   /**
    * Builds+sends a worker turn from the current pane content. kindHint
    * "blocked" forces kind=blocked (pane reported blocked or closed);
-   * otherwise a "[DONE_PROPOSAL]" prefix in the pane output maps to
-   * kind=done_proposal (bridge-local convention layered on the prompt, not
-   * a wire change), else kind=normal. Pane stays alive — only conv.close
-   * (tower-only, §1.4/§3.2) ends the conv.
+   * otherwise a line-anchored "[DONE_PROPOSAL]" in the judgment-input tail
+   * (PLAN 0.23.9 / R34 M-1 — last K non-empty lines of delta or chrome-filtered
+   * full scrape) maps to kind=done_proposal, else kind=normal. Pane stays
+   * alive — only conv.close (tower-only, §1.4/§3.2) ends the conv.
    */
   /**
    * PLAN 0.23.6 settle re-read: read → wait → re-read → on stripAnsi mismatch
@@ -1179,8 +1337,12 @@ export async function startBridgeRuntime(opts?: {
     // Delta applies only on the ≤32k inline branch.
     let text: string;
     let artifacts: ArtifactRefEntry[] | undefined;
-    /** Head used for done_proposal: delta text when applied, else raw (L-4). */
-    let doneProposalHead: string = output;
+    /**
+     * PLAN 0.23.9 / R34 M-1: judgment input for done_proposal —
+     * delta text when applied; chrome-filtered full scrape on fallbacks
+     * (anchor miss / no anchor / 32k packaging). scrapeFailed → skip below.
+     */
+    let doneProposalInput: string = filtered;
 
     if (!scrapeFailed && filtered.length > MAX_CONV_TURN_INLINE_CHARS) {
       const packaged = packageConvTurnArtifact({
@@ -1192,27 +1354,27 @@ export async function startBridgeRuntime(opts?: {
       });
       text = packaged.text;
       artifacts = [...packaged.artifacts, ...fileRefs];
-      // Packaging path is not a delta application — keep raw head (L-4 fallback).
-      doneProposalHead = output;
+      // Packaging path is not a delta application — chrome-filtered full scrape.
+      doneProposalInput = filtered;
     } else if (!scrapeFailed) {
       const delta = applyDeltaAnchor(filtered, flight.deltaAnchor);
       if (delta.kind === "miss") {
         noteParts.push("delta anchor miss (full scrape)");
         text = filtered;
-        doneProposalHead = output;
+        doneProposalInput = filtered;
       } else if (delta.kind === "empty") {
         noteParts.push("delta empty (no new output)");
         noteParts.push(`delta: kept 0/${delta.total} chars`);
         text = "";
-        doneProposalHead = "";
+        doneProposalInput = "";
       } else if (delta.kind === "applied") {
         noteParts.push(`delta: kept ${delta.kept}/${delta.total} chars`);
         text = delta.text;
-        doneProposalHead = delta.text;
+        doneProposalInput = delta.text;
       } else {
-        // First turn / no prior anchor — full filtered scrape, raw done_proposal head.
+        // First turn / no prior anchor — chrome-filtered full scrape.
         text = filtered;
-        doneProposalHead = output;
+        doneProposalInput = filtered;
       }
       // R28 M-1: ONLY file-based refs → keep scrape (+delta) + short notice per ref.
       if (fileRefs.length > 0) {
@@ -1222,14 +1384,15 @@ export async function startBridgeRuntime(opts?: {
       }
     } else {
       text = output;
-      doneProposalHead = output;
+      doneProposalInput = "";
     }
 
-    // L-4: done_proposal from delta head when delta applied; else raw head.
+    // PLAN 0.23.9 / R34 M-1: tail-K line-anchored (not whole-text prefix).
+    // blocked kindHint still wins; scrapeFailed leaves input empty → normal.
     let kind: ConvKind;
     if (kindHint === "blocked") {
       kind = "blocked";
-    } else if (doneProposalHead.trimStart().startsWith("[DONE_PROPOSAL]")) {
+    } else if (hasDoneProposalMarker(doneProposalInput)) {
       kind = "done_proposal";
     } else {
       kind = "normal";

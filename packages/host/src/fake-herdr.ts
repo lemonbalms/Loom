@@ -101,6 +101,22 @@ export type FakeHerdr = {
    * must not affect result flow).
    */
   setPaneCloseFail: (fail: boolean) => void;
+  /**
+   * PLAN 0.23.9: force next N tab.create RPCs to error (pool fail-open tests).
+   */
+  failTabCreates: (count: number) => void;
+  /**
+   * PLAN 0.23.9: force next N agent.start RPCs that carry tab_id to error
+   * (hinted-spawn fail-open). Unhinted starts still succeed.
+   */
+  failHintedAgentStarts: (count: number) => void;
+  /**
+   * PLAN 0.23.9: remove a tab from the pane.list view without closing panes
+   * via RPC (simulates pool-tab disappearance / external tab kill).
+   */
+  dropTab: (tabId: string) => void;
+  /** PLAN 0.23.9 test-only: tab_id currently recorded for a pane. */
+  tabIdForPane: (paneId: string) => string | undefined;
 };
 
 export async function startFakeHerdr(
@@ -109,6 +125,7 @@ export async function startFakeHerdr(
   const calls: FakeHerdr["calls"] = [];
   const sockets = new Set<Socket>();
   let paneCounter = 0;
+  let tabCounter = 0;
   let subscribeCallCount = 0;
   let subscribeFailsRemaining =
     opts.subscribeFailFromCall != null
@@ -116,8 +133,16 @@ export async function startFakeHerdr(
       : 0;
   const panes = new Map<
     string,
-    { terminal_id: string; text: string; status: string }
+    {
+      terminal_id: string;
+      text: string;
+      status: string;
+      tab_id: string;
+      workspace_id: string;
+    }
   >();
+  /** Tabs that still appear in pane.list (dropTab removes without pane.close). */
+  const liveTabs = new Set<string>();
   const closedPanes = new Set<string>();
   const paneIdByConv = new Map<string, string>();
   // PLAN 0.23.5 composer simulation
@@ -130,6 +155,10 @@ export async function startFakeHerdr(
   let discardInjects = opts.discardInjects === true;
   /** PLAN 0.23.8: pane.close error reply for test ⑧ */
   let paneCloseFail = false;
+  /** PLAN 0.23.9: fail next N tab.create */
+  let tabCreateFailRemaining = 0;
+  /** PLAN 0.23.9: fail next N agent.start that include tab_id */
+  let hintedStartFailRemaining = 0;
 
   function nextSequenceText(paneId: string): string | undefined {
     for (const key of [paneId, "*"] as const) {
@@ -214,14 +243,78 @@ export async function startFakeHerdr(
           sock.end();
           continue;
         }
+        if (method === "tab.create") {
+          if (tabCreateFailRemaining > 0) {
+            tabCreateFailRemaining -= 1;
+            err("tab.create failed (test inject)");
+            sock.end();
+            continue;
+          }
+          tabCounter += 1;
+          const tab_id = `tab_${tabCounter}`;
+          const root_pane_id = `w1:root${tabCounter}`;
+          const workspace_id =
+            typeof params.workspace_id === "string"
+              ? params.workspace_id
+              : "";
+          liveTabs.add(tab_id);
+          panes.set(root_pane_id, {
+            terminal_id: `root_term_${tabCounter}`,
+            text: "",
+            status: "unknown",
+            tab_id,
+            workspace_id,
+          });
+          closedPanes.delete(root_pane_id);
+          reply({
+            type: "tab_created",
+            tab: { tab_id, label: params.label ?? null },
+            root_pane: { pane_id: root_pane_id, tab_id },
+          });
+          sock.end();
+          continue;
+        }
+        if (method === "pane.list") {
+          const list = [...panes.entries()]
+            .filter(([, p]) => liveTabs.has(p.tab_id))
+            .map(([pane_id, p]) => ({
+              pane_id,
+              tab_id: p.tab_id,
+              workspace_id: p.workspace_id,
+              agent_status: p.status,
+            }));
+          reply({ type: "pane_list", panes: list });
+          sock.end();
+          continue;
+        }
         if (method === "agent.start") {
+          const tab_id_param =
+            typeof params.tab_id === "string" ? params.tab_id : undefined;
+          if (tab_id_param && hintedStartFailRemaining > 0) {
+            hintedStartFailRemaining -= 1;
+            err("agent.start hinted spawn failed (test inject)");
+            sock.end();
+            continue;
+          }
           paneCounter += 1;
           const pane_id = `w1:p${paneCounter}`;
           const terminal_id = `term_${paneCounter.toString(16)}`;
+          // Unhinted starts land on a synthetic "focus" tab so pane.list is
+          // consistent; hinted starts use the provided tab_id.
+          let tab_id = tab_id_param;
+          if (!tab_id) {
+            tabCounter += 1;
+            tab_id = `tab_focus_${tabCounter}`;
+            liveTabs.add(tab_id);
+          } else if (!liveTabs.has(tab_id)) {
+            liveTabs.add(tab_id);
+          }
           panes.set(pane_id, {
             terminal_id,
             text: "",
             status: "unknown",
+            tab_id,
+            workspace_id: "",
           });
           closedPanes.delete(pane_id);
           const env = (params.env ?? {}) as Record<string, string>;
@@ -454,6 +547,19 @@ export async function startFakeHerdr(
     },
     setPaneCloseFail(fail: boolean) {
       paneCloseFail = fail;
+    },
+    failTabCreates(count: number) {
+      tabCreateFailRemaining = Math.max(0, count);
+    },
+    failHintedAgentStarts(count: number) {
+      hintedStartFailRemaining = Math.max(0, count);
+    },
+    dropTab(tabId: string) {
+      liveTabs.delete(tabId);
+      // Keep pane records for terminal/read, but they vanish from pane.list.
+    },
+    tabIdForPane(paneId: string) {
+      return panes.get(paneId)?.tab_id;
     },
     async close() {
       for (const s of sockets) {

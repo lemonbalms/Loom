@@ -23,6 +23,18 @@ export type BridgeConfig = {
    * Load sanitizes unknown values to `"auto"`.
    */
   paneCleanup?: "auto" | "keep";
+  /**
+   * PLAN 0.23.9: worker pane placement policy.
+   * `"pool"` (default) = bridge-local worker-pool tab (tab.create + tab_id/split).
+   * `"legacy"` = unhinted agent.start (pre-0.23.9 global-focus split).
+   * Load sanitizes unknown values to `"pool"`.
+   */
+  panePlacement?: "pool" | "legacy";
+  /**
+   * PLAN 0.23.9: optional herdr workspace_id for pool tab.create.
+   * Empty/missing → omit workspace_id (herdr default).
+   */
+  paneWorkspaceId?: string;
 };
 
 const DEFAULT_AGENT_ARGV: BridgeConfig["agentArgv"] = {
@@ -46,12 +58,25 @@ export function defaultBridgeConfig(): BridgeConfig {
     agentArgv: { ...DEFAULT_AGENT_ARGV },
     herdrProtocol: 16,
     paneCleanup: "auto",
+    panePlacement: "pool",
   };
 }
 
 /** PLAN 0.23.8: sanitize paneCleanup — only "auto"|"keep"; else default. */
 function sanitizePaneCleanup(raw: unknown): "auto" | "keep" {
   return raw === "keep" ? "keep" : "auto";
+}
+
+/** PLAN 0.23.9: sanitize panePlacement — only "pool"|"legacy"; else default. */
+function sanitizePanePlacement(raw: unknown): "pool" | "legacy" {
+  return raw === "legacy" ? "legacy" : "pool";
+}
+
+/** PLAN 0.23.9: non-empty string only; else undefined (omit on wire). */
+function sanitizePaneWorkspaceId(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  return t.length > 0 ? t : undefined;
 }
 
 /** R27 L-1: keep only well-shaped argv entries (non-empty array of non-empty strings).
@@ -99,6 +124,8 @@ export function loadBridgeConfig(profile: string): BridgeConfig {
           ? raw.herdrProtocol
           : base.herdrProtocol,
       paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
+      panePlacement: sanitizePanePlacement(raw.panePlacement),
+      paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),
     };
   } catch {
     return base;

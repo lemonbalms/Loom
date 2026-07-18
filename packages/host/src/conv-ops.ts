@@ -385,7 +385,7 @@ export async function convAwait(args: {
 }
 
 /** Parses+validates a claimed conv intent and applies §3.4 board transitions. Null = ignore. */
-function applyIncomingConvIntent(
+export function applyIncomingConvIntent(
   fromPeerId: string,
   attachments: { kind: string; label?: string; content: string }[] | undefined,
 ): Exclude<ConvAwaitResult, { status: "timeout" }> | null {
@@ -482,10 +482,16 @@ function applyIncomingConvIntent(
 
     if (state.taskId) {
       const status: TaskStatus = payload.kind === "blocked" ? "blocked" : "doing";
+      // PLAN 0.23.9 ②: done_proposal surface — fixed board note, status stays doing
+      // (no auto-close; tower accepts via conv.close(reason done)).
+      const notes =
+        payload.kind === "done_proposal"
+          ? `[DONE_PROPOSAL] worker proposes completion — conv.close(reason done) to accept (last turnSeq=${payload.seq})`
+          : `last turnSeq=${payload.seq} kind=${payload.kind}`;
       try {
         updateTask(state.taskId, {
           status,
-          notes: `last turnSeq=${payload.seq} kind=${payload.kind}`,
+          notes,
         });
       } catch {
         /* best effort */

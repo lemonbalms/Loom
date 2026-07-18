@@ -307,6 +307,9 @@ export class HerdrClient {
     env?: Record<string, string>;
     cwd?: string;
     focus?: boolean;
+    /** PLAN 0.23.9: pool placement — snake_case on wire. */
+    tabId?: string;
+    split?: "right" | "down";
   }): Promise<HerdrAgentStarted> {
     const params: Record<string, unknown> = {
       name: opts.name,
@@ -315,6 +318,8 @@ export class HerdrClient {
     };
     if (opts.env) params.env = opts.env;
     if (opts.cwd) params.cwd = opts.cwd;
+    if (opts.tabId) params.tab_id = opts.tabId;
+    if (opts.split) params.split = opts.split;
     const result = (await this.request("agent.start", params)) as {
       agent?: HerdrAgentStarted;
     };
@@ -323,6 +328,70 @@ export class HerdrClient {
       throw new Error("agent.start: missing pane_id/terminal_id");
     }
     return agent;
+  }
+
+  /**
+   * PLAN 0.23.9: create a worker-pool tab (focus:false so global focus is
+   * undisturbed). Returns tab id + root shell pane for subsequent close.
+   */
+  async tabCreate(opts: {
+    workspaceId?: string;
+    label?: string;
+  }): Promise<{ tabId: string; rootPaneId: string }> {
+    const params: Record<string, unknown> = { focus: false };
+    if (opts.workspaceId) params.workspace_id = opts.workspaceId;
+    if (opts.label) params.label = opts.label;
+    const result = (await this.request("tab.create", params)) as {
+      tab?: { tab_id?: string };
+      root_pane?: { pane_id?: string };
+      // Tolerate flatter shapes some herdr builds may return
+      tab_id?: string;
+      root_pane_id?: string;
+    };
+    const tabId =
+      (typeof result.tab?.tab_id === "string" && result.tab.tab_id) ||
+      (typeof result.tab_id === "string" && result.tab_id) ||
+      "";
+    const rootPaneId =
+      (typeof result.root_pane?.pane_id === "string" &&
+        result.root_pane.pane_id) ||
+      (typeof result.root_pane_id === "string" && result.root_pane_id) ||
+      "";
+    if (!tabId || !rootPaneId) {
+      throw new Error("tab.create: missing tab_id/root_pane pane_id");
+    }
+    return { tabId, rootPaneId };
+  }
+
+  /**
+   * PLAN 0.23.9: list panes for pool occupancy audit (SSOT before spawn).
+   * Only fields the bridge needs are projected.
+   */
+  async paneList(): Promise<
+    Array<{ paneId: string; tabId: string; workspaceId: string }>
+  > {
+    const result = (await this.request("pane.list", {})) as {
+      panes?: Array<{
+        pane_id?: string;
+        tab_id?: string;
+        workspace_id?: string;
+      }>;
+    };
+    const panes = Array.isArray(result.panes) ? result.panes : [];
+    return panes
+      .filter(
+        (p) =>
+          typeof p.pane_id === "string" &&
+          p.pane_id.length > 0 &&
+          typeof p.tab_id === "string" &&
+          p.tab_id.length > 0,
+      )
+      .map((p) => ({
+        paneId: p.pane_id as string,
+        tabId: p.tab_id as string,
+        workspaceId:
+          typeof p.workspace_id === "string" ? p.workspace_id : "",
+      }));
   }
 
   /** Literal text, no Enter (Step 0.5). */
