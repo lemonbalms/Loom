@@ -18,8 +18,8 @@
 > 체인: CONV_SPEC approved(`f7adfdc`) → PLAN v0.23.0 approved(`9a9a67f`, R25 author-close) → 구현 `e4dab9e` (grok-impl 레인 · 아키텍트 독립 검증). 전 리뷰(R24·R25)는 **herdr dispatch로 스폰된 claude 워커**가 fable-advisor 자문 포함 수행 — 브릿지 경로 실전 2회 성공.
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **conv 실물 스모크** — MCP 4도구로 타워↔워커 1:1 대화 왕복 라이브 1회 (0.22.0 관례: fixture green 후 실물 확인). 시나리오: conv_open → 워커 pane 스폰 → turn 왕복 2~3회 → conv_close.
-> 2. **후속 PATCH 후보** (PLAN 0.23.0 "Implemented as of" 블록 참조): ① §5.2 artifact 패키징 호출부(M-2 검증 함수 존재, 호출 코드 미구현 — 32k tail-truncate 폴백을 §5.1 "절단 금지" 정합으로 회복) ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ④ dispatch allowlist codex/grok 확장.
+> 1. ~~conv 실물 스모크~~ — ✅ **2026-07-18 완료** (`conv_ec40e20b1ea246ba`): conv_open → accept → 실물 herdr pane 스폰(`loom-conv-*`, cwd·`LOOM_CONV` env 확인) → turn 왕복 **3회**(워커 실작업: 읽기 전용 조사·보고) → conv_close(reason done, 보드 task done). 양측 pin·seq 단조(타워 own 4/peer 7, 워커 대칭)·`inFlight` 0 복귀 전부 실증. 스타트업 레이스 이번엔 미발생(주입 성공). **관찰 2건**: ⓐ 워커 턴 = pane 최근 200줄 스크레이프라 claude-mem 스타트업 노이즈+이전 턴 전문이 매 턴 누적 반복됨 → "마지막 턴 이후 delta만" 스크레이프가 후속 개선 후보 ⓑ conv.close 후 워커 pane은 살아남음(코드 의도대로, UNKNOWNS pane/conv 수명 불일치) — 수동 `herdr pane close` 필요.
+> 2. **후속 PATCH 후보** (PLAN 0.23.0 "Implemented as of" 블록 참조): ① §5.2 artifact 패키징 호출부(M-2 검증 함수 존재, 호출 코드 미구현 — 32k tail-truncate 폴백을 §5.1 "절단 금지" 정합으로 회복) ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ④ dispatch allowlist codex/grok 확장 ⑤ (스모크 관찰 ⓐ) 워커 턴 pane 스크레이프 delta화 ⑥ (관찰 ⓑ) close 시 pane 정리 정책.
 > 3. 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
 >
 > ### 실측 제약·교훈 (재확인 금지 — 상세 `tasks/lessons.md` 2026-07-18)
@@ -37,7 +37,7 @@
 
 ## One-line resume
 
-> **v0.23.0 implemented (`e4dab9e`).** 스펙 R24 → PLAN R25 → 구현까지 완주 — 리뷰 2회는 herdr dispatch 워커, 구현·PATCH는 grok 레인, 아키텍트 독립 검증(261/0). 다음 = **conv 실물 스모크** → 후속 PATCH(artifact 패키징 호출부 등). 룸 `LOOM-SGLR`+브릿지 온라인.
+> **v0.23.0 implemented (`e4dab9e`) + conv 실물 스모크 통과 (2026-07-18).** 스펙 R24 → PLAN R25 → 구현 → 라이브 스모크(왕복 3회, 양측 pin·seq·보드 동기 실증)까지 완주. 다음 = **후속 PATCH**(artifact 패키징 호출부 등 6건 후보 — ⭐ 블록). 룸 `LOOM-SGLR`+브릿지 온라인(v0.23.0 코드로 재기동, pid는 세션마다 다름).
 
 ---
 
