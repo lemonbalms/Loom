@@ -312,8 +312,13 @@ export function hasStillRunningIndicator(scrape: string): boolean {
  * non-empty lines of the judgment input (delta text or chrome-filtered full
  * scrape). Whole-text-prefix detection structurally missed convention-compliant
  * workers (tower-turn echo + mid-output precede the marker).
+ *
+ * K=10 (not the reviewed "권장 3"): SMOKE-0239 live — claude TUI appends
+ * ≥3 unfiltered non-content lines after the answer (timing line, bare
+ * composer `❯`, statusline), pushing a compliant marker out of a 3-line
+ * window. Matches the still-running tail-10 precedent (0.23.7).
  */
-export const DONE_PROPOSAL_TAIL_LINES = 3;
+export const DONE_PROPOSAL_TAIL_LINES = 10;
 
 export function hasDoneProposalMarker(text: string, k = DONE_PROPOSAL_TAIL_LINES): boolean {
   const nonEmpty = text

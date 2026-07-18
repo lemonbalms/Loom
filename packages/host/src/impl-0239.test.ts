@@ -92,9 +92,25 @@ describe("PLAN 0.23.9 hasDoneProposalMarker (unit)", () => {
     expect(hasDoneProposalMarker(text)).toBe(false);
   });
 
-  test("marker buried before last 3 non-empty → false", () => {
-    const lines = ["[DONE_PROPOSAL] buried", "a", "b", "c", "d"];
+  test("marker buried before last K(10) non-empty → false", () => {
+    const lines = [
+      "[DONE_PROPOSAL] buried",
+      ...Array.from({ length: 11 }, (_, i) => `line ${i}`),
+    ];
     expect(hasDoneProposalMarker(lines.join("\n"))).toBe(false);
+  });
+
+  test("SMOKE-0239 live shape: marker + 3 trailing TUI lines → true (K=10)", () => {
+    const text = [
+      '⏺ package.json의 "name" 필드 값은 loom입니다.',
+      "",
+      '[DONE_PROPOSAL] package.json name 필드 확인 완료 — 값은 "loom"',
+      "",
+      "✻ Churned for 15s",
+      "❯",
+      "Fable 5 ⚡high │ 5% 50k/1.0M │ fable-advisor main",
+    ].join("\n");
+    expect(hasDoneProposalMarker(text)).toBe(true);
   });
 
   test("empty / no marker → false", () => {
