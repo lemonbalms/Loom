@@ -83,6 +83,12 @@ export type FakeHerdr = {
    */
   setPaneReadText: (paneId: string, text: string | null) => void;
   /**
+   * PLAN 0.23.6 settle re-read control: successive pane.read RPCs for this
+   * pane (or "*") return the next sequence entry; the last entry sticks.
+   * Pass null to clear. Takes precedence over setPaneReadText while active.
+   */
+  setPaneReadSequence: (paneId: string, texts: string[] | null) => void;
+  /**
    * PLAN 0.23.5: next `count` pane.read RPCs reply with an error (then recover).
    */
   failPaneReads: (count: number) => void;
@@ -112,9 +118,21 @@ export async function startFakeHerdr(
   // PLAN 0.23.5 composer simulation
   const paneReadOverrides = new Map<string, string>();
   let defaultPaneReadOverride: string | null = null;
+  // PLAN 0.23.6 settle sequence: paneId | "*" → remaining reads (last sticks)
+  const paneReadSequences = new Map<string, string[]>();
   let paneReadFailRemaining = 0;
   let paneReadCalls = 0;
   let discardInjects = opts.discardInjects === true;
+
+  function nextSequenceText(paneId: string): string | undefined {
+    for (const key of [paneId, "*"] as const) {
+      const seq = paneReadSequences.get(key);
+      if (!seq || seq.length === 0) continue;
+      if (seq.length === 1) return seq[0];
+      return seq.shift()!;
+    }
+    return undefined;
+  }
 
   if (existsSync(opts.socketPath)) {
     try {
@@ -315,7 +333,11 @@ export async function startFakeHerdr(
           }
           const p = panes.get(pane_id);
           let text = p?.text ?? "READY\n";
-          if (paneReadOverrides.has(pane_id)) {
+          // PLAN 0.23.6 sequence takes precedence (settle multi-read control)
+          const seqText = nextSequenceText(pane_id);
+          if (seqText !== undefined) {
+            text = seqText;
+          } else if (paneReadOverrides.has(pane_id)) {
             text = paneReadOverrides.get(pane_id)!;
           } else if (paneReadOverrides.has("*")) {
             text = paneReadOverrides.get("*")!;
@@ -401,6 +423,13 @@ export async function startFakeHerdr(
       } else {
         paneReadOverrides.set(paneId, text);
       }
+    },
+    setPaneReadSequence(paneId: string, texts: string[] | null) {
+      if (texts === null || texts.length === 0) {
+        paneReadSequences.delete(paneId);
+        return;
+      }
+      paneReadSequences.set(paneId, [...texts]);
     },
     failPaneReads(count: number) {
       paneReadFailRemaining = Math.max(0, count);

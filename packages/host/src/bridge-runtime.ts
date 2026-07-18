@@ -105,6 +105,8 @@ export type BridgeRuntime = {
  */
 const SUBMIT_VERIFY_MS = 4_000;
 const SUBMIT_RETRIES = 3;
+/** PLAN 0.23.6: settle re-read delay between pane reads (idle render settle). */
+const SETTLE_MS = 250;
 /** R30 M-1: Claude Ink folds multi-line paste into a placeholder — treat as hit. */
 const PASTE_PLACEHOLDER_MARKER = "[Pasted text";
 const PROBE_TAIL_CHARS = 48;
@@ -112,6 +114,114 @@ const PROBE_TAIL_CHARS = 48;
 /** Whitespace-normalize for TUI wrap-tolerant probe matching. */
 function normalizeForProbe(s: string): string {
   return s.replace(/\s+/g, "");
+}
+
+// ─── PLAN 0.23.6: TUI chrome filter + delta scrape ──────────────────────────
+
+/** Box-drawing / border-only chars (Unicode box + common ASCII border fillers). */
+const BOX_DRAWING_LINE_RE =
+  /^[\s\u2500-\u257F\u2580-\u259F╭╮╯╰│┃─━┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬┏┓┗┛┣┫┳┻╋╌╍╎╏┄┅┆┇┈┉┊┋]+$/u;
+
+/** Composer prompt line (Claude/Ink-style `│ ❯ …`). */
+const COMPOSER_PROMPT_RE = /│\s*❯/;
+
+/** Known TUI key-hint substrings — whole line dropped if any match (conservative). */
+const KEY_HINT_MARKERS = [
+  "Shift+Tab:mode",
+  "Ctrl+.:shortcuts",
+  "Ctrl+c:cancel",
+] as const;
+
+/**
+ * PLAN 0.23.6: strip obvious TUI chrome lines only (box borders, composer
+ * prompt, known key hints, trailing blanks). Apply to conv inline text and
+ * card summary input — never to card `output` body (R31 M-1).
+ */
+export function stripTuiChrome(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const kept: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === "") {
+      kept.push(line);
+      continue;
+    }
+    if (BOX_DRAWING_LINE_RE.test(trimmed)) continue;
+    if (COMPOSER_PROMPT_RE.test(line)) continue;
+    if (KEY_HINT_MARKERS.some((m) => line.includes(m))) continue;
+    kept.push(line);
+  }
+  while (kept.length > 0 && kept[kept.length - 1]!.trim() === "") {
+    kept.pop();
+  }
+  return kept.join("\n");
+}
+
+/**
+ * Whitespace-normalize with index map: map[i] = original index of
+ * normalized[i]. Used for delta slice on original text (R31 M-2).
+ */
+export function normalizeWithIndexMap(s: string): {
+  normalized: string;
+  map: number[];
+} {
+  const map: number[] = [];
+  let normalized = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (/\s/.test(ch)) continue;
+    map.push(i);
+    normalized += ch;
+  }
+  return { normalized, map };
+}
+
+/**
+ * Delta anchor from chrome-filtered scrape: last ≤3 non-empty lines,
+ * whitespace-normalized for storage.
+ */
+export function buildDeltaAnchor(filtered: string): string {
+  const lines = filtered.split(/\r?\n/).filter((l) => l.trim() !== "");
+  const tail = lines.slice(-3).join("\n");
+  return normalizeWithIndexMap(tail).normalized;
+}
+
+export type DeltaApplyResult =
+  | { kind: "no_anchor"; text: string }
+  | { kind: "miss"; text: string }
+  | { kind: "applied"; text: string; kept: number; total: number }
+  | { kind: "empty"; text: string; kept: number; total: number };
+
+/**
+ * Apply delta anchor against chrome-filtered scrape. Match is last
+ * occurrence on the whitespace-normalized form; slice is from the original
+ * (filtered) text via index map — never from the normalized string (R31 M-2).
+ */
+export function applyDeltaAnchor(
+  filtered: string,
+  anchor: string | undefined,
+): DeltaApplyResult {
+  if (!anchor) return { kind: "no_anchor", text: filtered };
+  const { normalized, map } = normalizeWithIndexMap(filtered);
+  if (!normalized.includes(anchor)) {
+    return { kind: "miss", text: filtered };
+  }
+  const idx = normalized.lastIndexOf(anchor);
+  const endNorm = idx + anchor.length;
+  let startOrig: number;
+  if (endNorm <= 0) {
+    startOrig = 0;
+  } else if (endNorm > map.length) {
+    startOrig = filtered.length;
+  } else {
+    startOrig = map[endNorm - 1]! + 1;
+  }
+  const delta = filtered.slice(startOrig);
+  const total = filtered.length;
+  if (delta.trim() === "") {
+    return { kind: "empty", text: "", kept: 0, total };
+  }
+  return { kind: "applied", text: delta, kept: delta.length, total };
 }
 
 /** Last 48 chars of whitespace-normalized prompt (or full string if shorter). */
@@ -153,6 +263,11 @@ type ConvFlight = {
   sawWorking: boolean;
   /** R28 L-1: filename → sha256 of already-emitted worker file artifacts (stale-marker dedup). */
   emittedArtifacts?: Map<string, string>;
+  /**
+   * PLAN 0.23.6: whitespace-normalized tail (≤3 non-empty lines) of the last
+   * successfully-sent chrome-filtered scrape. Used to slice next-turn delta.
+   */
+  deltaAnchor?: string;
 };
 
 function log(...args: unknown[]): void {
@@ -176,6 +291,11 @@ export async function startBridgeRuntime(opts?: {
   config?: BridgeConfig;
   /** M-2 submit verify tuning (test injection); defaults to production values. */
   submitVerify?: { waitMs: number; retries: number };
+  /**
+   * PLAN 0.23.6 settle re-read delay (ms) between pane reads.
+   * Test injection — production default 250. Real timers only (no fake-timer).
+   */
+  settleMs?: number;
 }): Promise<BridgeRuntime> {
   let session = opts?.session ?? loadSession();
   if (!session) {
@@ -190,6 +310,7 @@ export async function startBridgeRuntime(opts?: {
     waitMs: SUBMIT_VERIFY_MS,
     retries: SUBMIT_RETRIES,
   };
+  const settleMs = opts?.settleMs ?? SETTLE_MS;
 
   const flights = new Map<string, Flight>(); // paneId → flight
   const cardSeq = new Map<string, number>();
@@ -873,6 +994,23 @@ export async function startBridgeRuntime(opts?: {
    * a wire change), else kind=normal. Pane stays alive — only conv.close
    * (tower-only, §1.4/§3.2) ends the conv.
    */
+  /**
+   * PLAN 0.23.6 settle re-read: read → wait → re-read → on stripAnsi mismatch
+   * one more (max 3). Last sample wins. Verify-loop paneRead is NOT covered.
+   */
+  async function settlePaneRead(paneId: string): Promise<string> {
+    const once = () =>
+      herdr.paneRead(paneId, { source: "recent", lines: 200 });
+    const last = await once();
+    await new Promise((r) => setTimeout(r, settleMs));
+    let next = await once();
+    if (stripAnsi(last) !== stripAnsi(next)) {
+      await new Promise((r) => setTimeout(r, settleMs));
+      next = await once();
+    }
+    return next;
+  }
+
   async function sendWorkerTurnFromPane(
     flight: ConvFlight,
     kindHint: "blocked" | "auto",
@@ -885,26 +1023,19 @@ export async function startBridgeRuntime(opts?: {
     }
     if (state.status === "closed") return;
 
+    /** stripAnsi scrape (pre chrome-filter) — markers + raw done_proposal head. */
     let output = "";
+    /** chrome-filtered scrape — inline/delta/32k packaging input. */
+    let filtered = "";
     let scrapeFailed = false;
     try {
-      const raw = await herdr.paneRead(flight.paneId, {
-        source: "recent",
-        lines: 200,
-      });
+      const raw = await settlePaneRead(flight.paneId);
       output = stripAnsi(raw);
+      filtered = stripTuiChrome(output);
     } catch (e) {
       output = `(pane.read failed: ${e instanceof Error ? e.message : e})`;
+      filtered = output;
       scrapeFailed = true;
-    }
-
-    let kind: ConvKind;
-    if (kindHint === "blocked") {
-      kind = "blocked";
-    } else if (output.trimStart().startsWith("[DONE_PROPOSAL]")) {
-      kind = "done_proposal";
-    } else {
-      kind = "normal";
     }
 
     const seq = nextOwnSeq(state.lastOwnSeq);
@@ -912,6 +1043,7 @@ export async function startBridgeRuntime(opts?: {
     // PLAN 0.23.3 / R28 M-1: worker-declared file markers BEFORE the 32k
     // measured trigger. Failures never fail the turn — collect reasons into
     // the bridge note. Dedup memory (R28 L-1): same filename+sha → skip.
+    // PLAN 0.23.6: marker scan stays on pre-filter raw (filter must not drop markers).
     const noteParts: string[] = [];
     if (note) noteParts.push(note);
     const fileRefs: ArtifactRefEntry[] = [];
@@ -967,28 +1099,66 @@ export async function startBridgeRuntime(opts?: {
     // recovered scrape out-of-band (§5.2 scp convention) instead of
     // tail-truncating (R26 — replaces the 0.22.0-era MVP-gap fallback).
     // R28 M-1: measured trigger coexists with file-based refs (turn-* reserved).
+    // PLAN 0.23.6 L-1: 32k trigger input = chrome-filtered full scrape (no delta).
+    // Delta applies only on the ≤32k inline branch.
     let text: string;
     let artifacts: ArtifactRefEntry[] | undefined;
-    if (!scrapeFailed && output.length > MAX_CONV_TURN_INLINE_CHARS) {
+    /** Head used for done_proposal: delta text when applied, else raw (L-4). */
+    let doneProposalHead: string = output;
+
+    if (!scrapeFailed && filtered.length > MAX_CONV_TURN_INLINE_CHARS) {
       const packaged = packageConvTurnArtifact({
         convId: flight.convId,
         seq,
-        fullText: output,
+        fullText: filtered,
         bridgeDisplayName: session!.displayName,
         recoveryWindowDescription: "pane.read recovery-window (recent 200 lines)",
       });
       text = packaged.text;
       artifacts = [...packaged.artifacts, ...fileRefs];
-    } else {
-      // R28 M-1: ONLY file-based refs → keep original scrape (markers included)
-      // + short notice per ref; do NOT replace text with a file tail.
-      text = output;
+      // Packaging path is not a delta application — keep raw head (L-4 fallback).
+      doneProposalHead = output;
+    } else if (!scrapeFailed) {
+      const delta = applyDeltaAnchor(filtered, flight.deltaAnchor);
+      if (delta.kind === "miss") {
+        noteParts.push("delta anchor miss (full scrape)");
+        text = filtered;
+        doneProposalHead = output;
+      } else if (delta.kind === "empty") {
+        noteParts.push("delta empty (no new output)");
+        noteParts.push(`delta: kept 0/${delta.total} chars`);
+        text = "";
+        doneProposalHead = "";
+      } else if (delta.kind === "applied") {
+        noteParts.push(`delta: kept ${delta.kept}/${delta.total} chars`);
+        text = delta.text;
+        doneProposalHead = delta.text;
+      } else {
+        // First turn / no prior anchor — full filtered scrape, raw done_proposal head.
+        text = filtered;
+        doneProposalHead = output;
+      }
+      // R28 M-1: ONLY file-based refs → keep scrape (+delta) + short notice per ref.
       if (fileRefs.length > 0) {
         const notices = fileRefs.map((r) => workerArtifactInlineNotice(r)).join("\n");
         text = `${text}\n\n${notices}`;
         artifacts = fileRefs;
       }
+    } else {
+      text = output;
+      doneProposalHead = output;
     }
+
+    // L-4: done_proposal from delta head when delta applied; else raw head.
+    let kind: ConvKind;
+    if (kindHint === "blocked") {
+      kind = "blocked";
+    } else if (doneProposalHead.trimStart().startsWith("[DONE_PROPOSAL]")) {
+      kind = "done_proposal";
+    } else {
+      kind = "normal";
+    }
+
     if (noteParts.length > 0) {
       text = `${text}\n\n(bridge note: ${noteParts.join("; ")})`;
     }
@@ -1025,6 +1195,10 @@ export async function startBridgeRuntime(opts?: {
         for (const [filename, sha] of pendingDedup) {
           flight.emittedArtifacts.set(filename, sha);
         }
+      }
+      // PLAN 0.23.6: refresh delta anchor only after successful send (incl. packaging turns — L-1).
+      if (!scrapeFailed) {
+        flight.deltaAnchor = buildDeltaAnchor(filtered);
       }
     } catch (e) {
       log("sendWorkerTurnFromPane failed:", e);
@@ -1284,10 +1458,8 @@ export async function startBridgeRuntime(opts?: {
     let output = "";
     let truncated = false;
     try {
-      const raw = await herdr.paneRead(flight.paneId, {
-        source: "recent",
-        lines: 200,
-      });
+      // PLAN 0.23.6: settle re-read (shared with conv); output body stays unfiltered (R31 M-1).
+      const raw = await settlePaneRead(flight.paneId);
       const stripped = stripAnsi(raw);
       const t = truncateTail(stripped, 200_000);
       output = t.text;
@@ -1298,9 +1470,16 @@ export async function startBridgeRuntime(opts?: {
       reason = reason ?? "pane_read_failed";
     }
 
+    // PLAN 0.23.6: summary from chrome-filtered input only; output body unfiltered (M-1).
     const summary =
       status === "done"
-        ? (output.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? "done").slice(0, 900)
+        ? (
+            stripTuiChrome(output)
+              .trim()
+              .split(/\r?\n/)
+              .filter(Boolean)
+              .slice(-1)[0] ?? "done"
+          ).slice(0, 900)
         : `failed${reason ? ` reason=${reason}` : ""}`.slice(0, 900);
 
     const payload: CardResultPayload = {
