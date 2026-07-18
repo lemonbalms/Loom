@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.23.8** |
-| **Status** | **`approved` → implemented `93c6283`** (R33 author-close `approved` no R33b — M-1·M-2 lock + L-1·L-2 반영 · 구현+독립 검증+라이브 스모크(⑥ 자동 close·chrome 소거·⑦ CLI 왕복 실증) 완료 — §0.23.8 Implemented 참조) — **워커 pane 정리 정책 + conv-hosts CLI + chrome known-hint 2종 (후보 ⑥⑦ + 0.23.7 부수 관찰)** (PATCH): 카드 done·conv close 후 워커 pane이 무기한 잔존해 수동 정리 관례에 의존한다(0.23.0 스모크부터 "후보 ⑥ 미구현 관례", 오너 pane 배치 규칙 §1.3(탭당 최대 4개)과 충돌). 완료-확신 시점(지표-소거 done·conv.close 수신)에만 결과 전송 성공 후 best-effort `pane.close`를 수행하고(**exhausted·failed 경로는 pane 유지** — 진행-중 작업 kill·진단 표면 상실 배제, 로컬 opt-out `paneCleanup:"keep"`), conv scp 호스트 매핑(M-2 해석의 유일 출처)에 검증된 CLI `loom conv-hosts set|list|rm`을 제공하며(현행 손편집 — corrupt 시 침묵 miss), 라이브 3회 실증된 chrome 미커버 2종(grok 상태줄 콘텐츠-포함 box줄·claude `⏵⏵ auto mode on` 힌트줄)을 보수 필터에 추가한다(summary·conv inline만 — R31 M-1 경계 유지). **wire 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경(기존 `pane.close` op 재사용).** 직전: 0.23.7 **`approved` → implemented `1160b38`** (R32 author-close `approved` no R32b · 구현+독립 검증+라이브 스모크(유예 실발화·실완료본 회신 실증) 완료 — §0.23.7 Implemented 참조) — **카드 완료 판정 still-running 유예 (card.done 조기 회신 수정)** (PATCH): herdr가 워커 백그라운드 커맨드 실행 중에도 idle을 방출해 브릿지가 미완 화면("1 command still running")을 그대로 card.done `output`으로 조기 회신한다(2026-07-19 카드 웨이브 라이브 2회 실증 — 실완주는 ~4분 뒤). 완료 판정 시 스크레이프 말미의 still-running 지표를 보수 감지하면 결과 회신을 상한부 유예(폴링)하고, 유예 사실을 additive optional `note`로 관측 가능하게 한다. **herdr RPC 표면 무변경 · MCP 도구 무변경 · wire는 additive optional 1필드(`note`)만.** 직전: 0.23.6 **`approved` → implemented `5bdeae7`** (R31 author-close `approved` no R31b · 구현+독립 검증 완료, codex 자문 부분 종결(공회전 — Med 표면화 없음), M-1 라이브 검증 불요 — §0.23.6 Implemented 참조) — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH): conv 워커 턴·카드 결과가 pane 최근 200줄 전체를 매번 실어 보내 이전 턴 전문·TUI chrome이 좁은 스크레이프 창(실측 상한 claude ~5.3k/grok ~2.2k/codex ~1.4k)을 잠식한다. delta 앵커(직전 턴 꼬리, 공백-정규화 매치)로 신규 내용만 싣고, 명백한 chrome 줄(box-drawing·키 힌트)을 보수 필터하며, idle 직후 렌더 미완 스크레이프를 settle 재독으로 안정화한다. **wire·MCP·herdr RPC 표면 무변경, 신규 신뢰 표면 없음(untrusted 콘텐츠 read-only shaping).** |
-| **Supersedes** | 0.23.7 |
+| **Version** | **0.23.9** |
+| **Status** | **`pending-review`** (R34 대기) — **conv done_proposal 규약 완결 + conv.open deny 클레임 정합 + 브릿지 pane 배치 정책 (후보 ②③⑧)** (PATCH): 브릿지에만 존재하고 워커는 알 길이 없던 done_proposal 탐지 규약(0.23.6 L-4 구현·규약 미고지로 라이브 도달 불가)을 conv open 규약 블록 안내 + 타워 보드 표면화로 완결하고(② — 자동 close 없음, 타워 전권 유지), 비인가 conv.open을 선클레임 후 버리던 카드-관례 divergence를 무클레임 ignore+log로 정합하며(③ — turn/close는 현행), 무힌트 스폰이 글로벌 포커스 탭을 분할-침입하던 것(라이브 프로브 실증)을 브릿지-로컬 워커 풀 탭 정책(tab_id/split 힌트 + pane.list 실사, 탭당 최대 4 워커, 만석 시 새 탭, fail-open 폴백, opt-out `panePlacement:"legacy"`)으로 대체한다(⑧ — §1.3 self-enforcing). **wire 무변경 · MCP 도구 무변경 · herdr 기존 op의 파라미터 전달·기존 op 신규 호출 2종(tab.create/pane.list)만.** 직전: 0.23.8 **`approved` → implemented `93c6283`** (R33 author-close `approved` no R33b — M-1·M-2 lock + L-1·L-2 반영 · 구현+독립 검증+라이브 스모크(⑥ 자동 close·chrome 소거·⑦ CLI 왕복 실증) 완료 — §0.23.8 Implemented 참조) — **워커 pane 정리 정책 + conv-hosts CLI + chrome known-hint 2종 (후보 ⑥⑦ + 0.23.7 부수 관찰)** (PATCH): 카드 done·conv close 후 워커 pane이 무기한 잔존해 수동 정리 관례에 의존한다(0.23.0 스모크부터 "후보 ⑥ 미구현 관례", 오너 pane 배치 규칙 §1.3(탭당 최대 4개)과 충돌). 완료-확신 시점(지표-소거 done·conv.close 수신)에만 결과 전송 성공 후 best-effort `pane.close`를 수행하고(**exhausted·failed 경로는 pane 유지** — 진행-중 작업 kill·진단 표면 상실 배제, 로컬 opt-out `paneCleanup:"keep"`), conv scp 호스트 매핑(M-2 해석의 유일 출처)에 검증된 CLI `loom conv-hosts set|list|rm`을 제공하며(현행 손편집 — corrupt 시 침묵 miss), 라이브 3회 실증된 chrome 미커버 2종(grok 상태줄 콘텐츠-포함 box줄·claude `⏵⏵ auto mode on` 힌트줄)을 보수 필터에 추가한다(summary·conv inline만 — R31 M-1 경계 유지). **wire 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경(기존 `pane.close` op 재사용).** 직전: 0.23.7 **`approved` → implemented `1160b38`** (R32 author-close `approved` no R32b · 구현+독립 검증+라이브 스모크(유예 실발화·실완료본 회신 실증) 완료 — §0.23.7 Implemented 참조) — **카드 완료 판정 still-running 유예 (card.done 조기 회신 수정)** (PATCH): herdr가 워커 백그라운드 커맨드 실행 중에도 idle을 방출해 브릿지가 미완 화면("1 command still running")을 그대로 card.done `output`으로 조기 회신한다(2026-07-19 카드 웨이브 라이브 2회 실증 — 실완주는 ~4분 뒤). 완료 판정 시 스크레이프 말미의 still-running 지표를 보수 감지하면 결과 회신을 상한부 유예(폴링)하고, 유예 사실을 additive optional `note`로 관측 가능하게 한다. **herdr RPC 표면 무변경 · MCP 도구 무변경 · wire는 additive optional 1필드(`note`)만.** 직전: 0.23.6 **`approved` → implemented `5bdeae7`** (R31 author-close `approved` no R31b · 구현+독립 검증 완료, codex 자문 부분 종결(공회전 — Med 표면화 없음), M-1 라이브 검증 불요 — §0.23.6 Implemented 참조) — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH): conv 워커 턴·카드 결과가 pane 최근 200줄 전체를 매번 실어 보내 이전 턴 전문·TUI chrome이 좁은 스크레이프 창(실측 상한 claude ~5.3k/grok ~2.2k/codex ~1.4k)을 잠식한다. delta 앵커(직전 턴 꼬리, 공백-정규화 매치)로 신규 내용만 싣고, 명백한 chrome 줄(box-drawing·키 힌트)을 보수 필터하며, idle 직후 렌더 미완 스크레이프를 settle 재독으로 안정화한다. **wire·MCP·herdr RPC 표면 무변경, 신규 신뢰 표면 없음(untrusted 콘텐츠 read-only shaping).** |
+| **Supersedes** | 0.23.8 |
 | **Last updated** | 2026-07-19 |
 | **Approval** | **R32 author-close `approved`**(0.23.7) → implemented `1160b38` + 라이브 스모크(SMOKE-0237 유예 실발화) · 직전: **R31 author-close `approved`**(0.23.6) → implemented `5bdeae7` · **R30 author-close `approved`**(0.23.5) → implemented `8148642` + codex 자문 REJECT 7건 반영. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 pane 수명·로컬 CLI·필터 패턴 추가, conv/card 프로토콜 의미 무변경). |
-| **Fable 5 when** | **R33 완료(2026-07-19)**: `pending-revision` → author-close `approved`(M-1(close 적격 명시 파라미터)·M-2(charset `:` 제거) lock + L-1·L-2, no R33b — Fable 사전 승인). 직전: R32 완료(2026-07-19) `pending-revision` → author-close `approved`(M-1·M-2 lock + L-1) → implemented `1160b38`. |
+| **Fable 5 when** | **R34 요청 예정(0.23.9 `pending-review`)** — claude-rev pane + fable-advisor 자문(DOGFOOD_LOOP §2). 직전: R33 완료(2026-07-19) `pending-revision` → author-close `approved`(M-1(close 적격 명시 파라미터)·M-2(charset `:` 제거) lock + L-1·L-2, no R33b — Fable 사전 승인) → implemented `93c6283`. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,48 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.23.9 — 2026-07-19 (`pending-review` — **conv done_proposal 규약 완결 + conv.open deny 클레임 정합 + 브릿지 pane 배치 정책 (후보 ②③⑧)** (PATCH))
+
+**Product one-liner:** 브릿지에만 존재하고 워커는 알 길이 없던 done_proposal 탐지 규약을 워커-발견가능하게 완결하고(②), 비인가 conv.open을 클레임 후 버리던 카드-관례 divergence를 정합하며(③), 무힌트 스폰이 오너가 보고 있는 탭을 분할-침입하던 것을 브릿지-로컬 워커 풀 탭 정책(§1.3 self-enforcing, 탭당 최대 4 워커)으로 대체한다(⑧).
+
+**Why:**
+- **② done_proposal 규약 미완결**: 0.23.0 follow-up ②. 브릿지 탐지(`[DONE_PROPOSAL]` prefix → kind=done_proposal, 0.23.6 R31 L-4 — delta 선두 판정)는 구현돼 있으나 **규약을 워커에게 알려주는 곳이 없다** — conv open 주입의 브릿지-저작 규약 블록(§5.1 artifact convention, R28 L-2)에 done_proposal 항목 부재. 워커가 모르는 브릿지-로컬 규약은 라이브에서 사실상 도달 불가(우연 방출만). 타워측(conv-ops.ts)은 kind=done_proposal을 `doing` 유지 + notes `kind=done_proposal` 병기뿐이라 완료 제안이 보드에서 구별되지 않는다.
+- **③ conv.open M-1 deny 클레임 순서 divergence**: 0.23.0 follow-up ③. 카드 경로는 M-1 deny를 **클레임 없이** ignore+log(processedHandoffs 마킹만 — 스펙 관례). conv 경로는 라벨 불문 **선클레임 후** processConvIntent 내부에서 deny — 비인가 발신의 conv.open handoff를 브릿지가 소비(claim)한다. 저위험이나 "비인가 입력은 무소비" 원칙 훼손.
+- **⑧ pane 배치 정책 부재 (오너 질문발, 2026-07-19)**: DOGFOOD_LOOP §1.3(탭당 최대 4개 2×2)은 문서 관례일 뿐 스폰 시 강제 지점이 없다. **라이브 프로브 실측(2026-07-19, 이 초안 선행)**: 무힌트 `agent.start`는 **글로벌 포커스 탭의 포커스 pane을 분할** — 워커 pane이 오너가 보고 있는 화면에 직접 침입하며, 이것이 pane 누적·수동 재배치 관례의 근원.
+
+**⑧ 라이브 프로브 확정 사실 (2026-07-19 — 스펙 전제, [가정] 아님):**
+| 표면 | 실측 |
+|------|------|
+| `agent.start` RPC 파라미터 | `tab_id`·`split`("right"\|"down") 수용 — **snake_case(CLI 플래그 `--tab`/`--split`과 명칭 상이)**. `pane_id`(분할-기점 타깃)는 **무시됨** — 분할 기점은 항상 **해당 탭의 포커스 pane** 고정. |
+| 무힌트/`workspace_id`-만 스폰 | 글로벌 포커스 탭의 포커스 pane 분할 — 오너 화면 침입 실증(프로브 A·E). |
+| `tab.create` RPC | `{workspace_id?, focus:false, label?}` — 글로벌 포커스 불변, root shell pane 포함 반환. |
+| 크로스-탭 `agent.focus` | **보이는 탭을 전환**(글로벌 포커스 절도 실증) → 포커스 댄스 기반 완전 2×2는 기각. |
+| `focus:false` 스폰 | 탭 내 포커스 불이동 — root shell close 후 탭 내 포커스는 첫 워커에 고정, 이후 split 기점이 결정론적. |
+| 4-워커 시퀀스 실증 | tab.create → W1(split right) → root close → W2(right)·W3(down)·W4(down) = 좌열 3-스택 + 우열 전고(근사 2×2, 탭당 4 bounded). |
+| `pane.list` RPC | 실재 — pane별 `pane_id`/`tab_id`/`workspace_id`/`agent_status` 반환(풀 실사 가능). |
+
+**What (범위 — PATCH; wire 무변경 · MCP 도구 무변경 · herdr RPC는 기존 op의 기존 파라미터 전달만(agent.start `tab_id`/`split`)·기존 op 신규 호출 2종(`tab.create`/`pane.list`) — 신규 신뢰 표면 없음(로컬 소켓 기존 권한 내)):**
+| 항목 | 내용 |
+|------|------|
+| **② 워커-발견가능 규약** | conv open 주입의 브릿지-저작 규약 블록(untrusted 래퍼 **밖** — R28 L-2 선례 그대로)에 done_proposal 항목 추가: 목표 완료 판단 시 최종 메시지 **첫 줄을 정확히 `[DONE_PROPOSAL]`로 시작**하라는 안내(탐지기 `trimStart().startsWith("[DONE_PROPOSAL]")`와 문구 정합). **탐지 로직 무변경**(R31 L-4 delta-선두 판정 유지). 카드 lane 비대상(카드는 done_proposal 개념 없음 — conv 한정). |
+| **② 타워 표면화** | `applyConvTurn`: kind=done_proposal 수신 시 보드 notes를 구별 가능한 고정 문구로 — `[DONE_PROPOSAL] worker proposes completion — conv.close(reason done) to accept (last turnSeq=N)`. **status는 `doing` 유지** — done 전이는 conv.close(reason "done")만(§3.4 타워 전권, 자동 close 없음). notes는 브릿지/타워 생성 고정 문구 + seq만(스크레이프 본문 미인용 — 0.23.7 선례). `last turnSeq=` 표기는 표시 전용(재파싱 없음 — 코드 확인). |
+| **③ 클레임 정합** | `processInboxEntry` conv 분기: label이 **conv.open이고** `!isAuthorizedDispatcher` → processedHandoffs 마킹 + log만, **클레임 없이 return**(카드 M-1 deny와 동일 형태). **turn/close 라벨은 현행 유지**(선클레임 후 pin 검사 — pin 판정은 conv state가 필요하고, 기존 pin 관계 내 메시지라 신뢰 수립 intent가 아니며, 비인가 turn의 인박스 잔류 방지 이점 유지). `processConvIntent` 내부 M-1 검사는 이중 방어로 잔존(도달 불가 경로여도 계약 유지). |
+| **⑧ 워커 풀 탭 정책** | 브릿지가 스폰하는 모든 워커 pane(카드+conv 공통)을 **브릿지-로컬 풀 탭**으로: in-memory `workerPool { tabId, paneIds: Set }` + **스폰 직전 `pane.list` 실사가 SSOT**(수동 close·탭 소멸 반영 — in-memory는 후보 키). ① 풀 탭 실재 + live 브릿지 pane <4 → `agent.start { tab_id, split }` (split은 live 수 기준 1→"right", 2→"down", 3→"down") ② 풀 탭 부재/소멸/만석 → 신규 풀 탭 시퀀스: `tab.create { focus:false, label:"loom-workers" (+ config workspace) }` → 첫 워커 `agent.start { tab_id, split:"right" }` → **root shell `pane.close`**(탭 워커-전용화; best-effort — 실패 무시, 대상은 방금 만든 탭의 root뿐). 만석 풀 탭은 풀에서 제거(기존 워커 pane은 불이동 — 재배치·리밸런싱 없음). |
+| **⑧ 실패 폴백 (fail-open)** | `tab.create` 또는 힌트 스폰 실패 시 **무힌트 `agent.start` 1회 재시도**(현행 배치) + stderr 로그 — 배치는 cosmetic, 워커 가용성 우선. 폴백 성공 pane은 풀에 미등록(다음 스폰은 다시 풀 경로 시도). |
+| **⑧ opt-out** | 브릿지 config `panePlacement?: "pool" \| "legacy"`(기본 `"pool"`, load 시 비정상 값 sanitize — R33 paneCleanup 선례) + `paneWorkspaceId?: string`(풀 탭 생성 워크스페이스; 미설정 시 `workspace_id` 생략 = herdr 기본). `"legacy"` = 현행 무힌트 스폰. `bridge status`에 현재 정책 표기. |
+| **HerdrClient** | `agentStart` opts에 optional `tabId`/`split` passthrough · 신규 메서드 `tabCreate`/`paneList`(기존 herdr op 래핑, 1 RPC = 1 연결 관례 동일). |
+| **테스트** | fake-herdr 요청 기록으로: **⑧** ① 첫 스폰 = tab.create → tab_id/split 스폰 → root pane.close 시퀀스 ② 2·3·4번째 스폰 = 동일 tab_id + split right/down/down ③ 5번째 = 신규 tab.create(만석 전이) ④ pane.list 실사 — 수동 닫힌 pane 제외 후 재사용 ⑤ 풀 탭 소멸(pane.list에 tab 부재) → 신규 탭 ⑥ tab.create 실패 → 무힌트 폴백 스폰 + 카드 정상 진행 ⑦ 힌트 스폰 실패 → 무힌트 폴백 ⑧ `panePlacement:"legacy"` → 현행 무힌트(tab.create 미호출) ⑨ conv lane도 풀 경유 ⑩ 기존 카드·conv 왕복 회귀(스폰 파라미터 외 무변경) **②** ⑪ conv open 주입 프롬프트에 done_proposal 규약 문구 포함(+ artifact convention 공존) ⑫ 타워 done_proposal notes 고정 문구 + status doing 유지 ⑬ 탐지 회귀(delta 선두 판정 — 기존 테스트 유지 확인) **③** ⑭ 비인가 conv.open → claim 미호출(fake client claim 기록 부재) + processedHandoffs 마킹(재처리 없음) ⑮ 인가 conv.open 회귀(클레임 + accept) ⑯ 비인가 turn/close = 현행(선클레임 후 pin 무시) 유지. |
+
+**Out of scope:** 후보 ④(agentKind 확장) · 완전 2×2 기하(포커스 댄스 = 보이는-탭 절도 실증이라 기각 — 근사 배치로 충분, 탭당 4 bounded가 §1.3의 핵심) · 기존 pane 재배치/리밸런싱(스폰 시점 정책만) · done_proposal 자동 close(타워 전권 유지 — 표면화만) · herdr 자체 개조 · 카드 lane의 done_proposal(conv 한정 개념) · 아키텍트/오너가 수동 스폰하는 pane(브릿지 스폰만).
+
+**Security / trust (R34 판단 대상):**
+- **② 규약 블록은 브릿지 저작**(untrusted 래퍼 밖) — goal 콘텐츠가 규약 문구를 위조해도 첫 줄 판정은 워커 **출력** 기준이라 무관. 워커(untrusted)가 done_proposal을 조기/허위 방출해도 결과는 **보드 노트 표시뿐**(자동 close·상태 전이 없음 — 타워 결정 유지). notes는 고정 문구+seq만(본문 미인용).
+- **③은 처리 표면 축소 방향** — 비인가 입력을 소비하지 않게 됨. processedHandoffs 마킹은 카드 경로와 동일(재시작 후 드레인 재조우 시 재마킹, 무한 루프 없음).
+- **⑧ 신규 원격 표면 없음** — 배치는 브릿지 로컬 정책, wire 필드로 제어 불가. `tab.create`/`pane.list`/`agent.start` 파라미터는 로컬 herdr 소켓의 기존 권한 내. root shell close 대상은 **브릿지가 방금 생성한 탭의 root pane뿐**(타 pane 대상 아님). 폴백은 현행 동작과 동일하므로 악화 없음. 워커 pane이 오너 포커스 탭에 침입하지 않게 되는 것은 보안 관점에서도 개선(오너 오입력 표면 축소).
+- **프로브 산출물**: 스크래치패드 1회성 스크립트만 — 제품 코드 무영향.
+
+**Review impact:** ③은 M-1 신뢰 경계의 처리 순서 변경(축소 방향) + ⑧은 스폰 배치 정책 신설(herdr 호출 표면 확장 — 기존 op이나 신규 호출 2종) + ②는 주입 프롬프트 표면 추가(브릿지 저작 블록) — **R34 요청**(§5.1 보수 관례). 프로브 실측이 스펙 전제를 전부 해소해 [가정] 없음.
 
 #### 0.23.8 — 2026-07-19 (`approved` R33 — **워커 pane 정리 정책 + conv-hosts CLI + chrome known-hint 2종 (후보 ⑥⑦ + 0.23.7 부수 관찰)** (PATCH))
 
