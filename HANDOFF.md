@@ -14,12 +14,12 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.23.1 §5.2 artifact 패키징 호출부 — R26 게이트→구현 완주. `implemented` (`e5ccc4d`), bun test 294/0.**  
-> 체인(당일 3연속): 0.23.0 구현 `e4dab9e` → **conv 실물 스모크 통과** → PLAN 0.23.1 approved(`ad8466f`, R26 author-close — 리뷰는 herdr dispatch claude 워커+fable-advisor, 실전 3회째) → 구현 `e5ccc4d` (grok-impl 레인 · 아키텍트 독립 검증). truncate 폴백 제거(§5.1 절단 금지 회복), M-1 로컬 host 매핑(fail-closed)·M-2 제시 렌더링(단일인용+allowlist) 코드 확인.
+> **🎯 v0.23.2 dispatch/conv agentKind allowlist 확장 (codex·grok) — R27 게이트→구현 완주. `implemented` (`91bee75`), bun test 309/0.**  
+> 체인(당일 4연속): 0.23.0 구현 → conv 실물 스모크 → 0.23.1 구현 `e5ccc4d` → **PLAN 0.23.2 R27 즉시 approved**(M-lock 없음 — 리뷰는 herdr dispatch claude 워커+fable-advisor, 실전 4회째, 이번엔 스타트업 레이스 없이 완주) → 구현 `91bee75` (grok-impl 레인 · 아키텍트 독립 검증). enum 3종 확장 + 브릿지 로컬 argv opt-in(기본 미등록 = fail-closed, DEFAULT는 claude만) + L-1 `sanitizeAgentArgv`·L-2 등록 고지 author-close.
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **후속 PATCH 후보** (구 ①=artifact 패키징은 0.23.1로 완료): ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ④ dispatch allowlist codex/grok 확장 ⑤ 워커 턴 pane 스크레이프 delta화(스모크 관찰 ⓐ — claude-mem 노이즈+이전 턴 누적 반복) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(0.23.1 follow-up — conv-node-hosts.json 현재 수동 편집).
-> 2. (선택) 0.23.1 실물 스모크 — 32k 초과 턴 유도해 artifact 파일 생성·conv_await artifactCommands 제시 라이브 확인. conv-node-hosts.json에 상대 peerId 매핑 수동 등록 필요(없으면 fail-closed 사유 표시 — 그것도 정상 동작 확인임).
+> 1. **후속 PATCH 후보** (구 ④=agentKind 확장은 0.23.2로 완료): ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(스모크 관찰 ⓐ — claude-mem 노이즈+이전 턴 누적 반복) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(0.23.1 follow-up — conv-node-hosts.json 현재 수동 편집) ⑧ **codex/grok pane 레인 실물 스모크**(0.23.2 follow-up — mac-node bridge config에 `agentArgv.grok` 등록 후 dispatch/conv 라이브, CLI별 스타트업 레이스 프로파일 관찰).
+> 2. (선택) 0.23.1 실물 스모크 — 32k 초과 턴 유도해 artifact 파일 생성·conv_await artifactCommands 제시 라이브 확인. conv-node-hosts.json에 상대 peerId 매핑 수동 등록 필요(없으면 fail-closed 사유 표시 — 그것도 정상 동작 확인임). 사전 실측(2026-07-18 오후): pane 폭 216컬럼 → 200줄 스크레이프 최대 ~43k로 32k 초과 유도 가능 확인.
 > 3. 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
 >
 > ### conv 실물 스모크 기록 (2026-07-18, 0.23.0)
@@ -40,7 +40,7 @@
 
 ## One-line resume
 
-> **v0.23.0 implemented (`e4dab9e`) + conv 실물 스모크 통과 (2026-07-18).** 스펙 R24 → PLAN R25 → 구현 → 라이브 스모크(왕복 3회, 양측 pin·seq·보드 동기 실증)까지 완주. 다음 = **후속 PATCH**(artifact 패키징 호출부 등 6건 후보 — ⭐ 블록). 룸 `LOOM-SGLR`+브릿지 온라인(v0.23.0 코드로 재기동, pid는 세션마다 다름).
+> **v0.23.2 implemented (`91bee75`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 구현 → conv 실물 스모크 → R26/0.23.1(artifact 패키징) → R27/0.23.2(agentKind codex·grok 확장, 즉시 approved) 완주. 다음 = **후속 PATCH**(⭐ 블록 후보 ②③⑤⑥⑦⑧) 또는 0.23.1/0.23.2 실물 스모크. 룸 `LOOM-SGLR`+브릿지 온라인(0.23.1 코드 pid 18716로 재기동됨 — **0.23.2 스모크 전 재기동 필요**, pid는 세션마다 다름).
 
 ---
 
@@ -48,10 +48,10 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.23.0** — conv 멀티턴 (`conv_*` 4도구) + `loom bridge` |
-| **PLAN** | **v0.23.0** `approved` → **implemented** (`e4dab9e`) |
-| **Open blocking** | none — R24·R25 모두 closed · GitHub Issues 전부 closed |
-| **Tests** | `bun test` **261 pass / 0 fail** · 6 pkg typecheck green |
+| **CLI / code** | **0.23.2** — conv 멀티턴 + artifact 패키징 + agentKind 3종(codex/grok은 브릿지 로컬 opt-in) |
+| **PLAN** | **v0.23.2** `approved` (R27) → **implemented** (`91bee75`) |
+| **Open blocking** | none — R24–R27 모두 closed · GitHub Issues 전부 closed |
+| **Tests** | `bun test` **309 pass / 0 fail** · 6 pkg typecheck green |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** |
 | **Remote** | `origin/main` **`cc23c3d`** (스펙 커밋) · 시연 `docs/spikes/DISPATCH-DEMO.md` |
 | **Untracked (커밋 제외)** | `.playwright-mcp/` · `docs/agents/` + CLAUDE.md 수정분은 mattpocock-skills 셋업분 — 커밋 여부 오너 판단 |

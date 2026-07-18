@@ -76,6 +76,8 @@
 
 **Approved by:** Fable 5 (fable-advisor) R27 — **즉시 `approved`**(M-lock 없음 — fail-closed 불변식(기본 미등록 = 0.23.1 동일 동작 + wire argv 금지 §4.4.2)이 코드로 보증됨을 확인), 2026-07-18. L-1(`loadBridgeConfig` `agentArgv` 병합 시 비배열 값 필터 + "비배열 `agentArgv` 값 → 무시(=미등록 fail-closed)" 테스트 — 오설정 시 TypeError가 pollTimer catch에 삼켜져 claim 후 무신호 증발=doing 고착 방지)·L-2(브릿지 설정 예시에 "argv 등록 = 해당 CLI의 기본 자율성 수용, 가드레일 플래그는 argv에 직접 포함" 고지)는 구현 PATCH 내 author-close(`docs/plan_review.md` R27).
 
+**Implemented as of `91bee75` (2026-07-18, grok-impl 레인 · 아키텍트 독립 검증):** 13파일 +518줄 — enum 3종 확장(`card-contract.ts`)·`sanitizeAgentArgv()`(R27 L-1, `bridge-config.ts`)·`convOpen` agentKind 인자화(`conv-ops.ts`)·MCP `conv_open` agentKind 노출+`dispatch_card` 설명 갱신(`stdio.ts`/`tools.ts`)·HERDR_DESIGN §4.4.2 예시 블록+L-2 고지·VERSION 0.23.2(CLI+MCP). L-1·L-2 author-close 구현 포함 완료. 신규 테스트 15개 — `bun test` **309/0** · 6패키지 typecheck green. 이탈 없음(`implementation-notes.md` 추가 기록 없음).
+
 #### 0.23.1 — 2026-07-18 (`approved` author-close after R26 `pending-revision` — **§5.2 artifact 패키징 호출부** (PATCH))
 
 **Product one-liner:** 32k를 넘는 워커 턴이 잘려나가는 대신, 브릿지가 산출물 전문을 규약 디렉터리(`~/.loom/artifacts/<convId>/`)에 보존하고 artifacts[] ref로 회신하며, 타워는 M-2 검증을 통과한 fetch 명령을 **제시**받는다 — CONV_SPEC §5.1 "절단 금지"의 코드 회복.
