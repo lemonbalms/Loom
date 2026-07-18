@@ -23,7 +23,7 @@
 > ### 다음 액션 (우선순위 순)
 > 1. **후보 ⑫ 조사 결과 처리** → 신규 PATCH 게이트(R29) 여부 판단.
 > 2. **0.23.3 실물 스모크** — benign 페이로드로 §5.1 마커 경로 라이브 실증(예: "docs/PLAN.md 전문을 artifact로 전달"). conv 레인 + `LOOM_ARTIFACTS_DIR` env·규약 프롬프트 확인.
-> 3. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI ⑨ **브릿지 주입 verify 루프 개선**(스타트업 레이스 — 오늘 누계 6회: grok 3·codex 1 재현, 수동 복구 절차 lessons. ⑫와 인접 가능성).
+> 3. **기타 후속 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐⓒ) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI ⑨ **브릿지 주입 verify 루프 개선**(스타트업 레이스 — 오늘 누계 6회+: grok 3·codex 2 재현, 수동 복구 절차 lessons. ⑫와 인접 가능성. **관찰 ⓓ 신규**: "텍스트는 composer에 들어갔는데 제출만 실패(입력만 됨·pane idle)" 상태 실존 — codex TUI에서 `pane send-keys Enter` 미제출 실증, CR 리터럴 `agent send $'\r'`만 신뢰 가능. 현행 verify 루프는 working 전이만 대기하므로 이 상태를 **감지·복구 못 하고**, 실패해도 카드 상태 무변화+stderr ignore라 **무신호** — verify는 (a) composer 빈 경우=재주입, (b) composer 채워진 채 idle=CR 재전송, (c) 소진 시 failed result 발행(fail-visible)로 확장 필요).
 >
 > ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
 > - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
