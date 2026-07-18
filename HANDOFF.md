@@ -14,33 +14,42 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 크로스머신 CLI 멀티턴 대화 — 1단계 스펙 차팅 완료 (wayfinder 맵 [#1](https://github.com/lemonbalms/Loom/issues/1) 🏁 목적지 도달, 티켓 10건 전부 closed).**  
-> 산출물: **[`docs/CONV_SPEC.md`](./docs/CONV_SPEC.md)** (main `cc23c3d`) — relay 컨벤션 멀티턴 대화 스펙 + 2+3 진화 가드.
+> **🎯 FREEZE 해제 (오너, 2026-07-18) → [`docs/CONV_SPEC.md`](./docs/CONV_SPEC.md) R24 리뷰 사이클 투입 — Loom+herdr dogfood 경로.**  
+> (스펙 출처: wayfinder 맵 [#1](https://github.com/lemonbalms/Loom/issues/1) 완주, 티켓 #2~#10 closed — 결정 상세는 티켓 resolution이 SSOT.)
 >
-> | 스펙 섹션 | 출처 (닫힌 티켓) |
-> |------|------|
-> | §1 세션 의미론 (convId·half-duplex·완료·abort) | [#2](https://github.com/lemonbalms/Loom/issues/2) |
-> | §2 가드레일·신뢰 모델 (scope 고정·턴 20·2h·M-4) | [#5](https://github.com/lemonbalms/Loom/issues/5) |
-> | §3 와이어 컨벤션 (open→accept·card 패턴+kind·보드=카드 1장) | [#6](https://github.com/lemonbalms/Loom/issues/6) |
-> | §4 MCP 4도구 (`conv_open/send/await/close`, 블로킹 await) | [#7](https://github.com/lemonbalms/Loom/issues/7) |
-> | §5 긴 산출물 (32k 임계·git 주수단 `conv/<convId>/…`·scp 폴백) | [#8](https://github.com/lemonbalms/Loom/issues/8) |
-> | §6 2+3 진화 가드 (불변식·relay=제어판/직결=데이터판·전환 신호 3) | [#9](https://github.com/lemonbalms/Loom/issues/9) |
-> | §7 기반 사실 (herdr 장수명 워커 · CLI headless resume) | [#3](https://github.com/lemonbalms/Loom/issues/3)·[#4](https://github.com/lemonbalms/Loom/issues/4) — research 브랜치에 상세 |
+> ### 준비 완료 (이 세션, 2026-07-18)
+> - dogfood 룸 **`LOOM-SGLR`** (`loom-dev`) 재생성 (구 룸 만료) — 5 프로필 sticky host 온라인 + **`mac-node`** 브릿지 노드 프로필(`p_ae186d3e`) 합류. relay = Windows 공용 `ws://100.65.103.113:7842`.
+> - 보드 카드 **`task_40cd8e16807e0800`** (R24 리뷰) 생성 + `[R-REQUEST]` handoff **`ho_28a44d2b128555c7`** → `@claude-review` 발송됨 (WORKFLOW §5.2 · DOGFOOD §4.1 형식).
+> - CLI 인증 3종 확인: claude 2.1.212 · codex(ChatGPT 로그인) · grok 0.2.102 (auth 유효). herdr 0.7.4 서버 실행 중 (protocol 16).
+> - dispatch 스크립트 준비: **`.loom/dispatch-r24.ts`** (gitignored) — claude-impl 세션으로 `dispatchCard` 호출, 리뷰어 mandate 전문 포함.
+>
+> ### 오너가 직접 실행 (에이전트 classifier 차단분, 2건)
+> ```bash
+> # 1) 브릿지 기동 — M-1 allowlist에 타워(claude-impl p_ed676195) 인가 포함
+> bun run loom --profile mac-node bridge start --allow p_ed676195
+> # 2) R24 카드 dispatch → herdr가 Mac에서 claude 스폰 + 리뷰 프롬프트 주입(M-2)
+> LOOM_SESSION=$HOME/.loom/profiles/claude-impl.json bun run .loom/dispatch-r24.ts
+> ```
+> 스폰된 claude는 **기본 권한 모드**(승인 프롬프트 있음) — herdr pane attach로 승인하며 진행. 무인 실행을 원하면 `~/.loom/bridge/mac-node.json`의 `agentArgv.claude`에 권한 플래그 추가 (오너 판단; 에이전트가 쓰는 것은 차단됨).
+>
+> ### 제약 (실측, 이 세션)
+> - **herdr dispatch allowlist = `claude`만** (`packages/protocol/src/card-contract.ts:19` `z.enum(["claude"])`). codex/grok dispatch 확장은 후속 PATCH (HERDR_DESIGN §5 "agentKind allowlist 확장") — R24 승인 후 구현 PLAN 후보.
+> - codex/grok 구동은 `loom run` 경로 (herdr dispatch 아님):  
+>   `bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write` · `bun run loom --profile impl run grok`
 >
 > ### 다음 액션
-> - **FREEZE 해제 시**: `docs/CONV_SPEC.md`를 `docs/plan_review.md` **R 사이클에 투입** (claude-rev가 fable-advisor 자문 필수) → 승인 후 구현 PLAN.
-> - 2+3 직결 상세는 스펙 **§6.3 전환 기준**(턴>10 상시·ref 전환율≥30%·주 conv≥10) 충족 시 **새 wayfinder 맵**으로.
+> - `[R-RESULT]` R24 수신 → **approved** 시 구현 PLAN 착수 (impl 레인 = DOGFOOD §1.2 체인: grok → codex → in-harness) · **pending-revision** 시 PATCH → R24b.
+> - 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
 >
-> ### 하지 말 것 (스펙 관련)
-> - FREEZE 중 conv_* 도구·relay wire·제품 코드 구현 착수 (스펙 문서만 산출된 상태)
-> - 결정 재론 — 각 결정의 상세·근거는 닫힌 티켓의 resolution 코멘트가 SSOT (맵=인덱스)
-> - wayfinder 맵 #1 재개봉 — 목적지 재정의는 새 맵으로
+> ### 하지 말 것
+> - R24 verdict 전 conv_* 도구·relay wire·제품 코드 구현 착수 (리뷰 게이트 선행)
+> - 결정 재론 — 티켓 resolution 코멘트가 SSOT · wayfinder 맵 #1 재개봉 금지
 
 ---
 
 ## One-line resume
 
-> **0.22.0 shipped + 멀티턴 대화 1단계 스펙 완성.** wayfinder 맵 #1 완주 — `docs/CONV_SPEC.md`(cc23c3d) R 사이클 투입 대기. dispatch 시연 §3-2 완료(M-4 거부 실증, `1811aa9`). FREEZE 유지.
+> **FREEZE 해제(2026-07-18) → CONV_SPEC.md R24 투입.** 룸 `LOOM-SGLR` 온라인(5 프로필+mac-node), `[R-REQUEST]` 발송 완료. 오너 액션 2건 대기: ① `bridge start --allow p_ed676195` ② `.loom/dispatch-r24.ts` 실행 → herdr가 claude 리뷰어 스폰.
 
 ---
 
@@ -50,7 +59,7 @@
 |------|--------|
 | **CLI / code** | **0.22.0** — `loom bridge` + MCP card tools |
 | **PLAN** | **v0.22.0** `approved` → **implemented** |
-| **Open blocking** | none · GitHub Issues 전부 closed |
+| **Open blocking** | **R24** (CONV_SPEC.md) pending-review — 카드 `task_40cd8e16807e0800` · GitHub Issues 전부 closed |
 | **Tests** | `bun test` **218 pass / 0 fail** · 6 pkg typecheck green |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** |
 | **Remote** | `origin/main` **`cc23c3d`** (스펙 커밋) · 시연 `docs/spikes/DISPATCH-DEMO.md` |
@@ -110,10 +119,10 @@ wayfinder 맵 방식(티켓당 1세션 그릴링, HITL)으로 4세션에 걸쳐 
 
 ## Strategic context
 
-> Loom = 오너 6인 팀 내부 도구. FREEZE = 팀-pull 요구만.  
+> Loom = 오너 6인 팀 내부 도구. **FREEZE 해제됨 (오너, 2026-07-18) — conv 멀티턴 트랙 진행 승인.**  
 > 공용 relay = Windows Tailscale 상시화 완료. 온보딩 = `docs/DRY_RUN_RUNBOOK.md`.  
-> 0.22.0 브릿지 수직 슬라이스 shipped. **다음 제품 단계 후보 = conv 멀티턴 (스펙 준비 완료, FREEZE 해제 대기).**  
-> 저널·supervision·멀티노드·wire 변경은 여전히 out of scope.
+> 0.22.0 브릿지 수직 슬라이스 shipped. **다음 제품 단계 = conv 멀티턴 (R24 승인 게이트 → 구현 PLAN).**  
+> 저널·supervision·멀티노드는 여전히 out of scope. wire 변경은 CONV_SPEC 승인 범위 내에서만.
 
 ---
 
