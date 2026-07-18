@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "description": "Loom — multiplayer AI terminal: connect your agents and teammates",
+  "bin": {
+    "loom": "packages/cli/src/index.ts"
+  },
   "workspaces": [
     "packages/*"
   ],
