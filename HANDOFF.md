@@ -18,7 +18,12 @@
 > 체인(당일 4연속): 0.23.0 구현 → conv 실물 스모크 → 0.23.1 구현 `e5ccc4d` → **PLAN 0.23.2 R27 즉시 approved**(M-lock 없음 — 리뷰는 herdr dispatch claude 워커+fable-advisor, 실전 4회째, 이번엔 스타트업 레이스 없이 완주) → 구현 `91bee75` (grok-impl 레인 · 아키텍트 독립 검증). enum 3종 확장 + 브릿지 로컬 argv opt-in(기본 미등록 = fail-closed, DEFAULT는 claude만) + L-1 `sanitizeAgentArgv`·L-2 등록 고지 author-close.
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **후속 PATCH 후보** (구 ④=agentKind 확장은 0.23.2로 완료): ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(스모크 관찰 ⓐ — claude-mem 노이즈+이전 턴 누적 반복) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(0.23.1 follow-up — conv-node-hosts.json 현재 수동 편집) ⑧ **codex/grok pane 레인 실물 스모크**(0.23.2 follow-up — mac-node bridge config에 `agentArgv.grok` 등록 후 dispatch/conv 라이브, CLI별 스타트업 레이스 프로파일 관찰).
+> 1. **후속 PATCH 후보** (구 ④=agentKind 확장은 0.23.2로, 구 ⑧=codex/grok 스모크는 완료): ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑤ 워커 턴 pane 스크레이프 delta화(관찰 ⓐ claude-mem 노이즈+이전 턴 누적 반복 · **관찰 ⓒ** grok 스모크에서 idle-scrape가 최종 답 줄을 중간 절단 + summary가 TUI chrome("Shift+Tab:mode…")으로 오염 — 카드 lane도 동일 개선 필요) ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(0.23.1 follow-up — conv-node-hosts.json 현재 수동 편집) ⑨ **브릿지 주입 verify 루프 개선**(composer 비면 프롬프트 재주입 — 레이스 수동 복구 3회째, grok에서도 재현 확정).
+>
+> ### 0.23.2 실물 스모크 기록 (2026-07-18 오후, ⑧ 완료)
+> - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
+> - **B (grok 라이브)**: `agentArgv.grok=["~/.grok/bin/grok" 전체경로]` 등록 → grok pane 스폰(`loom-task_…-1`, herdr가 agent=grok 인식) → **스타트업 레이스 재현**(composer 비어 있음) → 수동 복구(리터럴 재주입+별도 Enter `$'\r'`) → working→idle→card.done, 회신 `SMOKE-B OK version=0.1.0 head=9ca06bb`, 태스크 done. ✅
+> - mac-node 브릿지 config에 grok 등록 유지됨(로컬 opt-in 상태). codex는 의도적 미등록 유지(fail-closed 검증용 겸 미사용 레인).
 > 2. (선택) 0.23.1 실물 스모크 — 32k 초과 턴 유도해 artifact 파일 생성·conv_await artifactCommands 제시 라이브 확인. conv-node-hosts.json에 상대 peerId 매핑 수동 등록 필요(없으면 fail-closed 사유 표시 — 그것도 정상 동작 확인임). 사전 실측(2026-07-18 오후): pane 폭 216컬럼 → 200줄 스크레이프 최대 ~43k로 32k 초과 유도 가능 확인.
 > 3. 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
 >
@@ -40,7 +45,7 @@
 
 ## One-line resume
 
-> **v0.23.2 implemented (`91bee75`, 2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 구현 → conv 실물 스모크 → R26/0.23.1(artifact 패키징) → R27/0.23.2(agentKind codex·grok 확장, 즉시 approved) 완주. 다음 = **후속 PATCH**(⭐ 블록 후보 ②③⑤⑥⑦⑧) 또는 0.23.1/0.23.2 실물 스모크. 룸 `LOOM-SGLR`+브릿지 온라인(0.23.1 코드 pid 18716로 재기동됨 — **0.23.2 스모크 전 재기동 필요**, pid는 세션마다 다름).
+> **v0.23.2 implemented (`91bee75`) + 실물 스모크 완료 (2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 구현 → conv 실물 스모크 → R26/0.23.1(artifact 패키징) → R27/0.23.2(agentKind codex·grok 확장, 즉시 approved) → **0.23.2 스모크 A/B 완주**(codex fail-closed + grok 라이브 pane). 다음 = **후속 PATCH**(⭐ 블록 후보 ②③⑤⑥⑦⑨) 또는 0.23.1 실물 스모크(32k artifact). 룸 `LOOM-SGLR`+브릿지 **0.23.2 코드로 온라인**(pid는 세션마다 다름 — `loom --profile mac-node bridge status`로 확인).
 
 ---
 
