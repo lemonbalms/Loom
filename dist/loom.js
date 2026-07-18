@@ -5394,12 +5394,12 @@ var init_session_store = __esm(() => {
 
 // packages/relay/src/persist.ts
 import {
-  existsSync as existsSync15,
-  mkdirSync as mkdirSync14,
-  readFileSync as readFileSync9,
-  writeFileSync as writeFileSync13,
+  existsSync as existsSync16,
+  mkdirSync as mkdirSync15,
+  readFileSync as readFileSync10,
+  writeFileSync as writeFileSync14,
   renameSync as renameSync3,
-  chmodSync as chmodSync7,
+  chmodSync as chmodSync8,
   copyFileSync as copyFileSync2,
   readdirSync as readdirSync2,
   statSync as statSync4,
@@ -5408,15 +5408,15 @@ import {
   unlinkSync as unlinkSync3,
   rmSync as rmSync3
 } from "fs";
-import { join as join17, dirname as dirname5, basename as basename3, resolve as resolve3 } from "path";
+import { join as join18, dirname as dirname5, basename as basename3, resolve as resolve3 } from "path";
 import { createHash as createHash4 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
-  return join17(homedir5(), ".loom", "relay-state");
+  return join18(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
   const h = createHash4("sha256").update(roomId).digest("hex").slice(0, 16);
-  return join17(stateDir2, `${h}.json`);
+  return join18(stateDir2, `${h}.json`);
 }
 function isPidAlive3(pid) {
   if (!Number.isFinite(pid) || pid <= 0)
@@ -5429,22 +5429,22 @@ function isPidAlive3(pid) {
   }
 }
 function processLockDir(stateDir2) {
-  return join17(stateDir2, ".relay-writer.lock");
+  return join18(stateDir2, ".relay-writer.lock");
 }
 function lockPidPath2(lockDir) {
-  return join17(lockDir, "owner.pid");
+  return join18(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
-  mkdirSync14(stateDir2, { recursive: true });
+  mkdirSync15(stateDir2, { recursive: true });
   const lockDir = processLockDir(stateDir2);
   const tryAcquire = () => {
     try {
-      mkdirSync14(lockDir);
+      mkdirSync15(lockDir);
     } catch {
       return false;
     }
     try {
-      writeFileSync13(lockPidPath2(lockDir), `${process.pid}
+      writeFileSync14(lockPidPath2(lockDir), `${process.pid}
 `, {
         encoding: "utf8",
         mode: 384
@@ -5463,7 +5463,7 @@ function acquireStateDirLock(stateDir2) {
     const age = Date.now() - statSync4(lockDir).mtimeMs;
     let owner = null;
     try {
-      const raw = readFileSync9(lockPidPath2(lockDir), "utf8").trim();
+      const raw = readFileSync10(lockPidPath2(lockDir), "utf8").trim();
       const n = Number(raw);
       owner = Number.isFinite(n) ? n : null;
     } catch {
@@ -5487,10 +5487,10 @@ function acquireStateDirLock(stateDir2) {
 }
 function releaseStateDirLock(stateDir2) {
   const lockDir = processLockDir(stateDir2);
-  if (!existsSync15(lockDir))
+  if (!existsSync16(lockDir))
     return;
   try {
-    const raw = readFileSync9(lockPidPath2(lockDir), "utf8").trim();
+    const raw = readFileSync10(lockPidPath2(lockDir), "utf8").trim();
     const owner = Number(raw);
     if (Number.isFinite(owner) && owner !== process.pid)
       return;
@@ -5501,7 +5501,7 @@ function releaseStateDirLock(stateDir2) {
 }
 function writeAtomicJson2(filePath, data) {
   const parent = dirname5(resolve3(filePath));
-  mkdirSync14(parent, { recursive: true });
+  mkdirSync15(parent, { recursive: true });
   let realParent;
   try {
     realParent = realpathSync2(parent);
@@ -5512,7 +5512,7 @@ function writeAtomicJson2(filePath, data) {
   if (!base || base === "." || base === "..") {
     throw new Error(`Invalid snapshot basename: ${filePath}`);
   }
-  const finalPath = join17(realParent, base);
+  const finalPath = join18(realParent, base);
   try {
     const st = lstatSync(finalPath);
     if (st.isSymbolicLink()) {
@@ -5527,29 +5527,29 @@ function writeAtomicJson2(filePath, data) {
         throw e;
     }
   }
-  const tmp = join17(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
+  const tmp = join18(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
   try {
-    writeFileSync13(tmp, body, { encoding: "utf8", mode: 384 });
+    writeFileSync14(tmp, body, { encoding: "utf8", mode: 384 });
     renameSync3(tmp, finalPath);
     try {
-      chmodSync7(finalPath, 384);
+      chmodSync8(finalPath, 384);
     } catch {}
   } catch (e) {
     try {
-      if (existsSync15(tmp))
+      if (existsSync16(tmp))
         unlinkSync3(tmp);
     } catch {}
     throw e;
   }
 }
 function readJsonFile2(filePath) {
-  if (!existsSync15(filePath))
+  if (!existsSync16(filePath))
     return null;
   let raw;
   try {
-    raw = readFileSync9(filePath, "utf8");
+    raw = readFileSync10(filePath, "utf8");
   } catch (e) {
     throw new Error(`Failed to read ${filePath}: ${e instanceof Error ? e.message : e}`);
   }
@@ -5631,7 +5631,7 @@ function parseRoomSnapshot(raw) {
 function loadAllSnapshots(stateDir2) {
   const snapshots = [];
   const errors2 = [];
-  if (!existsSync15(stateDir2))
+  if (!existsSync16(stateDir2))
     return { snapshots, errors: errors2 };
   let names;
   try {
@@ -5643,7 +5643,7 @@ function loadAllSnapshots(stateDir2) {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith("."))
       continue;
-    const path = join17(stateDir2, name);
+    const path = join18(stateDir2, name);
     try {
       const st = statSync4(path);
       if (!st.isFile())
@@ -5668,7 +5668,7 @@ function loadAllSnapshots(stateDir2) {
   return { snapshots, errors: errors2 };
 }
 function saveRoomSnapshot(stateDir2, snap) {
-  mkdirSync14(stateDir2, { recursive: true });
+  mkdirSync15(stateDir2, { recursive: true });
   let realState;
   try {
     realState = realpathSync2(stateDir2);
@@ -9124,8 +9124,12 @@ function defaultBridgeConfig() {
     authorizedDispatchers: [],
     herdrSocketPath: process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
-    herdrProtocol: 16
+    herdrProtocol: 16,
+    paneCleanup: "auto"
   };
+}
+function sanitizePaneCleanup(raw) {
+  return raw === "keep" ? "keep" : "auto";
 }
 function sanitizeAgentArgv(raw) {
   if (!raw || typeof raw !== "object")
@@ -9153,7 +9157,8 @@ function loadBridgeConfig(profile) {
         ...DEFAULT_AGENT_ARGV,
         ...sanitizeAgentArgv(raw.agentArgv)
       },
-      herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol
+      herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol,
+      paneCleanup: sanitizePaneCleanup(raw.paneCleanup)
     };
   } catch {
     return base;
@@ -9414,6 +9419,88 @@ init_src();
 
 // packages/host/src/conv-node-hosts.ts
 init_session_store();
+import {
+  existsSync as existsSync13,
+  mkdirSync as mkdirSync8,
+  chmodSync as chmodSync7,
+  writeFileSync as writeFileSync7,
+  readFileSync as readFileSync7
+} from "fs";
+import { join as join12 } from "path";
+var CONV_NODE_PEER_ID_RE = /^p_[a-f0-9]{16}$/;
+var CONV_NODE_HOST_RE = /^[A-Za-z0-9._@-]+$/;
+function validateConvNodePeerId(peerId) {
+  if (!peerId || typeof peerId !== "string") {
+    return "peerId is required";
+  }
+  if (!CONV_NODE_PEER_ID_RE.test(peerId)) {
+    return `invalid peerId (expected p_ + 16 hex digits): ${peerId}`;
+  }
+  return null;
+}
+function validateConvNodeHost(host) {
+  if (!host || typeof host !== "string" || !host.trim()) {
+    return "host is required (non-empty)";
+  }
+  const h = host.trim();
+  if (h.startsWith("-")) {
+    return `host must not start with '-' (option-injection guard): ${h}`;
+  }
+  if (!CONV_NODE_HOST_RE.test(h)) {
+    return `invalid host charset (allowed [A-Za-z0-9._@-], no ':' \u2014 use ssh_config alias for ports/IPv6): ${h}`;
+  }
+  return null;
+}
+function isWellFormedConvNodeMapping(peerId, host) {
+  return validateConvNodePeerId(peerId) === null && validateConvNodeHost(host) === null;
+}
+function convNodeHostsPath() {
+  return join12(loomDir(), "conv-node-hosts.json");
+}
+function loadConvNodeHosts() {
+  const p = convNodeHostsPath();
+  if (!existsSync13(p))
+    return {};
+  try {
+    const raw = JSON.parse(readFileSync7(p, "utf8"));
+    if (!raw || typeof raw !== "object")
+      return {};
+    const out = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (typeof v === "string" && v.trim())
+        out[k] = v.trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function saveConvNodeHosts(cfg) {
+  ensureFableDir();
+  mkdirSync8(loomDir(), { recursive: true });
+  const p = convNodeHostsPath();
+  writeFileSync7(p, `${JSON.stringify(cfg, null, 2)}
+`, {
+    encoding: "utf8",
+    mode: 384
+  });
+  try {
+    chmodSync7(p, 384);
+  } catch {}
+}
+function setConvNodeHost(peerId, host) {
+  const cfg = loadConvNodeHosts();
+  cfg[peerId] = host.trim();
+  saveConvNodeHosts(cfg);
+}
+function removeConvNodeHost(peerId) {
+  const cfg = loadConvNodeHosts();
+  if (!(peerId in cfg))
+    return false;
+  delete cfg[peerId];
+  saveConvNodeHosts(cfg);
+  return true;
+}
 // packages/cli/src/index.ts
 init_src();
 
@@ -9469,8 +9556,8 @@ function loomSystemHint(agentLabel) {
 }
 
 // packages/adapters/src/claude.ts
-import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync7 } from "fs";
-import { join as join12 } from "path";
+import { mkdirSync as mkdirSync9, writeFileSync as writeFileSync8 } from "fs";
+import { join as join13 } from "path";
 var claudeAdapter = {
   id: "claude",
   label: "Claude Code",
@@ -9505,9 +9592,9 @@ var claudeAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const dir = join12(opts.cwd, ".loom");
-    mkdirSync8(dir, { recursive: true });
-    const path = join12(dir, "claude.mcp.json");
+    const dir = join13(opts.cwd, ".loom");
+    mkdirSync9(dir, { recursive: true });
+    const path = join13(dir, "claude.mcp.json");
     const config = {
       mcpServers: {
         loom: {
@@ -9517,7 +9604,7 @@ var claudeAdapter = {
         }
       }
     };
-    writeFileSync7(path, JSON.stringify(config, null, 2) + `
+    writeFileSync8(path, JSON.stringify(config, null, 2) + `
 `, "utf8");
     return null;
   },
@@ -9527,7 +9614,7 @@ var claudeAdapter = {
 };
 
 // packages/adapters/src/user-mcp-config.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync9, readFileSync as readFileSync7, writeFileSync as writeFileSync8 } from "fs";
+import { existsSync as existsSync14, mkdirSync as mkdirSync10, readFileSync as readFileSync8, writeFileSync as writeFileSync9 } from "fs";
 import { dirname as dirname3 } from "path";
 var LOOM_BEGIN = "# --- Loom multiplayer (managed) BEGIN ---";
 var LOOM_END = "# --- Loom multiplayer (managed) END ---";
@@ -9630,10 +9717,10 @@ function stripAllLoomMcpSections(existing) {
 }
 function upsertUserMcpConfig(opts) {
   const { configPath, block } = opts;
-  mkdirSync9(dirname3(configPath), { recursive: true });
+  mkdirSync10(dirname3(configPath), { recursive: true });
   let existing = "";
-  if (existsSync13(configPath)) {
-    existing = readFileSync7(configPath, "utf8");
+  if (existsSync14(configPath)) {
+    existing = readFileSync8(configPath, "utf8");
   }
   const hadLegacy = existing.includes("[mcp_servers.fable]") || existing.includes("[mcp_servers.loom]") || existing.includes(FABLE_BEGIN) || existing.includes(LOOM_BEGIN) || /Fable multiplayer/i.test(existing) || /Loom multiplayer/i.test(existing);
   const base = stripAllLoomMcpSections(existing);
@@ -9645,7 +9732,7 @@ function upsertUserMcpConfig(opts) {
   if (next === existing) {
     return { written: false, path: configPath, strippedLegacy: false };
   }
-  writeFileSync8(configPath, next, "utf8");
+  writeFileSync9(configPath, next, "utf8");
   return {
     written: true,
     path: configPath,
@@ -9673,8 +9760,8 @@ function projectMcpSnippetToml(opts) {
 }
 
 // packages/adapters/src/codex.ts
-import { mkdirSync as mkdirSync10, writeFileSync as writeFileSync9 } from "fs";
-import { join as join13 } from "path";
+import { mkdirSync as mkdirSync11, writeFileSync as writeFileSync10 } from "fs";
+import { join as join14 } from "path";
 import { homedir as homedir3 } from "os";
 var codexAdapter = {
   id: "codex",
@@ -9705,17 +9792,17 @@ var codexAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join13(opts.cwd, ".loom");
-    mkdirSync10(projectDir, { recursive: true });
-    const snippetPath = join13(projectDir, "codex.mcp.toml");
-    writeFileSync9(snippetPath, projectMcpSnippetToml({
+    const projectDir = join14(opts.cwd, ".loom");
+    mkdirSync11(projectDir, { recursive: true });
+    const snippetPath = join14(projectDir, "codex.mcp.toml");
+    writeFileSync10(snippetPath, projectMcpSnippetToml({
       header: `# Generated by Loom \u2014 Codex MCP (project).
 ` + "# Session entry: read repo AGENTS.md + HANDOFF.md (or `bun run status`); brief user before large work.\n" + "# Prefer: loom run codex",
       mcpStdioPath: opts.mcpStdioPath,
       sessionEnv: opts.sessionEnv
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join13(homedir3(), ".codex", "config.toml");
+      const configPath = join14(homedir3(), ".codex", "config.toml");
       const block = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv
@@ -9731,8 +9818,8 @@ var codexAdapter = {
 };
 
 // packages/adapters/src/grok.ts
-import { mkdirSync as mkdirSync11, writeFileSync as writeFileSync10 } from "fs";
-import { join as join14 } from "path";
+import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync11 } from "fs";
+import { join as join15 } from "path";
 import { homedir as homedir4 } from "os";
 var grokAdapter = {
   id: "grok",
@@ -9763,17 +9850,17 @@ var grokAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join14(opts.cwd, ".loom");
-    mkdirSync11(projectDir, { recursive: true });
-    const snippetPath = join14(projectDir, "grok.mcp.toml");
-    writeFileSync10(snippetPath, projectMcpSnippetToml({
+    const projectDir = join15(opts.cwd, ".loom");
+    mkdirSync12(projectDir, { recursive: true });
+    const snippetPath = join15(projectDir, "grok.mcp.toml");
+    writeFileSync11(snippetPath, projectMcpSnippetToml({
       header: "# Generated by Loom \u2014 Grok MCP (project). Use: loom run grok --write-user-config to install into ~/.grok/config.toml",
       mcpStdioPath: opts.mcpStdioPath,
       sessionEnv: opts.sessionEnv,
       extraServerLines: ["enabled = true"]
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join14(homedir4(), ".grok", "config.toml");
+      const configPath = join15(homedir4(), ".grok", "config.toml");
       const block = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv,
@@ -9877,17 +9964,17 @@ function capabilityMatrix() {
   }));
 }
 // packages/mcp-server/src/config.ts
-import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync11 } from "fs";
-import { join as join15 } from "path";
+import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync12 } from "fs";
+import { join as join16 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function resolveMcpStdio() {
   const here = fileURLToPath4(new URL(".", import.meta.url));
-  return join15(here, "stdio.ts");
+  return join16(here, "stdio.ts");
 }
 function writeMcpConfig(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync12(dir, { recursive: true });
-  const path = join15(dir, "mcp.json");
+  mkdirSync13(dir, { recursive: true });
+  const path = join16(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
   const config = {
     mcpServers: {
@@ -9898,14 +9985,14 @@ function writeMcpConfig(opts) {
       }
     }
   };
-  writeFileSync11(path, JSON.stringify(config, null, 2) + `
+  writeFileSync12(path, JSON.stringify(config, null, 2) + `
 `, "utf8");
   return path;
 }
 function writeAgentHintFile(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync12(dir, { recursive: true });
-  const path = join15(dir, "AGENT_HINT.txt");
+  mkdirSync13(dir, { recursive: true });
+  const path = join16(dir, "AGENT_HINT.txt");
   const body = opts?.hint ?? [
     "Loom multiplayer room is active.",
     "MCP tools: list_peers, handoff, check_handoffs, claim_handoff, room_chat",
@@ -9914,7 +10001,7 @@ function writeAgentHintFile(opts) {
   ].filter(Boolean).join(`
 `) + `
 `;
-  writeFileSync11(path, body, "utf8");
+  writeFileSync12(path, body, "utf8");
   return path;
 }
 // packages/cli/src/index.ts
@@ -9924,9 +10011,9 @@ import {
   closeSync as closeSync3,
   writeSync,
   readSync as readSync2,
-  existsSync as existsSync16,
+  existsSync as existsSync17,
   readdirSync as readdirSync3,
-  readFileSync as readFileSync10,
+  readFileSync as readFileSync11,
   accessSync,
   constants as fsConstants2
 } from "fs";
@@ -10156,12 +10243,12 @@ function isLoopbackHost(host) {
 
 // packages/cli/src/inject-handoffs.ts
 import {
-  existsSync as existsSync14,
-  mkdirSync as mkdirSync13,
-  readFileSync as readFileSync8,
-  writeFileSync as writeFileSync12
+  existsSync as existsSync15,
+  mkdirSync as mkdirSync14,
+  readFileSync as readFileSync9,
+  writeFileSync as writeFileSync13
 } from "fs";
-import { dirname as dirname4, join as join16 } from "path";
+import { dirname as dirname4, join as join17 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -10187,18 +10274,18 @@ function mergeClaudeStopHook(settings, command) {
   return next;
 }
 function ensureClaudeStopHook(cwd, idleMarkerPath) {
-  const settingsPath = join16(cwd, ".claude", "settings.local.json");
+  const settingsPath = join17(cwd, ".claude", "settings.local.json");
   let settings = {};
-  if (existsSync14(settingsPath)) {
+  if (existsSync15(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync8(settingsPath, "utf8"));
+      settings = JSON.parse(readFileSync9(settingsPath, "utf8"));
     } catch {
       settings = {};
     }
   }
   const merged = mergeClaudeStopHook(settings, claudeStopHookCommand(idleMarkerPath));
-  mkdirSync13(dirname4(settingsPath), { recursive: true });
-  writeFileSync12(settingsPath, `${JSON.stringify(merged, null, 2)}
+  mkdirSync14(dirname4(settingsPath), { recursive: true });
+  writeFileSync13(settingsPath, `${JSON.stringify(merged, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
@@ -10207,7 +10294,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.23.6";
+var VERSION = "0.23.8";
 function eprint(msg) {
   try {
     writeSync(2, msg);
@@ -10283,6 +10370,8 @@ Usage:
   loom down [--profiles a,b]            # stop sticky hosts (idempotent)
   loom host start | stop | status   # sticky long-lived relay connection (advanced)
   loom bridge start | stop | status # herdr node bridge daemon (0.22)
+  loom conv-hosts set <peerId> <host> | list | rm <peerId>
+                                    # local scp host map for conv artifacts (0.23.8)
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
@@ -10406,7 +10495,7 @@ async function autoHostAfterSession(flags) {
 }
 function profilesWithSession() {
   const dir = pathJoin(loomDir(), "profiles");
-  if (!existsSync16(dir))
+  if (!existsSync17(dir))
     return [];
   const out = [];
   for (const name of readdirSync3(dir)) {
@@ -10449,7 +10538,7 @@ async function cmdUp(flags) {
   console.log("loom up \u2014 sticky hosts:");
   for (const profile of profiles) {
     setActiveProfile(profile, { explicit: true });
-    if (!existsSync16(sessionPath()) || !loadSession()) {
+    if (!existsSync17(sessionPath()) || !loadSession()) {
       console.log(`  ${profile.padEnd(14)} skipped  (no session)`);
       continue;
     }
@@ -11248,6 +11337,66 @@ async function cmdInboxAccept(id) {
   console.log(`(accepted as ${result.session.displayName}, status=${result.entry.status})`);
   process.exit(0);
 }
+async function cmdConvHosts(sub, rest) {
+  if (sub === "set") {
+    const peerId = rest[0];
+    const host = rest[1];
+    if (!peerId || !host || rest.length > 2) {
+      console.error(`Usage: loom conv-hosts set <peerId> <host>
+  peerId: p_ + 16 hex digits (e.g. p_a7964227d1b25e61)
+  host: non-empty, no leading '-', charset [A-Za-z0-9._@-] (no ':')
+  Ports/IPv6: use an ssh_config Host alias.`);
+      process.exit(1);
+    }
+    const peerErr = validateConvNodePeerId(peerId);
+    if (peerErr) {
+      console.error(peerErr);
+      process.exit(1);
+    }
+    const hostErr = validateConvNodeHost(host);
+    if (hostErr) {
+      console.error(hostErr);
+      process.exit(1);
+    }
+    setConvNodeHost(peerId, host.trim());
+    console.log(`conv-hosts: set ${peerId} \u2192 ${host.trim()}`);
+    console.log(`  file: ${convNodeHostsPath()} (0600)`);
+    return;
+  }
+  if (sub === "list") {
+    const cfg = loadConvNodeHosts();
+    const entries = Object.entries(cfg);
+    if (entries.length === 0) {
+      console.log("conv-hosts: (empty mapping)");
+      console.log(`  Tip: ${loomCmd()} conv-hosts set <peerId> <host>
+  Hand-edited entries bypass CLI validation (load accepts non-empty strings).`);
+      return;
+    }
+    console.log(`conv-hosts: ${entries.length} mapping(s) in ${convNodeHostsPath()}`);
+    for (const [peerId, host] of entries) {
+      const ok = isWellFormedConvNodeMapping(peerId, host);
+      const mark = ok ? "" : "  \u26A0 format-invalid (hand-edit; CLI set would reject)";
+      console.log(`  ${peerId} \u2192 ${host}${mark}`);
+    }
+    return;
+  }
+  if (sub === "rm") {
+    const peerId = rest[0];
+    if (!peerId || rest.length > 1) {
+      console.error("Usage: loom conv-hosts rm <peerId>");
+      process.exit(1);
+    }
+    const removed = removeConvNodeHost(peerId);
+    if (removed) {
+      console.log(`conv-hosts: removed ${peerId}`);
+    } else {
+      console.log(`conv-hosts: no mapping for ${peerId} (no-op)`);
+    }
+    return;
+  }
+  console.error("Usage: loom conv-hosts set <peerId> <host> | list | rm <peerId>");
+  process.exit(1);
+}
 async function cmdBridge(sub, _rest, flags) {
   if (sub === "start") {
     if (!loadSession()) {
@@ -11402,10 +11551,10 @@ function readOnlySessionPath(home, flags) {
   return pathJoin(home, "session.json");
 }
 function loadSessionReadOnly(file) {
-  if (!existsSync16(file))
+  if (!existsSync17(file))
     return null;
   try {
-    const text = readFileSync10(file, "utf8").trim();
+    const text = readFileSync11(file, "utf8").trim();
     if (!text)
       return null;
     return normalizeSession(JSON.parse(text));
@@ -11414,7 +11563,7 @@ function loadSessionReadOnly(file) {
   }
 }
 function homeWritableStatus(home) {
-  const homeExists = existsSync16(home);
+  const homeExists = existsSync17(home);
   if (!homeExists)
     return { homeExists, homeWritable: null };
   try {
@@ -11998,7 +12147,7 @@ async function runTuiAgent(spec) {
   const attempts = [];
   const ptyHelper = pathJoin(import.meta.dir, "../../../scripts/run-with-pty.py");
   const ptyHelperAlt = pathJoin(import.meta.dir, "../../scripts/run-with-pty.py");
-  const helperPath = existsSync16(ptyHelper) ? ptyHelper : existsSync16(ptyHelperAlt) ? ptyHelperAlt : null;
+  const helperPath = existsSync17(ptyHelper) ? ptyHelper : existsSync17(ptyHelperAlt) ? ptyHelperAlt : null;
   if (helperPath && process.platform !== "win32") {
     attempts.push({
       label: "python-pty-winch",
@@ -12360,6 +12509,10 @@ async function main() {
   }
   if (cmd === "bridge") {
     await cmdBridge(sub, rest, flags);
+    return;
+  }
+  if (cmd === "conv-hosts") {
+    await cmdConvHosts(sub, rest);
     return;
   }
   if (cmd === "up") {
