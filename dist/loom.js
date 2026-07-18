@@ -9125,11 +9125,21 @@ function defaultBridgeConfig() {
     herdrSocketPath: process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
     herdrProtocol: 16,
-    paneCleanup: "auto"
+    paneCleanup: "auto",
+    panePlacement: "pool"
   };
 }
 function sanitizePaneCleanup(raw) {
   return raw === "keep" ? "keep" : "auto";
+}
+function sanitizePanePlacement(raw) {
+  return raw === "legacy" ? "legacy" : "pool";
+}
+function sanitizePaneWorkspaceId(raw) {
+  if (typeof raw !== "string")
+    return;
+  const t = raw.trim();
+  return t.length > 0 ? t : undefined;
 }
 function sanitizeAgentArgv(raw) {
   if (!raw || typeof raw !== "object")
@@ -9158,7 +9168,9 @@ function loadBridgeConfig(profile) {
         ...sanitizeAgentArgv(raw.agentArgv)
       },
       herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol,
-      paneCleanup: sanitizePaneCleanup(raw.paneCleanup)
+      paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
+      panePlacement: sanitizePanePlacement(raw.panePlacement),
+      paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId)
     };
   } catch {
     return base;
@@ -10294,7 +10306,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.23.8";
+var VERSION = "0.23.9";
 function eprint(msg) {
   try {
     writeSync(2, msg);
