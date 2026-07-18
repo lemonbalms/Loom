@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-07-17 |
+| **Last updated** | 2026-07-18 |
 
 ---
 
@@ -41,6 +41,23 @@
 ---
 
 ## Gate log
+
+### 0.23.0 — conv 멀티턴 수직 슬라이스
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.23.0 (`pending-review`) |
+| **Date** | 2026-07-18 |
+| **Review** | R25 required (새 MCP 표면 4도구 + M-1/M-2 신뢰 경계 집행 코드 + 프로토콜 인접) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | `docs/CONV_SPEC.md`가 R24 author-close로 `approved`(M-1 conv↔peer pin·M-2 artifact ref 검증 규약 locks 반영 + L-1..L-5 완료); 0.22.0이 herdr 연결점(데몬·dispatch/done 컨트랙트·M-1 dispatcher 인가·M-2 제출 분리)을 이미 검증·shipped; `card-contract.ts`/`bridge-runtime.ts`/`herdr-client.ts` 선례가 conv 계약·브릿지 확장의 미러 대상; relay 와이어 protocol v1 무변경 원칙(attachment 컨벤션만)이 0.22.0에서 실증됨; 오너가 conv 멀티턴 트랙을 명시 승인(HANDOFF.md, 2026-07-18). |
+| Known unknowns | (1) `conv_await` 블로킹의 MCP 클라이언트별 tool-call 타임아웃 상호작용 — 실측 필요(CLI마다 타임아웃 편차 가능); (2) 워커 pane 수명과 conv 수명 불일치 — pane이 죽으면 conv는 pause인가 abort인가(CONV_SPEC 미명시); (3) 32k 임계 판정과 herdr pane 스크레이프 기반 요약 회신의 정합 — `pane.read` 단발 회수가 실시간 턴 크기를 정확히 반영하는가; (4) artifact fetch 명령 "제시"의 UX 표면 — 워커 CLI 프롬프트 노출 vs 사람 승인 큐(미정, 자동 실행은 비-스코프로 확정됐으나 제시 방식은 미정). |
+| Unknown knowns | M-1 pin과 M-2 검증 함수 둘 다 "이미 존재하는 집행 원시(fromPeerId 서버 지정)를 코드로 옮기는" 성격 — R23 locks 구현 경험(allowlist·제출 분리)이 그대로 이전 가능할 가능성이 높으나 conv의 다턴 특성(pin이 대화 전체 수명 동안 유지)이 카드 dispatch의 1회성 인가와 실제로 동형인지는 구현 중 확인 필요. |
+| Unknown unknowns | conv 세션 상태(pin·last-seen turnSeq·한도 카운터)의 영속화 경계 — 타워 재시작 시 진행 중 conv의 pin/seq 상태가 살아남아야 하는지 스펙이 명시하지 않음; 브릿지 측 herdr `agent send` pane 주입이 다턴 대화에서 반복될 때 pane 상태 누적(컨텍스트 오염)의 실제 동작은 0.22.0 단발 dispatch에서 검증되지 않은 영역. |
+
+**Next:** R25(claude-rev + fable-advisor 필수) → approved 후에만 구현(레인 위임). CONV_SPEC과 충돌 발견 시 PLAN 0.23.0의 "R25 질의"에 기록하고 구현 보류.
 
 ### 0.22.0 — Loom×Herdr 노드 브릿지 (수직 슬라이스)
 
@@ -202,3 +219,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-10 | 0.16.0 work bus unknowns |
 | 2026-07-10 | 0.17.0 launcher UX unknowns |
 | 2026-07-17 | 0.22.0 Loom×Herdr 노드 브릿지 unknowns (Step 0/0.5 go 반영) |
+| 2026-07-18 | 0.23.0 conv 멀티턴 수직 슬라이스 unknowns (CONV_SPEC R24 approved 반영) |
