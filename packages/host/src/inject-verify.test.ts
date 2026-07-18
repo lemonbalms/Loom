@@ -60,6 +60,20 @@ async function waitFor(
   return pred();
 }
 
+async function waitForAsync(
+  pred: () => Promise<boolean>,
+  opts?: { timeoutMs?: number; stepMs?: number },
+): Promise<boolean> {
+  const timeoutMs = opts?.timeoutMs ?? 8_000;
+  const stepMs = opts?.stepMs ?? 50;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await pred()) return true;
+    await Bun.sleep(stepMs);
+  }
+  return pred();
+}
+
 async function awaitCardResult(
   tower: RelayClient,
   cardId: string,
@@ -339,7 +353,13 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(result?.status).toBe("failed");
     expect(result?.reason ?? result?.summary ?? "").toMatch(/inject_unconfirmed/);
 
-    // pane.close attempted
+    // pane.close attempted (may race after card-result handoff — wait for it)
+    await waitFor(
+      () =>
+        fake.calls
+          .slice(callsBefore)
+          .filter((c) => c.method === "pane.close").length >= 1,
+    );
     const closes = fake.calls
       .slice(callsBefore)
       .filter((c) => c.method === "pane.close");
@@ -349,6 +369,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(closedPaneId.length).toBeGreaterThan(0);
 
     // F-5: eventsPrune(paneId) ran — per-pane sub gone, count back to baseline
+    // (prune + flight clear may race after card-result handoff — wait)
+    await waitForAsync(async () => {
+      const st = await bridgeStatus();
+      return st.eventSubscriptions === subsBefore && st.inFlight === 0;
+    });
     const st = await bridgeStatus();
     expect(st.eventSubscriptions).toBe(subsBefore);
     // flight gone
