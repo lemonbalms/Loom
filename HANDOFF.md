@@ -14,7 +14,9 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.23.7 완주 (2026-07-19 아침) — R32 게이트 → grok 구현 → 라이브 스모크 → `1160b38`.** card.done 조기 회신(직전 웨이브 2회 실증) 수정: **카드 완료 판정 still-running 유예** — 지표 감지(말미 10줄 보수 패턴) → 10s 폴링·5분 상한 → 실완료 화면 회신 + additive optional `note`. R32(claude-rev pane + fable-advisor 자문) M-1(유예 재진입 가드)·M-2(`last_seq` 절단 배제)·L-1(판정 독본 전달) lock → author-close approved(no R32b) → grok pane 구현(`bun test` 386/0) → **SMOKE-0237 라이브 실증**(브릿지 stderr `deferring completion` → `cancelled (working re-entry)` → card.done output에 실완료 마커, 미완 화면 아님). 병렬: **dist 드리프트 가드**(`eb05310` — `check:dist` + pre-push 훅, 이번 push부터 가동) · **pane 배치 규칙 §1.3**(오너 지시: 탭당 최대 4개 2×2, 초과 시 새 탭 — DOGFOOD_LOOP `79ab0f9`). 브릿지 **0.23.7 코드로 재기동 완료**(pid 28154). **신규 관찰**: 카드 summary chrome 필터 미커버 2종 — grok 상태줄(`╰─ Grok 4.5 (high)…─╯`)·claude 힌트줄(`⏵⏵ auto mode on…`) 보드 노트 유입 3회 실증(0.23.6 보수 필터의 "콘텐츠 포함 box-drawing 줄" 갭 — 후속 후보, known-hint 패턴 2종 추가면 충분).
+> **🎯 v0.23.8 완주 (2026-07-19 아침) — R33 게이트 → grok 구현 → 라이브 스모크 → `93c6283`.** 후보 ⑥⑦ + chrome 미커버 2종 일괄 해소: **워커 pane 정리 정책**(지표-소거 확신 done·conv close 수신 시에만 결과 전송 성공 후 best-effort `pane.close` — 적격은 `finishCard` 명시 파라미터로만(R33 M-1, status·note 추론 금지), exhausted·failed·settle-실패 폴백은 pane 유지, opt-out `paneCleanup:"keep"`) + **`loom conv-hosts set|list|rm`**(peerId 정확 매치·선행 `-` 거부·charset `:` 제외(R33 M-2 — scp `host:path` 조립 오파싱, 포트·IPv6는 ssh alias 정문)·list 형식 위반 표식) + **chrome 2종**(`^╰─.*─╯$` 콘텐츠 box 상태줄·`⏵⏵ auto mode on`) + VERSION 0.23.8(CLI+MCP — 0.23.7 미갱신 부수 정정). R33(claude-rev pane + fable-advisor 자문) `pending-revision` → M-1·M-2 lock + L-1·L-2 → author-close approved(no R33b) → grok pane 구현(`bun test` **404/0**, +18) → **SMOKE-0238 라이브 실증**: ⑦ CLI 왕복(거부 2종·0600·no-op) · **card.done 직후 pane 자동 close**(pane list 부재·회신 무유실) · **summary chrome 소거**(grok 상태줄 오염 5회 → 해소). 브릿지 **0.23.8 재기동**(pid 61448, status에 `paneCleanup:"auto"` 표기). 커밋: `93c6283`(feat) · `36a71a8`(dist). **신규 후보 ⑧(오너 질문발, 2026-07-19)**: 브릿지 pane 배치 정책 — §1.3(탭당 4개 2×2)은 문서 관례일 뿐 스폰 시 강제 지점이 없음. herdr `agent.start`는 tab/split 지정을 지원(CLI 플래그 실재)하나 브릿지 `agentStart` 래퍼가 미전달 → 스폰 시 배치 힌트 전달로 self-enforcing 가능(additive 로컬, 후속 PATCH 후보). 이번 세션 수동 재배치 실증: 구독-중 워커 pane은 불이동 원칙 하에 임시 탭 경유 `--target-pane` split으로 2×2 구성(워커 좌측 전고·아키텍트 우상·로그 우하 — split right/down만 지원이라 §1.3 슬롯 관례와 좌우 반전은 구조적).
+>
+> (직전) **🎯 v0.23.7 완주 (2026-07-19 아침) — R32 게이트 → grok 구현 → 라이브 스모크 → `1160b38`.** card.done 조기 회신(직전 웨이브 2회 실증) 수정: **카드 완료 판정 still-running 유예** — 지표 감지(말미 10줄 보수 패턴) → 10s 폴링·5분 상한 → 실완료 화면 회신 + additive optional `note`. R32(claude-rev pane + fable-advisor 자문) M-1(유예 재진입 가드)·M-2(`last_seq` 절단 배제)·L-1(판정 독본 전달) lock → author-close approved(no R32b) → grok pane 구현(`bun test` 386/0) → **SMOKE-0237 라이브 실증**(브릿지 stderr `deferring completion` → `cancelled (working re-entry)` → card.done output에 실완료 마커, 미완 화면 아님). 병렬: **dist 드리프트 가드**(`eb05310` — `check:dist` + pre-push 훅, 이번 push부터 가동) · **pane 배치 규칙 §1.3**(오너 지시: 탭당 최대 4개 2×2, 초과 시 새 탭 — DOGFOOD_LOOP `79ab0f9`). 브릿지 **0.23.7 코드로 재기동 완료**(pid 28154). **신규 관찰**: 카드 summary chrome 필터 미커버 2종 — grok 상태줄(`╰─ Grok 4.5 (high)…─╯`)·claude 힌트줄(`⏵⏵ auto mode on…`) 보드 노트 유입 3회 실증(0.23.6 보수 필터의 "콘텐츠 포함 box-drawing 줄" 갭 — 후속 후보, known-hint 패턴 2종 추가면 충분).
 >
 > (직전) **🎯 카드 레인 웨이브 완주 (2026-07-19 아침)** — 전부 **grok pane 카드**(브릿지 0.23.6 라이브)로: ① 잔여 테스트 ③ 플레이키 해소(`fae51bc`) ② 경쟁분석 B bunx 원커맨드 설치(`5874dc3` → 번들 수정 `652a856`, **git 의존성은 workspaces 미설치** → 커밋된 `dist/loom.js` 381KB 번들로 해소, `bunx github:`·`bun install -g` **E2E 양 경로 라이브 검증**) ③ 경쟁분석 C 이미지 README(`docs/images/` mermaid 3컷 PNG + Quick start 재배치). **신규 관찰 3건 → lessons(`20a233d`)**: card.done 조기 회신 2회 실증("1 command still running" 스크레이프 — settle의 card 경로 이식 = 신규 PATCH 후보) · grok 워커 무단 커밋·push 1회(`fae51bc`, diff 무결 확인 후 유지 — brief에 금지 조항 표준화) · 카드 완료 감시는 board 폴링(자기참조) 아닌 **inbox card.done + pane 마커 이중 확인**.
 >
@@ -59,8 +61,8 @@
 > - **부수 재확인**: 스폰 주입 1발 성공(이번엔 ⑨ 레이스 미발생 — 간헐 재확인), conv 2턴 왕복 동일 브릿지 정상(⑫ 회귀 무), close 후 `eventSubscriptions` 글로벌만 복귀·inFlight=0, 보드 task done 자동 전이. 워커 pane 수동 close(후보 ⑥ 미구현 관례).
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **잔여 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 ⑥ close 시 pane 정리 정책(관찰 ⓑ) ⑦ `loom conv-hosts set` CLI(매핑 파일은 스모크에서 수동 등록됨). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
-> 1-b. **신규 후보**: ~~settle card 경로 이식(조기 card.done)~~ → **해소(0.23.7 `1160b38`, 2026-07-19 — still-running 유예)** · ~~dist 드리프트 가드~~ → **완료(`eb05310`)**. 잔여: **카드 summary chrome 필터 미커버 2종**(grok 상태줄·claude 힌트줄 — known-hint 패턴 추가, Low) · conv 턴 조기 회신(~7–10s) 관찰 지속(0.23.7 스코프 밖).
+> 1. **잔여 PATCH 후보**: ② done_proposal 탐지 규약 ③ conv.open deny 클레임 순서 · **⑧ 브릿지 pane 배치 정책(신규 2026-07-19)** — herdr `agent.start` tab/split 힌트 전달로 §1.3 self-enforcing(현행 문서 관례+수동 재배치뿐). ~~⑥ close 시 pane 정리 정책~~·~~⑦ conv-hosts CLI~~ → **해소(0.23.8 `93c6283`, 2026-07-19)**. (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
+> 1-b. **신규 후보**: ~~settle card 경로 이식(조기 card.done)~~ → **해소(0.23.7 `1160b38`)** · ~~dist 드리프트 가드~~ → **완료(`eb05310`)** · ~~카드 summary chrome 미커버 2종~~ → **해소(0.23.8 — grok 상태줄·claude 힌트줄, 라이브 소거 실증)**. 잔여: conv 턴 조기 회신(~7–10s) 관찰 지속 · summary가 정보성 타이밍줄("Worked for Ns.")로 잡히는 개선 여지(Low, 결함 아님).
 > 2-b. **경쟁 분석발 후보 (2026-07-19, `docs/COMPETITIVE_NOTES.md` §1.3)**: ~~B bunx 온보딩~~·~~C 이미지 README~~ → **완료(2026-07-19 카드 웨이브)**. 잔여: A `scripts/pane-inject.sh`(수동 pane 레인 read-guard 원자화, R-gate 불요) · npm publish는 오너 결정.
 > 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
@@ -86,7 +88,7 @@
 > - herdr dispatch allowlist = `claude`만 (`card-contract.ts:19`). codex/grok은 headless 레인(grok-implementer 서브에이전트)으로 위임 — 오너 승인된 방식.
 > - M-1 allowlist엔 **전체 peer ID** (`loom peers` 표시값은 잘린 ID).
 > - 브릿지 주입은 워커 TUI 스타트업 레이스에 질 수 있음 — composer 비면 `herdr agent send` 리터럴 재주입 + 별도 Enter로 수동 복구 (0.23.0 후속 개선 후보).
-> - 워커 pane 정리는 **card.done 수신 후** (조기 close 시 브릿지 스크레이프 회신 유실 — R25에서 실증).
+> - 워커 pane 정리는 **card.done 수신 후** (조기 close 시 브릿지 스크레이프 회신 유실 — R25에서 실증). → **0.23.8부터 확신-done·conv close는 브릿지가 자동 close**(`paneCleanup:"auto"`) — 수동 정리는 failed·exhausted·구-브릿지 카드 pane만.
 > - `bun test`는 셸에 `LOOM_RELAY_TOKEN`/`LOOM_RELAY_URL`이 있으면 relay 테스트가 깨짐 — `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`.
 >
 > ### 하지 말 것
@@ -97,7 +99,9 @@
 
 ## One-line resume
 
-> **v0.23.7 완주 (2026-07-19 아침).** card.done 조기 회신 수정 — R32 게이트(claude-rev pane + fable-advisor, M-1·M-2 lock + L-1) → grok pane 구현(`1160b38`, 386/0) → **SMOKE-0237 라이브 실증**(유예 발화 → working 재전이 → 실완료본 회신). 병렬: dist 드리프트 가드(`eb05310`, pre-push 훅 가동) · pane 배치 규칙 §1.3(`79ab0f9`, 탭당 최대 4개 2×2). 브릿지 0.23.7 재기동(pid 28154). 다음 = 후보 ②③⑥⑦ · summary chrome 미커버 2종(Low) · 경쟁분석 A · npm publish(오너).
+> **v0.23.8 완주 (2026-07-19 아침).** 후보 ⑥⑦+chrome 2종 일괄 해소 — R33 게이트(claude-rev pane + fable-advisor, M-1 close 적격 명시 파라미터·M-2 charset `:` 제거 lock + L-1·L-2) → grok pane 구현(`93c6283`, 404/0) → **SMOKE-0238 라이브 실증**(card.done 직후 pane 자동 close·summary chrome 소거·⑦ CLI 왕복). 브릿지 0.23.8 재기동(pid 61448). dist 번들 `36a71a8`. 신규 후보 ⑧ = 브릿지 pane 배치 정책(§1.3 self-enforcing). 다음 = 후보 ②③⑧ · 경쟁분석 A · npm publish(오너).
+>
+> (직전) **v0.23.7 완주 (2026-07-19 아침).** card.done 조기 회신 수정 — R32 게이트(claude-rev pane + fable-advisor, M-1·M-2 lock + L-1) → grok pane 구현(`1160b38`, 386/0) → **SMOKE-0237 라이브 실증**(유예 발화 → working 재전이 → 실완료본 회신). 병렬: dist 드리프트 가드(`eb05310`, pre-push 훅 가동) · pane 배치 규칙 §1.3(`79ab0f9`, 탭당 최대 4개 2×2). 브릿지 0.23.7 재기동(pid 28154). 다음 = 후보 ②③⑥⑦ · summary chrome 미커버 2종(Low) · 경쟁분석 A · npm publish(오너).
 >
 > (직전) **카드 레인 웨이브 완주 (2026-07-19 아침).** 잔여① 테스트③ 플레이키 해소(`fae51bc`) + 경쟁분석 B(bunx 원커맨드 설치 — git 의존성 workspaces 미설치 발견 → 커밋 번들 `dist/loom.js`로 해소, `5874dc3`+`652a856`, E2E 양 경로 검증) + C(이미지 README — `docs/images/` mermaid 3컷 PNG + Quick start 재배치) 전부 **grok pane 카드**로 완주. lessons 3건(`20a233d`): inbox가 완료 신호(보드 폴링 자기참조)·card.done 조기 회신 2회(settle card 경로 이식 후보)·워커 무단 ship(brief 금지 조항 표준화). 다음 = 후보 ②③⑥⑦ · settle card 이식 · dist 드리프트 가드 · 경쟁분석 A(pane-inject.sh) · npm publish 오너 결정.
 >
@@ -109,10 +113,10 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.23.7** — 카드 완료 still-running 유예(card.done 조기 회신 수정, 라이브 실증) + 스크레이프 delta화·chrome 필터(0.23.6) + 주입 verify 3분기(0.23.5) + conv 멀티턴 + artifact 트리거 + agentKind 3종 |
-| **PLAN** | **v0.23.7** `approved` (R32 author-close) → **implemented** (`1160b38`) |
-| **Open blocking** | none — R24–R32 모두 closed · GitHub Issues 전부 closed |
-| **Tests** | `bun test` **386 pass / 0 fail** · 6 pkg typecheck green |
+| **CLI / code** | **0.23.8** — pane 정리 정책(확신-done 자동 close)·conv-hosts CLI·chrome 2종 + still-running 유예(0.23.7) + 스크레이프 delta화·chrome 필터(0.23.6) + 주입 verify 3분기(0.23.5) + conv 멀티턴 + artifact 트리거 + agentKind 3종 |
+| **PLAN** | **v0.23.8** `approved` (R33 author-close) → **implemented** (`93c6283`) |
+| **Open blocking** | none — R24–R33 모두 closed · GitHub Issues 전부 closed |
+| **Tests** | `bun test` **404 pass / 0 fail** · 6 pkg typecheck green |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** |
 | **Remote** | `origin/main` **`cc23c3d`** (스펙 커밋) · 시연 `docs/spikes/DISPATCH-DEMO.md` |
 | **Untracked (커밋 제외)** | `.playwright-mcp/` · `docs/agents/` + CLAUDE.md 수정분은 mattpocock-skills 셋업분 — 커밋 여부 오너 판단 |
