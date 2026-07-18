@@ -12,6 +12,7 @@
   "scripts": {
     "build": "bun run --filter '*' build",
     "build:cli": "bun build packages/cli/src/index.ts --target=bun --outfile dist/loom.js",
+    "check:dist": "bash scripts/check-dist.sh",
     "test": "bun test",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "biome lint .",
