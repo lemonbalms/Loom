@@ -4,8 +4,8 @@
 |-------|--------|
 | **Document** | `docs/DOGFOOD_LOOP.md` |
 | **Purpose** | Multi-agent development using **product Loom** (rooms, handoff, board) |
-| **Implementers** | **Grok** (`impl`) · **Claude Code** (`claude-impl`) · **Codex** (`codex-impl`) — parallel lanes, same board/PLAN |
-| **Reviewers** | **Claude Code** (primary R{n}, `claude-rev` profile) · **Codex** (adversarial / security, `codex-rev` profile) |
+| **Implementers** | **Grok** (`grok-impl`) · **Claude Code** (`claude-impl`) · **Codex** (`codex-impl`) — parallel lanes, same board/PLAN |
+| **Reviewers** | **Claude Code** (primary R{n}, `claude-rev` profile) · **Codex** (adversarial / security, `codex-rev` profile) — **default; owner-configurable, see §1 roster** |
 | **Related** | [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`plan_review.md`](./plan_review.md) · [`PRIORITIES.md`](./PRIORITIES.md) |
 
 ---
@@ -25,15 +25,23 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 
 ---
 
-## 1. Room & profiles (fixed)
+## 1. Room & profiles (owner-configurable roster)
 
-| Profile (`--profile`) | Display name | Agent | Role |
+**이 표가 역할 배정의 SSOT다.** 아래 배정은 **기본값(default)**이며, 고정이 아니라
+**오너 결정 사항**이다 — 모델 성능은 고정된 것이 아니라 계속 발전하고, 그에 따라
+피어(레인)는 계속 추가될 수 있다. 역할 배정은 **오너가 주로 사용하는 모델**을
+따라간다. 배정을 바꿀 때는 이 표의 Role 칸을 수정하는 것으로 결정을 기록한다
+(별도 게이트 불필요 — 오너 결정이 곧 게이트). 에이전트는 벤더를 하드코딩해
+가정하지 말고 **매 세션 이 표를 읽고** 자기 역할을 확인한다.
+
+| Profile (`--profile`) | Display name | Agent | Role (default — owner may reassign) |
 |----------------------|--------------|-------|------|
-| `impl` | `grok-impl` | Grok | implement (PLAN draft + code) |
-| `claude-impl` | `claude-impl` | Claude Code | implement (PLAN draft + code) — parallel lane to `impl` |
+| `grok-impl` | `grok-impl` | Grok | implement (PLAN draft + code) |
+| `claude-impl` | `claude-impl` | Claude Code | implement (PLAN draft + code) — parallel lane to `grok-impl` |
 | `codex-impl` | `codex-impl` | Codex | implement (PLAN draft + code) — parallel lane; workspace-write |
 | `claude-rev` | `claude-review` | Claude Code | **primary** plan_review R{n} |
 | `codex-rev` | `codex-review` | Codex | secondary / adversarial |
+| `grok-rev` | `grok-review` | Grok | **reserve** — 기본 미배정. 오너가 로테이션 편입 시 이 칸을 수정 |
 
 The `*-impl` and `*-rev` pairs may run the same agent product, but they are
 different Loom peer identities with different mandates. Never mix both roles in
@@ -71,7 +79,7 @@ needed. Sending work needs no TUI (`board add`/`handoff`); open a `run` window
 
 ```bash
 # A — Grok implementer (online already; open run only to process)
-bun run loom --profile impl run grok
+bun run loom --profile grok-impl run grok
 
 # A2 — Claude implementer (parallel lane; claim a board task first, see §1.1)
 bun run loom --profile claude-impl run claude
@@ -96,7 +104,7 @@ process keeps its own session, while later Codex launches use the latest block.
 
 ### 1.1 Three implementers — avoid double work
 
-`impl` (Grok), `claude-impl` (Claude), and `codex-impl` (Codex) all draft PLAN
+`grok-impl` (Grok), `claude-impl` (Claude), and `codex-impl` (Codex) all draft PLAN
 versions and write product code against the **same git working tree**. Without
 coordination they can pick up the same PATCH/phase and collide (merge conflicts,
 duplicate PLAN sections). Rule:
@@ -209,7 +217,7 @@ peer identity for this session is `claude-impl`.
 - Approving its own PLAN (`docs/plan_review.md` R{n} verdicts are written only
   by a `claude-rev`-profile session, per §2).
 - Skipping the claim step in §1.1 before starting work already claimed by
-  `impl` (Grok).
+  `grok-impl` (Grok).
 - Treating this session's context as interchangeable with a `claude-rev`
   session — they are different peers with different mandates even though
   both are Claude Code.
@@ -287,7 +295,7 @@ Do not implement. Reply with [R-RESULT] handoff.
 CLI:
 
 ```bash
-bun run loom --profile impl handoff @claude-review "$(cat <<'EOF'
+bun run loom --profile grok-impl handoff @claude-review "$(cat <<'EOF'
 [R-REQUEST] PLAN v0.14.0 pending-review
 Scope: durable inbox P2
 Read: docs/PLAN.md, packages/relay/**

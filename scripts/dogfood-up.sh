@@ -12,7 +12,7 @@
 #
 # Then (only when actually processing work):
 #   bun run loom --profile claude-rev run claude
-#   bun run loom --profile impl       run grok
+#   bun run loom --profile grok-impl  run grok
 # Stop hosts:
 #   bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev
 set -euo pipefail
@@ -52,6 +52,6 @@ echo " Closing this terminal is OK — peers stay online."
 echo "=========================================="
 echo "Process work (only when working):"
 echo "  bun run loom --profile claude-rev run claude"
-echo "  bun run loom --profile impl       run grok"
+echo "  bun run loom --profile grok-impl  run grok"
 echo "Stop hosts:"
 echo "  bun run loom down --profiles $PROFILES"

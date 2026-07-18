@@ -10,8 +10,8 @@
 #
 # Next session:
 #   bun run dogfood:status
-#   bun run loom --profile impl host start
-#   bun run loom --profile impl run grok
+#   bun run loom --profile grok-impl host start
+#   bun run loom --profile grok-impl run grok
 #   bun run loom --profile claude-impl run claude
 #   bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
 #   bun run loom --profile claude-rev run claude
@@ -120,8 +120,8 @@ Next session (5 peers — open terminals as needed):
 cd $ROOT && bun run status && bun run dogfood:status
 
 # A — Grok implementer
-bun run loom --profile impl host start
-bun run loom --profile impl run grok
+bun run loom --profile grok-impl host start
+bun run loom --profile grok-impl run grok
 
 # A2 — Claude implementer (parallel lane; PLAN draft + implement)
 bun run loom --profile claude-impl run claude
@@ -136,8 +136,8 @@ bun run loom --profile claude-rev run claude
 bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
 
 Review request (from any implementer):
-  bun run loom --profile impl handoff @claude-review "[R-REQUEST] … YOU MUST: fable-advisor subagent first …"
-  bun run loom --profile impl handoff @codex-review  "[R-REQUEST] adversarial …"
+  bun run loom --profile grok-impl handoff @claude-review "[R-REQUEST] … YOU MUST: fable-advisor subagent first …"
+  bun run loom --profile grok-impl handoff @codex-review  "[R-REQUEST] adversarial …"
 
 Three implementers (impl=Grok, claude-impl=Claude, codex-impl=Codex) share the
 same board/PLAN — claim a board task (status: doing, assignee: your name)
@@ -158,4 +158,4 @@ echo ""
 cat "$CHEAT"
 echo ""
 echo "Peers (impl view):"
-loom --profile impl peers 2>&1 || true
+loom --profile grok-impl peers 2>&1 || true

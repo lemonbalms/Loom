@@ -19,8 +19,8 @@
 > ### ⚠️ v0.23.6 웨이브 잔여·관찰 (다음 세션)
 > - **Follow-up(Low)**: `inject-verify.test.ts` ③ — card 결과 수신 직후 `pane.close` 즉시 어서션 레이스(~1/3 플레이키, 0.23.5 잠재 테스트측 결함). waitFor 대기로 수정 카드 1건.
 > - **codex 자문(ADV-0236) 공회전 신규 관찰**: 검증(전체 스위트 374 pass·typecheck·lint·회귀 경로)은 완주했으나 **verdict 보고 단계에서 턴이 스텝-리셋 반복으로 영구 미완**(컨텍스트 69% 여유, 촉구 2회+Esc 인터럽트에도 재발, 총 6h+) → pane close로 부분 종결. Med finding 표면화 없음. 관찰 ⓔ(승인 고착)와 별개의 실패 모드 — codex 자문 카드에 **턴당 데드라인+부분 보고 회수** 운영 절차 필요.
-> - **브릿지 라이브 미배포**: 현재 브릿지는 0.23.5 코드 가동 중 — 다음 세션에서 재기동 + conv 턴에서 `delta: kept N/M chars` note 라이브 관찰.
-> - **relay 다운 지속**(Windows 호스트 오프라인, 2026-07-18 저녁~): R31·구현·자문 카드는 수동 pane 레인으로 완주. 보드 북키핑(R31 card.done 미클레임) relay 복귀 후 정리.
+> - ~~**브릿지 라이브 미배포**~~ → **해소 + delta note 라이브 관찰 완료(2026-07-19 새벽)**: 브릿지 **0.23.6 코드로 재기동** 후 conv 스모크 2회(`conv_7e7d06cef44b52f1`·`conv_540c219d25ae555b`, claude 워커 3턴)에서 delta 분기 3종 모두 라이브 실증 — turn1 첫 턴 full(무 note) / turn2 `delta anchor miss (full scrape)`(워커 스타트업 화면 재드로우로 앵커 유실 → full 폴백) / turn3 **`delta empty (no new output); delta: kept 0/2056 chars`**(앵커 적중, 중복 2,056자 전량 제거·note만 인라인 전송). applied(kept>0) 분기는 유닛 13건 커버 — 라이브는 워커가 턴 사이 신규 출력을 내는 시점 문제라 미관찰(결함 아님). 부수 관찰: conv 턴 회신이 워커 실응답 완료 전 pane 상태를 스크레이프해 돌아옴(~7–10s) — settle 타이밍 관찰 소재.
+> - **relay 다운 지속** → **맥 단독(standalone) 모드 전환(2026-07-19 새벽)**: 로컬 relay `ws://127.0.0.1:7842/ws`(무토큰 loopback, durable, log `~/.loom/relay-local.log`) + 신규 로컬 룸 **`LOOM-SQSB`**(`loom-local`). 프로필 7종 조인 — **새 peer ID**: tower `p_726870658689123e`(claude-impl) / node `p_a7964227d1b25e61`(mac-node) / `p_2446562652574305`(claude-rev) / `p_adbae2d2524ae49e`(codex-impl) / `p_4e804720a846ba87`(codex-rev) / `p_dc9b8502be627724`(grok-impl) / `p_d84a46664eaacafa`(grok-rev, 신설). **프로필 `impl` → `grok-impl` 개명 완료(2026-07-19, 오너 지시)** — `~/.loom/profiles/grok-impl.json` + DOGFOOD_LOOP.md 표·dogfood-up.sh·dogfood-room-up.sh 참조 일괄 갱신(백업 디렉터리는 구명 `impl.json` 유지). `grok-rev`는 reserve로 신설 + **리뷰 독트린을 오너-구성형으로 전환(2026-07-19, 오너 지시)**: DOGFOOD_LOOP.md §1 로스터 표가 역할 배정 SSOT — 기본값은 종전대로(주 리뷰 claude-rev·적대적 codex-rev), 변경은 오너가 표의 Role 칸 수정으로 기록(모델 성능 진화·피어 추가에 대비, 주 사용 모델 추종 원칙). 별개로 브릿지 `agentArgv.grok` 워커 레인도 존재(피어와 무관한 pane 실행 경로). 브릿지 allowlist·`conv-node-hosts.json`에 신규 ID 추가(구 ID 병존 유지). **구 LOOM-SGLR 프로필 백업 = `~/.loom/profiles.bak-sglr-20260719`** — Windows relay 복귀 시 복원해서 보드 북키핑(R31 card.done 미클레임) 정리.
 >
 > ### ✅ 후보 ⑩ 조사 종결 (2026-07-18 저녁 — 재조사 금지)
 > - **워커 TUI 3종 스크레이프 상한 라이브 실측**: claude ~5.3k(0.23.1) / **grok ~2.2k** / **codex ~1.4k**(오늘 — `cat docs/PLAN.md` 147k 프로브, 소스 3종·줄수 200/500/1000 무관 포화). grok·codex TUI는 툴 출력을 접힌 블록(`◆ Run …`)으로만 렌더 — 전문이 트랜스크립트에 아예 안 펼쳐짐.
@@ -92,7 +92,7 @@
 
 ## One-line resume
 
-> **v0.23.6 완주 상태로 세션 종료 (2026-07-19 새벽).** 체인: … → R30/0.23.5 완주(`8148642`) → 후보 ⑩ 조사 종결 → **R31/0.23.6 완주**(delta화+chrome 필터+settle — M-1 카드 output 무필터·M-2 인덱스 맵 lock, 구현 `5bdeae7`, bun test 374/0). R31·구현·자문 전부 **수동 pane 레인**(relay 다운). 자문은 공회전으로 부분 종결(Med 없음). **다음 세션 = ⭐ 잔여 3건**(테스트 ③ 플레이키 수정 카드 · 브릿지 0.23.6 재기동+delta note 라이브 관찰 · relay 복귀 시 보드 정리). 룸 `LOOM-SGLR`+브릿지 온라인(**0.23.5 코드** — 0.23.6 미배포). mac-node config 3종 등록·conv-node-hosts 매핑 유지.
+> **v0.23.6 완주 상태로 세션 종료 (2026-07-19 새벽).** 체인: … → R30/0.23.5 완주(`8148642`) → 후보 ⑩ 조사 종결 → **R31/0.23.6 완주**(delta화+chrome 필터+settle — M-1 카드 output 무필터·M-2 인덱스 맵 lock, 구현 `5bdeae7`, bun test 374/0). R31·구현·자문 전부 **수동 pane 레인**(relay 다운). 자문은 공회전으로 부분 종결(Med 없음). **다음 세션 = ⭐ 잔여 3건**(테스트 ③ 플레이키 수정 카드 · 브릿지 0.23.6 재기동+delta note 라이브 관찰 · relay 복귀 시 보드 정리). **맥 단독 모드 전환 + 잔여 2번 해소(2026-07-19)**: 로컬 relay(127.0.0.1:7842)+로컬 룸 `LOOM-SQSB`(피어 7종, `impl`→`grok-impl` 개명·`grok-rev` 신설)+브릿지 **0.23.6 코드** 온라인, conv 스모크로 **`delta: kept N/M chars` note 라이브 관찰 완료**(miss/empty 분기 실증). 구 `LOOM-SGLR` 프로필은 `~/.loom/profiles.bak-sglr-20260719` 백업(relay 복귀 시 복원). mac-node agentArgv 3종·conv-node-hosts 매핑 유지(신규 ID 추가). 잔여 = 테스트 ③ 플레이키 수정 카드 · relay 복귀 시 보드 정리.
 
 ---
 
