@@ -4,10 +4,10 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.23.5** |
-| **Status** | **`approved`** (R30 `pending-revision` → M-1(플레이스홀더=probe-hit + TUI 3종 composer 가시성 라이브 검증)·M-2(재주입 상한 = 주입 시도당 1회) lock 본문 반영 + L-1..L-3 author-close 완료 → author-close `approved`, no R30b — Fable 사전 승인, 2026-07-18, `docs/plan_review.md` R30) — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류의 fail-visible 복구)** (PATCH): 현행 M-2 verify 루프는 working 미도달 시 bare-Enter 재전송만 반복해 paste 자체가 유실된 경우(스타트업 레이스, ⑫ 수정 후에도 잔여 재현) 복구 불가·소진 후 무음 포기(카드 doing 영구 고착)다. pane read로 composer 상태를 직접 관찰해 (a) 프로브 부재=paste 유실 → 동일 프롬프트 재주입(주입 시도당 1회) (b) 프로브 존재(플레이스홀더 hit 포함)=미제출 잔류/status 지연 → CR 재전송(현행) (c) 소진 → fail-visible(카드 `inject_unconfirmed` failed result / conv blocked 턴)로 확장한다. **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
+| **Status** | **`approved` → implemented `8148642`** (R30 `pending-revision` → M-1(플레이스홀더=probe-hit + TUI 3종 composer 가시성 라이브 검증)·M-2(재주입 상한 = 주입 시도당 1회) lock 본문 반영 + L-1..L-3 author-close 완료 → author-close `approved`, no R30b — Fable 사전 승인, 2026-07-18, `docs/plan_review.md` R30 · 구현+자문 7건 반영 커밋 `8148642`, M-1 라이브 검증 표 §0.23.5 Implemented 기록) — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류의 fail-visible 복구)** (PATCH): 현행 M-2 verify 루프는 working 미도달 시 bare-Enter 재전송만 반복해 paste 자체가 유실된 경우(스타트업 레이스, ⑫ 수정 후에도 잔여 재현) 복구 불가·소진 후 무음 포기(카드 doing 영구 고착)다. pane read로 composer 상태를 직접 관찰해 (a) 프로브 부재=paste 유실 → 동일 프롬프트 재주입(주입 시도당 1회) (b) 프로브 존재(플레이스홀더 hit 포함)=미제출 잔류/status 지연 → CR 재전송(현행) (c) 소진 → fail-visible(카드 `inject_unconfirmed` failed result / conv blocked 턴)로 확장한다. **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
 | **Supersedes** | 0.23.4 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | 직전: **R29 author-close `approved`**(0.23.4) → implemented `c7df503` + 라이브 검증 3종 · R28 author-close `approved`(0.23.3) → implemented `95cc81e` + 라이브 스모크(§5.1 마커 경로) 완료. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 주입 신뢰성 수정, conv/card 프로토콜 의미 무변경). |
+| **Approval** | **R30 author-close `approved`**(0.23.5) → implemented `8148642` + codex 자문 REJECT 7건(F-1..F-7) 반영 + M-1 TUI 3종 라이브 검증 · 직전: **R29 author-close `approved`**(0.23.4) → implemented `c7df503` + 라이브 검증 3종 · R28 author-close `approved`(0.23.3) → implemented `95cc81e` + 라이브 스모크(§5.1 마커 경로) 완료. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 주입 신뢰성 수정, conv/card 프로토콜 의미 무변경). |
 | **Fable 5 when** | **Required — R30 완료(2026-07-18)**: M-2(주입 verify 루프가 보낼 수 있는 것) 불변식 확장(BARE_ENTER 상수만 → +최초 주입과 동일한 캐시 문자열 재주입, 주입 시도당 1회 — R30 L-1 지칭 정정) + 실패 의미 변경(무음 포기 → fail-visible) + 중복 제출 리스크 신설. `pending-revision` → author-close `approved`(M-1·M-2 lock + L-1..L-3), `docs/plan_review.md` R30. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
@@ -50,7 +50,7 @@
 
 ### Changelog
 
-#### 0.23.5 — 2026-07-18 (`pending-review` R30 — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ)** (PATCH))
+#### 0.23.5 — 2026-07-18 (`approved` R30 — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ)** (PATCH))
 
 **Product one-liner:** 워커 pane에 주입한 프롬프트가 TUI 스타트업 레이스로 통째로 유실되거나 composer에 담긴 채 미제출로 방치될 때, 브릿지가 composer 상태를 직접 관찰해 재주입·CR 재전송으로 자가 복구하고, 소진 시엔 무음 포기 대신 fail-visible 실패를 발행한다 — "주입 유실 = 무신호 고착"의 제거.
 
@@ -82,6 +82,17 @@
 **R30 질의:** *(현재 없음.)*
 
 **Approved by:** Fable 5 (fable-advisor consulted, claude-rev pane) R30 — `pending-revision` → **M-1 lock**(TUI paste-플레이스홀더 = probe-hit 인정 + claude ⓓ 정밀 감지 저하 명시 + TUI 3종 composer 가시성 라이브 검증 1회) · **M-2 lock**(재주입 상한 "flight당" → **주입 시도당 1회** — ConvFlight 멀티턴 자기모순 해소) PLAN 본문 반영 + **L-1**(재주입 페이로드 지칭 `prepareInjectText` 오기 → 최초 주입 캐시 문자열·재파생 금지)·**L-2**(conv 최초 턴 프로브 꼬리 = 규약 상수 — 존재-검사 유효 명시)·**L-3**(라운드 액션 전 flight 재확인) author-close + 테스트 ⑫⑬ 추가 → **author-close `approved`**(Fable 사전 승인, no R30b), 2026-07-18. 상세 `docs/plan_review.md` R30.
+
+**Implemented as of `8148642` (2026-07-18, grok pane 구현·수정 · codex pane 자문 · 아키텍트 독립 검증):** 5파일 +1,142/-85 — `verifySubmitOrRetry`/`verifyConvSubmitOrRetry` → `verifyInjectOrRetry` 단일 헬퍼 통합(3분기: miss→캐시 프롬프트 재주입 시도당 1회 / hit·read-fail→CR / 소진→fail-visible `inject_unconfirmed`), 프로브 공백-정규화 꼬리 48자 + 플레이스홀더 wrap-tolerant 매치, fake-herdr composer 시뮬 훅, `inject-verify.test.ts` ①–⑬ 신설, VERSION 0.23.5(CLI+MCP). **codex pane 자문(GPT-5.6) REJECT 7건 반영**: F-1(Med) 플레이스홀더 raw substring이 TUI 줄바꿈 시 miss → 정규화 매치로 수정+⑫ wrap 변형 · F-2(Med) M-1 라이브 검증 기록 저장소 부재 → 아래 표로 해소 · F-3 send 직전 flight 재확인 추가 · F-4 소진 로그 실분기(`lastProbe`) 기록 · F-5 ③에 `eventsPrune` 어서션 · F-6 ④에 convFlight 유지+후속 턴 어서션 · F-7 ② CR-수 단위 불일치 대기 조건 수정. `bun test` **361/0**(+13) · 6패키지 typecheck green · biome 변경분 clean. 이탈 없음.
+
+**R30 M-1 라이브 검증 (TUI 3종 composer 가시성, 2026-07-18 — `herdr agent start` 스폰 → 41줄 paste 미제출 → `pane read` → close):**
+| TUI | 대형 paste composer 거동 | 꼬리 프로브 |
+|-----|------|------|
+| claude (Ink) | `[Pasted text #1 +25 lines]` 플레이스홀더(head 접힘) + **꼬리줄 원문 노출**. 소형(7줄)은 전체 원문. **플레이스홀더 문자열 자체가 줄바꿈으로 쪼개짐**(`[Pasted`+개행+`text`) — F-1 근거 | **hit** (양 레짐) |
+| grok | 원문 전체 노출(플레이스홀더 없음) | hit |
+| codex | 원문 전체 노출(플레이스홀더 없음) | hit |
+
+→ 꼬리-48 프로브는 3종 전부 유효(M-1 "claude에서 (b) 도달 불가" 우려는 꼬리 노출로 해소 — 플레이스홀더 hit 규칙은 이중 안전망). 두 번째 paste가 기존 composer에 **append**되는 것도 실측(M-1 이중-append 리스크 실재 — 재주입 시도당 1회 상한의 근거 보강).
 
 #### 0.23.4 — 2026-07-18 (`approved` — **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫)** (PATCH))
 

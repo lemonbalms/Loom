@@ -58,6 +58,8 @@
 
 **갱신 (2026-07-18 0.23.2 스모크):** grok TUI에서도 동일 레이스 재현 — **에이전트 무관**(claude 2회 + grok 1회, 3회째). 동일 수동 복구가 grok에도 그대로 통함: `herdr pane read`로 composer 빈 것 확인 → `herdr agent send <terminal_id> "<wrapped prompt>"` → 별도 `herdr agent send <terminal_id> $'\r'`(실제 CR 문자 — 리터럴 `"\r"` 문자열 아님) → working 전이 확인. 브릿지 verify 루프 개선(재주입)은 이제 특정 CLI 이슈가 아니라 **모든 pane 레인 공통 요구**로 승격.
 
+**해소 (2026-07-18, 0.23.5 `8148642`):** verify 루프 3분기(probe miss→캐시 프롬프트 재주입 1회/hit→CR/소진→fail-visible) 구현·배포. **라이브 실증**: 배포 직후 첫 스모크 카드에서 레이스 실발화 → stderr `verify round 1: probe=miss action=reinject` → 자동 복구·정상 완료. **0.23.5+ 브릿지에서는 수동 복구 불필요** — 위 수동 절차는 0.23.4 이하 브릿지 또는 fail-visible(`inject_unconfirmed`) 후 진단용으로만 유지. 재주입 프롬프트는 `wrapUntrustedPrompt` 산출 캐시 문자열 그대로(마커 `⚠ Untrusted handoff content\n\n` 접두).
+
 ## 2026-07-18 (3) — §5.2 32k artifact 경로는 Claude Ink TUI 워커로 라이브 트리거 불가 (스크레이프 상한 ~5k)
 
 **발견 (0.23.1 실물 스모크):** 브릿지가 워커 출력을 회수하는 유일한 경로는 `herdr paneRead(paneId, {source:"recent", lines:200})`인데, 이는 워커 pane의 **렌더된 터미널 버퍼**를 읽는다. Claude Code(Ink TUI) 워커는 트랜스크립트를 실시간으로 접고 스크롤아웃하므로, 워커가 40k+를 실제로 출력해도 스크레이프는 **소스(visible/recent/recent-unwrapped)·줄수(200/500/1000) 무관하게 ~5.3k에서 포화**(실측: 200줄 요청 중 실제 콘텐츠 22줄만 잔존). 따라서 `output.length > 32_000` 분기(`sendWorkerTurnFromPane`)가 라이브에서 참이 될 수 없어 `packageConvTurnArtifact`가 호출되지 않는다 — `artifacts=null`.
@@ -99,3 +101,5 @@
 **Mistake/발견 (0.23.3 조사 카드):** codex pane에 수동 재주입 후 `pane send-keys Enter`로 제출했다고 판단했으나, 실제로는 **composer에 텍스트만 담긴 채 미제출**(pane idle)로 방치됐다 — 오너가 발견. 두 겹의 실패: ① 제출 실패 자체(send-keys Enter는 codex TUI에서 무효 — lessons (2) 갱신 2), ② **그 상태를 아무도 감지 못함**: 아키텍트 모니터는 완료 마커·inbox·pane 소멸만 폴링했고(미제출=조용한 idle=대기처럼 보임), 브릿지 verify 루프도 working 전이만 기다리다 소진 후 무신호 포기(카드 상태 무변화, stderr ignore라 로그도 없음). "silence ≠ 진행 중" — 미제출·미시작 상태는 성공 경로 감시로는 영원히 안 보인다.
 
 **Rule:** ① pane에 프롬프트를 넣은 직후에는 반드시 **제출 성사 자체를 확인**(status working 전이 또는 composer 비워짐 — `pane read`로 직독). ② 카드 모니터는 "일정 시간 idle + composer에 잔류 텍스트" 조건을 실패 신호로 포함할 것. ③ 제품 측(후보 ⑨): verify 루프를 (a) composer 빈 경우 재주입 (b) composer 잔류+idle이면 CR 재전송 (c) 소진 시 failed result 발행(fail-visible)로 확장.
+
+**해소 (2026-07-18, 0.23.5 `8148642`):** ③이 구현·배포됨(3분기 전부). 브릿지 dispatch 경로는 이제 자동 커버 — 단 ①②는 **브릿지를 거치지 않는 수동 pane 주입**(아키텍트가 직접 `agent send` 할 때)엔 여전히 유효한 규칙.
