@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R25** PLAN **v0.23.0**(conv 멀티턴 수직 슬라이스) **`approved` → implemented `e4dab9e`**(author-close 2026-07-18, grok-impl 구현 · 아키텍트 검증 bun test 261/0) — M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)·M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 완료 + L-1..L-4 author-close 완료(no R25b). 스펙 정본 CONV_SPEC은 R24 approved 유지.  
+> **최신:** **R26** PLAN **v0.23.1**(§5.2 artifact 패키징 호출부 PATCH) **`approved`**(author-close 2026-07-18, claude-impl PATCH) — M-1(scp host 해석의 수신측 로컬 설정 출처 고정 + 매핑 부재 fail-closed)·M-2(fetch 명령 제시 문자열 셸-인용 + charset allowlist) locks PLAN 본문 반영 + L-1(ref.path 틸드-리터럴 규약형)·L-2("전문"=회수 스크레이프 전문 한정) author-close 완료(Fable 사전 승인, no R26b). 직전: R25 v0.23.0 `approved` → implemented `e4dab9e`.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,6 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R26** | **v0.23.1** | **closed (pending-revision → author-close approved 2026-07-18)** | **§5.2 artifact 패키징 호출부** (PATCH) — 브릿지 truncate 폴백 제거→scp 규약 패키징(전문 보존) + 타워 M-2 검증 통과 fetch 명령 **제시**(자동 실행 없음). 갭 실재·§5 이전 충실·스코프(자동 git push 유예 포함) 확인. 단 scp host 해석 출처가 "로컬 conv state"로 옮겨져 §5.3③ "수신측 로컬 설정" 왜곡(M-1) + 셸 복붙이 예정된 제시 문자열 표면의 안전 규약 미규정(M-2) → PLAN 문안 lock 2건 + L-1·L-2 author-close 완료. |
 | **R25** | **v0.23.0** | **closed (approved → implemented `e4dab9e` 2026-07-18)** | **conv 멀티턴 수직 슬라이스** — approved CONV_SPEC(R24)의 구현 PLAN. 스펙 이전 충실·스코프 minimal-but-sufficient·왜곡 없음. 단 R24 M-1 "양측 pin"의 **브릿지 측 집행 서술 공백**(M-1) + **미지 convId fail-closed 기본값 미고정**(M-2) → PLAN 문안 lock 2건 + L-1..L-4 author-close. |
 | **R24** | **CONV_SPEC v1 (스펙 문서, PLAN 버전 아님)** | **closed (pending-revision → author-close approved 2026-07-18)** | **크로스머신 CLI 멀티턴 대화 1단계 스펙** — 티켓 #2·#5·#6·#7·#8·#9 결정 통합 충실·relay 무변경 원칙 일관. 단 선언된 M-4 경계가 신규 표면 2곳에 미적용: **M-1 conv↔peer pin**(타워 측 턴 발신자 바인딩) + **M-2 artifact ref 검증 규약**(fetch 명령 기계 조립 방어). L-1..L-5 author-close. 구현 PLAN은 locks 반영 스펙 기준. |
 | **R23** | **v0.22.0** | **closed (approved → implemented 2026-07-17)** | **Loom×Herdr 노드 브릿지** (`loom bridge` 수직 슬라이스) — 새 데몬 표면 + MCP `dispatch_card`/`apply_card_result` + 원격 프롬프트 주입 신뢰 경계. M-1/M-2 locks 충족(코드+테스트). L-1..L-3 author-close. 와이어 무변경. FREEZE 예외=오너 pull. |
@@ -25,7 +26,46 @@
 
 ## Open (blocking)
 
-_(none)_ — R25 author-close approved (M-1/M-2 PLAN 문안 반영 + L-1..L-4 author-close 완료).
+*(현재 없음 — R26 M-1/M-2 문안 PLAN v0.23.1 본문 반영 + L-1/L-2 author-close 완료, 2026-07-18.)*
+
+---
+
+## Review R26 — Plan v0.23.1 (§5.2 artifact 패키징 호출부 PATCH)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.1` changelog + header + `docs/CONV_SPEC.md` §5.1–§5.5(approved 정본 — 스펙 결정 재론 없음, 이전 충실도만 심사) + 코드 대조(`packages/host/src/bridge-runtime.ts:780-860` truncateTail 폴백·MVP 갭 주석·paneRead 회수 창, `packages/protocol/src/conv-contract.ts:85-237` artifact 스키마·M-2 검증 함수 2종 — **호출부 부재 확인**, `packages/host/src/conv-ops.ts:75-82` open 시 displayName 조회) + `docs/plan_review.md` R24·R25 선례(심각도 캘리브레이션)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`pending-revision` → M-1/M-2 locks PLAN 본문 반영 + L-1/L-2 author-close → author-close `approved`** (Fable 사전 승인, no R26b).
+
+**Author-close 완료 (2026-07-18):** claude-impl이 M-1(scp host 해석 출처 = 수신측 로컬 명시 구성 + 매핑 부재 fail-closed)을 `docs/PLAN.md` 0.23.1 타워 행에, M-2(POSIX 단일인용 + charset allowlist)를 신설 "제시 문자열 렌더링 규약" 행에 반영. L-1(ref.path 틸드-리터럴 — 브릿지 방출·타워 검증 양형 + 인용 상호작용)·L-2("전문"=회수 스크레이프 전문 한정, gist 안내 문구에 회수 창 명시)를 author-close 완료. 사전 승인 경로(no R26b)에 따라 재리뷰 없이 `approved` 전환.
+
+### 결정적 발견 (성패 지점)
+이 PATCH의 실질 신뢰 경계는 **pin된 상대가 만든 wire-유래 문자열이 타워의 ssh·셸 인접 표면에 도달하는 경로**다. 두 곳에서 그 경계가 문안으로 고정되지 않았다: (a) PLAN은 CONV_SPEC §5.3③ "수신측 **로컬 설정**의 conv 상대 노드 매핑"을 "**로컬 conv state의** pinned peer→node 매핑"으로 옮겼는데, conv state의 node 식별자는 open 시점 자기신고 displayName 조회(`conv-ops.ts:81-82`)에서 온 wire-유래 값이고 타워에 peerId→ssh host의 수신측 명시 로컬 구성은 존재하지 않는다 — 이 문안대로 구현하면 자기신고 displayName이 scp host로 흘러 §5.3③이 신뢰 입력에서 제거한 것이 되살아난다(M-1). (b) M-2 검증 함수는 argv-수준 방어(`--`·선행 `-`·known-remote — `conv-contract.ts:175-193`)인데 이 PATCH가 신설하는 산출물은 **셸에 붙여넣어질 것이 예정된 문자열**이고, branch/path 스키마는 charset 무제약(`:92`,`:105`)이라 `$(…)`·공백·`;` 포함 값이 검증을 통과한다(M-2). "제시-only"(자동 실행 없음) 매개가 둘을 Med에 묶어두는 유일한 끈이므로, 그 끈 자체를 PLAN 문안으로 고정하는 것이 이번 리뷰의 실질이다. 둘 다 문안 lock으로 닫히고 wire 변경 불요.
+
+### Checklist
+- [x] **갭 실재** — truncateTail 폴백(`bridge-runtime.ts:808,826,831` + MVP 갭 주석)·M-2 검증 함수 완성+호출부 부재(`conv-contract.ts:166-237`) 코드 대조로 사실 확인 — PLAN Why 서술 정확.
+- [x] **§5.1 이전 충실(절단 금지)** — 전문 파일 기록 + truncate 폴백 제거 + 인라인 gist ≤32k. 단 "전문"의 회수 창 한정 필요(L-2).
+- [x] **§5.2 수단 분류** — pane 스크레이프 = 로그성 산출물 → scp 규약 정본 경로(§5.2 ② 정확 부합). 브릿지 **자동 git push out-of-scope 유예 타당** — 브릿지의 git 실행은 원격 실행 표면 확대라 0.22.0 이래 보수 절삭 선례와 일관; 워커 에이전트 자체 push의 ref 전달은 스키마상 이미 가능하므로 기능 공백도 아님.
+- [x] **§5.3 M-2 소비부 규약** — 검증 통과분만 조립·실패 ref 미조립+사유 표시·wire host 표시조차 불신·argv 배열 조립 전부 충실. 단 host 해석 **출처** 문안 왜곡(M-1) + 제시 문자열 표면 미규정(M-2).
+- [x] **§5.4 수명** — 정리 자동화 out-of-scope 승계(R25 L-4)와 일관.
+- [x] **브릿지 = M-2 ref 생산자 표면(보안 판단 ①)** — 패키징 대상 convId는 스키마 검증·pin된 flight state에서만 오고(fail-closed가 미지 convId를 패키징 전에 차단), `turn-<seq>.txt` 파일명 구성요소 전부 로컬 생성값 — 경로 주입면 없음. 0700/0600·`loomDir()` 경유 M-14 정합. "생산 측 규약 위반 시 수신 검증이 정당 거부"를 테스트로 고정하는 계획 타당.
+- [x] **자동 실행 없음 원칙 유지(보안 판단 ②)** — 유지 확인. fetch 자동 실행을 도입하는 미래 버전은 M-1/M-2가 즉시 High로 승격되므로 R{n} 재리뷰 필수 — out-of-scope의 "별도 게이트" 문안이 취지 커버.
+- [ ] **scp host 해석의 수신측 로컬 설정 출처 고정** — binding lock (M-1).
+- [ ] **제시 문자열 셸 안전성 규약** — binding lock (M-2).
+
+### Findings (Sev: High|Med|Low) — binding locks
+- **M-1 (Med, binding): scp host 해석 출처를 수신측 로컬 명시 구성으로 고정.** PLAN 타워 행의 "로컬 conv state의 pinned peer→node 매핑에서 해석"을 교체: "host는 **수신측 로컬 명시 구성(설정)**의 peer/node→ssh host 매핑에서만 해석한다 — conv state에 기록된 자기신고 displayName을 host로 쓰는 것 금지. **매핑 부재 시 명령 미조립 + 사유 표시(fail-closed)**." `validateScpArtifactRef`의 resolveHost null 경로(`conv-contract.ts:222-227`)가 fail-closed 원시로 이미 존재 — 문안 고정만 필요. 근거: §5.3③ 충실 이전 교정(신규 결정 아님) — R25 M-1과 동일 부류(이전 중 누락에 의한 왜곡, 문안대로 구현 시 오독 유도). 위장 displayName(`internal-backup` 등)으로 타워 ssh 자격이 임의 host에 연결 시도되는 경로 차단.
+- **M-2 (Med, binding): fetch 명령 제시 문자열 렌더링 규약.** PLAN에 고정: 제시 문자열 렌더링 시 **POSIX 단일인용 필수**(내장 `'`는 `'\''` 이스케이프) + branch·path의 convId-prefix 이후 접미에 **charset allowlist**(`[A-Za-z0-9._/-]`, 세그먼트 선행 `-` 금지)를 심층방어로 병행. 근거: 검증 함수는 argv-수준 방어이고 스키마는 charset 무제약이라 `conv/<convId>/$(cmd)` 형 branch·path가 통과 — 제시 문자열의 유력 복붙 실행자는 `conv_await` 결과를 컨텍스트로 받는 **타워 LLM 에이전트 자신**이라 "사람이 눈으로 거른다" 가정이 약하다. 스펙 재론 아님 — §5.3은 조립을 방어했고 "셸에 붙여넣어질 문자열" 표면은 0.23.1이 신설(R24 M-1/M-2와 같은 "신규 표면에 선언된 경계 적용" 부류).
+- **L-1 (Low): ref.path wire 형식 규약 — 틸드-리터럴 고정.** 브릿지는 `loomDir()` 절대경로에 기록하지만 wire의 `ref.path`는 규약형 `~/.loom/artifacts/<convId>/…` **틸드-리터럴**로 방출, 타워 검증 root도 동일 리터럴형, 확장은 원격측. 절대경로 방출 시 크로스머신에서 prefix 전량 불일치(기능 불성립) 또는 브릿지 홈경로 노출. M-2 인용과의 상호작용 한 줄 포함(단일인용 시 로컬 셸 틸드 확장이 죽으므로 scp 원격 경로 위치에서만 유효한 형태로 렌더링). **브릿지 방출·타워 검증 양쪽 형태를 정하므로 구현 착수 전 author-close 필수.**
+- **L-2 (Low): "전문 보존" 주장의 정직한 한정.** 현행 paneRead는 `recent` 200줄 창(`bridge-runtime.ts:803-806`) — 창 밖 출력은 artifact 파일에도 없으므로 "전문"은 "회수된 스크레이프의 전문"이다. gist/안내 문구에 회수 창 명시로 한정하거나, herdr가 지원하면 패키징 경로에서 회수 범위 확대. 회수 범위를 늘리는 후속 버전에서는 artifact 파일 크기 상한 질문이 되살아남(그때 재론 — 현재 non-finding). author-close.
+
+### Decision notes
+- **verdict 구조:** R23/R24/R25 선례 — **M-lock 문안이 PLAN 본문에 그대로 들어가는 것**이 author-close 조건. 즉시 approved 부적합: M-1이 R25 M-1과 동일하게 문안대로 구현하면 오독이 유도되는 스펙 왜곡 교정이라 본문 반영 전 착수를 허용한 선례가 없다. 재리뷰 필수까지 갈 사유도 없음 — 두 lock 모두 설계 재작업이 아닌 문안 고정이고 원시(resolveHost fail-closed·argv 조립)는 코드에 이미 존재. Med 2건 반영 + Low 2건 author-close 후 재리뷰 없이 `approved` 전환(no R26b). PATCH 적용자는 implementer — 리뷰어는 plan_review.md 외 수정 금지이므로 PLAN 헤더 Status 동기화도 PATCH에 포함할 것.
+- **M-1 심각도 근거 (High 아님):** (a) 제시-only라 실행에 사람/에이전트 매개가 남고 (b) 공격자는 이미 accept된 pinned 상대여야 함 — R24 M-2를 Med로 둔 논거("M-1 pin 전제 시 상대 오염 선행 필요")와 동일 구조.
+- **M-2 심각도 근거:** 같은 매개("제시-only")가 상한을 Med에 묶는다. **fetch 자동 실행을 도입하는 순간 M-1/M-2 둘 다 즉시 High 승격** — 반드시 별도 R{n} 게이트(현행 out-of-scope 문안의 "별도 게이트" 취지 재확인).
+- **(권고, non-binding)** 제시 문자열에 untrusted 출처 표지 프리픽스("untrusted 출처 — 실행 전 검증") 부착; gist + 안내 문구 합 ≤32k를 테스트 케이스에 포함(현행 `:828-831`의 note 후첨 `slice` 재클램프는 truncate 폴백 제거와 함께 재작성 예정이라 별도 조치 불요).
+- **결정을 가르는 리스크:** pin된 상대의 wire-유래 문자열(자기신고 displayName·branch/path 접미)이 타워의 ssh·셸 인접 표면에 도달하는 경로 — M-1/M-2는 같은 부류의 두 구멍이고 "제시-only" 매개가 이를 Med에 묶어두는 유일한 끈이므로, 그 끈을 PLAN 문안으로 고정하는 것이 이번 리뷰의 실질이다.
+- Advisor: fable-advisor consulted: yes.
 
 ---
 

@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.23.0** |
-| **Status** | **`approved` → implemented** (`e4dab9e`, 2026-07-18) — **conv 멀티턴 수직 슬라이스**(타워↔워커 1:1 대화 왕복 — `conv.open`/`accept`→`turn`(반복)→`done_proposal`/`close`) (MINOR). **relay 와이어 protocol v1 무변경.** 설계 정본 `docs/CONV_SPEC.md`(**approved**, R24 author-close 2026-07-18). FREEZE 해제(오너, 2026-07-18) — conv 멀티턴 트랙 진행 승인(HANDOFF.md). 0.22.0(R23) implemented — 브릿지 수직 슬라이스 선행. |
-| **Supersedes** | 0.22.0 |
+| **Version** | **0.23.1** |
+| **Status** | **`approved`** (R26 author-close, 2026-07-18) — **§5.2 artifact 패키징 호출부** (PATCH): 브릿지 32k 초과 워커 턴의 tail-truncate 폴백을 §5.1 "절단 금지" 정합으로 회복(scp 규약 디렉터리 패키징 + artifacts[] ref 방출) + 타워 수신 측 M-2 검증 통과 fetch 명령 **제시**(자동 실행 없음). 0.23.0 implemented(`e4dab9e`) + conv 실물 스모크 통과(2026-07-18, HANDOFF) 위에 얹는 PATCH. **relay 와이어 protocol v1 무변경.** |
+| **Supersedes** | 0.23.0 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | **R25 `pending-revision` → M-1(브릿지 측 conv↔peer pin·last-seen 집행 명문화)/M-2(미지 convId fail-closed 기본값) locks PLAN 본문 반영 → author-close `approved`**(Fable 5 사전 승인, no R25b). L-1..L-4 author-close. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음). |
-| **Fable 5 when** | **Required** — 새 제품 표면 + 보안·신뢰 경계 변경 (§5.1). **R25 done.** |
+| **Approval** | **R26 `pending-revision` → M-1(scp host 해석 출처 = 수신측 로컬 명시 구성 + 매핑 부재 fail-closed)/M-2(제시 문자열 POSIX 단일인용 + charset allowlist) locks PLAN 본문 반영 → author-close `approved`**(Fable 5 사전 승인, no R26b). L-1(ref.path 틸드-리터럴 규약형)·L-2("전문"=회수 스크레이프 전문 한정) author-close. 직전: R25 author-close `approved`(0.23.0) → implemented `e4dab9e`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음). |
+| **Fable 5 when** | **Required** — M-2(artifact ref 검증) 신뢰 경계 **인접**: 브릿지가 ref 생산자가 되고 타워가 fetch 명령을 조립·제시하는 표면 신설 (§5.1 보안·신뢰 경계 변경, 보수 판단). **R26 done.** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,33 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.23.1 — 2026-07-18 (`approved` author-close after R26 `pending-revision` — **§5.2 artifact 패키징 호출부** (PATCH))
+
+**Product one-liner:** 32k를 넘는 워커 턴이 잘려나가는 대신, 브릿지가 산출물 전문을 규약 디렉터리(`~/.loom/artifacts/<convId>/`)에 보존하고 artifacts[] ref로 회신하며, 타워는 M-2 검증을 통과한 fetch 명령을 **제시**받는다 — CONV_SPEC §5.1 "절단 금지"의 코드 회복.
+
+**Why:** 0.23.0 구현은 M-2 검증 함수(`conv-contract.ts` `validateGitArtifactRef`/`validateScpArtifactRef`)를 완성·테스트했으나 **호출부가 없다** — 브릿지 `sendWorkerTurnFromPane`은 32k 초과 시 0.22.0 관례 tail-truncate 폴백(`bridge-runtime.ts:808,826,831`, 구현 노트에 문서화된 MVP 갭)으로 §5.1 "무조건 out-of-band 전환·절단 금지"와 불일치. conv 실물 스모크(2026-07-18, HANDOFF)로 0.23.0 왕복 경로가 검증된 지금이 이 정합 회복의 적기다.
+
+**What (범위 — PATCH; 설계 정본 = CONV_SPEC §5):**
+| 항목 | 내용 |
+|------|------|
+| **브릿지 — 패키징 호출부(§5.1→§5.2)** | `sendWorkerTurnFromPane`에서 인라인 32k 초과 시 truncate 대신: pane 산출물 **전문**(=회수된 스크레이프의 전문 — R26 L-2, 아래 참조)을 `~/.loom/artifacts/<convId>/turn-<seq>.txt`(디렉터리 0700·파일 0600, `loomDir()` 경유 M-14)에 기록 → `sha256`·`chars` 계산 → `artifacts:[{transport:"scp", ref:{host:<브릿지 노드 displayName>, path}, sha256, chars, gist}]` 방출. **wire의 `ref.path`는 규약형 틸드-리터럴 `~/.loom/artifacts/<convId>/…`로 방출**(R26 L-1) — 브릿지는 `loomDir()` 절대경로에 기록하되 wire엔 리터럴형만 싣는다(절대경로 방출 시 크로스머신 prefix 전량 불일치 + 브릿지 홈경로 노출). 인라인 `text` = 32k 이내 **gist**(tail 발췌 + artifact 안내 문구 — **회수 창(현행 `pane.read` recent 200줄) 명시 포함**, R26 L-2: 창 밖 출력은 artifact 파일에도 없으므로 "전문"은 회수분에 한정된 정직한 주장이어야 한다). truncate 폴백 제거. pane 스크레이프는 로그성 산출물이므로 §5.2 분류상 **scp 규약**이 정본 경로 — git 주수단은 repo-적합 산출물용(아래 Out). |
+| **타워 — fetch 명령 제시(M-2 소비부)** | `conv_await`가 artifacts[] 포함 턴 수신 시, ref별로 M-2 검증 수행 후 **통과한 것만** fetch 명령 문자열(scp/git argv 조립, 셸 연결 없음)을 결과에 포함해 **제시**한다. **scp `host`는 수신측 로컬 명시 구성(설정)의 peer/node→ssh host 매핑에서만 해석한다 — conv state에 기록된 자기신고 displayName을 host로 쓰는 것 금지. 매핑 부재 시 명령 미조립 + 사유 표시(fail-closed)**(R26 M-1 — `validateScpArtifactRef`의 resolveHost null 경로가 fail-closed 원시로 기존재, 문안 고정). git ref는 `validateGitArtifactRef` — 기존 remote만. 타워 검증 root도 틸드-리터럴 규약형(R26 L-1 — 브릿지 방출형과 동일, 확장은 원격측). 검증 실패 ref는 명령 미조립 + 사유 표시. **자동 실행 없음** — 0.23.0 "제시까지" 원칙 그대로. |
+| **제시 문자열 렌더링 규약 (R26 M-2)** | fetch 명령 제시 문자열 렌더링 시 **POSIX 단일인용 필수**(내장 `'`는 `'\''` 이스케이프) + branch·path의 convId-prefix 이후 접미에 **charset allowlist `[A-Za-z0-9._/-]`**(세그먼트 선행 `-` 금지)를 심층방어로 병행. 근거: M-2 검증 함수는 argv-수준 방어이고 스키마는 charset 무제약이라 `conv/<convId>/$(cmd)` 형 값이 검증을 통과하는데, 제시 문자열의 유력 복붙 실행자는 `conv_await` 결과를 컨텍스트로 받는 **타워 LLM 에이전트 자신**이라 "사람이 눈으로 거른다" 가정이 약하다. 인용 상호작용(R26 L-1): 단일인용 시 로컬 셸 틸드 확장이 죽으므로, 틸드-리터럴 path는 scp **원격 경로 위치**에서만 유효한 형태로 렌더링한다. (권고, non-binding: 제시 문자열에 "untrusted 출처 — 실행 전 검증" 프리픽스.) |
+| **테스트** | fake herdr fixture: 32k 초과 스크레이프 → artifact 파일 생성·회수분 전문 보존(절단 없음)·sha256/chars 일치·ref 방출(틸드-리터럴형)·인라인 gist+안내 문구 합 ≤32k; 32k 이하는 기존 인라인 경로 무변경(회귀); 타워 측 M-2 검증 통과 시 fetch 명령 조립(단일인용 렌더링·charset allowlist)·실패 시(traversal path·**host 매핑 부재 fail-closed**·선행 `-`·allowlist 위반 접미) 미조립+사유 케이스; **생산 측 규약 위반 시 수신 검증이 정당 거부**하는 케이스. |
+
+**Out of scope (이 버전 아님):** 브릿지의 **자동 git push** 패키징(원격 실행 표면 확대 — 워커 에이전트가 repo 산출물을 스스로 conv 브랜치에 push하는 경우의 ref 전달은 스키마상 이미 가능, 브릿지가 git을 실행하는 것은 별도 게이트); artifact fetch **자동 실행**(0.23.0 out-of-scope 승계); §5.4 정리 자동화(R25 L-4 승계); 워커 턴 pane 스크레이프 delta화·close 시 pane 정리 정책(스모크 관찰 ⑤⑥ — 별도 후보); done_proposal 탐지 규약·conv.open deny 클레임 순서·agentKind 확장(후보 ②③④).
+
+**Security / trust (R26 판단 대상):**
+- **브릿지가 M-2 ref 생산자가 된다:** 지금까지 M-2는 수신 방어만 존재했다. 이 PATCH로 브릿지가 규약 준수 ref를 만들기 시작하므로, 생산 측이 규약(path prefix·convId charset)을 어기면 수신 검증이 정당하게 거부함을 테스트로 고정한다.
+- **타워 fetch 명령 제시 표면:** 제시 문자열은 M-2 검증 통과분만, argv 배열 조립(셸 보간 금지). wire의 host 필드는 표시용으로도 신뢰하지 않는다(로컬 매핑 해석 결과만 표시).
+- **파일 기록은 브릿지 로컬 쓰기뿐** — 네트워크 실행(scp/git push) 없음. 원격 실행 표면 무증가.
+
+**Review impact:** 와이어 무변경(artifacts 스키마 기존)·MCP 도구 수 무변경. M-2 신뢰 경계 **인접**(생산자 신설 + 소비부 제시 표면) → §5.1 보수 판단으로 **R26 요청**. 구현 중 CONV_SPEC과 충돌 발견 시 구현 보류 + 아래 "R26 질의"에 기록. **fetch 자동 실행을 도입하는 미래 버전은 M-1/M-2가 즉시 High로 승격 — 반드시 별도 R{n} 게이트**(R26 decision note).
+
+**R26 질의:** *(현재 없음.)*
+
+**Approved by:** Fable 5 (fable-advisor) R26 — `pending-revision` → M-1(scp host 해석 출처 = 수신측 로컬 명시 구성 + 매핑 부재 fail-closed)/M-2(제시 문자열 POSIX 단일인용 + charset allowlist) locks PLAN 본문 반영 → **author-close `approved`**(Fable 사전 승인, no R26b), 2026-07-18. L-1(ref.path 틸드-리터럴 규약형 — 브릿지 방출·타워 검증 양형 고정 + 인용 상호작용)·L-2("전문"=회수 스크레이프 전문 한정, gist 안내 문구에 회수 창 명시) author-close.
 
 #### 0.23.0 — 2026-07-18 (`approved` author-close after R25 `pending-revision` — **conv 멀티턴 수직 슬라이스**)
 
