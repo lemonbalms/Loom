@@ -4,11 +4,11 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.23.6** |
-| **Status** | **`pending-review` (R31 대기)** — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH): conv 워커 턴·카드 결과가 pane 최근 200줄 전체를 매번 실어 보내 이전 턴 전문·TUI chrome이 좁은 스크레이프 창(실측 상한 claude ~5.3k/grok ~2.2k/codex ~1.4k)을 잠식한다. delta 앵커(직전 턴 꼬리, 공백-정규화 매치)로 신규 내용만 싣고, 명백한 chrome 줄(box-drawing·키 힌트)을 보수 필터하며, idle 직후 렌더 미완 스크레이프를 settle 재독으로 안정화한다. **wire·MCP·herdr RPC 표면 무변경, 신규 신뢰 표면 없음(untrusted 콘텐츠 read-only shaping).** 직전: 0.23.5 `approved` R30 → implemented `8148642` — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류의 fail-visible 복구)** (PATCH): 현행 M-2 verify 루프는 working 미도달 시 bare-Enter 재전송만 반복해 paste 자체가 유실된 경우(스타트업 레이스, ⑫ 수정 후에도 잔여 재현) 복구 불가·소진 후 무음 포기(카드 doing 영구 고착)다. pane read로 composer 상태를 직접 관찰해 (a) 프로브 부재=paste 유실 → 동일 프롬프트 재주입(주입 시도당 1회) (b) 프로브 존재(플레이스홀더 hit 포함)=미제출 잔류/status 지연 → CR 재전송(현행) (c) 소진 → fail-visible(카드 `inject_unconfirmed` failed result / conv blocked 턴)로 확장한다. **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
+| **Status** | **`approved`** (R31 `pending-revision` → M-1(chrome 필터 카드 output 본문 무적용)·M-2(delta 슬라이스 인덱스 맵) lock 본문 반영 + L-1..L-5 author-close → author-close `approved`, no R31b — Fable 사전 승인, 2026-07-18, `docs/plan_review.md` R31) — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH): conv 워커 턴·카드 결과가 pane 최근 200줄 전체를 매번 실어 보내 이전 턴 전문·TUI chrome이 좁은 스크레이프 창(실측 상한 claude ~5.3k/grok ~2.2k/codex ~1.4k)을 잠식한다. delta 앵커(직전 턴 꼬리, 공백-정규화 매치)로 신규 내용만 싣고, 명백한 chrome 줄(box-drawing·키 힌트)을 보수 필터하며, idle 직후 렌더 미완 스크레이프를 settle 재독으로 안정화한다. **wire·MCP·herdr RPC 표면 무변경, 신규 신뢰 표면 없음(untrusted 콘텐츠 read-only shaping).** 직전: 0.23.5 `approved` R30 → implemented `8148642` — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류의 fail-visible 복구)** (PATCH): 현행 M-2 verify 루프는 working 미도달 시 bare-Enter 재전송만 반복해 paste 자체가 유실된 경우(스타트업 레이스, ⑫ 수정 후에도 잔여 재현) 복구 불가·소진 후 무음 포기(카드 doing 영구 고착)다. pane read로 composer 상태를 직접 관찰해 (a) 프로브 부재=paste 유실 → 동일 프롬프트 재주입(주입 시도당 1회) (b) 프로브 존재(플레이스홀더 hit 포함)=미제출 잔류/status 지연 → CR 재전송(현행) (c) 소진 → fail-visible(카드 `inject_unconfirmed` failed result / conv blocked 턴)로 확장한다. **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
 | **Supersedes** | 0.23.5 |
 | **Last updated** | 2026-07-18 |
 | **Approval** | **R30 author-close `approved`**(0.23.5) → implemented `8148642` + codex 자문 REJECT 7건(F-1..F-7) 반영 + M-1 TUI 3종 라이브 검증 · 직전: **R29 author-close `approved`**(0.23.4) → implemented `c7df503` + 라이브 검증 3종 · R28 author-close `approved`(0.23.3) → implemented `95cc81e` + 라이브 스모크(§5.1 마커 경로) 완료. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 주입 신뢰성 수정, conv/card 프로토콜 의미 무변경). |
-| **Fable 5 when** | **Required — R31 대기(2026-07-18)**: 스크레이프→wire 콘텐츠 shaping(chrome 필터·delta 선별) — 신규 신뢰 표면은 없으나 과필터/과-delta로 inline 내용 누락 가능성 + 카드 summary 산출 변경. §5.1 보수 관례로 게이트 요청. 직전: R30 완료 — M-1·M-2 lock + L-1..L-3 author-close `approved` → implemented `8148642`, `docs/plan_review.md` R30. |
+| **Fable 5 when** | **Required — R31 완료(2026-07-18)**: 스크레이프→wire 콘텐츠 shaping(chrome 필터·delta 선별). `pending-revision` → author-close `approved`(M-1·M-2 lock + L-1..L-5), `docs/plan_review.md` R31. 직전: R30 완료 → implemented `8148642`. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -50,7 +50,7 @@
 
 ### Changelog
 
-#### 0.23.6 — 2026-07-18 (`pending-review` R31 — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH))
+#### 0.23.6 — 2026-07-18 (`approved` R31 — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH))
 
 **Product one-liner:** conv 워커 턴·카드 결과가 워커 pane 전체 창(최근 200줄)을 매번 그대로 실어 보내던 것을, (1) 이전 턴 이후 **새로 생긴 내용만**(delta) 싣고 (2) TUI chrome(컴포저 박스·키 힌트 상태바)을 걸러내고 (3) idle 직후 렌더 미완 스크레이프를 안정화해 — 좁은 스크레이프 창의 실효 정보량을 회복한다.
 
@@ -62,22 +62,24 @@
 **What (범위 — PATCH; wire·MCP·herdr RPC 표면 무변경):**
 | 항목 | 내용 |
 |------|------|
-| **TUI chrome 필터** | 스크레이프 후처리 헬퍼 `stripTuiChrome(text)`: **명백한 chrome 줄만** 보수적으로 제거 — ① box-drawing 전용/테두리 줄(`╭╰│─` 계열로만 구성 또는 `│ ❯` 컴포저 프롬프트 줄) ② 알려진 키 힌트 줄(`Shift+Tab:mode`·`Ctrl+.:shortcuts`·`Ctrl+c:cancel` 등 포함 줄) ③ 말미 빈 줄 정리. 적용: conv 턴 inline text(`sendWorkerTurnFromPane`)·카드 결과 `output`·카드 `summary` 산출 전. **artifact 마커 스캔은 필터 전 원문 대상 유지**(마커 유실 방지). 과필터 리스크는 아래 Security. |
-| **conv 턴 delta화** | `ConvFlight`에 직전 턴 스크레이프의 **꼬리 앵커**(chrome-필터 후 마지막 유효 줄 최대 3줄, 공백-정규화 저장) 보관. 다음 턴 스크레이프에서 앵커를 공백-정규화 매치(0.23.5 프로브와 동일 기법 — TUI 재줄바꿈 대응)로 **마지막 출현 위치** 탐색 → 이후 내용만 inline text로. **앵커 미발견 시 전체 스크레이프 폴백 + note `delta anchor miss (full scrape)`**(fail-open — 내용 유실보다 중복이 낫다). 앵커 갱신은 턴 전송 성공 후. 카드 lane은 flight당 결과 1회라 delta 비적용(chrome 필터·안정화만). |
-| **idle-scrape 안정화** | 스크레이프 직전 settle 재독: `paneRead` 1회 → 250ms 대기 → 재독 → 불일치 시 1회 더(최대 3독). 마지막 독본 사용 — 관찰 ⓒ의 렌더 미완 중간 절단 완화. conv 턴·카드 결과 공통. (verify 루프의 paneRead는 대상 아님 — 거긴 존재 프로브라 정밀도 불요.) |
-| **카드 summary 정합** | summary = chrome-필터 후 마지막 non-empty 줄(기존 로직 유지, 입력만 필터본으로). 보드 노트 오염 제거. |
-| **테스트** | fake-herdr paneRead 시퀀스 제어로: ① chrome 필터 — claude/grok/codex 실측 chrome 샘플 각각 제거·비-chrome 유사 줄 보존 ② conv 2턴 delta — 턴2 inline에 턴1 내용 부재·신규만 ③ 앵커 미발견 → 전체 폴백 + note ④ 앵커 wrap-변형(정규화 매치) ⑤ 카드 summary 키-힌트 줄 배제 ⑥ artifact 마커가 chrome 필터와 무관하게 스캔됨(필터 전 원문) ⑦ settle 재독 — 1·2독 불일치 시 3독 사용 ⑧ delta 앵커가 턴 전송 실패 시 미갱신(다음 턴 재시도 시 중복 허용) ⑨ 기존 conv 왕복·카드 결과 회귀. |
+| **TUI chrome 필터** | 스크레이프 후처리 헬퍼 `stripTuiChrome(text)`: **명백한 chrome 줄만** 보수적으로 제거 — ① box-drawing 전용/테두리 줄(`╭╰│─` 계열로만 구성 또는 `│ ❯` 컴포저 프롬프트 줄) ② 알려진 키 힌트 줄(`Shift+Tab:mode`·`Ctrl+.:shortcuts`·`Ctrl+c:cancel` 등 포함 줄) ③ 말미 빈 줄 정리. **적용 대상 = conv 턴 inline text + 카드 `summary` 산출 입력. 카드 결과 `output` 본문에는 적용하지 않는다**(R31 M-1 — 카드 lane은 artifact 복구 경로 부재(파일 규약은 conv 한정)라 손실 비가역이고, 200k 상한에서 chrome 몇 줄의 잠식 실익 없음; "포함 줄" substring 매치는 키-힌트 문자열을 본문 인용하는 콘텐츠(이 레포의 PLAN·lessons 자체가 해당)에서 위양성 소실을 낳는다). **artifact 마커 스캔은 필터 전 원문 대상 유지**(마커 유실 방지). 과필터 리스크는 아래 Security. |
+| **conv 턴 delta화** | `ConvFlight`에 직전 턴 스크레이프의 **꼬리 앵커**(chrome-필터 후 마지막 유효 줄 최대 3줄, 공백-정규화 저장) 보관. 다음 턴 스크레이프에서 앵커를 공백-정규화 매치로 **마지막 출현** 탐색 → 이후 내용만 inline text로. **슬라이스 메커니즘(R31 M-2)**: 공백-정규화 문자열 생성 시 **정규화 오프셋→원문 오프셋 인덱스 맵을 동반 구축**하고, 앵커의 마지막 출현 매치 **끝**에 대응하는 **원문** 오프셋에서 (chrome-필터된) 원문 텍스트를 슬라이스한다 — **정규화본 슬라이스 금지**(공백·개행 파괴). "0.23.5 프로브와 동일 기법"은 공백-정규화 **매칭 원리**의 재사용만을 뜻하며 존재-검사 헬퍼(`isInjectProbeHit`)의 재사용이 아니다. **앵커 미발견 시 전체 스크레이프 폴백 + note `delta anchor miss (full scrape)`**(fail-open — 내용 유실보다 중복이 낫다). **delta 적용 턴엔 상시 통계 note `delta: kept N/M chars`**(R31 L-2 — late-false-match 무음 드롭을 타워가 식별할 유일 채널), **빈 delta면 note `delta empty (no new output)`**(R31 L-3). 앵커 갱신은 턴 전송 성공 후. 카드 lane은 flight당 결과 1회라 delta 비적용(summary 필터·안정화만). |
+| **32k 트리거와의 관계 (R31 L-1)** | 임계 판정·`packageConvTurnArtifact` 입력 = **chrome-필터 후 full scrape(delta 미적용)**; delta는 ≤32k 인라인 분기에만 적용; 앵커는 패키징 발화 턴에도 full-scrape 꼬리에서 갱신. (TUI 상한 실측상 near-moot이나 비-TUI pane에서 도달 가능.) |
+| **done_proposal 판정 입력 (R31 L-4)** | `[DONE_PROPOSAL]` kind 판정은 **delta 텍스트 선두** 기준(이전 턴 잔존이 선두를 차지해 사실상 도달 불가였던 기존 취약의 자연 해소); **폴백(전체 스크레이프) 턴은 현행(raw 선두) 유지**. |
+| **idle-scrape 안정화** | 스크레이프 직전 settle 재독: `paneRead` 1회 → 250ms 대기 → 재독 → 불일치 시 1회 더(최대 3독). 마지막 독본 사용 — 관찰 ⓒ의 렌더 미완 중간 절단 완화. conv 턴·카드 결과 공통. **불일치 비교는 `stripAnsi` 후 텍스트 기준**(R31 L-5 — raw 비교는 ANSI 커서/스피너 churn으로 영구 불일치 → 항상 3독 낭비). (verify 루프의 paneRead는 대상 아님 — 거긴 존재 프로브라 정밀도 불요.) |
+| **카드 summary 정합** | summary = chrome-필터 후 마지막 non-empty 줄(기존 로직 유지, 입력만 필터본으로). 보드 노트 오염 제거. `output` 본문은 무필터 원문 유지(M-1). |
+| **테스트** | fake-herdr paneRead 시퀀스 제어로: ① chrome 필터 — claude/grok/codex 실측 chrome 샘플 각각 제거·비-chrome 유사 줄 보존 ② conv 2턴 delta — 턴2 inline에 턴1 내용 부재·신규만 ③ 앵커 미발견 → 전체 폴백 + note ④ 앵커 wrap-변형(정규화 매치) + **슬라이스 결과의 원문 무결성(공백·개행 보존) 어서션**(M-2) ⑤ 카드 summary 키-힌트 줄 배제 ⑥ artifact 마커가 chrome 필터와 무관하게 스캔됨(필터 전 원문) ⑦ settle 재독 — 1·2독 불일치 시 3독 사용 ⑧ delta 앵커가 턴 전송 실패 시 미갱신(다음 턴 재시도 시 중복 허용) ⑨ 기존 conv 왕복·카드 결과 회귀 ⑩ **키-힌트 문자열을 본문 인용하는 카드 `output`이 무손실 보존**(M-1) ⑪ **>32k 스크레이프 턴 — 패키징 입력 = 필터 후 full scrape·delta 미적용·앵커 갱신 정상**(L-1). |
 
 **Out of scope:** §5.2 임계·패키징 로직 변경(⑩ 종결 — 잔존 유지) · 후보 ⑥(pane 정리 정책)·⑦(conv-hosts CLI)·②③ · TUI별 chrome 패턴의 망라적 수집(보수적 최소 셋만 — 미지 chrome은 통과가 기본). 
 
 **Security / trust (R31 판단 대상):**
 - **신규 신뢰 표면 없음**: 주입 경로(M-2/M-4)·wire 스키마 무변경. 변경은 이미-untrusted인 스크레이프 콘텐츠의 **선별(shaping)뿐** — 필터·delta 모두 read-only 후처리.
-- **과필터/과-delta 리스크**: 워커 출력이 chrome 패턴과 유사하거나 앵커가 후속 내용에 우연 재출현하면 실내용 일부가 inline text에서 누락될 수 있다. 완충: ① chrome 필터는 명백 패턴만(box-drawing 전용 줄·알려진 키 힌트) ② delta는 **마지막 출현** 매치 + 미발견 시 전체 폴백(fail-open) + note로 가시화 ③ **artifact 경로(§5.1)는 필터 전 원문 스캔이라 무손실 유지** — 대용량·정밀 전달은 이미 artifact가 정답 경로(⑩ 결론), inline text는 요약적 관찰용. 최악 결과 = inline 일부 누락(타워는 note로 인지 가능, artifact로 복구 가능).
+- **과필터/과-delta 리스크**: 워커 출력이 chrome 패턴과 유사하거나 앵커가 후속 내용에 우연 재출현하면 실내용 일부가 inline text에서 누락될 수 있다. 완충: ① chrome 필터는 명백 패턴만(box-drawing 전용 줄·알려진 키 힌트) + **카드 `output` 본문 무적용**(R31 M-1 — 복구 경로 없는 lane 보호) ② delta는 **마지막 출현** 매치 + 미발견 시 전체 폴백(fail-open) + **상시 통계 note**(R31 L-2 — miss뿐 아니라 적용 턴에도 `delta: kept N/M chars`로 이상 드롭 가시화) ③ **artifact 경로(§5.1)는 필터 전 원문 스캔이라 무손실 유지** — 대용량·정밀 전달은 이미 artifact가 정답 경로(⑩ 결론), inline text는 요약적 관찰용. **conv lane 한정** 최악 결과 = inline 일부 누락(타워는 note로 인지 가능, artifact로 복구 가능); **카드 lane은 output 원문 무필터라 손실 표면 자체가 없다**(R31 M-1 정정 — summary만 필터본).
 - 카드 summary는 보드 노트로 유입되는 표시 문자열 — chrome 제거는 오염 감소 방향만.
 
 **Review impact:** protocol v1 무변경 · MCP 도구 무변경 · ConvFlight 내부 필드 추가뿐. M-lock 인접 없음이 저자 판단이나 스크레이프→wire 콘텐츠 shaping이므로 **R31 요청**(§5.1 보수 관례).
 
-**R31 질의:** *(현재 없음.)*
+**Approved by:** Fable 5 (fable-advisor consulted, claude-rev pane) R31 — `pending-revision` → **M-1 lock**(chrome 필터 적용 대상 = conv inline + 카드 summary 입력만, 카드 `output` 본문 무적용 — artifact 복구 경로 없는 lane의 비가역 손실 차단 + Security 최악-결과 문장 conv-한정 정정) · **M-2 lock**(delta 슬라이스 = 정규화 오프셋→원문 오프셋 **인덱스 맵** 동반 구축 후 원문 슬라이스, 정규화본 슬라이스 금지 — "0.23.5 프로브 동일 기법" 인용은 매칭 원리 한정으로 정정) 본문 반영 + **L-1**(32k 트리거 입력 = 필터 후 full scrape·delta 미적용)·**L-2**(delta 상시 통계 note)·**L-3**(빈 delta note)·**L-4**(done_proposal 판정 = delta 선두, 폴백 턴 현행)·**L-5**(settle 비교 = stripAnsi 후) author-close + 테스트 ④ 보강·⑩⑪ 신설 → **author-close `approved`**(Fable 사전 승인, no R31b), 2026-07-18. 상세 `docs/plan_review.md` R31.
 
 #### 0.23.5 — 2026-07-18 (`approved` R30 — **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ)** (PATCH))
 

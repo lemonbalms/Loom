@@ -1,8 +1,8 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R30** PLAN **v0.23.5**(브릿지 주입 verify 루프 3분기 확장 — 후보 ⑨+관찰 ⓓ, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18, M-1·M-2 lock 본문 반영 + L-1..L-3 author-close + 테스트 ⑫⑬ 추가, no R30b) — 갭 실재(주입 유실 당일 5회+·미제출 잔류 실증)·3분기 설계 총론 타당·M-2 불변식 확장(동일 캐시 문자열 1회) 보안 수용·fail-visible 비대칭(카드 파기/conv 유지) 정합. M-1(프로브 가시성 전제 미검증 — Claude Ink composer는 멀티라인 paste를 플레이스홀더로 접어 꼬리 48자 프로브가 구조적 miss → 오분기 재주입이 비어 있지 않은 composer에 이중 append; 완충 ②가 미검사 전제를 실측처럼 인용) + M-2(재주입 상한 "flight당 1회"의 단위 모호 — ConvFlight는 멀티턴 생존이라 문자 그대로면 1턴 소진 후 전 턴 복구 불능·스펙의 conv 재시도 근거 자기모순) **문안 lock 2건** + L-1..L-3 → author-close 후 재리뷰 없이 `approved` 전환 가능(no R30b). 직전: R29 v0.23.4 author-close `approved` → implemented `c7df503`.
-> **직전:** **R29** PLAN **v0.23.4**(HerdrClient 이벤트 구독 수명주기 수정 — 후보 ⑫, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18) — root cause 서술 코드 전수 실증·prune-without-reopen 설계 타당·글로벌 `pane.closed` 전환 소비부 무변경 실증·fail-visible 보수성 우월. M-1(신설 구독-실패 경로 자기 재감염 — `eventsSubscribe` 선-push `:279-285` + reject 롤백 부재) **lock 본문 반영** + L-1(superseded 신세대 결과 채택)·L-2(기동 글로벌 구독 실패 fail-fast)·L-3(established 강제 종료 라이브 검증 명시)·L-4(ACK 타이머 정착 시 해제 + 테스트 ⑭)·L-5(테스트 ⑤ 단위 한정) **author-close 완료** → 사전 승인 경로대로 재리뷰 없이 `approved`(no R29b). 직전: R28 v0.23.3 author-close `approved` → implemented `95cc81e`.  
+> **최신:** **R31** PLAN **v0.23.6**(워커 pane 스크레이프 delta화 + TUI chrome 필터 — 후보 ⑤+관찰 ⓐⓒ, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18, M-1·M-2 문안 lock + L-1..L-5 author-close + 테스트 ④ 보강·⑩⑪ 신설, no R31b) — 갭 실재(스크레이프 상한 실측 claude ~5.3k/grok ~2.2k/codex ~1.4k + 이전 턴 누적·summary chrome 오염 실증)·delta fail-open 폴백·보수 필터 총론·artifact 마커 pre-filter 원문 스캔·앵커 send-성공-후 갱신 전부 타당. M-1(chrome 필터 substring 매치를 **카드 결과 output 본문**에 적용 — 카드 lane은 artifact 복구 경로 부재(§5.5 out of scope)라 손실 비가역인데 Security 최악-결과 주장("artifact로 복구 가능")이 conv 전제·이 dogfood 레포 자체가 키-힌트 문자열을 본문 인용) + M-2(delta 슬라이스 "0.23.5 프로브와 동일 기법" 지칭 오류 — 프로브는 존재-검사 boolean(`.includes`)뿐, delta는 **위치**가 필요: 정규화 오프셋→원문 오프셋 인덱스 맵 없이는 공백-파괴 슬라이스 또는 re-wrap에 깨지는 라인 매치가 스펙 준수의 결과물) **문안 lock 2건** + L-1..L-5. 직전: R30 v0.23.5 author-close `approved` → implemented `8148642`.
+> **직전:** **R30** PLAN **v0.23.5**(브릿지 주입 verify 루프 3분기 확장 — 후보 ⑨+관찰 ⓓ, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18, M-1(플레이스홀더=probe-hit + TUI 3종 라이브 검증)·M-2(재주입 상한 주입 시도당 1회) lock + L-1..L-3 + 테스트 ⑫⑬, no R30b) → **implemented `8148642`**(codex 자문 F-1..F-7 반영 + M-1 라이브 검증 표 + 라이브 스모크 재주입 복구 실증). 직전: R29 v0.23.4 author-close `approved` → implemented `c7df503`.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -14,6 +14,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R31** | **v0.23.6** | **closed (pending-revision → author-close approved 2026-07-18)** | **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH) — `stripTuiChrome`(box-drawing·키 힌트 보수 필터) + conv 턴 delta 앵커(꼬리 ≤3줄 공백-정규화, fail-open 폴백) + settle 재독 + summary 정합. 갭 실재(상한 실측·오염 실증)·총론 타당. M-1: 카드 output 본문 필터 = artifact 복구 경로 없는 lane의 비가역 손실 + Security 주장 conv 전제 → 카드 output 본문 필터 제외(summary 입력만) lock. M-2: delta 슬라이스는 위치 필요 — 정규화↔원문 오프셋 인덱스 맵 명시 lock("프로브 동일 기법" 인용은 존재-검사 boolean이라 부적합). |
 | **R30** | **v0.23.5** | **closed (pending-revision → author-close approved 2026-07-18)** | **브릿지 주입 verify 루프 3분기 확장 (후보 ⑨ + 관찰 ⓓ — 주입 유실·미제출 잔류 fail-visible 복구)** (PATCH) — 프로브(공백 정규화 꼬리 48자) 기반 (a) 재주입 1회 (b) CR 재전송 (c) fail-visible. 갭 실재·설계 총론·보안(동일 캐시 문자열 재주입) 타당. M-1: Claude Ink composer paste-플레이스홀더로 프로브 (b) 분기 구조적 도달 불가 + 비어 있지 않은 composer 이중 append → 플레이스홀더=hit 판정 + TUI별 composer 가시성 라이브 검증 lock. M-2: 재주입 상한 "flight당"이 conv 멀티턴 flight에서 1턴 소진 → "verify 호출당 1회"로 lock. |
 | **R29** | **v0.23.4** | **closed (pending-revision → author-close approved 2026-07-18)** | **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫ — card.done 유실 / "스타트업 레이스" 실체)** (PATCH) — 구독 prune + pre-ACK reject/ACK 타임아웃 + `pane.closed` 글로벌 1회 + fail-visible + 관측성. root cause·라인 참조 전수 실증, 설계 건전. M-1: `eventsSubscribe` 선-push(`:279-285`) + reject 롤백 부재 → 신설 실패 경로가 pane 닫고 구독 잔존 = 자기 재감염(이후 dispatch 연쇄 실패) → reject-시-롤백 문안 lock 반영 + L-1..L-5 author-close. |
 | **R28** | **v0.23.3** | **closed (pending-revision → author-close approved 2026-07-18)** | **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH) — 워커 직접 파일 쓰기 + `[ARTIFACT] <파일명>` 마커 → 브릿지 4계층 검증 후 기존 방출 경로로 ref. 갭 실재(TUI ~5.3k 실측)·스펙 정렬·소비부 무변경 확인. M-1: 방출 경로 "재사용" 문안이 `packageConvTurnArtifact` 실계약과 모순(다건 마커 클로버·inline text 대체·파일명 불일치 + `turn-*` 네임스페이스 충돌 미규정) → 문안 lock. |
@@ -31,7 +32,52 @@
 
 ## Open (blocking)
 
-*(현재 없음 — R30 author-close `approved` 완료, 2026-07-18.)*
+*(없음 — R31 M-1·M-2 lock + L-1..L-5 author-close 완료, 2026-07-18. 상세 R31 author-close 로그.)*
+
+### R31 author-close 로그 (2026-07-18, 아키텍트)
+
+- **M-1 반영**: PLAN 0.23.6 "TUI chrome 필터" 행에 적용 대상 lock 문안 명기(conv inline + 카드 summary 입력만, 카드 `output` 본문 무적용 + 근거) · "카드 summary 정합" 행에 output 무필터 명시 · Security ①에 카드 output 무적용, 최악-결과 문장 conv-한정 정정 · 테스트 ⑩ 신설.
+- **M-2 반영**: "conv 턴 delta화" 행에 슬라이스 메커니즘 단락(정규화 오프셋→원문 오프셋 인덱스 맵 동반 구축 → 마지막 출현 매치 끝의 원문 오프셋에서 원문 슬라이스, 정규화본 슬라이스 금지) + "0.23.5 프로브 동일 기법" 인용을 매칭 원리 한정으로 정정 · 테스트 ④에 슬라이스 원문 무결성 어서션 보강.
+- **L-1**: "32k 트리거와의 관계" 행 신설(임계 판정·패키징 입력 = 필터 후 full scrape·delta 미적용·앵커는 패키징 턴에도 갱신) + 테스트 ⑪ 신설. **L-2**: delta 적용 턴 상시 통계 note `delta: kept N/M chars` 명기 + Security ② 정정. **L-3**: 빈 delta note `delta empty (no new output)` 명기. **L-4**: "done_proposal 판정 입력" 행 신설(delta 텍스트 선두 기준 + 폴백 턴 현행 유지 — 권고안 채택). **L-5**: settle 비교 = `stripAnsi` 후 텍스트 기준 명기.
+- PLAN 헤더 Status/Fable-when·섹션 헤더·Approved by 갱신 → **`approved`** (no R31b, Fable 사전 승인 조건 충족).
+
+---
+
+## Review R31 — Plan v0.23.6 (워커 pane 스크레이프 delta화 + TUI chrome 필터 — 후보 ⑤ + 관찰 ⓐⓒ, PATCH)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.6` changelog(:53-80) + header + 코드 대조(`packages/host/src/bridge-runtime.ts` — `:876-1032` `sendWorkerTurnFromPane`(`:891-895` raw `paneRead(recent,200)`+`stripAnsi` — 필터·delta·settle 삽입 지점 / `:904` `[DONE_PROPOSAL]` kind 판정이 **raw 스크레이프 선두** 기준(L-4 근거) / `:922-963` artifact 마커 스캔이 원문 `output` 대상 + R28 L-1 dedup(`:948-951`) — pre-filter 유지 주장의 정합 근거 / `:972-991` 32k 측정 트리거 `output.length > MAX_CONV_TURN_INLINE_CHARS` → `packageConvTurnArtifact(fullText: output)` — delta·필터와의 입력 관계 미규정(L-1 근거) / `:1009-1028` send 성공 후 `lastOwnSeq`·`pendingDedup` 커밋 — 앵커 send-성공-후 갱신과 동형 패턴 실증)·`:1279-1323` `finishCard`(`:1287-1294` scrape+`truncateTail(200k)`·`:1301-1304` summary=마지막 non-empty 줄 — 관찰 ⓒ 오염 지점 실증; **카드 lane엔 artifact 방출 경로 부재**(파일 규약은 conv 한정, §5.5 out of scope — M-1 근거))·`:113-115` `normalizeForProbe`(**모든 공백 제거**)·`:128-134` `isInjectProbeHit`(**존재-검사 boolean `.includes` — 위치 반환 없음, M-2 근거**)·`:1034-1069` `verifyInjectOrRetry`(settle 비대상 주장 — 이 PATCH 무접촉 확인, M-2/M-4 주입 불변식 무변경 성립)·`:148-156` `ConvFlight`(앵커 필드 추가 지점·`:154` `emittedArtifacts`), `packages/host/src/conv-artifact-pack.ts:51` `ARTIFACT_MARKER_LINE` 정확-라인 앵커 regex·`:134-141` `scanArtifactMarkers`, `packages/protocol/src/conv-contract.ts:26` 32k 상수·`:127` turn `text`는 max-only(빈 delta 스키마 유효 — L-3 근거), `packages/host/src/herdr-client.ts:598` `stripAnsi`) + `HANDOFF.md`·PLAN Why 절(관찰 ⓐⓒ + 상한 실측 claude ~5.3k/grok ~2.2k/codex ~1.4k — 0.23.5 수정 카드 회수 note 오염 재확인 포함) + `docs/plan_review.md` R30(직전 형식·M 기준 선례)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`pending-revision`** — M-1·M-2 문안 lock + L-1..L-5 author-close 후 **재리뷰 없이 `approved` 전환 가능** (Fable 사전 승인, no R31b).
+
+### 결정적 발견 (성패 지점)
+delta 앵커의 핵심 문안 — *"앵커를 공백-정규화 매치(0.23.5 프로브와 동일 기법)로 마지막 출현 위치 탐색 → 이후 내용만 inline text로"* — 가 지칭하는 0.23.5 프로브는 **존재-검사 boolean**(`isInjectProbeHit` `:128-134`의 `.includes`)이고, `normalizeForProbe`(`:113-115`)는 **모든 공백을 제거**한다. delta는 존재가 아니라 **슬라이스 위치**가 필요하다 — 정규화 공간의 매치 오프셋을 원문 오프셋으로 되돌리는 **인덱스 맵** 없이는, 문안대로의 구현이 (i) 정규화본을 슬라이스해 공백·개행이 전부 파괴된 inline text를 방출하거나 (ii) 라인 단위 매치로 후퇴해 TUI re-wrap(공백-정규화를 채택한 바로 그 이유)에서 앵커 miss를 양산한다. R25–R30 M 기준("문안대로 구현하면 결함이 스펙 준수의 결과물") 정확히 부합 → M-2. 같은 기준으로, chrome 필터를 **카드 결과 output 본문**에 적용하는 문안은 artifact 복구 경로가 없는 lane(§5.5 out of scope)에서 비가역 손실을 낳는데 Security 최악-결과 주장("artifact로 복구 가능")은 conv 전제다 → M-1.
+
+### Checklist
+- [x] **갭 실재 — 실측·코드 이중 확인** — conv 턴(`:891-895`)·카드 결과(`:1287-1294`) 모두 매번 `recent 200` 전체 스크레이프를 그대로 실음(delta 커서 없음). summary = 마지막 non-empty 줄(`:1301-1304`)이라 관찰 ⓒ의 키-힌트 오염이 구조적(0.23.5 수정 카드 회수 note로 당일 재확인). 상한 실측(claude ~5.3k/grok ~2.2k/codex ~1.4k)과 결합하면 반복 콘텐츠+chrome의 잠식 비용 주장 성립.
+- [x] **delta 설계 총론 타당 (M-2 제외)** — 꼬리 앵커 ≤3줄·마지막 출현 매치·**미발견 시 전체 폴백 + note(fail-open — 유실보다 중복)**·앵커 갱신 send-성공-후(기존 `lastOwnSeq`/`pendingDedup` 커밋-후 패턴 `:1009-1028`과 동형)·카드 lane delta 비적용(flight당 결과 1회) 전부 건전. 단 슬라이스 메커니즘 미규정이 M-2, last-occurrence의 인용-재출현 무음 드롭이 L-2.
+- [x] **chrome 필터 보수성 방향 타당 (적용 lane 제외)** — 명백 패턴 한정(box-drawing 전용/테두리·`│ ❯` 컴포저·알려진 키 힌트)·미지 chrome 통과 기본·망라 수집 out of scope 명시. 단 "포함 줄" substring 매치를 카드 output 본문에 적용하는 것이 M-1(이 dogfood 레포 자체가 PLAN·lessons에 키-힌트 문자열을 본문 인용 — 워커가 그 문서를 다루는 카드에서 실내용 줄 소실).
+- [x] **artifact 마커 pre-filter 원문 스캔 정합** — `scanArtifactMarkers`는 정확-라인 앵커 regex(`conv-artifact-pack.ts:51`)로 원문 `output`을 스캔(`:922-963`); 필터 전 원문 유지 시 마커 유실 없음 + 이전 턴 잔존 마커는 R28 L-1 dedup(`:948-951`)이 이미 처리. 스펙 주장 성립 — 테스트 ⑥이 커버.
+- [x] **settle 재독 유계·부작용 수용** — 최대 3독·250ms 간격이라 idle 전이 지연 상한 ~500ms+2 read. verify 루프 paneRead는 비대상(스펙 명시 — `:1034-1069` 무접촉 확인, **M-2/M-4 주입 불변식 무변경 성립**). 단 비교 대상이 raw면 ANSI 커서/스피너 churn으로 영구 불일치 → 항상 3독(유계라 안전하나 무의미) — 비교는 `stripAnsi` 후 텍스트로 명시(L-5).
+- [x] **wire·스키마 무변경 성립** — turn `text`는 max-only(`conv-contract.ts:127` — 빈 delta도 유효), note는 기존 자유 문자열 관례, summary는 표시용 자유 문자열(하위 호환 무해 — 오염 감소 방향만). ConvFlight 내부 필드 추가뿐. 신규 신뢰 표면 없음(read-only shaping) 주장 성립.
+- [x] **테스트 표 ①–⑨** — chrome 3종 샘플·비-chrome 보존(①)·2턴 delta(②)·miss 폴백+note(③)·wrap-변형(④)·summary(⑤)·마커 pre-filter(⑥)·settle(⑦)·send 실패 시 앵커 미갱신(⑧)·회귀(⑨) 커버. 단 M-1 카드 output 실내용 보존(⑩ 신설)·M-2 슬라이스 원문 무결성(④ 보강)·L-1 delta/32k 상호작용(⑪ 신설) 보강 필요.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (Med, binding — PLAN 문안 lock): chrome 필터의 카드 결과 output 본문 적용 — artifact 복구 경로 없는 lane의 비가역 손실 + Security 최악-결과 주장의 lane 불일치.** 카드 lane엔 파일-기반 artifact 규약이 없고(0.23.3은 conv 한정, §5.5 out of scope) `finishCard`의 `output`(≤200k, `:1287-1294`)이 유일 전달 표면이다 — "최악 결과 = inline 일부 누락, artifact로 복구 가능"(Security ②③)은 conv에만 성립. "포함 줄" substring 매치는 이 dogfood 레포에서 실제 위양성을 낳는다(PLAN 0.23.6 Why 절·lessons.md·plan_review.md가 `Shift+Tab:mode │ Ctrl+.:shortcuts`를 본문 인용 — 그 문서를 읽고 출력하는 카드의 결과에서 해당 줄이 무복구 소실). 카드 output은 200k 상한이라 chrome 몇 줄의 잠식 실익도 없다. 잠글 문안: **"chrome 필터 적용 대상 = conv 턴 inline text + 카드 `summary` 산출 입력. 카드 결과 `output` 본문에는 적용하지 않는다(카드 lane은 artifact 복구 경로 부재 — 손실 비가역; 200k 상한에서 chrome 잠식 실익 없음)."** + Security 최악-결과 문장을 conv-한정으로 정정. + 테스트 ⑩: 키-힌트 문자열을 본문 인용하는 카드 output이 무손실 보존. High 아님: 손실이 특정 콘텐츠 패턴 한정 + summary·conv 방향은 건전. (advisor 일치 — 카드 lane 복구 경로 부재 코드 확증은 advisor 보강.)
+- **M-2 (Med, binding — PLAN 문안 lock): delta 슬라이스 메커니즘 미규정 — "0.23.5 프로브와 동일 기법" 지칭이 존재-검사 boolean이라 위치 산출 불가.** 근거는 결정적 발견 참조. 잠글 문안: **"공백-정규화 문자열 생성 시 정규화 오프셋→원문 오프셋 인덱스 맵을 동반 구축한다. 앵커의 마지막 출현 매치 **끝**에 대응하는 원문 오프셋에서 (chrome-필터된) 원문 텍스트를 슬라이스한다 — 정규화본 슬라이스 금지(공백·개행 파괴). '0.23.5 프로브와 동일 기법'은 공백-정규화 매칭 원리의 재사용만을 뜻하며 존재-검사 헬퍼(`isInjectProbeHit`)의 재사용이 아니다."** + 테스트 ④를 wrap-변형 매치 성공에 더해 **슬라이스 결과의 원문 무결성(공백·개행 보존)** 어서션까지 보강. High 아님: 오동작이 콘텐츠 정형 손상(공백 소실)이지 유실·보안 표면이 아니고 fail-open 폴백은 별개 경로로 생존. (advisor 일치 — 결정 리스크 지목도 advisor 일치.)
+- **L-1 (Low, author-close): delta·chrome 필터와 32k 측정 트리거의 입력 관계 미규정.** 현행 트리거·패키징은 raw `output` 기준(`:972-991`). 한 줄 고정: **임계 판정·`packageConvTurnArtifact` 입력 = chrome-필터 후 full scrape(delta 미적용); delta는 ≤32k 인라인 분기에만 적용; 앵커는 패키징 발화 턴에도 full-scrape 꼬리에서 갱신.** TUI 상한 실측상 near-moot이나 비-TUI pane에서 도달 가능.
+- **L-2 (Low, author-close): 앵커 late-false-match의 무음 드롭 — note는 miss에만 발화.** 워커가 직전 턴 꼬리를 인용하면(이 dogfood 레포에서 개연) 마지막-출현 매치가 인용 지점 뒤로 슬라이스해 그 앞의 실내용을 **note 없이** 드롭한다 — Security의 "note로 가시화" 완충은 miss 폴백에만 성립. 마지막-출현 선택은 이 드롭을 극대화하는 방향임을 인지하고, 닫기: delta 적용 턴에 상시 통계 note(예: `delta: kept N/M chars`) 부가 — 타워가 이상 드롭을 식별할 유일한 채널. (advisor 보강 — 극대화 논증.)
+- **L-3 (Low, author-close): 빈 delta 턴 무규정.** 앵커가 스크레이프 말미에 매치하면 text=""(스키마 유효 `:127`). 타워 가독성을 위해 note `delta empty (no new output)` 한 줄 명시.
+- **L-4 (Low, author-close): `[DONE_PROPOSAL]` kind 판정 입력 미규정.** 현행 판정은 raw 스크레이프 선두(`:904`) — 이전 턴 잔존 콘텐츠가 선두를 차지하는 다중턴에선 사실상 도달 불가(기존 취약, 이 PATCH 도입 아님). delta 텍스트 선두 기준으로 옮기면 이 취약이 자연 해소되나 의미 변경이므로 어느 쪽인지 한 줄 고정(권고: delta 텍스트 기준 + 폴백 턴은 현행 유지).
+- **L-5 (Low, author-close): settle 재독 비교 대상 미규정.** raw 비교면 ANSI 커서/스피너 churn으로 영구 불일치 → 항상 3독. 비교는 `stripAnsi` 후 텍스트 기준 명시(유계라 안전 문제는 아님 — 정밀도·낭비 문제). (advisor 발견.)
+
+### Decision notes
+- **verdict 구조 (R25–R30 동형):** M-1·M-2 모두 "문안대로 구현하면 결함이 스펙 준수의 결과물" 부류 — M-1은 적용 lane 열거가 복구-불가 표면을 포함하고 Security 논증이 그 lane에 부적용, M-2는 인용된 기법이 필요한 원시(위치)를 제공하지 않아 충실 구현이 정형 손상 또는 re-wrap 취약으로 귀결. 둘 다 설계 재작업이 아닌 문안 lock(적용 대상 한 줄 + 메커니즘 한 단락) + 테스트 2건이고, 나머지 설계(fail-open 폴백·보수 필터 방향·pre-filter 마커 스캔·send-성공-후 앵커 갱신·settle 유계)는 전부 건전함을 코드 대조로 확인. M-1·M-2 반영 + L-1..L-5 author-close 후 재리뷰 없이 `approved` 전환 (no R31b).
+- **결정을 가르는 리스크:** delta가 "위치"를 요구하는데 스펙이 "존재"용 도구를 지칭하는 것 — 매칭 원리(공백-정규화)는 옳지만 원시가 다르다. 인덱스 맵 한 단락으로 잠그면 나머지는 문구·테스트 보강.
+- **보안 판단 요지:** 신규 신뢰 표면 없음 주장 성립 — 필터·delta·settle 전부 이미-untrusted 스크레이프의 read-only 후처리, 주입 경로(M-2/M-4)·verify 루프(`:1034-1069`) 무접촉 확인, wire 스키마 무변경(text max-only·note/summary 자유 문자열). 격상 finding 없음. 위험의 실체는 보안이 아니라 **가용성(콘텐츠 손실)** — M-1·L-2가 그 경계.
+- **스펙-코드 정합:** 스펙 라인 참조(`sendWorkerTurnFromPane` ~:876·카드 스크레이프 ~:1284·summary ~:1301) 실코드 일치. 32k 트리거(`:972`)·마커 스캔(`:922`)·앵커 갱신 대상 커밋 패턴(`:1009-1028`) 대조 완료.
+- **수정 파일 범위:** 이 리뷰는 `docs/plan_review.md` + PLAN 헤더 Status `pending-revision` 동기화만 수정(디스패치 브리프 지시). M/L 문안 반영·author-close·`approved` 전환은 아키텍트/implementer 수행.
+- Advisor: fable-advisor consulted: yes. (verdict 일치: pending-revision, M-1·M-2 확정 — "둘 다 문안 lock으로 해소 가능, 재설계 불요" 일치. M-2를 결정 리스크로 지목 일치. 카드 lane 복구 경로 부재 코드 확증·L-2 last-occurrence 극대화 논증·L-5 settle 비교 대상은 advisor 보강/발견.)
 
 ---
 
