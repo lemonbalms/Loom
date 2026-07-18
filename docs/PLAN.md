@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.23.3** |
-| **Status** | **`approved`** (R28 `pending-revision` → M-1 lock 본문 반영 + L-1..L-3 author-close 완료 → author-close `approved`, no R28b — Fable 사전 승인, 2026-07-18, `docs/plan_review.md` R28) — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH): 실측 확정된 구조적 블로커(Claude Ink TUI pane 스크레이프 ~5.3k 상한 → 브릿지 측정 32k 트리거 라이브 도달 불가)를 해소한다. 워커가 대용량 산출물을 규약 디렉터리에 **직접 파일로 쓰고** 마커 라인으로 알리면, 브릿지가 파일명 검증 후 기존 0.23.1 패키징 경로로 artifacts[] ref를 방출한다. **relay 와이어 protocol v1 무변경 · M-2 소비부 무변경.** |
-| **Supersedes** | 0.23.2 |
+| **Version** | **0.23.4** |
+| **Status** | **`pending-review`** (R29 대기) — **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫ — 브릿지 card.done 유실 / "스타트업 레이스" 실체)** (PATCH): 닫힌 pane의 구독이 append-only 리스트에 잔존해 다음 `eventsSubscribe` 재개설을 오염시키고(herdr가 무효 스트림을 ACK 전에 close), close 핸들러가 pending promise를 정착시키지 않아 브릿지가 구독 await에 영구 고착 → 프롬프트 주입 자체가 미실행되는 버그를 수정한다. 구독 리스트 prune + pre-ACK close reject/ACK 타임아웃 + `pane.closed` 글로벌 1회 구독 + 구독 실패 fail-visible + 관측성(`eventConnected`/stderr 유한 로그). **relay 와이어 protocol v1 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경.** |
+| **Supersedes** | 0.23.3 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | **R28 author-close `approved`** (2026-07-18, Fable 5/fable-advisor consulted — `pending-revision` → M-1 lock 본문 반영 + L-1..L-3 author-close 완료, no R28b) — 직전: R27 `approved`(0.23.2) → implemented `91bee75` · R26 author-close `approved`(0.23.1) → implemented `e5ccc4d`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 §5.1 "워커 CLI가 프롬프트 규약만으로 자가 적용" 원의도에 구현을 정렬하는 것). |
-| **Fable 5 when** | **Required** — 워커 제어 입력(마커 파일명)이 브릿지의 파일 읽기·전송을 유도하는 **신뢰 경계 인접** 경로 신설 + §5.2 트리거 의미 변경 (§5.1 보수 판단). **R28 완료(2026-07-18): `pending-revision` → author-close `approved`(M-1 lock 반영 + L-1..L-3), `docs/plan_review.md` R28.** |
+| **Approval** | R29 `pending-review` — 직전: R28 author-close `approved`(0.23.3) → implemented `95cc81e` · R27 `approved`(0.23.2) → implemented `91bee75`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 내부 이벤트 전달 신뢰성 수정, conv/card 프로토콜 의미 무변경). |
+| **Fable 5 when** | **Required** — 신뢰 경계 변화는 없으나 카드/conv 완료 전달의 핵심 경로(이벤트 스트림) 수명주기 재설계 + 실패 의미 변경(무음 blind 진행 → fail-visible failed result). HANDOFF가 R29 리뷰(pane 레인)를 기지정. |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,40 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.23.4 — 2026-07-18 (`pending-review` — **HerdrClient 이벤트 구독 수명주기 수정 (후보 ⑫)** (PATCH))
+
+**Product one-liner:** 같은 브릿지에서 첫 pane이 닫힌 뒤 dispatch한 카드/conv가 이벤트 구독 고착으로 프롬프트 주입조차 못 받던 버그(card.done 유실 + "스타트업 레이스"로 오인되던 composer 빈 현상의 실체)를 수정한다 — 닫힌 pane 구독 정리, 구독 실패의 즉시 정착(fail-visible), 이벤트 스트림 상태의 관측성 확보.
+
+**Why (후보 ⑫ root cause — 2026-07-18 codex pane 조사로 확정, 재현·반증 완료):**
+- **`HerdrClient.subscriptions`는 append-only** (`herdr-client.ts:278-286`) — flight가 끝나 pane이 닫혀도 해당 구독이 리스트에 남는다. 다음 카드의 `eventsSubscribe`는 오염된 전체 리스트로 이벤트 연결을 재개설하고, herdr는 무효(닫힌 pane) 구독이 포함된 스트림을 **ACK 전에 close**한다.
+- **`openEventConnection`의 close 핸들러는 pending promise를 정착시키지 않는다** (`:357-363` — pre-ACK close 시 resolve/reject 없음, ACK 타임아웃도 없음) → `bridge-runtime.ts:496`의 `await herdr.eventsSubscribe(...)`가 **영구 미정착** → `:507` 프롬프트 주입 미실행. grok/codex 카드에서 관찰된 "composer 빈 현상"(당일 6회+)의 상당수가 타이밍 레이스가 아니라 이 버그였다(첫 pane close 후 dispatch한 카드에서만 재현된 사실과 일치).
+- **재연결도 오염 리스트를 재전송** (`:306` — `this.subscriptions` 그대로) → 백오프 무한 반복. stderr는 데몬 spawn 시 `"ignore"`(`bridge-spawn.ts:64-65`)라 전 과정이 무신호.
+- 재현·반증: pane A 생존 시 B 구독 ACK 106ms 정상 / A 닫힌 후 B 구독 타임아웃·이벤트 0건 / A 구독 prune 시 즉시 복구.
+- 부차: `pane.closed`는 글로벌 스키마인데 pane별로 중복 구독 중.
+
+**What (범위 — PATCH; herdr RPC 표면·wire 무변경):**
+| 항목 | 내용 |
+|------|------|
+| **`herdr-client.ts` — 구독 prune API** | `eventsPrune(paneId: string)` 신설: 저장 리스트에서 해당 `pane_id`의 구독 항목을 제거한다. **소켓 재개설 없음** — 열린 이벤트 연결의 잔존 구독은 무해하고(닫힌 pane은 이벤트를 내지 않음), 오염은 다음 재개설 시 리스트로만 전파되므로 저장 리스트 정리로 충분하다. pane_id 없는 글로벌 항목(`pane.closed`)은 대상 아님. **prune 후 리스트가 비면** 이벤트 소켓 close + 재연결 타이머 취소(빈 리스트 재연결 루프 방지 — 기존 `:362` `if (this.subscriptions.length)` 가드와 정합). `close()`는 구독 리스트도 비운다(위생). |
+| **`herdr-client.ts` — pre-ACK close reject + ACK 타임아웃** | `openEventConnection`: ① `close` 핸들러에서 **미정착(pre-ACK) 상태면 reject**(현행: 무정착 방치) ② ACK 대기 타임아웃(`opts.timeoutMs ?? 15s`) — 초과 시 reject + 소켓 destroy. reject 후에도 저장 리스트가 남아 있으면 기존 `scheduleEventReconnect` 백오프는 유지하되, 호출자(`eventsSubscribe`)에게는 실패가 **즉시 전파**된다(브릿지 fail-visible의 전제). superseded 세대(`myGeneration !== this.eventGeneration`) reject는 세대 교체 쪽 promise와 혼동하지 않도록 자기 promise만 정착. |
+| **`herdr-client.ts` — `pane.closed` 글로벌 1회** | 브릿지 시작 시(herdr ping 직후) `eventsSubscribe([{ type: "pane.closed" }])` 1회로 전환하고, 카드/conv 스폰 시 구독은 `pane.agent_status_changed`(pane별)만 추가한다. `onHerdrEvent`(`bridge-runtime.ts:1023`)는 이미 paneId로 flight 맵을 조회해 라우팅하므로 소비부 무변경. 부수 효과: 브릿지 기동 직후부터 이벤트 연결이 열려 `eventConnected` 관측 가능. |
+| **`bridge-runtime.ts` — prune 호출 지점** | flight/convFlight가 맵에서 제거되는 **모든** 지점에서 `herdr.eventsPrune(paneId)` 호출: 카드 — inject 실패(`:509`), pane_closed(`:1050`), blocked(`:1079`), done/idle(`:1084`); conv — conv.close(`:699`), inject 실패(`:771`), pane_closed(`:1104`). |
+| **`bridge-runtime.ts` — 구독 실패 fail-visible** | 카드 경로(`:495-502`): `eventsSubscribe` 실패 시 현행 "log 후 blind 진행"을 폐기 — flight 정리 + `sendFailedResult(reason: "events_subscribe_failed")` + pane close 시도. 이벤트를 못 받는 카드는 완료를 영원히 전달 못 하므로 진행이 무의미하다. conv 경로(`:741-748`): convFlights/convPaneByConvId 정리 + `sendWorkerTurnFromPane(flight, "blocked", "events_subscribe_failed")`로 타워에 통지(기존 pane_closed blocked 턴과 동일 표면). |
+| **관측성 — status 노출** | 브릿지 status op(`bridge-runtime.ts:271-282`)에 추가: `eventConnected: boolean`(이벤트 소켓 ACK 후 연결 상태) · `lastSubscribeAck: string \| null`(마지막 ACK ISO 시각) · `eventSubscriptions: number`(저장 리스트 크기). `loom bridge status` 표시에 반영. |
+| **관측성 — stderr 유한 로그** | `bridge-spawn.ts:64-65` `stderr: "ignore"` → `loomDir()/bridge/<profile>.stderr.log`로 리다이렉트(스폰 시 **truncate** — 데몬 실행 1회분만 보존해 유한 보장, 0600). `[loom-bridge]` log()가 처음으로 프로덕션에서 관찰 가능해진다. 로그에 워커 프롬프트 본문·핸드오프 body를 쓰지 않는 기존 원칙 유지(현행 log() 호출은 에러·상태만 — 회귀 확인 항목). stdout은 `"ignore"` 유지. |
+| **테스트** | fake herdr fixture: ① flight 종료 → prune → 다음 `eventsSubscribe` 요청 payload에 닫힌 pane 부재 ② pre-ACK close(FIN) → `eventsSubscribe` reject 전파 ③ ACK 타임아웃 → reject ④ prune 후 재연결 리스트에 닫힌 pane 부재(오염 재전송 회귀) ⑤ 마지막 pane prune → 소켓 close + 재연결 타이머 취소 ⑥ `pane.closed` 글로벌 항목은 prune 비대상·카드 2건에도 1개 유지 ⑦ 카드 subscribe 실패 → `events_subscribe_failed` failed result + flights 제거 ⑧ conv subscribe 실패 → blocked 턴 + convFlights 정리 ⑨ status op `eventConnected`/`lastSubscribeAck`/`eventSubscriptions` 반영 ⑩ **버그 재현 통합 테스트**: 카드 A done → pane close → 카드 B dispatch 시 구독·주입 정상(수정 전이면 고착) ⑪ 정상 단일 카드 working→idle→done 회귀 ⑫ `close()` 시 리스트·타이머 정리. |
+
+**Out of scope (이 버전 아님):** 브릿지 주입 verify 루프 확장(후보 ⑨ — composer 잔류 감지·재주입·fail-visible 3분기; ⑫ 수정 후 잔여 레이스만 재평가) · stderr 로그 로테이션/사이즈 캡(truncate-on-spawn으로 충분, 필요 시 후속) · herdr upstream 구독 프로토콜 개선 제안(관찰 대상) · 이벤트 스트림 heartbeat/능동 재구독 검증 · ②③⑤⑥⑦ 기존 후보들.
+
+**Security / trust (R29 판단 대상):**
+- **신뢰 경계 무변경** — 이벤트 소켓은 로컬 herdr 유닉스 소켓(기존 신뢰 모델), wire·MCP·핸드오프 표면 전부 무변경. 신설 표면은 로컬 stderr 로그 파일뿐: `loomDir()` 내부 0600, 프롬프트 본문·핸드오프 body 비기록 원칙 유지.
+- **실패 의미 변경이 핵심 리뷰 대상**: 구독 실패 시 무음 blind 진행 → fail-visible failed result/blocked 턴. 오탐(일시 herdr 재시작 중 dispatch 도착) 시 카드가 failed로 회신되지만, 이는 현행 "영원히 doing 고착 + 수동 정리"보다 보수적으로 우월(재-dispatch 가능). 
+- **dedup/재전송 안전**: prune은 브릿지 내부 상태만 변경 — 카드 결과 dedup(`processedHandoffs`)·conv seq 단조성에 영향 없음.
+
+**Review impact:** protocol v1 무변경 · MCP 도구 수 무변경 · 신뢰 경계 무변경. 카드/conv 완료 전달 핵심 경로의 수명주기 재설계 + 실패 가시화 의미 변경 → **R29 요청** (HANDOFF 기지정).
+
+**R29 질의:** *(현재 없음.)*
 
 #### 0.23.3 — 2026-07-18 (`approved` author-close after R28 `pending-revision` — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH))
 
