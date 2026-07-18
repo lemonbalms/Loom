@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R26** PLAN **v0.23.1**(§5.2 artifact 패키징 호출부 PATCH) **`approved`**(author-close 2026-07-18, claude-impl PATCH) — M-1(scp host 해석의 수신측 로컬 설정 출처 고정 + 매핑 부재 fail-closed)·M-2(fetch 명령 제시 문자열 셸-인용 + charset allowlist) locks PLAN 본문 반영 + L-1(ref.path 틸드-리터럴 규약형)·L-2("전문"=회수 스크레이프 전문 한정) author-close 완료(Fable 사전 승인, no R26b). 직전: R25 v0.23.0 `approved` → implemented `e4dab9e`.  
+> **최신:** **R27** PLAN **v0.23.2**(dispatch/conv agentKind allowlist 확장 codex·grok, PATCH) **`approved`**(즉시 승인 2026-07-18 — M-lock 없음) — 원격 실행 표면 1→3종 확대의 유일한 게이트인 "브릿지 로컬 argv 명시 등록(기본 미등록 = fail-closed)" 불변식이 코드로 보증됨을 확인. L-1(`agentArgv` 비배열 값 필터 — claim 후 무신호 증발 방지)·L-2(설정 예시에 등록=자율성 수용 고지)는 구현 PATCH 내 author-close. 직전: R26 v0.23.1 `approved` → implemented `e5ccc4d`.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,6 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R27** | **v0.23.2** | **closed (approved 즉시 승인 2026-07-18)** | **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH) — 공용 enum 1→3종, 실행 게이트는 브릿지 로컬 `agentArgv` 명시 등록(기본 미등록 = 0.23.1 동일 fail-closed)·wire argv 금지(§4.4.2) 유지. M-lock 없음(보수 결정이 본문 기명문 + 원시 기존재). L-1(`agentArgv` 형상 필터)·L-2(등록 고지) author-close → 구현 PATCH 포함. |
 | **R26** | **v0.23.1** | **closed (pending-revision → author-close approved 2026-07-18)** | **§5.2 artifact 패키징 호출부** (PATCH) — 브릿지 truncate 폴백 제거→scp 규약 패키징(전문 보존) + 타워 M-2 검증 통과 fetch 명령 **제시**(자동 실행 없음). 갭 실재·§5 이전 충실·스코프(자동 git push 유예 포함) 확인. 단 scp host 해석 출처가 "로컬 conv state"로 옮겨져 §5.3③ "수신측 로컬 설정" 왜곡(M-1) + 셸 복붙이 예정된 제시 문자열 표면의 안전 규약 미규정(M-2) → PLAN 문안 lock 2건 + L-1·L-2 author-close 완료. |
 | **R25** | **v0.23.0** | **closed (approved → implemented `e4dab9e` 2026-07-18)** | **conv 멀티턴 수직 슬라이스** — approved CONV_SPEC(R24)의 구현 PLAN. 스펙 이전 충실·스코프 minimal-but-sufficient·왜곡 없음. 단 R24 M-1 "양측 pin"의 **브릿지 측 집행 서술 공백**(M-1) + **미지 convId fail-closed 기본값 미고정**(M-2) → PLAN 문안 lock 2건 + L-1..L-4 author-close. |
 | **R24** | **CONV_SPEC v1 (스펙 문서, PLAN 버전 아님)** | **closed (pending-revision → author-close approved 2026-07-18)** | **크로스머신 CLI 멀티턴 대화 1단계 스펙** — 티켓 #2·#5·#6·#7·#8·#9 결정 통합 충실·relay 무변경 원칙 일관. 단 선언된 M-4 경계가 신규 표면 2곳에 미적용: **M-1 conv↔peer pin**(타워 측 턴 발신자 바인딩) + **M-2 artifact ref 검증 규약**(fetch 명령 기계 조립 방어). L-1..L-5 author-close. 구현 PLAN은 locks 반영 스펙 기준. |
@@ -26,7 +27,43 @@
 
 ## Open (blocking)
 
-*(현재 없음 — R26 M-1/M-2 문안 PLAN v0.23.1 본문 반영 + L-1/L-2 author-close 완료, 2026-07-18.)*
+*(현재 없음 — R27 `approved` 즉시 승인(M-lock 없음), L-1·L-2는 구현 PATCH 내 author-close, 2026-07-18.)*
+
+---
+
+## Review R27 — Plan v0.23.2 (dispatch/conv agentKind allowlist 확장 codex·grok, PATCH)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.2` changelog + header + 코드 대조(`packages/protocol/src/card-contract.ts:18-19` 현행 enum claude-only, `packages/protocol/src/conv-contract.ts:11,50` 공용 enum import — 두 표면 동시 확장 확인, `packages/host/src/bridge-config.ts:21-23` DEFAULT_AGENT_ARGV claude-only·`:59-64` loadBridgeConfig 병합·`:101-112` resolveAgentArgv null-guard + shell/sh/bash 금지, `packages/host/src/bridge-runtime.ts:434-440` 카드 `agent_kind_not_allowed` fail-closed·`:589-591` conv reject·`:344-350` pollTimer 예외 삼킴 경로·`:372-377` claim 선행, `packages/host/src/conv-ops.ts:94` agentKind `"claude"` 하드코딩, `packages/mcp-server/src/stdio.ts:254-259` dispatch_card agentKind 기노출·`:289-307` conv_open 스키마 agentKind 현재 부재) + `docs/plan_review.md` R23(브릿지 신뢰 경계·§4.4.2 argv 금지 원칙)·R25·R26 선례(심각도 캘리브레이션)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`approved`** (즉시 승인 — M-lock 없음. L-1·L-2는 구현 PATCH 내 author-close, 재리뷰 불요.)
+
+**Author-close 완료 (2026-07-18, claude-impl):** L-1 — `bridge-config.ts` 신규 `sanitizeAgentArgv()`(비배열/빈배열/비문자열-요소 값 병합 시 드롭 = 미등록 fail-closed) + 테스트 4종. L-2 — HERDR_DESIGN §4.4.2 설정 예시 블록에 등록 의미 고지 문장 삽입. 구현 커밋에 포함(아래 PLAN Implemented-as-of).
+
+### 결정적 발견 (성패 지점)
+이 PATCH의 실질은 **원격 실행 표면 1종→3종 확대의 유일한 게이트가 "브릿지 로컬 argv 명시 등록(기본 미등록 = 0.23.1과 완전 동일 동작)"이라는 fail-closed 불변식**이다. 코드가 이를 실제로 보증함을 확인했다: 기본값은 claude만(`bridge-config.ts:21-23`), 미등록 kind는 `resolveAgentArgv` null → 카드 failed(`bridge-runtime.ts:434-440`)·conv reject(`:589-591`), wire에는 enum kind만 실리고 argv 매핑은 로컬 설정 전유(§4.4.2 유지). R25/R26과 달리 스펙 이전-충실 왜곡이나 경계 미규정이 없다 — 핵심 보수 결정("신규 kind의 기본값을 등록하지 않는 것")이 PLAN 본문에 이미 명문이므로 문안 lock이 필요 없다.
+
+### Checklist
+- [x] **필요 실재** — 0.23.0 Out-of-scope가 이 확장을 후속 PATCH로 명시 예약, HANDOFF 실측 제약("herdr dispatch allowlist = claude만") 실재, herdr의 grok/codex pane agent 감지 기지원(pane list 실측) — Why 서술 정확.
+- [x] **코드 현행 대조** — PLAN이 주장하는 6개 파일 사실관계(공용 enum·DEFAULT claude-only·fail-closed 경로 2곳·convOpen 하드코딩·dispatch_card 기노출/conv_open 미노출) 전부 실코드 일치. 인용 줄번호 미세 드리프트(:434→실제 reason 문자열 :440, :589→:591)는 경로 시작점 표기로 무해.
+- [x] **2계층 방어 유지(보안 판단 핵심)** — ① wire argv 금지(enum kind만) + ② 로컬 opt-in 등록. 기본 미등록 노드의 동작은 0.23.1과 완전 동일 — "변경 없음이 곧 설계" 서술 타당.
+- [x] **envelope `AgentKindSchema`(peer identity)와 별개 enum** — 이미 codex/grok 수용 중인 별도 스키마라 충돌 없음 (advisor 확인).
+- [x] **하위호환 fail-closed** — 구버전 브릿지: 카드는 `payload_invalid` failed result 회신, conv.open은 무시. 후자는 reject 미송신(무신호)이라 타워가 timeout까지 대기하는데, kind 확장과 무관한 기존 parse-fail 동작이고 PLAN "무시" 서술이 정확 — 기록만, lock 가치 없음.
+- [x] **per-kind dispatcher 차등 인가 out-scope 수용** — agentArgv 등록 자체가 노드 단위 per-kind 게이트(미등록 kind는 인가 dispatcher여도 스폰 불가). dispatcher×kind 매트릭스는 현행 단일-타워 모델에서 필요 근거 없음.
+- [x] **shell/sh/bash 가드 성격** — 오퍼레이터가 임의 바이너리를 등록할 수 있는 이상 보안 경계가 아니라 footgun 가드 — codex/grok 키에도 동일 적용됨을 테스트로 고정하는 계획으로 충분, 가드 확장(zsh 등) 무의미.
+- [x] **M-2 제출 분리 공용 경로** — 주입 코드 무변경으로 신규 kind 자동 적용. 주입 UX 튜닝(CLI별 스타트업 레이스) out-scope + 기존 후보 ⑤ 인접 표기 타당.
+- [x] **테스트 열거** — 양 표면 미등록 fail·enum 왕복·argv 반영·가드 회귀·convOpen 전파·미지 kind 스키마 거부 충분. L-1 케이스 1건 추가.
+
+### Findings (Sev: High|Med|Low) — author-close
+- **L-1 (Low, author-close): `loadBridgeConfig`의 `agentArgv` 값 형상 미검증 — 오설정 시 fail-closed가 아니라 무신호 증발.** 병합(`bridge-config.ts:59-64`)이 `raw.agentArgv` 값 타입을 검증하지 않아, 오퍼레이터가 `"codex": "codex"`(배열 아닌 문자열)로 오기입하면 `resolveAgentArgv`의 `argv.some`(`:108`)에서 TypeError → 호출부가 아니라 pollTimer의 포괄 catch(`bridge-runtime.ts:344-350`)가 삼키는데, 이 시점엔 handoff가 **이미 claim된 후**(`:372-377`·conv도 동일)라 failed result/reject 없이 카드가 `doing` 고착 — R23 L-1(payload_invalid 회신으로 doing 고착 방지)이 막으려던 실패 모드의 재발 경로다. 이 PATCH의 활성화 경로가 정확히 "오퍼레이터 수기 JSON 편집"이라 지금 노출이 커진다. 닫기: 병합 시 배열-of-문자열 아닌 값 필터 한 줄 + PLAN 테스트 행에 "비배열 `agentArgv` 값 → 무시(=미등록 fail-closed)" 케이스 추가. Low 근거: 트리거가 오퍼레이터 자신의 로컬 오설정(신뢰 입력)이고 보안 경계 아님 — 견고성 결함. (advisor 발견, claude-rev 코드 재검증으로 귀결 구체화.)
+- **L-2 (Low, author-close): 브릿지 설정 예시 블록에 등록 의미 고지 한 줄.** PLAN이 약속한 "브릿지 설정 예시 1블록"(HERDR_DESIGN §4.4.2)에 "argv 등록 = 해당 CLI의 기본 자율성(권한 모델·자동 실행 특성) 수용 — 가드레일 플래그는 오퍼레이터가 argv에 직접 포함하라"를 명시. 근거: codex/grok CLI의 자율실행 가드레일은 claude CLI와 다르고, 신뢰 결정 지점이 등록 행위 자체이므로 그 의미를 문서가 고지해야 R23 "워커 pane = 자율 실행 전용" 신뢰 모델의 오퍼레이터 측 절반이 완성된다. M 불요 — 경계 자체는 R23 모델에 이미 포섭.
+
+### Decision notes
+- **즉시 `approved` 근거 (R25/R26과 다른 verdict 구조):** M-lock 부재 — 선례상 M은 "문안대로 구현하면 오독이 유도되는 왜곡"(R25 M-1, R26 M-1) 또는 "신규 표면에 선언된 경계 미적용"(R24, R26 M-2)인데, 이 PATCH는 핵심 보수 결정이 본문에 이미 명문이고 fail-closed 원시가 코드에 기존재·기동작한다. L 2건은 설계 재작업이 아닌 한 줄 필터+문서 고지라 구현 PATCH 내 author-close로 충분(R19–R21 pure-L 선례), 재리뷰 불요.
+- **결정을 가르는 리스크:** 원격 실행 표면 1→3종 확대의 유일한 게이트가 로컬 명시 등록 fail-closed 불변식이라는 것 — 이 불변식이 코드로 보증됨을 확인했으므로 승인. 이 불변식을 약화시키는 미래 변경(신규 kind 기본 등록, wire 유래 argv 힌트 등)은 반드시 별도 R{n}.
+- **기존 게이트 승계 무변:** fetch 자동 실행·자동 git push의 "별도 R{n} 게이트"(R26 decision note) 그대로. per-kind 차등 인가는 필요 근거 발생 시(멀티 dispatcher 등) 재론.
+- **PATCH 적용자는 implementer** — 리뷰어는 plan_review.md + PLAN 헤더 Status/Approval 동기화만 수행. L-1 필터·테스트 케이스와 L-2 고지 문안은 구현 PATCH에 포함할 것.
+- Advisor: fable-advisor consulted: yes. (verdict 일치: approved, M 없음; L-1은 advisor 발견을 claude-rev가 코드 재검증으로 귀결 구체화 — "예외"가 아니라 "claim 후 무신호 증발 = doing 고착"임을 확인.)
 
 ---
 

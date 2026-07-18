@@ -38,6 +38,39 @@ describe("card-contract v1", () => {
     expect(r.success).toBe(false);
   });
 
+  test("dispatch payload parses with agentKind codex (0.23.2 R27)", () => {
+    const p = CardDispatchPayloadSchema.parse({
+      v: CARD_CONTRACT_VERSION,
+      cardId: "task_abcdef0123456789",
+      sourceRoomId: "room_1",
+      prompt: "do the thing",
+      agentKind: "codex",
+    });
+    expect(p.agentKind).toBe("codex");
+  });
+
+  test("dispatch payload parses with agentKind grok (0.23.2 R27)", () => {
+    const p = CardDispatchPayloadSchema.parse({
+      v: CARD_CONTRACT_VERSION,
+      cardId: "task_abcdef0123456789",
+      sourceRoomId: "room_1",
+      prompt: "do the thing",
+      agentKind: "grok",
+    });
+    expect(p.agentKind).toBe("grok");
+  });
+
+  test("rejects unknown agentKind gpt on wire schema", () => {
+    const r = CardDispatchPayloadSchema.safeParse({
+      v: 1,
+      cardId: "task_abcdef0123456789",
+      sourceRoomId: "r",
+      prompt: "x",
+      agentKind: "gpt",
+    });
+    expect(r.success).toBe(false);
+  });
+
   test("result seq uses nonnegative (L-3)", () => {
     const ok = CardResultPayloadSchema.parse({
       v: 1,

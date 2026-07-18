@@ -589,4 +589,70 @@ describe("conv (multiturn) vertical slice", () => {
     },
     20_000,
   );
+
+  test(
+    "convOpen defaults scope.agentKind to claude (0.23.2 R27 regression)",
+    async () => {
+      useTowerSession();
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "default agentKind regression",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+
+      const accept = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      expect(accept.status).toBe("accept");
+
+      // Bridge accepted ⇒ scope carried a registered kind; default is claude
+      // (fixture only registers claude). Assert via agent.start argv.
+      let starts: typeof fake.calls = [];
+      for (let i = 0; i < 40; i++) {
+        await Bun.sleep(100);
+        starts = fake.calls.filter(
+          (c) =>
+            c.method === "agent.start" &&
+            (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
+              opened.convId,
+        );
+        if (starts.length >= 1) break;
+      }
+      expect(starts.length).toBeGreaterThanOrEqual(1);
+      expect(starts[0]!.params.argv).toEqual(["claude"]);
+
+      await convClose({ convId: opened.convId, reason: "abort" });
+    },
+    20_000,
+  );
+
+  test(
+    "convOpen with agentKind codex propagates scope → unregistered reject (0.23.2 R27)",
+    async () => {
+      useTowerSession();
+      // Fixture bridge only registers claude; codex on wire must fail closed
+      // at the bridge (proves agentKind was not silently defaulted to claude).
+      const opened = await convOpen({
+        node: "node/wsl-1",
+        goal: "codex open",
+        agentKind: "codex",
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+
+      const result = await convAwait({ convId: opened.convId, timeoutSec: 15 });
+      expect(result.status).toBe("reject");
+      if (result.status === "reject") {
+        expect(result.reason).toBe("agent_kind_not_allowed");
+      }
+
+      const starts = fake.calls.filter(
+        (c) =>
+          c.method === "agent.start" &&
+          (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
+            opened.convId,
+      );
+      expect(starts.length).toBe(0);
+    },
+    20_000,
+  );
 });

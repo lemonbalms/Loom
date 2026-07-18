@@ -254,7 +254,7 @@ const TOOLS = [
         agentKind: {
           type: "string",
           description:
-            'Agent kind from the dispatch allowlist (default "claude"). Not an argv — mapping lives in bridge-local config.',
+            'Agent kind from the dispatch allowlist: claude|codex|grok (default "claude"). Not an argv — mapping lives in bridge-local config; unregistered kinds fail closed.',
         },
       },
       required: ["taskId", "node", "prompt"],
@@ -298,6 +298,11 @@ const TOOLS = [
         writesAllowed: { type: "boolean", description: "Scope: allow writes (default false)" },
         maxTurns: { type: "number", description: "Turn cap (default 20)" },
         wallClockMs: { type: "number", description: "Wall-clock timeout ms (default 2h)" },
+        agentKind: {
+          type: "string",
+          description:
+            'Worker agent kind: claude|codex|grok (default "claude"). Spawn requires the bridge node to have locally registered argv for that kind (fail-closed otherwise).',
+        },
       },
       required: ["node", "goal"],
     },
@@ -373,7 +378,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.23.1" },
+        serverInfo: { name: "loom", version: "0.23.2" },
       });
       return;
     case "notifications/initialized":
@@ -531,6 +536,10 @@ async function handle(req: JsonRpcReq) {
                 typeof args.maxTurns === "number" ? args.maxTurns : undefined,
               wallClockMs:
                 typeof args.wallClockMs === "number" ? args.wallClockMs : undefined,
+              agentKind:
+                args.agentKind !== undefined
+                  ? String(args.agentKind)
+                  : undefined,
             }),
             null,
             2,

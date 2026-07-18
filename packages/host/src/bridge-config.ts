@@ -41,6 +41,27 @@ export function defaultBridgeConfig(): BridgeConfig {
   };
 }
 
+/** R27 L-1: keep only well-shaped argv entries (non-empty array of non-empty strings).
+ *  Malformed entries are dropped — same as unregistered (fail-closed), never throws later
+ *  in resolveAgentArgv (which would otherwise be swallowed by the bridge pollTimer catch,
+ *  leaving a claimed card stuck in "doing" with no signal). */
+function sanitizeAgentArgv(
+  raw: unknown,
+): Partial<Record<DispatchAgentKind, string[]>> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Partial<Record<DispatchAgentKind, string[]>> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      Array.isArray(v) &&
+      v.length > 0 &&
+      v.every((x) => typeof x === "string" && x.length > 0)
+    ) {
+      out[k as DispatchAgentKind] = v;
+    }
+  }
+  return out;
+}
+
 export function loadBridgeConfig(profile: string): BridgeConfig {
   const p = bridgeConfigPath(profile);
   const base = defaultBridgeConfig();
@@ -58,9 +79,7 @@ export function loadBridgeConfig(profile: string): BridgeConfig {
           : base.herdrSocketPath,
       agentArgv: {
         ...DEFAULT_AGENT_ARGV,
-        ...(raw.agentArgv && typeof raw.agentArgv === "object"
-          ? raw.agentArgv
-          : {}),
+        ...sanitizeAgentArgv(raw.agentArgv),
       },
       herdrProtocol:
         typeof raw.herdrProtocol === "number"

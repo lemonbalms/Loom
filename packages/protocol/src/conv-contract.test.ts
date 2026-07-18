@@ -107,6 +107,25 @@ describe("payload schema roundtrip (open/accept/reject/turn/close)", () => {
     expect(parsed.scope.writesAllowed).toBe(false);
   });
 
+  test("ConvScopeSchema accepts agentKind codex and grok (0.23.2 R27)", () => {
+    const codex = ConvOpenPayloadSchema.parse({
+      v: CONV_CONTRACT_VERSION,
+      convId,
+      goal: "g",
+      scope: { agentKind: "codex" as const },
+      limits: {},
+    });
+    expect(codex.scope.agentKind).toBe("codex");
+    const grok = ConvOpenPayloadSchema.parse({
+      v: CONV_CONTRACT_VERSION,
+      convId,
+      goal: "g",
+      scope: { agentKind: "grok" as const },
+      limits: {},
+    });
+    expect(grok.scope.agentKind).toBe("grok");
+  });
+
   test("accept / reject", () => {
     expect(ConvAcceptPayloadSchema.parse({ v: 1, convId }).convId).toBe(convId);
     const rej = ConvRejectPayloadSchema.parse({

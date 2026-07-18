@@ -3,12 +3,12 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
-| **Version** | **0.23.1** |
-| **Status** | **`approved`** (R26 author-close, 2026-07-18) — **§5.2 artifact 패키징 호출부** (PATCH): 브릿지 32k 초과 워커 턴의 tail-truncate 폴백을 §5.1 "절단 금지" 정합으로 회복(scp 규약 디렉터리 패키징 + artifacts[] ref 방출) + 타워 수신 측 M-2 검증 통과 fetch 명령 **제시**(자동 실행 없음). 0.23.0 implemented(`e4dab9e`) + conv 실물 스모크 통과(2026-07-18, HANDOFF) 위에 얹는 PATCH. **relay 와이어 protocol v1 무변경.** |
-| **Supersedes** | 0.23.0 |
+| **Version** | **0.23.2** |
+| **Status** | **`approved`** (R27 즉시 승인, 2026-07-18) — **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH): `DispatchAgentKindSchema`를 `claude` 1종에서 `claude·codex·grok` 3종으로 확장. 실행은 각 브릿지 오퍼레이터가 로컬 설정 `agentArgv`에 해당 kind의 argv를 **명시 등록한 노드에서만** 성립(기본값 미등록 = fail-closed) — wire에는 여전히 argv가 실리지 않는다(HERDR_DESIGN §4.4.2 유지). **relay 와이어 protocol v1 무변경.** |
+| **Supersedes** | 0.23.1 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | **R26 `pending-revision` → M-1(scp host 해석 출처 = 수신측 로컬 명시 구성 + 매핑 부재 fail-closed)/M-2(제시 문자열 POSIX 단일인용 + charset allowlist) locks PLAN 본문 반영 → author-close `approved`**(Fable 5 사전 승인, no R26b). L-1(ref.path 틸드-리터럴 규약형)·L-2("전문"=회수 스크레이프 전문 한정) author-close. 직전: R25 author-close `approved`(0.23.0) → implemented `e4dab9e`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음). |
-| **Fable 5 when** | **Required** — M-2(artifact ref 검증) 신뢰 경계 **인접**: 브릿지가 ref 생산자가 되고 타워가 fetch 명령을 조립·제시하는 표면 신설 (§5.1 보안·신뢰 경계 변경, 보수 판단). **R26 done.** |
+| **Approval** | **R27 `approved`** (즉시 승인 2026-07-18, M-lock 없음) — fail-closed 불변식(기본 미등록 = 0.23.1 동일 동작 + wire argv 금지)이 코드로 보증됨을 확인. L-1(`agentArgv` 비배열 값 필터+테스트)·L-2(설정 예시 등록 고지) **author-close 완료**(구현 PATCH 포함, `docs/plan_review.md` R27). 직전: R26 author-close `approved`(0.23.1) → implemented `e5ccc4d`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음). |
+| **Fable 5 when** | **Required** — 인가된 dispatcher(M-1)가 원격 브릿지에 스폰 지정할 수 있는 에이전트 CLI 집합의 확장 = **원격 실행 표면 확대** (§5.1 보안·신뢰 경계 변경). **R27 완료(`approved`).** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -49,6 +49,32 @@
 5. 구현은 **approved 버전만** 기준으로 한다. 코드가 앞서 나가면 다음 PATCH/MINOR에 “Implemented as of …”로 동기화한다.
 
 ### Changelog
+
+#### 0.23.2 — 2026-07-18 (`approved` R27 즉시 승인 — **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH))
+
+**Product one-liner:** 타워가 카드 dispatch와 `conv.open`에서 `agentKind`로 codex/grok 워커를 지정할 수 있다 — 실행은 각 브릿지 오퍼레이터가 로컬 설정(`agentArgv`)에 해당 kind의 argv를 명시 등록한 노드에서만 성립하고(기본 fail-closed), wire에는 여전히 argv가 실리지 않는다(HERDR_DESIGN §4.4.2 원칙 유지).
+
+**Why:** 0.22.0 슬라이스 allowlist는 `claude`만이었고(`card-contract.ts:19` — "Slice allowlist: claude only"), 0.23.0 Out-of-scope가 "agentKind allowlist 확장(codex/grok 등) = 후속 PATCH"로 명시 예약해 뒀다. dogfood에서 grok/codex 구현 레인은 현재 headless 서브에이전트로만 위임 가능한데(HANDOFF 실측 제약: "herdr dispatch allowlist = claude만"), herdr pane 레인에서도 같은 레인 선택지가 필요하다. herdr는 grok/codex pane agent 감지를 이미 지원한다(pane list 실측: `agent:"grok"` 감지, 2026-07-18).
+
+**What (범위 — PATCH; 신규 표면·도구 없음):**
+| 항목 | 내용 |
+|------|------|
+| **protocol — enum 확장** | `DispatchAgentKindSchema` `z.enum(["claude"])` → `z.enum(["claude","codex","grok"])` (`card-contract.ts`) — 카드 dispatch(`CardDispatchPayloadSchema.agentKind`)·conv scope(`ConvScopeSchema.agentKind`, `conv-contract.ts`) **공용 enum이라 두 표면이 동시 확장**된다. attachment 컨벤션 확장이며 **relay 와이어 protocol v1 무변경**. 하위호환: 구버전(≤0.23.1) 브릿지는 미지 kind payload를 zod parse 실패로 거부(카드 `payload_invalid` failed result / conv open 무시) — fail-closed. |
+| **브릿지 로컬 설정 (변경 없음이 곧 설계)** | `DEFAULT_AGENT_ARGV`는 **`claude`만 유지**(`bridge-config.ts:21-23`) — codex/grok은 기본 미등록이라 `resolveAgentArgv` null → 카드 `agent_kind_not_allowed` failed result(`bridge-runtime.ts:434`)·conv reject(`:589`) 기존 fail-closed 경로 그대로. 스폰 활성화는 오퍼레이터가 `~/.loom/bridge/<profile>.json`의 `agentArgv`에 `"codex": ["codex"]` / `"grok": ["grok"]` 형태로 명시 등록할 때만. `shell`/`sh`/`bash` 영구 금지 가드(`resolveAgentArgv`) 불변. **R27 L-1(author-close): `loadBridgeConfig` 병합 시 `agentArgv` 값이 비어있지 않은 문자열 배열이 아니면 필터(무시=미등록과 동일 fail-closed)** — 오설정 값(예: `"codex": "codex"` 문자열)이 `resolveAgentArgv`에서 TypeError로 pollTimer 포괄 catch에 삼켜져 claim된 카드가 무신호 `doing` 고착되는 경로 차단(R23 L-1 재발 방지). |
+| **MCP/타워 표면** | `dispatch_card`는 `agentKind` 파라미터 기노출(스키마 description만 3종 반영 갱신). `conv_open`에 optional `agentKind`(기본 `"claude"`) 추가 — `convOpen()`(`conv-ops.ts`)의 하드코딩 `"claude"`를 인자화. **도구 수 무변경.** |
+| **문서** | HERDR_DESIGN §4.4.2 allowlist 서술 3종 반영 + 브릿지 설정 예시 1블록. **R27 L-2(author-close): 예시 블록에 등록 의미 고지 명시** — "argv 등록 = 해당 CLI의 기본 자율성(권한 모델·자동 실행 특성) 수용, 가드레일 플래그는 오퍼레이터가 argv에 직접 포함"(R23 "워커 pane = 자율 실행 전용" 신뢰 모델의 오퍼레이터 측 절반). |
+| **테스트** | enum 왕복(codex/grok payload 유효 parse); 미등록 kind → 카드 `agent_kind_not_allowed` failed + conv reject(양 표면); `agentArgv` 등록 시 스폰 argv 반영(fake herdr — `agentStart` argv 검증); shell/sh/bash 가드 회귀(codex/grok 키에도 적용); `convOpen` agentKind 전파(기본값 claude 회귀 포함); 미지 kind 문자열(예: `"shell"`, `"gpt"`)은 스키마 거부; **비배열/오형상 `agentArgv` 값 → 병합 시 무시되어 미등록과 동일 fail-closed(R27 L-1)**. |
+
+**Out of scope (이 버전 아님):** grok/codex pane **주입 UX 튜닝**(스타트업 레이스 프로파일은 CLI별 상이 — 실물 스모크에서 관찰 후 필요 시 별도 후보, 기존 후보 ⑤와 인접); **agentKind별 차등 인가**(per-kind dispatcher allowlist — 현행 M-1 단일 allowlist 유지, 필요 근거 없음); headless 레인(서브에이전트 위임) 대체 아님 — 병행 유지; agentKind별 cwd/writes 정책 차등(§2.1 scope 의미 무변경).
+
+**Security / trust (R27 판단 대상):**
+- **이 PATCH의 본질 = 원격 실행 표면 확대:** 인가된 dispatcher(M-1)가 원격 브릿지에 스폰 지정할 수 있는 CLI가 1종→3종. 방어선은 기존 2계층 그대로 — ① wire에 argv 금지(§4.4.2, enum kind만 전달) + ② 브릿지 로컬 argv 매핑(오퍼레이터 명시 opt-in, **신규 kind의 기본값을 등록하지 않는 것이 이 PATCH의 핵심 보수 결정**). 등록하지 않은 노드의 동작은 0.23.1과 완전 동일.
+- **M-2 제출 분리(리터럴 send + 고정 상수 별도 Enter)는 agentKind 불문 공용 주입 경로** — 주입 코드 무변경, 신규 kind에 자동 적용.
+- **하위호환 fail-closed:** 구버전 브릿지는 미지 kind를 parse 거부 — 확장 kind가 구노드에서 조용히 claude로 강등되는 경로 없음.
+
+**R27 질의:** *(현재 없음.)*
+
+**Approved by:** Fable 5 (fable-advisor) R27 — **즉시 `approved`**(M-lock 없음 — fail-closed 불변식(기본 미등록 = 0.23.1 동일 동작 + wire argv 금지 §4.4.2)이 코드로 보증됨을 확인), 2026-07-18. L-1(`loadBridgeConfig` `agentArgv` 병합 시 비배열 값 필터 + "비배열 `agentArgv` 값 → 무시(=미등록 fail-closed)" 테스트 — 오설정 시 TypeError가 pollTimer catch에 삼켜져 claim 후 무신호 증발=doing 고착 방지)·L-2(브릿지 설정 예시에 "argv 등록 = 해당 CLI의 기본 자율성 수용, 가드레일 플래그는 argv에 직접 포함" 고지)는 구현 PATCH 내 author-close(`docs/plan_review.md` R27).
 
 #### 0.23.1 — 2026-07-18 (`approved` author-close after R26 `pending-revision` — **§5.2 artifact 패키징 호출부** (PATCH))
 

@@ -22,6 +22,9 @@ import {
   isAuthorizedDispatcher,
   resolveAgentArgv,
   defaultBridgeConfig,
+  loadBridgeConfig,
+  bridgeConfigDir,
+  bridgeConfigPath,
   type BridgeConfig,
 } from "./bridge-config";
 import { applyCardResult } from "./card-ops";
@@ -60,6 +63,98 @@ describe("M-1 dispatcher allowlist", () => {
     expect(resolveAgentArgv(defaultBridgeConfig(), "claude")).toEqual([
       "claude",
     ]);
+  });
+
+  test("defaultBridgeConfig has no codex/grok argv (fail-closed until registered)", () => {
+    const cfg = defaultBridgeConfig();
+    expect(resolveAgentArgv(cfg, "codex")).toBeNull();
+    expect(resolveAgentArgv(cfg, "grok")).toBeNull();
+  });
+
+  test("resolveAgentArgv returns registered codex argv", () => {
+    const cfg: BridgeConfig = {
+      authorizedDispatchers: [],
+      herdrSocketPath: "/tmp/x",
+      agentArgv: { claude: ["claude"], codex: ["codex"] },
+    };
+    expect(resolveAgentArgv(cfg, "codex")).toEqual(["codex"]);
+  });
+
+  test("resolveAgentArgv rejects shell even when misconfigured as codex", () => {
+    const cfg: BridgeConfig = {
+      authorizedDispatchers: [],
+      herdrSocketPath: "/tmp/x",
+      agentArgv: { codex: ["bash"] },
+    };
+    expect(resolveAgentArgv(cfg, "codex")).toBeNull();
+  });
+});
+
+describe("bridge-config agentArgv sanitize (R27 L-1)", () => {
+  const dir = join(tmpdir(), `loom-bridge-config-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const profile = `cfg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  beforeAll(() => {
+    mkdirSync(dir, { recursive: true });
+    process.env.LOOM_TEST_HOME = dir;
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    mkdirSync(bridgeConfigDir(), { recursive: true });
+  });
+
+  afterAll(() => {
+    delete process.env.LOOM_TEST_HOME;
+    resetStateHomeDirCache();
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* */
+    }
+  });
+
+  test("malformed string agentArgv entry is dropped (not merged, not thrown)", () => {
+    writeFileSync(
+      bridgeConfigPath(profile),
+      JSON.stringify({
+        authorizedDispatchers: [],
+        agentArgv: { codex: "codex" },
+      }),
+      "utf8",
+    );
+    const cfg = loadBridgeConfig(profile);
+    expect(resolveAgentArgv(cfg, "codex")).toBeNull();
+    // Default claude registration still present
+    expect(resolveAgentArgv(cfg, "claude")).toEqual(["claude"]);
+  });
+
+  test("empty array agentArgv entry is dropped", () => {
+    const p = `${profile}-empty`;
+    writeFileSync(
+      bridgeConfigPath(p),
+      JSON.stringify({ agentArgv: { codex: [] } }),
+      "utf8",
+    );
+    expect(resolveAgentArgv(loadBridgeConfig(p), "codex")).toBeNull();
+  });
+
+  test("non-string element in agentArgv is dropped", () => {
+    const p = `${profile}-mixed`;
+    writeFileSync(
+      bridgeConfigPath(p),
+      JSON.stringify({ agentArgv: { codex: ["codex", 5] } }),
+      "utf8",
+    );
+    expect(resolveAgentArgv(loadBridgeConfig(p), "codex")).toBeNull();
+  });
+
+  test("well-formed agentArgv merges correctly", () => {
+    const p = `${profile}-ok`;
+    writeFileSync(
+      bridgeConfigPath(p),
+      JSON.stringify({ agentArgv: { codex: ["codex"] } }),
+      "utf8",
+    );
+    expect(resolveAgentArgv(loadBridgeConfig(p), "codex")).toEqual(["codex"]);
   });
 });
 
@@ -470,6 +565,66 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     evil.close();
   });
 
+  test("codex agentKind without local argv → agent_kind_not_allowed (0.23.2 R27)", async () => {
+    // Default bridge cfg registers claude only — codex fails closed.
+    const cardId = "task_c0deffff00112233";
+    const payload = {
+      v: CARD_CONTRACT_VERSION,
+      cardId,
+      sourceRoomId: session.roomId,
+      prompt: "run codex",
+      agentKind: "codex" as const,
+    };
+    await tower!.handoff({
+      to: "@node/wsl-1",
+      body: buildDispatchBody({
+        title: "codex unregistered",
+        cardId,
+        node: "node/wsl-1",
+      }),
+      mode: "task",
+      attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, payload)],
+    });
+
+    let found = false;
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(100);
+      const inbox = await tower!.listInbox();
+      const hit = inbox.find((e) =>
+        e.handoff.attachments?.some(
+          (a) =>
+            a.label === CARD_RESULT_LABEL &&
+            a.content.includes(cardId),
+        ),
+      );
+      if (hit) {
+        found = true;
+        expect(hit.handoff.body).toContain("[DONE]"); // result body header even on failed
+        const content = hit.handoff.attachments!.find(
+          (a) => a.label === CARD_RESULT_LABEL,
+        )!.content;
+        const result = JSON.parse(content) as {
+          status: string;
+          cardId: string;
+          reason?: string;
+        };
+        expect(result.cardId).toBe(cardId);
+        expect(result.status).toBe("failed");
+        expect(result.reason).toBe("agent_kind_not_allowed");
+        break;
+      }
+    }
+    expect(found).toBe(true);
+
+    const starts = fake.calls.filter(
+      (c) =>
+        c.method === "agent.start" &&
+        (c.params.env as { LOOM_CARD?: string } | undefined)?.LOOM_CARD ===
+          cardId,
+    );
+    expect(starts.length).toBe(0);
+  });
+
   test("fail-fast: herdr down refuses bridge start", async () => {
     const missing = join(dir, "missing.sock");
     let threw = false;
@@ -662,6 +817,118 @@ describe("M-2 submit verify + retry", () => {
       if (sends.length >= 2) break;
     }
     expect(sends.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("bridge runtime codex argv registered (0.23.2 R27)", () => {
+  const port3 = 20100 + Math.floor(Math.random() * 300);
+  const dir3 = join(tmpdir(), `loom-bridge-codex-${Date.now()}`);
+  const sessionFile3 = join(dir3, "session.json");
+  const herdrSock3 = join(dir3, "herdr.sock");
+  const relay3 = new RelayServer({ host: "127.0.0.1", port: port3 });
+  let fake3: Awaited<ReturnType<typeof startFakeHerdr>>;
+  let bridge3: Awaited<ReturnType<typeof startBridgeRuntime>> | null = null;
+  let tower3: RelayClient | null = null;
+  let session3: FableSession;
+
+  beforeAll(async () => {
+    mkdirSync(dir3, { recursive: true });
+    process.env.LOOM_TEST_HOME = dir3;
+    process.env.LOOM_SESSION = sessionFile3;
+    process.env.LOOM_NO_AUTO_HOST = "1";
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    relay3.start();
+    fake3 = await startFakeHerdr({
+      socketPath: herdrSock3,
+      autoStatus: "done",
+      autoStatusDelayMs: 40,
+    });
+
+    tower3 = new RelayClient({ url: `ws://127.0.0.1:${port3}/ws` });
+    const created = await tower3.createRoom({
+      roomName: "bridge-codex-test",
+      displayName: "tower",
+      agentKind: "shell",
+      peerId: "p_tower",
+    });
+    if (created.type !== "room.state") throw new Error("create failed");
+    session3 = {
+      roomId: created.roomId,
+      roomName: created.roomName ?? "bridge-codex-test",
+      inviteCode: created.inviteCode ?? "",
+      peerId: "p_node",
+      displayName: "node/wsl-1",
+      color: "#0f0",
+      agentKind: "shell",
+      relayUrl: `ws://127.0.0.1:${port3}/ws`,
+      peerSecret: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    writeFileSync(sessionFile3, JSON.stringify(session3), "utf8");
+
+    bridge3 = await startBridgeRuntime({
+      session: session3,
+      profile: "node-codex",
+      config: {
+        authorizedDispatchers: ["p_tower"],
+        herdrSocketPath: herdrSock3,
+        agentArgv: { claude: ["claude"], codex: ["codex"] },
+        herdrProtocol: 16,
+      },
+      herdr: new HerdrClient({ socketPath: herdrSock3, submitDelayMs: 0 }),
+      submitVerify: { waitMs: 300, retries: 1 },
+    });
+  });
+
+  afterAll(async () => {
+    if (bridge3) await bridge3.stop();
+    tower3?.close();
+    await fake3.close();
+    relay3.stop();
+    delete process.env.LOOM_TEST_HOME;
+    delete process.env.LOOM_SESSION;
+    resetStateHomeDirCache();
+    try {
+      rmSync(dir3, { recursive: true, force: true });
+    } catch {
+      /* */
+    }
+  });
+
+  test("registered codex agentKind spawns with argv [\"codex\"]", async () => {
+    const cardId = "task_c0de0000aabb0011";
+    const payload = {
+      v: CARD_CONTRACT_VERSION,
+      cardId,
+      sourceRoomId: session3.roomId,
+      prompt: "use codex",
+      agentKind: "codex" as const,
+    };
+    await tower3!.handoff({
+      to: "@node/wsl-1",
+      body: buildDispatchBody({
+        title: "codex registered",
+        cardId,
+        node: "node/wsl-1",
+      }),
+      mode: "task",
+      attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, payload)],
+    });
+
+    let starts: typeof fake3.calls = [];
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(100);
+      starts = fake3.calls.filter(
+        (c) =>
+          c.method === "agent.start" &&
+          (c.params.env as { LOOM_CARD?: string } | undefined)?.LOOM_CARD ===
+            cardId,
+      );
+      if (starts.length >= 1) break;
+    }
+    expect(starts.length).toBeGreaterThanOrEqual(1);
+    expect(starts[0]!.params.argv).toEqual(["codex"]);
   });
 });
 

@@ -488,7 +488,19 @@ handoff body는 어디서 오든 untrusted라는 기존 원칙(docs/ARCHITECTURE
 카드가 `argv`를 실어 보내면 브릿지는 room에 있는 누구든 원격 노드에서 임의 명령을 실행시킬 수 있는 데몬이 된다. 권고 문서의 개념 스케치(`card.agentArgv`)는 **이 지점에서 채택하지 않는다.**
 
 - 카드 payload는 `agentKind`만 싣는다(§3.3). argv 매핑(`claude → ["claude"]` 등)은 **브릿지 로컬 설정 파일의 allowlist**에만 존재하고, wire로는 절대 오지 않는다.
-- allowlist는 Loom의 닫힌 `AgentKindSchema`(claude|codex|grok|shell|unknown, envelope.ts:9-15)의 부분집합으로 제한하며, 슬라이스에선 `claude` 하나로 시작. `shell`은 allowlist에서 영구 제외(= 임의 명령 게이트).
+- allowlist는 Loom의 닫힌 `AgentKindSchema`(claude|codex|grok|shell|unknown, envelope.ts:9-15)의 부분집합으로 제한하며, 0.23.2(R27)부터 `claude`/`codex`/`grok` 3종을 지원한다. `shell`은 allowlist에서 영구 제외(= 임의 명령 게이트).
+- 브릿지 로컬 설정 예시(`~/.loom/bridge/<profile>.json`):
+  ```json
+  {
+    "authorizedDispatchers": ["p_tower"],
+    "agentArgv": {
+      "claude": ["claude"],
+      "codex": ["codex"],
+      "grok": ["grok"]
+    }
+  }
+  ```
+  argv 등록 = 해당 CLI의 기본 자율성(권한 모델·자동 실행 특성)을 그 노드에서 수용한다는 오퍼레이터 결정이며, 가드레일 플래그가 필요하면 오퍼레이터가 argv에 직접 포함한다.
 - 위험 필드를 wire 표면에서 금지하고 로컬 전용으로 남기는 것은 M-24(set_purpose 금지 필드, tools.ts:250-275)와 같은 기존 관행이다.
 - `--env`는 브릿지가 생성한 `LOOM_CARD=<cardId>` 하나만 주입 — 카드발 env 통과 금지.
 

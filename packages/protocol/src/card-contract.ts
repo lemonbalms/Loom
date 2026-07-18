@@ -15,8 +15,9 @@ export const CARD_RESULT_LABEL = "loom-card-result";
 /** task-board TASK_ID_RE — id generation is codes.generateTaskId */
 const TaskIdSchema = z.string().regex(/^task_[a-f0-9]+$/i);
 
-/** Slice allowlist: claude only. Wire never carries argv — §4.4.2 */
-export const DispatchAgentKindSchema = z.enum(["claude"]);
+/** Allowlist: claude, codex, grok (0.23.2 R27). Wire never carries argv — §4.4.2;
+ *  execution requires bridge-local agentArgv registration (default claude only). */
+export const DispatchAgentKindSchema = z.enum(["claude", "codex", "grok"]);
 export type DispatchAgentKind = z.infer<typeof DispatchAgentKindSchema>;
 
 export const CardDispatchPayloadSchema = z.object({

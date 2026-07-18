@@ -30,7 +30,14 @@ import {
   type BoardSnapshot,
   type PurposeV1,
 } from "@loom/host";
-import type { PeerInfo, InboxEntry, ArtifactRefEntry, ConvKind, ConvCloseReason } from "@loom/protocol";
+import type {
+  PeerInfo,
+  InboxEntry,
+  ArtifactRefEntry,
+  ConvKind,
+  ConvCloseReason,
+  DispatchAgentKind,
+} from "@loom/protocol";
 
 export async function toolListPeers(): Promise<{
   peers: PeerInfo[];
@@ -365,6 +372,7 @@ export async function toolConvOpen(args: {
   writesAllowed?: boolean;
   maxTurns?: number;
   wallClockMs?: number;
+  agentKind?: string;
 }): Promise<Record<string, unknown>> {
   const r = await convOpen({
     node: args.node,
@@ -373,6 +381,7 @@ export async function toolConvOpen(args: {
     writesAllowed: args.writesAllowed,
     maxTurns: args.maxTurns,
     wallClockMs: args.wallClockMs,
+    agentKind: args.agentKind as DispatchAgentKind | undefined,
   });
   if (!r.ok) {
     throw new Error(r.error);

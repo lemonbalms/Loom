@@ -33,6 +33,7 @@ import {
   type ArtifactRefEntry,
   type HandoffAttachment,
   type PresentedFetchCommand,
+  type DispatchAgentKind,
 } from "@loom/protocol";
 import { loadSession } from "./session-store";
 import { opsHandoff, opsListPeers, opsListInbox, opsClaim } from "./room-ops";
@@ -67,6 +68,7 @@ export async function convOpen(args: {
   writesAllowed?: boolean;
   maxTurns?: number;
   wallClockMs?: number;
+  agentKind?: DispatchAgentKind;
 }): Promise<ConvOpenResult> {
   const session = loadSession();
   if (!session) {
@@ -91,7 +93,7 @@ export async function convOpen(args: {
 
   const scope = ConvScopeSchema.safeParse({
     cwd: args.cwd,
-    agentKind: "claude",
+    agentKind: args.agentKind ?? "claude",
     writesAllowed: Boolean(args.writesAllowed),
   });
   if (!scope.success) {
