@@ -1,0 +1,36 @@
+%% Loom hero — one room, many peers, durable handoff bus
+flowchart TB
+  subgraph Room["Room LOOM-XXXX"]
+    direction TB
+    subgraph Peers["Peers"]
+      direction LR
+      H1["You<br/>+ claude"]
+      H2["Teammate<br/>+ codex"]
+      H3["Teammate<br/>+ grok"]
+    end
+    Board["Board / Pack"]
+    Handoff["Handoff inbox<br/>per-peer · offline-safe"]
+  end
+
+  Relay[("Relay<br/>WebSocket")]
+  Peers <--> Relay
+  Handoff <--> Relay
+  Board -.-> Handoff
+
+  subgraph Bridge["herdr bridge → worker panes"]
+    direction LR
+    Pane1["claude pane"]
+    Pane2["codex pane"]
+    Pane3["grok pane"]
+  end
+
+  H1 -.-> Pane1
+  H2 -.-> Pane2
+  H3 -.-> Pane3
+
+  classDef room fill:#1a1a2e,stroke:#e94560,color:#eee
+  classDef peer fill:#16213e,stroke:#0f3460,color:#eee
+  classDef relay fill:#0f3460,stroke:#e94560,color:#eee
+  class Room room
+  class H1,H2,H3,Board,Handoff peer
+  class Relay relay

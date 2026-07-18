@@ -2,16 +2,29 @@
 
 **Multiplayer AI terminal** — *connect your agents — and your teammates.*
 
+![Loom hero — Room LOOM-XXXX with peers, relay, handoff inbox, and herdr worker panes](docs/images/hero.png)
+
+*(Source: [`docs/images/hero.mmd`](docs/images/hero.mmd) — one room, many peers, durable handoff bus.)*
+
 Loom is a **Mosaic-class collaboration layer** for coding-agent CLIs (Claude Code, Codex, Grok Build, shell, …).  
 Several people join the same **Room**; each runs their own agent; work and context move through **`handoff`** into a **per-peer inbox** that still works when someone is offline.
 
 > Loom is **not** another coding agent. It wraps existing CLIs and adds a room bus, presence, inbox, and MCP tools so heterogeneous agents can collaborate.
 
+## Quick start
+
+```bash
+bun install -g github:lemonbalms/Loom   # install (one line)
+loom room join "loom://join/<invite-blob>"  # join (one line)
+```
+
+Full team dry-run (Windows/WSL, remote relay, smoke): [`docs/DRY_RUN_RUNBOOK.md`](docs/DRY_RUN_RUNBOOK.md).
+
 | | |
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) **v0.17.1** (`approved` — Launcher UX: `up`/`down` + host-default + work-first; R18 author-close) |
+| **Plan** | [`docs/PLAN.md`](docs/PLAN.md) — product plan SSOT (versioned) |
 | **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
 | **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
 | **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |
@@ -27,6 +40,18 @@ Modern multiplayer coding is broken in two ways:
 
 1. **Humans** need a shared room (presence, chat, tasks) without forcing one IDE.
 2. **Agents** need a first-class way to pass work (**handoff**), claim it, and carry **context** (pack / board snapshots) — without reimplementing Claude/Codex/Grok.
+
+Without Loom, the human is the clipboard message bus:
+
+![Problem — you copy-paste between agent terminals](docs/images/problem.png)
+
+*(Source: [`docs/images/problem.mmd`](docs/images/problem.mmd).)*
+
+Loom routes work instead: handoff → durable per-peer inbox → claim → card/conv round-trip:
+
+![Solution — handoff, claim, and agent MCP round-trip via relay](docs/images/solution.png)
+
+*(Source: [`docs/images/solution.mmd`](docs/images/solution.mmd).)*
 
 Loom’s north star:
 
@@ -99,7 +124,7 @@ Agent CLIs ──MCP/CLI──► Host ──WebSocket──► Relay
 
 ---
 
-## Quick start
+## Setup details
 
 ### Join a room in one line (invited user — fastest)
 

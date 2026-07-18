@@ -1,0 +1,15 @@
+%% Solution — handoff → durable inbox → claim → card/conv round-trip
+sequenceDiagram
+  participant Alice as Alice host
+  participant Relay as Relay
+  participant Bob as Bob host
+  participant Agent as Bob agent MCP
+
+  Alice->>Relay: handoff @bob "fix auth"
+  Note over Relay: per-peer durable inbox<br/>Bob can be offline
+  Bob->>Relay: check_handoffs / inbox
+  Relay-->>Bob: queued handoff
+  Bob->>Relay: claim / accept
+  Note over Bob,Agent: card / conv context<br/>board + pack attach
+  Agent->>Relay: handoff @alice "done + notes"
+  Relay-->>Alice: result lands in inbox

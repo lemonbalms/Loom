@@ -1,0 +1,20 @@
+%% Problem — the human is the clipboard message bus
+flowchart LR
+  subgraph Pain["Without Loom"]
+    direction TB
+    A1["Claude Code<br/>terminal"]
+    A2["Codex<br/>terminal"]
+    A3["Grok<br/>terminal"]
+    Human["You<br/>copy · paste · re-explain"]
+    A1 <-->|"clipboard"| Human
+    Human <-->|"clipboard"| A2
+    Human <-->|"clipboard"| A3
+  end
+
+  Lost["Offline? Lost.<br/>Context? Retyped.<br/>Who owns the task? Unclear."]
+  Human --> Lost
+
+  classDef bad fill:#3d1111,stroke:#e94560,color:#fdd
+  classDef agent fill:#1a1a1a,stroke:#888,color:#ccc
+  class Human,Lost bad
+  class A1,A2,A3 agent
