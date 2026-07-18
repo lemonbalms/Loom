@@ -24,8 +24,14 @@
 > - **A (fail-closed)**: codex 미등록 dispatch → `failed reason=agent_kind_not_allowed` 회신·태스크 blocked 전이. ✅
 > - **B (grok 라이브)**: `agentArgv.grok=["~/.grok/bin/grok" 전체경로]` 등록 → grok pane 스폰(`loom-task_…-1`, herdr가 agent=grok 인식) → **스타트업 레이스 재현**(composer 비어 있음) → 수동 복구(리터럴 재주입+별도 Enter `$'\r'`) → working→idle→card.done, 회신 `SMOKE-B OK version=0.1.0 head=9ca06bb`, 태스크 done. ✅
 > - mac-node 브릿지 config에 grok 등록 유지됨(로컬 opt-in 상태). codex는 의도적 미등록 유지(fail-closed 검증용 겸 미사용 레인).
-> 2. (선택) 0.23.1 실물 스모크 — 32k 초과 턴 유도해 artifact 파일 생성·conv_await artifactCommands 제시 라이브 확인. conv-node-hosts.json에 상대 peerId 매핑 수동 등록 필요(없으면 fail-closed 사유 표시 — 그것도 정상 동작 확인임). 사전 실측(2026-07-18 오후): pane 폭 216컬럼 → 200줄 스크레이프 최대 ~43k로 32k 초과 유도 가능 확인.
-> 3. 2+3 직결 상세는 스펙 §6.3 전환 기준 충족 시 새 wayfinder 맵.
+> ### 0.23.1 실물 스모크 시도 기록 (2026-07-18 오후) — ⚠️ 구조적 블로커 발견, §5.2 라이브 미도달
+> **결론: Claude Code(Ink TUI) 워커로는 §5.2 32k artifact 경로가 라이브에서 절대 트리거되지 않는다.** 브릿지 스크레이프(`herdr paneRead recent 200`)는 Ink TUI의 렌더 버퍼만 읽는데, TUI가 트랜스크립트를 접어/스크롤아웃해서 워커가 40k+를 출력해도 스크레이프는 **소스·줄수 무관 ~5.3k 상한**(200줄 요청 중 실제 콘텐츠 22줄만 잔존). 대조 검증: 원시 shell pane에 60k cat → `recent 200`=20.6k, `recent 500`=51.7k로 스크롤백 보존 → **차이의 원인은 herdr 상한이 아니라 Claude Ink TUI의 트랜스크립트 접힘**. HANDOFF 종전 "216컬럼×200줄≈43k" 추정은 raw shell 기준이었고 TUI 워커엔 적용 안 됨(정정).
+> - 워커 모델별 거동(사용자 요청: fable→opus/sonnet 교체 테스트, `agentArgv.claude`에 `--model` 부여):
+>   - **Fable**(기본): 마커 붙은 대량출력 턴 **수행** (구 conv에서 AAAA 190줄 생성 — 단 구 브릿지에서 회신 유실).
+>   - **Sonnet 5**: 마커(`⚠ Untrusted handoff content`) 붙은 대량출력 지시를 **프롬프트 인젝션으로 판단·반복 거부** (설득 턴에도 불응, "직접 대화창에 지시하라" 요구). goal-ack 등 정상 턴은 응답함 — 거부는 injection형 콘텐츠 한정.
+>   - **Opus 4.8**: 스모크 목적을 스스로 이해해 32k 초과 목표의 dense 200줄(`SMOKE-0231-BULK-END`)을 **자발 생성** → 그러나 위 TUI 접힘으로 스크레이프 4.7k → `artifacts=null`(패키징 미발동). 패키징 코드 자체는 무결(309 유닛테스트 green), 라이브 도달 불가가 원인.
+> - **후속 후보 ⑩(신규·상위)**: §5.2 트리거 전제 재검토 — (a) 워커 출력을 pane 스크레이프가 아니라 워커가 직접 파일로 쓰게 하는 경로, 또는 (b) `herdr pane read`가 TUI raw 스크롤백을 더 깊이 노출하는 모드 조사, 또는 (c) 32k 임계를 TUI 스크레이프 실측 상한(~5k) 기준으로 재조정. 후보 ⑤(delta 스크레이프)도 이 상한에 종속.
+> - 다음 (선택): conv-node-hosts.json에 상대 peerId 매핑 등록 후 fail-closed↔제시 분기만이라도 별도 확인(32k 도달과 무관하게 M-1/M-2 제시 파이프라인 단위 검증 — 유닛 커버되어 우선순위 낮음).
 >
 > ### conv 실물 스모크 기록 (2026-07-18, 0.23.0)
 > `conv_ec40e20b1ea246ba`: conv_open → accept → 실물 herdr pane 스폰(cwd·`LOOM_CONV` env 확인) → turn 왕복 3회 → conv_close(보드 task done). 양측 pin·seq 단조·`inFlight` 0 복귀 실증. R26 리뷰 dispatch에서는 스타트업 레이스 재발 → lessons 수동 복구 절차(리터럴 재주입+별도 Enter) 2회째 실증.
@@ -45,7 +51,7 @@
 
 ## One-line resume
 
-> **v0.23.2 implemented (`91bee75`) + 실물 스모크 완료 (2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 구현 → conv 실물 스모크 → R26/0.23.1(artifact 패키징) → R27/0.23.2(agentKind codex·grok 확장, 즉시 approved) → **0.23.2 스모크 A/B 완주**(codex fail-closed + grok 라이브 pane). 다음 = **후속 PATCH**(⭐ 블록 후보 ②③⑤⑥⑦⑨) 또는 0.23.1 실물 스모크(32k artifact). 룸 `LOOM-SGLR`+브릿지 **0.23.2 코드로 온라인**(pid는 세션마다 다름 — `loom --profile mac-node bridge status`로 확인).
+> **v0.23.2 implemented (`91bee75`) + 실물 스모크 완료 (2026-07-18).** 당일 체인: R24 스펙 → R25/0.23.0 구현 → conv 실물 스모크 → R26/0.23.1(artifact 패키징) → R27/0.23.2(agentKind codex·grok 확장) → **0.23.2 스모크 A/B 완주**(codex fail-closed + grok 라이브 pane) → **0.23.1 스모크 시도**(⚠️ Claude Ink TUI 스크레이프 ~5k 상한으로 §5.2 32k 라이브 미도달 — ⭐ 블록 "0.23.1 실물 스모크 시도 기록" + 후보 ⑩ 참조. fable/sonnet/opus 워커 거동 차이도 기록). 다음 = **후속 후보 ⑩**(§5.2 트리거 전제 재검토, 상위) 또는 ②③⑤⑥⑦⑨. 룸 `LOOM-SGLR`+브릿지 **0.23.2 코드·기본 argv로 온라인**(pid는 세션마다 다름 — `loom --profile mac-node bridge status`로 확인. mac-node config엔 grok argv 등록 유지, claude는 기본 `["claude"]`로 복원됨).
 
 ---
 

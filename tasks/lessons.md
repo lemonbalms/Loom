@@ -55,3 +55,17 @@
 **Rule:** 0.23.0 구현 시 verify 루프가 Enter 재전송 전에 **composer 내용 존재를 확인**(pane read)하고, 비어 있으면 프롬프트 자체를 재주입하도록 개선 후보로 등록 — UNKNOWNS "pane 주입" 계열.
 
 **갱신 (2026-07-18 0.23.2 스모크):** grok TUI에서도 동일 레이스 재현 — **에이전트 무관**(claude 2회 + grok 1회, 3회째). 동일 수동 복구가 grok에도 그대로 통함: `herdr pane read`로 composer 빈 것 확인 → `herdr agent send <terminal_id> "<wrapped prompt>"` → 별도 `herdr agent send <terminal_id> $'\r'`(실제 CR 문자 — 리터럴 `"\r"` 문자열 아님) → working 전이 확인. 브릿지 verify 루프 개선(재주입)은 이제 특정 CLI 이슈가 아니라 **모든 pane 레인 공통 요구**로 승격.
+
+## 2026-07-18 (3) — §5.2 32k artifact 경로는 Claude Ink TUI 워커로 라이브 트리거 불가 (스크레이프 상한 ~5k)
+
+**발견 (0.23.1 실물 스모크):** 브릿지가 워커 출력을 회수하는 유일한 경로는 `herdr paneRead(paneId, {source:"recent", lines:200})`인데, 이는 워커 pane의 **렌더된 터미널 버퍼**를 읽는다. Claude Code(Ink TUI) 워커는 트랜스크립트를 실시간으로 접고 스크롤아웃하므로, 워커가 40k+를 실제로 출력해도 스크레이프는 **소스(visible/recent/recent-unwrapped)·줄수(200/500/1000) 무관하게 ~5.3k에서 포화**(실측: 200줄 요청 중 실제 콘텐츠 22줄만 잔존). 따라서 `output.length > 32_000` 분기(`sendWorkerTurnFromPane`)가 라이브에서 참이 될 수 없어 `packageConvTurnArtifact`가 호출되지 않는다 — `artifacts=null`.
+
+**대조 검증:** 원시 shell pane에 60k 파일 `cat` → `recent 200`=20.6k, `recent 500`=51.7k. 즉 herdr 자체는 스크롤백을 보존하며, 상한은 **Claude Ink TUI의 트랜스크립트 접힘** 때문. HANDOFF 종전 "216컬럼×200줄≈43k" 추정은 raw shell 측정치였고 TUI 워커엔 무효 — 정정함.
+
+**워커 모델별 마커 거동 (fable→sonnet→opus 교체 실측):** 브릿지 주입 프롬프트엔 M-4상 `⚠ Untrusted handoff content` 마커가 강제로 붙는다.
+- **Fable**: 마커 붙은 대량출력 지시 **수행**.
+- **Sonnet 5**: injection형 대량출력 지시를 **반복 거부**(설득 턴에도 불응). 단 goal-ack 등 평범한 마커 턴은 정상 응답 — 거부는 "무의미한 대량 출력 강제" 형태에 한정.
+- **Opus 4.8**: 스모크 의도를 스스로 추론해 dense 출력 자발 생성(협조적).
+→ 마커는 유용한 보안장치지만, injection-저항이 강한 모델을 워커로 쓰면 정당한 고volume conv 턴도 막힐 수 있다는 텐션 존재.
+
+**Rule:** §5.2 라이브 검증은 pane 스크레이프 전제부터 재설계 필요(후속 후보 ⑩): (a) 워커가 출력을 직접 파일로 쓰는 경로, (b) TUI raw 스크롤백을 깊게 노출하는 herdr 모드 조사, (c) 32k 임계를 TUI 실측 상한 기준 재조정 중 택. 패키징/제시 코드 자체는 무결(309 유닛테스트 green)이므로 코드 버그로 오인 말 것 — 문제는 **입력이 임계에 도달하지 못함**.
