@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R27** PLAN **v0.23.2**(dispatch/conv agentKind allowlist 확장 codex·grok, PATCH) **`approved`**(즉시 승인 2026-07-18 — M-lock 없음) — 원격 실행 표면 1→3종 확대의 유일한 게이트인 "브릿지 로컬 argv 명시 등록(기본 미등록 = fail-closed)" 불변식이 코드로 보증됨을 확인. L-1(`agentArgv` 비배열 값 필터 — claim 후 무신호 증발 방지)·L-2(설정 예시에 등록=자율성 수용 고지)는 구현 PATCH 내 author-close. 직전: R26 v0.23.1 `approved` → implemented `e5ccc4d`.  
+> **최신:** **R28** PLAN **v0.23.3**(conv 워커 산출물 파일-기반 artifact 트리거 — §5.1 자가 적용 규약, PATCH) **`pending-revision` → author-close `approved`**(2026-07-18) — 갭 실재(TUI 스크레이프 ~5.3k 상한 실측 → 32k 측정 트리거 라이브 도달 불가)·§5.1 원의도 정렬·보안 4계층(파일명-only·charset·realpath containment·크기 상한) 설계 타당·소비부 무변경 주장 코드 실증. M-1(방출 계약만 재사용 — `packageConvTurnArtifact` 파일 쓰기 생략·ref 파일명=마커 파일명·다건 누적·`turn-*` 예약) lock 본문 반영 + L-1..L-3 author-close 완료(no R28b, Fable 사전 승인). 직전: R27 v0.23.2 `approved` → implemented `91bee75`.  
 > **규칙:** PLAN `Status=approved`는 **Fable 5 R{n} 사인오프 후**가 원칙. Low author-close 시 출처 명시. **언제 R{n} 필수?** → [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).  
 > **이름:** 제품 = **Loom** (`loom`, `@loom/*`); 검토자 **Fable 5** / fable-advisor = 에이전트, not product.  
 > **아카이브:** R1–R11 전문 → [`docs/plan_review_archive.md`](./plan_review_archive.md)  
@@ -13,6 +13,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R28** | **v0.23.3** | **closed (pending-revision → author-close approved 2026-07-18)** | **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH) — 워커 직접 파일 쓰기 + `[ARTIFACT] <파일명>` 마커 → 브릿지 4계층 검증 후 기존 방출 경로로 ref. 갭 실재(TUI ~5.3k 실측)·스펙 정렬·소비부 무변경 확인. M-1: 방출 경로 "재사용" 문안이 `packageConvTurnArtifact` 실계약과 모순(다건 마커 클로버·inline text 대체·파일명 불일치 + `turn-*` 네임스페이스 충돌 미규정) → 문안 lock. |
 | **R27** | **v0.23.2** | **closed (approved 즉시 승인 2026-07-18)** | **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH) — 공용 enum 1→3종, 실행 게이트는 브릿지 로컬 `agentArgv` 명시 등록(기본 미등록 = 0.23.1 동일 fail-closed)·wire argv 금지(§4.4.2) 유지. M-lock 없음(보수 결정이 본문 기명문 + 원시 기존재). L-1(`agentArgv` 형상 필터)·L-2(등록 고지) author-close → 구현 PATCH 포함. |
 | **R26** | **v0.23.1** | **closed (pending-revision → author-close approved 2026-07-18)** | **§5.2 artifact 패키징 호출부** (PATCH) — 브릿지 truncate 폴백 제거→scp 규약 패키징(전문 보존) + 타워 M-2 검증 통과 fetch 명령 **제시**(자동 실행 없음). 갭 실재·§5 이전 충실·스코프(자동 git push 유예 포함) 확인. 단 scp host 해석 출처가 "로컬 conv state"로 옮겨져 §5.3③ "수신측 로컬 설정" 왜곡(M-1) + 셸 복붙이 예정된 제시 문자열 표면의 안전 규약 미규정(M-2) → PLAN 문안 lock 2건 + L-1·L-2 author-close 완료. |
 | **R25** | **v0.23.0** | **closed (approved → implemented `e4dab9e` 2026-07-18)** | **conv 멀티턴 수직 슬라이스** — approved CONV_SPEC(R24)의 구현 PLAN. 스펙 이전 충실·스코프 minimal-but-sufficient·왜곡 없음. 단 R24 M-1 "양측 pin"의 **브릿지 측 집행 서술 공백**(M-1) + **미지 convId fail-closed 기본값 미고정**(M-2) → PLAN 문안 lock 2건 + L-1..L-4 author-close. |
@@ -27,7 +28,46 @@
 
 ## Open (blocking)
 
-*(현재 없음 — R27 `approved` 즉시 승인(M-lock 없음), L-1·L-2는 구현 PATCH 내 author-close, 2026-07-18.)*
+*(현재 없음 — R28 M-1 lock은 2026-07-18 PLAN v0.23.3 본문 반영 완료, 아래 R28 Author-close 완료 참조.)*
+
+---
+
+## Review R28 — Plan v0.23.3 (conv 워커 산출물 파일-기반 artifact 트리거 — §5.1 자가 적용 규약, PATCH)
+
+**검토 대상:** `docs/PLAN.md` `#### 0.23.3` changelog + header + `docs/CONV_SPEC.md` §5.1–5.3(R24 approved 정본 — 스펙 재론 없음, 이전 충실도만 심사) + 코드 대조(`packages/host/src/bridge-runtime.ts:696-745` startConvPane — `:706` `LOOM_CONV` env 전달·`:737-738` goal 프롬프트 주입 지점(규약 문구 추가 지점 실재), `:790-877` sendWorkerTurnFromPane — `:831` 기존 32k 측정 트리거(`output.length > MAX_CONV_TURN_INLINE_CHARS`) 유지 확인·마커 소비부 삽입 지점, `packages/host/src/conv-artifact-pack.ts:44-99` packageConvTurnArtifact — `:58-60` seq 키 파일 쓰기·`:79-81` inline text 대체(M-1 근거), `packages/protocol/src/conv-contract.ts:109-128` ArtifactRefEntrySchema·artifacts max 16·`:212-236` validateScpArtifactRef prefix 강제·`:240-251` convArtifactsRootLiteral + loomDir() divergence 주석(L-2 근거)·`:270-340` 제시 렌더 charset allowlist) + `docs/plan_review.md` R23(브릿지 신뢰 경계)·R26(§5.2 생산자 선례) + `HANDOFF.md` 0.23.1 실물 스모크 기록·`tasks/lessons.md` 2026-07-18 (3)(실측 근거)
+**검토자:** Fable 5 (fable-advisor) — claude-rev 필수 컨설트 완료. **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-07-18
+**결론:** **`pending-revision` → M-1 lock PLAN 본문 반영 + L-1..L-3 author-close → author-close `approved`** (Fable 사전 승인, no R28b).
+
+**Author-close 완료 (2026-07-18, claude-impl):** M-1 — PLAN 0.23.3 "브릿지 — 마커 소비부" 행을 lock 문안으로 교체(방출 계약만 재사용·파일 쓰기 생략·ref 파일명=마커 파일명·inline text 부가·다건 누적·동시 발화 병존·`turn-*` 예약) + 테스트 행 보강(다건 ref path/sha 상이·동시 발화 병존). L-1 — 정확 라인 앵커 + conv별 (파일명, sha256) dedup 문안·테스트 행. L-2 — 실측 경로 전달(env `LOOM_ARTIFACTS_DIR` + 규약 문구 실경로 삽입) + `mkdir -p -m 700` 권고. L-3 — TOCTOU·hardlink 신뢰 모델 한정 명시 + root 쪽 realpath 문안·테스트 행. 사전 승인 경로(no R28b)에 따라 재리뷰 없이 `approved` 전환.
+
+### 결정적 발견 (성패 지점)
+이 PATCH의 실질은 **artifact 생산 트리거의 측정 주체를 브릿지(스크레이프 길이)에서 워커(마커 선언)로 옮기면서, 워커 제어 입력(파일명)이 브릿지의 파일 읽기·전송을 유도하는 신뢰 경계 인접 경로를 신설**하는 것이다. 보안 설계는 건전함을 확인했다: charset `[A-Za-z0-9._-]` + 선행 `-`/`.` 금지가 `..`·경로 구분자·인자 주입을 원천 차단하고, realpath containment가 심링크 탈출을 fail-closed로 막으며, "워커가 읽을 수 있는 파일은 원리상 pane 출력으로도 (분할) 전달 가능 — 새 능력은 브릿지가 전송 주체가 되는 것뿐"이라는 신뢰 모델 논증(R23 승계)도 타당하다(워커=브릿지 동일 사용자 로컬 자율 프로세스). 그러나 **방출 측 문안이 실코드 계약과 모순**된다: PLAN은 "파일 읽어 sha256·chars 계산 → 기존 0.23.1 방출 경로 재사용(`packageConvTurnArtifact` 계약)"이라 쓰면서 같은 표에서 "마커 다건 허용(파일별 ref 1건, 상한 예: 턴당 4건)"을 명시하는데, 이 함수는 fullText를 **`turn-<seq>.txt`로 직접 쓰고**(`conv-artifact-pack.ts:58-60`) **inline text를 파일 tail+notice로 대체**하며(`:79-81`) ref 파일명이 seq 기반이다 — 문안대로 호출하면 다건 마커가 같은 seq → 같은 파일 클로버 → 복수 ref가 같은 path에 다른 sha256(선행 ref 무결성 즉시 파탄), inline 턴은 워커의 실제 pane 메시지를 잃고, ref 파일명 ≠ 마커 파일명이 된다. R25/R26 M 기준("문안대로 구현하면 결함이 스펙 준수의 결과물") 정확히 부합 → M-1.
+
+### Checklist
+- [x] **갭 실재 (Why 정확)** — 2026-07-18 실물 스모크 실측: Claude Ink TUI pane 스크레이프는 소스 모드·줄수 무관 ~5.3k 상한(원시 shell pane은 `recent 500`=51.7k — 차이 원인은 TUI 렌더 버퍼), 32k 측정 트리거(`bridge-runtime.ts:831`) 라이브 도달 불가. HANDOFF·lessons 기록과 일치.
+- [x] **대안 기각 근거 타당** — (b) herdr `pane.read` 소스 3종 전부 렌더 버퍼 종속(upstream 기능 요청 외 불가), (c) 임계 ~5k 하향은 CONV_SPEC §5.1(32k) 위반 + TUI chrome 오염 스크레이프 패키징. (a)가 §5.1 *"판정이 기계적이라 워커 CLI가 프롬프트 규약만으로 자가 적용"* 원문과 직접 정렬 — 스펙 재론 없음 확인.
+- [x] **규약 문구 삽입 지점 실재** — conv 스폰 경로 `startConvPane`(`bridge-runtime.ts:696-745`)에서 `LOOM_CONV` env 전달(`:706`) 기존재, goal 주입(`:737-738` `wrapUntrustedPrompt(payload.goal)`)에 브릿지-저작 규약 문구를 덧붙일 지점 실재. 워커는 `LOOM_CONV`로 `<convId>`를 이미 안다(0.23.0).
+- [x] **기존 트리거 유지 (회귀 없음 주장)** — `:831` `output.length > MAX_CONV_TURN_INLINE_CHARS` 경로 실재·무변경 계획 확인. 단 마커와 동시 발화 시 조합이 미규정(M-1에 포함).
+- [x] **소비부 무변경 주장 실증** — 워커 파일명 charset `[A-Za-z0-9._-]`은 타워 측 검증·렌더를 그대로 통과: `ArtifactRefEntrySchema` path max 1000(`conv-contract.ts:105`)·artifacts max 16(`:128` — 턴당 4건 상한과 정합), `validateScpArtifactRef` 정규화 후 `~/.loom/artifacts/<convId>/` prefix 강제(`:212-236`), 제시 렌더 allowlist `[A-Za-z0-9._/-]`(`:272`) ⊇ 마커 charset. wire 스키마·M-2 검증·제시 표면 전부 무변경 — 생산 트리거만 추가라는 주장 성립.
+- [x] **보안 4계층 (판단 핵심)** — ① 파일명-only(경로 구분자 charset 밖) ② charset + 선행 `-`/`.` 금지(`..`은 선행 `.` 금지로 커버) ③ realpath containment fail-closed(심링크 탈출 차단) ④ 10MB 상한. 신뢰 모델 논증 타당(위 결정적 발견). 보강 각도는 L-3(hardlink 명시·root 쪽 realpath·TOCTOU 방어심층).
+- [x] **마커 위조** — conv pane은 브릿지 스폰 전용(herdr pane 주입은 M-2 경로 공용)이라 제3자 기입 불가. 단 **타워 주입 턴 문구가 pane에 echo되어 스크레이프에 잔존하는 경로는 실존** — containment 덕에 영향이 해당 conv의 artifacts 디렉터리 내로 한정되고(그 파일들은 어차피 같은 peer 앞으로 방출될 것들), L-1 정확-라인-앵커로 오탐을 축소한다. 격상 불요.
+- [x] **fail-open/fail-closed 배치** — 파일 부재·검증 실패 = 턴 정상 진행 + note 사유(적절: 산출물 전달 실패가 conv를 죽이면 안 됨), containment 탈출·크기 초과 = fail-closed(적절). 스모크 재설계(후보 ⑪ 흡수 — benign 실파일 전달형)도 실측 블로커(capable 모델의 injection형 거부)에 대한 정확한 대응.
+- [x] **테스트 열거** — 거부 케이스·realpath 탈출·부재 note·상한·다건·기존 32k 회귀·인라인 회귀 커버. 단 M-1(다건 sha 구별·동시 발화)·L-1(잔존 마커 dedup)·L-3(root realpath) 케이스 추가 필요 — 각 finding에 명시.
+
+### Findings (Sev: High|Med|Low)
+- **M-1 (Med, binding — PLAN 문안 lock): "기존 0.23.1 방출 경로 재사용" 문안이 `packageConvTurnArtifact` 실계약과 모순 — 문안대로 구현하면 다건 마커 무결성 파탄.** 근거는 결정적 발견 참조. 잠글 문안: **"방출 계약(틸드-리터럴 ref.path root·sha256/chars/gist·scp transport — R26 L-1 양식)만 재사용하고, 파일-기반 입력에는 `packageConvTurnArtifact`의 파일 쓰기 단계를 적용하지 않는다(파일은 워커가 이미 썼다 — 재기록·이중 저장 금지). ref 파일명 = 검증 통과한 마커 파일명 그대로. inline turn text = pane 스크레이프 원문(±마커 라인) + artifact notice 부가 — 파일 tail로 대체하지 않는다. 다건 마커는 파일별 ref 1건씩 artifacts[]에 누적(상한 초과분 무시 + note). 32k 측정 트리거와 마커가 같은 턴에 동시 발화하면 양쪽 ref를 병존 방출하되, 측정 트리거 산출물 파일명 `turn-<seq>.txt`와의 충돌 방지를 위해 `turn-*` 파일명 패턴을 브릿지 예약 네임스페이스로 규정(마커 파일명으로 거부 또는 문구로 금지 고지)."** + 테스트 행 추가: 다건 마커 → ref별 path·sha256 상이 검증, 동시 발화 병존 케이스. (advisor 확정 — `turn-*` 네임스페이스 충돌은 advisor 발견.)
+- **L-1 (Low, author-close): 접힌 렌더 버퍼의 이전 턴 마커 잔존 → 다음 턴 재탐지·중복 ref 재방출.** 스크레이프 창(recent 200줄, 실측 ~5.3k)은 턴 경계로 리셋되지 않으므로 턴 N의 `[ARTIFACT]` 라인이 턴 N+1 스크레이프에 그대로 남는다. 닫기: conv별 방출 기억 (파일명, sha256) — 재탐지 시 sha 동일하면 skip(파일 갱신으로 sha가 다르면 정당 재방출), 마커 매치는 정확 라인 앵커(행 전체 `[ARTIFACT] <파일명>` 일치)로 한정해 타워 주입 문구 echo·대화 중 마커 언급 오탐도 함께 축소 + 테스트 행("이전 턴 마커 잔존 스크레이프 → 중복 ref 미방출").
+- **L-2 (Low, author-close): 규약 문구의 `~/.loom/...` 리터럴 vs 브릿지 실제 `loomDir()` divergence.** 워커에게 지시하는 기록 경로는 `~/.loom/artifacts/<convId>/`인데 브릿지는 `loomDir()/artifacts/<convId>/`에서 읽으며, legacy `~/.fable` divergence가 코드에 문서화된 실재 케이스(`conv-contract.ts:240-251` 주석). 해당 환경에선 마커가 항상 파일 부재 note로 귀결(fail-closed라 안전하나 기능 불성립). 닫기: 스폰 시 실측 디렉터리를 워커에 전달(예: env `LOOM_ARTIFACTS_DIR` 또는 규약 문구에 브릿지가 실경로 삽입) + 규약 문구에 `mkdir -p -m 700` 권고(기존 0700/0600 관례 정합).
+- **L-3 (Low, author-close): containment 계층의 방어심층 보강 3점 명시.** ① realpath 검사→read 사이 TOCTOU(심링크 스왑)와 ② hardlink(realpath로 미포착)는 신뢰 모델상 신규 능력이 아님(동일 사용자 자율 워커 — PLAN §Security 논리 그대로)을 본문에 한 줄 명시해 후속 리뷰의 재발굴 방지, ③ containment 비교 시 **root 쪽도 realpath**(파일만 resolve하고 root를 리터럴 비교하면 macOS `/var→/private/var`류에서 오판) — 테스트 행 1건 추가. (③ advisor 발견.)
+
+### Decision notes
+- **verdict 구조 (R25/R26 동형):** M-1은 R25 M-1·R26 M-1과 같은 부류 — 문안대로 구현하면 결함(다건 클로버·메시지 소실·파일명 불일치)이 스펙 준수의 결과물이 되는 왜곡이라 본문 반영 전 착수를 허용한 선례가 없다. PLAN이 다건 허용을 명시하면서 단일-파일-클로버 함수 재사용을 지시하는 **내부 모순**이므로 즉시 approved 부적합. 재리뷰 필수까지 갈 사유도 없음 — lock은 설계 재작업이 아닌 방출 계약 문안 고정이고 원시(검증·해시·ref 조립·렌더)는 전부 기존재. M-1 반영 + L-1..L-3 author-close 후 재리뷰 없이 `approved` 전환(no R28b).
+- **결정을 가르는 리스크:** M-1을 잠그지 않으면 구현 lane이 `packageConvTurnArtifact` 호출을 문자 그대로 재사용해 다건 케이스에서 무결성 파탄 코드를 정확히 스펙대로 작성하게 된다. 나머지는 전부 문구·테스트 보강.
+- **보안 판단 요지:** 신설 신뢰 경계(워커 제어 파일명 → 브릿지 읽기·전송)는 4계층 + 신뢰 모델 논증으로 충분 — 이 PATCH가 부여하는 새 능력이 "브릿지가 전송 주체가 되는 것"뿐이라는 서술이 정확하고, 탈출 각도(traversal·심링크·마커 위조)는 전부 fail-closed 또는 conv 디렉터리 내 한정임을 코드·설계 양면에서 확인. 격상 finding 없음.
+- **기존 게이트 승계 무변:** artifact fetch 자동 실행 금지(제시까지 — 0.23.0/R26)·자동 git push 유예·단발 card result 경로 분리(§5.5) 그대로.
+- **PATCH 적용자는 implementer** — 리뷰어는 plan_review.md + PLAN 헤더 Status/Approval 동기화만 수행(헤더 `pending-revision` 전환은 이 리뷰에서 반영). M-1 문안·L-1..L-3 닫기와 author-close 후 `approved` 전환은 구현 PATCH에 포함할 것.
+- Advisor: fable-advisor consulted: yes. (verdict 일치: pending-revision → author-close approved, no R28b. M-1 캘리브레이션 "M 맞음 — PLAN 내부 모순" 확정 + `turn-*` 네임스페이스 충돌·root 쪽 realpath는 advisor 발견, L-1 dedup의 (파일명, sha256) 기준·L-2 mkdir 권고는 advisor 보강.)
 
 ---
 

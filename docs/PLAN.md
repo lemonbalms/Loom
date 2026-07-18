@@ -4,11 +4,11 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.23.3** |
-| **Status** | **`pending-review`** (R28 대기, 2026-07-18) — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH): 실측 확정된 구조적 블로커(Claude Ink TUI pane 스크레이프 ~5.3k 상한 → 브릿지 측정 32k 트리거 라이브 도달 불가)를 해소한다. 워커가 대용량 산출물을 규약 디렉터리에 **직접 파일로 쓰고** 마커 라인으로 알리면, 브릿지가 파일명 검증 후 기존 0.23.1 패키징 경로로 artifacts[] ref를 방출한다. **relay 와이어 protocol v1 무변경 · M-2 소비부 무변경.** |
+| **Status** | **`approved`** (R28 `pending-revision` → M-1 lock 본문 반영 + L-1..L-3 author-close 완료 → author-close `approved`, no R28b — Fable 사전 승인, 2026-07-18, `docs/plan_review.md` R28) — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH): 실측 확정된 구조적 블로커(Claude Ink TUI pane 스크레이프 ~5.3k 상한 → 브릿지 측정 32k 트리거 라이브 도달 불가)를 해소한다. 워커가 대용량 산출물을 규약 디렉터리에 **직접 파일로 쓰고** 마커 라인으로 알리면, 브릿지가 파일명 검증 후 기존 0.23.1 패키징 경로로 artifacts[] ref를 방출한다. **relay 와이어 protocol v1 무변경 · M-2 소비부 무변경.** |
 | **Supersedes** | 0.23.2 |
 | **Last updated** | 2026-07-18 |
-| **Approval** | **R28 대기** — 직전: R27 `approved`(0.23.2) → implemented `91bee75` · R26 author-close `approved`(0.23.1) → implemented `e5ccc4d`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 §5.1 "워커 CLI가 프롬프트 규약만으로 자가 적용" 원의도에 구현을 정렬하는 것). |
-| **Fable 5 when** | **Required** — 워커 제어 입력(마커 파일명)이 브릿지의 파일 읽기·전송을 유도하는 **신뢰 경계 인접** 경로 신설 + §5.2 트리거 의미 변경 (§5.1 보수 판단). **R28 요청 중.** |
+| **Approval** | **R28 author-close `approved`** (2026-07-18, Fable 5/fable-advisor consulted — `pending-revision` → M-1 lock 본문 반영 + L-1..L-3 author-close 완료, no R28b) — 직전: R27 `approved`(0.23.2) → implemented `91bee75` · R26 author-close `approved`(0.23.1) → implemented `e5ccc4d`. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 §5.1 "워커 CLI가 프롬프트 규약만으로 자가 적용" 원의도에 구현을 정렬하는 것). |
+| **Fable 5 when** | **Required** — 워커 제어 입력(마커 파일명)이 브릿지의 파일 읽기·전송을 유도하는 **신뢰 경계 인접** 경로 신설 + §5.2 트리거 의미 변경 (§5.1 보수 판단). **R28 완료(2026-07-18): `pending-revision` → author-close `approved`(M-1 lock 반영 + L-1..L-3), `docs/plan_review.md` R28.** |
 | **Priorities** | [`docs/PRIORITIES.md`](./PRIORITIES.md) — launcher UX after work bus |
 | **Canonical path** | `docs/PLAN.md` (repo). Session copy is non-authoritative. |
 | **Original design** | ⛔ **`docs/ORIGIN.md`** — 최초 설계안(v0.1.0) 불변 baseline + delta. 이 PLAN은 **as-built**이며 R1 피벗 당일 원래 비전을 제자리 덮어썼다. 원래 목적지(Mosaic-parity·presence·Phase 0~5) 대조는 ORIGIN 참조. |
@@ -50,7 +50,7 @@
 
 ### Changelog
 
-#### 0.23.3 — 2026-07-18 (`pending-review` R28 — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH))
+#### 0.23.3 — 2026-07-18 (`approved` author-close after R28 `pending-revision` — **conv 워커 산출물 파일-기반 artifact 트리거 (§5.1 자가 적용 규약)** (PATCH))
 
 **Product one-liner:** 32k 초과 산출물을 워커가 규약 디렉터리(`~/.loom/artifacts/<convId>/`)에 직접 파일로 쓰고 턴 끝에 `[ARTIFACT] <파일명>` 마커로 알리면, 브릿지가 파일명 검증 후 기존 0.23.1 패키징 경로(sha256·chars·틸드-리터럴 ref)로 artifacts[] ref를 회신한다 — pane 스크레이프 상한과 무관하게 §5.1 "절단 금지"가 라이브에서 실제로 성립한다.
 
@@ -59,22 +59,24 @@
 **What (범위 — PATCH; 설계 정본 = CONV_SPEC §5, 스펙 재론 없음):**
 | 항목 | 내용 |
 |------|------|
-| **워커 프롬프트 규약 (§5.1 자가 적용)** | conv goal 프롬프트(브릿지가 워커 pane에 주입하는 규약 문구)에 추가: 산출물이 인라인 32k를 초과하거나 pane 표시로 온전 전달이 불가능하면, 전문을 `~/.loom/artifacts/<convId>/<파일명>`에 직접 기록하고 턴 마지막에 **`[ARTIFACT] <파일명>`** 라인을 출력하라. `<convId>`는 기존 `LOOM_CONV` env로 워커에 이미 전달됨(0.23.0). 파일명 규약: **파일명만**(경로 구분자 금지), charset `[A-Za-z0-9._-]`, 선행 `-`·`.` 금지. |
-| **브릿지 — 마커 소비부** | `sendWorkerTurnFromPane` 스크레이프에서 `[ARTIFACT] <파일명>` 라인 탐지(마커는 턴 말미라 ~5.3k 접힘 창에도 잔존) → 파일명 검증(위 규약 — 위반 시 해당 마커 무시 + bridge note 사유 회신) → `loomDir()/artifacts/<convId>/<파일명>`로만 해석(**realpath containment**: 해석 결과가 conv 디렉터리 내부임을 심링크 추적 후 확인, 탈출 시 fail-closed) → 크기 상한(10MB, 초과 fail-closed) → 파일 읽어 sha256·chars 계산 → **기존 0.23.1 방출 경로 재사용**(`packageConvTurnArtifact` 계약: 틸드-리터럴 ref.path(R26 L-1)·gist 안내 문구·scp transport). 파일 부재/검증 실패 시 턴 자체는 정상 진행(artifact 미방출 + note 사유). 마커 다건 허용(파일별 ref 1건, 상한 예: 턴당 4건). |
+| **워커 프롬프트 규약 (§5.1 자가 적용)** | conv goal 프롬프트(브릿지가 워커 pane에 주입하는 규약 문구)에 추가: 산출물이 인라인 32k를 초과하거나 pane 표시로 온전 전달이 불가능하면, 전문을 artifacts 디렉터리에 직접 기록하고 턴 마지막에 **`[ARTIFACT] <파일명>`** 라인을 출력하라. **기록 경로는 브릿지가 스폰 시 실측 경로로 전달**(R28 L-2 — env `LOOM_ARTIFACTS_DIR=<loomDir()/artifacts/<convId>>` 주입 + 규약 문구에도 브릿지가 실경로를 삽입; `~/.loom` 리터럴 고정 시 legacy `~/.fable` 등 `loomDir()` divergence 환경에서 마커가 항상 파일 부재로 귀결) + 규약 문구에 `mkdir -p -m 700` 권고(기존 0700/0600 관례 정합). `<convId>`는 기존 `LOOM_CONV` env로 워커에 이미 전달됨(0.23.0). 파일명 규약: **파일명만**(경로 구분자 금지), charset `[A-Za-z0-9._-]`, 선행 `-`·`.` 금지, **`turn-*` 패턴은 브릿지 예약 네임스페이스라 금지**(R28 M-1 — 32k 측정 트리거 산출물 `turn-<seq>.txt`와의 충돌 방지; 규약 문구로 고지하고 브릿지는 해당 마커를 거부). |
+| **브릿지 — 마커 소비부 (R28 M-1 lock 문안)** | `sendWorkerTurnFromPane` 스크레이프에서 `[ARTIFACT] <파일명>` 라인 탐지 — **정확 라인 앵커**(행 전체가 `[ARTIFACT] <파일명>` 일치, R28 L-1: 타워 주입 문구 echo·대화 중 마커 언급 오탐 축소; 마커는 턴 말미라 ~5.3k 접힘 창에도 잔존) → 파일명 검증(위 규약 — 위반·`turn-*` 예약 침범 시 해당 마커 무시 + bridge note 사유 회신) → `loomDir()/artifacts/<convId>/<파일명>`로만 해석(**realpath containment**: 해석 결과가 conv 디렉터리 내부임을 심링크 추적 후 확인 — **비교 시 root 쪽도 realpath**(R28 L-3③, macOS `/var→/private/var`류 오판 방지), 탈출 시 fail-closed) → 크기 상한(10MB, 초과 fail-closed) → 파일 읽어 sha256·chars 계산 → **방출 계약만 재사용**(R28 M-1: 틸드-리터럴 ref.path root(R26 L-1)·sha256/chars/gist·scp transport 양식만 재사용하고, **`packageConvTurnArtifact`의 파일 쓰기 단계는 파일-기반 입력에 적용하지 않는다** — 파일은 워커가 이미 썼다, 재기록·이중 저장 금지). **ref 파일명 = 검증 통과한 마커 파일명 그대로.** **inline turn text = pane 스크레이프 원문(±마커 라인) + artifact notice 부가 — 파일 tail로 대체하지 않는다.** **다건 마커는 파일별 ref 1건씩 artifacts[]에 누적**(상한 턴당 4건 — 스키마 max 16 이내, 초과분 무시 + note). **32k 측정 트리거와 마커가 같은 턴에 동시 발화하면 양쪽 ref를 병존 방출**(측정 트리거는 `turn-<seq>.txt`, 마커는 자체 파일명 — 예약 네임스페이스로 충돌 없음). **conv별 방출 기억 (파일명, sha256)으로 잔존 마커 재탐지 dedup**(R28 L-1 — 스크레이프 창이 턴 경계로 리셋되지 않아 이전 턴 마커가 다음 턴에 재탐지됨; sha 동일하면 skip, 파일 갱신으로 sha가 다르면 정당 재방출). 파일 부재/검증 실패 시 턴 자체는 정상 진행(artifact 미방출 + note 사유). |
 | **기존 트리거 유지 (회귀 없음)** | 브릿지 측정 32k 트리거(`output.length > MAX_CONV_TURN_INLINE_CHARS`)는 그대로 유지 — 스크레이프가 실제로 32k를 넘는 환경(비 TUI 워커 등)에서는 여전히 동작. |
 | **스모크 재설계 (후보 ⑪ 흡수)** | §5.2 라이브 스모크 페이로드를 benign형으로 교체: "repo의 실제 대용량 파일(예: docs/PLAN.md, 154k) 전문을 artifact 규약으로 전달하라" — capable 모델이 거부할 이유가 없는 정상 작업으로 32k+ 전달을 실증. |
-| **테스트** | 마커 탐지 → artifact 파일 읽기·sha256/chars·ref 방출(틸드-리터럴형) fake herdr fixture; 파일명 검증 거부 케이스(경로 구분자·`..`·선행 `-`/`.`·charset 위반·빈 이름); realpath 탈출(심링크로 conv 디렉터리 밖 지시) fail-closed; 파일 부재 → note 회신·턴 정상 진행; 크기 상한 초과 fail-closed; 마커 다건·상한; 기존 32k 스크레이프 트리거 회귀(무변경 확인); 32k 이하 + 마커 없음 = 기존 인라인 경로 회귀. |
+| **테스트** | 마커 탐지 → artifact 파일 읽기·sha256/chars·ref 방출(틸드-리터럴형·**ref 파일명=마커 파일명**) fake herdr fixture; 파일명 검증 거부 케이스(경로 구분자·`..`·선행 `-`/`.`·charset 위반·빈 이름·**`turn-*` 예약 침범**); realpath 탈출(심링크로 conv 디렉터리 밖 지시) fail-closed + **root 쪽 realpath 케이스**(R28 L-3③ — symlink root에서 정당 파일 오거부 없음); 파일 부재 → note 회신·턴 정상 진행; 크기 상한 초과 fail-closed; **다건 마커 → ref별 path·sha256 상이 검증**(R28 M-1)·상한 초과분 무시; **32k 측정 트리거+마커 동시 발화 → 양쪽 ref 병존**(R28 M-1); **이전 턴 마커 잔존 스크레이프 → 중복 ref 미방출, 파일 갱신(sha 변경) 시 재방출**(R28 L-1); inline text가 파일 tail로 대체되지 않음(스크레이프 원문+notice); 기존 32k 스크레이프 트리거 회귀(무변경 확인); 32k 이하 + 마커 없음 = 기존 인라인 경로 회귀. |
 
 **Out of scope (이 버전 아님):** herdr upstream raw 스크롤백 노출 모드(⑩(b) — 기각이 아니라 upstream 관찰 대상); 워커 턴 pane 스크레이프 delta화(⑤)·close 시 pane 정리 정책(⑥)·`loom conv-hosts set` CLI(⑦)·브릿지 주입 verify 루프 개선(⑨); artifact fetch 자동 실행(0.23.0 원칙 승계 — 제시까지만); 단발 card result 경로의 파일 규약 적용(§5.5 별도 유지 — conv 한정); 브릿지 자동 git push(0.23.1 Out 승계).
 
 **Security / trust (R28 판단 대상):**
-- **워커 제어 입력이 브릿지 파일 읽기를 유도한다** — 신설 신뢰 경계. 방어 4계층: ① 파일명-only(경로 구분자·`..` 금지) ② charset allowlist + 선행 `-`/`.` 금지 ③ realpath containment(`loomDir()/artifacts/<convId>/` 밖 해석 = fail-closed, 심링크 포함) ④ 크기 상한. 워커는 이미 해당 노드에서 자율 실행 중인 로컬 프로세스이므로(R23 신뢰 모델) 워커가 읽을 수 있는 파일은 원리상 pane 출력으로도 전달 가능 — 이 PATCH가 새로 주는 능력은 "브릿지가 전송 주체가 되는 것"뿐이고, 위 검증으로 워커 홈 임의 파일 지정 경로를 차단한다.
+- **워커 제어 입력이 브릿지 파일 읽기를 유도한다** — 신설 신뢰 경계. 방어 4계층: ① 파일명-only(경로 구분자·`..` 금지) ② charset allowlist + 선행 `-`/`.` 금지 ③ realpath containment(`loomDir()/artifacts/<convId>/` 밖 해석 = fail-closed, 심링크 포함, root 쪽도 realpath — R28 L-3③) ④ 크기 상한. 워커는 이미 해당 노드에서 자율 실행 중인 로컬 프로세스이므로(R23 신뢰 모델) 워커가 읽을 수 있는 파일은 원리상 pane 출력으로도 전달 가능 — 이 PATCH가 새로 주는 능력은 "브릿지가 전송 주체가 되는 것"뿐이고, 위 검증으로 워커 홈 임의 파일 지정 경로를 차단한다. **방어심층 한정 명시(R28 L-3①②):** realpath 검사→read 사이 TOCTOU(심링크 스왑)·hardlink(realpath로 미포착)는 위 신뢰 모델상 신규 능력이 아니므로(동일 사용자 자율 워커) 추가 방어를 요구하지 않는다 — 후속 리뷰의 재발굴 방지용 기명 한정.
 - **wire 무변경:** artifacts[] 스키마·M-2 수신 검증·타워 제시 표면(0.23.1) 전부 무변경 — 생산 트리거만 추가.
 - **마커 위조:** conv pane에 제3자가 쓸 수 없다(herdr pane은 브릿지 스폰 전용, M-2 주입 경로 공용) — 마커 출처는 워커 자신뿐이며 워커는 이미 신뢰 모델상 자율 주체.
 
 **Review impact:** 와이어 무변경·MCP 도구 수 무변경. M-2 신뢰 경계 **인접**(artifact 생산 트리거에 워커 제어 입력 도입) + §5.2 트리거 의미 변경 → §5.1 보수 판단으로 **R28 요청**.
 
 **R28 질의:** *(현재 없음.)*
+
+**Approved by:** Fable 5 (fable-advisor) R28 — `pending-revision` → **M-1 lock**(방출 계약만 재사용·파일 쓰기 생략·ref 파일명=마커 파일명·inline text 부가·다건 누적·동시 발화 병존·`turn-*` 예약 네임스페이스) PLAN 본문 반영 + **L-1**(잔존 마커 dedup (파일명, sha256)·정확 라인 앵커)·**L-2**(실측 artifacts 경로 전달 env `LOOM_ARTIFACTS_DIR` + `mkdir -p -m 700` 권고)·**L-3**(TOCTOU·hardlink 신뢰 모델 한정 명시 + root 쪽 realpath) author-close → **author-close `approved`**(Fable 사전 승인, no R28b), 2026-07-18. 상세 `docs/plan_review.md` R28.
 
 #### 0.23.2 — 2026-07-18 (`approved` R27 즉시 승인 — **dispatch/conv agentKind allowlist 확장 (codex·grok)** (PATCH))
 
