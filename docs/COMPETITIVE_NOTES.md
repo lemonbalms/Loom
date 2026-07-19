@@ -52,6 +52,8 @@
 
 적용방안 (PATCH 후보 등록):
 
+**→ 완료 (2026-07-19, `08d6091`)**: 5단계 원자화 + JSON 봉투 파싱·settle 재시도 보정 2건, 라이브 5단계 왕복 검증 + read-guard가 오너 사용-중 pane 개입을 실제 차단(존재 의의 첫 실행 실증).
+
 1. `scripts/pane-inject.sh <target> <text-file>` 신설 — lessons의 수동 복구 절차를 원자화:
    ① `herdr pane read`로 composer 상태 확인(비어 있지 않으면 중단·경고) →
    ② `herdr agent send` 리터럴 주입 → ③ re-read로 착지 검증(공백-정규화 매치, paste
