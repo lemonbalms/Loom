@@ -10,23 +10,30 @@
 
 On the **first turn of a new session** (or when the user says “이어서”, “진행해”, “핸드오프”, “상태”, “status”), **before** large implementation:
 
-### 1) Read (in order)
+### 1) Read — **v2 부분-읽기 관례 (오너 승인 2026-07-19: "덜 읽기"가 정답)**
 
-| # | File | Why |
-|---|------|-----|
-| 1 | `HANDOFF.md` | Current gate, next action, traps |
-| 2 | `docs/WORKFLOW.md` | Plan → Review → Implement → Ship (+ §3.5 Unknowns) |
-| 3 | `docs/PLAN.md` (header) | Version + Status |
-| 4 | `docs/plan_review.md` (header + Open) | Blocking reviews |
-
-Optional: `implementation-notes.md` (Deviations) if touching rename/compat/security.  
-Optional: `docs/UNKNOWNS.md` if PLAN is **MINOR** / `pending-review` / new surface (see WORKFLOW §3.5).
-
-**Or run** (fast path for Codex/shell):
+먼저 실행 (LLM 0원 결정론 파서 — 상태표의 SSOT):
 
 ```bash
 bun run status
 ```
+
+그 다음 읽기는 **부분만**:
+
+| # | What | How (v2) | Why |
+|---|------|----------|-----|
+| 1 | `HANDOFF.md` **상단만** | One-line resume + ⭐ Current action + 다음 액션 상단 (~80줄, offset/limit Read) — **(직전) 체인·구형 스모크 아카이브(하단 ~130줄)는 읽지 않는다** | Current gate, next action, traps |
+| 2 | `tasks/lessons.md` | 최근 항목 정독 (CLAUDE.md standing rules 4 — 재범 방지) | 기록 교훈 |
+| 3 | `docs/WORKFLOW.md` | **전문 읽기 폐지** — 게이트 판단 시점에 해당 §만 grep (§5.1 표 등) | 필요 시점 로드 |
+| 4 | `docs/PLAN.md` / `docs/plan_review.md` | `bun run status` 출력으로 대체 — 헤더 재독 불요, 본문은 게이트 판단 시 해당 섹션만 | Version·Status·Open |
+
+Optional: `implementation-notes.md` (Deviations) if touching rename/compat/security.  
+Optional: `docs/UNKNOWNS.md` if PLAN is **MINOR** / `pending-review` / new surface (see WORKFLOW §3.5).
+
+대형 웨이브 예고 시(핸드오프에 R{n}·MINOR·새 표면): 부속 문서(plan_review 락 계보·UNKNOWNS 등)
+선요약은 리추얼이 아니라 **웨이브 준비의 증거 팩 수집**으로 — opus 서브에이전트 위임
+(CLAUDE.md Orchestration standing rules 1). 리추얼 자체는 에이전트 스폰 없이 위 부분-읽기로
+끝낸다(스폰 레이턴시·요약 손실 리스크 > 절감 — 검토 2026-07-19).
 
 ### 2) Brief the user immediately (short)
 
