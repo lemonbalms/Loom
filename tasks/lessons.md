@@ -30,6 +30,7 @@
 - [bridge-ops] 2026-07-19 카드 완료 인지: board 폴링은 자기참조(전이는 tower가 claim해야 발생) — 신호는 inbox `card.done`. 발사 후 inbox 짧은 주기 감시, 회수는 claim 스크립트(parse→apply→accept).
 - [bridge-ops] 2026-07-19 (2) card.done 조기 회신: 워커 "1 command still running" 중 스크레이프해 조기 회신. **해소 0.23.7 `1160b38`** — still-running 지표 감지→10s 폴링·5분 상한 유예→실완료본 회신. card.done 후에도 pane 마커 재확인 이중방어 유지.
 - [bridge-ops] 2026-07-19 (6) 0.23.11 웨이브: `agent read`=JSON 봉투(`.result.read.text` 추출 필수) vs `pane read`=평문. claude TUI 말미 비콘텐츠 줄 다가족(상태줄·bare ❯·✻ 동사·● effort) 순차 보정. 미푸시 커밋 급감 시 워커 push 의심 전 `git fetch`로 오너 병렬 세션 확인.
+- [bridge-ops] 2026-07-19 (17) 멀티룸 dispatch 라우팅: `dispatchCard`=`loadSession()` **active 바인딩 룸**으로만 나감 — 노드가 여러 룸에 흩어지면(mac-node=loom-local / wsl·vps=loom-dev) `loom relay use <name>` 전환 **후** 발사(새 bun dispatch 프로세스라 즉시 반영, sticky host 경고 무해)·회수도 바인딩별 인박스. `@node` 어드레싱 자체는 기완비(`@displayName`→resolveTargets 단일-타깃 enqueue+M-1 allowlist 이중 게이트, 신규 표면 없음). `loom bridge status`는 foreground bun 브릿지서 pidfile 미생성으로 **false offline**(프로세스 생존 — `--profile`+프로세스/health 직접 확인) · 원격 WSL 명령은 cmd.exe 이스케이프 붕괴라 base64 래핑 · VPS stat 타임스탬프 UTC(mac/wsl KST).
 
 ## verification — 차집합 판정·dist 재빌드 순서·독립검증·provenance·힌트 교차검증
 
