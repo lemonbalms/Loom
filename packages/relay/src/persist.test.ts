@@ -6,8 +6,10 @@ import {
   readFileSync,
   symlinkSync,
   chmodSync,
+  realpathSync,
+  existsSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { Room, RoomRegistry } from "./room";
 import {
@@ -15,6 +17,9 @@ import {
   roomStatePath,
   loadAllSnapshots,
   writeAtomicJson,
+  saveRoomSnapshot,
+  type RoomSnapshotV1,
+  ROOM_SNAPSHOT_VERSION,
 } from "./persist";
 
 function tmpState(): string {
@@ -278,5 +283,44 @@ describe("P2 durable relay persist (0.14.1)", () => {
     expect(loaded.getPeer("p_y")).toBeTruthy();
     expect(loaded.listInbox("p_y").length).toBe(1);
     reg2.close();
+  });
+
+  // R39 M-1: adversarial room.id → containment (hash-derived path under state dir).
+  // Do NOT assert rejection/throws — roomStatePath always hashes id to 16-hex.
+  test("D1: adversarial room.id contain under state dir (0.24.2)", () => {
+    const adversarialIds = [
+      "../../etc/x",
+      "/etc/passwd",
+      "C:\\Windows\\x",
+      "foo\\bar\\baz",
+      "room/with/slashes",
+      "..\\..\\Windows\\System32",
+      "normal-room-id",
+    ];
+    const realState = realpathSync(dir);
+    for (const id of adversarialIds) {
+      const snap: RoomSnapshotV1 = {
+        v: ROOM_SNAPSHOT_VERSION,
+        room: {
+          id,
+          name: "containment",
+          inviteCode: "LOOM-TEST0",
+          createdAt: new Date().toISOString(),
+        },
+        members: [],
+        inboxes: {},
+        colorIndex: 0,
+        updatedAt: new Date().toISOString(),
+      };
+      // write must succeed — never assert throw/reject
+      saveRoomSnapshot(dir, snap);
+      const path = roomStatePath(realState, id);
+      expect(path.startsWith(realState + sep) || path === realState).toBe(true);
+      const base = path.slice(realState.length + sep.length);
+      expect(base).toMatch(/^[0-9a-f]{16}\.json$/);
+      expect(existsSync(path)).toBe(true);
+      const body = JSON.parse(readFileSync(path, "utf8")) as RoomSnapshotV1;
+      expect(body.room.id).toBe(id);
+    }
   });
 });

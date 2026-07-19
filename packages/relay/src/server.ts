@@ -173,7 +173,23 @@ export class RelayServer {
             );
             return;
           }
-          self.handleMessage(state, data);
+          try {
+            self.handleMessage(state, data);
+          } catch (e) {
+            const msgType =
+              data &&
+              typeof data === "object" &&
+              "type" in data &&
+              typeof (data as { type: unknown }).type === "string"
+                ? (data as { type: string }).type
+                : undefined;
+            console.error(
+              "[loom relay] handler error:",
+              e instanceof Error ? e.message : e,
+              msgType != null ? `type=${msgType}` : "",
+              state.peerId != null ? `peerId=${state.peerId}` : "",
+            );
+          }
         },
         close(ws) {
           const state = self.clients.get(ws);

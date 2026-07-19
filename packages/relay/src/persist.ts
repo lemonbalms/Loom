@@ -20,7 +20,7 @@ import {
   unlinkSync,
   rmSync,
 } from "node:fs";
-import { join, dirname, basename, resolve } from "node:path";
+import { join, dirname, basename, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import type { HandoffPayload, PeerInfo } from "@loom/protocol";
@@ -386,7 +386,7 @@ export function saveRoomSnapshot(
     realState = resolve(stateDir);
   }
   const path = roomStatePath(realState, snap.room.id);
-  if (!path.startsWith(realState + "/") && path !== realState) {
+  if (!path.startsWith(realState + sep) && path !== realState) {
     throw new Error(`Snapshot path escapes state dir: ${path}`);
   }
   writeAtomicJson(path, snap);
