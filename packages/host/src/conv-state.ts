@@ -19,7 +19,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { loomDir } from "./session-store";
 import { readJsonFile, writeAtomicJson, withFileLock } from "./atomic-json";
-import type { ConvLimits } from "@loom/protocol";
+import type { ArtifactRefEntry, ConvLimits } from "@loom/protocol";
 
 export type ConvRole = "tower" | "worker";
 export type ConvStatus = "open" | "active" | "paused" | "closed";
@@ -44,6 +44,15 @@ export type ConvState = {
   turnCount: number;
   /** Tower-side board card id, when linked. */
   taskId?: string;
+  /**
+   * PLAN 0.25.0 / R40 M-D: per-turn artifact refs stored on the tower for
+   * `conv_fetch(convId, seq, index)` coordinate resolution. Additive local
+   * state only (wire unchanged). Written only on fresh peer turns
+   * (`isFreshPeerSeq` — see conv-ops CONV_TURN_LABEL); replay/out-of-order
+   * turns must not overwrite. Key = turn seq (number), value = that turn's
+   * artifacts[] snapshot.
+   */
+  artifactsBySeq?: Record<number, ArtifactRefEntry[]>;
   startedAt: string;
   updatedAt: string;
 };
@@ -106,6 +115,26 @@ export function isKnownConv(convId: string, role: ConvRole): boolean {
 /** R24 M-1 / R25 M-1: pin check — applied to every intent after open/accept. */
 export function pinMatches(state: ConvState, fromPeerId: string): boolean {
   return Boolean(fromPeerId) && state.pinnedPeerId === fromPeerId;
+}
+
+/**
+ * PLAN 0.25.0 D2: resolve a stored artifact ref by coordinate.
+ * Fail-closed: unknown conv / missing seq / out-of-range index → null.
+ * Tower role only (fetch is a tower-side surface).
+ */
+export function getStoredArtifactRef(
+  convId: string,
+  seq: number,
+  index: number,
+): ArtifactRefEntry | null {
+  if (!Number.isInteger(seq) || seq < 0) return null;
+  if (!Number.isInteger(index) || index < 0) return null;
+  const state = loadConvState(convId, "tower");
+  if (!state?.artifactsBySeq) return null;
+  const arr = state.artifactsBySeq[seq];
+  if (!Array.isArray(arr) || index >= arr.length) return null;
+  const entry = arr[index];
+  return entry ?? null;
 }
 
 /** §3.3 idempotent discard: peer seq must be new AND correct parity for the *other* role. */

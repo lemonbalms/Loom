@@ -478,6 +478,13 @@ export function applyIncomingConvIntent(
     mutateConvState(payload.convId, "tower", (s) => {
       s.lastPeerSeq = payload.seq;
       s.turnCount += 1;
+      // PLAN 0.25.0 / R40 M-D: store turn artifacts for conv_fetch coordinate
+      // resolution. This block is only reached after isFreshPeerSeq — replay /
+      // out-of-order turns return early above and never overwrite stored refs.
+      if (payload.artifacts?.length) {
+        if (!s.artifactsBySeq) s.artifactsBySeq = {};
+        s.artifactsBySeq[payload.seq] = payload.artifacts;
+      }
     });
 
     if (state.taskId) {

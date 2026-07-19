@@ -29,3 +29,4 @@ export * from "./conv-ops";
 export * from "./conv-node-hosts";
 export * from "./conv-artifact-present";
 export * from "./conv-artifact-pack";
+export * from "./conv-artifact-fetch";

@@ -266,9 +266,16 @@ export function convArtifactsRootLiteral(convId: string): string {
 // These functions never execute anything — callers only ever *present* the
 // returned command string (R26 "제시까지" — no auto-execution).
 
-const CONV_SUFFIX_ALLOWED_CHARS = /^[A-Za-z0-9._/-]*$/;
+/** Render + exec-path charset allowlist for convId-prefix suffixes (R26 M-2 / R40 M-C). */
+export const CONV_SUFFIX_ALLOWED_CHARS = /^[A-Za-z0-9._/-]*$/;
 
-function isSafeConvSuffix(suffix: string): boolean {
+/**
+ * Charset allowlist + no leading `-` per `/`-segment for a path/branch suffix
+ * after the convId prefix. Used by present-* render hardening and by the
+ * conv_fetch exec path (R40 M-C — remote path is still interpreted by the
+ * remote sshd shell; this re-check closes that residual gap).
+ */
+export function isSafeConvSuffix(suffix: string): boolean {
   if (!CONV_SUFFIX_ALLOWED_CHARS.test(suffix)) return false;
   return !suffix.split("/").some((seg) => seg.startsWith("-"));
 }

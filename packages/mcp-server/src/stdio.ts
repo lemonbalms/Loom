@@ -22,6 +22,7 @@ import {
   toolConvSend,
   toolConvAwait,
   toolConvClose,
+  toolConvFetch,
 } from "./tools";
 import type { ArtifactRefEntry } from "@loom/protocol";
 
@@ -352,6 +353,27 @@ const TOOLS = [
       required: ["convId"],
     },
   },
+  {
+    name: "conv_fetch",
+    description:
+      "PLAN 0.25.0: retrieve a conv scp artifact by coordinate (convId, seq, index). Host/path/sha are resolved from server-side stored turn artifacts (never from caller). Spawns scp with argv directly (no shell), re-validates host/path exec-path, writes under ~/.loom/artifacts/<convId>/, verifies sha256. Returns metadata only (argv, destPath, sha256, bytes) — not file contents. Git transport refs are present-only (not fetchable). Overwrite of an existing local file is rejected.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        convId: { type: "string", description: "Conv id that owns the turn" },
+        seq: {
+          type: "number",
+          description: "Turn sequence number that carried the artifact ref",
+        },
+        index: {
+          type: "number",
+          description: "Index into that turn's artifacts[] array",
+        },
+      },
+      required: ["convId", "seq", "index"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 function respond(id: string | number | null | undefined, result: unknown) {
@@ -378,7 +400,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.24.2" },
+        serverInfo: { name: "loom", version: "0.25.0" },
       });
       return;
     case "notifications/initialized":
@@ -572,6 +594,17 @@ async function handle(req: JsonRpcReq) {
             await toolConvClose({
               convId: String(args.convId ?? ""),
               reason: args.reason !== undefined ? String(args.reason) : undefined,
+            }),
+            null,
+            2,
+          );
+        } else if (name === "conv_fetch") {
+          text = JSON.stringify(
+            await toolConvFetch({
+              convId: String(args.convId ?? ""),
+              seq: typeof args.seq === "number" ? args.seq : Number(args.seq),
+              index:
+                typeof args.index === "number" ? args.index : Number(args.index),
             }),
             null,
             2,

@@ -23,6 +23,7 @@ import {
   convSendTurn,
   convAwait,
   convClose,
+  convFetch,
   type ContextPack,
   type TaskBoard,
   type TaskItem,
@@ -441,4 +442,22 @@ export async function toolConvClose(args: {
     throw new Error(r.error);
   }
   return { convId: r.convId, taskId: r.taskId };
+}
+
+/**
+ * PLAN 0.25.0 — fetch a stored scp artifact ref by coordinate.
+ * Returns metadata-only (argv, destPath, sha256, bytes); never file contents.
+ * Fail-closed union on error (does not throw for validation failures).
+ */
+export async function toolConvFetch(args: {
+  convId: string;
+  seq: number;
+  index: number;
+}): Promise<Record<string, unknown>> {
+  const r = await convFetch({
+    convId: args.convId,
+    seq: args.seq,
+    index: args.index,
+  });
+  return r as unknown as Record<string, unknown>;
 }
