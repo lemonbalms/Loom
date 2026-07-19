@@ -13,7 +13,8 @@
 2. [ ] 결과 기록: `[DONE]` / board / bun.lock commit·push 여부 **또는** M-4 거부
 3. [ ] (병렬) 팀 6인 dry-run 온보딩 — room ≠ `demo`
 4. [ ] Windows 재부팅 후 relay health
-5. [ ] (참고) Moshi 분석 반영 — `docs/COMPETITIVE_NOTES.md` §2·**§2.5**(hooks≠스크레이프 교체, 하이브리드) · §2.7 로드맵: 칸반 매핑 → 0.23.11 스크레이프 품질 → pane-focus → Claude hooks **보조** 스파이크 (모바일·스크레이프 폐기 비목표)
+5. [ ] (참고) Moshi 분석 — `docs/COMPETITIVE_NOTES.md` §2·§2.5 하이브리드 · §2.7 로드맵
+6. [ ] (참고) Blink×Tailscale — `docs/COMPETITIVE_NOTES.md` §3: underlay 문서(A) → MagicDNS 병기(B) → doctor reachability(C); TS/Mosh 임베드 비목표
 
 ## FREEZE
 
