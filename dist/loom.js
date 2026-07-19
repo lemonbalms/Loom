@@ -10306,7 +10306,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.23.10";
+var VERSION = "0.23.11";
 function eprint(msg) {
   try {
     writeSync(2, msg);
