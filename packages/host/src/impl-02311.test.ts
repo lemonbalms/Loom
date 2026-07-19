@@ -108,6 +108,25 @@ describe("PLAN 0.23.11 ① stripTuiChrome claude statusline", () => {
     const line = "❯ 다음 단계로";
     expect(stripTuiChrome(line)).toContain("❯ 다음 단계로");
   });
+
+  // PLAN 0.23.11 라이브 보정 3(Deviations §0.23.11): claude effort key-hint
+  test("removes ● high · /effort key-hint line", () => {
+    const sample = [
+      "real answer from worker",
+      "● high · /effort",
+      "trailing content",
+    ].join("\n");
+    const out = stripTuiChrome(sample);
+    expect(out).toContain("real answer from worker");
+    expect(out).toContain("trailing content");
+    expect(out).not.toContain("· /effort");
+    expect(out).not.toContain("● high");
+  });
+
+  test("preserves content line mentioning effort without · /effort", () => {
+    const line = "set effort to high for this task";
+    expect(stripTuiChrome(line)).toContain("set effort to high for this task");
+  });
 });
 
 // ── ③ unit: summary real-content preference ───────────────────────────────

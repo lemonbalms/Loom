@@ -167,6 +167,8 @@ const KEY_HINT_MARKERS = [
   "Ctrl+c:cancel",
   // PLAN 0.23.8: claude autoaccept hint line (live board-note pollution)
   "⏵⏵ auto mode on",
+  // PLAN 0.23.11 라이브 보정 3(Deviations §0.23.11): claude effort hint line
+  " · /effort",
 ] as const;
 
 /**
