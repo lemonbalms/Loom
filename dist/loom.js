@@ -5445,7 +5445,7 @@ import {
   unlinkSync as unlinkSync4,
   rmSync as rmSync3
 } from "fs";
-import { join as join18, dirname as dirname5, basename as basename3, resolve as resolve3 } from "path";
+import { join as join18, dirname as dirname5, basename as basename3, resolve as resolve3, sep as sep2 } from "path";
 import { createHash as createHash4 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
@@ -5713,7 +5713,7 @@ function saveRoomSnapshot(stateDir2, snap) {
     realState = resolve3(stateDir2);
   }
   const path = roomStatePath(realState, snap.room.id);
-  if (!path.startsWith(realState + "/") && path !== realState) {
+  if (!path.startsWith(realState + sep2) && path !== realState) {
     throw new Error(`Snapshot path escapes state dir: ${path}`);
   }
   writeAtomicJson2(path, snap);
@@ -6403,7 +6403,12 @@ Phase 3 remote-ready. GET /health  WS /ws
             }));
             return;
           }
-          self.handleMessage(state, data);
+          try {
+            self.handleMessage(state, data);
+          } catch (e) {
+            const msgType = data && typeof data === "object" && "type" in data && typeof data.type === "string" ? data.type : undefined;
+            console.error("[loom relay] handler error:", e instanceof Error ? e.message : e, msgType != null ? `type=${msgType}` : "", state.peerId != null ? `peerId=${state.peerId}` : "");
+          }
         },
         close(ws) {
           const state = self.clients.get(ws);
@@ -10638,7 +10643,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.24.1";
+var VERSION = "0.24.2";
 function eprint(msg) {
   try {
     writeSync(2, msg);
