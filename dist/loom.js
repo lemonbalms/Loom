@@ -5126,6 +5126,7 @@ var init_src = __esm(() => {
 // packages/host/src/session-store.ts
 var exports_session_store = {};
 __export(exports_session_store, {
+  topLevelToBinding: () => topLevelToBinding,
   setActiveProfile: () => setActiveProfile,
   sessionPath: () => sessionPath,
   saveSession: () => saveSession,
@@ -5141,7 +5142,8 @@ __export(exports_session_store, {
   fableDir: () => fableDir,
   ensureLoomDir: () => ensureLoomDir,
   ensureFableDir: () => ensureFableDir,
-  clearSession: () => clearSession
+  clearSession: () => clearSession,
+  applyMirrorOnSave: () => applyMirrorOnSave
 });
 import {
   mkdirSync,
@@ -5343,6 +5345,38 @@ function normalizeSession(raw) {
     relayToken: raw.relayToken || ep.token
   };
 }
+function topLevelToBinding(session) {
+  const ep = parseRelayUrl(session.relayUrl || "", {
+    token: session.relayToken
+  });
+  return {
+    roomId: session.roomId,
+    roomName: session.roomName,
+    inviteCode: session.inviteCode,
+    peerId: session.peerId,
+    peerSecret: session.peerSecret,
+    relayUrl: ep.wsUrl,
+    relayToken: session.relayToken || ep.token,
+    updatedAt: session.updatedAt
+  };
+}
+function applyMirrorOnSave(normalized, bindingSource) {
+  const name = normalized.relayName;
+  if (!name || name.length === 0)
+    return normalized;
+  const mirrored = {
+    ...bindingSource,
+    relayUrl: normalized.relayUrl,
+    relayToken: bindingSource.relayToken
+  };
+  return {
+    ...normalized,
+    relays: {
+      ...normalized.relays ?? {},
+      [name]: mirrored
+    }
+  };
+}
 function loadSession() {
   const p = sessionPath();
   if (!existsSync(p))
@@ -5360,12 +5394,15 @@ function loadSession() {
 function saveSession(session) {
   ensureLoomDir();
   const profile = getActiveProfile();
-  const normalized = normalizeSession({
+  const input = {
     ...session,
     profile: profile ?? session.profile
-  });
+  };
+  const bindingSource = topLevelToBinding(input);
+  const normalized = normalizeSession(input);
+  const toWrite = applyMirrorOnSave(normalized, bindingSource);
   const path = sessionPath();
-  writeFileSync(path, JSON.stringify(normalized, null, 2) + `
+  writeFileSync(path, JSON.stringify(toWrite, null, 2) + `
 `, {
     encoding: "utf8",
     mode: 384
@@ -5405,7 +5442,7 @@ import {
   statSync as statSync4,
   lstatSync,
   realpathSync as realpathSync2,
-  unlinkSync as unlinkSync3,
+  unlinkSync as unlinkSync4,
   rmSync as rmSync3
 } from "fs";
 import { join as join18, dirname as dirname5, basename as basename3, resolve as resolve3 } from "path";
@@ -5516,7 +5553,7 @@ function writeAtomicJson2(filePath, data) {
   try {
     const st = lstatSync(finalPath);
     if (st.isSymbolicLink()) {
-      unlinkSync3(finalPath);
+      unlinkSync4(finalPath);
     } else if (st.isDirectory()) {
       throw new Error(`Refusing to overwrite directory: ${finalPath}`);
     }
@@ -5539,7 +5576,7 @@ function writeAtomicJson2(filePath, data) {
   } catch (e) {
     try {
       if (existsSync16(tmp))
-        unlinkSync3(tmp);
+        unlinkSync4(tmp);
     } catch {}
     throw e;
   }
@@ -7402,7 +7439,13 @@ var SLASH_HELP = `Slash commands:
 init_src();
 init_session_store();
 var {spawn: spawn2 } = globalThis.Bun;
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readFileSync as readFileSync2 } from "fs";
+import {
+  existsSync as existsSync3,
+  mkdirSync as mkdirSync2,
+  writeFileSync as writeFileSync2,
+  readFileSync as readFileSync2,
+  unlinkSync
+} from "fs";
 import { join as join3 } from "path";
 import { fileURLToPath } from "url";
 function pidPath() {
@@ -7495,13 +7538,287 @@ function resolveRelayCli() {
     return fromCwd;
   throw new Error("Cannot find packages/relay/src/cli.ts");
 }
+function readRelayPid() {
+  try {
+    const raw = readFileSync2(pidPath(), "utf8").trim();
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+function clearRelayPidFile() {
+  try {
+    if (existsSync3(pidPath()))
+      unlinkSync(pidPath());
+  } catch {}
+}
+async function stopRelay() {
+  const pid = readRelayPid();
+  if (pid == null) {
+    return {
+      stopped: false,
+      pid: null,
+      message: "no local relay pid file (nothing to stop)"
+    };
+  }
+  if (!isPidAlive(pid)) {
+    clearRelayPidFile();
+    return {
+      stopped: false,
+      pid,
+      message: `stale relay pid ${pid} cleared (process not running)`
+    };
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (e) {
+    clearRelayPidFile();
+    return {
+      stopped: false,
+      pid,
+      message: `failed to signal pid ${pid}: ${e instanceof Error ? e.message : e}`
+    };
+  }
+  for (let i = 0;i < 50; i++) {
+    await Bun.sleep(100);
+    if (!isPidAlive(pid))
+      break;
+  }
+  if (isPidAlive(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+    await Bun.sleep(150);
+  }
+  const dead = !isPidAlive(pid);
+  if (dead)
+    clearRelayPidFile();
+  return {
+    stopped: dead,
+    pid,
+    message: dead ? `stopped local relay (pid ${pid})` : `relay pid ${pid} still alive after SIGTERM/SIGKILL`
+  };
+}
+// packages/host/src/relay-bindings.ts
+init_src();
+init_session_store();
+function hasRoomBinding(session) {
+  return Boolean(session?.roomId && session.roomId.length > 0);
+}
+function normalizeRelayWsUrl(url) {
+  return parseRelayUrl(url || "").wsUrl;
+}
+function isSameRelay(a, b) {
+  return normalizeRelayWsUrl(a) === normalizeRelayWsUrl(b);
+}
+function stripRelayUrlToken(url) {
+  return parseRelayUrl(url || "").wsUrl;
+}
+function normalizeBindingForCompare(b) {
+  const ep = parseRelayUrl(b.relayUrl || "", { token: b.relayToken });
+  return {
+    roomId: b.roomId ?? "",
+    roomName: b.roomName ?? "",
+    inviteCode: b.inviteCode ?? "",
+    peerId: b.peerId ?? "",
+    peerSecret: b.peerSecret || undefined,
+    relayUrl: ep.wsUrl,
+    relayToken: b.relayToken || ep.token || undefined,
+    updatedAt: b.updatedAt ?? ""
+  };
+}
+function bindingsEqual(a, b) {
+  const x = normalizeBindingForCompare(a);
+  const y = normalizeBindingForCompare(b);
+  return x.roomId === y.roomId && x.roomName === y.roomName && x.inviteCode === y.inviteCode && x.peerId === y.peerId && (x.peerSecret || undefined) === (y.peerSecret || undefined) && x.relayUrl === y.relayUrl && (x.relayToken || undefined) === (y.relayToken || undefined) && x.updatedAt === y.updatedAt;
+}
+function nameBindingAs(session, name, opts) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      error: "relay name must be non-empty",
+      existing: topLevelToBinding(session)
+    };
+  }
+  if (!hasRoomBinding(session)) {
+    return {
+      ok: false,
+      error: "No room binding to name. Create or join a room first, then: loom relay use --as <name>",
+      existing: topLevelToBinding(session)
+    };
+  }
+  const current = topLevelToBinding(session);
+  const existing = session.relays?.[trimmed];
+  if (existing && !bindingsEqual(existing, current) && !opts?.force) {
+    return {
+      ok: false,
+      error: `relay binding "${trimmed}" already exists and differs from the current session ` + `(relayUrl=${stripRelayUrlToken(existing.relayUrl)}, roomName=${existing.roomName}). ` + `Pick another name or pass --force to overwrite.`,
+      existing
+    };
+  }
+  if (existing && bindingsEqual(existing, current) && session.relayName === trimmed) {
+    return { ok: true, session, changed: false };
+  }
+  const next = {
+    ...session,
+    relayName: trimmed,
+    relays: {
+      ...session.relays ?? {},
+      [trimmed]: current
+    }
+  };
+  const changed = !existing || session.relayName !== trimmed || !bindingsEqual(existing, current);
+  return { ok: true, session: next, changed };
+}
+function useRelayBinding(session, targetName, opts) {
+  const target = targetName.trim();
+  if (!target) {
+    return {
+      ok: false,
+      error: "Usage: loom relay use <name> [--as <current-name>] [--force]"
+    };
+  }
+  let working = session;
+  if (opts?.as) {
+    const named = nameBindingAs(working, opts.as, { force: opts.force });
+    if (!named.ok)
+      return { ok: false, error: named.error };
+    working = named.session;
+  }
+  if (hasRoomBinding(working)) {
+    if (!working.relayName) {
+      return {
+        ok: false,
+        error: `Current binding is unnamed. Name it first: loom relay use --as <name>
+` + "  Then switch: loom relay use <target>"
+      };
+    }
+    const stash = topLevelToBinding(working);
+    working = {
+      ...working,
+      relays: {
+        ...working.relays ?? {},
+        [working.relayName]: stash
+      }
+    };
+  }
+  const available = Object.keys(working.relays ?? {}).sort();
+  const targetBinding = working.relays?.[target];
+  if (!targetBinding) {
+    return {
+      ok: false,
+      error: `Unknown relay binding "${target}".` + (available.length > 0 ? ` Available: ${available.join(", ")}` : " No named bindings yet \u2014 use --relay-name on room create/join or: loom relay use --as <name>"),
+      available
+    };
+  }
+  const promoted = promoteBindingToTopLevel(working, targetBinding, target);
+  return {
+    ok: true,
+    session: promoted,
+    fromName: working.relayName,
+    toName: target
+  };
+}
+function promoteBindingToTopLevel(session, binding, name) {
+  const ep = parseRelayUrl(binding.relayUrl || "", {
+    token: binding.relayToken
+  });
+  return {
+    ...session,
+    roomId: binding.roomId,
+    roomName: binding.roomName,
+    inviteCode: binding.inviteCode,
+    peerId: binding.peerId,
+    peerSecret: binding.peerSecret,
+    relayUrl: ep.wsUrl,
+    relayToken: binding.relayToken || ep.token,
+    updatedAt: binding.updatedAt,
+    relayName: name,
+    relays: {
+      ...session.relays ?? {},
+      [name]: {
+        ...binding,
+        relayUrl: ep.wsUrl,
+        relayToken: binding.relayToken || ep.token
+      }
+    }
+  };
+}
+function guardCrossRelayCreateJoin(session, targetRelayUrl, relayNameFlag) {
+  if (!hasRoomBinding(session)) {
+    return { ok: true };
+  }
+  const currentUrl = session.relayUrl || "";
+  if (isSameRelay(currentUrl, targetRelayUrl)) {
+    return { ok: true };
+  }
+  if (relayNameFlag && relayNameFlag.trim().length > 0) {
+    return { ok: true };
+  }
+  const named = Boolean(session.relayName);
+  if (named) {
+    return {
+      ok: false,
+      error: `Cross-relay room create/join would overwrite the active binding for ` + `"${session.relayName}" (current ${stripRelayUrlToken(currentUrl)} \u2192 ` + `${stripRelayUrlToken(targetRelayUrl)}). Pass --relay-name <new-name> to record ` + `the new binding under a different name (the old binding is preserved).`
+    };
+  }
+  return {
+    ok: false,
+    error: `Cross-relay room create/join would overwrite the unnamed active binding ` + `(current ${stripRelayUrlToken(currentUrl)} \u2192 ${stripRelayUrlToken(targetRelayUrl)}). ` + `Name the current binding first: loom relay use --as <name>
+` + `  Then create/join with --relay-name <new-name>.`
+  };
+}
+function listRelayBindings(session) {
+  const items = [];
+  const seen = new Set;
+  const relays = session.relays ?? {};
+  for (const name of Object.keys(relays).sort()) {
+    const b = relays[name];
+    seen.add(name);
+    items.push({
+      name,
+      relayUrl: stripRelayUrlToken(b.relayUrl),
+      roomName: b.roomName,
+      peerId: b.peerId,
+      active: session.relayName === name
+    });
+  }
+  if (session.relayName && !seen.has(session.relayName) && hasRoomBinding(session)) {
+    items.push({
+      name: session.relayName,
+      relayUrl: stripRelayUrlToken(session.relayUrl),
+      roomName: session.roomName,
+      peerId: session.peerId,
+      active: true
+    });
+  }
+  return items;
+}
+function formatRelayBindingList(session) {
+  const items = listRelayBindings(session);
+  if (items.length === 0) {
+    return `relay bindings: (none)
+` + `  Tip: loom room create/join --relay-name <name>
+` + "       loom relay use --as <name>";
+  }
+  const lines = [`relay bindings: ${items.length}`];
+  for (const it of items) {
+    const mark = it.active ? " *" : "  ";
+    lines.push(`${mark} ${it.name}  ${it.relayUrl}  room=${it.roomName}  peerId=${it.peerId}`);
+  }
+  lines.push("  (* = active)");
+  return lines.join(`
+`);
+}
 // packages/host/src/sticky-meta.ts
 import {
   existsSync as existsSync4,
   mkdirSync as mkdirSync3,
   readFileSync as readFileSync3,
   writeFileSync as writeFileSync3,
-  unlinkSync,
+  unlinkSync as unlinkSync2,
   chmodSync as chmodSync2
 } from "fs";
 init_session_store();
@@ -7529,7 +7846,7 @@ function clearStickyMeta(forSessionPath) {
   const p = stickyMetaPath(forSessionPath);
   if (existsSync4(p)) {
     try {
-      unlinkSync(p);
+      unlinkSync2(p);
     } catch {}
   }
 }
@@ -9196,7 +9513,7 @@ import {
   mkdirSync as mkdirSync6,
   readFileSync as readFileSync6,
   writeFileSync as writeFileSync6,
-  unlinkSync as unlinkSync2,
+  unlinkSync as unlinkSync3,
   chmodSync as chmodSync5
 } from "fs";
 init_session_store();
@@ -9224,7 +9541,7 @@ function clearBridgeMeta(forSessionPath) {
   const p = bridgeMetaPath(forSessionPath);
   if (existsSync11(p)) {
     try {
-      unlinkSync2(p);
+      unlinkSync3(p);
     } catch {}
   }
 }
@@ -10306,7 +10623,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.23.12";
+var VERSION = "0.24.0";
 function eprint(msg) {
   try {
     writeSync(2, msg);
@@ -10384,6 +10701,13 @@ Usage:
   loom bridge start | stop | status # herdr node bridge daemon (0.22)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
+  loom relay use <name> [--as <current>] [--force]
+                                    # switch active relay binding (0.24.0)
+  loom relay use --as <name> [--force]
+                                    # name current binding without switching
+  loom relay list                   # list named bindings (no secrets)
+  loom relay local start|stop|status
+                                    # local relay daemon lifecycle (0.24.0)
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
@@ -10395,6 +10719,9 @@ Usage:
 
   --relay <url>         Remote/local relay (or LOOM_RELAY_URL). e.g. ws://host:7842
   --token <secret>      Shared secret (or LOOM_RELAY_TOKEN). Required if server set one.
+  --relay-name <name>   room create/join: name the binding in relays map (0.24.0)
+  --as <name>           display name (room) or name current binding (relay use)
+  --force               relay use --as: overwrite an existing different binding
   --show-token          Include --token in Share join hint (default: hidden)
   --with-pack           Attach local context pack to handoff (paths/notes)
   --with-pack-embed     Pack + L-5 file body embed (re-resolve allowlist at send)
@@ -10581,8 +10908,17 @@ async function cmdDown(flags) {
   }
 }
 async function cmdRoomCreate(flags) {
+  const relayOpts = relayOptsFromFlags(flags);
+  const planned = resolveRelayEndpoint(relayOpts);
+  const relayNameFlag = typeof flags["relay-name"] === "string" ? flags["relay-name"].trim() : "";
+  const existing = loadSession();
+  const guard = guardCrossRelayCreateJoin(existing, planned.wsUrl, relayNameFlag || undefined);
+  if (!guard.ok) {
+    console.error(guard.error);
+    process.exit(1);
+  }
   await stopStickyBeforeSessionChange();
-  const { url, endpoint, remote } = await ensureRelay(relayOptsFromFlags(flags));
+  const { url, endpoint, remote } = await ensureRelay(relayOpts);
   const roomName = sanitizePeerText(String(flags.name || "room")) || "room";
   const displayName = sanitizePeerName(String(flags.as || defaultDisplayName()));
   const client = new RelayClient({ url, token: endpoint.token });
@@ -10600,6 +10936,7 @@ async function cmdRoomCreate(flags) {
     process.exit(1);
   }
   const me = env2.peers.find((p) => p.id === client.peerId) ?? env2.peers[0];
+  const nextRelayName = relayNameFlag || (existing?.relayName && existing.roomId ? existing.relayName : undefined);
   saveSession({
     roomId: env2.roomId,
     roomName: env2.roomName ?? roomName,
@@ -10611,7 +10948,9 @@ async function cmdRoomCreate(flags) {
     relayUrl: url,
     relayToken: endpoint.token,
     peerSecret: env2.peerSecret ?? client.peerSecret ?? undefined,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    relayName: nextRelayName,
+    relays: existing?.relays
   });
   console.log(renderPresenceBar({
     roomName: env2.roomName ?? roomName,
@@ -10665,6 +11004,14 @@ async function cmdRoomJoin(code, flags) {
     }
     relayOpts = { relayFlag, tokenFlag };
   }
+  const planned = resolveRelayEndpoint(relayOpts);
+  const relayNameFlag = typeof flags["relay-name"] === "string" ? flags["relay-name"].trim() : "";
+  const existing = loadSession();
+  const guard = guardCrossRelayCreateJoin(existing, planned.wsUrl, relayNameFlag || undefined);
+  if (!guard.ok) {
+    console.error(guard.error);
+    process.exit(1);
+  }
   await stopStickyBeforeSessionChange();
   const { url, endpoint, remote } = await ensureRelay(relayOpts);
   const displayName = sanitizePeerName(String(flags.as || defaultDisplayName()));
@@ -10699,6 +11046,7 @@ async function cmdRoomJoin(code, flags) {
     process.exit(1);
   }
   const me = env2.peers.find((p) => p.id === client.peerId);
+  const nextRelayName = relayNameFlag || (existing?.relayName && existing.roomId ? existing.relayName : undefined);
   saveSession({
     roomId: env2.roomId,
     roomName: env2.roomName ?? "room",
@@ -10710,7 +11058,9 @@ async function cmdRoomJoin(code, flags) {
     relayUrl: url,
     relayToken: endpoint.token,
     peerSecret: env2.peerSecret ?? client.peerSecret ?? undefined,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    relayName: nextRelayName,
+    relays: existing?.relays
   });
   console.log(renderPresenceBar({
     roomName: env2.roomName ?? "room",
@@ -11348,6 +11698,113 @@ async function cmdInboxAccept(id) {
   console.log(formatIncomingHandoff(result.entry.handoff, fromPeer));
   console.log(`(accepted as ${result.session.displayName}, status=${result.entry.status})`);
   process.exit(0);
+}
+async function cmdRelay(sub, rest, flags) {
+  if (sub === "list") {
+    const session = loadSession();
+    if (!session) {
+      console.log("relay bindings: (no session)");
+      console.log("  Create or join a room first.");
+      return;
+    }
+    console.log(formatRelayBindingList(session));
+    return;
+  }
+  if (sub === "use") {
+    const asFlag = typeof flags.as === "string" ? flags.as.trim() : undefined;
+    const force = Boolean(flags.force);
+    const target = rest[0]?.trim();
+    if (!target && asFlag) {
+      const session2 = loadSession();
+      if (!session2) {
+        console.error("No session. Create or join a room first.");
+        process.exit(1);
+      }
+      const named = nameBindingAs(session2, asFlag, { force });
+      if (!named.ok) {
+        console.error(named.error);
+        process.exit(1);
+      }
+      if (named.changed) {
+        saveSession(named.session);
+        console.log(`relay: named current binding as "${asFlag}"`);
+      } else {
+        console.log(`relay: binding "${asFlag}" already current (no-op)`);
+      }
+      console.log(`  session: ${sessionPath()}`);
+      return;
+    }
+    if (!target) {
+      console.error(`Usage: loom relay use <name> [--as <current-name>] [--force]
+       loom relay use --as <name> [--force]`);
+      process.exit(1);
+    }
+    const session = loadSession();
+    if (!session) {
+      console.error("No session. Create or join a room first.");
+      process.exit(1);
+    }
+    const alive = resolveAliveHostMeta();
+    if (alive) {
+      console.warn(`\x1B[33mWarning: sticky host is running (pid ${alive.pid}). ` + `relay use applies to new processes \u2014 restart host/bridge to pick up the new binding.\x1B[0m`);
+    }
+    const result = useRelayBinding(session, target, {
+      as: asFlag,
+      force
+    });
+    if (!result.ok) {
+      console.error(result.error);
+      process.exit(1);
+    }
+    saveSession(result.session);
+    console.log(`relay: switched active binding \u2192 "${result.toName}"` + (result.fromName ? ` (was "${result.fromName}")` : ""));
+    console.log(`  room: ${result.session.roomName}  peerId=${result.session.peerId}`);
+    console.log(`  relay: ${result.session.relayUrl}`);
+    console.log(`  session: ${sessionPath()}`);
+    return;
+  }
+  if (sub === "local") {
+    const action = rest[0];
+    if (action === "start") {
+      try {
+        const r = await ensureRelay(relayOptsFromFlags(flags));
+        if (r.remote) {
+          console.log(`relay local start: target is remote (${r.endpoint.httpOrigin}) \u2014 health OK, nothing spawned`);
+        } else if (r.started) {
+          console.log(`relay local start: started daemon on ${r.endpoint.host}:${r.endpoint.port}`);
+        } else {
+          console.log(`relay local start: already up on ${r.endpoint.host}:${r.endpoint.port} (no-op)`);
+        }
+        console.log(`  endpoint: ${r.url}`);
+      } catch (e) {
+        console.error(e instanceof Error ? e.message : e);
+        process.exit(1);
+      }
+      return;
+    }
+    if (action === "stop") {
+      const r = await stopRelay();
+      console.log(`relay local stop: ${r.message}`);
+      if (!r.stopped && r.pid != null && isPidAlive(r.pid)) {
+        process.exit(1);
+      }
+      return;
+    }
+    if (action === "status") {
+      const endpoint = resolveRelayEndpoint(relayOptsFromFlags(flags));
+      const up = await isRelayUp(endpoint);
+      const pid = readRelayPid();
+      const pidPart = pid == null ? "pid=(none)" : isPidAlive(pid) ? `pid=${pid} (alive)` : `pid=${pid} (dead)`;
+      console.log(`relay local status: ${up ? "up" : "down"}  ${pidPart}`);
+      console.log(`  endpoint: ${endpoint.wsUrl}`);
+      console.log(`  health:   ${endpoint.httpOrigin}/health`);
+      return;
+    }
+    console.error("Usage: loom relay local start|stop|status");
+    process.exit(1);
+  }
+  console.error("Usage: loom relay use <name> | list | local start|stop|status");
+  process.exit(1);
 }
 async function cmdConvHosts(sub, rest) {
   if (sub === "set") {
@@ -12558,6 +13015,15 @@ async function main() {
     process.exit(failed ? 1 : 0);
   }
   if (cmd === "relay") {
+    if (sub === "use" || sub === "list" || sub === "local") {
+      await cmdRelay(sub, rest, flags);
+      return;
+    }
+    if (sub) {
+      console.error(`Usage: loom relay use <name> | list | local start|stop|status
+` + "       loom relay [--host \u2026] [--port \u2026] [--token \u2026]  # foreground server");
+      process.exit(1);
+    }
     const { RelayServer: RelayServer2, isLoopbackHost: isLoopbackHost3 } = await Promise.resolve().then(() => (init_src2(), exports_src2));
     const { envRelayHost: envRelayHost2, envRelayPort: envRelayPort2, envRelayToken: envRelayToken2 } = await Promise.resolve().then(() => (init_src(), exports_src));
     const host = typeof flags.host === "string" && flags.host || envRelayHost2() || DEFAULT_RELAY_HOST;
