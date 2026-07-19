@@ -119,3 +119,42 @@ pane 자동 close·inFlight=0·board done). node-vps-1 = `p_aadcd1e3dc9c5b5a`(lo
 PATH sed·자격증명 이전·온보딩 플래그·room join·config scp·Option B′ 스크립트·데몬 기동 2건)로
 오너 `!` 직접 실행으로만 해소됐고, (15)-⑤의 독립 레이어 명제를 재실증했다. 후속 후보 추가:
 kb 부팅 생존 상시화(non-root라 `systemd --user` 후보 — WSL 상시화 후보와 병렬).
+
+## 2026-07-20 (17) — 노드 부팅 생존 상시화 완주 + systemd HOME 소켓-경로 함정 (0-c 후속 실증)
+
+두 노드(kb·node-wsl-1) 재부팅 생존 배선을 상시화하며 물린 **systemd 서비스 특유의 함정 1건**.
+전제는 순수 ops(제품 코드 무변경·R{n} 불요). 적용은 전부 오너 `!` 직접(crontab·systemd
+unit·Scheduled Task = 지속성 메커니즘이라 (15)⑤ 분류기 차단, 읽기 커맨드만 본세션 직접).
+
+배선 요지: **kb** = `@reboot` crontab 2줄(herdr + `sleep 8` 후 `cd $HOME/.loom-src && bridge
+start`, cron은 `.bashrc` 미소싱이라 PATH·BUN_INSTALL 인라인·기존 backup job 보존 append·멱등).
+**node-wsl-1** = WSL systemd system service 2개(`loom-herdr`·`loom-bridge`, `Restart=always`,
+`enable --now` 대신 enable-only 후 명시적 컷오버) + Windows `LoomWslBoot` LogonTrigger Task
+(`wsl.exe -d Ubuntu -e true`로 distro만 깨우면 내부 systemd가 서비스 기동 — 기존
+`\LoomRelayTeam`은 relay 전용이라 WSL 미커버였음).
+
+1. **systemd 서비스는 셸과 달리 `HOME` 미상속 → herdr 소켓이 엉뚱한 곳에 열려 bridge가 즉사.**
+   컷오버 직후 herdr는 `active`인데 bridge가 `herdr unreachable … ENOENT
+   /root/.config/herdr/herdr.sock`으로 crash-loop(`Restart=always`라 무한 재시작)에 빠졌다.
+   근인: **herdr는 소켓 경로를 `$HOME/.config/herdr/`로 정하는데** systemd `[Service]`는
+   `Environment=`가 비어 `HOME` 미설정 → herdr가 `/tmp/herdr/herdr.sock`으로 폴백. 반면
+   bridge config(`node-wsl-1.json`)엔 `herdrSocketPath` 키가 **없어** bridge도 HOME 기반
+   기본 경로(`/root/.config/herdr/herdr.sock`)를 계산 → 양쪽 경로 불일치. 기존 setsid 기동은
+   root **로그인 셸**이라 `HOME=/root`가 상속돼 우연히 일치했던 것(어제 `/root/.config/herdr/`에
+   소켓 잔존이 증거). **정답 = 두 unit에 `HOME=/root` 주입.** 원본 unit을 안 건드리는 drop-in
+   (`/etc/systemd/system/loom-{herdr,bridge}.service.d/home.conf`에 `[Service]\nEnvironment=
+   HOME=/root`) + `daemon-reload` + restart. 적용 후 herdr `api socket:
+   /root/.config/herdr/herdr.sock`·bridge `[loom-bridge] herdr ok v0.7.4 protocol 16`
+   `{"ready":true,"pid":14019,"port":41293}` 정상 기동 확인. **팩 원본 §B-1 unit엔 이 HOME
+   줄이 누락돼 있었음 — systemd로 herdr를 띄우는 모든 노드에 선반영 필요(cron/setsid는
+   로그인 셸 HOME 상속이라 무해했던 잠복 결함).**
+2. **enable-only 후 명시적 컷오버가 옳다.** `enable --now`로 바로 띄우면 기존 setsid
+   프로세스와 중복 기동. `enable`만 걸어 재부팅 생존은 확보하고, 컷오버(`pkill` 기존 →
+   `systemctl start`)를 **오너가 보는 앞에서** 수행하니 위 HOME 결함이 무인 재부팅이 아니라
+   즉시 노출돼 그 자리에서 고칠 수 있었다(팩 §B-2 권고의 실효 입증).
+
+완주 상태(프로세스 레벨): kb crontab `@reboot` 2줄 설치(멱등)·node-wsl-1 unit 2개 `enabled` +
+drop-in 반영 + bridge PID 14019 `active (running)` + Windows `LoomWslBoot` Task 등록. **실제
+재부팅 실증(§C)은 오너 판단(선택)** — 프로세스 확인은 `pgrep -f "bridge-main"`(`bridge start`
+아님, 실체는 `bun run bridge-main.ts`). 비대칭 유지: kb는 supervision 없음(cron 부팅 1회
+기동만, sudo-less 최소 경로), WSL은 systemd `Restart=always`.
