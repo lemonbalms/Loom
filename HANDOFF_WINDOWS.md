@@ -173,13 +173,20 @@ curl -sS http://100.65.103.113:7842/health
 
 ### 2-3. 래퍼 + Scheduled Task (`LoomRelayTeam`)
 
+> **v0.24.2 신 래퍼(2026-07-19 전환).** 종전 래퍼는 두 함정을 안고 있었다: ① `bun install -g`(loom.exe)가 Windows 캐시 phantom-lock EBUSY로 반복 실패 → **리포 번들 직접 실행**으로 전환(재배포 = `git pull` + Task 재시작만) ② `$ErrorActionPreference="Stop"` + PS 스트림 `2>>`가 네이티브 stderr 첫 줄에 래퍼를 즉사시킴(durable relay는 persist 이벤트를 stderr에 로깅 → **첫 room create에서 래퍼·relay 동반 사망**, err.log 0바이트의 원인) → **cmd.exe 경유 리다이렉트**로 교체. 아래가 現 Windows `~/.loom/start-relay.ps1` 배포본 전문이다.
+
 ```powershell
 $wrapper = @'
 $ErrorActionPreference = "Stop"
-$loom  = Join-Path $env:USERPROFILE ".bun\bin\loom.exe"
+# v0.24.2: run the relay straight from the repo bundle — redeploy is just
+# `git pull` + task restart (no `bun install -g`, whose Windows cache hit
+# phantom-lock EBUSY on 2026-07-19).
+$bun   = Join-Path $env:USERPROFILE ".bun\bin\bun.exe"
+$entry = "E:\projects\Loom\dist\loom.js"
 $token = (Get-Content (Join-Path $env:USERPROFILE ".loom\relay-token.txt") -Raw).Trim()
 $logDir = Join-Path $env:USERPROFILE ".loom"
-if (-not (Test-Path $loom)) { throw "loom.exe not found: $loom" }
+if (-not (Test-Path $bun))   { throw "bun.exe not found: $bun" }
+if (-not (Test-Path $entry)) { throw "loom bundle not found: $entry" }
 if (-not $token) { throw "empty relay token" }
 $log = Join-Path $logDir "relay.log"
 $err = Join-Path $logDir "relay.err.log"
@@ -187,7 +194,14 @@ try {
   $h = Invoke-WebRequest -Uri "http://127.0.0.1:7842/health" -UseBasicParsing -TimeoutSec 2
   if ($h.StatusCode -eq 200) { exit 0 }
 } catch {}
-& $loom relay --host 0.0.0.0 --port 7842 --token $token 1>> $log 2>> $err
+# Run via cmd.exe so native stderr appends straight to the err file. Under
+# $ErrorActionPreference=Stop, PowerShell-level 2>> wraps any native stderr
+# line into an ErrorRecord and kills the wrapper (and the relay) on the
+# relay's first stderr write — the durable relay logs persist events to
+# stderr, so the old wrapper died at the first room create.
+$ErrorActionPreference = "Continue"
+& cmd.exe /c "`"$bun`" `"$entry`" relay --host 0.0.0.0 --port 7842 --token $token 1>>`"$log`" 2>>`"$err`""
+exit $LASTEXITCODE
 '@
 Set-Content -Path "$env:USERPROFILE\.loom\start-relay.ps1" -Value $wrapper -Encoding UTF8
 
@@ -319,6 +333,7 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC8tV+XLiEuWg06S2Wi072aShc8ppd9i7w97yiLV7xtZ
 | 날짜 | 결과 | 비고 |
 |------|------|------|
 | 2026-07-17 | **Windows측 상시화 done** | Task `LoomRelayTeam` (AtLogOn·RestartCount5) · relay=**bun 프로세스**(loom.exe가 bun 런타임 → `Get-Process loom` 안 잡힘, `Get-NetTCPConnection -LocalPort 7842`로 확인) · `0.0.0.0:7842` health `ok+auth:true` · 방화벽 7842 = **Tailscale(100.64/10)+WSL 사설만** (Step 0의 `Remote=Any` 규칙 2개 삭제, WSL 172.16/12·172.27/16 유지) · 토큰 `~/.loom/relay-token.txt` 생성(48자). **오너 미검증: ① Mac `curl http://100.65.103.113:7842/health` ② 재부팅 1회 후 health ③ 절전 금지.** IP 변동 없음(100.65.103.113). 다음=§3 room create+invite |
+| 2026-07-19 | **v0.24.2 durable relay 배포·실증 완결** | 래퍼를 **리포 번들 직접 실행**(`bun.exe E:\projects\Loom\dist\loom.js relay …`)으로 전환 + cmd.exe 경유 stderr 리다이렉트(§2-3). relay `State: durable C:\Users\34970\.loom\relay-state` 기동 → **room create 생존 → 재시작 후 동일 초대코드(LOOM-YS2Z) join 성공 = 재로그온 룸 유지 확정** · 팀 룸 loom-dev 재수립(초대 **LOOM-GT4B**·로스터 7종 win 바인딩·정확 7 peers) · win relay 스냅샷 2개(winprobe-room 802B·loom-dev 2,140B). **운영 노트 3건**: ① Scheduled Task `RestartCount`는 액션의 **비영(非零) 종료에 미적용** — relay가 exit 1로 죽어도 자동 재시작 안 됨(크래시 복구 아님, 수동 `Start-ScheduledTask` 필요) ② **SSH 세션에서 Start-Process로 띄운 자식은 세션 종료와 함께 사망** — 로컬 curl은 성공하고 원격 도달만 실패하는 가짜 방화벽 증상, 상시 프로세스는 반드시 Task 경유 ③ `bun install -g`(loom.exe)는 phantom-lock EBUSY 취약으로 **폐기** — 정본 실행 = 리포 번들 |
 
 ---
 
@@ -343,14 +358,13 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC8tV+XLiEuWg06S2Wi072aShc8ppd9i7w97yiLV7xtZ
 | 재부팅 후 죽음 | `Get-ScheduledTaskInfo` · AtLogOn · 로그온 했는지 |
 | port in use | 옛 `LoomRelayStep0`/수동 relay kill |
 | 팀원만 timeout | 팀원 Tailscale 미가입 · 다른 tailnet |
-| rooms 리셋 | **v0.24.1부터 durable — relay 재시작에도 룸 유지**(아래 ⚠️ 재배포 필요). 구버전 구동 중이면 종전대로 relay 재시작 → 팀 재join |
+| rooms 리셋 | **v0.24.2+: durable — 재시작에도 룸 유지(2026-07-19 실증)**. 룸·초대코드·멤버십이 `~/.loom/relay-state`에 스냅샷으로 남아 relay 재시작·재로그온에도 복원된다(팀 재join 불필요) |
 
-> ⚠️ **v0.24.1 durable relay 적용 = 재배포 필요.** 현재 Windows 상시 relay는 구버전 loom.exe(=bun 프로세스) 구동 중이라 룸이 여전히 인메모리(재시작 시 소실)다. durable(재시작에도 룸·초대코드·멤버십 유지)을 적용하려면 재배포한다:
+> ✅ **v0.24.2 durable relay 배포·실증 완결(2026-07-19).** 현 Windows 상시 relay는 리포 번들(`E:\projects\Loom\dist\loom.js`) durable로 구동 중이며, **재시작 후 동일 초대코드(LOOM-YS2Z) join 성공·팀 룸 loom-dev(LOOM-GT4B) 복원**까지 라이브 실증했다. 향후 재배포는 간단하다:
 > 1. `git pull` (Mac에서 커밋·푸시 후) → 번들(`dist/loom.js`) 갱신 확인
-> 2. `Stop-ScheduledTask -TaskName LoomRelayTeam` → `Start-ScheduledTask -TaskName LoomRelayTeam` (재시작)
-> 3. **재시작 시 현 룸(LOOM-QSFP)이 1회 소실** → Mac에서 room create + 로스터 재join 1회(D10 join 절차 재사용)
+> 2. `Stop-ScheduledTask -TaskName LoomRelayTeam` → `Start-ScheduledTask -TaskName LoomRelayTeam` (재시작) — **끝**
 >
-> 이 재배포 이후부터는 재로그온·relay 재시작에도 룸이 유지된다(초대코드 무효화 없음). PROTOCOL_VERSION=1 와이어 호환 무영향.
+> `bun install -g`(loom.exe)는 phantom-lock EBUSY로 폐기했으므로 재배포에 불필요하다. **재시작·재로그온에도 룸이 유지되므로 룸 재수립도 불필요**(초대코드 무효화 없음). PROTOCOL_VERSION=1 와이어 호환 무영향.
 
 ---
 
