@@ -54,7 +54,7 @@
 |------|------|
 | Known knowns | 스파이크 실측 확정분(정본 `docs/spikes/HOOKS-SENSOR-SPIKE.md`): (1) **3상태 hook 매핑** — 승인 대기=`Notification`(matcher `permission_prompt`)·턴 종료/유휴=`Stop`(또는 `idle_prompt`)·작업 시작=`UserPromptSubmit`/`SessionStart`, matcher로 승인 대기와 단순 유휴가 **깔끔히 분리**(승인만 골라 잡음). (2) **배선 지점 전부 기존재** — 스폰 훅포인트·argv 조립(`resolveAgentArgv`)·이벤트 합류부(`onCardHerdrEvent`)·still-running 유예 poll이 코드에 이미 있어 hookHint 우선 분기를 **얹기만** 함. (3) **fail-open exit 규약** — 관측 훅은 exit 2여도 워커 흐름 차단 불가 → 항상 exit 0, `UserPromptSubmit`/`SessionStart` stdout만 컨텍스트 주입 함정(비움 필수). (4) **`inject-control` 선례** — loomDir 0600 소켓 + `isPathUnderLoomDir` 가드·no_listener 폴백이 승인된 정본(여기선 방향만 역전 — 브릿지가 리스너/서버). 이득 empirical 입증 완료(2026-07-20, 근거 중~강 — 통증 2 승인 미탐지 정면). |
 | Known unknowns | U1~U6(아래 표) — 전부 PLAN §0.26.0 Unknowns 요약. 요지: claude 워커 배포 버전의 hook 표면 실재·`--settings` 인라인 주입 실작동·소켓 리스너 생명주기·`Stop`↔유예 상호작용·서브에이전트 라우팅·계측 JSONL 회전이 라이브 실측 대상. |
-| Unknown knowns | hook은 "훅이라서 신뢰"가 성립하지 않는다(워커/훅 스크립트가 emit — §2.5.2③) → 페이로드는 신뢰 입력이 아니라 **완료 힌트로만** 소비, 실제 결과 회수는 스크레이프 유지·본문 정본은 §5.1 artifact. hook 미주입/`no_listener`는 현행과 **바이트 동일**(fail-open, 회귀 0) — 신규 판정 경로가 아니라 기존 판정에 우선 분기를 얹는 additive. |
+| Unknown knowns | hook은 "훅이라서 신뢰"가 성립하지 않는다(워커/훅 스크립트가 emit — §2.5.2③) → 페이로드는 신뢰 입력이 아니라 **완료 힌트로만** 소비, 실제 결과 회수는 스크레이프 유지·본문 정본은 §5.1 artifact. hook 미주입/`no_listener`는 현행과 **판정·wire 관측 동작 동일**(fail-open, 회귀 0 — R41 L-2: "바이트 동일"은 D2가 모든 claude 스폰 argv에 `--settings`를 덧붙이고 D6 계측 append가 신규 부작용이라 문자 그대로는 성립 불가, "스폰 argv 주입·계측 append 제외" 스코프로 재정의) — 신규 판정 경로가 아니라 기존 판정에 우선 분기를 얹는 additive. |
 | Unknown unknowns | 워커 claude 버전업 시 hook 이벤트/matcher 표면 변동(스파이크는 읽기-전용 조사라 라이브 미발화); 브릿지가 서버(방향 역전)로서 다수 워커 소켓을 장시간 watch할 때의 리소스·스테일 소켓 누적; hook 페이로드 경로가 여는 미지의 간접 프롬프트 주입 표면(stdout 함정 외). |
 
 **Unknowns 요약 (정본 = PLAN §0.26.0):**
@@ -63,12 +63,12 @@
 |---|------|-------------|
 | U1 | claude 버전별 matcher 지원 편차(`permission_prompt`/`idle_prompt`·팀 워커 matcher v2.1.198+) 미검증 | 미지원 버전 = hook 미발화 → D5 폴백으로 무회귀, 이득 발생 버전 실측 필요 |
 | U2 | `--settings` 인라인 JSON 주입이 워커 claude에서 실제 hook 발화시키는지 라이브 미검증 | 인라인 JSON/파일/env 중 실작동 방식을 라이브 스모크로 확정 |
-| U3 | 브릿지 소켓 리스너 생명주기·정리 원자성(`hook-<cardId>.sock` unlink 시점·재-cardId 충돌) | 스테일 소켓·경합 정책 미정 |
-| U4 | `Stop` 힌트 ↔ still-running 유예 상호작용(백그라운드 실행 중 `Stop`이 조기 완료 유발 위험) | D3 "done 최종 권위=기존 경로"가 막는지·스크레이프 still-running과 AND 결합 실측 |
+| U3 | 브릿지 소켓 리스너 잔여 정리-경합·unlink 시점 실측 (**R41 M-1로 축소 재정의** — 재-cardId 충돌 자체는 unknown 아님) | 소켓 = attempt(seq)-스코프 + bind 전 unlink + flight 소멸 시 close+unlink + 늦은 이벤트 flight 동일성 가드 드롭으로 D4 M-1 설계 폐쇄; 잔여 = 정리-경합·unlink 시점 세부 실측뿐 |
+| U4 | `Stop` 힌트 ↔ still-running 유예 상호작용 (**R41 M-2 ④로 설계 폐쇄**) | `Stop`=poll 가속·상한 우회 입력만·완료 확정은 indicator-clear 스크레이프 확증 필수(AND 결합, 단독 완료 금지)로 D3 M-2 ④ 폐쇄; 잔여 = 이득 크기 실측뿐 |
 | U5 | 서브에이전트 문맥 라우팅(`session_id`/`agent_id` 부모-자식 귀속) | 부모 카드 귀속 vs 별도 표면화 미정 |
 | U6 | 계측 JSONL(D6) 회전·크기 상한 (0.24.1 룸 스냅샷 GC 후속 동계열) | 회전/상한/GC 정책 미정 |
 
-**Next:** R41(claude-rev + fable-advisor 필수) → approved 후에만 구현(레인 위임). 라이브 스모크로 **U1**(버전별 matcher 발화)·**U2**(`--settings` 인라인 주입 실작동)를 해소하고 실측 결과를 PLAN `Implemented` 블록에 명기.
+**Next:** R41 완료(2026-07-20 — `pending-review` → author-close `approved`, M-1·M-2 lock 반영 + L-1..L-3 author-close, no R41b) → approved 후에만 구현(레인 위임). **U3·U4는 R41 M-1·M-2 ④로 설계 폐쇄**(잔여는 정리-경합·이득 크기의 라이브 실측뿐). 라이브 스모크로 **U1**(버전별 matcher 발화)·**U2**(`--settings` 인라인 주입 실작동)를 해소하고 실측 결과를 PLAN `Implemented` 블록에 명기.
 
 ### 0.24.2 — Windows 실배포 결함 2건 (persist 경로 가드 구분자 오탐 + 메시지 핸들러 uncaught 크래시)
 
