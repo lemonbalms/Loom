@@ -120,9 +120,21 @@ const STILL_RUNNING_MAX_MS = 5 * 60_000;
 const STILL_RUNNING_PATTERNS: RegExp[] = [
   /\d+\s+commands?\s+still\s+running/i,
 ];
+/**
+ * PLAN 0.23.11 ③⑤ shared: pure timing line only (full-line match).
+ * Covers composite `1m49s` live form; mixed "Worked for 20s. 1 command still
+ * running." does not match (still-running indicator line stays unskipped).
+ */
+export const WORKED_TIMING_LINE_RE =
+  /^Worked for (?:\d+h)?(?:\d+m)?\d+(?:\.\d+)?s\.?$/;
 /** R30 M-1: Claude Ink folds multi-line paste into a placeholder — treat as hit. */
 const PASTE_PLACEHOLDER_MARKER = "[Pasted text";
 const PROBE_TAIL_CHARS = 48;
+
+/** Trim + strip trailing cursor-block residue (live scrape `█`). */
+function cleanTimingCandidate(line: string): string {
+  return line.trim().replace(/[\s█]+$/u, "");
+}
 
 /** Whitespace-normalize for TUI wrap-tolerant probe matching. */
 function normalizeForProbe(s: string): string {
@@ -158,6 +170,7 @@ const BOX_STATUS_LINE_RE = /^╰─.*─╯$/u;
  * prompt, known key hints, trailing blanks). Apply to conv inline text and
  * card summary input — never to card `output` body (R31 M-1).
  * PLAN 0.23.8: + content box status (`╰─…─╯`) + `⏵⏵ auto mode on` hint.
+ * PLAN 0.23.11 ①: + claude statusline (` │ ` + ⚡/🧠 co-presence).
  */
 export function stripTuiChrome(text: string): string {
   const lines = text.split(/\r?\n/);
@@ -172,12 +185,35 @@ export function stripTuiChrome(text: string): string {
     if (BOX_STATUS_LINE_RE.test(trimmed)) continue;
     if (COMPOSER_PROMPT_RE.test(line)) continue;
     if (KEY_HINT_MARKERS.some((m) => line.includes(m))) continue;
+    // PLAN 0.23.11 ①: claude statusline — ` │ ` segment sep + ⚡ or 🧠.
+    // U+2502 (box light vertical), not ASCII |. Model name not hardcoded.
+    if (line.includes(" │ ") && (line.includes("⚡") || line.includes("🧠"))) {
+      continue;
+    }
     kept.push(line);
   }
   while (kept.length > 0 && kept[kept.length - 1]!.trim() === "") {
     kept.pop();
   }
   return kept.join("\n");
+}
+
+/**
+ * PLAN 0.23.11 ③: pick card summary from chrome-filtered text — walk end→start
+ * skipping pure timing lines; fallback to last non-empty if all skipped.
+ */
+export function selectCardSummaryLine(chromeFiltered: string): string {
+  const lines = chromeFiltered
+    .trim()
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return "done";
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cleaned = cleanTimingCandidate(lines[i]!);
+    if (WORKED_TIMING_LINE_RE.test(cleaned)) continue;
+    return lines[i]!.slice(0, 900);
+  }
+  return (lines[lines.length - 1] ?? "done").slice(0, 900);
 }
 
 /**
@@ -291,6 +327,9 @@ type Flight = {
  * PLAN 0.23.7: detect "N command(s) still running" in the last 10 non-empty
  * lines of a stripAnsi scrape (whitespace-normalized, case-insensitive).
  * Tail-only to avoid false positives from brief/lessons body quotes.
+ * PLAN 0.23.11 ⑤ / R35 M-1: line-anchored supersession — if the last
+ * indicator-bearing line is followed by a pure timing line (③ shared RE),
+ * treat indicator as cleared. Joined-substring supersession is forbidden.
  */
 export function hasStillRunningIndicator(scrape: string): boolean {
   const text = stripAnsi(scrape);
@@ -299,12 +338,37 @@ export function hasStillRunningIndicator(scrape: string): boolean {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   const tail = nonEmpty.slice(-10);
-  // Normalize whitespace across the tail block so wrap/spacing variants match.
+  // Detection (unchanged): normalize whitespace across the tail block.
   const normalized = tail.join(" ").replace(/\s+/g, " ");
+  let present = false;
   for (const re of STILL_RUNNING_PATTERNS) {
-    if (re.test(normalized)) return true;
+    if (re.test(normalized)) {
+      present = true;
+      break;
+    }
   }
-  return false;
+  if (!present) return false;
+
+  // Supersession (R35 M-1 line-anchored): last per-line indicator match index.
+  let lastIndicatorIdx = -1;
+  for (let i = 0; i < tail.length; i++) {
+    const lineNorm = tail[i]!.replace(/\s+/g, " ");
+    for (const re of STILL_RUNNING_PATTERNS) {
+      if (re.test(lineNorm)) {
+        lastIndicatorIdx = i;
+        break;
+      }
+    }
+  }
+  // Cannot pin an indicator-bearing line (e.g. wrap split) → no supersession.
+  if (lastIndicatorIdx < 0) return true;
+
+  for (let i = lastIndicatorIdx + 1; i < tail.length; i++) {
+    if (WORKED_TIMING_LINE_RE.test(cleanTimingCandidate(tail[i]!))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -708,11 +772,33 @@ export async function startBridgeRuntime(opts?: {
   }
 
   /**
+   * PLAN 0.23.11 ④: serialize all spawnWorkerAgent entries via in-memory
+   * promise chain so pane.list → spawn → workerPool updates are atomic across
+   * concurrent dispatches. Chain always resolves (exceptions never poison next).
+   */
+  let spawnChain: Promise<void> = Promise.resolve();
+
+  /**
    * PLAN 0.23.9 ⑧: spawn a worker agent into the bridge-local pool tab.
    * pane.list is SSOT; fail-open to one unhinted agentStart on any pool path
    * failure. `"legacy"` bypasses the pool entirely.
+   * PLAN 0.23.11 ④: entry serialized via spawnChain (legacy included).
    */
   async function spawnWorkerAgent(opts: {
+    name: string;
+    argv: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+  }): Promise<HerdrAgentStarted> {
+    const run = spawnChain.then(() => spawnWorkerAgentBody(opts));
+    spawnChain = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  async function spawnWorkerAgentBody(opts: {
     name: string;
     argv: string[];
     env?: Record<string, string>;
@@ -1878,15 +1964,10 @@ export async function startBridgeRuntime(opts?: {
     }
 
     // PLAN 0.23.6: summary from chrome-filtered input only; output body unfiltered (M-1).
+    // PLAN 0.23.11 ③: prefer real content over trailing pure timing lines.
     const summary =
       status === "done"
-        ? (
-            stripTuiChrome(output)
-              .trim()
-              .split(/\r?\n/)
-              .filter(Boolean)
-              .slice(-1)[0] ?? "done"
-          ).slice(0, 900)
+        ? selectCardSummaryLine(stripTuiChrome(output))
         : `failed${reason ? ` reason=${reason}` : ""}`.slice(0, 900);
 
     const payload: CardResultPayload = {
