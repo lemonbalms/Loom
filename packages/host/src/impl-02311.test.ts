@@ -135,6 +135,17 @@ describe("PLAN 0.23.11 ③ selectCardSummaryLine", () => {
     ].join("\n");
     expect(selectCardSummaryLine(text)).toBe("Worked for 3s. 그리고 추가 메모");
   });
+
+  // PLAN 0.23.11 라이브 보정 2(Deviations §0.23.11): claude ✻-verb timing
+  test("trailing ✻ Sautéed for 9s → previous real content", () => {
+    const text = ["goal complete, tests green", "✻ Sautéed for 9s"].join("\n");
+    expect(selectCardSummaryLine(text)).toBe("goal complete, tests green");
+  });
+
+  test("non-pure ✻ content line not skipped (full-match fails)", () => {
+    const text = ["prior", "✻ 참고: for 3s 규칙"].join("\n");
+    expect(selectCardSummaryLine(text)).toBe("✻ 참고: for 3s 규칙");
+  });
 });
 
 // ── ⑤ unit: still-running supersession (R35 M-1 line-anchored) ────────────

@@ -96,7 +96,8 @@ This file is for **during-implementation** plan deviations only.
 
 | Date | Plan ref | Choice | Why conservative | Follow-up |
 |------|----------|--------|-------------------|-----------|
-| 2026-07-19 | 0.23.11 ① chrome known-hint (스코프: 상태줄 시그니처 1종) | **라이브 보정: bare composer `❯` 전용-줄 필터 1건 추가** (trimmed === "❯" 전체-매치만 — 부분 매치·`❯ 텍스트` 콘텐츠 줄 보존). SMOKE-02311-D(claude 카드)에서 ① 상태줄 소거는 성공했으나 summary가 `"❯"`로 선택됨 — claude TUI의 bare composer 줄은 `COMPOSER_PROMPT_RE`(`│ ❯` 요구)에 안 걸리는 기지 잔재(SMOKE-0239 K=10 보정 사유에도 등장). | 0.23.9 K 3→10과 동일한 라이브 보정 클래스 — 리뷰된 필터 메커니즘(줄 단위 보수 skip·R31 M-1 경계) 불변, 단독-문자 전용-줄이라 콘텐츠 손실 표면이 사실상 0. 대안(③ 선별에서 `❯` 스킵)은 타이밍-전용 스킵의 의미를 넓혀 과필터 리스크가 더 큼 — 기각. | 재스모크 D-2로 summary=마커 실증(Implemented 블록). |
+| 2026-07-19 | 0.23.11 ① chrome known-hint (스코프: 상태줄 시그니처 1종) | **라이브 보정: bare composer `❯` 전용-줄 필터 1건 추가** (trimmed === "❯" 전체-매치만 — 부분 매치·`❯ 텍스트` 콘텐츠 줄 보존). SMOKE-02311-D(claude 카드)에서 ① 상태줄 소거는 성공했으나 summary가 `"❯"`로 선택됨 — claude TUI의 bare composer 줄은 `COMPOSER_PROMPT_RE`(`│ ❯` 요구)에 안 걸리는 기지 잔재(SMOKE-0239 K=10 보정 사유에도 등장). | 0.23.9 K 3→10과 동일한 라이브 보정 클래스 — 리뷰된 필터 메커니즘(줄 단위 보수 skip·R31 M-1 경계) 불변, 단독-문자 전용-줄이라 콘텐츠 손실 표면이 사실상 0. 대안(③ 선별에서 `❯` 스킵)은 타이밍-전용 스킵의 의미를 넓혀 과필터 리스크가 더 큼 — 기각. | 재스모크 D-2로 bare ❯ 소거 실증 → 후속 보정 2로 이어짐(아래). |
+| 2026-07-19 | 0.23.11 ③ 타이밍-전용 스킵 (스코프: "Worked for Ns." 실증분) | **라이브 보정 2: claude ✻-접두 타이밍줄 스킵 패턴 추가** — `CLAUDE_TIMING_LINE_RE = /^✻\s+[A-Za-z]+ for (?:\d+h)?(?:\d+m)?\d+(?:\.\d+)?s\.?$/` (가변 동사형 — D-2 실측 `✻ Sautéed for 9s`, SMOKE-0239 `✻ Churned for 15s` 동일 가족). ③ summary 스킵에만 적용. | 스킵 메커니즘·현행 폴백 불변, ✻ 접두 + "for Ns" 말미 동시 요구라 앵커드 보수. **⑤ supersession은 `WORKED_TIMING_LINE_RE`만 유지**(✻줄은 grok 완료 증거가 아님 — R35 M-1 경계 무접촉). | 재스모크 D-3로 summary=마커 실증(Implemented 블록). |
 
 ### §0.23.9 — ②③⑧ (R34 PATCH)
 

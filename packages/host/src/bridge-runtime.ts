@@ -127,6 +127,16 @@ const STILL_RUNNING_PATTERNS: RegExp[] = [
  */
 export const WORKED_TIMING_LINE_RE =
   /^Worked for (?:\d+h)?(?:\d+m)?\d+(?:\.\d+)?s\.?$/;
+/**
+ * PLAN 0.23.11 라이브 보정 2(Deviations §0.23.11): claude TUI variable-verb
+ * timing line (`✻ Sautéed for 9s`, `✻ Churned for 15s`, …). Full-line match
+ * only. Used by selectCardSummaryLine skip only — hasStillRunningIndicator
+ * supersession keeps WORKED_TIMING_LINE_RE alone (✻ is not grok completion
+ * evidence). Verb is `\p{L}+` (not ASCII `[A-Za-z]+`) so live accented
+ * forms like Sautéed full-match.
+ */
+export const CLAUDE_TIMING_LINE_RE =
+  /^✻\s+\p{L}+ for (?:\d+h)?(?:\d+m)?\d+(?:\.\d+)?s\.?$/u;
 /** R30 M-1: Claude Ink folds multi-line paste into a placeholder — treat as hit. */
 const PASTE_PLACEHOLDER_MARKER = "[Pasted text";
 const PROBE_TAIL_CHARS = 48;
@@ -205,6 +215,8 @@ export function stripTuiChrome(text: string): string {
 /**
  * PLAN 0.23.11 ③: pick card summary from chrome-filtered text — walk end→start
  * skipping pure timing lines; fallback to last non-empty if all skipped.
+ * PLAN 0.23.11 라이브 보정 2(Deviations §0.23.11): also skip claude ✻-verb
+ * timing lines (CLAUDE_TIMING_LINE_RE).
  */
 export function selectCardSummaryLine(chromeFiltered: string): string {
   const lines = chromeFiltered
@@ -214,7 +226,13 @@ export function selectCardSummaryLine(chromeFiltered: string): string {
   if (lines.length === 0) return "done";
   for (let i = lines.length - 1; i >= 0; i--) {
     const cleaned = cleanTimingCandidate(lines[i]!);
-    if (WORKED_TIMING_LINE_RE.test(cleaned)) continue;
+    // Skip if either pure-timing pattern full-matches.
+    if (
+      WORKED_TIMING_LINE_RE.test(cleaned) ||
+      CLAUDE_TIMING_LINE_RE.test(cleaned)
+    ) {
+      continue;
+    }
     return lines[i]!.slice(0, 900);
   }
   return (lines[lines.length - 1] ?? "done").slice(0, 900);
