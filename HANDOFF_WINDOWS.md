@@ -278,6 +278,40 @@ git push origin main
 
 ---
 
+## 2.5) WSL 노드 브릿지 (2번째 herdr 노드 · 2026-07-19 실증)
+
+> Windows 호스트의 WSL(Ubuntu 26.04)에 두 번째 herdr 노드 브릿지가 online이다
+> (`node-wsl-1` = `p_de58fbe9f67451a1`, 팀 룸 loom-dev/`LOOM-GT4B`). 제품 코드가 아니라
+> **ops 셋업**이라 Windows FREEZE 원칙과 무관. relay는 위 §2의 Tailscale relay를 물린다
+> (`ws://100.65.103.113:7842/ws` — WSL NAT 게이트웨이 IP 아님, 그건 재부팅마다 변동).
+
+**설치물 위치 (WSL 안):**
+
+| 항목 | 위치 |
+|------|------|
+| loom 소스 클론 | `~/.loom-src` (= `git clone /mnt/e/projects/Loom`) — 데몬이 소스 `bridge-main.ts` 필요라 dist 번들 불가 |
+| PATH 심링크 | `/usr/local/bin`의 `bun`·`loom`·`claude`·`herdr` (비로그인 셸 `~/.bashrc` 미소싱 회피) |
+| workspace 신뢰 | `/root/.claude.json` (`hasTrustDialogAccepted`) |
+| user-레벨 allow | `/root/.claude/settings.json` (`permissions.allow` — root 워커 자율화, `--dangerously-skip-permissions` 금지: root에서 보안 거부·워커 즉사) |
+| bridge config | `~/.loom/bridge/node-wsl-1.json` (`authorizedDispatchers` 직접 기재, `--allow` 미사용 — save-back이 herdrSocketPath 재주입) |
+
+**재기동 (SSH 세션 독립 — `setsid` 필수):**
+
+```bash
+# WSL 안에서 (SSH로 그냥 띄우면 세션 종료와 함께 죽는다 — 로컬 curl만 성공하는 가짜 증상)
+setsid nohup herdr server >/tmp/herdr.log 2>&1 &
+setsid nohup loom --profile node-wsl-1 bridge start >/tmp/loom-bridge.log 2>&1 &
+loom --profile node-wsl-1 bridge status   # 프로필 미지정 시 offline 오진 (LOOM_PROFILE 부재)
+```
+
+> ⚠️ `setsid`는 세션 독립일 뿐 **재부팅은 미보장** — 부팅 상시화(WSL systemd 또는 Windows Task)는 후속 후보.
+
+**재배포:** Mac에서 push → Windows `E:\projects\Loom`에서 `git pull` → WSL에서
+`cd ~/.loom-src && git pull && bun install` → 위 재기동. (WSL 소스는 `/mnt/e`가 아니라
+`~/.loom-src` **독립 클론**임에 주의.)
+
+---
+
 ## 3) Mac / 오너 후속 (Windows 완료 후 — Mac 터미널)
 
 Windows health가 Mac에서 보이면:
