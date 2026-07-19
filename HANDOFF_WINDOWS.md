@@ -343,7 +343,14 @@ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC8tV+XLiEuWg06S2Wi072aShc8ppd9i7w97yiLV7xtZ
 | 재부팅 후 죽음 | `Get-ScheduledTaskInfo` · AtLogOn · 로그온 했는지 |
 | port in use | 옛 `LoomRelayStep0`/수동 relay kill |
 | 팀원만 timeout | 팀원 Tailscale 미가입 · 다른 tailnet |
-| rooms 리셋 | relay 프로세스 재시작 → 팀 재join |
+| rooms 리셋 | **v0.24.1부터 durable — relay 재시작에도 룸 유지**(아래 ⚠️ 재배포 필요). 구버전 구동 중이면 종전대로 relay 재시작 → 팀 재join |
+
+> ⚠️ **v0.24.1 durable relay 적용 = 재배포 필요.** 현재 Windows 상시 relay는 구버전 loom.exe(=bun 프로세스) 구동 중이라 룸이 여전히 인메모리(재시작 시 소실)다. durable(재시작에도 룸·초대코드·멤버십 유지)을 적용하려면 재배포한다:
+> 1. `git pull` (Mac에서 커밋·푸시 후) → 번들(`dist/loom.js`) 갱신 확인
+> 2. `Stop-ScheduledTask -TaskName LoomRelayTeam` → `Start-ScheduledTask -TaskName LoomRelayTeam` (재시작)
+> 3. **재시작 시 현 룸(LOOM-QSFP)이 1회 소실** → Mac에서 room create + 로스터 재join 1회(D10 join 절차 재사용)
+>
+> 이 재배포 이후부터는 재로그온·relay 재시작에도 룸이 유지된다(초대코드 무효화 없음). PROTOCOL_VERSION=1 와이어 호환 무영향.
 
 ---
 
