@@ -5005,6 +5005,7 @@ __export(exports_src, {
   isWorkerSeq: () => isWorkerSeq,
   isValidConvId: () => isValidConvId,
   isTowerSeq: () => isTowerSeq,
+  isSafeConvSuffix: () => isSafeConvSuffix,
   generateTaskId: () => generateTaskId,
   generateRoomId: () => generateRoomId,
   generatePeerSecret: () => generatePeerSecret,
@@ -5098,6 +5099,7 @@ __export(exports_src, {
   CardResultPayloadSchema: () => CardResultPayloadSchema,
   CardDispatchPayloadSchema: () => CardDispatchPayloadSchema,
   CONV_TURN_LABEL: () => CONV_TURN_LABEL,
+  CONV_SUFFIX_ALLOWED_CHARS: () => CONV_SUFFIX_ALLOWED_CHARS,
   CONV_REJECT_LABEL: () => CONV_REJECT_LABEL,
   CONV_OPEN_SEQ: () => CONV_OPEN_SEQ,
   CONV_OPEN_LABEL: () => CONV_OPEN_LABEL,
@@ -9850,6 +9852,10 @@ function removeConvNodeHost(peerId) {
   saveConvNodeHosts(cfg);
   return true;
 }
+// packages/host/src/conv-artifact-fetch.ts
+init_src();
+init_session_store();
+var convFetchChains = new Map;
 // packages/cli/src/index.ts
 init_src();
 
@@ -10643,7 +10649,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.24.2";
+var VERSION = "0.25.0";
 function eprint(msg) {
   try {
     writeSync(2, msg);
