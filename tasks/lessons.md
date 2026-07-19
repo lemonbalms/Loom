@@ -18,6 +18,7 @@
 - [orchestration] 2026-07-18 (5) 오너 레인 지시: 구현·자문 전부 herdr pane dispatch, 긴 스펙은 파일+짧은 프롬프트. codex 기본 argv=승인프롬프트 모드(무인은 `-a never -s workspace-write` 등 신뢰결정 선행). R{n} fable-advisor 필수와 충돌 시 오너 확인/기록.
 - [orchestration] 2026-07-19 (7) PLAN 컨텍스트 최소화: 본세션 직접 코드정독 금지 — ① 서브에이전트 증거팩 수집 ② 본세션은 판단-무거운 스펙 문안만. **"규모 작아도" 예외 없음**(20줄 스크립트·북키핑·조사도 위임). 성격으로 가름(판단·락-인접=본세션 / 볼륨·조사=위임).
 - [orchestration] 2026-07-19 (8) model 명시 필수: Agent 도구 미지정=Fable 조용한 상속=결함. 스폰 시 model 명시, **기본 `opus`**, `fable`은 fable-advisor뿐. 위임 직전 orchestration 스킬 로드 선행.
+- [orchestration] 2026-07-19 (18) 전체 스위트 = 아키텍트 몫(위임 경계): 워커가 전체 `bun test` 중도 중단을 **정직 보고**하고 DONE 마커 보류 시 **재디스패치 불요** — 전체 회귀 판정 provenance는 애초 아키텍트 독립 실행이 SSOT(verification (4) 동시-실행 금지의 연장). 워커 deliverable = 신규 유닛 + 구현까지, 전체 스위트는 아키텍트 독립 실행으로 완결. 보드는 done 전이(중도 중단 ≠ 워커 실패, 과잉 주장 회피가 올바른 거동). 이번 실증(v0.25.0 IMPL-0250 grok, 538/0). cross-ref: verification·workers.
 
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 
@@ -44,7 +45,7 @@
 
 - [platform] 2026-07-19 (13) 경로 sep: 프리픽스/포함 비교에 `"/"` 하드코딩 금지 — `node:path` `sep` 사용(Windows 백슬래시 경로에서 스냅샷 쓰기 전멸했던 `persist.ts:389`). 신규 플랫폼 첫 배포는 테스트 green 무관하게 핵심 경로 라이브 스모크 필수(POSIX 유닛은 Windows 의미론 미커버). 부정 테스트 불가 시 containment 어서션으로 재정의(R39 M-1).
 - [platform] 2026-07-19 (14) Windows 원격 3함정: ① PS 5.1 `$ErrorActionPreference="Stop"`+PS `2>>`는 네이티브 stderr 첫 줄에 래퍼 즉사 — `cmd.exe /c "... 1>>log 2>>err"` 경유. ② SSH 세션 프로세스는 세션 종료 시 사망(가짜 방화벽 증상) — Scheduled Task 등 세션 독립 런처. ③ `RestartCount`는 비영 종료 미적용 + `bun install -g` EBUSY — 리포 번들 직접 실행.
-- [platform] 2026-07-19 (15) WSL 노드 브릿지 5함정: ① 데몬도 SSH 종료 동반 사망 — `setsid nohup … &`. ② 비로그인 셸 `~/.bashrc` PATH 미소싱 — `/usr/local/bin` 심링크. ③ root+`--dangerously-skip-permissions`=Claude 거부(`inject_unconfirmed`로 위장) — user `permissions.allow`+workspace 신뢰. ④ `bridge start --allow`는 config 재주입 트랩 — config 미리 쓰고 bare start. ⑤ 오너 제품승인 ≠ Claude 분류기 허가(독립 레이어, 해제는 오너 `!` 직접 — 오너 대화 승인으로도 미해제, (16) VPS서 재실증).
+- [platform] 2026-07-19 (15) WSL 노드 브릿지 5함정: ① 데몬도 SSH 종료 동반 사망 — `setsid nohup … &`. ② 비로그인 셸 `~/.bashrc` PATH 미소싱 — `/usr/local/bin` 심링크. ③ root+`--dangerously-skip-permissions`=Claude 거부(`inject_unconfirmed`로 위장) — user `permissions.allow`+workspace 신뢰. ④ `bridge start --allow`는 config 재주입 트랩 — config 미리 쓰고 bare start. ⑤ 오너 제품승인 ≠ Claude 분류기 허가(독립 레이어, 해제는 오너 `!` 직접 — 오너 대화 승인으로도 미해제, (16) VPS서 재실증 · **Mac 본세션 dist 커밋·push도 차단 실증 v0.25.0** — 소스 커밋 통과, dist/push만).
 - [platform] 2026-07-19 (16) VPS(sudo-less·non-root) 노드 3함정: ① bridge 기동 cwd = 소스 리포(`~/.loom-src`) 필수 — `bridge-spawn.ts:29` bridgeMainPath()가 import.meta(bun link 심 miss)→`cwd+packages/host/src/bridge-main.ts` 2단 해석이라 홈 기동은 "Cannot find bridge-main.ts" 즉사. ② sudo-less PATH = `/usr/local/bin` 불가 → `~/.bashrc` 인터랙티브 가드 앞에 PATH 블록 삽입(`sed -i '1r …'`, 비로그인 셸 해결). ③ Option B′ 파일-복제 이식 = 경로-독립 `settings.json` 그대로 복사 + `.claude.json` 신뢰 2키 python 병합(기존 클로버 금지, 스크립트화 가능). git 없는 노드는 `git bundle` scp→clone(GitHub 접근 불요).
 
 ## workers — 모델별 거부 거동·sonnet 스모크·claude-mem 루프·grok 커밋 폭주
