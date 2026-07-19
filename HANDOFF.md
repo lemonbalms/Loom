@@ -65,7 +65,7 @@
 > - **부수 재확인**: 스폰 주입 1발 성공(이번엔 ⑨ 레이스 미발생 — 간헐 재확인), conv 2턴 왕복 동일 브릿지 정상(⑫ 회귀 무), close 후 `eventSubscriptions` 글로벌만 복귀·inFlight=0, 보드 task done 자동 전이. 워커 pane 수동 close(후보 ⑥ 미구현 관례).
 >
 > ### 다음 액션 (우선순위 순)
-> 1. **잔여 PATCH 후보**: ~~② done_proposal 탐지 규약~~·~~③ conv.open deny 클레임 순서~~·~~⑧ 브릿지 pane 배치 정책~~ → **전부 해소(0.23.9 `201e2db`+`5f8bf12`, 2026-07-19)**. ~~⑥ close 시 pane 정리 정책~~·~~⑦ conv-hosts CLI~~ → **해소(0.23.8 `93c6283`)**. 잔존: ④ agentKind 확장(선택) · **신규 후속: claude 상태줄 chrome**(`Fable 5 ⚡high 🧠 │ …` — summary·보드 노트 유입 2회 실증, 콘텐츠-포함 줄이라 0.23.8 필터 미커버 — grok 상태줄 해소 선례 동형) · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low) · **0.23.10 신규 관찰 2건**: 동시 디스패치 풀 탭 레이스(workerPool 인메모리 경합 — 무침입 유지라 무해·Low) · sleep형 페이로드 still-running 유예 상한 소진(pane 수동 정리 필요 — 스모크 페이로드 특이·Low). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
+> 1. **잔여 PATCH 후보**: ~~② done_proposal 탐지 규약~~·~~③ conv.open deny 클레임 순서~~·~~⑧ 브릿지 pane 배치 정책~~ → **전부 해소(0.23.9 `201e2db`+`5f8bf12`, 2026-07-19)**. ~~⑥ close 시 pane 정리 정책~~·~~⑦ conv-hosts CLI~~ → **해소(0.23.8 `93c6283`)**. ~~④ agentKind 확장~~ → **이미 0.23.2 `91bee75`(R27)로 해소된 스테일 항목이었음(2026-07-19 확인 — enum 3종+`agentArgv` fail-closed 기구현, 0.23.9 핸드오프 재작성 때 오등재)**. 잔존: **신규 후속: claude 상태줄 chrome**(`Fable 5 ⚡high 🧠 │ …` — summary·보드 노트 유입 2회 실증, 콘텐츠-포함 줄이라 0.23.8 필터 미커버 — grok 상태줄 해소 선례 동형) · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low) · **0.23.10 신규 관찰 2건**: 동시 디스패치 풀 탭 레이스(workerPool 인메모리 경합 — 무침입 유지라 무해·Low) · sleep형 페이로드 still-running 유예 상한 소진(pane 수동 정리 필요 — 스모크 페이로드 특이·Low). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
 > 1-b. **신규 후보**: ~~settle card 경로 이식(조기 card.done)~~ → **해소(0.23.7 `1160b38`)** · ~~dist 드리프트 가드~~ → **완료(`eb05310`)** · ~~카드 summary chrome 미커버 2종~~ → **해소(0.23.8 — grok 상태줄·claude 힌트줄, 라이브 소거 실증)**. 잔여: conv 턴 조기 회신(~7–10s) 관찰 지속 · summary가 정보성 타이밍줄("Worked for Ns.")로 잡히는 개선 여지(Low, 결함 아님).
 > 2-b. **경쟁 분석발 후보 (2026-07-19, `docs/COMPETITIVE_NOTES.md` §1.3)**: ~~B bunx 온보딩~~·~~C 이미지 README~~ → **완료(2026-07-19 카드 웨이브)**. 잔여: A `scripts/pane-inject.sh`(수동 pane 레인 read-guard 원자화, R-gate 불요) · npm publish는 오너 결정.
 > 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
@@ -103,7 +103,7 @@
 
 ## One-line resume
 
-> **v0.23.10 완주 (2026-07-19 아침).** 워커 풀 탭 수평(좌우) 배치 — 오너 지시 → author-close(Low backlog, R{n} 불요) → grok pane 구현(`cf7d867`, 426/0) → **SMOKE-02310 라이브**(순차 스폰 풀 탭 합류·`pane.layout` 좌우 50/50 실측). 브릿지 0.23.10 재기동(pid 15267). dist `a085f24`. 신규 관찰: 동시 디스패치 풀 탭 레이스(무해) · sleep형 페이로드 유예 상한 소진. 잔여 = ④(선택) · claude 상태줄 chrome · 경쟁분석 A · npm publish(오너).
+> **v0.23.10 완주 (2026-07-19 아침).** 워커 풀 탭 수평(좌우) 배치 — 오너 지시 → author-close(Low backlog, R{n} 불요) → grok pane 구현(`cf7d867`, 426/0) → **SMOKE-02310 라이브**(순차 스폰 풀 탭 합류·`pane.layout` 좌우 50/50 실측). 브릿지 0.23.10 재기동(pid 15267). dist `a085f24`. 신규 관찰: 동시 디스패치 풀 탭 레이스(무해) · sleep형 페이로드 유예 상한 소진. 잔여 = claude 상태줄 chrome · 경쟁분석 A · npm publish(오너) (④ agentKind 확장은 0.23.2 기해소 스테일로 판명·목록 제거).
 >
 > (직전) **v0.23.9 완주 (2026-07-19 아침).** 후보 ②③⑧ 일괄 해소 — R34 게이트(claude-rev pane + fable-advisor, M-1 탐지 말미-K줄 lock + L-1·L-2) → grok pane 구현(`201e2db`, 426/0) → **SMOKE-0239 라이브**(⑧ 풀 탭 무침입 배치·② 1차 미탐지 → K 3→10 보정 `5f8bf12` → done_proposal 라이브 탐지·pane/빈-탭 자동 정리). 브릿지 0.23.9 재기동(pid 99760). dist `0fcd07f`. 잔여 PATCH 후보 = ④(agentKind 확장, 선택) · 신규: claude 상태줄 chrome 미커버. 다음 = 경쟁분석 A · npm publish(오너).
 >
