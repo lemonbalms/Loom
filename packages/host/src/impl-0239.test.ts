@@ -401,7 +401,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
   }, 15_000);
 
   // ⑧ ②
-  test("⑧② second–fourth spawns: same tab_id, split right/down/down", async () => {
+  test("⑧② second–fourth spawns: same tab_id, split right/right/right", async () => {
     await Bun.sleep(200);
     const nStarts = agentStarts().length;
     const firstHinted = agentStarts().find(
@@ -427,7 +427,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     expect(newStarts.length).toBeGreaterThanOrEqual(3);
 
     const splits = newStarts.slice(0, 3).map((s) => s.params.split);
-    expect(splits).toEqual(["right", "down", "down"]);
+    expect(splits).toEqual(["right", "right", "right"]);
     for (const s of newStarts.slice(0, 3)) {
       expect(s.params.tab_id).toBe(poolTab);
     }

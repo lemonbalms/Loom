@@ -156,9 +156,9 @@ license for the architect to implement directly. (Lesson: 2026-07-11 —
 
 ### 1.3 Pane 배치 규칙 (owner 지시, 2026-07-19)
 
-herdr 워커/모니터 pane 배치는 **탭당 최대 4개(2×2 격자)** — 초과분은 **새 탭을 만들어**
-띄운다 (`herdr pane move <id> --new-tab`). 격자 슬롯 관례: 아키텍트 pane 좌측 ·
-워커 pane 우상부터 채움 · 로그/모니터 pane 우하.
+herdr 워커/모니터 pane 배치는 **탭당 최대 4개(좌우 수평 나란히)** — 초과분은 **새 탭을 만들어**
+띄운다 (`herdr pane move <id> --new-tab`). 슬롯 관례: 아키텍트 pane 좌측 ·
+워커 pane을 그 오른쪽부터 좌→우로 채움 · 로그/모니터 pane은 같은 탭 내 추가 우측 슬롯.
 
 운영 주의: **브릿지가 이벤트 구독 중인 워커 pane은 이동하지 않는다** — 아키텍트·로그 등
 비추적 pane을 옮겨 격자를 만든다. (pane move 시 pane_id는 유지 실측(2026-07-19)이나,

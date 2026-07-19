@@ -750,8 +750,8 @@ export async function startBridgeRuntime(opts?: {
             // Full — drop pool so next path creates a new tab. Existing panes stay.
             workerPool = null;
           } else if (liveIds.length > 0) {
-            const split: "right" | "down" =
-              liveIds.length === 1 ? "right" : "down";
+            // PLAN 0.23.10 오너 지시: always horizontal (right) splits — no down.
+            const split: "right" | "down" = "right";
             try {
               const agent = await herdr.agentStart({
                 ...base,
