@@ -62,7 +62,7 @@
 | **Tests** | 전체 스위트 **538 pass / 0 fail**(아키텍트 독립 실행 — v0.25.0 `conv_fetch` 신규 유닛 25 포함) · 6 pkg typecheck green |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** |
 | **Nodes** | mac-node(tower·local) · **Windows relay**(durable, Tailscale `100.65.103.113:7842`, 재로그온 룸 유지) · **WSL node-wsl-1**(`p_de58fbe9f67451a1`, Ubuntu 26.04, bridge online pid 4592/setsid) · **VPS node-vps-1**(`p_aadcd1e3dc9c5b5a`, Tailscale `kb` 100.116.39.101, Ubuntu 24.04.4·non-root·sudo 불가, bridge online pid 541727/setsid) — 팀 룸 loom-dev 초대 `LOOM-GT4B` |
-| **Remote** | `origin/main` **`3e77409`** — v0.25.0 전체 푸시 완료(R40 docs `957748b` + 소스 `b343ada` + dist `3e77409`, dist 커밋·push는 오너 `!` 해소) · 이 docs 갱신 커밋만 미푸시 · 시연 `docs/spikes/DISPATCH-DEMO.md` |
+| **Remote** | `origin/main` **`3e77409`** — v0.25.0 전체 푸시 완료(R40 docs `957748b` + 소스 `b343ada` + dist `3e77409`, dist 커밋·push는 오너 `!` 해소) · docs `6f5b241` 포함 전체 푸시 완료 · 시연 `docs/spikes/DISPATCH-DEMO.md` |
 | **Untracked (커밋 제외)** | `.playwright-mcp/` · `docs/agents/` (mattpocock-skills 셋업분) · `docs/ANALYSIS_NOTES_2026-07-19.md` (오너 병렬 세션 작업 파일) — 커밋 여부 오너 판단 |
 
 ### Access cheat-sheet
