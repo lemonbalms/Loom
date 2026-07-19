@@ -12,7 +12,8 @@
    상속 = 결함. `fable`은 fable-advisor 자문뿐. (구현 레인은 종전대로 grok/codex CLI.)
 3. **병렬화 기본.** 독립 태스크는 단일 메시지 다중 스폰. 정형 다단계(게이트→구현→검증
    팬아웃→스모크→docs)는 **Workflow 도구 사용 — 오너 상비 옵트인 성립(2026-07-19)**.
-4. **세션 시작 리추얼에 `tasks/lessons.md` 정독 포함**(handoff만으로 부족 — 기록 교훈
+4. **세션 시작 리추얼에 `tasks/lessons.md`(인덱스) 정독 + 작업 유형 매칭 카테고리는
+   착수 전 로드 의무**(`tasks/lessons/<category>.md` — handoff만으로 부족, 기록 교훈
    재범 2회 실증). 위임 시작 전 `fable-advisor:orchestration` 스킬 로드.
 
 ## On session start

@@ -23,7 +23,7 @@ bun run status
 | # | What | How (v2) | Why |
 |---|------|----------|-----|
 | 1 | `HANDOFF.md` **상단만** | One-line resume + ⭐ Current action + 다음 액션 상단 (~80줄, offset/limit Read) — **(직전) 체인·구형 스모크 아카이브(하단 ~130줄)는 읽지 않는다** | Current gate, next action, traps |
-| 2 | `tasks/lessons.md` | 최근 항목 정독 (CLAUDE.md standing rules 4 — 재범 방지) | 기록 교훈 |
+| 2 | `tasks/lessons.md` (인덱스) | 인덱스 정독 + 작업 유형 매칭 카테고리는 착수 전 `tasks/lessons/<category>.md` 로드 (CLAUDE.md standing rules 4 — 재범 방지) | 기록 교훈 |
 | 3 | `docs/WORKFLOW.md` | **전문 읽기 폐지** — 게이트 판단 시점에 해당 §만 grep (§5.1 표 등) | 필요 시점 로드 |
 | 4 | `docs/PLAN.md` / `docs/plan_review.md` | `bun run status` 출력으로 대체 — 헤더 재독 불요, 본문은 게이트 판단 시 해당 섹션만 | Version·Status·Open |
 
