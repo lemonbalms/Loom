@@ -92,6 +92,22 @@ describe("PLAN 0.23.11 ① stripTuiChrome claude statusline", () => {
     expect(filtered).not.toContain("fable-advisor");
     expect(filtered).toContain("body keeps ⚡ alone");
   });
+
+  // PLAN 0.23.11 라이브 보정(Deviations §0.23.11): bare composer ❯ alone
+  test("removes bare ❯-only composer line (no box │)", () => {
+    const sample = ["real answer from worker", "❯", "trailing content"].join(
+      "\n",
+    );
+    const out = stripTuiChrome(sample);
+    expect(out).toContain("real answer from worker");
+    expect(out).toContain("trailing content");
+    expect(out.split("\n").some((l) => l.trim() === "❯")).toBe(false);
+  });
+
+  test("preserves content line starting with ❯ + text", () => {
+    const line = "❯ 다음 단계로";
+    expect(stripTuiChrome(line)).toContain("❯ 다음 단계로");
+  });
 });
 
 // ── ③ unit: summary real-content preference ───────────────────────────────

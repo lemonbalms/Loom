@@ -171,6 +171,7 @@ const BOX_STATUS_LINE_RE = /^╰─.*─╯$/u;
  * card summary input — never to card `output` body (R31 M-1).
  * PLAN 0.23.8: + content box status (`╰─…─╯`) + `⏵⏵ auto mode on` hint.
  * PLAN 0.23.11 ①: + claude statusline (` │ ` + ⚡/🧠 co-presence).
+ * PLAN 0.23.11 라이브 보정(Deviations §0.23.11): bare composer `❯` alone.
  */
 export function stripTuiChrome(text: string): string {
   const lines = text.split(/\r?\n/);
@@ -184,6 +185,9 @@ export function stripTuiChrome(text: string): string {
     if (BOX_DRAWING_LINE_RE.test(trimmed)) continue;
     if (BOX_STATUS_LINE_RE.test(trimmed)) continue;
     if (COMPOSER_PROMPT_RE.test(line)) continue;
+    // PLAN 0.23.11 라이브 보정(Deviations §0.23.11): claude TUI bare composer
+    // line (solo ❯ without box `│`). Exact-line only — preserve "❯ text".
+    if (trimmed === "❯") continue;
     if (KEY_HINT_MARKERS.some((m) => line.includes(m))) continue;
     // PLAN 0.23.11 ①: claude statusline — ` │ ` segment sep + ⚡ or 🧠.
     // U+2502 (box light vertical), not ASCII |. Model name not hardcoded.
