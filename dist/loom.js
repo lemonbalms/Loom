@@ -6682,12 +6682,26 @@ var init_server = __esm(() => {
   init_room();
 });
 
+// packages/relay/src/registry-options.ts
+function resolveRegistryOptionsFromEnv(env2 = process.env) {
+  const ephemeral = env2.LOOM_RELAY_EPHEMERAL === "1" || env2.LOOM_RELAY_EPHEMERAL === "true";
+  if (ephemeral) {
+    return { ephemeral: true };
+  }
+  const stateDir2 = env2.LOOM_RELAY_STATE_DIR || defaultRelayStateDir();
+  return { stateDir: stateDir2 };
+}
+var init_registry_options = __esm(() => {
+  init_persist();
+});
+
 // packages/relay/src/index.ts
 var exports_src2 = {};
 __export(exports_src2, {
   timingSafeTokenEqual: () => timingSafeTokenEqual,
   saveRoomSnapshot: () => saveRoomSnapshot,
   roomStatePath: () => roomStatePath,
+  resolveRegistryOptionsFromEnv: () => resolveRegistryOptionsFromEnv,
   releaseStateDirLock: () => releaseStateDirLock,
   loadAllSnapshots: () => loadAllSnapshots,
   isLoopbackHost: () => isLoopbackHost2,
@@ -6703,6 +6717,7 @@ var init_src2 = __esm(() => {
   init_room();
   init_server();
   init_persist();
+  init_registry_options();
 });
 
 // packages/host/src/index.ts
@@ -10623,7 +10638,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.24.0";
+var VERSION = "0.24.1";
 function eprint(msg) {
   try {
     writeSync(2, msg);
@@ -13024,7 +13039,12 @@ async function main() {
 ` + "       loom relay [--host \u2026] [--port \u2026] [--token \u2026]  # foreground server");
       process.exit(1);
     }
-    const { RelayServer: RelayServer2, isLoopbackHost: isLoopbackHost3 } = await Promise.resolve().then(() => (init_src2(), exports_src2));
+    const {
+      RelayServer: RelayServer2,
+      isLoopbackHost: isLoopbackHost3,
+      RoomRegistry: RoomRegistry2,
+      resolveRegistryOptionsFromEnv: resolveRegistryOptionsFromEnv2
+    } = await Promise.resolve().then(() => (init_src2(), exports_src2));
     const { envRelayHost: envRelayHost2, envRelayPort: envRelayPort2, envRelayToken: envRelayToken2 } = await Promise.resolve().then(() => (init_src(), exports_src));
     const host = typeof flags.host === "string" && flags.host || envRelayHost2() || DEFAULT_RELAY_HOST;
     const port = Number(typeof flags.port === "string" && flags.port || envRelayPort2() || DEFAULT_RELAY_PORT);
@@ -13033,20 +13053,44 @@ async function main() {
     if (!allowInsecureOpen && (process.env.FABLE_RELAY_INSECURE_OPEN === "1" || process.env.FABLE_RELAY_INSECURE_OPEN === "true")) {
       console.warn("[loom] FABLE_RELAY_INSECURE_OPEN is ignored; set LOOM_RELAY_INSECURE_OPEN=1 or --insecure-open");
     }
+    const registryOpts = resolveRegistryOptionsFromEnv2();
+    let registry2;
+    try {
+      registry2 = new RoomRegistry2(registryOpts);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      console.error("set LOOM_RELAY_EPHEMERAL=1 to run without persistence, or LOOM_RELAY_STATE_DIR=<other path>");
+      process.exit(1);
+    }
     const server = new RelayServer2({
       host,
       port,
       authToken,
-      allowInsecureOpen
+      allowInsecureOpen,
+      registry: registry2
     });
     try {
       server.start();
     } catch (e) {
+      registry2.close();
       console.error(e instanceof Error ? e.message : e);
       process.exit(1);
     }
+    const shutdown = () => {
+      try {
+        registry2.close();
+      } catch {}
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
     console.log(`Loom relay on ${server.publicHint}`);
     console.log(`Health: http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/health`);
+    if (registryOpts.ephemeral) {
+      console.log("State: ephemeral (LOOM_RELAY_EPHEMERAL) \u2014 inbox lost on restart");
+    } else {
+      console.log(`State: durable ${registryOpts.stateDir}`);
+    }
     if (authToken) {
       console.log("Clients need: --token <same> or LOOM_RELAY_TOKEN (Bearer header preferred)");
     } else if (isLoopbackHost3(host)) {
