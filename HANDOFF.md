@@ -36,7 +36,7 @@
 > 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
 >
 > ### 실측 제약·교훈 (재확인 금지 — 상세 `tasks/lessons.md` 2026-07-18)
-> - herdr dispatch allowlist = `claude`만 (`card-contract.ts:19`). codex/grok은 headless 레인(grok-implementer 서브에이전트)으로 위임 — 오너 승인된 방식.
+> - herdr pane 디스패치 agentKind = **3종**(claude/codex/grok — `DispatchAgentKindSchema` `card-contract.ts:20`, 0.23.2+). **구현·자문 기본 레인 = herdr pane 카드**(오너 레인 지시 lessons orchestration (5), IMPL-0250·0260 grok pane 실증) — headless 서브에이전트는 pane 레인 불가 시 폴백만. (구 "allowlist=claude만" 문장은 스테일이었음 — 2026-07-20 교정, headless 오라우팅 재범의 근인.)
 > - M-1 allowlist엔 **전체 peer ID** (`loom peers` 표시값은 잘린 ID).
 > - 브릿지 주입은 워커 TUI 스타트업 레이스에 질 수 있음 — composer 비면 `herdr agent send` 리터럴 재주입 + 별도 Enter로 수동 복구 (0.23.0 후속 개선 후보).
 > - 워커 pane 정리는 **card.done 수신 후** (조기 close 시 브릿지 스크레이프 회신 유실 — R25에서 실증). → **0.23.8부터 확신-done·conv close는 브릿지가 자동 close**(`paneCleanup:"auto"`) — 수동 정리는 failed·exhausted·구-브릿지 카드 pane만.

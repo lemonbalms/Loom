@@ -15,7 +15,7 @@
 - [orchestration] 2026-07-11 Delegation split: 대량 기계작업은 하위 모델 서브에이전트가 편집, 세션 모델(Fable)이 diff 검수. `~/.claude/CLAUDE.md` 권한 확대 self-edit은 분류기 거부 — 정확한 편집 노출 후 오너 재승인 대기.
 - [orchestration] 2026-07-11 Impl delegated: 승인/락된 스펙은 세션 모델이 직접 코딩하지 않음. 레인 다운 = 체인 하강(grok→codex→하위 in-harness 모델), 하드코딩 라이선스 아님. 스테일 HANDOFF 신뢰 금지, 레인 가용성 재확인.
 - [orchestration] 2026-07-12 Next-action test: 자가 선택 액션 전 "실패하면 새로 뭘 배우나?" — 못-실패 액션(그린 재실행·오너 블로커 대기·문서작업)은 실격. HANDOFF "don't redo" 교차확인 후 가장 무서운 검증가능 체크 선택.
-- [orchestration] 2026-07-18 (5) 오너 레인 지시: 구현·자문 전부 herdr pane dispatch, 긴 스펙은 파일+짧은 프롬프트. codex 기본 argv=승인프롬프트 모드(무인은 `-a never -s workspace-write` 등 신뢰결정 선행). R{n} fable-advisor 필수와 충돌 시 오너 확인/기록.
+- [orchestration] 2026-07-18 (5) 오너 레인 지시: 구현·자문 전부 herdr pane dispatch, 긴 스펙은 파일+짧은 프롬프트. codex 기본 argv=승인프롬프트 모드(무인은 `-a never -s workspace-write` 등 신뢰결정 선행). R{n} fable-advisor 필수와 충돌 시 오너 확인/기록. **재범 2026-07-20**: headless 오라우팅(스테일 "allowlist=claude만" 신뢰) — agentKind 3종 pane은 0.23.2+ 지원(`card-contract.ts:20`), 디스패치 전 스키마 실측.
 - [orchestration] 2026-07-19 (7) PLAN 컨텍스트 최소화: 본세션 직접 코드정독 금지 — ① 서브에이전트 증거팩 수집 ② 본세션은 판단-무거운 스펙 문안만. **"규모 작아도" 예외 없음**(20줄 스크립트·북키핑·조사도 위임). 성격으로 가름(판단·락-인접=본세션 / 볼륨·조사=위임).
 - [orchestration] 2026-07-19 (8) model 명시 필수: Agent 도구 미지정=Fable 조용한 상속=결함. 스폰 시 model 명시, **기본 `opus`**, `fable`은 fable-advisor뿐. 위임 직전 orchestration 스킬 로드 선행.
 - [orchestration] 2026-07-19 (18) 전체 스위트 = 아키텍트 몫(위임 경계): 워커가 전체 `bun test` 중도 중단을 **정직 보고**하고 DONE 마커 보류 시 **재디스패치 불요** — 전체 회귀 판정 provenance는 애초 아키텍트 독립 실행이 SSOT(verification (4) 동시-실행 금지의 연장). 워커 deliverable = 신규 유닛 + 구현까지, 전체 스위트는 아키텍트 독립 실행으로 완결. 보드는 done 전이(중도 중단 ≠ 워커 실패, 과잉 주장 회피가 올바른 거동). 이번 실증(v0.25.0 IMPL-0250 grok, 538/0). cross-ref: verification·workers.

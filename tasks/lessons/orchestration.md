@@ -42,6 +42,16 @@
 
 **갱신 (같은 날, 조사 카드):** codex를 기본 argv로 등록하면 **승인 프롬프트 모드**로 떠서, 명령 실행이 필요한 카드는 사람이 pane에서 승인하기 전까지 고착된다(오너가 수동 승인으로 해소 — R27 L-2 고지의 실증 사례). 무인 codex 워커가 필요하면 오퍼레이터가 argv에 자율성 플래그를 명시(예: `-a never -s workspace-write` — CLI help의 `loom run codex` 예시와 동일)하는 신뢰 결정이 선행돼야 한다. grok/claude는 기본 argv로도 자율 실행됨 — CLI별 기본 권한 모델 상이.
 
+**재범 실증 (2026-07-20, 0.26.0 세션 — 오너 지적 "왜 pane를 사용안하지?"):** IMPL-0260을
+headless `grok-implementer` 서브에이전트로 오라우팅. 근인 = HANDOFF 실측 제약의 **스테일
+문장**("herdr dispatch allowlist = claude만") 신뢰 — 실제로는 `DispatchAgentKindSchema`
+(`card-contract.ts:20`)가 0.23.2부터 claude/codex/grok 3종 pane 카드를 지원하고 IMPL-0250이
+grok pane으로 완주한 선례까지 있었다. 교정: headless 레인 중단(제품 코드 수정 전) → grok
+pane 카드 재발사(task_0bcd589f7684ab76) + HANDOFF 스테일 문장 정정. **규칙 보강**: 구현
+디스패치 전 "pane 레인 가능?"을 스키마·선례로 실측 확인 — headless 서브에이전트는 pane
+레인 불가(원격 노드 CLI 부재 등)일 때만 폴백. verification (11) 힌트 교차검증의 동계열
+(스테일 교훈도 힌트일 뿐 — 스키마가 SSOT).
+
 ## 2026-07-19 (7) — 오너 지적: PLAN 작성 시 본세션 컨텍스트 최소화 위반
 
 **지적 (2026-07-19, 0.23.12 세션):** 아키텍트 본세션이 PLAN 초안을 위해 코드 정독
