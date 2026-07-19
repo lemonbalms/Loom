@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-07-18 |
+| **Last updated** | 2026-07-19 |
 
 ---
 
@@ -41,6 +41,23 @@
 ---
 
 ## Gate log
+
+### 0.24.1 — relay 룸 영속화 배선 갭 (`loom relay` 포그라운드 durable)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.24.1 (`pending-review`) |
+| **Date** | 2026-07-19 |
+| **Review** | R38 required (보안·신뢰 경계 — peerSecret 평문 스냅샷의 적용 범위 확대; PATCH여도 필수) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | durable 경로 전 체인이 기구현·정상 — 영속화(`persist.ts` RoomSnapshotV1)·기동 복원(`room.ts:687` `loadFromDisk`→`:709-732`, 초대코드 byCode `:720`·`:730`)·멤버십/secret 복원(`room.ts:102-151`, M-22/M-7)·M-23 락(`room.ts:682` acquire·`:691-696` close). 로컬 데몬 durable 실측(`~/.loom/relay-state` 3스냅샷·15:00 갱신). relay 재시작 룸 소실 4회가 **전부 포그라운드 경로**(`index.ts:3204` 무-registry `RelayServer`). durable 배선 정본은 `relay/cli.ts:38-80`(데몬 CLI). |
+| Known unknowns | (1) Mac에서 로컬 데몬 relay 구동 중 `loom relay` 포그라운드 실행 시 기본 stateDir(`~/.loom/relay-state`) 충돌 → M-23 락 fail-closed 발화 빈도가 운영상 수용 가능한지(escape hatch 2종 `LOOM_RELAY_EPHEMERAL`·`LOOM_RELAY_STATE_DIR`로 대응). (2) Windows(NTFS)에서 chmod 0600·mkdir 락 의미론 — 코드는 chmod try/catch fail-safe 기확인(`persist.ts:216-220`), 락은 mkdir 원자성이나 Windows 실검증은 배포 후로 유예. |
+| Unknown knowns | "Production durable ON by default"가 이미 제품 방침(`relay/cli.ts:41` 주석) — 포그라운드도 그 방침의 적용일 뿐, 신규 정책 결정이 아니다. |
+| Unknown unknowns | 스냅샷 무한 누적의 장기 영향(GC 부재 — `maybeGc` no-op `room.ts:765-767`, D7 후속); 두 relay 프로세스가 서로 다른 stateDir로 같은 포트를 경합하는 배치 오류류. |
+
+**Next:** R38(claude-rev + fable-advisor 필수) → approved 후에만 구현(레인 위임). 라이브 스모크 = `loom relay` 포그라운드 durable 왕복(룸 생성→SIGTERM→재기동→초대코드 join). Windows 실증은 오너 배포 후 유예.
 
 ### 0.23.0 — conv 멀티턴 수직 슬라이스
 
@@ -220,3 +237,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-10 | 0.17.0 launcher UX unknowns |
 | 2026-07-17 | 0.22.0 Loom×Herdr 노드 브릿지 unknowns (Step 0/0.5 go 반영) |
 | 2026-07-18 | 0.23.0 conv 멀티턴 수직 슬라이스 unknowns (CONV_SPEC R24 approved 반영) |
+| 2026-07-19 | 0.24.1 relay 룸 영속화 배선 갭 unknowns (`loom relay` 포그라운드 durable) |
