@@ -1,5 +1,18 @@
 # Claude / coding-agent entry (Loom)
 
+## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)
+
+1. **본세션(아키텍트) = 판단·게이트·디스패치·verdict만.** 코드 정독·조사·증거 팩 수집·
+   독립 검증·문서 초안과 적용·스크립트 작성은 전부 서브에이전트로 위임. 본세션 직접
+   수행 예외는 복잡한 판단(락 경계·아키텍처·스펙 문안·게이트 결정)과 왕복-판단이 얽힌
+   라이브 프로브뿐.
+2. **서브에이전트 model 명시 필수, 기본 = `opus`.** 미지정 = 본세션 모델(Fable) 조용한
+   상속 = 결함. `fable`은 fable-advisor 자문뿐. (구현 레인은 종전대로 grok/codex CLI.)
+3. **병렬화 기본.** 독립 태스크는 단일 메시지 다중 스폰. 정형 다단계(게이트→구현→검증
+   팬아웃→스모크→docs)는 **Workflow 도구 사용 — 오너 상비 옵트인 성립(2026-07-19)**.
+4. **세션 시작 리추얼에 `tasks/lessons.md` 정독 포함**(handoff만으로 부족 — 기록 교훈
+   재범 2회 실증). 위임 시작 전 `fable-advisor:orchestration` 스킬 로드.
+
 ## On session start
 
 Run the session-start ritual in [`AGENTS.md`](./AGENTS.md): read the handoff, surface a short status table, then execute the next gate autonomously (full wave — see `AGENTS.md` Standing rules · Autonomy).
