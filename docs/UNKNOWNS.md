@@ -42,6 +42,23 @@
 
 ## Gate log
 
+### 0.24.2 — Windows 실배포 결함 2건 (persist 경로 가드 구분자 오탐 + 메시지 핸들러 uncaught 크래시)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.24.2 (`pending-review`) |
+| **Date** | 2026-07-19 |
+| **Review** | R39 required (보안·신뢰 경계 — 경로 가드 계약 변경; PATCH여도 필수) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 결함 근인 2건 코드 대조 확정: (1) `persist.ts:389` 가드 `path.startsWith(realState + "/")`가 POSIX `"/"` 하드코딩 — `roomStatePath`(`persist.ts:67-69` `join()`)의 Windows 백슬래시 경로와 불일치해 **모든 스냅샷 쓰기 거부**(0.14.x부터 잠복, Windows relay가 0.24.1 전까지 항상 ephemeral이라 미발화·유닛은 POSIX 전용). `path`는 realState 파생이라 **구분자만이 유일 실패 모드**. (2) `room.ts:751` create의 fail-closed rethrow가 `server.ts:176` `handleMessage` 호출부(ws message 콜백)에 try/catch 부재 → uncaught → **bun 프로세스 종료**(나쁜 create 1건 = 서버 전멸). 기존 개별 op catch는 `server.ts:317·392·485·510`(handleMessage 내부 회신·비-rethrow). 라이브 실증: v0.24.1 Windows 재배포 후 첫 room create에서 relay 사망 2회 재현·err.log 스택 `Snapshot path escapes state dir` 포집. |
+| Known unknowns | (1) D2 가드(message 콜백 외곽 전역 방어) 외 다른 op의 persist 경유 추가 uncaught 표면 — op별 실패 UX(무응답 vs 명시 error envelope) 차이. (2) 대소문자/8.3 단축 경로 변형이 `realpathSync` 산출에 섞일 가능성(파생-경로 구조상 무해 논증이나 Windows 실기 확인은 배포 후). |
+| Unknown knowns | 가드 교정은 **신규 정책이 아니라 기존 계약의 크로스플랫폼 복원** — `node:path`의 `sep`는 join과 짝을 이루는 정본 구분자이며, POSIX 판정은 문자 그대로 불변(`sep === "/"`). "가드 완화"가 아니라 "Windows에서만 깨져 있던 정상 판정의 복구". |
+| Unknown unknowns | Windows 고유 FS 의미론(파일 잠금·안티바이러스의 rename 간섭)이 원자쓰기/스냅샷 경로에서 후속 발화할 가능성; ephemeral→durable 전환으로 Windows 팀 relay에 처음 디스크 쓰기가 실제 발생하며 드러날 미지의 경로/권한 상호작용. |
+
+**Next:** R39(claude-rev + fable-advisor 필수) → approved 후에만 구현(레인 위임). 라이브 스모크 = Mac 로컬(0.24.1 절차 재사용) + Windows 재배포 라이브(room create 성공→스냅샷 생성→Task 재시작→룸 생존). 이 웨이브가 0.24.1 유예분(Windows 재로그온 룸 유지)을 완결.
+
 ### 0.24.1 — relay 룸 영속화 배선 갭 (`loom relay` 포그라운드 durable)
 
 | Field | Value |
