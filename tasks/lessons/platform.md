@@ -154,7 +154,17 @@ start`, cron은 `.bashrc` 미소싱이라 PATH·BUN_INSTALL 인라인·기존 ba
    즉시 노출돼 그 자리에서 고칠 수 있었다(팩 §B-2 권고의 실효 입증).
 
 완주 상태(프로세스 레벨): kb crontab `@reboot` 2줄 설치(멱등)·node-wsl-1 unit 2개 `enabled` +
-drop-in 반영 + bridge PID 14019 `active (running)` + Windows `LoomWslBoot` Task 등록. **실제
-재부팅 실증(§C)은 오너 판단(선택)** — 프로세스 확인은 `pgrep -f "bridge-main"`(`bridge start`
-아님, 실체는 `bun run bridge-main.ts`). 비대칭 유지: kb는 supervision 없음(cron 부팅 1회
-기동만, sudo-less 최소 경로), WSL은 systemd `Restart=always`.
+drop-in 반영 + bridge PID 14019 `active (running)` + Windows `LoomWslBoot` Task 등록. 프로세스
+확인은 `pgrep -f "bridge-main"`(`bridge start` 아님, 실체는 `bun run bridge-main.ts`). 비대칭
+유지: kb는 supervision 없음(cron 부팅 1회 기동만, sudo-less 최소 경로), WSL은 systemd
+`Restart=always`.
+
+3. **WSL cold-boot 실증은 `wsl --shutdown`→wake로 물리 재부팅 없이 가능.** Windows
+   `LoomWslBoot` Task의 실질 동작은 `wsl.exe -d Ubuntu -e true`(distro만 깨움)이고 실제 서비스
+   기동은 내부 systemd가 하므로, `ssh win 'wsl --shutdown'`으로 distro를 완전히 내린 뒤
+   `wsl -d Ubuntu -e true`로 깨우면 **재부팅의 systemd 경로 전체를 물리 재부팅 없이 실증**할 수
+   있다(라이브 확인: herdr PID 159·bridge PID 162로 재기동 — 낮은 PID가 cold boot 증거).
+   주의: `timeout`은 ssh→Windows 셸에서 Windows `TIMEOUT.exe`로 해석돼 깨진다(GNU timeout
+   아님) — wsl 커맨드는 빨리 반환하니 불요. kb는 `@reboot` 발효가 실제 재부팅에서만 일어나고
+   `sudo reboot`이 비밀번호를 요구(§D sudo 메모)해 실증은 다음 자연 재부팅으로 유예
+   (crontab 설치·PATH·cwd 정합은 확인 완료, `/tmp/loom-bridge-boot.log`가 발효 증거가 됨).
