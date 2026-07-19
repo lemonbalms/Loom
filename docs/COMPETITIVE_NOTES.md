@@ -93,3 +93,249 @@
 기능 격차는 크고(계층 1개 vs 스택 전체), 그들의 휴면 상태(3.5개월)로 보아 직접적 경쟁
 위협은 낮다. 가치는 두 가지: (1) 수요 검증 신호, (2) 포장 기술(read guard의 강제 지점
 설계, npx 온보딩, 이미지 README) — 위 A/B/C로 흡수한다.
+
+---
+
+## 2. Moshi (getmoshi.app) — 분석일 2026-07-19
+
+| Field | Value |
+|-------|-------|
+| 제품 | **Moshi** — Mobile terminal for AI coding agents |
+| 사이트 | https://getmoshi.app · Docs https://getmoshi.app/docs |
+| 플랫폼 | iOS/iPadOS 17+ · Android 10+ (App Store / Play) |
+| 제작 | 인디 (Joel / @odd_joel) · 클로즈드 소스 · 광고·데이터 판매 없음 표방 |
+| 가격 | Free(진짜 쓸 만함) · Pro $7.99/mo · $69.99/yr · Lifetime $199 (≤3 devices) |
+| 한 줄 | **내 호스트에서 도는 코딩 에이전트를 폰에서 조종** — 진짜 터미널 + 승인 인박스 + 푸시 + 리뷰 표면 |
+| 이름 주의 | **≠** Kyutai Moshi(음성 LLM) · **≠** Mosh 프로토콜 단독. 연결 유지에는 Mosh를 씀. |
+
+> 세션 맥락: 오너가 처음 Blink(`blinksh/blink`)와 혼동 가능한 "MOSHI"를 물었고, 정본은
+> **getmoshi.app**. Blink = 프로 셸 / Moshi = **에이전트 조종석** / Loom = **멀티 피어 작업 버스**.
+
+### 2.1 무엇을 하나
+
+**문제:** 노트북을 닫아도 Claude Code·Codex 등이 내 Mac/Linux/VPS에서 계속 돌게 두고,
+이동 중 **승인·질문·완료**만 폰으로 처리하고 싶다. 기존 모바일 SSH(Blink/Termius)는
+셸 접속은 잘하지만 “에이전트가 막혔다”를 **스크롤백 글자**로만 보여 준다.
+
+**해결 (제품 비유):** *잠든 아이 옆 베이비 모니터 = 에이전트 옆 Moshi.*
+
+| 축 | 내용 |
+|----|------|
+| 터미널 | 진짜 PTY 세션 (Ghostty/Metal GPU 렌더 표방). SSH / **Mosh** / ET(experimental) |
+| 호스트 | 사용자 소유 머신. 코드·에이전트 CLI·git·구독은 **Moshi 클라우드에 안 올라감** |
+| 세션 수명 | mosh + tmux/Zellij/**Herdr** — 앱 백그라운드·네트워크 전환·잠금에도 에이전트 유지 |
+| 에이전트 루프 | `moshi-hook` 데몬 → 승인/완료/툴 이벤트를 **Inbox · Live Activity · Watch · 푸시** |
+| 입력 | 음성(on-device Whisper/Parakeet/Apple · cloud 쿼터) · image/file paste → 호스트 경로 주입 |
+| 리뷰 | Diff viewer · repo browse · localhost browser preview (로컬 게이트웨이 터널) |
+| 보드 | Agents 칸반 (Needs you / Working / Done) · Usage rings · context % |
+| 온보딩 | Easy Pair QR (`moshi-hook host setup`) · brew / install.sh |
+
+**지원 에이전트 (hooks 정규화):** Claude Code, Codex, OpenCode, Gemini, Antigravity,
+Cursor, Kimi, Qwen, Grok, Pi, OMP, Hermes 등. 목록 밖 CLI도 “그냥 셸”로는 동작.
+
+### 2.2 아키텍처 (요지)
+
+```
+Phone (Moshi app)
+  │ SSH/Mosh/ET ──────────────► Host PTY (tmux/herdr 안 에이전트)
+  │ WebSocket (알림·승인 요약) ► Moshi backend (짧은 이벤트만)
+  │ SSH-forward local gateway ► host:127.0.0.1:24543 (diff/transcript/preview)
+Host
+  moshi-hook serve  · Unix socket ◄── agent hooks
+                    · gateway :24543  ◄── app
+```
+
+**프라이버시 경계 (docs 주장, 검증 필요 시 dogfood로 재확인):**
+
+| 로컬 또는 폰↔호스트 직결 | 서버 경유 (요약) |
+|--------------------------|------------------|
+| 터미널 트래픽 · 전체 트랜스크립트 · diff · 소스 | inbox 카테고리 + 프롬프트 ≤200자 · 응답 타이틀 ≤80자 · 승인 질문 ≤256자 · 메타(프로젝트/session/agent/model/context%) |
+
+**Inbox 정규 카테고리 (의도적으로 작음):**  
+`approval_required` · `task_complete` · `session_started` · `tool_running` · `tool_finished`  
+→ **세션당 1행 갱신** (알림 스택 폭발 방지).
+
+### 2.3 Loom과의 구조 비교
+
+| 축 | Moshi | Loom |
+|----|-------|------|
+| 사용자 | **1인 + 폰/태블릿** | **멀티 피어 팀** (타워·워커·리뷰) |
+| 연결 | 폰 → **내 호스트** 직결 (SSH/Mosh) | 피어 → **relay/room** → 브릿지/host |
+| 세션 표면 | 모바일 네이티브 터미널 앱 | herdr pane + CLI/MCP + (desktop) |
+| 작업 단위 | 에이전트 turn / approval | board card · handoff · conv turn |
+| 상태 버스 | moshi-hook 이벤트 → 인박스 칸반 | durable inbox · board · card.done · conv |
+| 승인 UX | 푸시 / Live Activity / **Watch 원탭** | 타워·보드 관측 · 워커 pane 스크레이프 |
+| 멀티플렉서 | tmux · Zellij · **Herdr** (pane 상태 jump) | **Herdr** (브릿지 스폰·풀 탭·pane close) |
+| 전달 보장 | 훅 이벤트 + 알림 (세션 자체는 mosh/tmux) | seq · pin · fail-closed · artifact sha256 |
+| 신뢰 모델 | 호스트 키 + 앱 Keychain · 훅 페어링 토큰 | peerSecret · allowlist · untrusted 마커 |
+| 스크레이프 | Chat View 등 (실험, 호스트 게이트웨이) | delta + chrome 필터 + still-running 유예 (0.23.x) |
+| 오픈소스 | ❌ | ✅ (팀 레포; 제품 공개 전략은 별도) |
+| 포지션 | **모바일 agent babysitter** | **팀 작업 버스 + 에이전트 오케스트레이션** |
+
+**겹치는 진짜 문제 (시장 신호):**
+
+1. 에이전트는 **장시간 · 비동기 · 승인 대기** 한다 → “지켜보는 사람”이 필요.
+2. 순수 터미널(글자 파이프)만으로는 **Needs you** 가 안 보인다.
+3. **Herdr** 가 양쪽 생태계에 등장 — “에이전트 멀티플렉서”가 공통 인프라로 수렴.
+4. PTY 스크롤백만으로는 부족 → **구조화 이벤트**(hooks / card.done / done_proposal) 가 필요.
+
+**그들이 푸는 것 / Loom이 푸는 것 (겹침 ≠ 대체):**
+
+- Moshi: *내가 떠난 뒤에도 내 에이전트가 나를 부른다* (개인·모바일).
+- Loom: *여러 모델/사람이 같은 룸에서 카드·대화를 넘긴다* (팀·프로토콜).
+- 경쟁 위협: **직접 대체 아님**. 같은 유저가 둘 다 쓸 수 있음 (폰=Moshi, 데스크=Loom).
+  위협 시나리오는 “팀 협업 없이도 1인 멀티에이전트면 충분” 포지션 잠식 — Loom의
+  존재 이유(멀티 피어·리뷰 게이트·전달 보장)를 문서·데모로 계속 박아야 함.
+
+### 2.4 Blink와의 관계 (참고)
+
+공식 compare: Blink = 최고의 셸 파이프 · Moshi = 에이전트 루프.  
+Loom 문서 포지션에 쓸 삼각 정리:
+
+| | Blink | Moshi | Loom |
+|--|-------|-------|------|
+| 1급 표면 | 셸 | 에이전트 인박스+셸 | 룸·보드·conv·브릿지 |
+| 연결 | Mosh/SSH | Mosh/SSH + hooks 백엔드 | relay + herdr |
+| 모바일 | iOS | iOS+Android | 없음(현행) |
+| 팀 | 없음 | 없음(1인 다중 호스트) | 핵심 |
+
+### 2.5 배울 점 → Loom 적용방안
+
+원칙: **모바일 앱·Moshi 백엔드·moshi-hook을 이식하지 않는다.**  
+가져올 것은 **이벤트 정규화 · 인박스 UX 패턴 · 프라이버시 경계 · Herdr jump · 온보딩
+마찰** 이다. PLAN 게이트 없이 문서/스크립트만 가능한 것과 R{n} 필요한 것을 분리.
+
+#### A. 에이전트 이벤트 정규 카테고리 (인박스 어휘) — **문서 → 점진 코드**
+
+**현황:** Loom은 card.done / conv turn / handoff / done_proposal 등 **프로토콜 메시지**는
+있으나, “Needs you / Working / Done” 한 화면에 모이는 **사람용 어휘·수명**이 Moshi만큼
+선명하지 않다. 보드 notes·inbox 목록이 가깝지만 칸반 붕괴 규칙(완료 10분 Active → 6h
+archive 등)은 없음.
+
+**적용방안:**
+
+1. **[즉시 · 문서]** `docs/DOGFOOD_LOOP.md` 또는 본 노트 하위 표로 **운영 칸반 매핑** 고정:
+   | Moshi 카테고리 | Loom 대응 (현행) | 빈 칸 |
+   |----------------|------------------|--------|
+   | approval_required | 워커 TUI 승인 프롬프트 · 관찰 ⓔ (codex plan 고착) | **구조화 이벤트 없음** — 스크레이프/수동 |
+   | task_complete | card.done · conv close(done) · done_proposal notes | 표면 분산 |
+   | session_started | pane spawn · card doing | OK |
+   | tool_running/finished | 없음(의도) | 노이즈라 Moshi도 throttle — Loom 도입 비추 |
+2. **[PATCH 후보 · Med]** “Needs you” 표면: 워커가 **승인 대기**일 때 보드/카드에
+   고정 상태 마커(예: notes `status=blocked_approval`) — **와이어 새 타입이 아니라**
+   기존 notes/status 정규화 + 탐지 패턴. R{n} 여부는 “새 MCP/프로토콜 필드” 생기면
+   필수, 보드 notes 관례만이면 author-close 가능 구간.
+3. **비목표:** 모바일 푸시 서버, Apple Watch, Live Activity. 팀 dogfood 단계 과투자.
+
+#### B. 세션당 1행 갱신 · 알림 스팸 방지 — **이미 부분 구현, 문서화 강화**
+
+**현황:** Moshi inbox = 세션당 1행 갱신. Loom card/conv도 flight 단위로 갱신하는 방향
+(0.23.x finishCard · applyConvTurn). 다만 보드 notes에 chrome·타이밍줄 유입이 반복
+(0.23.6–0.23.11 웨이브) — **“한 행이 지저분하면 1행 정책이 무의미”**.
+
+**적용방안:**
+
+1. **[진행 중]** PLAN 0.23.11 후보 ①③⑤ (claude chrome · summary 타이밍 · still-running
+   supersession) — **Moshi 교훈과 동일 축**: 사람 스캔 가능한 한 줄/한 카드.
+2. **[즉시 · 문서]** 보드/카드 표시 불변식 한 줄 추가(DOGFOOD 또는 lessons):
+   *“카드/컨브 한 행 = 지금 행동에 필요한 신호만; chrome·타이밍·에코는 필터 또는 말미
+   스킵.”* — 0.23.x 구현 근거를 경쟁 노트와 교차 링크.
+3. 신규 이벤트 종류를 늘리기 전에 **throttle·collapse 규칙**을 PLAN에 먼저 쓰기
+   (Moshi tool_running 의도적 억제 선례).
+
+#### C. 구조화 훅 vs PTY 스크레이프 — **Loom 정체성 유지 + 하이브리드 후보**
+
+**현황:** Moshi = 에이전트 vendor hooks → 소켓 → 정규 이벤트 (1급).  
+Loom = herdr pane 스크레이프 + 마커 규약(`[DONE_PROPOSAL]`, artifact, still-running) (1급).  
+스크레이프 한계는 이미 실측(claude ~5.3k / grok ~2.2k / codex ~1.4k) · §5.1 파일 아티팩트가
+정답 경로.
+
+**적용방안:**
+
+1. **정체성 고수:** 팀 룸·전달 보장·untrusted 분리는 **프로토콜 1급** — 벤더 hooks에
+   올인하지 않음 (벤더 파편화·버전 깨짐 = Moshi가 감수하는 비용).
+2. **[조사 스파이크 · R 불요]** Claude Code / Codex hooks로 “idle / approval_required”
+   를 **보조 신호**로 받을 수 있는지 1–2일 스파이크. 결과만 `docs/spikes/` 또는 본 노트
+   갱신. 성공 시: 브릿지가 스크레이프 **확증**용으로만 사용 (fail-open: 훅 없으면
+   현행 유지) — 0.23.7 still-running 유예와 동형.
+3. **비목표:** moshi-hook 바이너리 의존, getmoshi API 연동.
+
+#### D. Herdr “이벤트 → 해당 pane jump” — **브릿지/타워 UX**
+
+**현황:** Moshi는 Herdr pane의 blocked/working/done을 읽어 **인박스 탭 → 그 pane** 착지.
+Loom 브릿지는 spawn·pool·close·scrape는 하나, **“이 카드의 pane으로 포커스”** 는
+아키텍트 수동/`herdr` CLI.
+
+**적용방안:**
+
+1. **[Low · 스크립트]** `scripts/pane-focus-card.sh <cardId>` 또는
+   `loom board focus <cardId>` 초안: board metadata의 pane id → `herdr` focus RPC
+   (존재 여부 Step 0 프로브 필요 — 없으면 herdr 이슈/우회).
+2. **[PATCH 후보]** card.done / blocked 시 타워 TUI 또는 `loom watch` 한 줄에
+   `pane=<id> tab=<id>` 표기 — **점프는 사람**, 발견 비용만 제거 (R-gate 낮음).
+3. 풀 탭 정책(0.23.9–0.23.10)과 결합: “Needs you” 카드 = 해당 워커 pane 위치 힌트.
+
+#### E. 로컬 게이트웨이 패턴 (전문은 직결, 서버는 요약) — **이미 Loom 철학과 정합**
+
+**현황:** Moshi: transcript/diff는 host→phone 직결, 서버는 푸시 요약만.  
+Loom: §5.1 artifact는 파일/scp, relay는 메타·작은 페이로드 — **같은 정신**.
+
+**적용방안:**
+
+1. **[문서 강화]** PITCH / USER_GUIDE / 경쟁 노트에 한 문장 SSOT:
+   *“큰 결과물은 피어 간 파일·artifact; relay/inbox는 신호와 작은 계약.”*
+2. 새 기능 제안 시 리트머스: *이 페이로드가 relay를 타면 Moshi가 서버에 올리지 말라고
+   한 클래스인가?* → 그렇다면 §5.1 경로 강제.
+3. **비목표:** 모바일용 로컬 게이트웨이 포트 제품화 (팀 데스크 단계).
+
+#### F. Easy Pair / 원커맨드 온보딩 — **§1 B와 합류**
+
+**현황:** Moshi Easy Pair = QR + 키 생성 + authorized_keys. Loom join = invite blob +
+profile. 이미 COMPETITIVE §1 B/C (bunx · 이미지 README) 가 같은 마찰을 다룸.
+
+**적용방안:**
+
+1. §1 B/C 완료 상태를 전제로, **팀 dry-run 1페이지**에 “Moshi Easy Pair에 해당하는
+   Loom 경로 = `loom room join <blob>` + dogfood-up” 를 명시 (비유만, 기능 복제 아님).
+2. 호스트 준비 체크리스트를 Moshi docs 권장 세트에 맞춰 **선택 정렬**:
+   `herdr` + (팀 환경) Tailscale + loom bridge — mosh/tmux는 Loom 필수 아님을 명시
+   (오해 방지: Loom ≠ 모바일 mosh 클라이언트).
+
+#### G. Free vs Pro 게이팅 철학 — **제품 공개 시 참고, 지금 코드 금지**
+
+Moshi: Free = 진짜 SSH+푸시; Pro = Mosh·이미지·무제한 인박스.  
+Loom 공개/ monetize 시점 전 참고만. **현재 FREEZE·팀 dogfood 단계에서는 적용 안 함.**
+
+#### H. 가져오면 안 되는 것 (명시 배제)
+
+| 배제 | 이유 |
+|------|------|
+| 네이티브 iOS/Android 앱 착수 | 스택·유지비·FREEZE 밖 · Loom 코어(룸/프로토콜) 미성숙 |
+| moshi-hook / getmoshi API 의존 | 외부 단일 벤더 · 프라이버시·가용성 타사 |
+| 푸시 알림 서버 우선 구현 | 팀 책상 dogfood 병목 아님 |
+| Blink/Moshi 터미널 에뮬 경쟁 | Loom 가치 = 오케스트레이션, 에뮬 아님 |
+| “에이전트 hooks만으로 스크레이프 폐기” | 벤더 파편 · 전달 보장·artifact와 충돌 |
+
+### 2.6 우선 적용 로드맵 (실행 순서)
+
+| 순서 | 항목 | 형태 | R-gate | 의존 |
+|------|------|------|--------|------|
+| 1 | 본 노트 커밋 + HANDOFF/todo 1줄 링크 | 문서 | 불요 | — |
+| 2 | 칸반 매핑 표 → DOGFOOD_LOOP 또는 lessons 교차 링크 | 문서 | 불요 | — |
+| 3 | 0.23.11 (chrome/summary/still-running) 완주 | PATCH 진행 중 | R35 | PLAN |
+| 4 | §1 A `pane-inject.sh` + §2 D pane 위치 힌트 | 스크립트/Low | 보통 불요 | herdr RPC 프로브 |
+| 5 | approval_required 보조 신호 스파이크 (hooks) | spike 메모 | 불요 | 조사 |
+| 6 | Needs you 보드 상태 정규화 | PATCH 후보 | 필드 신설 시 R{n} | 5 결과 |
+| 7 | 모바일/푸시 | 하지 않음 | — | 제품 공개 이후 재평가 |
+
+### 2.7 결론
+
+- **Moshi는 Loom의 경쟁 대체가 아니라**, “에이전트를 사람 없이도 돌리려면 **구조화
+  신호 + 한눈 인박스 + 세션 생존**이 필요하다”는 **시장·UX 교과서**.
+- Loom이 이길 축: **멀티 피어 · 리뷰 게이트 · durable 전달 · untrusted 분리 · herdr
+  팀 브릿지** — Moshi에 없음.
+- Loom이 당장 훔칠 축: (1) 이벤트 어휘·collapse 규칙, (2) 카드/노트 **스캔 가능성**
+  (chrome 필터 웨이브와 동일), (3) Herdr pane으로의 **발견 가능성**, (4) “큰 페이로드는
+  직결/파일” 경계의 문서 날카로움, (5) Easy Pair급 온보딩 마찰 제거(§1 B/C와 합류).
+- 구현 기본 자세: **문서·스파이크·Low 스크립트 먼저**, 프로토콜/MCP 새 표면은 스파이크
+  근거 있을 때만 PLAN.

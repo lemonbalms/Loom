@@ -13,6 +13,7 @@
 2. [ ] 결과 기록: `[DONE]` / board / bun.lock commit·push 여부 **또는** M-4 거부
 3. [ ] (병렬) 팀 6인 dry-run 온보딩 — room ≠ `demo`
 4. [ ] Windows 재부팅 후 relay health
+5. [ ] (참고) Moshi 분석 반영 로드맵 — `docs/COMPETITIVE_NOTES.md` §2.6: 칸반 매핑 문서화 → 0.23.11 완주 → pane-focus 힌트 → approval 훅 스파이크 (모바일 앱 비목표)
 
 ## FREEZE
 
