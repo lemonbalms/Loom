@@ -67,4 +67,46 @@ WSL(Ubuntu 26.04, root)에 두 번째 herdr 노드 브릿지를 세우며 다섯
    승인돼 있어도, 에이전트가 원격에서 시도하는 **권한-확장 쓰기·고위험 리터럴·전역 설치**는
    Claude Code 분류기가 별도로 차단한다(이번 웨이브 6회 — 설치 2·Keychain 인증 이전 1·
    신뢰/allow 파일 3). 해제 경로는 **오너 `!` 직접 실행**뿐 — 우회 시도 금지. Loom-레벨 승인과
-   Claude Code 분류기는 독립 레이어임을 전제로 원격 노드 셋업 절차를 설계할 것.
+   Claude Code 분류기는 독립 레이어임을 전제로 원격 노드 셋업 절차를 설계할 것. **오너와의
+   대화-레벨 승인이 있어도 분류기는 미해제** — (16) VPS 웨이브에서 8회로 폭이 더 넓게 재실증됐다.
+
+## 2026-07-19 (16) — VPS(sudo-less·non-root) 노드 브릿지 배치 3함정 (0-c ③ 실증)
+
+Tailscale `kb`(100.116.39.101, Ubuntu 24.04.4 LTS, x86_64, non-root `zerocode`·**sudo 불가**)에
+세 번째 herdr 노드 브릿지를 세우며 물린, ②(WSL)와 구별되는 신규 함정 셋. 전제는 동일한
+순수 ops 웨이브(제품 코드 무변경·R{n} 불요 — ② 선례 승계). 설치는 git 없는 노드라
+`git bundle` scp → `git clone ~/loom-main.bundle ~/.loom-src` + `bun install` + `bun link`로
+**GitHub 접근 없이** 소스 리포를 얹었고(unzip 부재는 busybox shim으로 해결), claude 자격증명은
+오너가 Keychain에서 이전했다.
+
+1. **브릿지 기동은 소스 리포(`~/.loom-src`) cwd가 필수 — 홈에서 띄우면 즉사.**
+   `bridge-spawn.ts:29`의 `bridgeMainPath()`는 ① `import.meta` 기준 경로 ② `process.cwd()` +
+   `packages/host/src/bridge-main.ts` 폴백의 2단으로 `bridge-main.ts`를 찾는다. `bun link`로
+   심어진 `loom`은 심링크라 ①이 miss하고, 홈 디렉터리에서 기동하면 ②도 `~/packages/...`를
+   가리켜 빗나가 **"Cannot find bridge-main.ts"로 즉사**한다. 정답 =
+   `cd ~/.loom-src && setsid nohup loom --profile node-vps-1 bridge start …`(setsid 세션 독립은
+   ②-1 그대로).
+2. **sudo 불가라 `/usr/local/bin` 심링크 경로가 막힘 — PATH는 `~/.bashrc` 가드 앞에 삽입.**
+   ②-2의 정답(`/usr/local/bin` 심링크)은 root 권한 전제였다. non-root·sudo 불가 노드에선
+   그 경로가 막히므로, `bun`/`loom`/`claude`/`herdr`의 PATH 블록을 **`~/.bashrc`의 인터랙티브
+   조기-`return` 가드보다 앞줄에 삽입**한다(`sed -i '1r /home/zerocode/loom-node-path.block'`).
+   이래야 브릿지가 스폰하는 비로그인 셸에서도 4개 도구가 전부 해석된다(라이브 확인).
+3. **Option B′는 파일-복제로 이식 가능 — 스크립트화한다.** ②에서 손으로 세운 워커 신뢰
+   설정(Option B′)을 WSL 원본에서 그대로 복제했다. `/root/.claude/settings.json`(153B)은
+   **내용이 경로-독립**이라 kb `~/.claude/settings.json`(0600)으로 그대로 복사하면 되고,
+   workspace 신뢰는 kb `~/.claude.json`에 두 키(`hasTrustDialogAccepted`·
+   `hasCompletedProjectOnboarding`, `projects."/home/zerocode/.loom-src"` 아래)를 **python으로
+   병합**한다(기존 파일 통째 덮어쓰기(클로버) 금지). WSL 원본 접근은
+   `ssh win-loom 'wsl -e bash -c …'` 경유. bridge config도 손으로 작성했다(no `--allow` —
+   ②-4 트랩 회피: `authorizedDispatchers=[p_45115c32d2c462f9]`,
+   `herdrSocketPath=/home/zerocode/.config/herdr/herdr.sock`, `agentArgv.claude=["claude"]`,
+   protocol 16, paneCleanup auto, panePlacement pool).
+
+스모크 1차 클린 완주(`[SMOKE-VPS1-OK] head=d1c0dd9 loom=0.24.2` — 무오염·승인 프롬프트 0회·
+pane 자동 close·inFlight=0·board done). node-vps-1 = `p_aadcd1e3dc9c5b5a`(loom-dev
+`room_ca184b781cfdabdc`, 초대 LOOM-GT4B), bridge online pid 541727(setsid). 알려진 summary
+스크레이프 아티팩트(워커 하단 상태줄이 board notes에 유입 — output·마커는 무오염)는 VPS에서도
+**동형 재현**(기존 후속 후보 그대로). 분류기 차단은 이번 웨이브 **8회**(②의 6회보다 폭 확대 —
+PATH sed·자격증명 이전·온보딩 플래그·room join·config scp·Option B′ 스크립트·데몬 기동 2건)로
+오너 `!` 직접 실행으로만 해소됐고, (15)-⑤의 독립 레이어 명제를 재실증했다. 후속 후보 추가:
+kb 부팅 생존 상시화(non-root라 `systemd --user` 후보 — WSL 상시화 후보와 병렬).
