@@ -50,6 +50,44 @@
 
 ### Changelog
 
+#### 0.24.0 — 2026-07-19 (`pending-review` R37 — **단독 모드 기능화 — relay 명시 전환(`loom relay use`) + 프로필 relay별 신원 병존 + 로컬 relay 라이프사이클(`loom relay local`)** (MINOR))
+
+**Product one-liner:** 여러 relay 사이를 오갈 때마다 프로필 디렉터리를 통째로 백업·스왑하던 수동 절차(HANDOFF 기록 `profiles.bak-sglr-20260719`)를 제품 기능으로 대체한다 — 한 프로필이 relay별 신원(room·peer·token)을 **이름으로 병존**시키고(`relays` 맵), `loom relay use <name>`으로 활성 바인딩을 **명시 전환**하며, `loom relay local start|stop|status`로 로컬 relay 데몬 수명을 관리한다.
+
+**Why:**
+- **현행 relay 전환은 코드 기능이 아니라 파괴적 운영 관례다.** 다른 relay로 옮기려면 프로필 디렉터리를 백업(HANDOFF `profiles.bak-sglr-20260719`)하고 새로 room create/join해 **top-level 룸-바인딩 7필드**(`session-store.ts:22-42`의 `roomId`·`roomName`·`inviteCode`·`peerId`·`peerSecret`·`relayUrl`·`relayToken`)를 덮어쓴다. 되돌아오려면 다시 스왑해야 하고, 그 사이 발급됐던 peerId·peerSecret·relayToken은 유실되거나 재발급을 강제한다. 단독 모드(1인 다-relay) 운영에서 이 마찰이 매 전환의 반복 비용이다.
+- **신원은 relay마다 다른 값이라 relay별로 보존해야 한다.** peerId는 클라이언트가 생성하고(`relay-client.ts:275,295` `generateId("p")`), peerSecret은 relay(서버)별로 발급된다(`room.ts:278,372-379`). 현행 단일 top-level 슬롯 하나로는 두 relay의 신원을 동시에 담을 수 없어, 전환이 구조적으로 파괴적일 수밖에 없다.
+- **로컬 relay 데몬 조각은 이미 있으나 사용자 표면이 없다.** `relay-daemon.ts`에 idempotent spawn(`ensureRelay:48-140`)·pid 판독(`readRelayPid:145-153`)·health 확인(`isRelayUp:21-35`)이 구현돼 있지만, 이를 오너가 직접 다루는 start/stop/status 커맨드가 부재하다.
+
+**What (범위 — MINOR; 신규 제품 표면(`relay use`/`relay list`/`relay local`·`--relay-name`) + 토큰 저장 구조 additive 변경 · **relay 와이어 무변경 · MCP 도구 무변경 · 기존 top-level 바인딩 소비자 전원 무변경**):**
+| 항목 | 내용 |
+|------|------|
+| **D1 스키마(additive)** | `LoomSession`(`session-store.ts:22-42`)에 필드 2개 추가: `relayName?: string`(활성 바인딩 이름) + `relays?: Record<string, RelayBinding>`(이름→바인딩 맵). `RelayBinding` = `{roomId, roomName, inviteCode, peerId, peerSecret?, relayUrl, relayToken?, updatedAt}` — 현행 top-level 룸-바인딩 7필드의 **스냅샷**. **최상위 필드는 계속 "활성 바인딩"의 정본** — 기존 소비자(`relayClientOptsFromSession` `session-store.ts:328-338`, listen/run 경로)는 일절 무변경으로 top-level만 읽는다. `normalizeSession`은 두 필드가 부재한 구 프로필을 **무변형 통과**(하위호환 — 명시적 마이그레이션 불요, 첫 `relay use`/`--relay-name` 시점에 자연 채워짐). |
+| **D2 `loom relay use <name>` 의미론** | (i) 현 top-level 바인딩을 `relays[relayName]`에 스태시한다. `relayName`이 미설정이면 **fail-closed 에러** + 안내(`--as <현재이름>`으로 현 바인딩을 먼저 명명한 뒤 전환하라). (ii) `relays[<name>]`이 부재면 에러 + **가용 이름 목록**을 출력한다. **자동 생성·자동 failover는 하지 않는다**(오너 결정 — 룸별 보드 분기가 은닉되는 위험 차단). (iii) 성공 시 `relays[<name>]`→top-level로 승격, `relayName=<name>`, 기록은 **`saveSession`(0600, `session-store.ts:301-318`) 경로로만**. (iv) 대상 프로필은 현 세션 해석 우선순위 그대로(`sessionPath()` `session-store.ts:248-261`), `--profile` 병용 가능. (v) 해당 프로필의 라이브 sticky host(`.host.json` pid 생존) 감지 시 **경고를 출력한 뒤 전환을 수행** — 전환은 새 프로세스부터 적용되며, 구동 중 프로세스는 재시작이 필요함을 stdout에 명시한다. (vi) **`--as <name>` 단독형**(positional 타깃 없음) = 전환 없이 **현 top-level 바인딩의 명명만**: `relayName=<name>` 설정 + `relays[<name>]` 미러 기록(멱등 — 재실행 무해). `use <target> --as <name>` 병용은 명명 후 전환 순서. |
+| **D3 `loom relay list`** | 바인딩별로 이름·`relayUrl`·`roomName`·**전체 peerId**(잘린-ID 함정은 lessons 선례 — 절대 truncate 금지)·활성 마커를 출력한다. **`relayToken`·`peerSecret`은 어떤 출력에도 포함하지 않는다**(D8-a 락 후보). |
+| **D4 바인딩 명명·기록** | `room create`/`room join`에 additive 플래그 `--relay-name <name>` 추가 — 성공 시 `relayName`을 설정하고 top-level 갱신과 **동시에 `relays[relayName]`을 미러 갱신**한다. **mirror-on-save 불변식**: `relayName`이 설정된 프로필은 `saveSession` 경유의 **모든** top-level 룸-바인딩 갱신(재조인 peerSecret 재발급 포함)이 `relays[relayName]`에 즉시 미러된다 — 맵 스테일 원천 차단(additive, `relayName` 미설정 프로필은 현행과 완전 동일 경로). **무명 바인딩 파괴 가드(fail-closed)**: 현 top-level 바인딩이 존재(roomId 설정)하고 `relayName` 미설정인 프로필에서 **현 `relayUrl`과 다른 relay를 향한** `room create`/`join`은 에러로 정지(기존 무명 신원의 암묵 파괴 방지 — `loom relay use --as <name>`으로 먼저 명명하라는 안내 포함). **동일-relay 재조인·바인딩 없는 신규 프로필은 현행 그대로 통과**(dogfood 스크립트 재조인 무영향 — 하위호환). |
+| **D5 `loom relay local start\|stop\|status`** | `relay-daemon.ts` 조각을 재사용한다: **start** = health 선확인 idempotent spawn(`ensureRelay:48-140` — durable state 기본 `~/.loom/relay-state`), **stop** = pid 판독(`readRelayPid:145-153`)→kill→사망 확인→pid 파일(`~/.loom/relay.pid`) 정리, **status** = `isRelayUp:21-35`+pid+endpoint 표시. **기존 sub-없는 `loom relay`(포그라운드 서버 기동, `packages/cli/src/index.ts:2956-3015`)는 무변경 유지**(하위호환 — `local`은 detach 데몬 서브트리로 병존). loopback=open / 비-loopback=토큰 필수 분기(`relay/src/server.ts` H-5)도 무변경. |
+| **D6 구현 배치** | 스태시/활성화/목록 로직은 `packages/host/src/relay-bindings.ts` **신설 순수 함수**로 둔다 — CLI(`index.ts`)는 얇은 핸들러 + usage 라인만(conv-hosts 0.23.8 선례: `cmdConvHosts` `index.ts:1461-1529`가 스토어에 위임하는 형태 동형). |
+| **D9 VERSION** | CLI `VERSION` + MCP serverInfo를 0.23.12 → **0.24.0**으로 동기 갱신(0.23.7 미갱신 사고 선례 — CLI·MCP 동시). |
+| **테스트** | 유닛은 `packages/host/src/relay-bindings.test.ts`에 신설, `LOOM_TEST_HOME`+`resetStateHomeDirCache()`로 격리(`conv-node-hosts.test.ts:24-38` 선례). 케이스: **D1** 구 스키마 프로필(두 필드 부재) 로드 → `normalizeSession` 무변형 통과(**필수 회귀**) · **D2** `relayName` 미설정 시 `use` fail-closed 에러 + `--as` 안내 · 미지 `<name>` → 에러 + 가용 목록 · 정상 전환 시 스태시→승격 왕복·`relayName` 갱신·저장이 0600 경로만 경유 · sticky host 감지 시 경고 후 전환 · **D3** list 출력에 전체 peerId 포함 · **`relayToken`·`peerSecret` 미노출**(D8-a) · `--as` 단독 명명 멱등(재실행 무해) · **D4** `--relay-name` create/join 시 top-level+`relays[name]` 동시 갱신·정합 · mirror-on-save 불변식(relayName 설정 후 saveSession 경유 임의 top-level 갱신이 맵에 즉시 반영) · 이종-relay create/join × 무명 바인딩 → fail-closed 에러 + `--as` 안내 · 동일-relay 재조인 × 무명 바인딩 → 현행 통과(하위호환 회귀) · **D5** local start idempotent(중복 health-up no-op)·stop pid 사망 확인·status 표시 · 기존 top-level 소비자(`relayClientOptsFromSession`) 무변경 회귀. |
+
+**Out of scope (D7):** 룸 간 보드 동기화 · 자동 failover · allowlist(브릿지 `authorizedDispatchers`·`conv-node-hosts.json`)의 relay-aware 확장. 근거: peerId는 클라이언트 생성(`relay-client.ts:275,295`)이라 relay별 바인딩에 보존되고, 전환 시 그 relay에서 등록했던 peerId가 복원되므로 **allowlist 재등록이 불필요**하다(운영 문서화만). peerSecret은 relay(서버)별 발급(`room.ts:278,372-379`)이라 **바인딩별 보관이 정확한 데이터 모델**이다.
+
+**Security / trust (R37 판단 대상 — D8):**
+- **(a) D3 토큰·시크릿 미출력** — `relay list` 및 모든 신규 표면 출력에서 `relayToken`·`peerSecret`을 배제한다(락 후보). peerId(비밀 아님)만 전체 표기.
+- **(b) H-6 유지** — 바인딩에 `relayUrl`과 `relayToken`을 **분리 저장**하고 URL에 토큰을 임베드하지 않는다(`protocol/src/relay-url.ts`의 파싱 분리 선례 그대로). `RelayBinding` 스키마가 두 필드를 별도로 갖는 것이 이 성질의 저장층 표현.
+- **(c) D2·D4 fail-closed** — 미명명 활성 바인딩의 암묵 유실을 막기 위해 `relayName` 부재 시 `use` 에러 정지(자동 생성 없음) + 미지 이름 에러(오전환 방지) + **이종-relay `room create`/`join`도 무명 바인딩 존재 시 에러 정지**(D4 파괴 가드 — 신원 유실이 이 기능의 해소 대상 그 자체이므로 재도입 경로를 닫는다).
+- **(d) 기록 경로 단일화** — 신원·바인딩 기록은 전부 `saveSession`(0600, `session-store.ts:301-318`) 경로로만 나간다(권한 완화·평문 유출 표면 신설 없음).
+
+**Review impact:** 신규 제품 표면 3종(`relay use`/`relay list`/`relay local`) + `--relay-name` 플래그 + **토큰/시크릿을 담는 저장 구조(additive) 변경** → 자격증명 저장·표시 표면에 직접 인접하므로 **R37 필수(Fable 5)** — WORKFLOW §5.1 두 행 해당(신규 MINOR 표면 · 토큰 저장 구조 변경). **relay 와이어 protocol 무변경 · MCP 도구 무변경 · 기존 top-level 바인딩 소비자 무변경**이라 회귀면은 스키마 하위호환(D1)과 신규 커맨드에 국한된다.
+
+**Unknowns (§3.5 → `docs/UNKNOWNS.md` §0.24.0):**
+- **U1** — 스태일 바인딩 재조인 UX: 구 relay가 보존된 peerSecret 검증에 실패(`peer_auth_failed`)를 반환하는 케이스에서 바인딩 스테일을 어떻게 감지하고 안내 문구를 어디까지 제공할지(재발급 유도 vs 침묵 실패).
+- **U2** — 라이브 프로세스 전환 경계 절차: sticky host·브릿지가 구 바인딩으로 계속 도는 상태에서 `relay use`가 새 프로세스부터만 적용될 때, 경고 출력만으로 운영상 충분한지(구동 프로세스 강제 재시작·차단이 필요한 케이스 존재 여부).
+- **U3** — `--as` 초기 명명 일괄 절차: 기존 7프로필의 top-level 바인딩을 이름 있는 `relays` 엔트리로 승격시키는 초기 명명에 일괄 스크립트가 필요한지, 프로필별 수동 `relay use --as`로 충분한지.
+
+**검증 계획(D10):** 유닛(D6 — `relay-bindings.test.ts`) + 6패키지 typecheck + 라이브 스모크. 라이브 스모크의 **첫 실증은 Windows relay 복귀**로 삼는다 — 구 `LOOM-SGLR` 신원을 바인딩으로 흡수(`--as`/`--relay-name`) + `relay use` 왕복 전환 실측 + 전환 후 보드 북키핑 정리. `Implemented as of …` 블록은 구현 후 이 자리에 기재한다.
+
 #### 0.23.12 — 2026-07-19 (`approved` R36 — **summary 말미 TUI 타임스탬프 소거 + 풀 pane 균등 폭 `pane.resize` 후처리 + 타이밍줄 공백 복합형 (0-b ⓐⓑ+ⓒ)** (PATCH))
 
 **Product one-liner:** 오너 지시(2026-07-19 "2·3번 묶어서 0.23.12로 다음 세션에서 진행") 2건 — claude TUI가 콘텐츠 줄 내부 우측에 렌더하는 타임스탬프가 summary 말미에 잔존하는 것을 줄-내부 말미 편집으로 소거하고(ⓐ), 풀 탭 right-split 반감 누적으로 워커 pane 폭이 불균등(50/25/25)해지는 것을 스폰 후 `pane.resize` 후처리로 균등화한다(ⓑ).
