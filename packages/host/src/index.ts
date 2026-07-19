@@ -6,6 +6,7 @@ export * from "./inject-control";
 export * from "./pty-spike";
 export * from "./slash";
 export * from "./relay-daemon";
+export * from "./relay-bindings";
 export * from "./sticky-meta";
 export * from "./sticky-rpc";
 export * from "./sticky-client";

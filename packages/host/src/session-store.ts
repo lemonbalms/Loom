@@ -20,6 +20,23 @@ import {
   envRelayToken,
 } from "@loom/protocol";
 
+/**
+ * Named snapshot of the top-level room-binding fields (PLAN 0.24.0 D1).
+ * Stored under `LoomSession.relays[name]`; secrets stay on disk only (0600).
+ */
+export type RelayBinding = {
+  roomId: string;
+  roomName: string;
+  inviteCode: string;
+  peerId: string;
+  peerSecret?: string;
+  /** Relay WS URL without token query (H-6). */
+  relayUrl: string;
+  /** Shared secret stored separately from URL (H-6). */
+  relayToken?: string;
+  updatedAt: string;
+};
+
 /** Session on disk (product Loom; formerly FableSession). */
 export type LoomSession = {
   roomId: string;
@@ -40,6 +57,10 @@ export type LoomSession = {
   peerSecret?: string;
   updatedAt: string;
   profile?: string;
+  /** PLAN 0.24.0 D1: active binding name (optional, additive). */
+  relayName?: string;
+  /** PLAN 0.24.0 D1: named binding map (optional, additive). Top-level remains SSOT for consumers. */
+  relays?: Record<string, RelayBinding>;
 };
 
 /** @deprecated use LoomSession */
@@ -285,6 +306,53 @@ export function normalizeSession(raw: LoomSession): LoomSession {
   };
 }
 
+/**
+ * Snapshot top-level room-binding fields into a RelayBinding.
+ * PLAN 0.24.0 L-3: never merge envRelayToken() — disk/URL source only.
+ */
+export function topLevelToBinding(session: LoomSession): RelayBinding {
+  // Parse without env — opts.token is only the disk field; URL ?token= still strips (H-6).
+  const ep = parseRelayUrl(session.relayUrl || "", {
+    token: session.relayToken,
+  });
+  return {
+    roomId: session.roomId,
+    roomName: session.roomName,
+    inviteCode: session.inviteCode,
+    peerId: session.peerId,
+    peerSecret: session.peerSecret,
+    relayUrl: ep.wsUrl,
+    relayToken: session.relayToken || ep.token,
+    updatedAt: session.updatedAt,
+  };
+}
+
+/**
+ * PLAN 0.24.0 D4 / L-4: after normalizeSession, mirror top-level into relays[relayName].
+ * L-3: binding token comes from disk/URL source (bindingSource), not env merge.
+ */
+export function applyMirrorOnSave(
+  normalized: LoomSession,
+  bindingSource: RelayBinding,
+): LoomSession {
+  const name = normalized.relayName;
+  if (!name || name.length === 0) return normalized;
+  const mirrored: RelayBinding = {
+    ...bindingSource,
+    // H-6-clean URL from normalizeSession path
+    relayUrl: normalized.relayUrl,
+    // disk/URL token only (bindingSource); do not pick up env-merged top-level token
+    relayToken: bindingSource.relayToken,
+  };
+  return {
+    ...normalized,
+    relays: {
+      ...(normalized.relays ?? {}),
+      [name]: mirrored,
+    },
+  };
+}
+
 export function loadSession(): LoomSession | null {
   const p = sessionPath();
   if (!existsSync(p)) return null;
@@ -301,12 +369,17 @@ export function loadSession(): LoomSession | null {
 export function saveSession(session: LoomSession): void {
   ensureLoomDir();
   const profile = getActiveProfile();
-  const normalized = normalizeSession({
+  const input: LoomSession = {
     ...session,
     profile: profile ?? session.profile,
-  });
+  };
+  // L-3: capture binding fields before normalizeSession merges envRelayToken()
+  const bindingSource = topLevelToBinding(input);
+  const normalized = normalizeSession(input);
+  // L-4: mirror after normalize
+  const toWrite = applyMirrorOnSave(normalized, bindingSource);
   const path = sessionPath();
-  writeFileSync(path, JSON.stringify(normalized, null, 2) + "\n", {
+  writeFileSync(path, JSON.stringify(toWrite, null, 2) + "\n", {
     encoding: "utf8",
     mode: 0o600,
   });

@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 import {
   ensureRelay,
+  isRelayUp,
+  stopRelay,
+  readRelayPid,
   loadSession,
   normalizeSession,
   saveSession,
@@ -36,6 +39,10 @@ import {
   validateConvNodeHost,
   isWellFormedConvNodeMapping,
   convNodeHostsPath,
+  nameBindingAs,
+  useRelayBinding,
+  guardCrossRelayCreateJoin,
+  formatRelayBindingList,
   type LoomSession,
   opsListPeers,
   opsHandoff,
@@ -87,6 +94,7 @@ import {
   encodeInviteLink,
   parseInviteArg,
   parseRelayUrl,
+  resolveRelayEndpoint,
   sanitizePeerName,
   sanitizePeerText,
   parseHandoffContract,
@@ -133,7 +141,7 @@ import {
   shouldActivateHandoffInject,
 } from "./inject-handoffs";
 
-const VERSION = "0.23.12";
+const VERSION = "0.24.0";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -234,6 +242,13 @@ Usage:
   loom bridge start | stop | status # herdr node bridge daemon (0.22)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
+  loom relay use <name> [--as <current>] [--force]
+                                    # switch active relay binding (0.24.0)
+  loom relay use --as <name> [--force]
+                                    # name current binding without switching
+  loom relay list                   # list named bindings (no secrets)
+  loom relay local start|stop|status
+                                    # local relay daemon lifecycle (0.24.0)
   loom run shell                    # Loom shell REPL (session online)
   loom run shell --nested           # real $SHELL (often exits under Bun)
   loom run claude|codex|grok|auto
@@ -245,6 +260,9 @@ Usage:
 
   --relay <url>         Remote/local relay (or LOOM_RELAY_URL). e.g. ws://host:7842
   --token <secret>      Shared secret (or LOOM_RELAY_TOKEN). Required if server set one.
+  --relay-name <name>   room create/join: name the binding in relays map (0.24.0)
+  --as <name>           display name (room) or name current binding (relay use)
+  --force               relay use --as: overwrite an existing different binding
   --show-token          Include --token in Share join hint (default: hidden)
   --with-pack           Attach local context pack to handoff (paths/notes)
   --with-pack-embed     Pack + L-5 file body embed (re-resolve allowlist at send)
@@ -485,9 +503,24 @@ async function cmdDown(flags: Record<string, string | boolean>) {
 }
 
 async function cmdRoomCreate(flags: Record<string, string | boolean>) {
+  const relayOpts = relayOptsFromFlags(flags);
+  const planned = resolveRelayEndpoint(relayOpts);
+  const relayNameFlag =
+    typeof flags["relay-name"] === "string" ? flags["relay-name"].trim() : "";
+  const existing = loadSession();
+  const guard = guardCrossRelayCreateJoin(
+    existing,
+    planned.wsUrl,
+    relayNameFlag || undefined,
+  );
+  if (!guard.ok) {
+    console.error(guard.error);
+    process.exit(1);
+  }
   await stopStickyBeforeSessionChange();
-  const { url, endpoint, remote } = await ensureRelay(relayOptsFromFlags(flags));
+  const { url, endpoint, remote } = await ensureRelay(relayOpts);
   const roomName = sanitizePeerText(String(flags.name || "room")) || "room";
+  // room create --as is display name (pre-0.24); --relay-name is the binding name
   const displayName = sanitizePeerName(
     String(flags.as || defaultDisplayName()),
   );
@@ -506,6 +539,9 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
     process.exit(1);
   }
   const me = env.peers.find((p) => p.id === client.peerId) ?? env.peers[0]!;
+  const nextRelayName =
+    relayNameFlag ||
+    (existing?.relayName && existing.roomId ? existing.relayName : undefined);
   saveSession({
     roomId: env.roomId,
     roomName: env.roomName ?? roomName,
@@ -518,6 +554,8 @@ async function cmdRoomCreate(flags: Record<string, string | boolean>) {
     relayToken: endpoint.token,
     peerSecret: env.peerSecret ?? client.peerSecret ?? undefined,
     updatedAt: new Date().toISOString(),
+    relayName: nextRelayName,
+    relays: existing?.relays,
   });
   console.log(
     renderPresenceBar({
@@ -592,8 +630,22 @@ async function cmdRoomJoin(
     }
     relayOpts = { relayFlag, tokenFlag };
   }
+  const planned = resolveRelayEndpoint(relayOpts);
+  const relayNameFlag =
+    typeof flags["relay-name"] === "string" ? flags["relay-name"].trim() : "";
+  const existing = loadSession();
+  const guard = guardCrossRelayCreateJoin(
+    existing,
+    planned.wsUrl,
+    relayNameFlag || undefined,
+  );
+  if (!guard.ok) {
+    console.error(guard.error);
+    process.exit(1);
+  }
   await stopStickyBeforeSessionChange();
   const { url, endpoint, remote } = await ensureRelay(relayOpts);
+  // room join --as is display name (pre-0.24); --relay-name is the binding name
   const displayName = sanitizePeerName(
     String(flags.as || defaultDisplayName()),
   );
@@ -638,6 +690,9 @@ async function cmdRoomJoin(
     process.exit(1);
   }
   const me = env.peers.find((p) => p.id === client.peerId)!;
+  const nextRelayName =
+    relayNameFlag ||
+    (existing?.relayName && existing.roomId ? existing.relayName : undefined);
   saveSession({
     roomId: env.roomId,
     roomName: env.roomName ?? "room",
@@ -650,6 +705,8 @@ async function cmdRoomJoin(
     relayToken: endpoint.token,
     peerSecret: env.peerSecret ?? client.peerSecret ?? undefined,
     updatedAt: new Date().toISOString(),
+    relayName: nextRelayName,
+    relays: existing?.relays,
   });
   console.log(
     renderPresenceBar({
@@ -1452,6 +1509,156 @@ async function cmdInboxAccept(id: string) {
     `(accepted as ${result.session.displayName}, status=${result.entry.status})`,
   );
   process.exit(0);
+}
+
+/**
+ * PLAN 0.24.0: multi-relay binding commands + local daemon lifecycle.
+ * Thin handlers — pure logic in @loom/host relay-bindings / relay-daemon.
+ */
+async function cmdRelay(
+  sub: string,
+  rest: string[],
+  flags: Record<string, string | boolean>,
+): Promise<void> {
+  if (sub === "list") {
+    const session = loadSession();
+    if (!session) {
+      console.log("relay bindings: (no session)");
+      console.log("  Create or join a room first.");
+      return;
+    }
+    console.log(formatRelayBindingList(session));
+    return;
+  }
+
+  if (sub === "use") {
+    const asFlag =
+      typeof flags.as === "string" ? flags.as.trim() : undefined;
+    const force = Boolean(flags.force);
+    const target = rest[0]?.trim();
+
+    // Standalone naming: loom relay use --as <name>
+    if (!target && asFlag) {
+      const session = loadSession();
+      if (!session) {
+        console.error("No session. Create or join a room first.");
+        process.exit(1);
+      }
+      const named = nameBindingAs(session, asFlag, { force });
+      if (!named.ok) {
+        console.error(named.error);
+        process.exit(1);
+      }
+      if (named.changed) {
+        saveSession(named.session);
+        console.log(`relay: named current binding as "${asFlag}"`);
+      } else {
+        console.log(`relay: binding "${asFlag}" already current (no-op)`);
+      }
+      console.log(`  session: ${sessionPath()}`);
+      return;
+    }
+
+    if (!target) {
+      console.error(
+        "Usage: loom relay use <name> [--as <current-name>] [--force]\n" +
+          "       loom relay use --as <name> [--force]",
+      );
+      process.exit(1);
+    }
+
+    const session = loadSession();
+    if (!session) {
+      console.error("No session. Create or join a room first.");
+      process.exit(1);
+    }
+
+    // D2-v: warn if sticky host is live, but still perform the switch
+    const alive = resolveAliveHostMeta();
+    if (alive) {
+      console.warn(
+        `\x1b[33mWarning: sticky host is running (pid ${alive.pid}). ` +
+          `relay use applies to new processes — restart host/bridge to pick up the new binding.\x1b[0m`,
+      );
+    }
+
+    const result = useRelayBinding(session, target, {
+      as: asFlag,
+      force,
+    });
+    if (!result.ok) {
+      console.error(result.error);
+      process.exit(1);
+    }
+    saveSession(result.session);
+    console.log(
+      `relay: switched active binding → "${result.toName}"` +
+        (result.fromName ? ` (was "${result.fromName}")` : ""),
+    );
+    console.log(`  room: ${result.session.roomName}  peerId=${result.session.peerId}`);
+    console.log(`  relay: ${result.session.relayUrl}`);
+    console.log(`  session: ${sessionPath()}`);
+    return;
+  }
+
+  if (sub === "local") {
+    const action = rest[0];
+    if (action === "start") {
+      try {
+        const r = await ensureRelay(relayOptsFromFlags(flags));
+        if (r.remote) {
+          console.log(
+            `relay local start: target is remote (${r.endpoint.httpOrigin}) — health OK, nothing spawned`,
+          );
+        } else if (r.started) {
+          console.log(
+            `relay local start: started daemon on ${r.endpoint.host}:${r.endpoint.port}`,
+          );
+        } else {
+          console.log(
+            `relay local start: already up on ${r.endpoint.host}:${r.endpoint.port} (no-op)`,
+          );
+        }
+        console.log(`  endpoint: ${r.url}`);
+      } catch (e) {
+        console.error(e instanceof Error ? e.message : e);
+        process.exit(1);
+      }
+      return;
+    }
+    if (action === "stop") {
+      const r = await stopRelay();
+      console.log(`relay local stop: ${r.message}`);
+      if (!r.stopped && r.pid != null && isPidAlive(r.pid)) {
+        process.exit(1);
+      }
+      return;
+    }
+    if (action === "status") {
+      const endpoint = resolveRelayEndpoint(relayOptsFromFlags(flags));
+      const up = await isRelayUp(endpoint);
+      const pid = readRelayPid();
+      const pidPart =
+        pid == null
+          ? "pid=(none)"
+          : isPidAlive(pid)
+            ? `pid=${pid} (alive)`
+            : `pid=${pid} (dead)`;
+      console.log(
+        `relay local status: ${up ? "up" : "down"}  ${pidPart}`,
+      );
+      console.log(`  endpoint: ${endpoint.wsUrl}`);
+      console.log(`  health:   ${endpoint.httpOrigin}/health`);
+      return;
+    }
+    console.error("Usage: loom relay local start|stop|status");
+    process.exit(1);
+  }
+
+  console.error(
+    "Usage: loom relay use <name> | list | local start|stop|status",
+  );
+  process.exit(1);
 }
 
 /**
@@ -2954,6 +3161,18 @@ async function main() {
     process.exit(failed ? 1 : 0);
   }
   if (cmd === "relay") {
+    // PLAN 0.24.0: use / list / local subcommands; bare `loom relay` stays foreground server
+    if (sub === "use" || sub === "list" || sub === "local") {
+      await cmdRelay(sub, rest, flags);
+      return;
+    }
+    if (sub) {
+      console.error(
+        "Usage: loom relay use <name> | list | local start|stop|status\n" +
+          "       loom relay [--host …] [--port …] [--token …]  # foreground server",
+      );
+      process.exit(1);
+    }
     const { RelayServer, isLoopbackHost } = await import("@loom/relay");
     const { envRelayHost, envRelayPort, envRelayToken } = await import(
       "@loom/protocol"

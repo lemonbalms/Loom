@@ -4,10 +4,16 @@ import {
   resolveRelayEndpoint,
   defaultLocalEndpoint,
 } from "@loom/protocol";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  unlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loomDir } from "./session-store";
+import { isPidAlive, loomDir } from "./session-store";
 
 /** M-14: use resolveStateHomeDir via loomDir() — never hardcode ~/.loom */
 function pidPath(): string {
@@ -156,6 +162,74 @@ export function readRelayPid(): number | null {
   } catch {
     return null;
   }
+}
+
+function clearRelayPidFile(): void {
+  try {
+    if (existsSync(pidPath())) unlinkSync(pidPath());
+  } catch {
+    /* */
+  }
+}
+
+export type StopRelayResult = {
+  stopped: boolean;
+  pid: number | null;
+  message: string;
+};
+
+/**
+ * PLAN 0.24.0 D5: stop local relay daemon.
+ * pid → kill → confirm dead → clear ~/.loom/relay.pid
+ */
+export async function stopRelay(): Promise<StopRelayResult> {
+  const pid = readRelayPid();
+  if (pid == null) {
+    return {
+      stopped: false,
+      pid: null,
+      message: "no local relay pid file (nothing to stop)",
+    };
+  }
+  if (!isPidAlive(pid)) {
+    clearRelayPidFile();
+    return {
+      stopped: false,
+      pid,
+      message: `stale relay pid ${pid} cleared (process not running)`,
+    };
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (e) {
+    clearRelayPidFile();
+    return {
+      stopped: false,
+      pid,
+      message: `failed to signal pid ${pid}: ${e instanceof Error ? e.message : e}`,
+    };
+  }
+  for (let i = 0; i < 50; i++) {
+    await Bun.sleep(100);
+    if (!isPidAlive(pid)) break;
+  }
+  if (isPidAlive(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* */
+    }
+    await Bun.sleep(150);
+  }
+  const dead = !isPidAlive(pid);
+  if (dead) clearRelayPidFile();
+  return {
+    stopped: dead,
+    pid,
+    message: dead
+      ? `stopped local relay (pid ${pid})`
+      : `relay pid ${pid} still alive after SIGTERM/SIGKILL`,
+  };
 }
 
 export type { Subprocess };
