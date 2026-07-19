@@ -73,7 +73,7 @@
 >    ⓐ **summary 말미 TUI 타임스탬프 소거**(콘텐츠 줄 내부 우측 렌더 `10:50 AM` — 줄-단위 필터 불가, 줄 내부 말미 `\d+:\d+ [AP]M`+공백 소거 필요. **R31 M-1(카드 output 본문 무적용) 경계 인접 + 줄-내부 편집은 신규 필터 클래스** → PLAN 초안 → §5.1 판단(R36 예상))
 >    ⓑ **풀 pane 균등 폭 `pane.resize` 후처리**(0.23.10 실측: `agent.start` ratio 무시 → right-split 반감 누적(3개 25/25/50). 스폰 후 `pane.resize` RPC 후처리 — 기존 op 신규 호출이라 R34 ⑧ 선례 동형 게이트 판단)
 >    잔존 Low(등재만): claude TUI 말미 비콘텐츠 줄 **추가 가족** 표면화 시 개별 보정 대신 여기 등재(보정 3 종결 — Deviations §0.23.11 누적 원칙).
-> 0-c. **멀티노드(아키텍처 권고 §06 단계 3) 트랙 백로그 (오너 확인 2026-07-19)** — Loom×Herdr 권고 문서(`~/Downloads/loom-herdr-architecture.html`)의 수직 슬라이스 로드맵 중 0~2는 완료(STEP0 PoC·0.22.0 슬라이스·MCP 카드 도구), **잔여 = 단계 3 노드 복제·멀티 OS 확장**(Windows relay 복귀 → WSL/Linux 노드 브릿지 복제 → `@node` 라우팅). 이 트랙 개시 시 **SSH/git 전송 자동화 유예분을 점진 도입** 대상으로 포함: ⓐ artifact fetch 자동 실행(현행 "제시까지" — 도입 시 R26 M-1/M-2 High 승격이라 **R{n} 재리뷰 필수**, plan_review R26:435) ⓑ 브릿지 자동 git push(R26:431 유예). 참고: SSH를 herdr **제어 전송**으로 쓰는 안(배치 (b))은 기각 확정(장기 이벤트 스트림 취약) — 유예분은 **artifact 전송 자동화**에 한정. 현재 멀티노드는 Strategic context상 out of scope — 오너가 게이트를 열 때 이 항목이 진입점.
+> 0-c. **⭐ 다음 제품 트랙 = 멀티노드 단계 3 (오너 확정 2026-07-19: "다음 트랙에서 진행" + MVP 종료·프로덕션 전환)** — Loom×Herdr 권고 문서(`~/Downloads/loom-herdr-architecture.html`)의 수직 슬라이스 로드맵 중 0~2는 완료(STEP0 PoC·0.22.0 슬라이스·MCP 카드 도구), **잔여 = 단계 3 노드 복제·멀티 OS 확장**: ① Windows relay 복귀(`~/.loom/profiles.bak-sglr-20260719` 복원 + 보드 북키핑 정리) → ② WSL 노드 브릿지 복제 → ③ Linux/VPS 노드 → ④ `@node` 라우팅 운용. 트랙 내 **SSH/git 전송 자동화 유예분 점진 도입**: ⓐ artifact fetch 자동 실행(현행 "제시까지" — 도입 시 R26 M-1/M-2 High 승격이라 **R{n} 재리뷰 필수**, plan_review R26:435) ⓑ 브릿지 자동 git push(R26:431 유예). 참고: SSH를 herdr **제어 전송**으로 쓰는 안(배치 (b))은 기각 확정(장기 이벤트 스트림 취약) — 유예분은 **artifact 전송 자동화**에 한정. **프로덕션 단계 기준**: 신규 표면은 §5.1 게이트 보수 관례 유지 + 팀 실사용(6인) 안정성이 완료 기준.
 > 1. **잔여 PATCH 후보**: ~~② done_proposal 탐지 규약~~·~~③ conv.open deny 클레임 순서~~·~~⑧ 브릿지 pane 배치 정책~~ → **전부 해소(0.23.9 `201e2db`+`5f8bf12`, 2026-07-19)**. ~~⑥ close 시 pane 정리 정책~~·~~⑦ conv-hosts CLI~~ → **해소(0.23.8 `93c6283`)**. ~~④ agentKind 확장~~ → **이미 0.23.2 `91bee75`(R27)로 해소된 스테일 항목이었음(2026-07-19 확인 — enum 3종+`agentArgv` fail-closed 기구현, 0.23.9 핸드오프 재작성 때 오등재)**. 잔존: **신규 후속: claude 상태줄 chrome**(`Fable 5 ⚡high 🧠 │ …` — summary·보드 노트 유입 2회 실증, 콘텐츠-포함 줄이라 0.23.8 필터 미커버 — grok 상태줄 해소 선례 동형) · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low) · **0.23.10 신규 관찰 2건**: 동시 디스패치 풀 탭 레이스(workerPool 인메모리 경합 — 무침입 유지라 무해·Low) · sleep형 페이로드 still-running 유예 상한 소진(pane 수동 정리 필요 — 스모크 페이로드 특이·Low). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
 > 1-b. **신규 후보**: ~~settle card 경로 이식(조기 card.done)~~ → **해소(0.23.7 `1160b38`)** · ~~dist 드리프트 가드~~ → **완료(`eb05310`)** · ~~카드 summary chrome 미커버 2종~~ → **해소(0.23.8 — grok 상태줄·claude 힌트줄, 라이브 소거 실증)**. 잔여: conv 턴 조기 회신(~7–10s) 관찰 지속 · summary가 정보성 타이밍줄("Worked for Ns.")로 잡히는 개선 여지(Low, 결함 아님).
 > 2-b. **경쟁 분석발 후보 (2026-07-19, `docs/COMPETITIVE_NOTES.md` §1.3)**: ~~B bunx 온보딩~~·~~C 이미지 README~~ → **완료(2026-07-19 카드 웨이브)**. 잔여: A `scripts/pane-inject.sh`(수동 pane 레인 read-guard 원자화, R-gate 불요) · npm publish는 오너 결정.
@@ -112,7 +112,9 @@
 
 ## One-line resume
 
-> **v0.23.11 완주 (2026-07-19 오전).** 잔여 후보 ①③④⑤ 일괄(오너 지시) + ② 병렬 — ⑤ 원인 규명 라이브 프로브(grok TUI 지표줄 영구 잔존) → PLAN 초안 → **R35 게이트**(claude-rev pane + fable-advisor, M-1 ⑤ 줄-앵커드 lock) → author-close approved → grok pane 구현(`0ee8c50`, **450/0**) → **SMOKE-02311 라이브**(④ 동시 2건 단일 풀 탭 · ⑤ sleep 무유예 회수+pane 자동 close · ③① summary 실내용 마커) + 라이브 보정 3건(claude 말미 비콘텐츠 3가족 — bare `❯`·`✻` 타이밍줄·`/effort` 힌트줄, D-4 최종 실증). ② pane-inject.sh(`08d6091`) — read-guard 오너-사용-중 pane 차단 실증. **오너 지시 상비 2건**: claude 스모크 카드 sonnet 강제(config 스왑→원복, lessons (5)) · 잔여 = npm publish(보류 — 계정 부재, 재개 절차 0-a)·**다음 세션 = PLAN 0.23.12(타임스탬프 소거+균등 폭, 0-b 오너 지시)**. 브릿지 0.23.11 재기동(agentArgv 원복본). 보드 정리 완료.
+> **⭐ MVP 종료·프로덕션 전환 선언 (오너, 2026-07-19).** 다음 세션 = PLAN 0.23.12 웨이브(0-b) → 이후 **다음 제품 트랙 = 멀티노드 단계 3**(0-c — relay 복귀·노드 복제·@node 라우팅·SSH/git 전송 자동화 점진 도입). npm publish는 오너 계정 대기(0-a).
+>
+> (직전) **v0.23.11 완주 (2026-07-19 오전).** 잔여 후보 ①③④⑤ 일괄(오너 지시) + ② 병렬 — ⑤ 원인 규명 라이브 프로브(grok TUI 지표줄 영구 잔존) → PLAN 초안 → **R35 게이트**(claude-rev pane + fable-advisor, M-1 ⑤ 줄-앵커드 lock) → author-close approved → grok pane 구현(`0ee8c50`, **450/0**) → **SMOKE-02311 라이브**(④ 동시 2건 단일 풀 탭 · ⑤ sleep 무유예 회수+pane 자동 close · ③① summary 실내용 마커) + 라이브 보정 3건(claude 말미 비콘텐츠 3가족 — bare `❯`·`✻` 타이밍줄·`/effort` 힌트줄, D-4 최종 실증). ② pane-inject.sh(`08d6091`) — read-guard 오너-사용-중 pane 차단 실증. **오너 지시 상비 2건**: claude 스모크 카드 sonnet 강제(config 스왑→원복, lessons (5)) · 잔여 = npm publish(보류 — 계정 부재, 재개 절차 0-a)·**다음 세션 = PLAN 0.23.12(타임스탬프 소거+균등 폭, 0-b 오너 지시)**. 브릿지 0.23.11 재기동(agentArgv 원복본). 보드 정리 완료.
 >
 > (직전) **v0.23.10 완주 (2026-07-19 아침).** 워커 풀 탭 수평(좌우) 배치 — 오너 지시 → author-close(Low backlog, R{n} 불요) → grok pane 구현(`cf7d867`, 426/0) → **SMOKE-02310 라이브**(순차 스폰 풀 탭 합류·`pane.layout` 좌우 50/50 실측). 브릿지 0.23.10 재기동(pid 15267). dist `a085f24`. 신규 관찰: 동시 디스패치 풀 탭 레이스(무해) · sleep형 페이로드 유예 상한 소진. **다음 세션 = 잔여 후보 5건 일괄 적용 웨이브(오너 지시 — 다음 액션 0번 참조: 상태줄 필터·pane-inject.sh·타이밍줄·풀 탭 레이스·still-running 잔존, PLAN 0.23.11 → §5.1 게이트 판단)**. npm publish는 별도 오너 결정 잔존 (④ agentKind 확장은 0.23.2 기해소 스테일로 판명·목록 제거).
 >
@@ -194,10 +196,12 @@ wayfinder 맵 방식(티켓당 1세션 그릴링, HITL)으로 4세션에 걸쳐 
 
 ## Strategic context
 
-> Loom = 오너 6인 팀 내부 도구. **FREEZE 해제됨 (오너, 2026-07-18) — conv 멀티턴 트랙 진행 승인.**  
-> 공용 relay = Windows Tailscale 상시화 완료. 온보딩 = `docs/DRY_RUN_RUNBOOK.md`.  
-> 0.22.0 브릿지 수직 슬라이스 shipped. **다음 제품 단계 = conv 멀티턴 (R24 승인 게이트 → 구현 PLAN).**  
-> 저널·supervision·멀티노드는 여전히 out of scope. wire 변경은 CONV_SPEC 승인 범위 내에서만.
+> Loom = 오너 6인 팀 내부 도구.  
+> **⭐ MVP 종료 선언 (오너, 2026-07-19): "mvp는 여기서 종료 프로덕션으로 전환."** 0.22.0 브릿지 + conv 멀티턴 + 0.23.x 운영 품질 웨이브(R23–R35)까지가 MVP. 이후 작업은 **프로덕션 단계** 기준으로 판단한다.  
+> **다음 제품 트랙 = 멀티노드 단계 3 (오너 확정 2026-07-19: "다음 트랙에서 진행")** — 아키텍처 권고 §06 잔여 단계: Windows relay 복귀 → WSL/Linux 노드 브릿지 복제 → `@node` 라우팅 → SSH/git 전송 자동화 유예분 점진 도입(fetch 자동 실행은 R{n} 재리뷰 필수 — 다음 액션 0-c). **멀티노드 out of scope 해제.**  
+> 순서: 다음 세션 = PLAN 0.23.12 웨이브(기지시, 0-b) → 이후 멀티노드 트랙 개시.  
+> 공용 relay = Windows Tailscale 상시화 완료(현재 맥 단독 모드 — 트랙 개시 시 복귀). 온보딩 = `docs/DRY_RUN_RUNBOOK.md`.  
+> 저널·supervision은 여전히 out of scope. wire 변경은 CONV_SPEC 승인 범위 내에서만.
 
 ---
 
