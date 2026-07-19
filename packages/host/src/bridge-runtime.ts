@@ -136,7 +136,7 @@ export const WORKED_TIMING_LINE_RE =
  * forms like Sautéed full-match.
  */
 export const CLAUDE_TIMING_LINE_RE =
-  /^✻\s+\p{L}+ for (?:\d+h)?(?:\d+m)?\d+(?:\.\d+)?s\.?$/u;
+  /^✻\s+\p{L}+ for (?:\d+h)?(?:\d+m\s?)?\d+(?:\.\d+)?s\.?$/u;
 /** R30 M-1: Claude Ink folds multi-line paste into a placeholder — treat as hit. */
 const PASTE_PLACEHOLDER_MARKER = "[Pasted text";
 const PROBE_TAIL_CHARS = 48;
@@ -215,10 +215,28 @@ export function stripTuiChrome(text: string): string {
 }
 
 /**
+ * PLAN 0.23.12 ⓐ: trailing TUI right-render timestamp (`  10:50 AM`).
+ * Requires ≥2 spaces (TUI signature) — single-space `… at 10:50 AM` kept.
+ */
+const TUI_TRAILING_TIMESTAMP_RE = /\s{2,}\d{1,2}:\d{2} [AP]M\s*$/;
+
+/**
+ * PLAN 0.23.12 ⓐ / R36 L-1: local refine for selectCardSummaryLine only.
+ * Order fixed: trim/cursor-block first, then trailing timestamp strip
+ * (█ at end would break `[AP]M\s*$` anchor). Not applied to cleanTimingCandidate
+ * (shared with ⑤ supersession) or stripTuiChrome / card output body.
+ */
+function refineSummaryCandidate(line: string): string {
+  return cleanTimingCandidate(line).replace(TUI_TRAILING_TIMESTAMP_RE, "");
+}
+
+/**
  * PLAN 0.23.11 ③: pick card summary from chrome-filtered text — walk end→start
  * skipping pure timing lines; fallback to last non-empty if all skipped.
  * PLAN 0.23.11 라이브 보정 2(Deviations §0.23.11): also skip claude ✻-verb
  * timing lines (CLAUDE_TIMING_LINE_RE).
+ * PLAN 0.23.12 ⓐ: strip trailing TUI timestamp on skip-judge + all return paths
+ * (incl. all-skipped fallback — R36 L-1).
  */
 export function selectCardSummaryLine(chromeFiltered: string): string {
   const lines = chromeFiltered
@@ -227,17 +245,18 @@ export function selectCardSummaryLine(chromeFiltered: string): string {
     .filter((l) => l.trim().length > 0);
   if (lines.length === 0) return "done";
   for (let i = lines.length - 1; i >= 0; i--) {
-    const cleaned = cleanTimingCandidate(lines[i]!);
-    // Skip if either pure-timing pattern full-matches.
+    // Skip-judge uses refined candidate so timestamped timing lines skip too.
+    const refined = refineSummaryCandidate(lines[i]!);
     if (
-      WORKED_TIMING_LINE_RE.test(cleaned) ||
-      CLAUDE_TIMING_LINE_RE.test(cleaned)
+      WORKED_TIMING_LINE_RE.test(refined) ||
+      CLAUDE_TIMING_LINE_RE.test(refined)
     ) {
       continue;
     }
-    return lines[i]!.slice(0, 900);
+    return refined.slice(0, 900);
   }
-  return (lines[lines.length - 1] ?? "done").slice(0, 900);
+  // R36 L-1: fallback return also strips trailing timestamp (no re-leak).
+  return refineSummaryCandidate(lines[lines.length - 1] ?? "done").slice(0, 900);
 }
 
 /**
@@ -822,6 +841,81 @@ export async function startBridgeRuntime(opts?: {
     return run;
   }
 
+  /**
+   * PLAN 0.23.12 ⓑ / R36 L-2: best-effort equalize pool pane widths after
+   * spawn when ≥2 pool panes. Runs inside spawnChain (serial) before return —
+   * no fire-and-forget. Fail-open: any step aborts equalization only.
+   */
+  async function equalizePoolPaneWidths(): Promise<void> {
+    if (!workerPool || workerPool.paneIds.size < 2) return;
+    const poolIds = workerPool.paneIds;
+    const anyId = [...poolIds][0];
+    if (!anyId) return;
+    try {
+      let layout = await herdr.paneLayout(anyId);
+      // Guard: any non-right split → not a pure right-split chain.
+      if (layout.splits.some((s) => s.direction !== "right")) {
+        log(
+          "pane equalize skip: non-right split in layout",
+        );
+        return;
+      }
+      let poolPanes = layout.panes
+        .filter((p) => poolIds.has(p.paneId))
+        .sort((a, b) => a.rect.x - b.rect.x);
+      // Guard: layout missing some pool panes.
+      if (poolPanes.length !== poolIds.size) {
+        log(
+          `pane equalize skip: pane count mismatch layout=${poolPanes.length} pool=${poolIds.size}`,
+        );
+        return;
+      }
+      const N = poolPanes.length;
+      if (N < 2) return;
+      // k = 1..N-1 (1-indexed): target ratio 1/(N−k+1); 0-indexed i → 1/(N−i)
+      for (let i = 0; i < N - 1; i++) {
+        const pane = poolPanes[i]!;
+        const x = pane.rect.x;
+        // L-2(i): x-match must be unique — ambiguous topology aborts.
+        const matches = layout.splits.filter((s) => s.rect.x === x);
+        if (matches.length !== 1) {
+          log(
+            `pane equalize abort: x-match count=${matches.length} for pane ${pane.paneId}`,
+          );
+          return;
+        }
+        const split = matches[0]!;
+        // L-2(iii): use layout split.ratio field directly (no width-derived).
+        const current = split.ratio;
+        const target = 1 / (N - i);
+        const delta = target - current;
+        if (Math.abs(delta) < 0.01) continue;
+        const direction = delta > 0 ? "right" : "left";
+        const amount = Math.abs(delta);
+        layout = await herdr.paneResize({
+          paneId: pane.paneId,
+          direction,
+          amount,
+        });
+        // Refresh pool panes from response layout (no extra layout read).
+        poolPanes = layout.panes
+          .filter((p) => poolIds.has(p.paneId))
+          .sort((a, b) => a.rect.x - b.rect.x);
+        if (
+          poolPanes.length !== N ||
+          layout.splits.some((s) => s.direction !== "right")
+        ) {
+          log("pane equalize abort: layout changed mid-equalize");
+          return;
+        }
+      }
+    } catch (e) {
+      log(
+        `pane equalize failed (spawn result kept): ${e instanceof Error ? e.message : e}`,
+      );
+    }
+  }
+
   async function spawnWorkerAgentBody(opts: {
     name: string;
     argv: string[];
@@ -869,6 +963,10 @@ export async function startBridgeRuntime(opts?: {
                 split,
               });
               workerPool.paneIds.add(agent.pane_id);
+              // PLAN 0.23.12 ⓑ: equalize inside spawnChain before return (L-2 ii).
+              if (workerPool.paneIds.size >= 2) {
+                await equalizePoolPaneWidths();
+              }
               return agent;
             } catch (e) {
               return unhintedFallback(
@@ -886,6 +984,10 @@ export async function startBridgeRuntime(opts?: {
                 split: "right",
               });
               workerPool.paneIds.add(agent.pane_id);
+              // First pane on empty tab — size 1, equalize no-ops.
+              if (workerPool.paneIds.size >= 2) {
+                await equalizePoolPaneWidths();
+              }
               return agent;
             } catch (e) {
               workerPool = null;
@@ -916,6 +1018,7 @@ export async function startBridgeRuntime(opts?: {
             /* best-effort — root shell only, just-created tab */
           }
           workerPool.paneIds.add(agent.pane_id);
+          // First worker alone — equalize skipped (size < 2).
           return agent;
         } catch (e) {
           workerPool = null;

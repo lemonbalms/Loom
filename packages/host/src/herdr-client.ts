@@ -66,6 +66,74 @@ export type HerdrClientOptions = {
 
 export type HerdrEventSubscription = { type: string; pane_id?: string };
 
+/** PLAN 0.23.12 ⓑ: projected pane.layout / pane.resize layout response. */
+export type HerdrPaneLayoutRect = {
+  x: number;
+  width: number;
+  y?: number;
+  height?: number;
+};
+
+export type HerdrPaneLayout = {
+  panes: Array<{
+    paneId: string;
+    rect: HerdrPaneLayoutRect;
+  }>;
+  splits: Array<{
+    ratio: number;
+    direction: string;
+    rect: HerdrPaneLayoutRect;
+  }>;
+};
+
+function projectRect(raw: unknown): HerdrPaneLayoutRect | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const x = typeof r.x === "number" ? r.x : null;
+  const width = typeof r.width === "number" ? r.width : null;
+  if (x === null || width === null) return null;
+  const out: HerdrPaneLayoutRect = { x, width };
+  if (typeof r.y === "number") out.y = r.y;
+  if (typeof r.height === "number") out.height = r.height;
+  return out;
+}
+
+function projectPaneLayout(raw: {
+  panes?: unknown;
+  splits?: unknown;
+}): HerdrPaneLayout {
+  const panesIn = Array.isArray(raw.panes) ? raw.panes : [];
+  const splitsIn = Array.isArray(raw.splits) ? raw.splits : [];
+  const panes: HerdrPaneLayout["panes"] = [];
+  for (const p of panesIn) {
+    if (!p || typeof p !== "object") continue;
+    const rec = p as Record<string, unknown>;
+    const paneId =
+      typeof rec.pane_id === "string"
+        ? rec.pane_id
+        : typeof rec.paneId === "string"
+          ? rec.paneId
+          : "";
+    if (!paneId) continue;
+    const rect = projectRect(rec.rect);
+    if (!rect) continue;
+    panes.push({ paneId, rect });
+  }
+  const splits: HerdrPaneLayout["splits"] = [];
+  for (const s of splitsIn) {
+    if (!s || typeof s !== "object") continue;
+    const rec = s as Record<string, unknown>;
+    const ratio = typeof rec.ratio === "number" ? rec.ratio : null;
+    const direction =
+      typeof rec.direction === "string" ? rec.direction : "";
+    if (ratio === null || !direction) continue;
+    const rect = projectRect(rec.rect);
+    if (!rect) continue;
+    splits.push({ ratio, direction, rect });
+  }
+  return { panes, splits };
+}
+
 type EventConnectDeferred = {
   resolve: () => void;
   reject: (err: Error) => void;
@@ -392,6 +460,53 @@ export class HerdrClient {
         workspaceId:
           typeof p.workspace_id === "string" ? p.workspace_id : "",
       }));
+  }
+
+  /**
+   * PLAN 0.23.12 ⓑ: pane.layout wrapper (existing herdr op).
+   * Returns panes[].rect{x,width} and splits[].{ratio,rect,direction}.
+   * Optional paneId scopes to that pane's tab (snake_case on wire).
+   */
+  async paneLayout(paneId?: string): Promise<HerdrPaneLayout> {
+    const params: Record<string, unknown> = {};
+    if (paneId) params.pane_id = paneId;
+    const result = (await this.request("pane.layout", params)) as {
+      layout?: unknown;
+      panes?: unknown;
+      splits?: unknown;
+    };
+    const raw =
+      result.layout && typeof result.layout === "object"
+        ? (result.layout as { panes?: unknown; splits?: unknown })
+        : result;
+    return projectPaneLayout(raw);
+  }
+
+  /**
+   * PLAN 0.23.12 ⓑ: pane.resize wrapper (existing herdr op).
+   * amount = direct-split ratio delta (right=increase, left=decrease).
+   * Response carries the new layout at result.resize.layout (probe ⑤).
+   */
+  async paneResize(opts: {
+    paneId: string;
+    direction: "left" | "right";
+    amount: number;
+  }): Promise<HerdrPaneLayout> {
+    const result = (await this.request("pane.resize", {
+      pane_id: opts.paneId,
+      direction: opts.direction,
+      amount: opts.amount,
+    })) as {
+      resize?: { layout?: unknown };
+      layout?: unknown;
+    };
+    const raw =
+      result.resize?.layout && typeof result.resize.layout === "object"
+        ? (result.resize.layout as { panes?: unknown; splits?: unknown })
+        : result.layout && typeof result.layout === "object"
+          ? (result.layout as { panes?: unknown; splits?: unknown })
+          : result;
+    return projectPaneLayout(raw as { panes?: unknown; splits?: unknown });
   }
 
   /** Literal text, no Enter (Step 0.5). */

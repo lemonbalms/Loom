@@ -117,6 +117,19 @@ export type FakeHerdr = {
   dropTab: (tabId: string) => void;
   /** PLAN 0.23.9 test-only: tab_id currently recorded for a pane. */
   tabIdForPane: (paneId: string) => string | undefined;
+  /**
+   * PLAN 0.23.12 ⓑ: force next N pane.resize RPCs to error (equalize fail-open).
+   */
+  failPaneResizes: (count: number) => void;
+  /**
+   * PLAN 0.23.12 ⓑ test hooks for layout guards:
+   * - "normal": pure right-split chain (default)
+   * - "non_chain": inject a direction≠"right" split (equalize skip)
+   * - "ambiguous_x": duplicate x on two splits (L-2 uniqueness abort)
+   */
+  setLayoutMode: (mode: "normal" | "non_chain" | "ambiguous_x") => void;
+  /** PLAN 0.23.12: set successive right-split ratios for a tab (length N-1). */
+  setTabSplitRatios: (tabId: string, ratios: number[]) => void;
 };
 
 export async function startFakeHerdr(
@@ -159,6 +172,138 @@ export async function startFakeHerdr(
   let tabCreateFailRemaining = 0;
   /** PLAN 0.23.9: fail next N agent.start that include tab_id */
   let hintedStartFailRemaining = 0;
+  /** PLAN 0.23.12 ⓑ: fail next N pane.resize */
+  let paneResizeFailRemaining = 0;
+  /** PLAN 0.23.12 ⓑ: layout guard modes for equalize tests */
+  let layoutMode: "normal" | "non_chain" | "ambiguous_x" = "normal";
+  /**
+   * PLAN 0.23.12 ⓑ: per-tab horizontal chain — ordered leaf panes + successive
+   * right-split ratios (ratios[i] = left share of remaining space from i..end).
+   * Models herdr agent.start right-split half-width accumulation.
+   */
+  const tabChains = new Map<
+    string,
+    { ordered: string[]; ratios: number[] }
+  >();
+  const TOTAL_WIDTH = 100;
+
+  function ensureChain(tabId: string): { ordered: string[]; ratios: number[] } {
+    let c = tabChains.get(tabId);
+    if (!c) {
+      c = { ordered: [], ratios: [] };
+      tabChains.set(tabId, c);
+    }
+    return c;
+  }
+
+  function addPaneToChain(tabId: string, paneId: string): void {
+    const c = ensureChain(tabId);
+    if (c.ordered.includes(paneId)) return;
+    if (c.ordered.length === 0) {
+      c.ordered.push(paneId);
+      return;
+    }
+    // Successive right-split of rightmost: new leaf gets half of previous right.
+    c.ratios.push(0.5);
+    c.ordered.push(paneId);
+  }
+
+  function removePaneFromChain(paneId: string): void {
+    for (const [tabId, c] of tabChains) {
+      const idx = c.ordered.indexOf(paneId);
+      if (idx < 0) continue;
+      c.ordered.splice(idx, 1);
+      // Drop the split that owned this leaf; keep remaining ratios aligned.
+      if (c.ordered.length === 0) {
+        tabChains.delete(tabId);
+        return;
+      }
+      // ratios length must be ordered.length - 1
+      if (idx < c.ratios.length) {
+        c.ratios.splice(idx, 1);
+      } else if (c.ratios.length > 0) {
+        c.ratios.pop();
+      }
+      while (c.ratios.length > Math.max(0, c.ordered.length - 1)) {
+        c.ratios.pop();
+      }
+      while (c.ratios.length < Math.max(0, c.ordered.length - 1)) {
+        c.ratios.push(0.5);
+      }
+      return;
+    }
+  }
+
+  function buildLayoutForTab(tabId: string): {
+    panes: Array<{
+      pane_id: string;
+      rect: { x: number; width: number; y: number; height: number };
+    }>;
+    splits: Array<{
+      ratio: number;
+      direction: string;
+      rect: { x: number; width: number; y: number; height: number };
+    }>;
+  } {
+    const c = tabChains.get(tabId);
+    const ordered = c?.ordered ?? [];
+    const ratios = c?.ratios ?? [];
+    const panes: Array<{
+      pane_id: string;
+      rect: { x: number; width: number; y: number; height: number };
+    }> = [];
+    const splits: Array<{
+      ratio: number;
+      direction: string;
+      rect: { x: number; width: number; y: number; height: number };
+    }> = [];
+    if (ordered.length === 0) {
+      return { panes, splits };
+    }
+    let remaining = TOTAL_WIDTH;
+    let x = 0;
+    const widths: number[] = [];
+    for (let i = 0; i < ordered.length; i++) {
+      let w: number;
+      if (i < ordered.length - 1) {
+        const r = ratios[i] ?? 0.5;
+        w = remaining * r;
+        // Direct split for pane i: rect covers remaining space at this depth.
+        splits.push({
+          ratio: r,
+          direction: "right",
+          rect: { x, width: remaining, y: 0, height: 24 },
+        });
+        remaining -= w;
+      } else {
+        w = remaining;
+      }
+      widths.push(w);
+      panes.push({
+        pane_id: ordered[i]!,
+        rect: { x, width: w, y: 0, height: 24 },
+      });
+      x += w;
+    }
+    if (layoutMode === "non_chain" && splits.length > 0) {
+      // Inject a down split so equalize guard aborts.
+      splits.push({
+        ratio: 0.5,
+        direction: "down",
+        rect: { x: 0, width: TOTAL_WIDTH, y: 0, height: 24 },
+      });
+    }
+    if (layoutMode === "ambiguous_x" && splits.length > 0) {
+      // Duplicate first split's x so uniqueness guard aborts.
+      const first = splits[0]!;
+      splits.push({
+        ratio: 0.5,
+        direction: "right",
+        rect: { ...first.rect },
+      });
+    }
+    return { panes, splits };
+  }
 
   function nextSequenceText(paneId: string): string | undefined {
     for (const key of [paneId, "*"] as const) {
@@ -196,6 +341,7 @@ export async function startFakeHerdr(
     if (!paneId) return;
     closedPanes.add(paneId);
     panes.delete(paneId);
+    removePaneFromChain(paneId);
   }
 
   const server: Server = createServer((sock) => {
@@ -317,6 +463,8 @@ export async function startFakeHerdr(
             workspace_id: "",
           });
           closedPanes.delete(pane_id);
+          // PLAN 0.23.12 ⓑ: track horizontal chain for pane.layout/resize sim.
+          addPaneToChain(tab_id, pane_id);
           const env = (params.env ?? {}) as Record<string, string>;
           if (env.LOOM_CONV) paneIdByConv.set(env.LOOM_CONV, pane_id);
           reply({
@@ -327,6 +475,71 @@ export async function startFakeHerdr(
               name: params.name ?? "agent",
               agent_status: "unknown",
             },
+          });
+          sock.end();
+          continue;
+        }
+        if (method === "pane.layout") {
+          const pane_id =
+            typeof params.pane_id === "string" ? params.pane_id : "";
+          let tab_id = "";
+          if (pane_id && panes.has(pane_id)) {
+            tab_id = panes.get(pane_id)!.tab_id;
+          } else if (tabChains.size === 1) {
+            tab_id = [...tabChains.keys()][0]!;
+          } else if (liveTabs.size === 1) {
+            tab_id = [...liveTabs][0]!;
+          }
+          const layout = buildLayoutForTab(tab_id);
+          reply({ type: "pane_layout", layout });
+          sock.end();
+          continue;
+        }
+        if (method === "pane.resize") {
+          if (paneResizeFailRemaining > 0) {
+            paneResizeFailRemaining -= 1;
+            err("pane.resize failed (test inject)");
+            sock.end();
+            continue;
+          }
+          const pane_id = String(params.pane_id ?? "");
+          const direction = String(params.direction ?? "");
+          const amount =
+            typeof params.amount === "number" ? params.amount : Number(params.amount);
+          const p = panes.get(pane_id);
+          if (!p || !Number.isFinite(amount)) {
+            err("pane.resize: invalid pane_id/amount");
+            sock.end();
+            continue;
+          }
+          const c = tabChains.get(p.tab_id);
+          if (!c) {
+            err("pane.resize: no chain for tab");
+            sock.end();
+            continue;
+          }
+          const idx = c.ordered.indexOf(pane_id);
+          // Direct split only exists for non-rightmost panes.
+          if (idx < 0 || idx >= c.ratios.length) {
+            err("pane.resize: no direct split for pane");
+            sock.end();
+            continue;
+          }
+          let next = c.ratios[idx]!;
+          if (direction === "right") next += amount;
+          else if (direction === "left") next -= amount;
+          else {
+            err(`pane.resize: bad direction ${direction}`);
+            sock.end();
+            continue;
+          }
+          // Keep ratio in open unit interval so widths stay positive.
+          next = Math.min(0.99, Math.max(0.01, next));
+          c.ratios[idx] = next;
+          const layout = buildLayoutForTab(p.tab_id);
+          reply({
+            type: "pane_resized",
+            resize: { layout },
           });
           sock.end();
           continue;
@@ -560,6 +773,16 @@ export async function startFakeHerdr(
     },
     tabIdForPane(paneId: string) {
       return panes.get(paneId)?.tab_id;
+    },
+    failPaneResizes(count: number) {
+      paneResizeFailRemaining = Math.max(0, count);
+    },
+    setLayoutMode(mode: "normal" | "non_chain" | "ambiguous_x") {
+      layoutMode = mode;
+    },
+    setTabSplitRatios(tabId: string, ratios: number[]) {
+      const c = ensureChain(tabId);
+      c.ratios = [...ratios];
     },
     async close() {
       for (const s of sockets) {
