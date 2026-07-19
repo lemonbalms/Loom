@@ -141,7 +141,7 @@ import {
   shouldActivateHandoffInject,
 } from "./inject-handoffs";
 
-const VERSION = "0.24.0";
+const VERSION = "0.24.1";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -3173,7 +3173,12 @@ async function main() {
       );
       process.exit(1);
     }
-    const { RelayServer, isLoopbackHost } = await import("@loom/relay");
+    const {
+      RelayServer,
+      isLoopbackHost,
+      RoomRegistry,
+      resolveRegistryOptionsFromEnv,
+    } = await import("@loom/relay");
     const { envRelayHost, envRelayPort, envRelayToken } = await import(
       "@loom/protocol"
     );
@@ -3201,22 +3206,56 @@ async function main() {
         "[loom] FABLE_RELAY_INSECURE_OPEN is ignored; set LOOM_RELAY_INSECURE_OPEN=1 or --insecure-open",
       );
     }
+    // PLAN 0.24.1 D1/D6: same durable wiring as packages/relay/src/cli.ts
+    const registryOpts = resolveRegistryOptionsFromEnv();
+    let registry: InstanceType<typeof RoomRegistry>;
+    try {
+      registry = new RoomRegistry(registryOpts);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      // D3: escape-hatch hint; fail-closed — no automatic ephemeral fallback
+      console.error(
+        "set LOOM_RELAY_EPHEMERAL=1 to run without persistence, or LOOM_RELAY_STATE_DIR=<other path>",
+      );
+      process.exit(1);
+    }
     const server = new RelayServer({
       host,
       port,
       authToken,
       allowInsecureOpen,
+      registry,
     });
     try {
       server.start();
     } catch (e) {
+      registry.close();
       console.error(e instanceof Error ? e.message : e);
       process.exit(1);
     }
+    // D2: release M-23 lock on Ctrl-C / SIGTERM (same shape as relay/cli.ts)
+    const shutdown = () => {
+      try {
+        registry.close();
+      } catch {
+        /* */
+      }
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
     console.log(`Loom relay on ${server.publicHint}`);
     console.log(
       `Health: http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/health`,
     );
+    // D11: durable/ephemeral status (daemon-equivalent observability)
+    if (registryOpts.ephemeral) {
+      console.log(
+        "State: ephemeral (LOOM_RELAY_EPHEMERAL) — inbox lost on restart",
+      );
+    } else {
+      console.log(`State: durable ${registryOpts.stateDir}`);
+    }
     if (authToken) {
       console.log(
         "Clients need: --token <same> or LOOM_RELAY_TOKEN (Bearer header preferred)",

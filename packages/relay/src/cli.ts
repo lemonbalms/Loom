@@ -6,7 +6,8 @@ import {
   envRelayToken,
 } from "@loom/protocol";
 import { RelayServer, isLoopbackHost } from "./server";
-import { RoomRegistry, defaultRelayStateDir } from "./room";
+import { RoomRegistry } from "./room";
+import { resolveRegistryOptionsFromEnv } from "./registry-options";
 
 /**
  * Phase 3 remote-ready relay process.
@@ -35,19 +36,15 @@ if (legacyInsecure && !allowInsecureOpen) {
   );
 }
 
-const ephemeral =
-  process.env.LOOM_RELAY_EPHEMERAL === "1" ||
-  process.env.LOOM_RELAY_EPHEMERAL === "true";
 // Production durable ON by default; LOOM_RELAY_STATE_DIR override; standalone default = ~/.loom/relay-state (M-21 gate-exempt)
-const stateDir = ephemeral
-  ? undefined
-  : process.env.LOOM_RELAY_STATE_DIR || defaultRelayStateDir();
+// D6: env → options only (R38 M-1 — construct / try/catch / exit stay here)
+const registryOpts = resolveRegistryOptionsFromEnv();
+const ephemeral = registryOpts.ephemeral === true;
+const stateDir = registryOpts.stateDir;
 
 let registry: RoomRegistry;
 try {
-  registry = new RoomRegistry(
-    ephemeral ? { ephemeral: true } : { stateDir: stateDir! },
-  );
+  registry = new RoomRegistry(registryOpts);
 } catch (e) {
   console.error(e instanceof Error ? e.message : e);
   process.exit(1);

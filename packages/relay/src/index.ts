@@ -21,3 +21,4 @@ export {
   saveRoomSnapshot,
   roomStatePath,
 } from "./persist";
+export { resolveRegistryOptionsFromEnv } from "./registry-options";
