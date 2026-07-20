@@ -168,3 +168,26 @@ drop-in 반영 + bridge PID 14019 `active (running)` + Windows `LoomWslBoot` Tas
    아님) — wsl 커맨드는 빨리 반환하니 불요. kb는 `@reboot` 발효가 실제 재부팅에서만 일어나고
    `sudo reboot`이 비밀번호를 요구(§D sudo 메모)해 실증은 다음 자연 재부팅으로 유예
    (crontab 설치·PATH·cwd 정합은 확인 완료, `/tmp/loom-bridge-boot.log`가 발효 증거가 됨).
+
+## 2026-07-20 (18) — Claude Code hook 스펙 실측 3사실 (핸드오프 전환 최적화 웨이브)
+
+세션 시작 자동 컨텍스트 주입을 SessionStart hook으로 재설계하며, claude-code-guide 공식
+문서 대조로 확정한 hook 거동 3사실. 전제는 순수 툴체인 웨이브(제품 코드 무변경·R{n} 불요 —
+3-레인 접점 수렴 만장일치). 이 셋이 우리 hook 2분할·센티널·문안 설계의 근거가 됐다.
+
+1. **hook 출력은 10,000자 캡 — 초과분은 잘리므로 대용량은 파일화한다.** SessionStart hook이
+   컨텍스트로 주입하는 표준출력은 10,000자에서 잘린다. 우리 리추얼 페이로드(state 4,017자 +
+   lessons 9,046자)는 한 hook 출력으로 합치면 캡을 넘긴다 → **matcher를 2분할**(state·lessons
+   각각 별도 hook, 각 ≤9,500자 하드캡·fail-open·timeout 30s)해 캡 밑에 유지. 캡을 신뢰하고
+   "한 방에 다 주입"하면 조용히 잘려 뒷부분(lessons)이 유실된다.
+2. **`SessionStart`는 resume에서도 실발화한다(source=resume).** startup·clear뿐 아니라 resume·
+   compact에서도 SessionStart가 뜬다. 우리 hook matcher는 `startup|clear`로 좁혔고, 공존하는
+   claude-mem hook matcher에는 resume이 없어 **중복 주입이 발생하지 않는다**(만약 우리 matcher가
+   resume을 포함했다면 resume마다 리추얼이 재주입돼 컨텍스트를 반복 오염시켰을 것). matcher 설계
+   시 어느 source에서 뜨는지를 먼저 확정할 것.
+3. **명령형 주입문은 프롬프트-인젝션 방어에 걸릴 수 있다 — 사실 서술형으로 쓴다.** hook이
+   주입하는 문안을 "~하라/~해야 한다"식 명령형으로 쓰면 Claude의 프롬프트-인젝션 방어가
+   외부 지시로 오인해 무시할 수 있다. AGENTS 센티널 분기 문구·hook 컨텍스트 본문은 전부
+   **사실 서술형**(상태·규약을 진술만)으로 작성했다. 자동 주입 채널일수록 명령형은 무력화
+   리스크가 크다.
+

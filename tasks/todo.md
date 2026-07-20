@@ -6,6 +6,11 @@
 
 **로드맵 골격 완료**: MVP 종료(오너 2026-07-19) → 프로덕션 전환 · 멀티노드 단계 3 전 단계 완주(⓪~④·ⓐ·ⓑ·부팅 생존 상시화) · v0.26.0 hooks 센서 + v0.26.1 마커 교정 shipped(신 마커 SMOKE-SONNET26 라이브 실증 완료).
 
+0. **핸드오프 전환 비용 최적화** (2026-07-20 착수, 3-레인 수렴·R{n} 불요 만장일치)
+   - [x] ~~WP1 HANDOFF 다이어트 `0c82108` (상단 26KB→7.6KB·완결 8블록 ARCHIVE 이관·정보손실 0)~~
+   - [x] ~~WP2+WP3 SessionStart hook 2분할 `41b0877` (matcher `startup|clear`·state+lessons 각 ≤9,500 하드캡·fail-open·timeout 30s → 리추얼 3왕복→0 · `handoff:lint` >8,192B 경고 · AGENTS 센티널 분기)~~
+   - [x] ~~WP4 claude-mem 주입 하향 (OBSERVATIONS 50→20·SESSION_COUNT 10→5, 백업 `settings.json.pre-ho`=롤백 복사 1줄, 전 프로젝트 공용)~~
+   - [ ] **WP5 웜베이스 포크 스파이크 + hook 발효 실측** (새 세션 착수 — 미지수 5건·Go/No-Go 정량 기준). `docs/spikes/WARM-BASE-FORK-SPIKE.md`(HOOKS-SENSOR-SPIKE 형식) → Go 충족 시만 절차화(bake 스크립트+AGENTS 분기). 효과 실측(자동 주입 절반↓·리추얼 3왕복→0)은 새 세션 기동이 곧 hook 발효 실증 겸행.
 1. **다음 대형 트랙 — 미정 (오너 결정 지점)** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 현재 out of scope 유지.
 2. [ ] **R{n} 게이트 걸린 기능 유예 (유일)** — 브릿지 자동 git push(R26:431 유예). 착수 시 R{n} 재리뷰 필수.
 3. [ ] **검증 유예 1건** — `agent_blocked` 1:1 교정 라이브 실증. 유닛 33/33 커버, 카드 경유 미실증. SMOKE-SONNET26(신 마커 sonnet 무거부 1회 실증)으로 재시도 여건 개선.
