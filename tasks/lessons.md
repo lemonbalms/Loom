@@ -38,7 +38,7 @@
 - [verification] 2026-07-11 Provenance: 툴이 인터랙티브 실행된 뒤 config가 예상과 다르면 툴 탓 전에 오너가 뭘 골랐는지 확인 — 오너가 방금 고른 설정 임의 원복 금지.
 - [verification] 2026-07-19 (4) 0.23.10 웨이브: ① 아키텍트 독립 `bun test`를 워커 검증 스위트와 동시 실행 금지(공유자원 경합 플레이크) — card.done 후 시작. ② 스모크 페이로드 bare `sleep N` 금지(still-running 유예 소진). ③ rewind 유실 복구는 claude-mem 관찰이 SSOT. cross-ref: bridge-ops(②)·orchestration(③).
 - [verification] 2026-07-19 (10) 차집합 판정: 통합 테스트 fail의 회귀 판정은 **절대 수치 금지** — 환경마다 스위트 수치 통째로 변동. HEAD 베이스라인 worktree에서 동일 스위트 돌려 fail 집합 확보 후 **차집합**만 본다(차집합 0=신규 회귀 없음). 단위 스위트·typecheck는 절대 수치 OK.
-- [verification] 2026-07-19 (11) 핸드오프 힌트 교차검증: 스코프 힌트의 핵심 전제("신설이다"·규모/버전)를 증거수집 위임 **전에** claude-mem으로 1회 대조 — 힌트는 직전 세션 가설일 뿐. 이번엔 "신설 MINOR"가 실제로 "배선 갭 PATCH"였음(persist.ts 기존재).
+- [verification] 2026-07-19 (11) 핸드오프 힌트 교차검증: 스코프 힌트의 핵심 전제("신설이다"·규모/버전)를 증거수집 위임 **전에** claude-mem으로 1회 대조 — 힌트는 직전 세션 가설일 뿐. 이번엔 "신설 MINOR"가 실제로 "배선 갭 PATCH"였음(persist.ts 기존재). **재실증 2026-07-20**: 잔존-Low 표기("claude 상태줄 chrome 미커버")가 기해소(0.23.11 ①) 스테일 — 착수 전 증거팩/claude-mem 대조가 무코드 종결로 판정.
 - [verification] 2026-07-19 (12) dist 재빌드 순서: 워커 구현 진행 중 pre-push dist-guard 실패는 **정상 신호**(커밋된 번들 vs 반제품 소스) — 통과시키려 재빌드-커밋하면 미검증 반제품 유출. 순서: 구현 커밋→검증→`build:cli`→dist 커밋→push.
 - [verification] 2026-07-19 (13) 라이브 스모크 방법론: ① CLI 표면 없는 툴(`conv_fetch`)은 워크스페이스 밖 `bun -e` 모듈 해석 실패 → **리포 내부 상대-import 드라이버 스크립트**로 호출(MCP 경유가 정식). ② localhost 매핑은 원격 소스=로컬 dest 동일 경로라 D5 덮어쓰기 거부로 **happy-path 자멸** → happy-path는 실 원격 노드 필수. ③ 유닛이 이미 잠근 단계(M-D wire→저장)만 **합성 씨딩으로 우회**하고 나머지 실행 경로는 전부 라이브 실증 — 우회 사실+그 단계 유닛 커버리지를 명기해 실증 공백 없음을 못박음. ④ 스모크는 happy-path만이 아니라 R40 명시 **실손 경로(M-B 오염 host·D6 sha 격리)를 직접 재현**해 방어 발화 확인. 스키마 정규식이 좌표를 실제 게이트(`conv_smoke0250` 실거부).
 

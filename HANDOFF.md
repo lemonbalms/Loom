@@ -59,7 +59,7 @@
 >
 > ### 다음 액션 (우선순위)
 > 1. ~~**(선택) 라이브 스모크**~~ — **완주(2026-07-20, 위 「라이브 스모크 완주」 참조).** U2 `--settings` 인라인 JSON 주입·`Stop`·`UserPromptSubmit`·`permission_prompt`(Notification) 전부 실발화 PASS. **잔여 유예**: `agent_blocked` 1:1 교정 경로 라이브 실증(유닛 33/33 커버 · sonnet claude-mem 거부 루프로 카드 경유 미도달). **신규 Low 후보 3건**: `stale_hint` reason 어휘 세분화 · 공유-홈 claude-mem 오염 완화 · `permission_prompt` 재현엔 워커 `--permission-mode default` 스왑 필수(오너 홈 auto가 benign Bash 자동 승인).
-> 2. **잔존 Low들** — claude 상태줄 chrome · summary 정보성 타이밍줄 · orphan durable 룸 정리 · 동시 디스패치 풀 탭 레이스 등(아래 다음 액션 1·1-b 참조).
+> 2. **잔존 Low들** — summary 정보성 타이밍줄 · orphan durable 룸 정리 · 동시 디스패치 풀 탭 레이스 등(아래 다음 액션 1·1-b 참조).
 >
 > ### suite-0260b 571/0 상세 (재조사 금지 — 차집합 0 확정)
 > FIX-0260b 후 아키텍트 독립 전체 스위트 = **571 pass / 0 fail**. 기준 집합의 유일 플레이크 `conv (multiturn) > R28 L-1: stale marker re-detect same sha → no dup; changed sha → re-emit`(`conv.test.ts:973` `third?.status` Expected `"turn"` Received `undefined`, ~22s)는 **이번 런에서 미재현**(타이밍성 플레이크 — suite-0260에서는 559/1로 관측, HEAD `5e893dc` 단독 재실행에서도 동일 fail이었어 0.26.0 회귀 아님으로 확정된 바 있음). 차집합 0 유지. 후속 Low 후보(플레이크/타이밍)로만 등재.
@@ -77,8 +77,8 @@
 0. ~~**v0.26.0 ship 웨이브**~~ — **완결.** 소스 `0de6c4c` · dist `e1d9177`. 구현·검증·D6 핫픽스(FIX-0260b)·`Implemented` 블록·문서 동기·커밋 전부 완료. 구현 본문·R41 M-1·M-2 재론 금지.
 > 0-a. **npm publish 보류 (오너 결정 2026-07-19)** — 재조사 금지. 재개 시 계정·`loom-terminal`/`@lemonbalms/loom` 선택 후 login→meta→publish. |
 > 0-b. ~~PLAN 0.23.12~~ → 완주. 잔존 Low: 위상-인지 균등화 · sonnet claude-mem 스모크 루프.
-> 0-c. **멀티노드 단계 3** — ⓪~④·ⓐ·ⓑ·**부팅 생존 상시화** 완료. **0.26.0 hooks 구현 ship 완결**(소스 `0de6c4c` · dist `e1d9177`). 잔여 유예: 브릿지 자동 git push(R26:431)·orphan durable 룸 정리·summary 하단 상태줄 스크레이프·WSL non-root 전환(선택).
-> 1. **잔여 PATCH 후보**: ~~② done_proposal 탐지~~·~~③ conv.open deny 클레임~~·~~⑧ 브릿지 pane 배치~~(0.23.9 `201e2db`+`5f8bf12`) · ~~⑥ close 시 pane 정리~~·~~⑦ conv-hosts CLI~~(0.23.8 `93c6283`) · ~~④ agentKind 확장~~(0.23.2 `91bee75` 기해소 스테일) → **전부 해소**. 잔존: **claude 상태줄 chrome**(`Fable 5 ⚡high 🧠 │ …` — summary·보드 노트 유입 2회 실증, 콘텐츠-포함 줄이라 0.23.8 필터 미커버·grok 상태줄 해소 선례 동형) · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low) · 동시 디스패치 풀 탭 레이스(workerPool 인메모리 경합·무침입 유지라 무해·Low) · sleep형 페이로드 still-running 유예 상한 소진(pane 수동 정리·Low). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
+> 0-c. **멀티노드 단계 3** — ⓪~④·ⓐ·ⓑ·**부팅 생존 상시화** 완료. **0.26.0 hooks 구현 ship 완결**(소스 `0de6c4c` · dist `e1d9177`). 잔여 유예: 브릿지 자동 git push(R26:431)·orphan durable 룸 정리·WSL non-root 전환(선택).
+> 1. **잔여 PATCH 후보**: ~~② done_proposal 탐지~~·~~③ conv.open deny 클레임~~·~~⑧ 브릿지 pane 배치~~(0.23.9 `201e2db`+`5f8bf12`) · ~~⑥ close 시 pane 정리~~·~~⑦ conv-hosts CLI~~(0.23.8 `93c6283`) · ~~④ agentKind 확장~~(0.23.2 `91bee75` 기해소 스테일) → **전부 해소**. 잔존: ~~claude 상태줄 chrome~~(**기해소 확인 2026-07-20** — `Fable 5 ⚡high 🧠 │ …` 상태줄은 0.23.11 ①(R35 approved) `stripTuiChrome`(`bridge-runtime.ts:218`, `" │ "`+`⚡`/`🧠` 조건·모델명 비하드코딩)이 커버, 유닛 7케이스(`impl-02311.test.ts:60-130`)·FIX3-02311 `c4f5a55`. 핸드오프 표기가 스테일이었음 — 신규 변종 실측 시에만 후속 후보 등재) · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low) · 동시 디스패치 풀 탭 레이스(workerPool 인메모리 경합·무침입 유지라 무해·Low) · sleep형 페이로드 still-running 유예 상한 소진(pane 수동 정리·Low). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
 > 1-b. **신규 후보**: ~~settle card 경로 이식~~(0.23.7 `1160b38`) · ~~dist 드리프트 가드~~(`eb05310`) · ~~카드 summary chrome 미커버 2종~~(0.23.8) → **해소**. 잔여: conv 턴 조기 회신(~7–10s) 관찰 지속 · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low, 결함 아님).
 > 2-b. **경쟁 분석발 후보(`docs/COMPETITIVE_NOTES.md` §1.3)**: ~~B bunx 온보딩~~ · ~~C 이미지 README~~ → **완료(2026-07-19 카드 웨이브)**. 잔여: A `scripts/pane-inject.sh`(수동 pane 레인 read-guard 원자화, R-gate 불요) · npm publish는 오너 결정(0-a).
 > 3. **관찰 ⓔ (Low)**: codex pane 카드는 승인 프롬프트 대기 중 herdr가 `blocked`를 방출 → 브릿지가 `failed reason=agent_blocked`를 회신하지만 **작업 자체는 승인 후 완료**됨(0.23.4·0.23.5 자문 카드 2회 실증). codex 무인 운용은 오퍼레이터 argv 자율 플래그 결정 선행(lessons (5)).
