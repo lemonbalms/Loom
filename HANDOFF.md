@@ -16,18 +16,20 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH 검증 웨이브 종결 — 구현 게이트 reject(ready=no), 선결 실험 전건 종료 (2026-07-20).** codex 1차 검증 **reject**(High 3) 수용·락 문안 교체(`5df040e`) → codex **2차 검증 reject / ready=no**(High 1, Medium 7)(`85465e2`) → 독립 스켑틱(fable) 조건부. **구현 착수 불가.** 마지막 선결 실험(**시나리오 D — status replay**) 완료로 **구현 전 필수 실험은 전건 종료**. 다음 = **설계 통합 패스**(아래 0번, 조건 5건). 상세 → **docs/HANDOFF_ARCHIVE.md**.
+> **🎯 PANE-DEATH 설계 통합 패스 완료 — 3차 검증 대기 (2026-07-21).** codex 1차 reject(High 3)→락 교체(`5df040e`) → 2차 **reject/ready=no**(High 1·Medium 7)(`85465e2`) → **통합 패스 D1~D10 적용**(이번 커밋). 핸드오프가 적던 **조건 5건은 실측 오류 — 실제 10건**(codex §5 6건 중 3건 미전사 + 신규 발견 2건). 다음 = **codex 3차 검증**(발견자≠수정자). 상세 → **docs/HANDOFF_ARCHIVE.md**.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH 설계 통합 패스** — 권고 **B** · 2차 검증 **reject/ready=no**. **구현 착수 전 5건**: ① **전이표 통합**(§5 B·§6.1·§6.2·§7.1을 락 5·9에 맞춰 하나로 — 현재 자기모순) ② **`generation` 정의**(매 `agent.start` 불투명 token · `paneId`/`terminalId`/owner 결속 · async 콜백은 token 재검증) ③ **reconcile cadence 수치**(간격·grace·최대 시도·시작/중단) ④ **`terminalPending` 전이표 + `commit_unknown` 정책** ⑤ **락 10 승격**(§6.2 규칙 2·3 — 최초 결함 213이 현재 락 밖). 권고 순서 ② → ①+④ → ③(⑤ 병렬). **닫힘:** 구현 전 필수 실험 전건 종료. 경위(펼쳐보기).
+0. **⭐ PANE-DEATH codex 3차 검증 디스패치** — 통합 패스 **D1~D10 적용 완료**(`PANE-DEATH-DESIGN.md` 669→818줄, 락 10개). 검증 레인 = **codex**(편집은 opus — 분리 성립). **검증 초점 4**: ① D3 **9개 지점** 전이표 정합(2차 High 지점) ② D8 개명(`result_committed`→`result_relay_accepted`) 참조처 누락 ③ D7 cadence 수치 = **아키텍트 제안**(실측 아님 — 타당성 판정 요) ④ 신설 **락 10**이 213을 실제로 막는지. 적용 내역(펼쳐보기).
 
 1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 통합 테스트 실패(단독은 6/6 green). 변경과 무관 확정. **방치 시 모든 웨이브의 green 판정이 흐려진다**(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
 3. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
 
 <details>
-<summary>1·2·3 부연 설명 (펼쳐보기)</summary>
+<summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
+
+- (0) D1 `generation` 정의(매 `agent.start` 불투명 token)+`:179` 동명이의 "subscription generation" 개칭 · D2 `commit_unknown` phase union 편입 + `terminalPending` 필드 신설 · D3 전이표 통합 9지점 · D4 "로컬 발행 1회"(local single-issue) 어휘를 wire exactly-once와 분리 · D5 락 5·9 권위 정리(메커니즘 정본=락 5) · D6 **락 10 신설**(start evidence + activity fence) · D7 cadence 수치(+1s·5s·3s·연속2·최대12회·`commit_unknown` 10분) · D8 ACK 경계 명문화 + phase 개명(fable-advisor 판정 A — "경계는 산문이 아니라 이름에") · D9 status advisory(관측이지 계약 아님 → 락 승격 안 함) · D10 락 1 굽은 인용부호 복원.
 
 - (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 부하 기아만이 원인은 아님. 회귀 아님 근거 = `conv.test.ts` 베이스라인 3회·변경분 3회 모두 16 pass/0 fail(57.7s 동일) · 변경 파일을 import/read 하는 테스트 0건. 남은 가설 = 스위트 내 동시 실행 시 포트/소켓·타이밍 경합.
 - (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
@@ -72,7 +74,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH 검증 웨이브 종결 — 구현 게이트 reject(ready=no), 선결 실험 전건 종료** (2026-07-20). **다음 = 설계 통합 패스(조건 5건: 전이표 통합 · `generation` 정의 · reconcile cadence 수치 · `terminalPending`/`commit_unknown` 정책 · 락 10 승격)** → D-VERIFY → RULE-ENFORCEABILITY.
+> **🎯 PANE-DEATH 설계 통합 패스 완료(D1~D10) — codex 3차 검증 대기** (2026-07-21). 조건은 5건이 아니라 **10건**이었다(핸드오프 전사 누락 3 + 신규 발견 2). **다음 = codex 3차 검증** → 통과 시 구현 게이트 → D-VERIFY → RULE-ENFORCEABILITY.
 
 ---
 
@@ -92,25 +94,13 @@
 | **Nodes** | mac-node · Windows relay(durable) · WSL node-wsl-1(부팅 생존) · VPS node-vps-1 / kb(`@reboot`) — loom-dev `LOOM-GT4B` |
 | **Boot persist** | 트랙 종료(2026-07-20, 오너 옵션 B) — 상세 lessons platform (17) · 팩 `.loom-boot-persist-pack.md` |
 | **Remote** | `origin/main` **`66e0ba1`**(v0.26.1 dist, HEAD=origin). 이 docs 커밋은 다음 push 편승 |
-| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9 종결(8항 status replay 포함)·§9-bis 락 9개 = **2차 검증 reject/ready=no** · 통합 패스 대기) + `PANE-DEATH-OBSERVATIONS.md` + `docs/reviews/PANEDEATH-CODEX-REVIEW.md` (둘 다 정본·수정 금지)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료·§1.6/§5 정정) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
+| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9-bis 락 **10개** — D1~D10 통합 패스 적용, 3차 검증 대기) + `PANE-DEATH-OBSERVATIONS.md` + 리뷰 **2본**: `docs/reviews/PANEDEATH-CODEX-REVIEW.md`(1차) · **`PANEDEATH-CODEX-REVIEW2.md`(2차 = reject 정본)** (리뷰 2본 수정 금지)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료·§1.6/§5 정정) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
 | **Untracked (커밋 제외)** | `scripts/check-mem-header.ts`(+test) · `scripts/watch-card.ts`(+test) · `scripts/session-context.test.ts` · `hook-sensor.ts`(+test) · `.loom-*` 브리프/디스패치 · `.playwright-mcp/` 등 |
 
 </details>
 
-<details>
-<summary>0의 5개 조건 상세 + 닫힌 것 전문 (펼쳐보기)</summary>
-
-   **0 헤더 부연:** 정본 `docs/spikes/PANE-DEATH-DESIGN.md`. 권고 B = 종료 펜스 + 결과-커밋 tombstone + bounded reconcile. 2차 검증 상세 = High 1·Medium 7(codex `85465e2`) + 독립 스켑틱(fable) 조건부. 구현 착수 전 아래 5건을 닫아야 한다(다음 세션의 작업 목록) = 전이표 통합 · `generation` 정의 · reconcile cadence 수치 · `terminalPending`/`commit_unknown` 정책 · 락 10 승격. 닫힌 것 = 구현 전 필수 실험은 전건 종료.
-
-   1. **전이표 통합** — `§5 B 상태도`·`§6.1 phase union`·`§6.2 판정`·`§7.1 race tests`를 **락 5·9에 맞춰 갱신해 하나의 전이표로** 만든다. `result_sending` 중 terminal과 ACK 유실에서 **두 번째 result가 절대 나오지 않도록**. *(현재 문서는 자기모순 — 락 5·9는 `commit_unknown`·두 번째 result 금지인데 §5 B·§6.2.1·§7.1 4·6은 failed result 발행을 요구한다. 원인 = 아키텍트가 락 교체 위임 시 "설계 본문 §5~§8 건드리지 마라"로 범위를 좁힌 것 — 락이 상태기계를 바꿨으므로 본문도 함께 갱신됐어야 했다.)*
-   2. **`generation` 정의 채택** — 매 `agent.start`마다 새로 생기는 **bridge-local 불투명 token**으로 정의하고 `paneId`·`terminalId`·owner(card/conv+id+seq)에 묶으며, **모든 async poll/TTL 콜백이 캡처 token을 재검증**하도록 잠근다. *(출처: codex 2차 §5-2. 채택하면 "pane_id 재사용" 미확인 항목이 구현 후로 내려간다.)*
-   3. **reconcile cadence 수치 확정** — initial/periodic/terminal-trigger 각각의 **간격·grace·최대 시도 수**, phase별 시작·중단 조건을 **숫자와 전이로** 정한다. *(현재 "bounded"에 실제 bound가 없어 카드가 무기한 `doing`에 남을 수 있다 — 독립 스켑틱 지적.)*
-   4. **`terminalPending` 전이표 + `commit_unknown` 정책** — `terminalPending × {strict ACK, explicit reject, transport unknown}` 전이표를 명시하고, `pane_closed`/`pane_exited`의 **expected 조건을 하나로 통일**하며, `commit_unknown`의 **보존 기간·reconcile 참여 여부·운영자 회수 신호·프로세스 종료 시 처리**를 정한다.
-   5. **락 10 승격** — `§6.2 규칙 2·3`(start-evidence `sawWorking` 게이트 + `Working` activity fence)을 **락으로 올린다**. **최초 관측 결함인 213 초기 TUI 가짜 done을 현재 9개 락 중 어느 것도 막지 못한다** — 가장 실증된 결함이 락 밖에 남아 있다(독립 스켑틱 발견).
-
-   **닫힌 것 전문:** 마지막 선결 실험(시나리오 D)이 **status replay = 안 됨**(herdr v0.7.4 관측, 계약 아님 → 불변식 금지)으로 닫혔다(`PANE-DEATH-OBSERVATIONS.md` §D · DESIGN §9-8). 나머지 **미확인 6건은 구현 후로 분류**(codex 2차 §4). 단 **WSL/VPS terminal 종류·지연은 배포 완료 주장 전 필수 스모크**다. 급한 이유 = 조기 `done` 커밋 후 `pane.close`(`finishCard()` `bridge-runtime.ts:2310-2323`) → 가짜 `card.done`.
-
-</details>
+> **구현 후로 분류된 미확인 6건**(codex 2차 §4) — 단 **WSL/VPS terminal 종류·지연은 배포 완료 주장 전 필수 스모크**.
+> 착수 전 조건 목록 원문(5건→실측 10건 경위 포함) → `docs/HANDOFF_ARCHIVE.md`.
 
 <details>
 <summary>Access cheat-sheet (펼쳐보기)</summary>

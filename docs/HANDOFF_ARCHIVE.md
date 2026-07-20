@@ -160,3 +160,20 @@ wayfinder 맵 방식(티켓당 1세션 그릴링, HITL)으로 4세션에 걸쳐 
 
 - 이번 세션 lane: 직접 세션(그릴링은 HITL이라 위임 불가) · research만 서브에이전트.
 - Deviations: `implementation-notes.md` (변경 없음 — 이번 세션은 docs만).
+
+## PANE-DEATH 설계 통합 패스 — 착수 전 조건 목록 (2026-07-21 종결)
+
+통합 패스 D1~D10 적용으로 종결. 아래는 착수 시점의 조건 목록 원문(핸드오프 0번 상세)이며,
+**실측 결과 5건이 아니라 10건이었다** — codex §5 6건 중 3건이 핸드오프로 전사되지 않았고
+(status replay 수용 규칙 · 락 1 인용부호 · ACK 보장 경계), 좌표 팩 수집 중 2건이 추가 발견됐다
+(락 5↔9 이중 규정 · "exactly once" 어휘 충돌). D3 파급 지점도 3곳이 아니라 9곳이었다.
+
+**0 헤더 부연:** 정본 `docs/spikes/PANE-DEATH-DESIGN.md`. 권고 B = 종료 펜스 + 결과-커밋 tombstone + bounded reconcile. 2차 검증 상세 = High 1·Medium 7(codex `85465e2`) + 독립 스켑틱(fable) 조건부.
+
+1. **전이표 통합** — `§5 B 상태도`·`§6.1 phase union`·`§6.2 판정`·`§7.1 race tests`를 **락 5·9에 맞춰 갱신해 하나의 전이표로** 만든다. `result_sending` 중 terminal과 ACK 유실에서 **두 번째 result가 절대 나오지 않도록**. *(자기모순 원인 = 아키텍트가 락 교체 위임 시 "설계 본문 §5~§8 건드리지 마라"로 범위를 좁힌 것 — 락이 상태기계를 바꿨으므로 본문도 함께 갱신됐어야 했다. → `tasks/lessons/orchestration.md` (27))*
+2. **`generation` 정의 채택** — 매 `agent.start`마다 새로 생기는 **bridge-local 불투명 token**으로 정의하고 `paneId`·`terminalId`·owner(card/conv+id+seq)에 묶으며, **모든 async poll/TTL 콜백이 캡처 token을 재검증**하도록 잠근다. *(codex 2차 §5-2)*
+3. **reconcile cadence 수치 확정** — initial/periodic/terminal-trigger의 **간격·grace·최대 시도 수**, phase별 시작·중단 조건. *(현재 "bounded"에 실제 bound가 없어 카드가 무기한 `doing`에 남을 수 있다 — 독립 스켑틱)*
+4. **`terminalPending` 전이표 + `commit_unknown` 정책** — `terminalPending × {strict ACK, explicit reject, transport unknown}` 전이표, `pane_closed`/`pane_exited` expected 조건 통일, `commit_unknown`의 보존 기간·reconcile 참여·운영자 회수 신호·프로세스 종료 시 처리.
+5. **락 10 승격** — `§6.2 규칙 2·3`(start-evidence `sawWorking` 게이트 + `Working` activity fence)을 락으로. **최초 관측 결함인 213 초기 TUI 가짜 done을 당시 9개 락 중 어느 것도 막지 못했다**(독립 스켑틱 발견).
+
+**닫힌 것:** 마지막 선결 실험(시나리오 D)이 **status replay = 안 됨**(herdr v0.7.4 관측, 계약 아님 → 불변식 금지)으로 닫혔다(`PANE-DEATH-OBSERVATIONS.md` §D · DESIGN §9-8). 급한 이유 = 조기 `done` 커밋 후 `pane.close`(`finishCard()` `bridge-runtime.ts:2310-2323`) → 가짜 `card.done`.
