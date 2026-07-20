@@ -21,8 +21,12 @@
     "loom": "bun run packages/cli/src/index.ts",
     "status": "bun run scripts/session-status.ts",
     "handoff:lint": "bun run scripts/session-status.ts --lint",
+    "session-context:lint": "bun run scripts/session-context.ts --lint",
+    "check:mem-header": "bun run scripts/check-mem-header.ts",
+    "watch:card": "bun run scripts/watch-card.ts",
     "link:loom": "bash scripts/link-loom.sh",
     "unlink:loom": "bash scripts/unlink-loom.sh",
+
     "desktop": "cd apps/desktop && bunx tauri dev",
     "desktop:build": "cd apps/desktop && bunx tauri build",
     "smoke:desktop": "bun run scripts/smoke-desktop-rpc.ts",

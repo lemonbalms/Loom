@@ -163,7 +163,18 @@ function formatHeaderDateTime(): string {
 …renderAgentHeader → `# [${project}] recent context, ${formatHeaderDateTime()}`
 ```
 
-- 번들 실체는 `plugin/scripts/context-generator.cjs` 내 `rt()`/`lt()` (동일 로직).
+- ~~번들 실체는 `plugin/scripts/context-generator.cjs` 내 `rt()`/`lt()` (동일 로직).~~
+  **⚠️ 정정 (2026-07-20, 실측 + codex 교차검증 confirm) — 위 서술은 틀렸다.**
+  `context-generator.cjs`는 **데드 번들**이다(활성 패키지 전체에서 참조 0건). 헤더 복제본이
+  존재하지만 **SessionStart 실행 경로에 도달하지 않으므로 거기를 고쳐도 무효**다.
+  **실제 실체 = `plugin/scripts/worker-service.cjs`** 의 **`qJ()`(플레인 헤더)** 와
+  **`eQ()`(ANSI 헤더)** 두 함수이며, **둘 다** 고쳐야 한다.
+  실측된 호출 사슬: `hooks.json:17` → `worker-service.cjs:2130 hookCommand` → `context:Q$(:987)`
+  → `/api/context/inject(:2117)` → `generateContextWithStats(:962)` → `qJ()(:953)` / `eQ()(:955)`.
+  미니파이 함수명은 버전마다 바뀌므로(13.10.4에선 `ts()`/`ps()`) **앵커는 이름이 아니라 본문
+  패턴**(`toLocaleDateString("en-CA")` + `timeZoneName:"short"`)으로 잡는다.
+  적용 완료: 13.11.0 활성 설치본 · 백업 `worker-service.cjs.pre-hookcache` ·
+  회귀 감지 `bun run check:mem-header`(autoUpdate 원복 시 실패).
 - 훅 등록: `plugin/hooks/hooks.json` → `SessionStart` matcher `startup|clear|compact`,
   2번째 handler `worker-service.cjs hook claude-code context`.
 - **분 자리 외에 세션 내 변동 요소는 없다**(관측 항목의 TIME 컬럼은 과거 관측의 고정 시각).
@@ -369,7 +380,7 @@ lessons 인덱스의 *경위 서술*보다 낮다.
 | **B-1** | 이 프로젝트만 claude-mem 추적 제외 | `CLAUDE_MEM_EXCLUDED_PROJECTS` 에 프로젝트 경로 glob 추가 (`should-track-project.ts:22`, `worker/http/shared.ts:66`) | **주입만이 아니라 관찰 기록(캡처)까지 중단** — 이 리포는 claude-mem 관찰을 SSOT로 쓰는 교훈이 있음(verification (4)③) | 이 프로젝트만 | 쉬움 (키에서 경로 제거) |
 | **B-2** | 주입량 추가 하향 | `CLAUDE_MEM_CONTEXT_OBSERVATIONS`(현 20) / `CONTEXT_SESSION_COUNT`(현 5) 추가 축소 | **원인 B를 전혀 고치지 못함** — 헤더 분 자리는 그대로. 블록만 작아져 미스 1회 비용이 줄 뿐 | 전 프로젝트 | 쉬움 (WP4 백업 `settings.json.pre-ho` 존재) |
 | **B-3** | claude-mem SessionStart **context handler만** 비활성 | 플러그인 `plugin/hooks/hooks.json` SessionStart 2번째 handler 제거 | 세션 시작 메모리 주입 소실(검색은 MCP로 여전히 가능). **플러그인 업데이트 시 원복됨**(파일이 설치본 내부) | 전 프로젝트 | 쉬움(파일 복원)이나 **비영속** |
-| **B-4** | 헤더에서 분 자리 제거 패치 | `plugin/scripts/context-generator.cjs` 의 `rt()`/`lt()` 를 날짜까지만 반환하도록 수정 | 원인 B를 **정확히** 겨냥 · 기능 손실 거의 없음. 단 **업데이트 시 원복** · 미니파이 번들 직접 수정 | 전 프로젝트 | 쉬움이나 **비영속**(업데이트마다 재적용 필요) |
+| **B-4** ✅적용 | 헤더에서 분 자리 제거 패치 | **`plugin/scripts/worker-service.cjs` 의 `qJ()`/`eQ()`** 를 날짜까지만 반환하도록 수정 (§1.6 정정 참조 — `context-generator.cjs`는 데드 번들이라 무효) | 원인 B를 **정확히** 겨냥 · 기능 손실 거의 없음. 단 **업데이트 시 원복** · 미니파이 번들 직접 수정 | 전 프로젝트 | 쉬움이나 **비영속**(업데이트마다 재적용 필요) |
 | **B-5** | claude-mem 플러그인 전체 비활성 | `~/.claude/settings.json` `enabledPlugins["claude-mem@thedotmack"] = false` | 메모리 시스템 전면 상실 | 전 프로젝트 | 매우 쉬움 (플래그 1개) |
 | **B-6** | 수용 (아무것도 안 함) | — | 세션당 33,915토큰 cache-write 고정 비용. 원인 A 해소분(같은 33,915토큰)은 **"같은 분 안에 재시작할 때만" 회수** → **원인 A 수정의 이득이 대부분 상쇄된다** | 없음 | — |
 | **B-7** | 업스트림 수정 요청 | thedotmack/claude-mem 에 이슈/PR (헤더 granularity 옵션화) | 즉효 없음 | 없음 | — |
