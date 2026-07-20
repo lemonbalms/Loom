@@ -16,7 +16,7 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 v0.26.0 hooks 보조 센서 — 구현·검증·D6 핫픽스 완주, ship 커밋 단계 (2026-07-20).** PLAN **0.26.0** R41 author-close `approved`(M-1·M-2 lock + L-1..L-3) → **IMPL-0260 구현 완료**(미커밋 워크트리) → **FIX-0260** 소켓 path 길이 4건(macOS sun_path ~104B — `LOOM_TEST_HOME=/tmp/lhs-…`) → **VERIFY-0260** codex pane 독립 락 대조 **11/12**(유일 FAIL = D6(b) 정상 폴백 계측) → **FIX-0260b** D6(b) 해소(grok pane `task_62b7d8c…`) → **suite-0260b** 전체 스위트 **571 pass / 0 fail · 차집합 0**(기준 R28 L-1 플레이크 이번 런 미재현) · hook-sensor 유닛 **33/33** · typecheck **6/6**. **PLAN `Implemented` 블록 기재 완료 → 남은 것 = 소스+문서 커밋·dist·push.**
+> **🎯 v0.26.0 hooks 보조 센서 — ship 완결 (2026-07-20).** PLAN **0.26.0** R41 author-close `approved`(M-1·M-2 lock + L-1..L-3) → **IMPL-0260 구현 완료** → **FIX-0260** 소켓 path 길이 4건(macOS sun_path ~104B — `LOOM_TEST_HOME=/tmp/lhs-…`) → **VERIFY-0260** codex pane 독립 락 대조 **11/12**(유일 FAIL = D6(b) 정상 폴백 계측) → **FIX-0260b** D6(b) 해소(grok pane `task_62b7d8c…`) → **suite-0260b** 전체 스위트 **571 pass / 0 fail · 차집합 0**(기준 R28 L-1 플레이크 이번 런 미재현) · hook-sensor 유닛 **33/33** · typecheck **6/6** → **소스 커밋 `0de6c4c`**(10파일 +1466/-59) · **dist 커밋 `e1d9177`**(dist-guard ok, 오너 `!` 실행) · **push 완료 `origin/main = e1d9177`.** PLAN `Implemented` 블록 sha 확정 완료.
 >
 > ### 파이프라인 상태
 > | 단계 | 상태 | 비고 |
@@ -27,23 +27,23 @@
 > | VERIFY-0260 | ✅ done `task_57a57dd4…` | **codex pane** · `[VERIFY-0260-DONE] locks=fail total=11/12`(유일 FAIL = D6(b) 정상 폴백 계측) |
 > | FIX-0260b | ✅ done `task_62b7d8c…` | **grok pane** · D6(b) 해소(순수 함수 export + finishCard 단일 초크포인트 + Flight 3필드) — hook-sensor 유닛 **33/33**(신규 11) · 락-인접 diff 검수 통과 |
 > | suite-0260b | ✅ 실행 완료 | **571/0** · **차집합 0** · typecheck 6/6 (기준 R28 L-1 플레이크 이번 런 미재현) |
-> | PLAN `Implemented` | ✅ 기재 완료 | §0.26.0 D8 검증 계획 직후 |
-> | dist · commit/push | ⏳ **이번 세션 수행 중** | 소스→dist→push |
+> | PLAN `Implemented` | ✅ 기재 완료 | §0.26.0 D8 검증 계획 직후 · sha 확정 |
+> | 소스 커밋 | ✅ `0de6c4c` | v0.26.0 hooks 보조 센서 — 10파일 +1466/-59 |
+> | dist · commit/push | ✅ `e1d9177` | dist-guard ok · 오너 `!` 실행 · push 완료 `origin/main = e1d9177` |
 >
 > ### VERIFY-0260 결과 (codex · 읽기 전용 락 대조)
 > - **PASS:** M-1 전부(attempt 소켓·bind 전 unlink·flight 소멸 close+unlink·늦은 이벤트 가드) · M-2 전부(단일 슬롯·working 소거·permission_prompt 교정·Stop AND) · L-1·L-2·L-3 · D2·D4·D5·D7 · wire-lock(relay/conv/MCP/herdr RPC 무변경·자동 close/approve 없음)
 > - **FAIL 1건 = D6 계측 배선 갭 → FIX-0260b로 해소:** runtime `appendHookTelemetry`가 **malformed / bind 실패**에만 연결(`bridge-runtime.ts:1113-1128`)돼 hookHint 부재·`no_listener` **정상 폴백** 경로에 fallback 카운터 append가 없었다(테스트는 `no_listener` 레코드를 직접 append만 해 runtime 배선 미검증). **FIX-0260b**(grok pane `task_62b7d8c…`)가 `classifyCompletionFallback`/`maybeAppendCompletionFallback` 순수 함수 export(`hook-sensor.ts:482-514`) + `finishCard` read-flip 이후 `status==="done"` **단일 초크포인트**(`bridge-runtime.ts:2282`) + Flight 3필드(`hookSensorActive`·`hookListenerEstablished`·`hookFallbackRecorded`, `:387-394`) + 스폰 폴백 2곳 정확히-1회 플래그(`:1135`·`:1148`) + reason 어휘(`no_listener`/`no_hint`/`stale_hint`)로 배선. L-2 게이트 = `hookSensorActive!==true` 조기 반환. 유닛 33/33.
 > - R41 **binding lock(M-1·M-2)은 전부 PASS** — D6만 부분 구현이었고 FIX-0260b로 완결.
 >
-> ### 미커밋 산출물 (디스크 SSOT)
+> ### 커밋된 산출물 (소스 `0de6c4c`)
 > - **신설:** `packages/host/src/hook-sensor.ts` · `hook-sensor.test.ts` (**33유닛** — FIX-0260b 신규 11 포함 · `classifyCompletionFallback`/`maybeAppendCompletionFallback` 순수 함수 export)
 > - **수정:** `bridge-runtime.ts`(주입·hookHint 분기·생명주기 + FIX-0260b: finishCard `:2282` 단일 초크포인트·Flight 3필드 `:387-394`·스폰 폴백 플래그 `:1135`·`:1148`) · `bridge-config.ts`(`hookSensor` 옵트인 **기본 off**) · `host/src/index.ts` barrel · VERSION **0.26.0**(cli `index.ts:144` + mcp `stdio.ts:403`)
 > - **브리프/디스패치(untracked):** `.loom-impl-0260-brief.md` · `.loom-verify-0260-brief.md` · `.loom-dispatch-{impl,fix,verify}-0260.ts` · `.loom-dispatch-fix-0260.ts`(D6b)
 >
 > ### 다음 액션 (우선순위)
-> 1. **⭐ ship 커밋 (이번 세션 수행 중)** — `build:cli` → **소스+문서 커밋 → dist 커밋 → push**(dist는 분류기 차단 시 오너 `!`, lessons platform (15)⑤). PLAN Implemented 블록 `<이번 ship 커밋>` 자리에 sha 확정. *(D6 핫픽스·`Implemented` 블록·문서 동기 = 완료)*
-> 2. **(선택) 라이브 스모크** — `hookSensor: true` 노드에서 승인 대기 카드 → `permission_prompt` hookHint 실발화·가짜 `agent_blocked` 1:1 교정·`Stop` 유예 입력 실발화 empirically(**U2 `--settings` 인라인 JSON 주입 실작동 방식 확정 포함** · benign 페이로드).
-> 3. **잔존 Low들** — claude 상태줄 chrome · summary 정보성 타이밍줄 · orphan durable 룸 정리 · 동시 디스패치 풀 탭 레이스 등(아래 다음 액션 1·1-b 참조).
+> 1. **(선택) 라이브 스모크** — `hookSensor: true` 노드에서 승인 대기 카드 → `permission_prompt` hookHint 실발화·가짜 `agent_blocked` 1:1 교정·`Stop` 유예 입력 실발화 empirically(**U2 `--settings` 인라인 JSON 주입 실작동 방식 확정 포함** · benign 페이로드). PLAN Implemented 블록에 유예 명기됨.
+> 2. **잔존 Low들** — claude 상태줄 chrome · summary 정보성 타이밍줄 · orphan durable 룸 정리 · 동시 디스패치 풀 탭 레이스 등(아래 다음 액션 1·1-b 참조).
 >
 > ### suite-0260b 571/0 상세 (재조사 금지 — 차집합 0 확정)
 > FIX-0260b 후 아키텍트 독립 전체 스위트 = **571 pass / 0 fail**. 기준 집합의 유일 플레이크 `conv (multiturn) > R28 L-1: stale marker re-detect same sha → no dup; changed sha → re-emit`(`conv.test.ts:973` `third?.status` Expected `"turn"` Received `undefined`, ~22s)는 **이번 런에서 미재현**(타이밍성 플레이크 — suite-0260에서는 559/1로 관측, HEAD `5e893dc` 단독 재실행에서도 동일 fail이었어 0.26.0 회귀 아님으로 확정된 바 있음). 차집합 0 유지. 후속 Low 후보(플레이크/타이밍)로만 등재.
@@ -57,10 +57,10 @@
 > §5.2 32k artifact 트리거 전제 재검토 종결. 워커 TUI 3종 스크레이프 상한 라이브 실측(claude ~5.3k·grok ~2.2k·codex ~1.4k — 소스·줄수 무관 포화). **결론**: 정답 경로 = **워커 직접 파일 쓰기**(§5.1로 이미 shipped·179KB 실증) / herdr 심층 스크롤백 = CLI 표면 부재 / 32k 임계 하향 = 접힌 스크레이프라 기각 → **§5.2 32k 분기는 방어적 잔존(삭제 아님)**. ⑪(capable 워커 benign 페이로드)은 §5.2 목적으론 무의미(선택적 잔존). 워커 모델별 거동·상세는 docs/HANDOFF_ARCHIVE.md.
 >
 > ### 다음 액션 (우선순위 순)
-> 0. **⭐ v0.26.0 ship 웨이브** — 위 Current action 표 참조. 구현·검증·D6 핫픽스(FIX-0260b)·`Implemented` 블록·문서 동기 = 완료. **남은 게이트 = 소스+문서 커밋 → dist → push(이번 세션 수행 중).** 구현 본문·R41 M-1·M-2 재론 금지.
+> 0. ~~**v0.26.0 ship 웨이브**~~ — **완결.** 소스 `0de6c4c` · dist `e1d9177` · push `origin/main = e1d9177`. 구현·검증·D6 핫픽스(FIX-0260b)·`Implemented` 블록·문서 동기·커밋·push 전부 완료. 구현 본문·R41 M-1·M-2 재론 금지.
 > 0-a. **npm publish 보류 (오너 결정 2026-07-19)** — 재조사 금지. 재개 시 계정·`loom-terminal`/`@lemonbalms/loom` 선택 후 login→meta→publish. |
 > 0-b. ~~PLAN 0.23.12~~ → 완주. 잔존 Low: 위상-인지 균등화 · sonnet claude-mem 스모크 루프.
-> 0-c. **멀티노드 단계 3** — ⓪~④·ⓐ·ⓑ·**부팅 생존 상시화** 완료. **현재 = 0.26.0 hooks 구현 ship 중**. 잔여 유예: 브릿지 자동 git push(R26:431)·orphan durable 룸 정리·summary 하단 상태줄 스크레이프·WSL non-root 전환(선택).
+> 0-c. **멀티노드 단계 3** — ⓪~④·ⓐ·ⓑ·**부팅 생존 상시화** 완료. **0.26.0 hooks 구현 ship 완결**(소스 `0de6c4c` · dist `e1d9177`). 잔여 유예: 브릿지 자동 git push(R26:431)·orphan durable 룸 정리·summary 하단 상태줄 스크레이프·WSL non-root 전환(선택).
 > 1. **잔여 PATCH 후보**: ~~② done_proposal 탐지~~·~~③ conv.open deny 클레임~~·~~⑧ 브릿지 pane 배치~~(0.23.9 `201e2db`+`5f8bf12`) · ~~⑥ close 시 pane 정리~~·~~⑦ conv-hosts CLI~~(0.23.8 `93c6283`) · ~~④ agentKind 확장~~(0.23.2 `91bee75` 기해소 스테일) → **전부 해소**. 잔존: **claude 상태줄 chrome**(`Fable 5 ⚡high 🧠 │ …` — summary·보드 노트 유입 2회 실증, 콘텐츠-포함 줄이라 0.23.8 필터 미커버·grok 상태줄 해소 선례 동형) · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low) · 동시 디스패치 풀 탭 레이스(workerPool 인메모리 경합·무침입 유지라 무해·Low) · sleep형 페이로드 still-running 유예 상한 소진(pane 수동 정리·Low). (⑩ 조사 종결·⑪ 선택적 잔존 — 위 참조.)
 > 1-b. **신규 후보**: ~~settle card 경로 이식~~(0.23.7 `1160b38`) · ~~dist 드리프트 가드~~(`eb05310`) · ~~카드 summary chrome 미커버 2종~~(0.23.8) → **해소**. 잔여: conv 턴 조기 회신(~7–10s) 관찰 지속 · summary 정보성 타이밍줄("Worked for Ns.") 개선 여지(Low, 결함 아님).
 > 2-b. **경쟁 분석발 후보(`docs/COMPETITIVE_NOTES.md` §1.3)**: ~~B bunx 온보딩~~ · ~~C 이미지 README~~ → **완료(2026-07-19 카드 웨이브)**. 잔여: A `scripts/pane-inject.sh`(수동 pane 레인 read-guard 원자화, R-gate 불요) · npm publish는 오너 결정(0-a).
@@ -81,7 +81,7 @@
 
 ## One-line resume
 
-> **🎯 v0.26.0 hooks 보조 센서 — 구현·검증·D6 핫픽스 완주, ship 커밋 단계 (2026-07-20).** R41 author-close `approved` → IMPL-0260(미커밋) → FIX-0260(유닛 22/22) → **VERIFY-0260 codex pane 11/12**(유일 FAIL = D6(b) 정상 폴백 계측) → **FIX-0260b** D6(b) 해소(grok pane `task_62b7d8c…` · 유닛 33/33) → **suite-0260b 571/0 · 차집합 0**(R28 L-1 플레이크 이번 런 미재현) · typecheck 6/6. **PLAN `Implemented` 블록 기재 완료 → 다음 = 소스+문서 커밋 → dist → push.** 신설 `hook-sensor.ts`(+test) · `hookSensor` 옵트인 기본 off · VERSION 0.26.0 워크트리. **직전 완주 = 노드 부팅 생존 상시화**(트랙 종료) · v0.25.0 `conv_fetch` · hooks 스파이크 `0b534a6`.
+> **🎯 v0.26.0 hooks 보조 센서 — ship 완결 (2026-07-20).** R41 author-close `approved` → IMPL-0260 → FIX-0260(유닛 22/22) → **VERIFY-0260 codex pane 11/12**(유일 FAIL = D6(b) 정상 폴백 계측) → **FIX-0260b** D6(b) 해소(grok pane `task_62b7d8c…` · 유닛 33/33) → **suite-0260b 571/0 · 차집합 0**(R28 L-1 플레이크 이번 런 미재현) · typecheck 6/6 → **소스 `0de6c4c`**(10파일 +1466/-59) · **dist `e1d9177`** · **push `origin/main = e1d9177`.** PLAN `Implemented` 블록 sha 확정. 신설 `hook-sensor.ts`(+test) · `hookSensor` 옵트인 기본 off · VERSION 0.26.0. **직전 완주 = 노드 부팅 생존 상시화**(트랙 종료) · v0.25.0 `conv_fetch` · hooks 스파이크 `0b534a6`.
 
 ---
 
@@ -89,16 +89,16 @@
 
 | Item | Value |
 |------|--------|
-| **CLI / code** | **0.26.0 WIP (미커밋 — ship 커밋 대기)** — **hooks 보조 센서**(claude 워커 상태 힌트): `hook-sensor.ts` 브릿지-로컬 0600 attempt(seq)-스코프 소켓 + `--settings` 주입 + `flight.hookHint` 우선 분기(완료 힌트 only·자동 close/approve 없음·fail-open) + D6 폴백 계측(FIX-0260b: finishCard 단일 초크포인트) · `hookSensor` 옵트인 기본 off · VERSION 0.26.0(cli+mcp). **직전 shipped 0.25.0** `conv_fetch`(`b343ada`+dist `3e77409`) + Windows persist `sep` + relay durable 배선 + 단독 모드 + chrome/pane/still-running 계열 |
-| **PLAN** | **v0.26.0** `approved` (R41 author-close, M-1·M-2 lock + L-1..L-3, no R41b) → **구현·검증·D6 핫픽스 완주 · `Implemented` 블록 기재 완료 · dist·커밋 미실시**. verify-0260 codex 11/12 → FIX-0260b 후 완결. 직전: **v0.25.0** implemented `b343ada` · R40 · D10 라이브 스모크 완주 |
+| **CLI / code** | **0.26.0 shipped** (소스 `0de6c4c` · dist `e1d9177` · push 완료) — **hooks 보조 센서**(claude 워커 상태 힌트): `hook-sensor.ts` 브릿지-로컬 0600 attempt(seq)-스코프 소켓 + `--settings` 주입 + `flight.hookHint` 우선 분기(완료 힌트 only·자동 close/approve 없음·fail-open) + D6 폴백 계측(FIX-0260b: finishCard 단일 초크포인트) · `hookSensor` 옵트인 기본 off · VERSION 0.26.0(cli+mcp). **직전 shipped 0.25.0** `conv_fetch`(`b343ada`+dist `3e77409`) + Windows persist `sep` + relay durable 배선 + 단독 모드 + chrome/pane/still-running 계열 |
+| **PLAN** | **v0.26.0** `approved` (R41 author-close, M-1·M-2 lock + L-1..L-3, no R41b) → **구현·검증·D6 핫픽스·`Implemented` 블록·커밋·dist·push 전부 완료**(소스 `0de6c4c` · dist `e1d9177`). verify-0260 codex 11/12 → FIX-0260b 후 완결. 직전: **v0.25.0** implemented `b343ada` · R40 · D10 라이브 스모크 완주 |
 | **Open blocking** | none — R24–R41 모두 closed · GitHub Issues 전부 closed |
 | **Tests** | suite-0260b **571 pass / 0 fail** · **차집합 0 vs HEAD**(기준 R28 L-1 stale marker 플레이크 이번 런 미재현) · hook-sensor **33/33**(신규 11) · typecheck **6/6** |
 | **Verify** | **VERIFY-0260** codex pane `task_57a57dd474d5cf28` done — M-1·M-2·L-1..L-3 PASS · wire-lock PASS · **D6(b) 정상 폴백 계측만 FAIL → FIX-0260b**(grok pane `task_62b7d8c…`)로 해소, 락-인접 diff 검수 통과 |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · **Conv spec: `docs/CONV_SPEC.md`** · hooks 정본 `docs/spikes/HOOKS-SENSOR-SPIKE.md` |
 | **Nodes** | mac-node · Windows relay(durable) · **WSL node-wsl-1**(부팅 생존 systemd+Task) · **VPS node-vps-1 / kb**(`@reboot` crontab) — loom-dev `LOOM-GT4B` |
 | **Boot persist** | **트랙 종료(2026-07-20, 오너 옵션 B)** — 상세 lessons platform (17) · 팩 `.loom-boot-persist-pack.md` |
-| **Remote** | `origin/main` **`5e893dc`**(docs R41 종결·lessons 등, HEAD=origin). **⚠️ 0.26.0 구현·FIX-0260b·PLAN Implemented·문서 동기 전체 미커밋** — ship 웨이브에서 소스+문서→dist→push |
-| **Spikes** | hooks 센서 `0b534a6` → **0.26.0 구현 중** · DISPATCH-DEMO · STEP0/0.5 |
+| **Remote** | `origin/main` **`e1d9177`**(v0.26.0 dist, HEAD=origin) — 소스 `0de6c4c` + dist `e1d9177` push 완료. 이 docs 커밋은 다음 push에 편승 |
+| **Spikes** | hooks 센서 `0b534a6` → **0.26.0 shipped** (`0de6c4c`) · DISPATCH-DEMO · STEP0/0.5 |
 | **Untracked (커밋 제외)** | `hook-sensor.ts`(+test) · `.loom-*-0260*` 브리프/디스패치 · `.playwright-mcp/` · `docs/ANALYSIS_NOTES_2026-07-19.md` 등 |
 
 ### Access cheat-sheet

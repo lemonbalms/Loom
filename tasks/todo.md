@@ -1,10 +1,9 @@
 # Todo — Loom
 
-## Next (0.26.0 ship)
+## Next
 
-1. [ ] **⭐ ship 커밋 (이번 세션)** — `build:cli` · 소스+문서 커밋 → dist 커밋 → push · PLAN Implemented sha 확정
-2. [ ] (선택) 라이브 스모크 — `hookSensor: true` + 승인 대기 카드(U2 `--settings` 실작동 확정)
-3. [ ] 잔존 Low들 — 상태줄 chrome · summary 타이밍줄 · orphan durable 룸 정리 등
+1. [ ] (선택) 라이브 스모크 — `hookSensor: true` + 승인 대기 카드(U2 `--settings` 실작동 확정)
+2. [ ] 잔존 Low들 — 상태줄 chrome · summary 타이밍줄 · orphan durable 룸 정리 등
 
 ## Done (recent)
 
@@ -15,6 +14,7 @@
 - [x] **FIX-0260b — D6(b) 해소** (grok pane `task_62b7d8c…` · 순수 함수 export + finishCard 단일 초크포인트 + Flight 3필드) · 유닛 33/33
 - [x] suite-0260b 571/0 · 차집합 0 vs HEAD (R28 L-1 플레이크 미재현)
 - [x] PLAN §0.26.0 `Implemented as of …` 블록 + HANDOFF · todo 동기
+- [x] **v0.26.0 ship 커밋** — 소스 `0de6c4c`(10파일 +1466/-59) · dist `e1d9177`(dist-guard ok, 오너 `!`) · push `origin/main = e1d9177`
 - [x] 노드 부팅 생존 상시화 트랙 종료
 - [x] v0.25.0 conv_fetch R40 + D10 라이브 스모크
 
