@@ -20,6 +20,7 @@
     "shell": "shellcheck scripts/*.sh",
     "loom": "bun run packages/cli/src/index.ts",
     "status": "bun run scripts/session-status.ts",
+    "handoff:lint": "bun run scripts/session-status.ts --lint",
     "link:loom": "bash scripts/link-loom.sh",
     "unlink:loom": "bash scripts/unlink-loom.sh",
     "desktop": "cd apps/desktop && bunx tauri dev",

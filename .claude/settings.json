@@ -10,6 +10,23 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/scripts/session-context.ts\" --part state",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/scripts/session-context.ts\" --part lessons",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

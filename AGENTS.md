@@ -10,6 +10,13 @@
 
 On the **first turn of a new session** (or when the user says “이어서”, “진행해”, “핸드오프”, “상태”, “status”), **before** large implementation:
 
+컨텍스트에 `[LOOM-SESSION-CONTEXT` 센티널이 보이면 아래 표의 ①status·②HANDOFF·
+③lessons 인덱스 읽기는 **주입으로 대체됨 — 생략**한다(카테고리 lessons 로드·WORKFLOW
+grep은 종전대로). 센티널이 없으면(훅 실패·Codex CLI 등 무훅 환경) 아래 v2 표 전체가 정본.
+
+아키텍트 세션 bootstrap 주입(SessionStart stdout 주입)과 브릿지 워커 hook-sensor
+(stdout 비움·소켓 송신)는 **반대 규약** — 혼동 금지.
+
 ### 1) Read — **v2 부분-읽기 관례 (오너 승인 2026-07-19: "덜 읽기"가 정답)**
 
 먼저 실행 (LLM 0원 결정론 파서 — 상태표의 SSOT):
