@@ -7262,6 +7262,14 @@ async function notifyInjectAccepted(handoff, from, opts) {
     socket.on("error", () => done({ ok: false, reason: connected ? "bad_ack" : "no_listener" }));
   });
 }
+// packages/host/src/hook-sensor.ts
+init_session_store();
+var HOOK_HINT_KINDS = new Set([
+  "Stop",
+  "permission_prompt",
+  "idle_prompt",
+  "UserPromptSubmit"
+]);
 // packages/host/src/pty-spike.ts
 var {spawn } = globalThis.Bun;
 var SAMPLE_HANDOFF = {
@@ -9465,7 +9473,8 @@ function defaultBridgeConfig() {
     agentArgv: { ...DEFAULT_AGENT_ARGV },
     herdrProtocol: 16,
     paneCleanup: "auto",
-    panePlacement: "pool"
+    panePlacement: "pool",
+    hookSensor: false
   };
 }
 function sanitizePaneCleanup(raw) {
@@ -9479,6 +9488,9 @@ function sanitizePaneWorkspaceId(raw) {
     return;
   const t = raw.trim();
   return t.length > 0 ? t : undefined;
+}
+function sanitizeHookSensor(raw) {
+  return raw === true;
 }
 function sanitizeAgentArgv(raw) {
   if (!raw || typeof raw !== "object")
@@ -9509,7 +9521,8 @@ function loadBridgeConfig(profile) {
       herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol,
       paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
       panePlacement: sanitizePanePlacement(raw.panePlacement),
-      paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId)
+      paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),
+      hookSensor: sanitizeHookSensor(raw.hookSensor)
     };
   } catch {
     return base;
@@ -10649,7 +10662,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.25.0";
+var VERSION = "0.26.0";
 function eprint(msg) {
   try {
     writeSync(2, msg);
