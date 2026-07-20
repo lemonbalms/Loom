@@ -5,8 +5,8 @@
 
 | 항목 | 값 |
 |------|-----|
-| **인덱스 생성 시점** | 2026-07-11 18:44 KST |
-| **기준 커밋(HEAD)** | `0ad1f66` — docs(dogfood): pin lane versions + disambiguate |
+| **인덱스 생성 시점** | 2026-07-21 (부분 갱신: lifecycle hooks 설계 팩 · USER_GUIDE §12) |
+| **기준 커밋(HEAD)** | `48cd95e` — docs(spikes): agent CLI lifecycle hooks 설계 입력 팩 |
 | **최신성 기준** | "최종 업데이트" = 해당 파일의 **git 마지막 커밋 author-date**. 미추적 파일은 `mtime`으로 표기하고 ⚠️ 표시 |
 | **활동량 읽는 법** | 커밋 수 = 문서의 변경 빈도. 많을수록 살아있는 SSOT, 적을수록 1회성 산출물/배경자료 |
 
@@ -41,20 +41,35 @@
 |------|------|:---:|:---:|
 | `README.md` | 프로젝트 개요 (제품명 = Loom, name: `loom`) | 2026-07-10 | 27 |
 | `docs/PITCH.md` | 제품 피치 — "connect your agents, and your teammates" | 2026-07-10 | 3 |
-| `docs/USER_GUIDE.md` | 사용자 가이드 — 사용 사례로 배우기 | 2026-07-10 | 8 |
+| `docs/USER_GUIDE.md` | 사용자 가이드 — 사용 사례로 배우기 (**§12** 오케스트레이터 CLI 전환·bridge 복구) | 2026-07-20 | 10 |
 | `docs/TEST_PLAN.md` | 테스트 계획 — 사용 사례별 (도그푸드 시나리오 근거) | 2026-07-10 | 10 |
 
 ## Tier 4 — 아키텍처 · 프로토콜 (기능 구현 시)
 
 | 파일 | 요약 | 최종 업데이트 | 커밋 |
 |------|------|:---:|:---:|
-| `docs/ARCHITECTURE.md` | 패키지 구조·데이터 플로우·Sticky Host IPC | 2026-07-10 | 4 |
+| `docs/ARCHITECTURE.md` | 패키지 구조·데이터 플로우·Sticky Host IPC · **Worker observation (hooks+scrape)** | 2026-07-21 | 5 |
 | `docs/PROTOCOL.md` | 통신 프로토콜 정의 | 2026-07-09 | 2 |
 | `docs/ADAPTERS.md` | 어댑터 계층 (에이전트 연결) | 2026-07-09 | 2 |
+| `docs/HERDR_DESIGN.md` | herdr 브릿지 설계 (카드 디스패치·pane 관제) | 2026-07-20 | 7 |
+| `docs/CONV_SPEC.md` | 크로스머신 멀티턴 conv 스펙 | 2026-07-20 | 3 |
+| `docs/COMPETITIVE_NOTES.md` | 경쟁 분석 · **§2.5 hooks vs 스크레이프 결정** · 멀티벤더 로드맵 5b | 2026-07-21 | 7 |
 | `implementation-notes.md` | 계획 대비 구현 편차 로그 | 2026-07-09 | 11 |
 | `apps/desktop/README.md` | 데스크톱 앱 (`apps/desktop`) | 2026-07-10 | 4 |
 | `apps/relay-cloud/README.md` | Fable relay (remote/cloud) | 2026-07-09 | 1 |
-| `docs/spikes/PHASE-1.5-PTY.md` | PTY / stdin inject 스파이크 | 2026-07-09 | 1 |
+
+### Tier 4b — 스파이크 · 설계 입력 팩 (`docs/spikes/`)
+
+| 파일 | 요약 | 최종 업데이트 | 커밋 |
+|------|------|:---:|:---:|
+| **`docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md`** | **설계 입력 팩.** CLI 종료·응답 공식 캐치 매트릭스 (Claude/Codex/**Grok 오픈소스 hooks**/OpenCode/Kimi/Pi · herdr 14종) · 어댑터 초안 D1–D8 | 2026-07-21 | 1 |
+| `docs/spikes/HOOKS-SENSOR-SPIKE.md` | Claude hooks 보조 센서 스파이크 (0.26 선행 · 최소 배선 5단계) | 2026-07-21 | 3 |
+| `docs/spikes/HOOK-CACHE-FIX-DESIGN.md` | hook 캐시 고정 설계 (웜베이스 후속) | 2026-07-20 | 2 |
+| `docs/spikes/WARM-BASE-FORK-SPIKE.md` | 웜베이스 포크 스파이크 | 2026-07-20 | 1 |
+| `docs/spikes/PANE-DEATH-DESIGN.md` | pane 사망 관측·종료 펜스 설계 | 2026-07-21 | 6 |
+| `docs/spikes/PANE-DEATH-OBSERVATIONS.md` | pane 사망 라이브 관측 기록 | (동 계열) | — |
+| `docs/spikes/PHASE-1.5-PTY.md` | PTY / stdin inject 스파이크 (no-go 계열) | 2026-07-09 | 1 |
+| `docs/spikes/STEP0.5-HERDR.md` | herdr v0.7.4 실측 fixture | (동 계열) | — |
 
 ## Tier 5 — 메타 · 조사 · 배경 (필요 시 참고)
 
@@ -95,5 +110,12 @@
 3. `docs/UNKNOWNS.md` → 미결 리스크
 4. `docs/TEST_PLAN.md` + `docs/USER_GUIDE.md` → 실제 사용 시나리오(=도그푸드 대상)
 5. `docs/DOGFOOD_LOOP.md` → 어떤 레인·규율로 개발할지
+
+### hooks / 워커 관측 설계 시
+
+1. `docs/COMPETITIVE_NOTES.md` **§2.5** — 스크레이프 교체 금지 결정
+2. `docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md` — **멀티벤더 매트릭스 · 어댑터 초안** (설계 입력)
+3. `docs/spikes/HOOKS-SENSOR-SPIKE.md` — Claude 선행 배선 5단계
+4. `docs/ARCHITECTURE.md` — Worker observation 절
 
 > **유지관리:** 이 인덱스는 수기 스냅샷이다. 큰 문서 추가/삭제 시 갱신하고, "인덱스 생성 시점"과 HEAD를 함께 바꾼다. 날짜는 `git log -1 --format=%cs -- <파일>`로 재생성 가능.
