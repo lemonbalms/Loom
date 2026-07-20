@@ -20,7 +20,10 @@
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH codex 3차 검증 디스패치** — 통합 패스 **D1~D10 적용 완료**(`PANE-DEATH-DESIGN.md` 669→818줄, 락 10개). 검증 레인 = **codex**(편집은 opus — 분리 성립). **검증 초점 4**: ① D3 **9개 지점** 전이표 정합(2차 High 지점) ② D8 개명(`result_committed`→`result_relay_accepted`) 참조처 누락 ③ D7 cadence 수치 = **아키텍트 제안**(실측 아님 — 타당성 판정 요) ④ 신설 **락 10**이 213을 실제로 막는지. 적용 내역(펼쳐보기).
+0. **⭐ PANE-DEATH 불변식-유도 재작성 (접근 전환)** — 3차 **reject/ready=no**(High 2·Medium 4 → `docs/reviews/PANEDEATH-CODEX-REVIEW3.md`). **fable-advisor: 3연속 reject = 접근 전환 신호.** "지적→축자 반영→새 모순"은 락들이 **공유 불변식 없이 개별 패치로 누적**된 탓 — **축자 반영을 중단**하고 아래 불변식을 정본으로 세운 뒤 **락 3·5·8·9를 유도해 재작성**한다. 리뷰 대상도 "10개 문안"이 아니라 **"불변식 1개 + 유도"**로 제시하면 모순 생성 경로가 닫힌다.
+   > **불변식:** 불확실한 관측은 **회복 가능한 행동만** 유발한다. 비가역 행동(result 발행·`pane.close`·dispose)은 **결정적 증거 또는 멱등 경로에서만**.
+
+   필수 메커니즘 = **`commit_unknown` 분리**(`send_unknown` ↔ `presence_unknown`). 3차 원장·자기 결함 2건·복구 조건(펼쳐보기).
 
 1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 통합 테스트 실패(단독은 6/6 green). 변경과 무관 확정. **방치 시 모든 웨이브의 green 판정이 흐려진다**(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
@@ -29,9 +32,11 @@
 <details>
 <summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
 
-- (0) D1 `generation` 정의(매 `agent.start` 불투명 token)+`:179` 동명이의 "subscription generation" 개칭 · D2 `commit_unknown` phase union 편입 + `terminalPending` 필드 신설 · D3 전이표 통합 9지점 · D4 "로컬 발행 1회"(local single-issue) 어휘를 wire exactly-once와 분리 · D5 락 5·9 권위 정리(메커니즘 정본=락 5) · D6 **락 10 신설**(start evidence + activity fence) · D7 cadence 수치(+1s·5s·3s·연속2·최대12회·`commit_unknown` 10분) · D8 ACK 경계 명문화 + phase 개명(fable-advisor 판정 A — "경계는 산문이 아니라 이름에") · D9 status advisory(관측이지 계약 아님 → 락 승격 안 함) · D10 락 1 굽은 인용부호 복원.
+- (0) **`commit_unknown` 분리 근거**: 두 unknown은 안전 속성이 정반대다. `send_unknown`(전송했으나 ACK 불확실) = 멱등성 없이 재발행 금지, 출구는 relay idempotency PATCH 또는 운영자. `presence_unknown`(result를 구성한 적 없음) = **한 번도 보낸 적 없어 늦게 단일 result를 내도 local single-issue 불변** → 안전한 자동 출구 존재. **복구의 최소 조건 = `doing` 소유자(타워)에게 도달하는 신호** — 현 출구(10분 뒤 dispose+log)는 브릿지 로컬 관측만 지우고 타워 `doing`은 그대로라 복구가 아니다. cadence 수치는 불변식이 서면 **정확성 하중 없는 순수 튜닝 파라미터**가 된다(실측 실험 부활 불요 — 실측은 분포를 줄 뿐 상한을 주지 않는다).
+- (0) **3차 원장**(전문 = `docs/reviews/PANEDEATH-CODEX-REVIEW3.md`): CLOSED 2 = F2 `generation` · F7 ACK 경계(D8 개명 통과, 스테일 0건). PARTIAL 2 = F5·F8. NOT CLOSED 4 = **F1**(`:49`·`:521`이 여전히 pre-ACK→failed 명령) · F3 · F4(락 1 `:650` ↔ 락 3 `:666` 반대 분류) · F6.
+- (0) **아키텍트 자기 결함 2건**: ① High-2는 아키텍트 산출 — D7 cadence 표가 `present`의 **카운터 리셋 미규정**이라, 문자 그대로면 60초 넘게 정상인 flight가 `commit_unknown`으로 떨어져 완료 경로가 소멸. ② F1 미닫힘 근인 = **증거 팩 스캔 범위를 §5~§8로 좁힌 것**(`:49` 요약 표가 밖에 남음). **범위 축소 3회차 재범** — 다음 재작성은 **문서 전역** 대상.
 
-- (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 부하 기아만이 원인은 아님. 회귀 아님 근거 = `conv.test.ts` 베이스라인 3회·변경분 3회 모두 16 pass/0 fail(57.7s 동일) · 변경 파일을 import/read 하는 테스트 0건. 남은 가설 = 스위트 내 동시 실행 시 포트/소켓·타이밍 경합.
+- (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 기아만이 원인 아님. 회귀 아님 근거 = 베이스라인·변경분 각 3회 16 pass/0 fail 동일 · 변경 파일 import 테스트 0건. 남은 가설 = 포트/소켓·타이밍 경합.
 - (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
 - (2) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 
@@ -56,7 +61,7 @@
 
 ### 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)
 
-- **dispatch wrap 마커** = `▶ Loom dispatched task — …`, 검증 주장은 **디스패처 발신자 국한**(R42) · M-1 allowlist엔 **전체 peer ID**(`loom peers`는 절단 표시) · 디스패처 신원 `claude-impl`.
+- **dispatch wrap 마커** = `▶ Loom dispatched task — …`, 검증 주장은 **디스패처 발신자 국한**(R42) · M-1 allowlist엔 **전체 peer ID** · 디스패처 신원 `claude-impl`.
 - `bun test`는 `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`로(미제거 시 relay 테스트 깨짐). 워커 스위트와 **동시 실행 금지**(기아로 위양성).
 - **`card.done` ≠ 완료 · claim까지 해야 카드가 닫힌다**(미회수 시 보드 `doing`·pane 잔존). 산출물은 **워킹트리 독립 검증** — 회신도 못 믿는다(성공→`failed agent_blocked` · 산출물 0건→`done` 실증). 종료 코드로 실패 판정 금지. `PaneDied unknown pane`=herdr 내부 경고.
 - **워커 감시 = `watch-card.ts`**(marker 0/pane-gone 1/limit 2/timeout 3) · **`--pane` 필수** · **파이프 금지**(종료 코드 삼킴).
@@ -74,7 +79,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH 설계 통합 패스 완료(D1~D10) — codex 3차 검증 대기** (2026-07-21). 조건은 5건이 아니라 **10건**이었다(핸드오프 전사 누락 3 + 신규 발견 2). **다음 = codex 3차 검증** → 통과 시 구현 게이트 → D-VERIFY → RULE-ENFORCEABILITY.
+> **🎯 PANE-DEATH 3차 검증 reject/ready=no — 접근 전환 확정** (2026-07-21). 통합 패스 D1~D10 적용했으나 3연속 reject. **fable-advisor: 축자 반영을 중단하고 불변식 1개에서 락을 유도하라.** **다음 = 불변식-유도 재작성** → 4차 검증 → 구현 게이트 → D-VERIFY → RULE-ENFORCEABILITY.
 
 ---
 
