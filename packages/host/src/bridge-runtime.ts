@@ -90,6 +90,18 @@ import {
 } from "./bridge-meta";
 import { timingSafeTokenEqual } from "@loom/protocol";
 import { getActiveProfile } from "./session-store";
+import {
+  appendHookSettingsArgv,
+  appendHookTelemetry,
+  clearHookHintOnWorking,
+  hookSocketPath,
+  maybeAppendCompletionFallback,
+  shouldCorrectCompletionToBlocked,
+  startHookListener,
+  stopAllowsStillRunningMaxBypass,
+  type HookHint,
+  type HookListener,
+} from "./hook-sensor";
 
 export type BridgeRuntime = {
   meta: BridgeMeta;
@@ -364,6 +376,22 @@ type Flight = {
   stillRunningPollTimer?: ReturnType<typeof setTimeout>;
   /** Date.now() when deferral polling began (first indicator hit). */
   stillRunningStartedAt?: number;
+  /**
+   * PLAN 0.26.0 M-2 ①: single-slot last-event-wins hook hint (no payload body).
+   * Cleared on herdr working re-entry (M-2 ②). Hint-only — never auto close.
+   */
+  hookHint?: HookHint;
+  /** PLAN 0.26.0 D4: attempt-scoped socket listener; closed on flight teardown. */
+  hookListener?: HookListener;
+  /** PLAN 0.26.0 D6(b): hookSensor active (cfg.hookSensor && agentKind claude). */
+  hookSensorActive?: boolean;
+  /**
+   * D6(b): whether startHookListener succeeded at spawn.
+   * Preserved after dispose — do not use hookListener truthiness (cleared before finishCard).
+   */
+  hookListenerEstablished?: boolean;
+  /** D6(b): fallback telemetry already recorded (exactly-once across spawn + done). */
+  hookFallbackRecorded?: boolean;
 };
 
 /**
@@ -1044,7 +1072,7 @@ export async function startBridgeRuntime(opts?: {
     dispatchHandoffId: string;
   }): Promise<void> {
     const { payload, fromPeerId, dispatchHandoffId } = args;
-    const argv = resolveAgentArgv(cfg, payload.agentKind);
+    let argv = resolveAgentArgv(cfg, payload.agentKind);
     if (!argv) {
       await sendFailedResult({
         cardId: payload.cardId,
@@ -1063,15 +1091,79 @@ export async function startBridgeRuntime(opts?: {
     const seq = (cardSeq.get(payload.cardId) ?? 0) + 1;
     cardSeq.set(payload.cardId, seq);
 
+    // PLAN 0.26.0 D2/D4: opt-in claude hook sensor — attempt-scoped socket
+    // listener + --settings inject. Fail-open if bind fails (D5).
+    let pendingHookListener: HookListener | undefined;
+    let flightRef: Flight | null = null;
+    // D6(b): locals captured before flight creation; carried onto Flight.
+    let hookSensorActive = false;
+    let hookListenerEstablished = false;
+    let hookFallbackRecorded = false;
+    if (cfg.hookSensor === true && payload.agentKind === "claude") {
+      hookSensorActive = true;
+      const sockPath = hookSocketPath(payload.cardId, seq);
+      const started = await startHookListener({
+        socketPath: sockPath,
+        onEvent: (hint) => {
+          const f = flightRef;
+          // M-1 ③ late event: drop if flight gone or superseded
+          if (!f || flights.get(f.paneId) !== f) return;
+          f.hookHint = hint;
+          appendHookTelemetry({ type: "hook_hint", kind: hint.kind });
+          if (hint.kind === "permission_prompt") {
+            appendHookTelemetry({
+              type: "permission_prompt",
+              kind: hint.kind,
+            });
+          }
+          // M-2 ④ Stop → accelerate still-running poll (input only)
+          if (
+            hint.kind === "Stop" &&
+            f.stillRunningDeferral &&
+            f.paneId
+          ) {
+            scheduleStillRunningPoll(f, f.paneId, /* immediate */ 0);
+          }
+        },
+        onMalformed: () => {
+          /* silent ignore + optional counter via fallback class */
+          appendHookTelemetry({
+            type: "fallback",
+            reason: "malformed_payload",
+          });
+          // D6(b) exactly-once: spawn/runtime malformed blocks done re-append
+          if (flightRef) flightRef.hookFallbackRecorded = true;
+        },
+      });
+      hookListenerEstablished = started.ok;
+      if (started.ok) {
+        pendingHookListener = started.listener;
+        argv = appendHookSettingsArgv(argv, sockPath);
+      } else {
+        appendHookTelemetry({
+          type: "fallback",
+          reason: started.reason,
+        });
+        // D6(b) exactly-once: spawn bind/path fallback already counted
+        hookFallbackRecorded = true;
+      }
+    }
+
     let agent: HerdrAgentStarted;
     try {
       agent = await spawnWorkerAgent({
         name: `loom-${payload.cardId.slice(0, 20)}-${seq}`,
         argv,
-        env: { LOOM_CARD: payload.cardId },
+        env: {
+          LOOM_CARD: payload.cardId,
+          ...(pendingHookListener
+            ? { LOOM_HOOK_SOCK: pendingHookListener.socketPath }
+            : {}),
+        },
         cwd: payload.cwd,
       });
     } catch (e) {
+      pendingHookListener?.close();
       await sendFailedResult({
         cardId: payload.cardId,
         fromPeerId,
@@ -1091,7 +1183,16 @@ export async function startBridgeRuntime(opts?: {
       seq,
       startedAt,
       sawWorking: false,
+      hookListener: pendingHookListener,
+      ...(hookSensorActive
+        ? {
+            hookSensorActive: true,
+            hookListenerEstablished,
+            hookFallbackRecorded,
+          }
+        : {}),
     };
+    flightRef = flight;
     flights.set(agent.pane_id, flight);
 
     // PLAN 0.23.4: per-pane status only — pane.closed is global at startup.
@@ -1103,7 +1204,7 @@ export async function startBridgeRuntime(opts?: {
       // Fail-visible: no blind progress without event delivery (M-1 rollback
       // on the client covers the failed subscription entry — no prune here).
       log("events.subscribe failed:", e);
-      flights.delete(agent.pane_id);
+      disposeCardFlight(agent.pane_id, flight);
       await sendFailedResult({
         cardId: payload.cardId,
         fromPeerId,
@@ -1127,7 +1228,7 @@ export async function startBridgeRuntime(opts?: {
       prompt = wrapUntrustedPrompt(payload.prompt);
       await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
     } catch (e) {
-      flights.delete(agent.pane_id);
+      disposeCardFlight(agent.pane_id, flight);
       herdr.eventsPrune(agent.pane_id);
       await sendFailedResult({
         cardId: payload.cardId,
@@ -1766,9 +1867,9 @@ export async function startBridgeRuntime(opts?: {
       log(`verify round ${failRound}: probe=${lastProbe} action=fail`);
       if (kind === "card") {
         const flight = flights.get(paneId);
-        flights.delete(paneId);
-        herdr.eventsPrune(paneId);
         if (flight) {
+          disposeCardFlight(paneId, flight);
+          herdr.eventsPrune(paneId);
           await sendFailedResult({
             cardId: flight.cardId,
             fromPeerId: flight.fromPeerId,
@@ -1776,6 +1877,9 @@ export async function startBridgeRuntime(opts?: {
             reason: "inject_unconfirmed",
             paneId,
           });
+        } else {
+          flights.delete(paneId);
+          herdr.eventsPrune(paneId);
         }
         try {
           await herdr.request("pane.close", { pane_id: paneId });
@@ -1818,10 +1922,30 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
+  /** PLAN 0.26.0 D4 ②: close hook listener + unlink on flight teardown. */
+  function closeHookListener(flight: Flight): void {
+    if (flight.hookListener) {
+      try {
+        flight.hookListener.close();
+      } catch {
+        /* best-effort */
+      }
+      flight.hookListener = undefined;
+    }
+  }
+
   function clearStillRunningState(flight: Flight): void {
     clearStillRunningTimers(flight);
     flight.stillRunningDeferral = false;
     flight.stillRunningStartedAt = undefined;
+    // Sync with flight disposal: listener must not outlive the flight (M-1).
+    closeHookListener(flight);
+  }
+
+  /** Remove card flight from map with still-running + hook lifecycle cleanup. */
+  function disposeCardFlight(paneId: string, flight: Flight): void {
+    clearStillRunningState(flight);
+    flights.delete(paneId);
   }
 
   /**
@@ -1840,8 +1964,15 @@ export async function startBridgeRuntime(opts?: {
       // Settle failed — fall through to finishCard which re-reads and maps
       // read failure to failed (same as pre-0.23.7 path).
       if (flights.get(paneId) !== flight) return;
-      clearStillRunningState(flight);
-      flights.delete(paneId);
+      // PLAN 0.26.0 M-2 ③: live permission_prompt corrects completion → blocked
+      if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+        disposeCardFlight(paneId, flight);
+        herdr.eventsPrune(paneId);
+        appendHookTelemetry({ type: "agent_blocked_correction" });
+        await finishCard(flight, "failed", "agent_blocked");
+        return;
+      }
+      disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
       await finishCard(flight, "done", undefined);
       return;
@@ -1854,8 +1985,15 @@ export async function startBridgeRuntime(opts?: {
     if (!hasStillRunningIndicator(scrape)) {
       // No indicator → immediate finish; pass scrape (no re-scrape).
       // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
-      clearStillRunningState(flight);
-      flights.delete(paneId);
+      // PLAN 0.26.0 M-2 ③: permission_prompt live → correct to agent_blocked
+      if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+        disposeCardFlight(paneId, flight);
+        herdr.eventsPrune(paneId);
+        appendHookTelemetry({ type: "agent_blocked_correction" });
+        await finishCard(flight, "failed", "agent_blocked");
+        return;
+      }
+      disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
       await finishCard(flight, "done", undefined, {
         scrape,
@@ -1865,6 +2003,8 @@ export async function startBridgeRuntime(opts?: {
     }
 
     // Indicator hit → keep flight, enter poll (first re-read after pollMs).
+    // Do not close hook listener here — stillRunningDeferral only clears timers.
+    clearStillRunningTimers(flight);
     flight.stillRunningStartedAt = Date.now();
     log(
       `card ${flight.cardId}: still-running indicator — deferring completion (poll ${stillRunningPollMs}ms, max ${stillRunningMaxMs}ms)`,
@@ -1872,8 +2012,19 @@ export async function startBridgeRuntime(opts?: {
     scheduleStillRunningPoll(flight, paneId);
   }
 
-  function scheduleStillRunningPoll(flight: Flight, paneId: string): void {
+  function scheduleStillRunningPoll(
+    flight: Flight,
+    paneId: string,
+    delayMs?: number,
+  ): void {
     clearStillRunningTimers(flight);
+    // PLAN 0.26.0 M-2 ④: Stop accelerates poll schedule (input only).
+    const interval =
+      delayMs !== undefined
+        ? delayMs
+        : stopAllowsStillRunningMaxBypass(flight.hookHint)
+          ? Math.min(stillRunningPollMs, 1_000)
+          : stillRunningPollMs;
     flight.stillRunningPollTimer = setTimeout(() => {
       void (async () => {
         if (flights.get(paneId) !== flight) return;
@@ -1881,6 +2032,8 @@ export async function startBridgeRuntime(opts?: {
 
         const startedAt = flight.stillRunningStartedAt ?? Date.now();
         const elapsed = Date.now() - startedAt;
+        // M-2 ④: Stop is poll-acceleration input only — never completes alone
+        // while the indicator is still present (AND with scrape clear).
 
         let scrape: string;
         try {
@@ -1892,8 +2045,7 @@ export async function startBridgeRuntime(opts?: {
           }
           if (elapsed >= stillRunningMaxMs) {
             const secs = Math.round(stillRunningMaxMs / 1000);
-            clearStillRunningState(flight);
-            flights.delete(paneId);
+            disposeCardFlight(paneId, flight);
             herdr.eventsPrune(paneId);
             await finishCard(flight, "done", undefined, {
               note: `still_running deferral exhausted (${secs}s)`,
@@ -1910,9 +2062,16 @@ export async function startBridgeRuntime(opts?: {
         if (!hasStillRunningIndicator(scrape)) {
           // Indicator cleared — finish with the scrape that proved clearance (L-1).
           // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
+          // PLAN 0.26.0 M-2 ③: live permission_prompt corrects → blocked
+          if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+            disposeCardFlight(paneId, flight);
+            herdr.eventsPrune(paneId);
+            appendHookTelemetry({ type: "agent_blocked_correction" });
+            await finishCard(flight, "failed", "agent_blocked");
+            return;
+          }
           const secs = Math.max(0, Math.round(elapsed / 1000));
-          clearStillRunningState(flight);
-          flights.delete(paneId);
+          disposeCardFlight(paneId, flight);
           herdr.eventsPrune(paneId);
           await finishCard(flight, "done", undefined, {
             scrape,
@@ -1922,12 +2081,20 @@ export async function startBridgeRuntime(opts?: {
           return;
         }
 
+        // Indicator still present: M-2 ④ Stop alone must NOT complete.
         if (elapsed >= stillRunningMaxMs) {
           // Cap exhausted — fail-visible note, still status=done with latest scrape.
           // PLAN 0.23.8: exhausted is NOT close-eligible (R33 M-1 — work may continue).
+          // PLAN 0.26.0 M-2 ③: live permission_prompt → blocked correction
+          if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+            disposeCardFlight(paneId, flight);
+            herdr.eventsPrune(paneId);
+            appendHookTelemetry({ type: "agent_blocked_correction" });
+            await finishCard(flight, "failed", "agent_blocked");
+            return;
+          }
           const secs = Math.round(stillRunningMaxMs / 1000);
-          clearStillRunningState(flight);
-          flights.delete(paneId);
+          disposeCardFlight(paneId, flight);
           herdr.eventsPrune(paneId);
           await finishCard(flight, "done", undefined, {
             scrape,
@@ -1936,10 +2103,10 @@ export async function startBridgeRuntime(opts?: {
           return;
         }
 
-        // Still present and under cap — schedule next poll.
+        // Still present and under cap — schedule next poll (Stop → faster interval).
         scheduleStillRunningPoll(flight, paneId);
       })();
-    }, stillRunningPollMs);
+    }, interval);
   }
 
   function onCardHerdrEvent(
@@ -1951,8 +2118,7 @@ export async function startBridgeRuntime(opts?: {
   ): void {
     if (ev === "pane_closed" || event === "pane.closed") {
       // Clean deferral timers before teardown (test ⑦ / leak guard).
-      clearStillRunningState(flight);
-      flights.delete(paneId);
+      disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
       void sendFailedResult({
         cardId: flight.cardId,
@@ -1979,11 +2145,18 @@ export async function startBridgeRuntime(opts?: {
       // PLAN 0.23.7: working re-entry during deferral cancels poll and returns
       // to normal event flow (next idle re-evaluates).
       if (flight.stillRunningDeferral) {
-        clearStillRunningState(flight);
+        // Cancel poll timers only — keep hook listener for subsequent hints.
+        clearStillRunningTimers(flight);
+        flight.stillRunningDeferral = false;
+        flight.stillRunningStartedAt = undefined;
         log(
           `card ${flight.cardId}: still-running deferral cancelled (working re-entry)`,
         );
       }
+      // PLAN 0.26.0 M-2 ②: herdr working re-entry clears stale hook markers
+      // (approval grant fires none of the 3 wired events — stale permission_prompt
+      // would otherwise poison a later normal done).
+      flight.hookHint = clearHookHintOnWorking();
       flight.sawWorking = true;
       return;
     }
@@ -1991,13 +2164,27 @@ export async function startBridgeRuntime(opts?: {
     // C1: done may arrive from detection; also accept idle after working, blocked → failed
     if (status === "blocked") {
       // M-1: blocked during deferral → clear poll timers then immediate failed.
-      clearStillRunningState(flight);
-      flights.delete(paneId);
+      // hookHint absence → same path as 0.25.0 (D5 fail-open).
+      disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
       void finishCard(flight, "failed", "agent_blocked");
       return;
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
+      // PLAN 0.26.0 M-2 ③: live permission_prompt corrects completion-class
+      // judgment to agent_blocked (stale/cleared markers → no intervention).
+      if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+        if (flight.stillRunningDeferral) {
+          // Poll path owns completion while deferral set — leave to poll
+          // correction at indicator-clear / exhaust (same decision table).
+          return;
+        }
+        disposeCardFlight(paneId, flight);
+        herdr.eventsPrune(paneId);
+        appendHookTelemetry({ type: "agent_blocked_correction" });
+        void finishCard(flight, "failed", "agent_blocked");
+        return;
+      }
       // M-1: while deferral flag is set, completion-class events are no-ops —
       // ownership of the finish decision is the poll path alone.
       if (flight.stillRunningDeferral) {
@@ -2089,6 +2276,10 @@ export async function startBridgeRuntime(opts?: {
       if (status === "done") status = "failed";
       reason = reason ?? "pane_read_failed";
     }
+
+    // PLAN 0.26.0 D6(b): true-done scrape fallback telemetry (after read flip).
+    // Single choke point for all done paths; L-2 gated inside helper.
+    if (status === "done") maybeAppendCompletionFallback(flight);
 
     // PLAN 0.23.6: summary from chrome-filtered input only; output body unfiltered (M-1).
     // PLAN 0.23.11 ③: prefer real content over trailing pure timing lines.

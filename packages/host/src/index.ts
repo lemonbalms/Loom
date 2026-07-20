@@ -3,6 +3,7 @@ export * from "./relay-client";
 export * from "./presence";
 export * from "./handoff-inject";
 export * from "./inject-control";
+export * from "./hook-sensor";
 export * from "./pty-spike";
 export * from "./slash";
 export * from "./relay-daemon";

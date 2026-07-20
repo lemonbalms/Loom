@@ -35,6 +35,13 @@ export type BridgeConfig = {
    * Empty/missing → omit workspace_id (herdr default).
    */
   paneWorkspaceId?: string;
+  /**
+   * PLAN 0.26.0: claude hooks auxiliary sensor (opt-in, default off).
+   * When true, bridge injects `--settings` hooks on claude spawn and listens
+   * on attempt-scoped loomDir sockets for completion hints only.
+   * Load sanitizes non-true values to false (fail-closed opt-in).
+   */
+  hookSensor?: boolean;
 };
 
 const DEFAULT_AGENT_ARGV: BridgeConfig["agentArgv"] = {
@@ -59,6 +66,7 @@ export function defaultBridgeConfig(): BridgeConfig {
     herdrProtocol: 16,
     paneCleanup: "auto",
     panePlacement: "pool",
+    hookSensor: false,
   };
 }
 
@@ -77,6 +85,11 @@ function sanitizePaneWorkspaceId(raw: unknown): string | undefined {
   if (typeof raw !== "string") return undefined;
   const t = raw.trim();
   return t.length > 0 ? t : undefined;
+}
+
+/** PLAN 0.26.0: hookSensor opt-in — only explicit `true` enables; else false. */
+function sanitizeHookSensor(raw: unknown): boolean {
+  return raw === true;
 }
 
 /** R27 L-1: keep only well-shaped argv entries (non-empty array of non-empty strings).
@@ -126,6 +139,7 @@ export function loadBridgeConfig(profile: string): BridgeConfig {
       paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
       panePlacement: sanitizePanePlacement(raw.panePlacement),
       paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),
+      hookSensor: sanitizeHookSensor(raw.hookSensor),
     };
   } catch {
     return base;

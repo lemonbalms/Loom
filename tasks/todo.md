@@ -1,20 +1,22 @@
 # Todo — Loom
 
+## Next (0.26.0 ship)
+
+1. [ ] **⭐ ship 커밋 (이번 세션)** — `build:cli` · 소스+문서 커밋 → dist 커밋 → push · PLAN Implemented sha 확정
+2. [ ] (선택) 라이브 스모크 — `hookSensor: true` + 승인 대기 카드(U2 `--settings` 실작동 확정)
+3. [ ] 잔존 Low들 — 상태줄 chrome · summary 타이밍줄 · orphan durable 룸 정리 등
+
 ## Done (recent)
 
-- [x] PLAN **0.22.0** + live herdr smoke · tests 218/0
-- [x] Windows Tailscale relay · room `demo` 양방향
-- [x] fake herdr dispatch 시연 (board done)
-- [x] **Mac §3 실물 herdr 전환** — 0.7.4/p16 · bridge herdrOk · allow win peer
-
-## Next
-
-1. [ ] **(Windows)** DISPATCH-DEMO **§3-2** — `dispatchCard(task_5b240cad6cabc37b)` 서술형 prompt → node `mac`
-2. [ ] 결과 기록: `[DONE]` / board / bun.lock commit·push 여부 **또는** M-4 거부
-3. [ ] (병렬) 팀 6인 dry-run 온보딩 — room ≠ `demo`
-4. [ ] Windows 재부팅 후 relay health
-5. [ ] (참고) Moshi 분석 — `docs/COMPETITIVE_NOTES.md` §2·§2.5 하이브리드 · §2.7 로드맵
-6. [ ] (참고) Blink×Tailscale — `docs/COMPETITIVE_NOTES.md` §3: underlay 문서(A) → MagicDNS 병기(B) → doctor reachability(C); TS/Mosh 임베드 비목표
+- [x] R41 author-close → PLAN 0.26.0 approved
+- [x] IMPL-0260 hooks 센서 구현 (워크트리 미커밋)
+- [x] FIX-0260 소켓 path 길이 · 유닛 22/22
+- [x] VERIFY-0260 codex pane 11/12 (D6(b) 정상 폴백 계측만 FAIL)
+- [x] **FIX-0260b — D6(b) 해소** (grok pane `task_62b7d8c…` · 순수 함수 export + finishCard 단일 초크포인트 + Flight 3필드) · 유닛 33/33
+- [x] suite-0260b 571/0 · 차집합 0 vs HEAD (R28 L-1 플레이크 미재현)
+- [x] PLAN §0.26.0 `Implemented as of …` 블록 + HANDOFF · todo 동기
+- [x] 노드 부팅 생존 상시화 트랙 종료
+- [x] v0.25.0 conv_fetch R40 + D10 라이브 스모크
 
 ## FREEZE
 
@@ -22,5 +24,7 @@
 
 ## Don't redo
 
-- Mac fake herdr 재기동 · §3-0/1 herdr 전환 (이미 real)
-- R23 / 0.22.0 re-implement
+- R41 / M-1·M-2 재론
+- R28 L-1 suite fail 재조사 (HEAD 선재 · 차집합 0 확정)
+- 부팅 생존 프로브 재실행
+- R25 / CONV_SPEC 재론
