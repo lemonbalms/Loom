@@ -16,7 +16,7 @@
 |---|---|---|---|
 | §9-1 | 자연사 시 `pane.closed`/`pane.exited` 중 무엇인가 | **닫힘** | A(자연사)·B(SIGKILL) 모두 `pane_exited`만, C(`pane.close` API)는 `pane_closed`만 — 2라운드 6개 pane 전수 일치, 혼재 0건 |
 | §9-2 | payload에 exit code/signal이 실리는가 | **닫힘 (부정)** | terminal event `data` 키가 2라운드 전수 예외 없이 `{pane_id, type, workspace_id}` — exit code·signal·timestamp 전부 부재 |
-| §9-3 | `PaneDied unknown`의 의미 | **닫힘** | `pane.close` 요청 11:51:18.625 → **139ms 후** herdr 로그에 `PaneDied for unknown pane pane=236` → ACK 18.766. **우리 자신의 close 호출이 유발하는 herdr 내부 부기 경고**이며, 브릿지가 통지를 버린 증거가 아니다 (§5) |
+| §9-3 | `PaneDied unknown`의 의미 | **닫힘(부분) — 시간 상관 확인, 인과 미확정** | `pane.close` 요청 11:51:18.625 → **139ms 후** herdr 로그에 `PaneDied for unknown pane pane=236` → ACK 18.766. 입증된 것은 **시간 대응**까지 — 내부 id `236` ↔ API `w3:p5J` 대응이 미확인이라 close 유발 인과는 미확정(§5.3). 결론은 유지: 브릿지가 통지를 버린 증거가 아니며 진단 입력으로 쓰지 않는다 (§5) |
 | §9-5 | close 요청 / ACK / terminal event 순서 | **부분** | 2라운드 모두 `요청 → ACK → 이벤트` 순서 보존. 단 n=2이고 ACK→이벤트 마진이 22ms↔211ms로 10배 진동 — **전달 순서일 뿐 인과 순서의 증명이 아니다** (§6) |
 | §9-4 | 213 status sequence | **범위 밖** | bridge ingress 구조 로그 필요 — 제품 코드 변경이므로 herdr API 프로브로 답할 수 없다 |
 | §9-6 | bridge restart 후 registry/tombstone | **범위 밖** | R 결정 항목 |
@@ -27,7 +27,8 @@
 
 1. "프로세스가 죽었다(`pane_exited`)"와 "우리가 닫았다(`pane_closed`)"는 **이벤트 타입으로 구분된다**.
 2. 그러나 **그 이벤트가 지금 일어난 일인지 과거의 재전달인지는 구분할 수 없다** — herdr는 신규 구독자에게 과거 이벤트를 바이트 동일하게 재생하며, 그 보존 기간은 **10분 이상**이다(§4).
-3. `PaneDied for unknown pane`은 위 재전달과 **무관한 별개 현상**이다. 우리의 `pane.close` 호출이 유발한다(§5).
+3. `PaneDied for unknown pane`은 위 재전달과 **무관한 별개 현상**이다. `pane.close` 호출과 **강한 시간 상관**이
+   있으나 id 대조가 없어 인과는 미확정이다(§5).
 
 ---
 
@@ -225,7 +226,7 @@ B: {"pane_id":"w3:p5H","type":"pane_exited","workspace_id":"w3"}   ← SIGKILL
 
 ---
 
-## 5. §9-3 닫힘 — `PaneDied for unknown pane`은 우리의 `pane.close`가 유발한다
+## 5. §9-3 닫힘(부분) — `PaneDied for unknown pane`은 `pane.close`와 시간 상관이 강하다 (인과 미확정)
 
 ### 5.1 직접 증거
 
@@ -248,11 +249,14 @@ B: {"pane_id":"w3:p5H","type":"pane_exited","workspace_id":"w3"}   ← SIGKILL
 11:51:18.977     EVENT_PUSH           pane_closed / w3:p5J                      ← PaneDied 후 212ms
 ```
 
-### 5.2 판정
+### 5.2 판정 — **닫힘(부분): 시간 상관 확인, 인과 미확정**
 
-`PaneDied for unknown pane`은 **`pane.close` 처리 도중 herdr 내부에서 발생하는 부기(bookkeeping) 경고**다.
-close 요청과 ACK 사이에 끼어 있다 — 즉 herdr가 pane을 자기 registry에서 제거한 뒤 child-exit 콜백이 도착해
-"모르는 pane"이 된 상태를 스스로 기록한 것이다.
+`PaneDied for unknown pane`은 `pane.close` 요청과 ACK **사이에** 끼어 있다(+139ms). 가장 자연스러운 해석은
+**`pane.close` 처리 도중 herdr 내부에서 발생하는 부기(bookkeeping) 경고** — herdr가 pane을 자기 registry에서
+제거한 뒤 child-exit 콜백이 도착해 "모르는 pane"이 된 상태를 스스로 기록한 것 — 이다. 그러나 §5.3대로
+내부 id `236`과 API id `w3:p5J`의 대응이 확인되지 않았으므로, **같은 창에서 다른 내부 pane 236이 우연히
+사망한 대안 설명이 제거되지 않았다.** 따라서 이 해석은 **미확정으로 기록하고 닫힌 사실로 승격하지 않는다.**
+*(격하 근거: codex 적대적 검증 2026-07-20 Medium — `docs/reviews/PANEDEATH-CODEX-REVIEW.md` §2)*
 
 **따라서 이 경고는 브릿지가 통지를 버렸다는 증거가 아니다.**
 `CLAUDE.md` 규칙 7이 이미 경고한 오독("`PaneDied for unknown pane`은 herdr 내부 경고이지 브릿지가 통지를

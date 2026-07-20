@@ -16,11 +16,11 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH 스파이크 종결 (2026-07-20).** herdr v0.7.4 raw 소켓 프로브. **§9-1·2·3 닫힘**(자연사·SIGKILL=`pane_exited` / close=`pane_closed` · payload에 exit code·signal **전무**) · **§9-5 부분**(불변식 금지) · **§9-4 범위 밖** · **§9-6 out-of-scope** · **§9-7 TTL 60s**. 산출물 = `probe-pane-death.ts` · `PANE-DEATH-OBSERVATIONS.md`(정본) · 설계 **§9 + §9-bis 락 후보 8개**. 직전 = hook 캐시 A·B 해소. 상세 → **docs/HANDOFF_ARCHIVE.md**.
+> **🎯 PANE-DEATH R{n} 1차 검증 reject 수용 · 락 문안 교체 완료 (2026-07-20).** codex 적대적 검증(`docs/reviews/PANEDEATH-CODEX-REVIEW.md` 정본) **reject**(High 3/Med 6) → **전면 수용**. **§9-bis 1·3·4·5·6·7·8 축자 교체**(2 유지) + **9번 신설**(커밋 판정 엄격화 채택 / wire exactly-once 별도 PATCH). **§9-3 격하 = 닫힘(부분) — 시간 상관만 확인, 인과 미확정**(id 미대조), OBSERVATIONS 반영. 상세 → **docs/HANDOFF_ARCHIVE.md**.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH 구현 PATCH — R{n} 선행** — 정본 `docs/spikes/PANE-DEATH-DESIGN.md` 권고 **B(종료 펜스 + 결과-커밋 tombstone + bounded reconcile)**. **§9 미확정은 스파이크가 종결** — 남은 선행은 **R{n} 하나뿐**. 잠글 항목 = 설계 **§9-bis 8개**(핵심 = **replay 이중 펜스**·**`result_sending`→`committed` 원자 CAS**). 급한 이유 = 조기 `done` 커밋 후 `pane.close`(`finishCard()` `bridge-runtime.ts:2310-2323`) → 가짜 `card.done`.
+0. **⭐ PANE-DEATH 락 문안 교체본 2차 검증 → 통과 시 구현 PATCH** — 정본 `docs/spikes/PANE-DEATH-DESIGN.md` 권고 **B(종료 펜스 + 결과-커밋 tombstone + bounded reconcile)**, 잠글 항목 = **§9-bis 9개**(교체 완료본). **1차 검증에서 High 3건 — 락3 replay 판별 불능 · 락5 CAS 시점(사후라 발행 소유권 없음) · `sendResult()` ACK 의미(enqueue 아님)** — 이 세 건이 교체 문구에서 실제로 닫혔는지가 2차의 핵심. 검증 레인 = codex. 급한 이유 = 조기 `done` 커밋 후 `pane.close`(`finishCard()` `bridge-runtime.ts:2310-2323`) → 가짜 `card.done`.
 1. **HOOKCACHE-D-VERIFY 재개 (0번 후)** — 보드 `task_c636c29485a4ae2b` `blocked`, pane 4회 발사 모두 위 결함으로 미완. D 산출물은 아키텍트 독립 검증 완료(유닛 13/13 · `check:mem-header` OK) — 이 검증은 이중 확인.
 2. **RULE-ENFORCEABILITY 적용 결정** — 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 3. **다음 대형 트랙 — 미정 (오너 결정 지점)** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 out of scope.
@@ -41,6 +41,7 @@
 - **`card.done` 수신 ≠ 완료.** 브릿지가 조기 커밋 후 `pane.close`를 호출 → 산출물은 **아키텍트가 워킹트리에서 독립 검증**. 종료 코드·시그널로 실패 판정 금지(정상 cleanup도 exit 129/SIGKILL). `PaneDied for unknown pane` = **herdr 내부 경고**.
 - **워커 감시 = `scripts/watch-card.ts`** (exit: marker 0 / pane-gone 1 / limit 2 / timeout 3). **`--pane` 명시 필수** — `--agent`/`--cwd` 자동 탐색은 무관한 유휴 pane을 잡는다(미수정). 임시 셸 감시는 4연속 구멍.
 - **herdr terminal 이벤트는 신규 구독자에 재전달**(백로그 ≥10분) — **구독 시작 시각 필터 없이 신뢰 금지.**
+- **terminal 봉투에 사건 시각·seq·event id가 없다 — 수신 시각으로 replay와 live를 구분할 수 없다.**
 - **claude-mem 패치는 비영속** — `autoUpdate: true`로 예고 없이 원복. 방어선 `bun run check:mem-header` · 재적용 `tasks/lessons/platform.md`.
 
 ### 하지 말 것
@@ -52,7 +53,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH 스파이크 종결** (2026-07-20) — §9-1·2·3 닫힘 · §9-5 부분 · §9-4·6·7 범위 밖/결정 완료. **다음 = PANE-DEATH 구현 PATCH(R{n} 선행)** → D-VERIFY 재개 → RULE-ENFORCEABILITY 적용.
+> **🎯 PANE-DEATH 1차 reject 수용 · 락 문안 교체 완료** (2026-07-20). **다음 = 교체본 2차 검증(codex) → 통과 시 구현 PATCH** → D-VERIFY → RULE-ENFORCEABILITY.
 
 ---
 
@@ -69,7 +70,7 @@
 | **Nodes** | mac-node · Windows relay(durable) · WSL node-wsl-1(부팅 생존) · VPS node-vps-1 / kb(`@reboot`) — loom-dev `LOOM-GT4B` |
 | **Boot persist** | 트랙 종료(2026-07-20, 오너 옵션 B) — 상세 lessons platform (17) · 팩 `.loom-boot-persist-pack.md` |
 | **Remote** | `origin/main` **`66e0ba1`**(v0.26.1 dist, HEAD=origin). 이 docs 커밋은 다음 push 편승 |
-| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9 종결·§9-bis 락 후보 8개 · 미구현·rgate needed) + `PANE-DEATH-OBSERVATIONS.md`(관측 정본·수정 금지)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료·§1.6/§5 정정) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
+| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9 종결·§9-bis 락 9개 = codex reject 반영 교체본 · 2차 검증 대기) + `PANE-DEATH-OBSERVATIONS.md` + `docs/reviews/PANEDEATH-CODEX-REVIEW.md` (둘 다 정본·수정 금지)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료·§1.6/§5 정정) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
 | **Untracked (커밋 제외)** | `scripts/check-mem-header.ts`(+test) · `scripts/watch-card.ts`(+test) · `scripts/session-context.test.ts` · `hook-sensor.ts`(+test) · `.loom-*` 브리프/디스패치 · `.playwright-mcp/` 등 |
 
 ### Access cheat-sheet
