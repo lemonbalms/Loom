@@ -81,6 +81,8 @@
 
 </details>
 
+- [orchestration] 2026-07-20 (27) 위임 범위 축소가 정합성을 깰 수 있다 — 상태기계·타입·계약 변경은 참조처까지 최소범위.
+
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 
 - [bridge-ops] 2026-07-18 잘린 peer ID: `loom peers` 표 ID는 표시용 절단값 — allowlist엔 전체 ID. 수정 후 브릿지 재시작 필수.
@@ -226,6 +228,8 @@
 
 </details>
 
+- [verification] 2026-07-20 (28) 부정 결과엔 게이트+대조군 필수 — 없으면 "없음"이 아니라 "미확인".
+
 ## platform — Windows·WSL·경로 sep·크로스플랫폼 배포
 
 - [platform] 2026-07-19 (13) 경로 sep: 프리픽스/포함 비교에 `"/"` 하드코딩 금지(`node:path` `sep`). 신규 플랫폼 첫 배포는 라이브 스모크 필수.
@@ -292,3 +296,5 @@
 [workers] 2026-07-19 (9) sonnet claude-mem 거부 루프: 거부가 claude-mem에 저장돼 후속 benign 페이로드까지 재거부(공유-홈 오염은 자연문 승인 대기 유발까지 확산). 규칙 = 처음부터 benign goal-ack형 설계 · 거부 시 새 카드로 교체 · `permission_prompt` 재현은 수동 pane 스폰 + 워커 argv `--permission-mode default` 스왑. 신 마커(0.26.1) 무거부 완주 1회 실증했으나 변인 2개라 단독 효과 단정 금지.
 
 </details>
+
+- [workers] 2026-07-20 (29) pane 레인 반복 실패 시 DOGFOOD_LOOP §1.2 에스컬레이션으로 in-harness 하강.

@@ -21,14 +21,22 @@
 | §9-4 | 213 status sequence | **범위 밖** | bridge ingress 구조 로그 필요 — 제품 코드 변경이므로 herdr API 프로브로 답할 수 없다 |
 | §9-6 | bridge restart 후 registry/tombstone | **범위 밖** | R 결정 항목 |
 | §9-7 | cleanup timeout / tombstone TTL 수치 | **범위 밖** | R 결정 항목 |
+| (시나리오 D) | `pane.agent_status_changed`도 신규 구독자에게 replay되는가 | **닫힘 (부정) — replay 안 됨** | 라이브 status push **4건 수신으로 게이트 통과** 후 새 소켓 동일 구독 **35초 0건**. 같은 소켓이 직후 라이브 push를 **101ms**에 받아 구독 성립 증명(liveness proof), **같은 연결·같은 창에서 terminal은 replay 확인**(대조군). 2회 실행 동일 (§D) |
 | (안전) | 보호 pane 불가침 | **확인** | `PROBE_END.protected_still_present` 5/5, scratch 3개만 종료 (§8) |
 
-**세 줄 요약**
+> **⚠️ status replay 부재는 herdr 계약이 아니라 v0.7.4 구현의 관측된 성질이다.**
+> herdr가 보장한 것이 아니므로 **불변식으로 코드에 잠그지 말 것** — 업스트림이 replay를 추가하면
+> 조용히 깨진다. 방어(종료 펜스·구독 시작 시각 필터)는 유지한 채, 이 관측은 **"replay발 가짜 done"
+> 경로가 현재 성립하지 않는다**는 사실 근거로만 쓴다.
+
+**네 줄 요약**
 
 1. "프로세스가 죽었다(`pane_exited`)"와 "우리가 닫았다(`pane_closed`)"는 **이벤트 타입으로 구분된다**.
 2. 그러나 **그 이벤트가 지금 일어난 일인지 과거의 재전달인지는 구분할 수 없다** — herdr는 신규 구독자에게 과거 이벤트를 바이트 동일하게 재생하며, 그 보존 기간은 **10분 이상**이다(§4).
 3. `PaneDied for unknown pane`은 위 재전달과 **무관한 별개 현상**이다. `pane.close` 호출과 **강한 시간 상관**이
    있으나 id 대조가 없어 인과는 미확정이다(§5).
+4. **재전달되는 것은 terminal뿐이다.** `pane.agent_status_changed`는 게이트·대조군·liveness proof를 갖춘
+   관측에서 **한 건도 재전달되지 않았다**(§D) — 단 이는 v0.7.4의 성질이지 계약이 아니다.
 
 ---
 
@@ -531,3 +539,218 @@ argv에 `panedeath-B-start`가 박혀 있어 **다른 워커의 프로세스일 
    생존 판정에 `pane.list`를 쓰는 기존 코드가 있다면 재검토 대상이다.
 5. **I7 확인** — herdr 내부 숫자 pane id ↔ API `pane_id` 매핑.
    확인되면 §9-3의 근거가 타이밍 대응에서 id 대조로 격상된다.
+
+---
+
+## 시나리오 D — status replay 여부
+
+**상태**: 관측 완료 (2회 실행 모두 완주 · `PROBE_END` 도달)
+**정본 데이터**: `docs/spikes/.panedeath-probe-raw.scenario-d.jsonl` — 2회차, pane `w3:p5S`
+(2026-07-20 13:20:58 ~ 13:22:08 UTC)
+**1회차**: 같은 파일 형식, pane `w3:p5R` (13:18:38~13:19:30) — 2회차에 덮어썼으나 수치는 §D.7에 보존
+**이 절의 성격**: §1~§10은 정본이며 **수정하지 않았다.** 이 절은 추가다.
+
+> **F23 정정**: 라운드 2의 `F23 "pane_agent_status_changed push 0건"`은 herdr 결함이 아니라
+> **I6의 예측대로 조건 미충족**이었다. plain `bash` pane은 아무도 status를 보고하지 않으므로
+> 전이 자체가 없었다. 아래 D는 `pane.report_agent`로 전이를 **직접 만들어** 이 조건을 충족시켰다.
+
+### D.1 재현
+
+```
+bun run scripts/probe-pane-death.ts --scenario d
+```
+
+`--scenario all`은 **종전대로 a·b·c만** 돈다(D는 opt-in). §3.4의 라운드 2 재현이 그대로 유효하도록 한 의도적 절단이다.
+D는 자기 전용 로그(`.panedeath-probe-raw.scenario-d.jsonl`)에 쓴다 — 정본 `.panedeath-probe-raw.jsonl`은
+git 미추적이라 절단 재실행이 곧 영구 소실이기 때문이다.
+
+### D.2 전이를 만든 방법 — `pane.report_agent`
+
+라운드 2가 status push를 한 건도 못 받은 이유는 **plain bash pane에는 status를 보고하는 주체가 없어서**다.
+herdr는 `pane.report_agent`로 클라이언트가 직접 status를 쓰게 해준다
+(`docs/spikes/fixtures/herdr-v0.7.4/rpc-14-*`, schema `PaneReportAgentParams`):
+
+```json
+{"method":"pane.report_agent","params":{
+  "pane_id":"w3:p5S","source":"panedeath-probe-d","agent":"bash","state":"working","seq":1}}
+→ {"result":{"type":"ok"}}
+```
+
+`PaneAgentState` = `idle|working|blocked|unknown` (**`done` 불가** — STEP0.5 C1).
+
+**성공 판정 = `pane.list`의 `agent_status`가 `unknown`이 아닌 값으로 바뀌는가**:
+
+| t_iso | report_agent state | 직후 `pane.list.agent_status` |
+|---|---|---|
+| (생성 직후) 13:20:59.676 | — | **`unknown`** |
+| 13:21:01.408 | `working` | **`working`** |
+| 13:21:02.829 | `idle` | **`idle`** |
+| 13:21:04.251 | `working` | **`working`** |
+| 13:21:05.677 | `idle` | **`idle`** |
+
+4/4 반영. **agent pane 인식 조건은 충족됐다.**
+
+### D.3 ① 라이브 status push — **4건 수신** (게이트 통과)
+
+구독 sub1 (`13:20:59.788` ACK, `pane.agent_status_changed`+`pane.closed`+`pane.exited` 한 소켓):
+
+```json
+{"t_ms":1784553661428,"t_iso":"2026-07-20T13:21:01.428Z","raw":{"event":"pane.agent_status_changed",
+ "data":{"agent":"bash","agent_status":"working","pane_id":"w3:p5S","workspace_id":"w3"}}}
+{"t_ms":1784553662842,"t_iso":"2026-07-20T13:21:02.842Z","raw":{"event":"pane.agent_status_changed",
+ "data":{"agent":"bash","agent_status":"idle","pane_id":"w3:p5S","workspace_id":"w3"}}}
+{"t_ms":1784553664355,"t_iso":"2026-07-20T13:21:04.355Z","raw":{"event":"pane.agent_status_changed",
+ "data":{"agent":"bash","agent_status":"working","pane_id":"w3:p5S","workspace_id":"w3"}}}
+{"t_ms":1784553665753,"t_iso":"2026-07-20T13:21:05.753Z","raw":{"event":"pane.agent_status_changed",
+ "data":{"agent":"bash","agent_status":"idle","pane_id":"w3:p5S","workspace_id":"w3"}}}
+```
+
+RPC `ok` → push까지 **20ms / 13ms / 104ms / 76ms**. `working`↔`idle` 전이 4회 전부 도달.
+
+**이 4건이 이 카드의 게이트다.** 라운드 2가 "미확인"에 머문 지점을 여기서 통과했다.
+
+### D.4 ③④ 재구독 후 — **status 0건 / 20초**
+
+sub1 소켓 close(13:21:08.996) → 1초 뒤 **새 소켓** sub2로 **동일 구독** 재개(ACK 13:21:10.110).
+20.002초 관측:
+
+```json
+{"kind":"D_PHASE2_RESULT","payload":{
+  "observed_ms":20002,"pane_id":"w3:p5S",
+  "status_push_count_our_pane":0,"status_push_count_any":0,"status_raw":[],
+  "terminal_push_count":2,"terminal_panes":["w3:p5Q","w3:p5R"]}}
+```
+
+**과거 status push 재도착 0건.** 원문이 없으므로 인용할 것도 없다.
+
+### D.5 0건이 "구독 불발"이 아님을 증명 — liveness proof
+
+**이것이 없으면 D.4의 0은 판정 근거가 못 된다.** 같은 sub2 소켓 위에서 **새 전이를 하나 더** 일으켰다:
+
+```json
+{"kind":"D_PHASE2B_LIVENESS_PROOF","payload":{
+  "live_status_push_count":1,"subscription_functional":true,
+  "raw":[{"t_ms":1784553690326,"t_iso":"2026-07-20T13:21:30.326Z","raw":{
+    "event":"pane.agent_status_changed",
+    "data":{"agent":"bash","agent_status":"working","pane_id":"w3:p5S","workspace_id":"w3"}}}]}}
+```
+
+`report_agent(working, seq=5)` @13:21:30.225 → **101ms 후 push 도달**.
+→ **sub2의 status 구독은 살아 있었다.** 그런데도 과거분은 0이었다.
+
+### D.6 ⑤ terminal 대조군 — 같은 소켓에서 replay 발생
+
+| 구독 | status 재전달 | terminal 재전달 | 비고 |
+|---|---|---|---|
+| sub2 (13:21:10.110 ACK) | **0** | **2** (`w3:p5Q` `pane_closed`, `w3:p5R` `pane_closed`) | **같은 연결·같은 20초** |
+| sub4 (13:21:52.974 ACK, terminal 전용) | 0 | **3** — 그중 `w3:p5S` **1건** | 20초 전 죽은 자기 pane이 재전달됨 |
+
+sub2가 받은 스테일 terminal 원문:
+
+```json
+{"t_ms":1784553670111,"t_iso":"2026-07-20T13:21:10.111Z",
+ "raw":{"event":"pane_closed","data":{"pane_id":"w3:p5Q","type":"pane_closed","workspace_id":"w3"}}}
+{"t_ms":1784553670224,"t_iso":"2026-07-20T13:21:10.224Z",
+ "raw":{"event":"pane_closed","data":{"pane_id":"w3:p5R","type":"pane_closed","workspace_id":"w3"}}}
+```
+
+`w3:p5R`은 **1회차 D의 scratch pane**으로 13:19:10에 죽었다 — 약 2분 뒤 재도착. §6의 replay가 재현됐다.
+
+**sub4가 결정적이다**: `w3:p5S`가 13:21:32.895에 `pane_closed`로 죽었고,
+20초 뒤 열린 **완전히 새로운 소켓**에 그 `pane_closed`가 **바이트 동일로 다시 왔다**(13:21:53.193).
+같은 pane의 status 전이 5건은 **한 건도 오지 않았다.**
+
+```json
+{"kind":"D_PHASE4B_RESULT","payload":{
+  "terminal_push_count":3,"terminal_push_count_our_pane":1,
+  "our_pane_terminal_raw":[{"t_ms":1784553713193,"t_iso":"2026-07-20T13:21:53.193Z","raw":{
+    "event":"pane_closed","data":{"pane_id":"w3:p5S","type":"pane_closed","workspace_id":"w3"}}}],
+  "status_push_count":0}}
+```
+
+### D.7 판정
+
+> **replay 안 됨** — herdr v0.7.4는 `pane.agent_status_changed`를 신규 구독자에게 **재전달하지 않는다.**
+
+**근거 3단**(셋 다 성립해야 이 판정이 선다):
+
+1. **게이트 통과** — 1단계에서 라이브 status push를 **4건 실제 수신**(D.3). 전이를 못 만든 실패가 아니다.
+2. **재구독 후 0건** — 새 소켓 동일 구독으로 **20초 + 15초 = 35초** 관측, status **0건**(D.4·D.6).
+3. **0건이 구독 불발이 아님** — 같은 소켓이 **직후 라이브 push 1건을 받았고**(D.5),
+   **같은 연결·같은 창에서 terminal은 replay됐다**(D.6). 대조군이 살아 있는 상태의 0이다.
+
+2회 실행 모두 동일:
+
+| 회차 | pane | 라이브 status(①) | 재구독 status(④) | terminal 대조군 | `PROBE_END` |
+|---|---|---|---|---|---|
+| 1회차 | `w3:p5R` | **4** | **0** / 20초 | **11건** 재전달 | 도달 |
+| 2회차 | `w3:p5S` | **4** | **0** / 20초 | sub2 2건 · sub4 3건(자기 pane 1건) | 도달 |
+
+*(1회차는 liveness proof(D.5)가 없어 판정 근거로는 2회차가 정본이다. 1회차는 재현 확인용.)*
+
+### D.8 부수 관측 2건
+
+**(1) 죽은 pane의 status 구독은 ACK조차 오지 않는다.**
+`pane_id`가 죽은 뒤 `{"type":"pane.agent_status_changed","pane_id":"w3:p5S"}`만 구독하자
+**15초 타임아웃까지 응답 없음** — 에러도 ACK도 아니다.
+
+```json
+{"kind":"D_PHASE4A_DEAD_PANE_SUBSCRIBE","payload":{
+  "acked":false,"pane_id":"w3:p5S","err":"Error: events.subscribe ACK timed out"}}
+```
+
+terminal 구독(`pane_id` 없음)은 같은 조건에서 정상 ACK. **재구독 로직이 죽은 pane_id를 물고 있으면
+그 연결은 조용히 멎는다** — 타임아웃 방어가 없으면 무한 대기다.
+
+**(2) status push의 event 이름은 dotted다.**
+같은 소켓에서 terminal은 **underscore**, status는 **dotted**로 온다:
+
+```
+{"event":"pane_closed",              "data":{...}}   ← underscore
+{"event":"pane.agent_status_changed","data":{...}}   ← dotted
+```
+
+STEP0.5 **C2**("push는 underscored `pane_agent_status_changed`")는 status에 대해 **부정확**하다.
+제품 코드는 안전하다 — `bridge-runtime.ts:2134-2135`·`2223-2224`가 두 표기를 모두 받는다.
+다만 `fake-herdr.ts:565`는 **underscore만 발행**하므로 실서버와 다르다(픽스처 충실도 갭, 이 문서는 결정하지 않음).
+
+### D.9 설계 함의 — 카드가 물었던 질문에 대한 답
+
+이 카드의 전제는 *"status도 replay되면 브릿지가 새 카드 구독을 추가할 때마다 기존 카드의 오래된
+`working→idle`이 재생돼 **가짜 done**이 될 수 있다"*였다.
+
+> **그 경로는 성립하지 않는다.** status는 replay되지 않으므로,
+> **신규 구독 추가만으로는 스테일 status 전이가 유입되지 않는다.**
+> terminal만 방어하는 현재 설계는 **이 실패 모드에 한해서는** 충분하다.
+
+단서 3가지 — 이 문서는 결정하지 않는다(R 항목):
+
+1. **버전 한정.** herdr v0.7.4 / protocol 16 관측이다. replay 부재는 herdr가 보장한 계약이 아니라
+   **현재 구현의 관측된 성질**이다. 불변식으로 코드에 잠그면 업스트림 변경에 조용히 깨진다.
+2. **가짜 done의 다른 경로는 그대로 열려 있다.** `CLAUDE.md` 규칙 7의 실증 2건
+   (codex TUI 초기화면 스크레이프 · `Working` 중 발행)은 replay와 무관하다. 이 관측은
+   **replay발 가짜 done만** 배제한다.
+3. **§6.4의 terminal 펜스 권고는 그대로 유효하다.** terminal replay는 D.6에서 재확인됐고
+   (자기 pane이 20초 만에 바이트 동일 재도착), 판별 필드 부재도 그대로다.
+
+### D.10 안전 규칙 준수
+
+프로브는 이제 **실행 시점에 살아있는 pane 전부를 보호 목록에 넣는다**(하드코딩 5개 + 라이브 baseline):
+
+```json
+{"kind":"PROTECTED_EXPANDED","payload":{
+  "hardcoded":5,"added_from_live_baseline":["w3:p5P"],
+  "total":["w3:p2","w3:p1J","w4:p1","w8:p1","w3:p46","w3:p5P"]}}
+```
+
+`w3:p5P`(실행 중이던 codex 워커 `loom-task_e0ba2d6f57a5b80-1`)가 자동으로 보호됐다 —
+하드코딩 목록에는 없던 pane이다.
+
+```json
+{"kind":"PROBE_END","payload":{"success":["d"],"owned":["w3:p5S"],
+  "final_panes":["w3:p2","w3:p1J","w3:p46","w3:p5P","w4:p1","w8:p1"],
+  "protected_still_present":["w3:p2","w3:p1J","w4:p1","w8:p1","w3:p46","w3:p5P"]}}
+```
+
+**종료한 pane = `w3:p5S` 1개**(자기가 만든 scratch). 보호 pane **6/6 생존**. SIGKILL 미사용.
+**`PROBE_END` 도달 — 절단 없음.** 제품 코드(`packages/**`) 변경 0줄.

@@ -7,6 +7,7 @@
  * Usage (repo root):
  *   bun scripts/probe-pane-death.ts
  *   bun scripts/probe-pane-death.ts --scenario a|b|c|all
+ *   bun scripts/probe-pane-death.ts --scenario d   # status-replay (opt-in; not in `all`)
  *   LOOM_HERDR_SOCKET=/path/to/herdr.sock bun scripts/probe-pane-death.ts
  *
  * Safety: only creates and kills panes labeled panedeath-spike-*; never
@@ -50,7 +51,19 @@ const EVENT_IDLE_MS = 2_500; // after expected terminal action, wait for late pu
 const OUT_DIR = join(import.meta.dir, "..", "docs", "spikes");
 const RAW_LOG = join(OUT_DIR, ".panedeath-probe-raw.jsonl");
 
-type Scenario = "a" | "b" | "c";
+/**
+ * Active raw-log path. Scenario D writes to its OWN file: the round-2
+ * `.panedeath-probe-raw.jsonl` is the canonical dataset cited throughout
+ * PANE-DEATH-OBSERVATIONS.md and is untracked by git — a truncating re-run
+ * would destroy it irrecoverably.
+ */
+let rawLogPath = RAW_LOG;
+
+type Scenario = "a" | "b" | "c" | "d";
+
+/** Scenario D: how long to watch a fresh subscription for replayed pushes. */
+const D_OBSERVE_MS = 20_000; // spec floor is 15s — we watch 20s
+const D_FINAL_OBSERVE_MS = 15_000;
 
 // ─── logging ─────────────────────────────────────────────────────────────────
 
@@ -89,7 +102,7 @@ function log(kind: string, payload?: unknown, scenario?: string): void {
         : JSON.stringify(payload);
   console.log(`${entry.t_iso} +${t_ms - sessionStart}ms ${prefix} ${kind}${body ? " " + body : ""}`);
   try {
-    appendFileSync(RAW_LOG, JSON.stringify(entry) + "\n");
+    appendFileSync(rawLogPath, JSON.stringify(entry) + "\n");
   } catch {
     /* best-effort */
   }
@@ -895,28 +908,377 @@ async function runScenarioC(owned: Set<string>): Promise<boolean> {
   return true;
 }
 
+// ─── scenario D — does pane.agent_status_changed replay to new subscribers? ──
+
+/** Push name for status is underscored: pane_agent_status_changed. */
+function isStatusFor(paneId: string, raw: Record<string, unknown>): boolean {
+  const name = eventName(raw);
+  if (!name.includes("agent_status")) return false;
+  const pid = paneIdFromEvent(raw);
+  return !pid || pid === paneId;
+}
+
+function isAnyStatus(raw: Record<string, unknown>): boolean {
+  return eventName(raw).includes("agent_status");
+}
+
+function isAnyTerminal(raw: Record<string, unknown>): boolean {
+  const name = eventName(raw);
+  return name.includes("closed") || name.includes("exited");
+}
+
+async function paneAgentStatus(paneId: string): Promise<string | null> {
+  const result = (await rpc("pane.list", {})) as {
+    panes?: Array<{ pane_id?: string; agent_status?: string }>;
+  };
+  const panes = Array.isArray(result.panes) ? result.panes : [];
+  const hit = panes.find((p) => p.pane_id === paneId);
+  return hit?.agent_status ?? null;
+}
+
+/**
+ * Drive an agent_status transition via pane.report_agent.
+ * PaneAgentState = idle | working | blocked | unknown (NOT done — see STEP0.5 C1).
+ */
+async function reportAgent(
+  paneId: string,
+  state: "idle" | "working" | "blocked" | "unknown",
+  seq: number,
+  scenario: string,
+): Promise<boolean> {
+  assertScratch(paneId);
+  try {
+    const r = await rpc("pane.report_agent", {
+      pane_id: paneId,
+      source: "panedeath-probe-d",
+      agent: "bash",
+      state,
+      seq,
+    });
+    log("REPORT_AGENT_OK", { pane_id: paneId, state, seq, result: r }, scenario);
+    return true;
+  } catch (e) {
+    log("REPORT_AGENT_ERR", { pane_id: paneId, state, seq, err: String(e) }, scenario);
+    return false;
+  }
+}
+
+/** Snapshot of a sink's events, tagged, for later reporting. */
+function snapshotEvents(
+  sink: EventSink,
+  since = 0,
+): Array<{ t_ms: number; t_iso: string; raw: Record<string, unknown> }> {
+  return sink.events.filter((e) => e.t_ms >= since).map((e) => ({ ...e }));
+}
+
+async function runScenarioD(owned: Set<string>): Promise<boolean> {
+  const scenario: Scenario = "d";
+  log(
+    "SCENARIO_BEGIN",
+    {
+      name: "D",
+      desc: "does pane.agent_status_changed replay to a NEW subscriber? (terminal = control group)",
+      method:
+        "agent.start scratch pane → pane.report_agent forces working/idle transitions → live status pushes → close socket → re-subscribe on fresh socket → watch",
+    },
+    scenario,
+  );
+
+  const SUBS = (paneId: string) => [
+    { type: "pane.agent_status_changed", pane_id: paneId },
+    { type: "pane.closed" },
+    { type: "pane.exited" },
+  ];
+
+  // ── phase 0: scratch pane ──────────────────────────────────────────────────
+  const name = `${NAME_PREFIX}-D-${Date.now().toString(36)}`;
+  const started = await agentStart({
+    name,
+    argv: ["bash", "-lc", "echo panedeath-D-start; sleep 300"],
+    cwd: process.cwd(),
+    focus: false,
+  });
+  owned.add(started.pane_id);
+  const paneId = started.pane_id;
+  log(
+    "SCRATCH_CREATED",
+    { pane_id: paneId, terminal_id: started.terminal_id, name },
+    scenario,
+  );
+  await sleep(500);
+
+  const statusAtStart = await paneAgentStatus(paneId);
+  log("AGENT_STATUS_AT_START", { pane_id: paneId, agent_status: statusAtStart }, scenario);
+
+  // ── phase 1: live status pushes on subscription #1 ─────────────────────────
+  const sink1 = await openEventSubscription(SUBS(paneId), `${scenario}-sub1`);
+  await sleep(1500); // let any backlog drain (~110ms/event per §6.3)
+  const liveWindowStart = nowMs();
+
+  // Force transitions. unknown → working → idle → working → idle
+  const transitions: Array<"working" | "idle"> = ["working", "idle", "working", "idle"];
+  let seq = 1;
+  const statusAfterReport: Array<{ state: string; pane_list_agent_status: string | null }> = [];
+  for (const state of transitions) {
+    await reportAgent(paneId, state, seq++, scenario);
+    await sleep(1200); // ≫ 110ms drain quantum
+    const s = await paneAgentStatus(paneId);
+    log("AGENT_STATUS_POLL", { pane_id: paneId, reported: state, pane_list: s }, scenario);
+    statusAfterReport.push({ state, pane_list_agent_status: s });
+  }
+  await sleep(2000); // late pushes
+
+  const liveStatusPushes = sink1.events.filter(
+    (e) => e.t_ms >= liveWindowStart && isStatusFor(paneId, e.raw),
+  );
+  const liveStatusAny = sink1.events.filter(
+    (e) => e.t_ms >= liveWindowStart && isAnyStatus(e.raw),
+  );
+  log(
+    "D_PHASE1_LIVE_STATUS",
+    {
+      pane_id: paneId,
+      live_status_push_count_for_pane: liveStatusPushes.length,
+      live_status_push_count_any_pane: liveStatusAny.length,
+      pane_list_transitions: statusAfterReport,
+      // RAW — verbatim, with receive time in ms
+      raw: liveStatusPushes.map((e) => ({ t_ms: e.t_ms, t_iso: e.t_iso, raw: e.raw })),
+      sub1_total_pushes: sink1.events.length,
+    },
+    scenario,
+  );
+
+  const gateSatisfied = liveStatusPushes.length > 0;
+  log(
+    "D_GATE",
+    {
+      gate: "phase-1 must yield ≥1 LIVE status push, else phase-2 zero is meaningless",
+      live_status_pushes: liveStatusPushes.length,
+      satisfied: gateSatisfied,
+      verdict_if_unsatisfied: "UNDETERMINED (failed to produce a live transition)",
+    },
+    scenario,
+  );
+
+  const sub1All = snapshotEvents(sink1);
+  const sub1TerminalCount = sub1All.filter((e) => isAnyTerminal(e.raw)).length;
+  sink1.close();
+  log("D_SUB1_CLOSED", { total: sub1All.length, terminal: sub1TerminalCount }, scenario);
+  await sleep(1000);
+
+  // ── phase 2: NEW socket, same subscriptions, pane still alive ──────────────
+  const sink2 = await openEventSubscription(SUBS(paneId), `${scenario}-sub2`);
+  const p2Start = nowMs();
+  log("D_PHASE2_OBSERVE_BEGIN", { observe_ms: D_OBSERVE_MS, pane_id: paneId }, scenario);
+  const p2Until = p2Start + D_OBSERVE_MS;
+  while (nowMs() < p2Until) {
+    await sink2.waitFor(() => false, Math.min(1000, p2Until - nowMs()));
+  }
+  const p2Status = sink2.events.filter((e) => isAnyStatus(e.raw));
+  const p2StatusOurPane = p2Status.filter((e) => paneIdFromEvent(e.raw) === paneId);
+  const p2Terminal = sink2.events.filter((e) => isAnyTerminal(e.raw));
+  log(
+    "D_PHASE2_RESULT",
+    {
+      observed_ms: nowMs() - p2Start,
+      pane_id: paneId,
+      status_push_count_our_pane: p2StatusOurPane.length,
+      status_push_count_any: p2Status.length,
+      status_raw: p2Status.map((e) => ({ t_ms: e.t_ms, t_iso: e.t_iso, raw: e.raw })),
+      // CONTROL GROUP — terminal replay in the very same connection
+      terminal_push_count: p2Terminal.length,
+      terminal_panes: [...new Set(p2Terminal.map((e) => paneIdFromEvent(e.raw)))],
+      terminal_raw_first10: p2Terminal
+        .slice(0, 10)
+        .map((e) => ({ t_ms: e.t_ms, t_iso: e.t_iso, raw: e.raw })),
+      total_pushes: sink2.events.length,
+    },
+    scenario,
+  );
+
+  // ── phase 2b: prove sub2's STATUS subscription is actually live ────────────
+  // Without this, a 0 in phase 2 is ambiguous: "no replay" vs "this connection's
+  // status subscription never took effect". Fire one more real transition and
+  // require sub2 to see it.
+  const p2bStart = nowMs();
+  await reportAgent(paneId, "working", seq++, scenario);
+  await sleep(2500);
+  const p2bLive = sink2.events.filter(
+    (e) => e.t_ms >= p2bStart && isStatusFor(paneId, e.raw),
+  );
+  log(
+    "D_PHASE2B_LIVENESS_PROOF",
+    {
+      purpose:
+        "sub2 must receive a LIVE status push, else its phase-2 zero proves nothing",
+      live_status_push_count: p2bLive.length,
+      subscription_functional: p2bLive.length > 0,
+      raw: p2bLive.map((e) => ({ t_ms: e.t_ms, t_iso: e.t_iso, raw: e.raw })),
+    },
+    scenario,
+  );
+  const sub2StatusFunctional = p2bLive.length > 0;
+
+  // ── phase 3: produce a FRESH terminal event on this same connection ────────
+  assertOwned(paneId, owned);
+  const closeAt = nowMs();
+  log("D_PANE_CLOSE_REQUEST", { pane_id: paneId, t_ms: closeAt }, scenario);
+  try {
+    const r = await paneClose(paneId);
+    log("D_PANE_CLOSE_ACK", { t_ms: nowMs(), result: r }, scenario);
+  } catch (e) {
+    log("D_PANE_CLOSE_ERR", String(e), scenario);
+  }
+  await sleep(4000);
+  const liveTerminal = sink2.events.filter(
+    (e) => e.t_ms >= closeAt && isAnyTerminal(e.raw) && paneIdFromEvent(e.raw) === paneId,
+  );
+  const postCloseStatus = sink2.events.filter((e) => e.t_ms >= closeAt && isAnyStatus(e.raw));
+  log(
+    "D_PHASE3_LIVE_TERMINAL",
+    {
+      pane_id: paneId,
+      live_terminal_count: liveTerminal.length,
+      raw: liveTerminal.map((e) => ({ t_ms: e.t_ms, t_iso: e.t_iso, raw: e.raw })),
+      status_after_close_count: postCloseStatus.length,
+      status_after_close_raw: postCloseStatus.map((e) => ({
+        t_ms: e.t_ms,
+        t_iso: e.t_iso,
+        raw: e.raw,
+      })),
+    },
+    scenario,
+  );
+  sink2.close();
+  await sleep(1000);
+
+  // ── phase 4a: can you even subscribe to a DEAD pane's status? ─────────────
+  let deadPaneSubscribeOk: boolean;
+  try {
+    const probe = await openEventSubscription(
+      [{ type: "pane.agent_status_changed", pane_id: paneId }],
+      `${scenario}-sub3-deadpane`,
+    );
+    deadPaneSubscribeOk = true;
+    log("D_PHASE4A_DEAD_PANE_SUBSCRIBE", { acked: true, pane_id: paneId }, scenario);
+    probe.close();
+  } catch (e) {
+    deadPaneSubscribeOk = false;
+    log(
+      "D_PHASE4A_DEAD_PANE_SUBSCRIBE",
+      { acked: false, pane_id: paneId, err: String(e) },
+      scenario,
+    );
+  }
+
+  // ── phase 4b: terminal-only socket — does the FRESH terminal event replay? ─
+  // Terminal subs carry no pane_id, so this succeeds even though the pane is gone.
+  let p4TerminalOurPane = -1;
+  let p4TerminalTotal = -1;
+  let p4StatusCount = -1;
+  try {
+    const sink3 = await openEventSubscription(
+      [{ type: "pane.closed" }, { type: "pane.exited" }],
+      `${scenario}-sub4`,
+    );
+    const p4Start = nowMs();
+    log("D_PHASE4B_OBSERVE_BEGIN", { observe_ms: D_FINAL_OBSERVE_MS }, scenario);
+    const p4Until = p4Start + D_FINAL_OBSERVE_MS;
+    while (nowMs() < p4Until) {
+      await sink3.waitFor(() => false, Math.min(1000, p4Until - nowMs()));
+    }
+    const s = sink3.events.filter((e) => isAnyStatus(e.raw));
+    const t = sink3.events.filter((e) => isAnyTerminal(e.raw));
+    p4StatusCount = s.length;
+    p4TerminalTotal = t.length;
+    p4TerminalOurPane = t.filter((e) => paneIdFromEvent(e.raw) === paneId).length;
+    log(
+      "D_PHASE4B_RESULT",
+      {
+        note: "terminal-only subscription; pane is dead. Does its pane_closed replay?",
+        observed_ms: nowMs() - p4Start,
+        terminal_push_count: p4TerminalTotal,
+        terminal_push_count_our_pane: p4TerminalOurPane,
+        our_pane_terminal_raw: t
+          .filter((e) => paneIdFromEvent(e.raw) === paneId)
+          .map((e) => ({ t_ms: e.t_ms, t_iso: e.t_iso, raw: e.raw })),
+        status_push_count: p4StatusCount,
+        total_pushes: sink3.events.length,
+      },
+      scenario,
+    );
+    sink3.close();
+  } catch (e) {
+    log("D_PHASE4B_FAILED", String(e), scenario);
+  }
+
+  // ── verdict ────────────────────────────────────────────────────────────────
+  let verdict: string;
+  let basis: string;
+  if (!gateSatisfied) {
+    verdict = "UNDETERMINED";
+    basis =
+      "phase-1 produced 0 LIVE status pushes — a zero later cannot distinguish 'no replay' from 'no transition ever happened'";
+  } else if (p2StatusOurPane.length > 0) {
+    verdict = "REPLAYED";
+    basis = `a fresh subscription received ${p2StatusOurPane.length} past status push(es) for ${paneId} after ${liveStatusPushes.length} live push(es) in phase 1`;
+  } else if (!sub2StatusFunctional) {
+    verdict = "UNDETERMINED";
+    basis =
+      "phase 2 saw 0 status pushes, but phase 2b could not prove that connection's status subscription was live — the zero may be an inert subscription rather than absence of replay";
+  } else {
+    verdict = "NOT_REPLAYED";
+    basis = `phase 1 produced ${liveStatusPushes.length} LIVE status pushes; a fresh subscription then saw 0 replayed status pushes over ${D_OBSERVE_MS / 1000}s even though (a) the SAME connection replayed ${p2Terminal.length} stale terminal events (control group) and (b) phase 2b proved that same connection DID deliver a live status push`;
+  }
+  log(
+    "D_VERDICT",
+    {
+      verdict,
+      basis,
+      live_status_pushes_phase1: liveStatusPushes.length,
+      replayed_status_phase2_our_pane: p2StatusOurPane.length,
+      replayed_status_phase2_any: p2Status.length,
+      sub2_status_subscription_proven_live: sub2StatusFunctional,
+      control_terminal_replay_phase2: p2Terminal.length,
+      control_terminal_replay_phase4b: p4TerminalTotal,
+      control_terminal_replay_phase4b_our_pane: p4TerminalOurPane,
+      dead_pane_status_subscribe_acked: deadPaneSubscribeOk,
+      status_pushes_on_terminal_only_socket: p4StatusCount,
+    },
+    scenario,
+  );
+
+  log("SCENARIO_END", { name: "D", verdict }, scenario);
+  return true;
+}
+
 // ─── main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  try {
-    mkdirSync(OUT_DIR, { recursive: true });
-    writeFileSync(RAW_LOG, ""); // reset
-  } catch {
-    /* */
-  }
-
   const arg = process.argv.find((a) => a.startsWith("--scenario"));
   let which: "all" | Scenario = "all";
   if (arg) {
     const v = arg.includes("=")
       ? arg.split("=")[1]
       : process.argv[process.argv.indexOf(arg) + 1];
-    if (v === "a" || v === "b" || v === "c" || v === "all") which = v;
+    if (v === "a" || v === "b" || v === "c" || v === "d" || v === "all") which = v;
+  }
+
+  // Scenario D gets its own raw log — never truncate the canonical round-2 file.
+  rawLogPath =
+    which === "d" ? join(OUT_DIR, ".panedeath-probe-raw.scenario-d.jsonl") : RAW_LOG;
+
+  try {
+    mkdirSync(OUT_DIR, { recursive: true });
+    writeFileSync(rawLogPath, ""); // reset
+  } catch {
+    /* */
   }
 
   log("PROBE_START", {
     socket: SOCKET,
     which,
+    raw_log: rawLogPath,
     protected: [...PROTECTED],
     cwd: process.cwd(),
     note: "raw socket probe — does not use HerdrClient",
@@ -933,6 +1295,16 @@ async function main(): Promise<void> {
       log("WARN_PROTECTED_MISSING", p);
     }
   }
+
+  // Every pane alive BEFORE we create anything is protected, not just the
+  // hardcoded five — nothing that predates this run may ever be killed.
+  const preexisting = baseline.filter((p) => !PROTECTED.has(p));
+  for (const p of baseline) PROTECTED.add(p);
+  log("PROTECTED_EXPANDED", {
+    hardcoded: 5,
+    added_from_live_baseline: preexisting,
+    total: [...PROTECTED],
+  });
 
   const owned = new Set<string>();
   const success: Scenario[] = [];
@@ -961,6 +1333,16 @@ async function main(): Promise<void> {
         log("SCENARIO_C_FAIL", String(e), "c");
       }
     }
+    // D is opt-in only — `--scenario all` keeps its original a|b|c meaning so
+    // the round-2 reproduction documented in PANE-DEATH-OBSERVATIONS §3.4 is
+    // byte-for-byte re-runnable.
+    if (which === "d") {
+      try {
+        if (await runScenarioD(owned)) success.push("d");
+      } catch (e) {
+        log("SCENARIO_D_FAIL", String(e), "d");
+      }
+    }
   } finally {
     // final safety: close any still-owned panes
     const live = await listPaneIds().catch(() => [] as string[]);
@@ -983,14 +1365,14 @@ async function main(): Promise<void> {
     owned: [...owned],
     final_panes: finalPanes,
     protected_still_present: [...PROTECTED].filter((p) => finalPanes.includes(p)),
-    raw_log: RAW_LOG,
+    raw_log: rawLogPath,
   });
 
   // dump full log to stdout marker for capture
   console.log("\n===== FULL_LOG_JSON_BEGIN =====");
   console.log(JSON.stringify(logLines, null, 2));
   console.log("===== FULL_LOG_JSON_END =====\n");
-  console.log(`[PROBE-DONE] scenarios=${success.join(",") || "none"} raw=${RAW_LOG}`);
+  console.log(`[PROBE-DONE] scenarios=${success.join(",") || "none"} raw=${rawLogPath}`);
 }
 
 main().catch((e) => {
