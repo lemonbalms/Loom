@@ -16,7 +16,7 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 WP5 웜베이스 포크 스파이크 종결 (2026-07-20 · 라이브 실측) — verdict `defer`.** 포크(`--fork-session`)는 채택하지 않는다. 부산물로 **프롬프트 캐시를 매 세션 깨뜨리는 결함 2건 규명** — **A** = 한 SessionStart 이벤트에 hook 커맨드 2개(우리 `41b0877` 2분할) → 완료순 concat → 순열이 매 세션 뒤집힘(두 순열 길이가 16,334자로 **동일**이라 길이 비교 미검출) · **B** = claude-mem 헤더 **분 단위 ts**(설정 키 없음·홈=전 프로젝트). 미스 1회 = **33,915토큰 cache-write**. 규명 → **`docs/spikes/WARM-BASE-FORK-SPIKE.md`** · 해소 설계 → **`docs/spikes/HOOK-CACHE-FIX-DESIGN.md`**. **WP5 잔여 정리 완료**: ⑤ stale anchoring은 `defer` 확정으로 **측정 필요성 소멸** · 포크 절차화(bake·AGENTS 분기) **보류**.
+> **🎯 WP5 웜베이스 포크 스파이크 종결 (2026-07-20 · 라이브 실측) — verdict `defer`.** 포크(`--fork-session`)는 채택하지 않는다. 부산물로 **프롬프트 캐시 파괴 결함 2건 규명** — **A** = 한 SessionStart 이벤트에 hook 커맨드 2개(`41b0877` 2분할) → 완료순 concat → 순열 뒤집힘 · **B** = claude-mem 헤더 **분 단위 ts**(홈=전 프로젝트). 미스 1회 = **33,915(79k 환경)/34,635(실 리포 48k) cache-write — 혼용 금지**, 세션당 1회+분 경계. **A 존치 ≈3h**(당일 도입·당일 규명)라 **누적 피해 작음**; B는 더 길나 미실측. 규명 → **`WARM-BASE-FORK-SPIKE.md`** · 해소 설계 → **`HOOK-CACHE-FIX-DESIGN.md`**(`docs/spikes/`). **WP5 잔여**: ⑤는 `defer`로 **측정 필요성 소멸** · 절차화 **보류**.
 > **직전** = 핸드오프 전환 최적화 웨이브(WP1 `0c82108` · WP3+WP2 `41b0877` · WP4 claude-mem 하향) · v0.26.1 마커 교정 ship(`47fc81c` · dist `66e0ba1` · push 완료) · v0.26.0 hooks 센서(`0de6c4c`). 상세 → **docs/HANDOFF_ARCHIVE.md**.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
