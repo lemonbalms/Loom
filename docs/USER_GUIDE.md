@@ -51,6 +51,8 @@ loom doctor
 | **Pack** | 방 단위 로컬 컨텍스트(요약·경로·노트). 핸드오프에 선택 첨부 |
 | **Board** | 방 단위 로컬 태스크 보드 (CLI·MCP·데스크톱 공유 파일) |
 | **Relay** | 메시지 중계 서버. 로컬 자동 또는 LAN/원격 수동 |
+| **Bridge** | 노드에서 카드(dispatch)를 받아 워커 pane(claude/codex/grok)을 돌리는 장수 프로세스 |
+| **Card** | handoff attachment로 실리는 작업 계약 — 노드 bridge가 claim·실행·`card.done` 회신 |
 
 ### 0.3 세션·프로필
 
@@ -92,6 +94,7 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 9 | 코딩 에이전트(Claude/Codex/Grok)와 MCP | run, agents, MCP tools |
 | 10 | LAN/원격 멀티 머신 | loom relay, --relay, --token |
 | 11 | 헤드리스 회귀 확인 | smoke:desktop, bun test |
+| 12 | 오케스트레이터 CLI 전환·bridge 복구 (Claude 먹통 → Grok 이어하기) | relay vs bridge vs 세션, card 디스패치 |
 
 ---
 
@@ -535,7 +538,178 @@ bun run loom --profile codex-side run codex
 
 ---
 
-## 12. 명령 치트시트
+## 12. 오케스트레이터 CLI 전환·bridge 복구
+
+**하고 싶은 일:** Claude Code로 카드/검증 웨이브를 돌리다 세션이 먹통이 되어, **Grok CLI(또는 다른 터미널)에서 같은 작업을 이어간다.**  
+(2026-07-20 실측 시나리오: Claude 중단 → Grok에서 VERIFY 디스패치 → mac-node bridge 재기동 → Claude 복구 후에도 **같은 bridge 재사용**.)
+
+### 12.1 층을 먼저 나눈다 (혼동 방지)
+
+| 층 | 무엇 | 죽으면 증상 | 누가 소유 |
+|----|------|-------------|-----------|
+| **오케스트레이터 세션** | Claude Code / Grok CLI 채팅 프로세스 | 도구 응답 없음, “먹통” | **터미널별** (공유 안 됨) |
+| **Relay** | Room 버스 (`ws://127.0.0.1:7842` 등) | peers/handoff/inbox 전부 실패, `ECONNREFUSED` | 머신(또는 팀 공용 호스트) **공용** |
+| **Sticky host** | 프로필별 장수 연결 | peer offline, CLI가 one-shot으로 떨어짐 | **프로필별** 공용 |
+| **Bridge** | 노드 카드 실행기 (`bridge-main`) | 카드 안 먹음 / pane 안 뜸 / `card.done` 없음 | **노드 프로필**(예: `mac-node`) **공용** |
+| **제품 surface** | CLI·MCP·relay 와이어 계약 | “기능이 없다” | 레포 버전 |
+
+**핵심:** Claude/Grok **채팅 세션**을 바꾸는 것과 Loom **버스/bridge**를 재기동하는 것은 다른 일이다.  
+Grok CLI를 켠다고 구현 레인이 자동 이관되지 않고, Claude가 먹통이어도 relay가 같이 죽지는 않는다.
+
+```text
+Claude Code 세션          Grok CLI 세션
+   (오케스트레이터 A)         (오케스트레이터 B)
+            \                   /
+             v                 v
+          relay + sticky hosts  ← 공용
+                    |
+              bridge (mac-node) ← 공용 한 프로세스
+                    |
+              herdr worker panes (claude / codex / grok)
+```
+
+### 12.2 증상 → 어느 층인지 30초 진단
+
+```bash
+# 1) Relay
+curl -s http://127.0.0.1:7842/health
+# 기대: {"ok":true,...}
+
+# 2) Sticky / peers (아키텍트 프로필 — 예: claude-impl)
+env -u LOOM_RELAY_URL -u LOOM_RELAY_TOKEN \
+  LOOM_PROFILE=claude-impl bun run loom peers
+
+# 3) Bridge (노드 프로필 — 예: mac-node)
+# pgrep -f 는 셸 래퍼와 겹칠 수 있어 ps로 확인
+ps -axo pid=,lstart=,etime=,command= | grep 'packages/host/src/bridge-main' | grep -v grep
+cat ~/.loom/profiles/mac-node.bridge.json   # "pid" 가 위 프로세스와 일치해야 함
+
+# 4) 세션 게이트 상태 (이 레포 dogfood)
+bun run status
+# 상단 HANDOFF.md "Current action" 만 읽어도 됨
+```
+
+| 진단 결과 | 조치 |
+|-----------|------|
+| health 실패 | **relay** 기동 (`bun run loom relay local start` 또는 팀 런북) — inbox durable은 0.14+ |
+| peers 전부 offline / sticky 없음 | 해당 프로필 `host start` 또는 `loom up` |
+| bridge 프로세스 없음 · meta pid 사망 | **bridge start** (아래 12.4) — “relay 죽음”이 아님 |
+| 버스는 정상인데 채팅만 멈춤 | **새 오케스트레이터 세션** + HANDOFF/`status`로 게이트 이어가기 |
+
+### 12.3 사용 사례 A — Claude 먹통 → Grok으로 웨이브 이어가기
+
+**전제:** dogfood 룸(`loom-local` 등), 노드 bridge 프로필(예: `mac-node`), 디스패처 allowlist에 아키텍트 peer id 등록.
+
+1. **상태 복구 (코드 수정 전)**  
+   - `bun run status` + `HANDOFF.md` 상단  
+   - 보드/인박스에 남은 카드(`suite-*`, `verify-*`, `FIX-*`) 확인  
+2. **층 진단 (12.2)** — relay가 살아 있으면 **relay를 건드리지 않는다**  
+3. **필요 시 bridge만 복구**  
+   - 카드 디스패치가 안 되거나 meta pid가 죽었을 때만  
+4. **카드 재발사** (예: verify를 codex pane으로)  
+   - 기존 dispatch 스크립트/`dispatchCard` 경로 사용  
+   - 신호는 보드 폴링이 아니라 **inbox `card.done`**  
+5. Claude가 나중에 살아나면 → **같은 bridge를 그대로 사용** (아래 12.5). 새 bridge를 또 띄울 필요 없음
+
+**실측 함정 (이름을 헷갈리기 쉬운 지점):**
+
+| 체감 | 실제 |
+|------|------|
+| “relay를 다시 띄웠다” | 로그상 **bridge** 재기동인 경우가 많음 (`Bridge started (pid …)`) |
+| “Grok CLI = 구현 레인” | Grok CLI는 **아키텍트 터미널**. 워커는 **herdr pane + card** |
+| PID 숫자 (예: 10814 → 78818) | OS **프로세스 ID**. 재기동마다 바뀜. meta 파일의 `"pid"`와 대조 |
+
+### 12.4 사용 사례 B — codex 무인 검증 때문에 bridge를 재기동할 때
+
+**하고 싶은 일:** codex pane 카드를 **승인 프롬프트 없이** 돌린다.
+
+codex 기본 argv는 승인 모드일 수 있다. 무인 검증 시 노드 bridge config의 `agentArgv.codex`에 신뢰 플래그를 넣는다 (예: `-a never`, `-s read-only` — **오너 신뢰 결정**).
+
+```bash
+# config 위치 (노드 프로필명에 맞게)
+# ~/.loom/bridge/mac-node.json  → agentArgv.codex
+
+# bridge는 기동 시 config를 읽음 → argv 변경 후 재시작 필수
+# bare start (allowlist 재주입 트랩 회피 — lessons: bridge start --allow 주의)
+env -u LOOM_RELAY_URL -u LOOM_RELAY_TOKEN \
+  LOOM_PROFILE=mac-node \
+  bun run loom --profile mac-node bridge stop   # 또는 기존 pid 정리 후
+
+nohup bun run packages/cli/src/index.ts --profile mac-node bridge start \
+  > /tmp/loom-bridge-mac-node.log 2>&1 &
+
+# 검증
+cat /tmp/loom-bridge-mac-node.log
+# Bridge started (pid NNNNN, port …)
+cat ~/.loom/profiles/mac-node.bridge.json   # pid == NNNNN
+```
+
+**재기동 이유 정리**
+
+| 이유 | product surface 추가? |
+|------|------------------------|
+| config/`agentArgv` 반영 | 아니오 — **런타임 ops** |
+| 프로세스 크래시 복구 | 아니오 |
+| 소스 핫픽스 후 최신 코드 로드 | 아니오 (bridge는 기동 시 소스 로드) |
+
+내부 배선·로컬 설정 변경은 **신규 CLI/MCP/relay 공개 surface가 아니다.**  
+PLAN이 “wire 무변경 · bridge 로컬만”이라고 할 때의 “surface 없음”과 같은 층이다.
+
+### 12.5 사용 사례 C — Claude가 다시 살아났을 때 (같은 bridge 재사용)
+
+**질문:** “Grok이 띄운 bridge를 Claude가 그대로 써도 되나?”  
+**답:** **된다.** bridge는 오케스트레이터 CLI 소유가 아니라 **노드 프로필 공용 프로세스**다.
+
+| 체크 | 명령/확인 | 기대 |
+|------|-----------|------|
+| bridge 생존 | `ps` + meta `"pid"` 일치 | 한 프로세스 |
+| 같은 room | claude-impl 세션 roomName vs bridge meta | 동일 (예: `loom-local`) |
+| allowlist | `~/.loom/bridge/mac-node.json` → `authorizedDispatchers` | claude-impl **전체** peer id 포함 (`loom peers` 절단 ID 금지) |
+| 디스패치 | `LOOM_PROFILE=claude-impl` 로 card 발사 | delivered + 노드가 claim |
+
+```bash
+# allowlist에 넣을 peer id = 전체 값
+# ~/.loom/profiles/claude-impl.json 의 peerId
+python3 - <<'PY'
+import json
+from pathlib import Path
+cfg = json.loads(Path.home().joinpath(".loom/bridge/mac-node.json").read_text())
+impl = json.loads(Path.home().joinpath(".loom/profiles/claude-impl.json").read_text())
+meta = json.loads(Path.home().joinpath(".loom/profiles/mac-node.bridge.json").read_text())
+print("claude-impl on allowlist:", impl["peerId"] in set(cfg.get("authorizedDispatchers") or []))
+print("room match:", impl.get("roomId") == meta.get("roomId"))
+print("bridge pid:", meta.get("pid"))
+PY
+```
+
+**주의 — “프로세스 공유” ≠ “최신 코드 로드”**
+
+- 같은 PID를 쓰는 것은 **연결/디스패치 가능**을 뜻한다.  
+- bridge **기동 이후** 워크트리에 핫픽스를 쌓았다면, 그 프로세스 메모리에는 **구 코드**가 있을 수 있다.  
+- 최신 구현으로 라이브 스모크/검증하려면 **bridge를 한 번 더 restart** 해 소스를 다시 읽게 한다.
+
+### 12.6 하지 말 것
+
+| 금지 | 이유 |
+|------|------|
+| 먹통만으로 무조건 `relay` kill/재기동 | durable 큐·roster 재join 비용. 먼저 health 확인 |
+| `loom peers` 표의 **잘린** peer id를 allowlist에 복사 | M-1 거부. 프로필 JSON의 **전체** id 사용 |
+| `bridge start --allow`로 allowlist “편하게” 고치기 | config 재주입 트랩 — allowlist는 파일에 미리 쓰고 **bare start** |
+| “CLI를 바꿨으니 구현이 이어진다” 가정 | 세션 컨텍스트는 HANDOFF/`status`로만 복구. 워커는 **card** |
+| codex 무인 플래그를 상시 기본으로 방치 후 잊기 | 승인 우회는 신뢰 결정. 검증 끝나면 argv **원복 + bridge restart** 권장 |
+
+### 12.7 관련 문서
+
+| 문서 | 내용 |
+|------|------|
+| [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md) | 프로필·카드 디스패치 dogfood 절차 |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | relay / host / bridge 패키지 맵 |
+| [`HANDOFF.md`](../HANDOFF.md) | 현재 게이트·노드 실측 함정 |
+| `tasks/lessons/bridge-ops.md` | 주입 레이스·card.done·잘린 peer id |
+
+---
+
+## 13. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -544,19 +718,22 @@ bun run loom --profile <p> handoff @name|id|* "body" [--with-pack] [--with-pack-
 bun run loom --profile <p> inbox | inbox accept <id>
 bun run loom --profile <p> listen
 bun run loom --profile <p> host start|stop|status
+bun run loom --profile <p> bridge start|stop|status
 bun run loom --profile <p> pack show|set|add|note|…
 bun run loom --profile <p> board | board add|set|assign|export|import|…
 bun run loom --profile <p> run [claude|codex|grok|shell]
 bun run loom --profile <p> agents --matrix
 bun run loom relay [--host 0.0.0.0] [--token …]
+bun run loom relay list | use <name> | local start|stop|status
 bun run desktop
 bun run smoke:desktop
+bun run status
 bun test
 ```
 
 ---
 
-## 13. 자주 하는 실수
+## 14. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -567,21 +744,25 @@ bun test
 | FABLE_* 만 설정 | 0.10+ 미독출 | `LOOM_*` 로 변경 |
 | 보드가 머신마다 다름 | 로컬 파일 | export/import 또는 `--with-board` |
 | 비루프백 relay 거부 | 토큰 없음 | `LOOM_RELAY_TOKEN` 필수 |
+| CLI 바꿨는데 카드가 안 돔 | bridge 다운 또는 allowlist | §12.2 진단 · bridge start · 전체 peer id |
+| “relay 재기동” 했는데 health는 이미 ok | 실제로는 bridge 재기동이 필요했음 | health와 `bridge-main` pid를 분리 확인 |
+| bridge 재기동 후 codex가 승인 대기 | argv 원복/미설정 | `agentArgv.codex` + bridge restart (§12.4) |
+| 핫픽스 반영이 안 됨 | 구 bridge PID가 옛 코드 유지 | bridge restart로 소스 재로드 (§12.5) |
 
 ---
 
-## 14. 지금 버전에서 **아직** 못 하는 것
+## 15. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
 - 보드 **실시간 멀티라이터 CRDT** / relay 영속 보드  
-- 에이전트 TUI **stdin 자동 주입**  
+- 에이전트 TUI **stdin 자동 주입** (카드/bridge pane 경로는 별도 — dogfood)  
 - 클라우드 계정·멀티테넌시  
-- 전역 `loom` 설치 스크립트 기본 제공 (원하면 alias)
+- 전역 `loom` 설치 스크립트 기본 제공 (원하면 alias · `scripts/install.sh` 참고)
 
 ---
 
-## 15. 더 읽을 문서
+## 16. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|
@@ -591,8 +772,9 @@ bun test
 | [apps/desktop/README.md](../apps/desktop/README.md) | 데스크톱 규칙 (토큰·XSS) |
 | [PROTOCOL.md](./PROTOCOL.md) | 와이어 프로토콜 |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 패키지 구조 |
+| [DOGFOOD_LOOP.md](./DOGFOOD_LOOP.md) | 멀티 에이전트 dogfood 룸·프로필 |
 | [PLAN.md](./PLAN.md) | 기능 계획 SSOT (개발용) |
 
 ---
 
-*가이드 버전: 제품 **0.13.0** 기능 집합 기준 (pack embed 포함). 기능이 늘면 이 문서의 사례 표를 갱신한다.*
+*가이드 버전: 제품 기능 집합 + **§12 오케스트레이터 CLI 전환·bridge 복구** 사용 사례(2026-07-20 실측). 기능이 늘면 이 문서의 사례 표를 갱신한다.*
