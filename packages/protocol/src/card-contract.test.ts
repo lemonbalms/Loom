@@ -10,8 +10,8 @@ import {
   cardPayloadFromAttachments,
   serializeCardAttachment,
   truncateTail,
-  wrapUntrustedPrompt,
-  UNTRUSTED_HANDOFF_MARKER,
+  wrapDispatchedPrompt,
+  DISPATCHED_TASK_MARKER,
 } from "./card-contract";
 import { MAX_ATTACHMENT_CONTENT_CHARS } from "./envelope";
 
@@ -149,8 +149,8 @@ describe("card-contract v1", () => {
     expect(text).toBe("ghij");
   });
 
-  test("untrusted marker preamble", () => {
-    expect(wrapUntrustedPrompt("p")).toContain(UNTRUSTED_HANDOFF_MARKER);
+  test("dispatched task marker preamble", () => {
+    expect(wrapDispatchedPrompt("p")).toContain(DISPATCHED_TASK_MARKER);
   });
 
   test("⑧ note additive optional — present + absent (0.23.7)", () => {

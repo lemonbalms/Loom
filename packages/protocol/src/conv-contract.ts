@@ -414,8 +414,8 @@ export {
   makeTextAttachment,
   serializeCardAttachment as serializeConvAttachment,
   cardPayloadFromAttachments as convPayloadFromAttachments,
-  UNTRUSTED_HANDOFF_MARKER,
-  wrapUntrustedPrompt,
+  DISPATCHED_TASK_MARKER,
+  wrapDispatchedPrompt,
 } from "./card-contract";
 
 /** Which conv label (if any) is present on this attachment set. */

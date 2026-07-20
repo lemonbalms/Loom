@@ -10,7 +10,7 @@ import {
   CardDispatchPayloadSchema,
   buildResultBody,
   serializeCardAttachment,
-  wrapUntrustedPrompt,
+  wrapDispatchedPrompt,
   truncateTail,
   type CardDispatchPayload,
   type CardResultPayload,
@@ -1224,8 +1224,8 @@ export async function startBridgeRuntime(opts?: {
 
     let prompt: string;
     try {
-      // M-2: untrusted prompt via agent.send only; bare Enter separate constant
-      prompt = wrapUntrustedPrompt(payload.prompt);
+      // M-2: dispatched prompt via agent.send only; bare Enter separate constant
+      prompt = wrapDispatchedPrompt(payload.prompt);
       await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
     } catch (e) {
       disposeCardFlight(agent.pane_id, flight);
@@ -1390,7 +1390,7 @@ export async function startBridgeRuntime(opts?: {
       let prompt: string;
       try {
         // R23 M-2 applies every turn (R24/R25 L-4), not just the first prompt.
-        prompt = wrapUntrustedPrompt(payload.text);
+        prompt = wrapDispatchedPrompt(payload.text);
         flight.sawWorking = false;
         await herdr.injectPromptAndSubmit(flight.terminalId, prompt);
       } catch (e) {
@@ -1503,8 +1503,8 @@ export async function startBridgeRuntime(opts?: {
       // Goal doubles as the first turn's prompt — the worker starts on
       // accept, mirroring card dispatch's prompt-on-start.
       // R28 L-2 / §5.1: bridge-authored artifact convention OUTSIDE the
-      // untrusted wrapper (bridge authors it; goal stays untrusted).
-      const untrusted = wrapUntrustedPrompt(payload.goal);
+      // dispatched wrapper (bridge authors it; goal stays data-not-instructions).
+      const untrusted = wrapDispatchedPrompt(payload.goal);
       // PLAN 0.23.9 ② / R34 M-1: done_proposal marker must NOT lead a convention
       // line (echo would false-positive the tail line-anchored detector). Same
       // form as [ARTIFACT]: "print a final line exactly: …".

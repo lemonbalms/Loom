@@ -13,7 +13,7 @@ import {
   CARD_RESULT_LABEL,
   buildDispatchBody,
   serializeCardAttachment,
-  wrapUntrustedPrompt,
+  wrapDispatchedPrompt,
 } from "@loom/protocol";
 import { RelayClient } from "./relay-client";
 import { HerdrClient, BARE_ENTER } from "./herdr-client";
@@ -248,7 +248,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
   test("① empty composer (probe miss) → reinject (prompt+CR) then working = recovery", async () => {
     const cardId = "task_a111000000000001";
     const promptBody = "recover-after-paste-loss-unique-tail-xyz";
-    const expectedPrompt = wrapUntrustedPrompt(promptBody);
+    const expectedPrompt = wrapDispatchedPrompt(promptBody);
     const callsBefore = fake.calls.length;
 
     // Force empty composer scrape regardless of accumulated send text
@@ -308,7 +308,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
   test("② composer residual (probe hit) + idle → CR only (no reinject)", async () => {
     const cardId = "task_a222000000000002";
     const promptBody = "composer-residual-probe-hit-tail-abc";
-    const expectedPrompt = wrapUntrustedPrompt(promptBody);
+    const expectedPrompt = wrapDispatchedPrompt(promptBody);
     const callsBefore = fake.calls.length;
     // F-7: crSends count and total calls are different units — baseline CR count
     const crBefore = crSends(fake).length;
@@ -417,7 +417,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     fake.setDiscardInjects(false);
     fake.setPaneReadText("*", null);
     const turn2Text = "conv-inject-exhaust-turn2-followup-tail";
-    const turn2Prompt = wrapUntrustedPrompt(turn2Text);
+    const turn2Prompt = wrapDispatchedPrompt(turn2Text);
     const callsBeforeTurn2 = fake.calls.length;
     const sent = await convSendTurn({
       convId: opened.convId,
@@ -459,7 +459,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
   test("⑤ reinject 1× cap: second miss does not reinject again", async () => {
     const cardId = "task_a555000000000005";
     const promptBody = "reinject-once-cap-unique-tail-555";
-    const expectedPrompt = wrapUntrustedPrompt(promptBody);
+    const expectedPrompt = wrapDispatchedPrompt(promptBody);
     const callsBefore = fake.calls.length;
 
     fake.setDiscardInjects(true);
@@ -535,7 +535,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
   test("⑦ paneRead failure → CR fallback (no reinject)", async () => {
     const cardId = "task_a777000000000007";
     const promptBody = "pane-read-fail-cr-fallback-tail";
-    const expectedPrompt = wrapUntrustedPrompt(promptBody);
+    const expectedPrompt = wrapDispatchedPrompt(promptBody);
     const callsBefore = fake.calls.length;
 
     fake.setDiscardInjects(false);
@@ -604,7 +604,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     // Long unique tail so last-48 of normalized form is distinctive
     const promptBody =
       "ws-normalize-probe-aaaaaaaaaaaaaaaaaaaaaaaa-TAILEND99";
-    const expectedPrompt = wrapUntrustedPrompt(promptBody);
+    const expectedPrompt = wrapDispatchedPrompt(promptBody);
     const callsBefore = fake.calls.length;
 
     // Scrape shows prompt with extra newlines (TUI wrap) — normalized hit
@@ -676,7 +676,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     }
 
     const turn2Text = "turn2-unique-probe-BBBB-only-this-should-match";
-    const turn2Prompt = wrapUntrustedPrompt(turn2Text);
+    const turn2Prompt = wrapDispatchedPrompt(turn2Text);
     // Composer still shows only turn-1 echo (not turn-2) → miss → reinject
     fake.setPaneReadText(paneId, "turn1-goal-for-probe-recalc-AAAA only old echo");
 
@@ -758,7 +758,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     {
       const cardId = "task_ac12000000000012";
       const promptBody = "placeholder-probe-hit-no-reinject-tail";
-      const expectedPrompt = wrapUntrustedPrompt(promptBody);
+      const expectedPrompt = wrapDispatchedPrompt(promptBody);
       const callsBefore = fake.calls.length;
 
       fake.setDiscardInjects(true);
@@ -791,7 +791,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     {
       const cardId = "task_ac12000000000012b";
       const promptBody = "placeholder-wrap-split-no-reinject-tail";
-      const expectedPrompt = wrapUntrustedPrompt(promptBody);
+      const expectedPrompt = wrapDispatchedPrompt(promptBody);
       const callsBefore = fake.calls.length;
 
       fake.setDiscardInjects(true);
@@ -874,7 +874,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
     // Turn 2 paste loss again — budget must reset
     const turn2Text = "m2-reset-turn2-DDDD-unique";
-    const turn2Prompt = wrapUntrustedPrompt(turn2Text);
+    const turn2Prompt = wrapDispatchedPrompt(turn2Text);
     const callsBefore = fake.calls.length;
     // still discard + empty scrape
     const sent = await convSendTurn({
