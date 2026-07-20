@@ -41,8 +41,11 @@
 > - **수정:** `bridge-runtime.ts`(주입·hookHint 분기·생명주기 + FIX-0260b: finishCard `:2282` 단일 초크포인트·Flight 3필드 `:387-394`·스폰 폴백 플래그 `:1135`·`:1148`) · `bridge-config.ts`(`hookSensor` 옵트인 **기본 off**) · `host/src/index.ts` barrel · VERSION **0.26.0**(cli `index.ts:144` + mcp `stdio.ts:403`)
 > - **브리프/디스패치(untracked):** `.loom-impl-0260-brief.md` · `.loom-verify-0260-brief.md` · `.loom-dispatch-{impl,fix,verify}-0260.ts` · `.loom-dispatch-fix-0260.ts`(D6b)
 >
+> ### 라이브 스모크 완주 (2026-07-20 · mac-node)
+> 절차 = config `hookSensor:true` + claude argv sonnet 스왑(→후반 `--permission-mode default` 추가) → 재기동 → 카드 A~D 4발(브릿지 dispatch) + 수동 pane 프로브 → config 원복+재기동. **PASS**: **U2 `--settings` 인라인 JSON 주입 실작동**(A~D 4회 hook 실발화 · `~/.loom/hook-sensor.jsonl` 12레코드) · `Stop` 4회 · `UserPromptSubmit` 4회+프로브 · **`permission_prompt`(Notification) 실발화**(수동 프로브 = 리스너 드라이버 `.loom-hook-listener-probe.ts`(`startHookListener` 직접 기동) + `herdr agent start` sonnet `--permission-mode default` pane + 자연 대화 → Bash 승인 프롬프트 화면 → `[HOOK-EVENT] permission_prompt` 소켓 수신) · 소켓→hookHint→jsonl(D6 `finishCard` 초크포인트) 전 체인 라이브(fallback `stale_hint` 3회) · sonnet 원복 완수(최종 = hookSensor off·argv `["claude"]`·pid 27018 online). **유예**: `agent_blocked` 1:1 교정(완료-클래스 판정 + `permission_prompt` 힌트 동시 성립)은 라이브 미실증 — 카드 경유 승인 대기가 sonnet claude-mem 거부 루프로 4회 실패(A·C·D 거부, B는 auto mode 프롬프트 없이 완주), 단 교정 로직은 유닛 33/33 커버(verification (13)③). **Low 후보 3건**: `stale_hint` 의미론(정상 완료도 `stale_hint` 계측 — 설계대로·≠결함, reason 어휘 세분화 Low) · 공유-홈 claude-mem 오염(스모크 준비 관찰이 워커 로드 → A 거부가 재거부 강화, lessons workers (9) 심화) · 오너 홈 `defaultMode:auto`는 benign Bash 자동 승인 → `permission_prompt` 유발엔 워커 argv `--permission-mode default` 스왑 필수.
+>
 > ### 다음 액션 (우선순위)
-> 1. **(선택) 라이브 스모크** — `hookSensor: true` 노드에서 승인 대기 카드 → `permission_prompt` hookHint 실발화·가짜 `agent_blocked` 1:1 교정·`Stop` 유예 입력 실발화 empirically(**U2 `--settings` 인라인 JSON 주입 실작동 방식 확정 포함** · benign 페이로드). PLAN Implemented 블록에 유예 명기됨.
+> 1. ~~**(선택) 라이브 스모크**~~ — **완주(2026-07-20, 위 「라이브 스모크 완주」 참조).** U2 `--settings` 인라인 JSON 주입·`Stop`·`UserPromptSubmit`·`permission_prompt`(Notification) 전부 실발화 PASS. **잔여 유예**: `agent_blocked` 1:1 교정 경로 라이브 실증(유닛 33/33 커버 · sonnet claude-mem 거부 루프로 카드 경유 미도달). **신규 Low 후보 3건**: `stale_hint` reason 어휘 세분화 · 공유-홈 claude-mem 오염 완화 · `permission_prompt` 재현엔 워커 `--permission-mode default` 스왑 필수(오너 홈 auto가 benign Bash 자동 승인).
 > 2. **잔존 Low들** — claude 상태줄 chrome · summary 정보성 타이밍줄 · orphan durable 룸 정리 · 동시 디스패치 풀 탭 레이스 등(아래 다음 액션 1·1-b 참조).
 >
 > ### suite-0260b 571/0 상세 (재조사 금지 — 차집합 0 확정)
@@ -81,7 +84,7 @@
 
 ## One-line resume
 
-> **🎯 v0.26.0 hooks 보조 센서 — ship 완결 (2026-07-20).** R41 author-close `approved` → IMPL-0260 → FIX-0260(유닛 22/22) → **VERIFY-0260 codex pane 11/12**(유일 FAIL = D6(b) 정상 폴백 계측) → **FIX-0260b** D6(b) 해소(grok pane `task_62b7d8c…` · 유닛 33/33) → **suite-0260b 571/0 · 차집합 0**(R28 L-1 플레이크 이번 런 미재현) · typecheck 6/6 → **소스 `0de6c4c`**(10파일 +1466/-59) · **dist `e1d9177`** · **push `origin/main = e1d9177`.** PLAN `Implemented` 블록 sha 확정. 신설 `hook-sensor.ts`(+test) · `hookSensor` 옵트인 기본 off · VERSION 0.26.0. **직전 완주 = 노드 부팅 생존 상시화**(트랙 종료) · v0.25.0 `conv_fetch` · hooks 스파이크 `0b534a6`.
+> **🎯 v0.26.0 hooks 보조 센서 — ship 완결 (2026-07-20).** R41 author-close `approved` → IMPL-0260 → FIX-0260(유닛 22/22) → **VERIFY-0260 codex pane 11/12**(유일 FAIL = D6(b) 정상 폴백 계측) → **FIX-0260b** D6(b) 해소(grok pane `task_62b7d8c…` · 유닛 33/33) → **suite-0260b 571/0 · 차집합 0**(R28 L-1 플레이크 이번 런 미재현) · typecheck 6/6 → **소스 `0de6c4c`**(10파일 +1466/-59) · **dist `e1d9177`** · **push `origin/main = e1d9177`.** PLAN `Implemented` 블록 sha 확정. 신설 `hook-sensor.ts`(+test) · `hookSensor` 옵트인 기본 off · VERSION 0.26.0. **라이브 스모크 완주(2026-07-20 mac-node)** = U2 `--settings` 인라인 JSON 주입·`Stop`·`UserPromptSubmit`·`permission_prompt`(Notification) 실발화 PASS · `agent_blocked` 교정만 유닛-커버 유예 · Low 후보 3건 등재. **직전 완주 = 노드 부팅 생존 상시화**(트랙 종료) · v0.25.0 `conv_fetch` · hooks 스파이크 `0b534a6`.
 
 ---
 

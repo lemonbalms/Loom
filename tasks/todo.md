@@ -2,11 +2,12 @@
 
 ## Next
 
-1. [ ] (선택) 라이브 스모크 — `hookSensor: true` + 승인 대기 카드(U2 `--settings` 실작동 확정)
-2. [ ] 잔존 Low들 — 상태줄 chrome · summary 타이밍줄 · orphan durable 룸 정리 등
+1. [ ] 잔존 Low들 — 상태줄 chrome · summary 타이밍줄 · orphan durable 룸 정리 등
+2. [ ] 신규 Low 후보(스모크발) — `stale_hint` reason 어휘 세분화 · 공유-홈 claude-mem 오염 완화 · `agent_blocked` 교정 라이브 실증(유닛 커버)
 
 ## Done (recent)
 
+- [x] **hookSensor 라이브 스모크 완주 (2026-07-20 mac-node)** — U2 인라인 JSON·`Stop`·`UserPromptSubmit`·`permission_prompt` 실발화 PASS · config 원복 완료
 - [x] R41 author-close → PLAN 0.26.0 approved
 - [x] IMPL-0260 hooks 센서 구현 (워크트리 미커밋)
 - [x] FIX-0260 소켓 path 길이 · 유닛 22/22
