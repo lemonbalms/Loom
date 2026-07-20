@@ -26,9 +26,13 @@
 2. **RULE-ENFORCEABILITY 적용 결정** — 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 3. **다음 대형 트랙 — 미정 (오너 결정 지점)** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 out of scope.
 4. **R{n} 게이트 유예 (기존)** — 브릿지 자동 git push(R26:431). 착수 시 R{n} 재리뷰 필수.
+<details><summary>5·6·7 — 잔존 Low 백로그 · npm publish 보류(오너 결정 대기) · 루트 <code>.loom-*</code> 부수 정리 (펼쳐보기)</summary>
+
 5. **잔존 Low 백로그** (결함 아님/무해 확정) — summary 타이밍줄 · orphan durable 룸 · 디스패치 풀 탭 레이스 · `stale_hint` 어휘 · sleep형 상한 소진 pane 정리 · 공유-홈 claude-mem 오염 · conv 조기 회신 · `pane-inject.sh` read-guard · WSL non-root · R28 L-1 플레이크 · `agent_blocked` 라이브 실증 유예.
 6. **오너 결정 대기 (별건)** — npm publish 보류(0-a). 재개 시 계정·패키지명 선택 → login→meta→publish. 재조사 금지.
 7. **부수 정리(선택)** — 루트 `.loom-*` untracked 브리프/디스패치 스크립트 정리(이번 웨이브에서 다수 추가됨).
+
+</details>
 
 ### 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)
 
@@ -36,7 +40,7 @@
 - herdr pane 디스패치 agentKind = **3종**(claude/codex/grok). **구현·자문 기본 레인 = herdr pane 카드**, headless는 pane 불가 시 폴백만(구 "allowlist=claude만"은 스테일). M-1 allowlist엔 **전체 peer ID**(`loom peers`는 절단 표시).
 - `bun test`는 셸에 `LOOM_RELAY_TOKEN`/`LOOM_RELAY_URL` 있으면 relay 테스트 깨짐 → `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`.
 - **`card.done` 수신 ≠ 완료.** 브릿지가 조기 커밋 후 `pane.close`를 호출 → 산출물은 **아키텍트가 워킹트리에서 독립 검증**. 종료 코드·시그널로 실패 판정 금지(정상 cleanup도 exit 129/SIGKILL). `PaneDied for unknown pane` = **herdr 내부 경고**.
-- **워커 감시 = `scripts/watch-card.ts`** (exit: marker 0 / pane-gone 1 / limit 2 / timeout 3). 임시 셸 감시는 2026-07-20 4연속 서로 다른 구멍(마커만 봄 / pane 소멸 누락 / bash 3.2 거짓 성공 / 검출 후 미종료).
+- **워커 감시 = `scripts/watch-card.ts`** (exit: marker 0 / pane-gone 1 / limit 2 / timeout 3). **`--pane` 명시 필수** — `--agent`/`--cwd` 자동 탐색은 무관한 유휴 pane을 잡는다(미수정). 임시 셸 감시는 4연속 구멍.
 - **claude-mem 패치는 비영속** — `autoUpdate: true`로 예고 없이 원복. 방어선 `bun run check:mem-header` · 재적용 `tasks/lessons/platform.md`.
 
 ### 하지 말 것

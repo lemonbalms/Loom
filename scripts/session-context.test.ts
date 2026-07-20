@@ -8,6 +8,7 @@ import {
   HARD_CAP,
   SOFT_CAP,
   buildAllContext,
+  buildStateContext,
   checkSoftCap,
   stripDetailsBlocks,
   truncateContext,
@@ -138,6 +139,99 @@ describe("D2 stripDetailsBlocks", () => {
     expect(out.includes("a")).toBe(true);
     expect(out.includes("b")).toBe(true);
     expect(out.startsWith("⚠")).toBe(false);
+  });
+});
+
+describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
+  test("① details blocks inside HANDOFF sections are excluded from state", () => {
+    const handoff = [
+      "## One-line resume",
+      "resume-visible-line",
+      "<details>",
+      "SYNTH_DETAILS_SECRET_BODY",
+      "should-not-inject",
+      "</details>",
+      "resume-after-details",
+      "",
+      "## ⭐ Current action (read first)",
+      "action-visible-line",
+      "<details open>",
+      "SYNTH_ACTION_DETAILS_HIDDEN",
+      "</details>",
+      "action-after-details",
+      "",
+      "## Unrelated section",
+      "not-a-target-section",
+    ].join("\n");
+
+    const out = buildStateContext(handoff);
+    expect(out.includes("SYNTH_DETAILS_SECRET_BODY")).toBe(false);
+    expect(out.includes("should-not-inject")).toBe(false);
+    expect(out.includes("SYNTH_ACTION_DETAILS_HIDDEN")).toBe(false);
+    expect(out.split("\n").some((l) => l.startsWith("<details"))).toBe(false);
+    expect(out.includes("</details>")).toBe(false);
+  });
+
+  test("② text outside details blocks is preserved", () => {
+    const handoff = [
+      "## One-line resume",
+      "KEEP_RESUME_OUTER",
+      "<details>",
+      "drop-me",
+      "</details>",
+      "KEEP_RESUME_TAIL",
+      "",
+      "## ⭐ Current action (read first)",
+      "KEEP_ACTION_OUTER",
+      "<details>",
+      "drop-action",
+      "</details>",
+      "KEEP_ACTION_TAIL",
+    ].join("\n");
+
+    const out = buildStateContext(handoff);
+    expect(out.includes("KEEP_RESUME_OUTER")).toBe(true);
+    expect(out.includes("KEEP_RESUME_TAIL")).toBe(true);
+    expect(out.includes("KEEP_ACTION_OUTER")).toBe(true);
+    expect(out.includes("KEEP_ACTION_TAIL")).toBe(true);
+    expect(out.includes("drop-me")).toBe(false);
+    expect(out.includes("drop-action")).toBe(false);
+  });
+
+  test("③ no-details HANDOFF preserves section text (no regression)", () => {
+    const handoff = [
+      "## One-line resume",
+      "plain-resume-alpha",
+      "plain-resume-beta",
+      "",
+      "## ⭐ Current action (read first)",
+      "plain-action-gamma",
+    ].join("\n");
+
+    const out = buildStateContext(handoff);
+    expect(out.includes("## One-line resume")).toBe(true);
+    expect(out.includes("plain-resume-alpha")).toBe(true);
+    expect(out.includes("plain-resume-beta")).toBe(true);
+    expect(out.includes("## ⭐ Current action (read first)")).toBe(true);
+    expect(out.includes("plain-action-gamma")).toBe(true);
+    expect(out.startsWith("⚠")).toBe(false);
+  });
+
+  test("④ sentinel [LOOM-SESSION-CONTEXT v1 · state] is preserved literally", () => {
+    const handoff = [
+      "## One-line resume",
+      "x",
+      "<details>",
+      "hidden",
+      "</details>",
+      "",
+      "## ⭐ Current action (read first)",
+      "y",
+    ].join("\n");
+
+    const out = buildStateContext(handoff);
+    expect(out.includes("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(true);
+    expect(out.indexOf("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(0);
   });
 });
 

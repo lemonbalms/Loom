@@ -67,6 +67,20 @@
 
 </details>
 
+- [orchestration] 2026-07-20 (20) 코드 락 vs 문서 규칙: 코드 강제 3/3 준수 · 문서만 4/4 위반(기록해도 재범).
+<details><summary>경위·좌표</summary>
+
+[orchestration] 2026-07-20 (20) 코드 락 vs 문서 규칙: 같은 세션에서 **코드로 강제된 규칙 3건**(M-1 dispatcher allowlist · L-2 `result.node`↔assignee 정합 · PreToolUse hook의 Agent `model` 필수)은 **3/3 전부 위반을 막았고**, **문서에만 있던 규칙 4건**(orchestration 스킬 로드 · board claim 선행 · pane 카드 우선 · 마커 echo 오탐 주의)은 **4/4 전부 위반됐다**. 특히 마커 echo 오탐은 lessons에 **이미 기록이 있었는데도 재범** — "기록하면 다음에 안 틀린다"의 반례다. 규칙을 새로 만들 때는 문서에 쓸지 코드로 잠글지를 먼저 판별하라. 판별 기준 정본 = `docs/spikes/RULE-ENFORCEABILITY.md`(§7 판별표·§7.1 우선순위).
+
+</details>
+
+- [orchestration] 2026-07-20 (24) 레인 분리: 구현=grok · 검증=codex · 자문=fable(발견자≠수정자).
+<details><summary>경위·좌표</summary>
+
+[orchestration] 2026-07-20 (24) 검증 레인 분리(CLAUDE.md 규칙 5): **구현 = `grok`** · **검증 = `codex`** · **자문 = `fable-advisor`**(read-only). 검증을 구현자와 같은 레인에 주면 교차 검증이 성립하지 않는다 — 발견자와 수정자를 분리해야 한다. 이번 웨이브 실증: codex가 **아키텍트의 진단 오류**(`PaneDied for unknown pane` 오독)와 **감지기 결함 2건**을 잡아냈다. 같은 레인이었다면 자기 산출물을 자기가 승인하는 구조라 셋 다 통과했을 것이다. cross-ref: verification (23)·bridge-ops (21).
+
+</details>
+
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 
 - [bridge-ops] 2026-07-18 잘린 peer ID: `loom peers` 표 ID는 표시용 절단값 — allowlist엔 전체 ID. 수정 후 브릿지 재시작 필수.
@@ -139,6 +153,20 @@
 
 </details>
 
+- [bridge-ops] 2026-07-20 (21) `card.done` ≠ 완료 — 종료코드·시그널로 실패 판정 금지.
+<details><summary>경위·좌표</summary>
+
+[bridge-ops] 2026-07-20 (21) `card.done` 수신 ≠ 완료. **인과 주의(codex 교차검증 정정)**: pane이 죽어서 가짜 done이 나는 것이 아니라, **브릿지가 완료 후보를 너무 일찍 `done`으로 커밋하고 그 결과로 `pane.close`를 호출**한다(`finishCard()` — `bridge-runtime.ts:2310-2323`). 따라서 ① 산출물은 **아키텍트가 워킹트리에서 독립 검증**해야 확정되고 ② **종료 코드·시그널만으로 실패를 판정하지 마라** — 정상 cleanup에서도 exit 129/SIGKILL이 나온다(실측: pane **215·217**은 `status=done` result 전송 뒤 **106ms/4ms** 만의 정상 정리였다). ③ `PaneDied for unknown pane`은 **herdr 내부 경고**이지 브릿지가 통지를 버렸다는 증거가 아니다 — 아키텍트가 이 오독으로 오너에게 **틀린 진단을 보고**했다. 설계 정본 `docs/spikes/PANE-DEATH-DESIGN.md`. cross-ref: orchestration (24).
+
+</details>
+
+- [bridge-ops] 2026-07-20 (22) 임시 셸 감시 금지(4연속 실패) — `scripts/watch-card.ts`.
+<details><summary>경위·좌표</summary>
+
+[bridge-ops] 2026-07-20 (22) 임시 셸 감시 4연속 실패: 손으로 짠 감시가 **매번 다른 곳에서** 뚫렸다 — ① 마커만 보고 **pane 사망을 놓침** ② "codex는 안 죽는다"는 **관측을 가정으로 승격**해 소멸 감시를 제외 → 사용자 수동 종료를 놓침 ③ macOS **bash 3.2 연관배열 미지원**으로 즉사하며 "35분 경과" **거짓 성공** 보고 ④ 마커 검출 후 종료하지 않아 **알림 미전달**. 규칙 = 임시 셸 감시 금지, **`scripts/watch-card.ts` 사용**(종료 사유를 exit code로 구분: `marker`=0 · `pane-gone`=1 · `limit`=2 · `timeout`=3). **완주와 사망을 같은 코드로 뭉개지 마라** — 그것이 거짓 성공의 근원이다. cross-ref: bridge-ops (21)·verification (23).
+
+</details>
+
 ## verification — 차집합 판정·dist 재빌드 순서·독립검증·provenance·힌트 교차검증
 
 - [verification] 2026-07-11 Provenance: 툴이 인터랙티브 실행된 뒤 config가 예상과 다르면 툴 탓 전에 오너가 뭘 골랐는지 확인 — 오너가 방금 고른 설정 임의 원복 금지.
@@ -174,6 +202,13 @@
 <details><summary>경위·좌표</summary>
 
 [verification] 2026-07-19 (13) 라이브 스모크 방법론: ① CLI 표면 없는 툴(`conv_fetch`)은 워크스페이스 밖 `bun -e` 모듈 해석 실패 → **리포 내부 상대-import 드라이버 스크립트**로 호출(MCP 경유가 정식). ② localhost 매핑은 원격 소스=로컬 dest 동일 경로라 D5 덮어쓰기 거부로 **happy-path 자멸** → happy-path는 실 원격 노드 필수. ③ 유닛이 이미 잠근 단계(M-D wire→저장)만 **합성 씨딩으로 우회**하고 나머지 실행 경로는 전부 라이브 실증 — 우회 사실+그 단계 유닛 커버리지를 명기해 실증 공백 없음을 못박음. ④ 스모크는 happy-path만이 아니라 R40 명시 **실손 경로(M-B 오염 host·D6 sha 격리)를 직접 재현**해 방어 발화 확인. 스키마 정규식이 좌표를 실제 게이트(`conv_smoke0250` 실거부).
+
+</details>
+
+- [verification] 2026-07-20 (23) 설계 문서도 틀린다 — 좌표는 실행 경로로 검증하라.
+<details><summary>경위·좌표</summary>
+
+[verification] 2026-07-20 (23) 설계 문서도 틀린다 — 실행 경로로 검증하라: `HOOK-CACHE-FIX-DESIGN.md` **§5가 패치 대상으로 `context-generator.cjs`를 지목**했으나 그것은 **데드 번들**이었다(호출처 0건). 승인된 설계 문서의 좌표라도 그대로 믿고 편집하면 아무 효과 없는 패치를 "적용 완료"로 보고하게 된다. **정적 grep이 아니라 훅이 실제로 실행하는 커맨드에서 출발해 호출 사슬을 따라가야** 진짜 좌표(`worker-service.cjs`의 `qJ()`/`eQ()`)가 나온다. codex 교차검증이 이를 confirm했다. cross-ref: orchestration (24)·platform (19).
 
 </details>
 

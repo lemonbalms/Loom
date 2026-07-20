@@ -115,18 +115,24 @@ export function truncateContext(text: string): string {
   return `${head}${text.slice(0, keep)}\n…[truncated ${cut} chars — 원문 파일 참조]`;
 }
 
-export function buildStateContext(): string {
+/**
+ * Build state injection block. Optional `handoffText` is for unit tests
+ * (synthetic HANDOFF); production path reads HANDOFF.md from disk.
+ * stripDetailsBlocks applies only to extracted HANDOFF sections — not to
+ * buildStatus() or checkHandoffBudget() output.
+ */
+export function buildStateContext(handoffText?: string): string {
   const parts: string[] = ["[LOOM-SESSION-CONTEXT v1 · state]", buildStatus()];
 
-  const handoff = read("HANDOFF.md");
+  const handoff = handoffText ?? read("HANDOFF.md");
   if (handoff) {
     const oneLine = extractSection(handoff, "One-line resume");
-    if (oneLine) parts.push(oneLine);
+    if (oneLine) parts.push(stripDetailsBlocks(oneLine));
     // Heading includes the star emoji as written in HANDOFF.md
     const current =
       extractSection(handoff, "⭐ Current action (read first)") ??
       extractSection(handoff, "⭐ Current action");
-    if (current) parts.push(current);
+    if (current) parts.push(stripDetailsBlocks(current));
   }
 
   const budget = checkHandoffBudget();
