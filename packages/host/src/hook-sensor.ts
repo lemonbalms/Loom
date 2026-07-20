@@ -189,6 +189,10 @@ export function clearHookHintOnWorking(): undefined {
  *
  * Reads Claude hook stdin JSON, maps to `{kind}`, writes one line to the
  * attempt-scoped Unix socket. Failures are swallowed (exit 0).
+ *
+ * Fail-open means *no signal*, not a default signal: a malformed payload or an
+ * unrecognized event sends nothing at all. A default `Stop` would promote
+ * garbage stdin into a valid turn-end hint that the listener cannot reject.
  */
 export function buildHookSocketWriteCommand(socketPath: string): string {
   // argv-safe absolute path; bun -e script reads process.argv[1] as socket path.
@@ -196,10 +200,11 @@ export function buildHookSocketWriteCommand(socketPath: string): string {
   const script = [
     "const n=require('net');",
     "const s=process.argv[1];",
+    "const K=['Stop','permission_prompt','idle_prompt','UserPromptSubmit'];",
     "let d='';",
     "process.stdin.on('data',c=>d+=c);",
     "process.stdin.on('end',()=>{",
-    "let k='Stop';",
+    "let k='';",
     "try{",
     "const j=JSON.parse(d);",
     "const e=String(j.hook_event_name||j.hookEventName||'');",
@@ -207,8 +212,10 @@ export function buildHookSocketWriteCommand(socketPath: string): string {
     "if(e==='UserPromptSubmit'||e==='user_prompt_submit')k='UserPromptSubmit';",
     "else if(e==='Notification'||e==='notification')k=t.includes('idle')?'idle_prompt':'permission_prompt';",
     "else if(e==='Stop'||e==='stop')k='Stop';",
-    "else if(typeof j.kind==='string'&&j.kind)k=j.kind;",
+    "else if(typeof j.kind==='string'&&K.indexOf(j.kind)>=0)k=j.kind;",
     "}catch{}",
+    // parse failure / unknown event → emit nothing, never connect.
+    "if(K.indexOf(k)<0)process.exit(0);",
     "const c=n.createConnection(s);",
     "let done=false;",
     "const fin=()=>{if(!done){done=true;process.exit(0);}};",

@@ -33,6 +33,7 @@ import {
   startHookListener,
   stopAllowsStillRunningMaxBypass,
   type HookHint,
+  type HookHintKind,
   type HookListener,
 } from "./hook-sensor";
 import { isPathUnderLoomDir } from "./inject-control";
@@ -42,6 +43,12 @@ import {
   defaultBridgeConfig,
   bridgeConfigPath,
 } from "./bridge-config";
+import {
+  RESULT_DELIVERY_UNCONFIRMED,
+  recordResultDeliveryUnconfirmed,
+  resetResultDeliveryUnconfirmed,
+  resultDeliveryUnconfirmed,
+} from "./bridge-runtime";
 import {
   loomDir,
   resetActiveProfile,
@@ -400,6 +407,156 @@ describe("PLAN 0.26.0 hook settings + script conventions (D2·D4)", () => {
     expect(next).toContain("--settings");
     const json = next[next.indexOf("--settings") + 1]!;
     expect(JSON.parse(json)).toEqual(JSON.parse(buildHookSettingsJson(sock)));
+  });
+});
+
+// ─── injected script end-to-end (malformed must emit nothing) ────────────────
+
+/**
+ * Run the real generated hook command against a live listener and return the
+ * hints it delivered. The defect being guarded lives inside the script string,
+ * so the script has to actually execute for the test to mean anything.
+ */
+async function runHookCommand(
+  socketPath: string,
+  stdin: string,
+): Promise<HookHint[]> {
+  const got: HookHint[] = [];
+  const started = await startHookListener({
+    socketPath,
+    onEvent: (h) => got.push(h),
+  });
+  expect(started.ok).toBe(true);
+  if (!started.ok) return got;
+  try {
+    const proc = Bun.spawn(
+      ["sh", "-c", buildHookSocketWriteCommand(socketPath)],
+      {
+        stdin: new TextEncoder().encode(stdin),
+        stdout: "ignore",
+        stderr: "ignore",
+      },
+    );
+    await proc.exited;
+    // Emission is a socket write from an already-exited child; give the
+    // listener a beat, then confirm nothing further arrives.
+    await waitFor(() => got.length >= 1, 1_500);
+    await Bun.sleep(100);
+  } finally {
+    started.listener.close();
+  }
+  return got;
+}
+
+describe("hook script emits nothing on malformed / unknown input", () => {
+  test("malformed stdin → 0 events (no default Stop)", async () => {
+    let n = 0;
+    for (const bad of ["not json", "", "{", "[1,2,3]", "null"]) {
+      n += 1;
+      const got = await runHookCommand(
+        hookSocketPath(`task_bad${n}`, 1),
+        bad,
+      );
+      expect({ input: bad, got }).toEqual({ input: bad, got: [] });
+    }
+  }, 20_000);
+
+  test("unknown event name / unknown kind → 0 events", async () => {
+    const unknownEvent = await runHookCommand(
+      hookSocketPath("task_unkev", 1),
+      JSON.stringify({ hook_event_name: "PreToolUse", tool_input: { a: 1 } }),
+    );
+    expect(unknownEvent).toEqual([]);
+
+    const unknownKind = await runHookCommand(
+      hookSocketPath("task_unkkind", 1),
+      JSON.stringify({ kind: "Bogus" }),
+    );
+    expect(unknownKind).toEqual([]);
+  }, 20_000);
+
+  test("recognized payloads still map exactly as before", async () => {
+    const cases: Array<[string, string, HookHintKind]> = [
+      ["stop", JSON.stringify({ hook_event_name: "Stop" }), "Stop"],
+      [
+        "perm",
+        JSON.stringify({
+          hook_event_name: "Notification",
+          notification_type: "permission_prompt",
+        }),
+        "permission_prompt",
+      ],
+      [
+        "idle",
+        JSON.stringify({
+          hook_event_name: "Notification",
+          notification_type: "idle_prompt",
+        }),
+        "idle_prompt",
+      ],
+      [
+        "ups",
+        JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "hi" }),
+        "UserPromptSubmit",
+      ],
+      ["compact", JSON.stringify({ kind: "Stop" }), "Stop"],
+    ];
+    for (const [name, payload, expected] of cases) {
+      const got = await runHookCommand(hookSocketPath(`task_ok${name}`, 1), payload);
+      expect(got.map((h) => h.kind)).toEqual([expected]);
+    }
+  }, 30_000);
+});
+
+// ─── result delivery observability (PATCH 1 B) ───────────────────────────────
+
+describe("result delivery unconfirmed counter", () => {
+  test("records a structured line with cardId / seq / reason and bumps count", () => {
+    resetResultDeliveryUnconfirmed();
+    expect(resultDeliveryUnconfirmed()).toBe(0);
+
+    const lines: string[] = [];
+    const orig = console.error;
+    console.error = (...args: unknown[]) => {
+      lines.push(args.map((a) => String(a)).join(" "));
+    };
+    try {
+      recordResultDeliveryUnconfirmed({
+        cardId: "task_deliver01",
+        seq: 4,
+        reason: "pane_died",
+      });
+      recordResultDeliveryUnconfirmed({ cardId: "task_deliver02" });
+    } finally {
+      console.error = orig;
+    }
+
+    expect(resultDeliveryUnconfirmed()).toBe(2);
+    expect(lines).toHaveLength(2);
+    for (const l of lines) expect(l).toContain(RESULT_DELIVERY_UNCONFIRMED);
+
+    const first = JSON.parse(
+      lines[0]!.slice(lines[0]!.indexOf("{")),
+    ) as Record<string, unknown>;
+    expect(first).toEqual({
+      event: RESULT_DELIVERY_UNCONFIRMED,
+      cardId: "task_deliver01",
+      seq: 4,
+      reason: "pane_died",
+      count: 1,
+    });
+
+    // optional fields omitted rather than emitted as undefined
+    const second = JSON.parse(
+      lines[1]!.slice(lines[1]!.indexOf("{")),
+    ) as Record<string, unknown>;
+    expect(second).toEqual({
+      event: RESULT_DELIVERY_UNCONFIRMED,
+      cardId: "task_deliver02",
+      count: 2,
+    });
+
+    resetResultDeliveryUnconfirmed();
   });
 });
 

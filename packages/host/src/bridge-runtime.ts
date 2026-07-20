@@ -484,6 +484,43 @@ function log(...args: unknown[]): void {
   console.error("[loom-bridge]", ...args);
 }
 
+/** Stable log/counter key for a result handoff whose delivery was not acked. */
+export const RESULT_DELIVERY_UNCONFIRMED = "result_delivery_unconfirmed";
+
+let resultDeliveryUnconfirmedCount = 0;
+
+/** Process-wide count of unacked result handoffs (observability only). */
+export function resultDeliveryUnconfirmed(): number {
+  return resultDeliveryUnconfirmedCount;
+}
+
+/** Test helper — resets the observability counter. */
+export function resetResultDeliveryUnconfirmed(): void {
+  resultDeliveryUnconfirmedCount = 0;
+}
+
+/**
+ * Record an unacked result handoff. Pure observability: callers proceed on the
+ * same path they took before, so this must never influence control flow.
+ */
+export function recordResultDeliveryUnconfirmed(d: {
+  cardId: string;
+  seq?: number;
+  reason?: string;
+}): void {
+  resultDeliveryUnconfirmedCount += 1;
+  log(
+    RESULT_DELIVERY_UNCONFIRMED,
+    JSON.stringify({
+      event: RESULT_DELIVERY_UNCONFIRMED,
+      cardId: d.cardId,
+      ...(d.seq !== undefined ? { seq: d.seq } : {}),
+      ...(d.reason !== undefined ? { reason: d.reason } : {}),
+      count: resultDeliveryUnconfirmedCount,
+    }),
+  );
+}
+
 function hasDispatchLabel(h: HandoffPayload): boolean {
   return Boolean(
     h.attachments?.some(
@@ -2352,7 +2389,15 @@ export async function startBridgeRuntime(opts?: {
       reason: opts.reason,
     };
     if (opts.fromPeerId) {
-      await sendResult(opts.fromPeerId, payload);
+      const sent = await sendResult(opts.fromPeerId, payload);
+      // Observability only — the failed-result path proceeds unchanged.
+      if (!sent) {
+        recordResultDeliveryUnconfirmed({
+          cardId: opts.cardId,
+          seq,
+          reason: opts.reason,
+        });
+      }
     }
   }
 
