@@ -20,50 +20,37 @@
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH 불변식-유도 재작성 (접근 전환)** — 3차 **reject/ready=no**(High 2·Medium 4 → `docs/reviews/PANEDEATH-CODEX-REVIEW3.md`). **fable-advisor: 3연속 reject = 접근 전환 신호.** "지적→축자 반영→새 모순"은 락들이 **공유 불변식 없이 누적**된 탓 — **축자 반영 중단**, 아래 불변식을 정본으로 **락 3·5·8·9를 유도 재작성**. 리뷰 대상도 **"불변식 1개 + 유도"**로 제시(모순 생성 경로가 닫힌다).
+0. **⭐ PANE-DEATH (C) 하이브리드 — 코드 결함 3건 수정 (구현 착수 지점)** — 방향 전환 확정, 설계 문서 반영분 = 이번 커밋(E1~E15).
    > **불변식:** 불확실한 관측은 **회복 가능한 행동만** 유발한다. 비가역 행동(result 발행·`pane.close`·dispose)은 **결정적 증거 또는 멱등 경로에서만**.
 
-   필수 메커니즘 = **`commit_unknown` 분리**(`send_unknown` ↔ `presence_unknown`). 3차 원장·자기 결함 2건·복구 조건(펼쳐보기).
+   **수정 3건(축자 확인 완료)**: ① `hook-sensor.ts:202` malformed→`Stop` 승격 → `none` fail-open ② `bridge-runtime.ts:2123` `void sendFailedResult` fire-and-forget + `:2355` ACK 반환값 폐기 → 단일 소유권·멱등 전달·ACK 추적·durable alert. **자동 done을 없애도 남는 결함.** 레인 = grok. (C) 경계·근거(펼쳐보기).
 
-1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 통합 테스트 실패(단독은 6/6 green). 변경과 무관 확정. **방치 시 모든 웨이브의 green 판정이 흐려진다**(펼쳐보기).
+1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 실패(단독은 6/6 green). 변경 무관 확정. **방치 시 green 판정이 흐려진다**(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
 3. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
 
 <details>
 <summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
 
-- (0) **`commit_unknown` 분리 근거**: 두 unknown은 안전 속성이 정반대다. `send_unknown`(전송했으나 ACK 불확실) = 멱등성 없이 재발행 금지, 출구는 relay idempotency PATCH 또는 운영자. `presence_unknown`(result를 구성한 적 없음) = **한 번도 보낸 적 없어 늦게 단일 result를 내도 local single-issue 불변** → 안전한 자동 출구 존재. **복구의 최소 조건 = `doing` 소유자(타워)에게 도달하는 신호** — 현 출구(10분 뒤 dispose+log)는 브릿지 로컬 관측만 지우고 타워 `doing`은 그대로라 복구가 아니다. cadence 수치는 불변식이 서면 **정확성 하중 없는 순수 튜닝 파라미터**가 된다(실측 실험 부활 불요 — 실측은 분포를 줄 뿐 상한을 주지 않는다).
-- (0) **3차 원장**(전문 = `docs/reviews/PANEDEATH-CODEX-REVIEW3.md`): CLOSED 2 = F2 `generation` · F7 ACK 경계(D8 개명 통과, 스테일 0건). PARTIAL 2 = F5·F8. NOT CLOSED 4 = **F1**(`:49`·`:521`이 여전히 pre-ACK→failed 명령) · F3 · F4(락 1 `:650` ↔ 락 3 `:666` 반대 분류) · F6.
-- (0) **아키텍트 자기 결함 2건**: ① High-2는 아키텍트 산출 — D7 cadence 표가 `present`의 **카운터 리셋 미규정**이라, 문자 그대로면 60초 넘게 정상인 flight가 `commit_unknown`으로 떨어져 완료 경로가 소멸. ② F1 미닫힘 근인 = **증거 팩 스캔 범위를 §5~§8로 좁힌 것**(`:49` 요약 표가 밖에 남음). **범위 축소 3회차 재범** — 다음 재작성은 **문서 전역** 대상.
+- (0) **(C) 경계**: 브릿지는 **자동 `done` 커밋 안 함** → 완료 후보는 단일 소유자가 멱등 `needs_verification`(board `blocked`)으로 전달, **사람이 워킹트리 독립 검증 후 확정**. 자동 `blocked`는 **결정적 부정 증거**(permission block·generation 결속 연속 absence)에만. 불확실한 status/scrape/timeout은 **알림만**(result 확정·close·dispose 금지). 자동 cleanup은 사람 확정 + tower receipt 뒤에만.
+- (0) **(C) 전환 근거 요약**(전문 → `docs/HANDOFF_ARCHIVE.md`): 규칙 7이 이미 `card.done`을 자문 등급으로 격하했다(fable) · **단 "3연속 reject = 기질 탓"은 기각**(codex — High-2는 아키텍트 결함) · **규칙 7 완화는 보류이지 포기 아님** · herdr 수렴 등급 **B+**, "Loom 신뢰 ≤ herdr 등급" 원칙은 **과도로 기각**.
+- (0) **잔존 2건(정직 고지)**: (C)로 3차 지적 6건 중 **4건만 닫힌다**. 남는 것 = ① 중복 발행(완료후보 `blocked` ↔ terminal `failed/blocked`) ② F5·F6(`terminalPending` 소비 + `blocked` result 자체의 ACK 유실·복구). **정확한 효과 = "거짓 성공 제거, 중복·유실·고아 존속."** 위 수정 3건이 이를 겨냥한다.
+- (0) **증거 명제표(P1~P7) 채택** — `hookHint 우선` 전역 우선순위 **폐기**. 센서는 명제별 등급(`A/C/S/N`)만 갖는다. **P4(relay 수락) = strict ACK + CAS만 `A`** · **P7(의미상 완료) = lifecycle 센서로 절대 확정 불가** · P1(프롬프트 소비)은 현행 센서로 확정 불가(nonce 결속 receipt 필요). **hooks = 영원히 자문 신호**(커밋 트리거 승격 금지). herdr 등급은 **보수적 prior**일 뿐 권위 근거로 수입 금지(Loom 신뢰도 ≤ 어댑터가 **독립 검증한 명제 coverage**).
+- (0) **미실측 상수 지위**: cadence·타임아웃은 **알림·재평가 등 가역 행동만** 유발. correctness 근거 금지, 실측 선결조건도 아님. `present` 응답의 **카운터 리셋 규정 필수**(3차 High-2).
+- (0) **아키텍트 자기 결함 2건(재범 방지)**: ① High-2 = D7 cadence 표의 `present` **카운터 리셋 미규정**(아키텍트 산출) ② F1 미닫힘 = **스캔 범위를 §5~§8로 좁힌 것**(`:49` 밖에 남음) — **범위 축소 3회차 재범, 다음은 문서 전역 대상**. 3차 원장 전문 = `docs/reviews/PANEDEATH-CODEX-REVIEW3.md`.
 
 - (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 기아만이 원인 아님. 회귀 아님 근거 = 베이스라인·변경분 각 3회 16 pass/0 fail 동일 · 변경 파일 import 테스트 0건. 남은 가설 = 포트/소켓·타이밍 경합.
 - (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
 - (2) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 
 </details>
-4. **다음 대형 트랙 — 미정 (오너 결정 지점)**(펼쳐보기).
-5. **R{n} 게이트 유예 (기존)**(펼쳐보기).
-
-<details>
-<summary>4·5 부연 설명 (펼쳐보기)</summary>
-
-- (4) 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 out of scope. **1번 flake도 이 결정 지점의 후보다.**
-- (5) 브릿지 자동 git push(R26:431). 착수 시 R{n} 재리뷰 필수.
-
-</details>
-<details><summary>5·6·7 — 잔존 Low 백로그 · npm publish 보류(오너 결정 대기) · 루트 <code>.loom-*</code> 부수 정리 (펼쳐보기)</summary>
-
-5. **잔존 Low 백로그** (결함 아님/무해 확정) — summary 타이밍줄 · orphan durable 룸 · 디스패치 풀 탭 레이스 · `stale_hint` 어휘 · sleep형 상한 소진 pane 정리 · 공유-홈 claude-mem 오염 · conv 조기 회신 · `pane-inject.sh` read-guard · WSL non-root · R28 L-1 플레이크 · `agent_blocked` 라이브 실증 유예.
-6. **오너 결정 대기 (별건)** — npm publish 보류(0-a). 재개 시 계정·패키지명 선택 → login→meta→publish. 재조사 금지.
-7. **부수 정리(선택)** — 루트 `.loom-*` untracked 브리프/디스패치 스크립트 정리(이번 웨이브에서 다수 추가됨).
-
-</details>
+4~8. 대형 트랙 미정 · R{n} 유예 · Low 백로그 · npm publish 보류 · `.loom-*` 정리 → `docs/HANDOFF_ARCHIVE.md`.
 
 ### 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)
 
 - **dispatch wrap 마커** = `▶ Loom dispatched task — …`, 검증 주장은 **디스패처 발신자 국한**(R42) · M-1 allowlist엔 **전체 peer ID** · 디스패처 신원 `claude-impl`.
 - `bun test`는 `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`로. 워커 스위트와 **동시 실행 금지**(기아로 위양성).
-- **`card.done` ≠ 완료 · claim까지 해야 닫힌다**(미회수 시 `doing`·pane 잔존). 산출물은 **워킹트리 독립 검증** — 회신 불신(성공→`failed` · 산출물 0건→`done` 실증). 종료 코드로 실패 판정 금지. `PaneDied unknown pane`=herdr 내부 경고.
+- **`card.done` ≠ 완료 · claim까지 해야 닫힌다.** 산출물은 **워킹트리 독립 검증**(회신 불신). 종료 코드로 실패 판정 금지. `PaneDied unknown pane`=herdr 내부 경고.
 - **워커 감시 = `watch-card.ts`**(marker 0/pane-gone 1/limit 2/timeout 3) · `--pane` 필수 · 파이프 금지.
 - **terminal 이벤트는 신규 구독자에 재전달**(백로그 ≥10분) · **봉투에 시각·seq·id 없음** → replay/live 구분 불가.
 - **claude-mem 패치 비영속**(`autoUpdate` 원복) — 방어선 `check:mem-header`, 재적용 lessons platform.
@@ -79,7 +66,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH 3차 검증 reject/ready=no — 접근 전환 확정** (2026-07-21). 통합 패스 D1~D10 적용했으나 3연속 reject. **fable-advisor: 축자 반영을 중단하고 불변식 1개에서 락을 유도하라.** **다음 = 불변식-유도 재작성** → 4차 검증 → 구현 게이트 → D-VERIFY → RULE-ENFORCEABILITY.
+> **🎯 PANE-DEATH (C) 하이브리드 전환 — 자동 `done` 폐지, 구현 착수 가능** (2026-07-21). 3연속 reject 후 codex 장기자문 2회 + fable-advisor 2회 교차 검증으로 방향 전환. **완료는 사람이 확정하고 브릿지는 전달·회복만 책임진다.** **다음 = 코드 결함 3건 수정**(malformed→Stop · 이중 발행 · ACK 폐기) → 증거표 반영 → 4차 검증.
 
 ---
 

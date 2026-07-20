@@ -177,3 +177,23 @@ wayfinder 맵 방식(티켓당 1세션 그릴링, HITL)으로 4세션에 걸쳐 
 5. **락 10 승격** — `§6.2 규칙 2·3`(start-evidence `sawWorking` 게이트 + `Working` activity fence)을 락으로. **최초 관측 결함인 213 초기 TUI 가짜 done을 당시 9개 락 중 어느 것도 막지 못했다**(독립 스켑틱 발견).
 
 **닫힌 것:** 마지막 선결 실험(시나리오 D)이 **status replay = 안 됨**(herdr v0.7.4 관측, 계약 아님 → 불변식 금지)으로 닫혔다(`PANE-DEATH-OBSERVATIONS.md` §D · DESIGN §9-8). 급한 이유 = 조기 `done` 커밋 후 `pane.close`(`finishCard()` `bridge-runtime.ts:2310-2323`) → 가짜 `card.done`.
+
+## 백로그 상세 이관 (2026-07-21 — HANDOFF top-80 예산 확보)
+
+- **잔존 Low 백로그** (결함 아님/무해 확정) — summary 타이밍줄 · orphan durable 룸 · 디스패치 풀 탭 레이스 · `stale_hint` 어휘 · sleep형 상한 소진 pane 정리 · 공유-홈 claude-mem 오염 · conv 조기 회신 · `pane-inject.sh` read-guard · WSL non-root · R28 L-1 플레이크 · `agent_blocked` 라이브 실증 유예.
+- **오너 결정 대기 (별건)** — npm publish 보류(0-a). 재개 시 계정·패키지명 선택 → login→meta→publish. 재조사 금지.
+- **부수 정리(선택)** — 루트 `.loom-*` untracked 브리프/디스패치 스크립트 정리.
+- **(4) 다음 대형 트랙** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 out of scope. 통합 테스트 flake도 이 결정 지점의 후보.
+- **(5) R{n} 게이트 유예** — 브릿지 자동 git push(R26:431). 착수 시 R{n} 재리뷰 필수.
+
+## (C) 전환 근거 전문 (2026-07-21)
+
+**fable-advisor 논거:** `CLAUDE.md` 규칙 7이 이미 "`card.done` ≠ 완료, 아키텍트 독립 검증 필수"를 선언했다 — 조직이 이미 자문 등급으로 격하한 신호의 *정밀도*에 검증 3라운드를 썼다. 결정적 완료 증거가 없는 기질에서 불변식을 적용하면 유도되는 해는 하나: 브릿지는 done을 자동 커밋하지 않는다. 리스크 비대칭 — 정교화 지속 = 4·5차 reject + 구현 0줄 지속 / 격하 = 하루 몇 분의 클릭.
+
+**codex 교정:** "3연속 reject = 기질상 증명 불가능"은 성립하지 않는다. reject에는 설계자가 만든 결함이 섞여 있다(문서 충돌·카운터 리셋 누락 — High-2는 아키텍트 산출물 결함). **기질 탓과 설계 탓을 분리하라.** lifecycle generation·단일 발행 소유권·ACK/idempotency·운영자 도달성은 `blocked`에서도 그대로 필요하다 — 전송 계층은 살아남는다.
+
+**규칙 7 완화 = 보류이지 포기 아님.** 규칙 7은 관측된 가짜 done 때문에 세운 현재의 안전 가드이지 영구적 자동화 불가 선언이 아니다. 자동 done 재도입은 원리상 도달 가능하되 현행 status/scrape 증거표만으로는 불가 — 카드·generation 결속 verifier 결과 · artifact hash + 테스트 provenance · durable/idempotent tower 적용이 갖춰진 좁은 경로에만.
+
+**herdr 수렴 등급 = B+(중강).** herdr는 외부 참조 구현 하나이지 Loom 안전성의 명세가 아니다. herdr의 authority 대상은 상태 표시·wait뿐인데 Loom은 result 발행·board 전이·pane cleanup까지 가지므로 **Loom이 더 강한 불변식을 요구한다.** "Loom 신뢰 등급 ≤ herdr 등급" 원칙은 과도(overreach)라 기각 — herdr 등급은 자산 구현 여부·제품 우선순위가 섞인 혼합물이다. 대체 원칙 = **Loom의 hook 신뢰도는 어댑터가 독립 검증한 명제 coverage를 상회할 수 없다.**
+
+**아키텍트 실패 양식 처방(fable):** 세 실패(미실측 상수·좁힌 스캔·hook 권위 승격)는 동일 형식 — 닫으려는 압력이 **가짜 확실성을 합성**했다. 압력은 옳은 답을 가리켰고 수단만 틀렸다. 처방 = (a) **"자동 판정 불가 선언 + 사람 격하"를 정당한 종결 경로로 공인**(탈출구가 있어야 날조 유인이 사라진다) (b) 설계 문서의 모든 수치 상수는 실측 아티팩트 참조 필수, 없으면 unknown 표기 (c) 검증 스캔 범위는 섹션 목록이 아닌 **문서 전역 grep**으로 정의.

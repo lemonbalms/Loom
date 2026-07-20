@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|--------|
 | **Document** | `docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md` |
-| **Status** | **design-input ready** (읽기 조사 + 로컬 문서/herdr schema 실측; 라이브 multi-vendor hook 프로브는 후속) |
+| **Status** | **design-input (provisional)** — **단 1회의 라이브 발화도 관측되지 않았고 증거 등급이 혼재한다**(공식 문서 인용 · 소스 검증 · 정책 추론이 한 표에 섞여 있음). 읽기 조사 + 로컬 문서/herdr schema 실측까지가 실체이며, 라이브 multi-vendor hook 프로브는 **미수행**. 격하 근거 = (C) 전환 2026-07-21 |
 | **Date** | 2026-07-21 |
 | **유형** | 설계 전 조사 팩 — PLAN/PATCH 작성 시 인용 가능한 매트릭스 + 결정 초안 |
 | **결정 SSOT (관측 아키텍처)** | [`docs/COMPETITIVE_NOTES.md`](../COMPETITIVE_NOTES.md) **§2.5** — 스크레이프 교체 금지 · hooks = optional 보조 센서 |
@@ -64,17 +64,25 @@
 ┌───────────────────────────▼─────────────────────────────────┐
 │ C. Loom bridge 공통 눈                                       │
 │    pane.read 스크레이프 · still-running · chrome 필터         │
-│    + (optional) flight.hookHint 우선 분기                     │
+│    + (optional) flight.hookHint — 명제별 등급으로만 결합       │
 └─────────────────────────────────────────────────────────────┘
 │ 본문 정본 = card.done output / §5.1 artifact (hook 아님)     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**합류 규칙 (기존 §2.5.3 재확인):**
+**합류 규칙:**
 
-1. `hookHint` 있으면 우선 (승인 / 턴끝 / 작업시작).
+1. **센서에는 전역 우선순위가 없다. 정본은 `PANE-DEATH-DESIGN.md` §6.0-bis의 증거 명제표다.**
+   각 센서는 특정 명제(P1~P7)에만 등급화된 증거를 주며, 비가역 행동은 해당 명제의 authoritative
+   evidence와 동일 generation CAS를 **모두** 만족할 때만 허용된다. `hookHint`는 그 표에서
+   `Stop`→P2 `C+`, `Notification`/`PermissionRequest`→P3 `C+` 등으로 **명제 단위로만** 기여한다.
 2. 없으면 herdr status + 스크레이프 (무회귀).
 3. 긴 본문은 hook payload에 의존하지 않는다 (`transcript_path` 참조만).
+
+*변경 이유:* 구 1번은 **`hookHint` 있으면 우선**이라는 **전역 우선순위**였다. 센서는 서로 비교
+가능한 단일 축 위에 있지 않으므로 이런 순위는 성립하지 않으며, hook이 강한 명제(P2 턴 종료)와
+전혀 권위가 없는 명제(P7 의미상 완료)를 뭉뚱그려 완료 판정에 hook을 끌어들이는 오독을 낳는다.
+*출처:* (C) 전환 2026-07-21 — 결정 E3/E11. 정본은 `PANE-DEATH-DESIGN.md` §6.0-bis.
 
 ---
 
@@ -82,7 +90,7 @@
 
 | Loom / 운영 어휘 | 의미 | 설계 필드 후보 (notes/센서, 와이어 신설 금지 기본) |
 |------------------|------|-----------------------------------------------------|
-| **turn_end** | 에이전트 한 턴 응답 종료 | `hookHint=stop` · still-running 상한 우회 |
+| **turn_end** | 에이전트 한 턴 응답 종료 | `hookHint=stop` · **P2에 `C+`** — completion 재평가 트리거·poll 가속까지. **still-running 게이트 우회 금지** |
 | **approval_required** | 사람/정책 승인 대기 | `hookHint=permission_prompt` · 가짜 `agent_blocked` 교정 |
 | **idle** | 입력 대기 (승인 아님) | idle_prompt / session.idle — 승인과 **분리** |
 | **working** | 툴/추론 진행 중 | herdr working · UserPromptSubmit 보조 |
@@ -95,17 +103,46 @@
 
 ### 4.1 요약 표
 
-| 에이전트 | 오픈소스 / 문서 | 턴 끝 | 승인/막힘 | 세션 끝 | herdr `integration install` | Loom 센서 경로 |
-|----------|-----------------|-------|-----------|---------|-----------------------------|----------------|
-| **claude** | 공식 hooks 문서 | `Stop` | `Notification`/`PermissionRequest` (`permission_prompt`) | `SessionEnd` | ✅ `claude` | **0.26 shipped 경로** |
-| **codex** | [Codex Hooks](https://learn.chatgpt.com/codex/hooks) | `Stop` | `PermissionRequest` | Session* | ✅ `codex` | **다음 이식 1순위** |
-| **grok** | **✅ [xai-org/grok-build](https://github.com/xai-org/grok-build)** · `10-hooks.md` | **`Stop`** | **`Notification`** · UI `approval_required` | **`SessionEnd`** | **❌ enum 없음** | **직접 hooks 주입 가능** |
-| **opencode** | [Plugins](https://opencode.ai/docs/plugins/) | `session.idle` | `permission.asked/replied` | session.* | ✅ `opencode` | plugin 어댑터 |
-| **kimi** | [Kimi Hooks](https://moonshotai.github.io/kimi-code/en/customization/hooks) | post-turn / Stop류 | pre-tool / Notification | Session* | ✅ `kimi` | hooks 어댑터 |
-| **pi** | Pi extension API | phase **`idle`** | extension | teardown→idle | ✅ `pi` | extension 어댑터 |
-| **cursor** | Cursor hooks | stop 매핑 | before* | sessionEnd | ✅ `cursor` | 후순위 |
-| **copilot** | hooks | `agentStop` | notification | — | ✅ `copilot` | 후순위 |
-| **droid / hermes / kilo / qodercli / mastracode / omp / devin** | herdr 설치 스크립트 존재 | 벤더별 | 벤더별 | 벤더별 | ✅ 각 target | 수요 pull 시 |
+**증거 등급(`evidence_grade`) 어휘 — 이 문서 전역 공통:**
+
+| 등급 | 뜻 |
+|------|-----|
+| `official-spec` | 벤더 공식 문서/스펙에 명시된 표면 |
+| `source-inspected` | 오픈소스 코드·매니페스트·enum을 직접 읽어 확인 |
+| `installed-doc` | 로컬 설치본에 동봉된 문서에서 확인 |
+| `live-observed` | **실제 발화·payload를 관측** |
+| `inferred` | 문서·소스에서 직접 확인되지 않은 정책 추론 |
+
+> **전 행 공통:** `live-observed` **0건**. 아래 표의 이벤트명은 **표면의 존재**를 말할 뿐,
+> **실제 발화·payload shape·delivery·trust 거동을 실증하지 않는다**(§10-3).
+
+| 에이전트 | 오픈소스 / 문서 | 턴 끝 | 승인/막힘 | 세션 끝 | herdr `integration install` | Loom 센서 경로 | `evidence_grade` |
+|----------|-----------------|-------|-----------|---------|-----------------------------|----------------|------------------|
+| **claude** | 공식 hooks 문서 | `Stop` | `Notification`/`PermissionRequest` (`permission_prompt`) | `SessionEnd` | ✅ `claude` | **0.26 shipped 경로** | `official-spec` (표면) |
+| **codex** | [Codex Hooks](https://learn.chatgpt.com/codex/hooks) | `Stop` | `PermissionRequest` | Session* | ✅ `codex` | **다음 이식 1순위** | `official-spec` |
+| **grok** | **✅ [xai-org/grok-build](https://github.com/xai-org/grok-build)** · `10-hooks.md` | **`Stop`** | **`Notification`** · UI `approval_required` | **`SessionEnd`** | **❌ enum 없음** | **직접 hooks 주입 가능** | `installed-doc` + `source-inspected`(enum 부재) |
+| **opencode** | [Plugins](https://opencode.ai/docs/plugins/) | `session.idle` | `permission.asked/replied` | session.* | ✅ `opencode` | plugin 어댑터 | `official-spec` |
+| **kimi** | [Kimi Hooks](https://moonshotai.github.io/kimi-code/en/customization/hooks) | post-turn / Stop류 | pre-tool / Notification | Session* | ✅ `kimi` | hooks 어댑터 | `official-spec` (계열 표기는 `inferred`) |
+| **pi** | Pi extension API | phase **`idle`** | extension | teardown→idle | ✅ `pi` | extension 어댑터 | `official-spec` |
+| **cursor** | Cursor hooks | stop 매핑 | before* | sessionEnd | ✅ `cursor` | 후순위 | `official-spec` (매핑은 `inferred`) |
+| **copilot** | hooks | `agentStop` | notification | — | ✅ `copilot` | 후순위 | `official-spec` |
+| **droid / hermes / kilo / qodercli / mastracode / omp / devin** | herdr 설치 스크립트 존재 | 벤더별 | 벤더별 | 벤더별 | ✅ 각 target | 수요 pull 시 | `source-inspected`(설치 스크립트 존재) · 이벤트는 **미확인** |
+
+#### 4.1.1 provenance — 위 표 각 행의 확인 근거
+
+| 에이전트 | 벤더 버전 | URL / commit | 확인일 | payload fixture | live delivery 확인 |
+|----------|-----------|--------------|--------|-----------------|--------------------|
+| claude | (조사 시점 설치본) | https://code.claude.com/docs/en/hooks | 2026-07-21 | ❌ 없음 | ❌ 없음 (0.26 경로는 Loom 자체 구현 실측) |
+| codex | 미기록 | https://learn.chatgpt.com/codex/hooks | 2026-07-21 | ❌ 없음 | ❌ 없음 |
+| grok | `grok 0.2.106` | `~/.grok/docs/user-guide/10-hooks.md` · https://github.com/xai-org/grok-build | 2026-07-21 | ❌ 없음 | ❌ 없음 |
+| opencode | 미기록 | https://opencode.ai/docs/plugins/ | 2026-07-21 | ❌ 없음 | ❌ 없음 |
+| kimi | 미기록 | https://moonshotai.github.io/kimi-code/en/customization/hooks | 2026-07-21 | ❌ 없음 | ❌ 없음 |
+| pi | 미기록 | Pi extension API 문서 | 2026-07-21 | ❌ 없음 | ❌ 없음 |
+| cursor / copilot | 미기록 | 벤더 hooks 문서 | 2026-07-21 | ❌ 없음 | ❌ 없음 |
+| herdr (B층) | `v0.7.4` / protocol 16 | `herdr api schema` · `herdr integration status` (로컬 실측) | 2026-07-21 | ⚠️ schema만 | ❌ 없음 |
+
+**미기록 버전 항목은 재조사 대상이다** — 벤더 버전 없이 인용된 표면은 시간이 지나면
+`official-spec`조차 검증 불가능해진다.
 
 ### 4.2 Claude Code (기준 구현)
 
@@ -199,13 +236,18 @@ events = ["turn_complete", "approval_required"]
 
 **Grok이 session identity 등급에도 없고 `none`인 이유 (문서 정책 + 소스/CHANGELOG 재구성; herdr가 “Grok 한 줄 제외 사유”를 별도 공표하진 않음):**
 
-| # | 이유 | 증거 |
-|---|------|------|
-| 1 | **Lifecycle authority 기준이 높음** — 연속 `working`/`blocked`/`idle` + interrupt/permission 전 경로가 필요. Grok 공개 hooks(`Stop`/`Notification`/…)는 **턴 끝·알림**에 강하지만 herdr 3상태 정본으로 **검증·등급 상향되지 않음** | Agents: “complete lifecycle hooks”만 authority |
-| 2 | **Grok UI가 screen/OSC에 잘 맞음** — herdr가 여기 투자 | `src/detect/manifests/grok.toml` 주석 (OSC 0 title, OSC 9;4 progress, `[stop]` chip, Action Required, `┃` 다이얼로그). CHANGELOG #133 감지 추가, #1017/#1055 UI 추적 강화 (mid-turn idle 폴백 수정) |
-| 3 | **integration 자산 미구현** — `src/integration/assets/grok/` 없음 · install 목록 14종에 grok 없음. “hooks API 부재”가 아니라 **herdr 설치 어댑터 미제공** | targets.rs / assets 트리 · `IntegrationTarget` enum |
-| 4 | **Session-identity 파이프도 미배선** — Claude/Codex는 `SessionStart`→resume id 계약이 있음. Grok은 herdr 표준 resume 경로에 아직 안 올라감 (우선순위/계약) | Integrations 표: Grok 행 없음 |
-| 5 | **이중 authority 금지** — 불완전 hooks를 authority로 올리면 screen과 충돌 시 더 위험 → 보수적으로 `none` + 깊은 screen 규칙 | Agents: lifecycle authority 시 screen skip |
+| # | 이유 | 증거 | `evidence_grade` |
+|---|------|------|------------------|
+| 1 | **Lifecycle authority 기준이 높음** — 연속 `working`/`blocked`/`idle` + interrupt/permission 전 경로가 필요. Grok 공개 hooks(`Stop`/`Notification`/…)는 **턴 끝·알림**에 강하지만 herdr 3상태 정본으로 **검증·등급 상향되지 않음** | Agents: “complete lifecycle hooks”만 authority | **`inferred`** — 일반 정책 문장에서 Grok 개별 판정을 재구성한 것 |
+| 2 | **Grok UI가 screen/OSC에 잘 맞음** — herdr가 여기 투자 | `src/detect/manifests/grok.toml` 주석 (OSC 0 title, OSC 9;4 progress, `[stop]` chip, Action Required, `┃` 다이얼로그). CHANGELOG #133 감지 추가, #1017/#1055 UI 추적 강화 (mid-turn idle 폴백 수정) | **`source-inspected`** — `grok.toml` 주석·CHANGELOG 직접 확인 |
+| 3 | **integration 자산 미구현** — `src/integration/assets/grok/` 없음 · install 목록 14종에 grok 없음. “hooks API 부재”가 아니라 **herdr 설치 어댑터 미제공** | targets.rs / assets 트리 · `IntegrationTarget` enum | **`source-inspected`** — assets 트리 부재 · enum 부재를 직접 확인 |
+| 4 | **Session-identity 파이프도 미배선** — Claude/Codex는 `SessionStart`→resume id 계약이 있음. Grok은 herdr 표준 resume 경로에 아직 안 올라감 (우선순위/계약) | Integrations 표: Grok 행 없음 | **`inferred`** — 표에 행이 없다는 사실에서 사유(우선순위/계약)를 추론 |
+| 5 | **이중 authority 금지** — 불완전 hooks를 authority로 올리면 screen과 충돌 시 더 위험 → 보수적으로 `none` + 깊은 screen 규칙 | Agents: lifecycle authority 시 screen skip | **`inferred`** — 일반 정책에서 Grok 판정 동기를 추론 |
+
+> **등급이 갈리는 지점을 뭉개지 말 것.** 위 5행 중 **소스로 검증된 것은 2·3번뿐**이고
+> **1·4·5번은 정책 추론**이다. 따라서 “herdr가 Grok을 `none`으로 둔 *이유*”는 부분적으로만
+> 확정돼 있으며, 이 추론을 Loom 설계의 **권위 근거로 수입하지 않는다**
+> (`PANE-DEATH-DESIGN.md` §6.8 — herdr 등급은 **보수적 prior**이지 명세가 아니다).
 
 **오해 교정:**
 
@@ -225,9 +267,12 @@ herdr IntegrationTarget = pi | omp | claude | codex | copilot | devin | droid
 # Grok Stop/Notification = Loom 직접 주입 (A층) — herdr install 대기 금지
 ```
 
-- Grok 센서 = **Loom이 hooks를 직접 주입·수신** (Claude 0.26 동형 소켓/JSONL).  
-- 선택: 수신 스크립트가 herdr `pane.report_agent`를 호출해 B층을 채움 (lifecycle authority 탈취 주의 — metadata/`hookHint` 우선 권고).  
-- herdr screen status와 Loom `hookHint`는 **하이브리드 §2** 합류 규칙으로 디듀프.
+- Grok 센서 = **Loom이 hooks를 직접 주입·수신** (Claude 0.26 동형 소켓/JSONL).
+- **금지 (D10):** 수신 스크립트가 herdr `pane.report_agent`를 호출해 **herdr가 의도적으로 `none`으로
+  둔 벤더를 임의로 lifecycle authority로 승격시키는 것은 금지한다.** 그렇게 하면 herdr screen 판정과
+  **이중 진실**이 되어, 애초에 herdr가 `none` 등급으로 피하려던 상황을 우리가 재현한다.
+  *(구 문안은 “authority 탈취 주의” 라는 **권고**였다. (C) 전환에서 **D 항목으로 잠근다** — §7 D10.)*
+- herdr screen status와 Loom `hookHint`는 **§2 합류 규칙**(증거 명제표 참조)으로 결합한다.
 
 ### 4.5 OpenCode
 
@@ -306,10 +351,20 @@ type HookHint = {
 
 **불변식:**
 
-1. fail-open: 리스너 없음 / 파싱 실패 → 현행 herdr+스크레이프.
+1. **리스너 없음 → fail-open**(현행 herdr+스크레이프). **파싱 실패(malformed) → `none`.**
+   두 경우를 같은 규칙으로 묶지 않는다.
 2. 메타데이터 only (L-3 계열): 프롬프트·tool_input 전문 append 금지.
 3. 플라이트당 stop 계측 정책은 벤더별 동일 패턴 재사용.
 4. `hookSensor` 옵트인 기본 off (0.26).
+
+> **⚠️ 현행 코드가 불변식 1을 위반 중이다 (E15 · 아키텍트 축자 확인).**
+> 구 문안은 “파싱 실패 → fail-open 폴백”이라고 적었으나, 이는 **코드와도 모순이고 목표 계약과도
+> 모순**이다. `packages/host/src/hook-sensor.ts:202`가 `let k = 'Stop'` **기본값** + `catch {}`
+> 구조라서, **malformed 입력을 유효한 `Stop`으로 승격**시킨다 — fail-open이 아니라 **fail-to-Stop**
+> 이다. 파싱할 수 없는 바이트가 “턴이 끝났다”는 증거로 둔갑한다.
+>
+> **목표 계약은 `malformed → none`이다.** 알 수 없는 입력은 어떤 명제에도 증거를 주지 않는다.
+> 이 갭은 hook 센서 어댑터 PATCH에서 닫는다(§6 테스트 설계 2번).
 
 ### 5.2 주입 전략 (벤더별)
 
@@ -360,10 +415,26 @@ OpenCode/Kimi/Pi는:
 **테스트 설계 (각 어댑터 공통):**
 
 1. unit: 벤더 raw event → `HookHint` 매핑.
-2. unit: no_listener / malformed fail-open.
-3. 라이브: 1회 turn_end Stop 발화 → finishCard 조기 확정 또는 still-running 우회.
+2. unit: no_listener → fail-open. **malformed → `none`**(아래 §5.1 불변식 1 참조 — 현행 코드가
+   계약을 위반 중이다).
+3. 라이브: 1회 turn_end Stop 발화 → **completion 재평가 트리거 / poll 조기 실행**.
+   **`finishCard` 조기 확정이 아니다** — 아래 주의 참조.
 4. 라이브: approval 이벤트 → 가짜 blocked 교정 (codex 관찰 ⓔ).
 5. 차집합: HEAD 대비 신규 회귀 0.
+
+> **⚠️ `Stop = 완료 확정` 문구 정정 (E15).**
+> 문서·코드 3곳이 어긋나 있었다:
+>
+> | 좌표 | 문구 | 판정 |
+> |---|---|---|
+> | `HOOKS-SENSOR-SPIKE.md:101` | `Stop = 완료 확정` | **틀림** |
+> | 조사 팩 `:313`(구 문안) | “`finishCard` 조기 확정” | **틀림** |
+> | 코드 `packages/host/src/hook-sensor.ts:169-171` | `never Stop alone` | **옳다** |
+>
+> **코드가 옳다.** `Stop`은 증거 명제표에서 P2(턴 종료)에 `C+`일 뿐 P7(의미상 완료)에는 `S+`에
+> 그친다(`PANE-DEATH-DESIGN.md` §6.0-bis 결합 규칙 2). 따라서 `Stop`이 허용하는 행동은
+> **completion 재평가 트리거 · poll 조기 실행 · 알림까지**이며, **완료 확정이 아니다.**
+> 문서 쪽 문구를 코드에 맞춰 교체한다.
 
 ---
 
@@ -381,6 +452,9 @@ OpenCode/Kimi/Pi는:
 | D7 | OpenCode/Kimi/Pi agentKind wire 확장은 수요 pull + R{n} | 권고 |
 | D8 | 프로세스 exit code만으로 인터랙티브 턴 끝 판정 금지 | 권고 (세션 생존 ≠ 턴 끝) |
 | D9 | herdr AGPL 오픈소스 ≠ 개별 코딩 CLI 라이선스. “에이전트 코드 비공개” 혼동 금지 | **조사 확정 2026-07-21** |
+| **D10** | **herdr가 `none`으로 둔 벤더를 Loom 수신 스크립트가 `pane.report_agent`로 임의 승격시키는 것 금지** — herdr screen 판정과 이중 진실이 되어 herdr가 피하려던 상황을 재현한다 | **LOCKED** ((C) 전환 2026-07-21 · 구 “authority 탈취 주의” 권고에서 승격 · §4.4.1) |
+| **D11** | **센서 전역 우선순위 금지.** 결합 정본 = `PANE-DEATH-DESIGN.md` §6.0-bis 증거 명제표. `hookHint 우선`·`hook Stop 우선` 문안은 폐기 | **LOCKED** ((C) 전환 2026-07-21 · §2) |
+| **D12** | **`Stop`은 완료 확정이 아니다** — 허용 행동은 completion 재평가 트리거·poll 조기 실행·알림까지. 또한 **malformed hook 입력 → `none`**(현행 `hook-sensor.ts:202`는 위반 중) | **LOCKED** ((C) 전환 2026-07-21 · §5.1 · §6) |
 
 ---
 
@@ -394,7 +468,8 @@ OpenCode/Kimi/Pi는:
 | 글로벌 hooks 오염 (herdr install) | Loom 직접 주입 우선 · install은 노드 이미지 전용 |
 | Stop 과다 발화 (Claude 커뮤니티 이슈) | still-running과 AND · 플라이트 단일 초크포인트 |
 | 본문 대용량 hook stdout | metadata-only · transcript_path |
-| herdr `done` report 제한 (C1) | idle+sawWorking · hook Stop 우선 |
+| herdr `done` report 제한 (C1) | idle+sawWorking. **`hook Stop 우선`은 폐기** — `Stop`은 P2 corroboration일 뿐이며 결합은 증거 명제표를 따른다(§2) |
+| malformed hook 입력이 유효 `Stop`으로 승격 (`hook-sensor.ts:202`) | 목표 계약 `malformed → none`으로 교정 · 어댑터 PATCH에서 유닛으로 잠금(§5.1 불변식 1) |
 
 ---
 
@@ -418,11 +493,31 @@ OpenCode/Kimi/Pi는:
 
 ## 10. 다음 액션 (문서 이후)
 
-1. 본 문서를 PLAN 초안 작성 시 **입력 팩**으로 인용 (재조사 금지 범위 = §4 표 + **§4.4.1** + D4/D4a/D9).
+1. 본 문서를 PLAN 초안 작성 시 **입력 팩**으로 인용. 재조사 면제 범위는 **표면의 존재**에 한한다
+   (§4 표 + **§4.4.1** + D4/D4a/D9). **거동·payload·delivery 주장은 면제 대상이 아니다** — 문서
+   상태가 `provisional`로 격하됐고 `live-observed` 증거가 0건이기 때문이다(§4.1 · 3번 항목).
 2. 오너 우선순위 확인: **Codex vs Grok** 어댑터 순서 (권고: Codex → Grok, 또는 병렬 소규모). Grok은 herdr install **대기 금지**.
-3. (선택) 라이브 1-shot: Grok `Stop` hook → JSONL 1줄 실증 후 §4.4 “실측” 체크.
+3. **(필수) 라이브 실증: Grok `Stop` hook → JSONL 1줄 발화·payload 캡처 후 §4.4 “실측” 체크.**
+   구 문안의 `(선택)`을 **필수**로 올린다 — 이 문서 전역에서 `live-observed` 증거가 **0건**이기
+   때문이다(§4.1).
+
+   **판정 기준 — 무엇을 주장하느냐로 갈린다:**
+
+   | 주장의 성격 | 라이브 실증 |
+   |---|---|
+   | 공식 표면의 **존재** 인용 (“이 벤더에 `Stop` 이벤트가 있다”) | **불필요** — `official-spec`/`source-inspected`로 충분 |
+   | **실제 발화 · payload shape · delivery · trust 거동** 주장 | **필수** — 문서 인용으로 대체 불가 |
+   | **correctness 경로**에 그 센서를 넣는 것 | **1-shot으로도 부족** — 1회 발화는 존재를 보일 뿐 신뢰도를 주지 않는다. 비가역 행동의 근거로 쓰려면 명제별 coverage를 독립 검증해야 한다(`PANE-DEATH-DESIGN.md` §6.8) |
 4. (선택) `herdr integration install claude|codex` 옵트인 런북 절을 `USER_GUIDE` 또는 dogfood에 링크.
 
 ---
 
-*이 문서는 구현 스펙이 아니라 **설계 입력 팩**이다. 구현 착수 시 PLAN 버전 블록 + 필요 시 R{n}이 SSOT가 된다.*
+*이 문서는 구현 스펙이 아니라 **설계 입력 팩(provisional)** 이다. 구현 착수 시 PLAN 버전 블록 +
+필요 시 R{n}이 SSOT가 된다. 센서 결합 판정의 정본은 이 문서가 아니라
+[`PANE-DEATH-DESIGN.md`](./PANE-DEATH-DESIGN.md) **§6.0-bis 증거 명제표**다.*
+
+*개정 이력 — **2026-07-21 (C) 전환:** Status를 `provisional`로 격하(E10), §2 합류 규칙 1번의
+`hookHint 우선`을 증거 명제표 참조로 교체(E11), §4.1·§4.1.1·§4.4.1에 `evidence_grade`와 provenance
+열 추가(E12), §10-3 라이브 실증을 필수로 승격 + 판정 기준 명기(E13), `pane.report_agent` authority
+승격을 D10으로 금지(E14), `Stop=완료 확정` 문구 교체 및 `hook-sensor.ts:202` malformed→`Stop` 승격
+결함 명기(E15). 근거 = codex 3차 검증 + 장기자문 2회 + fable-advisor 자문 2회.*
