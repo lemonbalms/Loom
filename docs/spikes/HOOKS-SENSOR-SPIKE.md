@@ -8,7 +8,7 @@
 | **Date** | 2026-07-19 |
 | **유형** | 읽기-전용 조사 (claude-code-guide hook 표면 + explore-stream Loom 배선 지점). 라이브 hook 주입/실행은 이번 스파이크 범위 밖 — "여기서 멈춤" |
 | **결정 SSOT** | [`docs/COMPETITIVE_NOTES.md`](../COMPETITIVE_NOTES.md) **§2.5.2** "교체가 아니라 센서를 더한다" · **§2.5.3** 하이브리드 아키텍처 |
-| **Related** | §2.5.1 용어 · §2.6 C 실행 체크리스트 · §2.6 H 비목표 · [`packages/host/src/inject-control.ts`](../../packages/host/src/inject-control.ts) (로컬 소켓 선례) |
+| **Related** | §2.5.1 용어 · §2.6 C 실행 체크리스트 · §2.6 H 비목표 · [`packages/host/src/inject-control.ts`](../../packages/host/src/inject-control.ts) (로컬 소켓 선례) · **멀티벤더 확장 입력 팩:** [`AGENT-CLI-LIFECYCLE-HOOKS.md`](./AGENT-CLI-LIFECYCLE-HOOKS.md) (2026-07-21 — Codex/Grok/OpenCode/Kimi/Pi · Grok 오픈소스 hooks 정정) |
 
 ## Goal / 맥락
 

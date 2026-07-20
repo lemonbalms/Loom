@@ -114,3 +114,17 @@ loom run claude
 ## Why not shared PTY?
 
 Mosaic-style multiplayer is **peer-isolated agent sessions + message bus**, not a single shared shell cursor. That matches heterogeneous agents and avoids input races. Pair-mode can be a later optional mode.
+
+## Worker observation (hooks + scrape)
+
+Bridge completion detection is **hybrid** (not hooks-only):
+
+| Layer | Role |
+|-------|------|
+| Scrape / herdr status | Common path for all `agentKind` |
+| CLI lifecycle hooks | Optional sensor (turn end, approval) when the vendor exposes them |
+| Artifact / card.done body | Canonical large output — not hooks |
+
+Multi-vendor matrix (Claude, Codex, **Grok open-source hooks**, OpenCode, Kimi, Pi, herdr integrations):  
+[`docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md`](./spikes/AGENT-CLI-LIFECYCLE-HOOKS.md).  
+Claude-first spike: [`docs/spikes/HOOKS-SENSOR-SPIKE.md`](./spikes/HOOKS-SENSOR-SPIKE.md).
