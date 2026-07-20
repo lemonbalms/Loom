@@ -9,6 +9,7 @@ import {
   SOFT_CAP,
   buildAllContext,
   buildStateContext,
+  buildTrapsBlock,
   checkSoftCap,
   stripDetailsBlocks,
   truncateContext,
@@ -232,6 +233,107 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     const out = buildStateContext(handoff);
     expect(out.includes("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(true);
     expect(out.indexOf("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(0);
+  });
+});
+
+describe("tasks/traps.md injection (활성 함정 · 하지 말 것)", () => {
+  // Verbatim guards: these lines moved out of HANDOFF.md into tasks/traps.md.
+  // They must keep reaching the injected context, or the safety knowledge is lost.
+  const TRAP_ITEMS = [
+    "**dispatch wrap 마커**",
+    "`bun test`는 `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`로.",
+    "**`card.done` ≠ 완료 · claim까지 해야 닫힌다.**",
+    "**워커 감시 = `watch-card.ts`**",
+    "**terminal 이벤트는 신규 구독자에 재전달**",
+    "**claude-mem 패치 비영속**",
+    "**pane 레인 4개 중 3개 사망**",
+    "**`fake-herdr.ts:565` status는 underscore만, 실서버는 dotted**",
+  ];
+  const DONT_ITEMS = [
+    "- R25 결정·CONV_SPEC 재론(plan_review R24·R25 SSOT) · 마커 문구·개명 재론(R42 approved) · R41 M-1·M-2 재론",
+    "- M-lock 인접 PATCH를 리뷰 게이트 없이 착수 (R{n} 필요 여부 WORKFLOW §5.1 확인)",
+  ];
+
+  test("all 8 trap items reach the injected state context", () => {
+    const out = buildStateContext();
+    for (const item of TRAP_ITEMS) expect(out.includes(item)).toBe(true);
+  });
+
+  test("both 하지 말 것 lines reach the injected state context verbatim", () => {
+    const out = buildStateContext();
+    for (const line of DONT_ITEMS) expect(out.includes(line)).toBe(true);
+  });
+
+  test("both headings are injected", () => {
+    const out = buildStateContext();
+    expect(out.includes("## 활성 함정")).toBe(true);
+    expect(out.includes("## 하지 말 것")).toBe(true);
+  });
+
+  test("file header (usage rules) is NOT injected — only the two sections", () => {
+    const block = buildTrapsBlock();
+    expect(block.startsWith("## 활성 함정")).toBe(true);
+    expect(block.includes("# 활성 함정 · 하지 말 것 (Loom)")).toBe(false);
+    expect(block.includes("주입 예산을 확인하라")).toBe(false);
+  });
+
+  test("fail-open: missing tasks/traps.md → empty block, state still builds", () => {
+    // read() returns "" for a missing file; "" is the missing-file signal.
+    expect(buildTrapsBlock("")).toBe("");
+
+    const handoff = [
+      "## One-line resume",
+      "resume-line",
+      "",
+      "## ⭐ Current action (read first)",
+      "action-line",
+    ].join("\n");
+    const out = buildStateContext(handoff, "");
+    expect(out.startsWith("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(true);
+    expect(out.includes("resume-line")).toBe(true);
+    expect(out.includes("action-line")).toBe(true);
+    expect(out.includes("활성 함정")).toBe(false);
+  });
+
+  test("fail-open: traps file present but headings renamed → empty block", () => {
+    expect(buildTrapsBlock("# title\n\n## something else\n\n- body\n")).toBe("");
+  });
+
+  test("fail-open (live): renamed tasks/traps.md → --part state still exits 0", async () => {
+    const { existsSync, renameSync } = await import("node:fs");
+    const root = joinRoot();
+    const src = `${root}tasks/traps.md`;
+    const bak = `${root}tasks/traps.md.failopen-test.bak`;
+    expect(existsSync(src)).toBe(true);
+    renameSync(src, bak);
+    try {
+      const proc = Bun.spawn(
+        ["bun", "run", "scripts/session-context.ts", "--part", "state"],
+        { cwd: root, stdout: "pipe", stderr: "pipe" },
+      );
+      const [code, stdout] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+      ]);
+      expect(code).toBe(0);
+      const ctx = (
+        JSON.parse(stdout.trim()) as {
+          hookSpecificOutput: { additionalContext: string };
+        }
+      ).hookSpecificOutput.additionalContext;
+      expect(ctx.includes("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(true);
+      expect(ctx.includes("활성 함정")).toBe(false);
+    } finally {
+      renameSync(bak, src);
+    }
+    expect(existsSync(src)).toBe(true);
+  });
+
+  test("traps sections are not duplicated in HANDOFF.md", async () => {
+    const handoff = await Bun.file(`${joinRoot()}HANDOFF.md`).text();
+    expect(handoff.includes("### 활성 함정")).toBe(false);
+    expect(handoff.includes("### 하지 말 것")).toBe(false);
+    expect(handoff.includes("tasks/traps.md")).toBe(true);
   });
 });
 

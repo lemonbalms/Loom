@@ -116,12 +116,30 @@ export function truncateContext(text: string): string {
 }
 
 /**
- * Build state injection block. Optional `handoffText` is for unit tests
- * (synthetic HANDOFF); production path reads HANDOFF.md from disk.
- * stripDetailsBlocks applies only to extracted HANDOFF sections — not to
+ * Extract the two injected sections of tasks/traps.md (file header is not
+ * injected — it is guidance for humans editing the file, and the injection
+ * budget has no room for it). Missing file/sections → "" (fail-open).
+ */
+export function buildTrapsBlock(trapsText?: string): string {
+  const traps = trapsText ?? read("tasks/traps.md");
+  if (!traps) return "";
+  const sections = ["활성 함정", "하지 말 것"]
+    .map((h) => extractSection(traps, h))
+    .filter((s): s is string => s !== null);
+  if (sections.length === 0) return "";
+  return stripDetailsBlocks(sections.join("\n\n"));
+}
+
+/**
+ * Build state injection block. Optional `handoffText` / `trapsText` are for
+ * unit tests (synthetic sources); production path reads from disk.
+ * stripDetailsBlocks applies only to extracted HANDOFF/traps sections — not to
  * buildStatus() or checkHandoffBudget() output.
  */
-export function buildStateContext(handoffText?: string): string {
+export function buildStateContext(
+  handoffText?: string,
+  trapsText?: string,
+): string {
   const parts: string[] = ["[LOOM-SESSION-CONTEXT v1 · state]", buildStatus()];
 
   const handoff = handoffText ?? read("HANDOFF.md");
@@ -134,6 +152,11 @@ export function buildStateContext(handoffText?: string): string {
       extractSection(handoff, "⭐ Current action");
     if (current) parts.push(stripDetailsBlocks(current));
   }
+
+  // Traps used to live inside the HANDOFF "Current action" section; keep them
+  // in the same slot so the injected reading order is unchanged.
+  const traps = buildTrapsBlock(trapsText);
+  if (traps) parts.push(traps);
 
   const budget = checkHandoffBudget();
   if (budget) parts.push(budget);

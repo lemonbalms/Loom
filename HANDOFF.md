@@ -14,6 +14,8 @@
 
 > 종결 웨이브 역사 기록: docs/HANDOFF_ARCHIVE.md (이 파일은 최신 상태만 유지)
 
+> **활성 함정 · 하지 말 것** → [`tasks/traps.md`](./tasks/traps.md) (세션 시작 시 자동 주입)
+
 ## ⭐ Current action (read first)
 
 > **🎯 PANE-DEATH 설계 통합 패스 완료 — 3차 검증 대기 (2026-07-21).** codex 1차 reject(High 3)→락 교체(`5df040e`) → 2차 **reject/ready=no**(High 1·Medium 7)(`85465e2`) → **통합 패스 D1~D10 적용**(이번 커밋). 핸드오프가 적던 **조건 5건은 실측 오류 — 실제 10건**(codex §5 6건 중 3건 미전사 + 신규 발견 2건). 다음 = **codex 3차 검증**(발견자≠수정자). 상세 → **docs/HANDOFF_ARCHIVE.md**.
@@ -46,22 +48,6 @@
 </details>
 4~8. 대형 트랙 미정 · R{n} 유예 · Low 백로그 · npm publish 보류 · `.loom-*` 정리 → `docs/HANDOFF_ARCHIVE.md`.
 
-### 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)
-
-- **dispatch wrap 마커** = `▶ Loom dispatched task — …`, 검증 주장은 **디스패처 발신자 국한**(R42) · M-1 allowlist엔 **전체 peer ID** · 디스패처 신원 `claude-impl`.
-- `bun test`는 `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`로. 워커 스위트와 **동시 실행 금지**(기아로 위양성).
-- **`card.done` ≠ 완료 · claim까지 해야 닫힌다.** 산출물은 **워킹트리 독립 검증**(회신 불신). 종료 코드로 실패 판정 금지. `PaneDied unknown pane`=herdr 내부 경고.
-- **워커 감시 = `watch-card.ts`**(marker 0/pane-gone 1/limit 2/timeout 3) · `--pane` 필수 · 파이프 금지.
-- **terminal 이벤트는 신규 구독자에 재전달**(백로그 ≥10분) · **봉투에 시각·seq·id 없음** → replay/live 구분 불가.
-- **claude-mem 패치 비영속**(`autoUpdate` 원복) — 방어선 `check:mem-header`, 재적용 lessons platform.
-- **pane 레인 4개 중 3개 사망**(장기 카드) — **in-harness 폴백 우선**(`DOGFOOD_LOOP §1.2`).
-- **`fake-herdr.ts:565` status는 underscore만, 실서버는 dotted** — 픽스처 갭(제품은 양쪽 수용).
-
-### 하지 말 것
-
-- R25 결정·CONV_SPEC 재론(plan_review R24·R25 SSOT) · 마커 문구·개명 재론(R42 approved) · R41 M-1·M-2 재론
-- M-lock 인접 PATCH를 리뷰 게이트 없이 착수 (R{n} 필요 여부 WORKFLOW §5.1 확인)
-
 ---
 
 ## One-line resume
@@ -69,30 +55,6 @@
 > **🎯 PANE-DEATH (C) 하이브리드 전환 — 자동 `done` 폐지, 구현 착수 가능** (2026-07-21). 3연속 reject 후 codex 장기자문 2회 + fable-advisor 2회 교차 검증으로 방향 전환. **완료는 사람이 확정하고 브릿지는 전달·회복만 책임진다.** **다음 = 코드 결함 3건 수정**(malformed→Stop · 이중 발행 · ACK 폐기) → 증거표 반영 → 4차 검증.
 
 ---
-
-## Where we are
-
-<details>
-<summary>펼쳐보기</summary>
-
-| Item | Value |
-|------|--------|
-| **CLI / code** | **0.26.1 shipped** (소스 `47fc81c` · dist `66e0ba1` · push 완료) — dispatch 마커 오표기 교정 + `DISPATCHED_TASK_MARKER`/`wrapDispatchedPrompt` 개명. 직전 **0.26.0** hooks 센서(`0de6c4c` · dist `e1d9177`) |
-| **PLAN** | **v0.26.1** `approved`(R42 author-close) → 구현·검증·커밋·dist·push 완료. 직전 v0.26.0 approved R41 · `0de6c4c` · dist `e1d9177` |
-| **Open blocking** | none — R24–R42 closed · GitHub Issues 전부 closed |
-| **Tests** | 전체 **654 pass / 0 fail** (571→654, 증가분 = 신규 유닛과 일치·신규 회귀 없음) · typecheck 6/6 |
-| **Verify** | VERIFY-0260 codex pane done — M-1·M-2·L-1..L-3·wire-lock PASS · D6(b)만 FAIL → FIX-0260b로 해소 |
-| **Herdr design** | `docs/HERDR_DESIGN.md` · Conv spec `docs/CONV_SPEC.md` · hooks 정본 `docs/spikes/HOOKS-SENSOR-SPIKE.md` |
-| **Nodes** | mac-node · Windows relay(durable) · WSL node-wsl-1(부팅 생존) · VPS node-vps-1 / kb(`@reboot`) — loom-dev `LOOM-GT4B` |
-| **Boot persist** | 트랙 종료(2026-07-20, 오너 옵션 B) — 상세 lessons platform (17) · 팩 `.loom-boot-persist-pack.md` |
-| **Remote** | `origin/main` **`66e0ba1`**(v0.26.1 dist, HEAD=origin). 이 docs 커밋은 다음 push 편승 |
-| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9-bis 락 **10개** — D1~D10 통합 패스 적용, 3차 검증 대기) + `PANE-DEATH-OBSERVATIONS.md` + 리뷰 **2본**: `docs/reviews/PANEDEATH-CODEX-REVIEW.md`(1차) · **`PANEDEATH-CODEX-REVIEW2.md`(2차 = reject 정본)** (리뷰 2본 수정 금지)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료·§1.6/§5 정정) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
-| **Untracked (커밋 제외)** | `scripts/check-mem-header.ts`(+test) · `scripts/watch-card.ts`(+test) · `scripts/session-context.test.ts` · `hook-sensor.ts`(+test) · `.loom-*` 브리프/디스패치 · `.playwright-mcp/` 등 |
-
-</details>
-
-> **구현 후로 분류된 미확인 6건**(codex 2차 §4) — 단 **WSL/VPS terminal 종류·지연은 배포 완료 주장 전 필수 스모크**.
-> 착수 전 조건 목록 원문(5건→실측 10건 경위 포함) → `docs/HANDOFF_ARCHIVE.md`.
 
 <details>
 <summary>Access cheat-sheet (펼쳐보기)</summary>
@@ -155,6 +117,30 @@ herdr status   # LOOM_HERDR_SOCKET overrides socket path (tests/fake)
 </details>
 
 ---
+
+## Where we are
+
+<details>
+<summary>펼쳐보기</summary>
+
+| Item | Value |
+|------|--------|
+| **CLI / code** | **0.26.1 shipped** (소스 `47fc81c` · dist `66e0ba1` · push 완료) — dispatch 마커 오표기 교정 + `DISPATCHED_TASK_MARKER`/`wrapDispatchedPrompt` 개명. 직전 **0.26.0** hooks 센서(`0de6c4c` · dist `e1d9177`) |
+| **PLAN** | **v0.26.1** `approved`(R42 author-close) → 구현·검증·커밋·dist·push 완료. 직전 v0.26.0 approved R41 · `0de6c4c` · dist `e1d9177` |
+| **Open blocking** | none — R24–R42 closed · GitHub Issues 전부 closed |
+| **Tests** | 전체 **662개** — 재실행 시 실패 0건(1회차 1 fail = 등재된 통합 flake) · hook-sensor 37/37 · typecheck 6/6 |
+| **Verify** | VERIFY-0260 codex pane done — M-1·M-2·L-1..L-3·wire-lock PASS · D6(b)만 FAIL → FIX-0260b로 해소 |
+| **Herdr design** | `docs/HERDR_DESIGN.md` · Conv spec `docs/CONV_SPEC.md` · hooks 정본 `docs/spikes/HOOKS-SENSOR-SPIKE.md` |
+| **Nodes** | mac-node · Windows relay(durable) · WSL node-wsl-1(부팅 생존) · VPS node-vps-1 / kb(`@reboot`) — loom-dev `LOOM-GT4B` |
+| **Boot persist** | 트랙 종료(2026-07-20, 오너 옵션 B) — 상세 lessons platform (17) · 팩 `.loom-boot-persist-pack.md` |
+| **Remote** | `origin/main` = HEAD (이 세션 커밋 전부 push 완료) |
+| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9-bis 락 **13개** — (C) 하이브리드 전환 적용, 4차 검증 대기) + `PANE-DEATH-OBSERVATIONS.md` + 리뷰 **3본**: `PANEDEATH-CODEX-REVIEW.md`(1차) · `…REVIEW2.md`(2차) · **`…REVIEW3.md`(3차 = reject 정본)** (리뷰 3본 수정 금지)** · **`AGENT-CLI-LIFECYCLE-HOOKS.md`(provisional)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
+| **Untracked (커밋 제외)** | `scripts/check-mem-header.ts`(+test) · `scripts/watch-card.ts`(+test) · `scripts/session-context.test.ts` · `hook-sensor.ts`(+test) · `.loom-*` 브리프/디스패치 · `.playwright-mcp/` 등 |
+
+</details>
+
+> **구현 후로 분류된 미확인 6건**(codex 2차 §4) — 단 **WSL/VPS terminal 종류·지연은 배포 완료 주장 전 필수 스모크**.
+> 착수 전 조건 목록 원문(5건→실측 10건 경위 포함) → `docs/HANDOFF_ARCHIVE.md`.
 
 ## Strategic context
 
