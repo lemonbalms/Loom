@@ -18,12 +18,13 @@
 |------|-----|
 | CLI 턴 종료·응답을 **공식적으로** 캐치할 수 있나? | **주요 벤더 대부분 Yes** (Claude / Codex / **Grok** / OpenCode / Kimi / Pi / Cursor 등). |
 | 스크레이프를 hooks로 **교체**하나? | **No** — §2.5 하이브리드 유지. hooks = 보조 센서. |
-| herdr가 대신 해 주나? | **부분.** `herdr integration install <target>` 14종에 한해 벤더 hooks → `pane.report_agent`. **`grok`는 integration enum 밖**이지만 Grok **자체 hooks는 공식 존재**. |
+| herdr가 대신 해 주나? | **부분.** 14종 `integration install` + 전 에이전트 screen 감지. **Grok = screen-manifest 전용 · integration role `none`** (Grok CLI hooks 자체는 존재 — §4.4.1 이유). |
+| herdr 오픈소스 vs “에이전트 비공개”? | **오해 금지.** herdr([ogulcancelik/herdr](https://github.com/ogulcancelik/herdr), AGPL)는 감지·integration 코드 공개. 개별 코딩 CLI 라이선스는 별개. Grok CLI도 오픈소스. |
 | 다음 설계 우선순위 (권고) | ① Claude 센서 운영 안정화(0.26.x) ② **Codex Stop/PermissionRequest** ③ **Grok Stop/Notification 직접 주입** ④ OpenCode/Kimi/Pi ⑤ herdr install 자동화는 옵션 |
 
 **정정 (2026-07-21):** 초기 구두 조사에서 “Grok hooks 표면 약함”은 **오류**.  
 근거: (1) [xai-org/grok-build](https://github.com/xai-org/grok-build) 오픈소스 공개 (2) 설치본 `~/.grok/docs/user-guide/10-hooks.md` lifecycle 표.  
-남은 갭은 **herdr `integration install grok` 미제공**뿐.
+**남은 갭은 “Grok hooks 부재”가 아니라 herdr 제품 등급 `none` + Loom 직접 센서 미배선** (§4.4.1).
 
 ---
 
@@ -174,16 +175,59 @@ events = ["turn_complete", "approval_required"]
 
 설계에서는 **lifecycle `Stop`/`Notification`을 센서 정본**으로 두고, UI hooks는 사람 알림용 보조로 취급.
 
-**herdr 갭:**
+#### 4.4.1 herdr가 Grok을 lifecycle integration이 아니라 screen-manifest 전용으로 둔 이유
+
+> **설계 고정 문장:** herdr는 Grok을 “무시”하거나 “비공개라서 못 붙인” 것이 아니다.  
+> **lifecycle authority 기준(완전 3상태 전이)** 을 통과한 벤더만 hooks를 상태 정본으로 쓰고,  
+> Grok은 **UI/OSC screen-manifest**로 상태를 잡도록 분류한다 (`integration role: none`).  
+> Grok CLI hooks는 존재하며 **Loom 보조 센서 후보**이나, `herdr integration install grok`는 **현재 제품 표면에 없다**.
+
+**herdr 통합 등급 3단** ([Agents](https://herdr.dev/docs/agents/) · [Integrations](https://herdr.dev/docs/integrations/)):
+
+| 등급 | 효과 | 예 |
+|------|------|-----|
+| **Lifecycle authority** | hooks/plugin이 `idle`/`working`/`blocked` **권위 보고**. 같은 pane에 **screen fallback 끔** | Pi, OMP, Kimi, OpenCode, Kilo, Hermes, MastraCode |
+| **Session identity** | hooks로 **session id**만 (restore). **상태 = screen** | Claude, Codex, Copilot, Devin, Droid, Qoder, Cursor |
+| **none** | integration 설치 대상 아님. **상태 = screen only** | **Grok**, Amp, Antigravity, Kiro, Maki |
+
+문서가 Claude/Codex·Devin·Copilot 등에 **명시**한 공통 논리 (Grok `none`과 같은 축):
+
+- hooks가 **전체 lifecycle을 덮지 못함** → permission 승인 결과, escape interrupt 등 **전이를 놓칠 수 있음**
+- 불완전한 hooks에 lifecycle authority를 주면 **screen과 이중 진실**이 되어 wait/알림이 깨짐  
+  → authority 부여 시 screen을 **의도적으로 끄므로** 기준이 높다
+- 부분 hooks는 **session restore용**으로만 쓰고 상태는 screen (Claude/Codex 등)
+
+**Grok이 session identity 등급에도 없고 `none`인 이유 (문서 정책 + 소스/CHANGELOG 재구성; herdr가 “Grok 한 줄 제외 사유”를 별도 공표하진 않음):**
+
+| # | 이유 | 증거 |
+|---|------|------|
+| 1 | **Lifecycle authority 기준이 높음** — 연속 `working`/`blocked`/`idle` + interrupt/permission 전 경로가 필요. Grok 공개 hooks(`Stop`/`Notification`/…)는 **턴 끝·알림**에 강하지만 herdr 3상태 정본으로 **검증·등급 상향되지 않음** | Agents: “complete lifecycle hooks”만 authority |
+| 2 | **Grok UI가 screen/OSC에 잘 맞음** — herdr가 여기 투자 | `src/detect/manifests/grok.toml` 주석 (OSC 0 title, OSC 9;4 progress, `[stop]` chip, Action Required, `┃` 다이얼로그). CHANGELOG #133 감지 추가, #1017/#1055 UI 추적 강화 (mid-turn idle 폴백 수정) |
+| 3 | **integration 자산 미구현** — `src/integration/assets/grok/` 없음 · install 목록 14종에 grok 없음. “hooks API 부재”가 아니라 **herdr 설치 어댑터 미제공** | targets.rs / assets 트리 · `IntegrationTarget` enum |
+| 4 | **Session-identity 파이프도 미배선** — Claude/Codex는 `SessionStart`→resume id 계약이 있음. Grok은 herdr 표준 resume 경로에 아직 안 올라감 (우선순위/계약) | Integrations 표: Grok 행 없음 |
+| 5 | **이중 authority 금지** — 불완전 hooks를 authority로 올리면 screen과 충돌 시 더 위험 → 보수적으로 `none` + 깊은 screen 규칙 | Agents: lifecycle authority 시 screen skip |
+
+**오해 교정:**
+
+| 가설 | 판정 |
+|------|------|
+| Grok CLI/hooks 비공개라서 | **거짓** — 오픈소스 + `10-hooks.md` |
+| herdr가 Grok을 감지 못해서 | **거짓** — `agent=grok` + 상세 toml |
+| herdr 소스가 에이전트 연동 코드를 숨겨서 | **거짓** — herdr AGPL 공개; integration/manifest 코드 포함 |
+| **완전 3상태 lifecycle 정본으로 쓸 install 어댑터를 herdr가 안 만들었고, screen/OSC로 충분·개선 중이라 `none`** | **참 (정책+소스 정합)** |
+
+**Loom 함의 (고정):**
 
 ```text
 herdr IntegrationTarget = pi | omp | claude | codex | copilot | devin | droid
   | kimi | opencode | kilo | hermes | qodercli | cursor | mastracode
-# grok 없음
+# grok 없음 → herdr status = screen (B층 공통 눈)
+# Grok Stop/Notification = Loom 직접 주입 (A층) — herdr install 대기 금지
 ```
 
-→ Grok 센서 = **Loom이 hooks를 직접 주입·수신** (Claude 0.26 동형 소켓/JSONL).  
-선택: 수신 스크립트가 herdr `pane.report_agent`를 호출해 B층을 채움.
+- Grok 센서 = **Loom이 hooks를 직접 주입·수신** (Claude 0.26 동형 소켓/JSONL).  
+- 선택: 수신 스크립트가 herdr `pane.report_agent`를 호출해 B층을 채움 (lifecycle authority 탈취 주의 — metadata/`hookHint` 우선 권고).  
+- herdr screen status와 Loom `hookHint`는 **하이브리드 §2** 합류 규칙으로 디듀프.
 
 ### 4.5 OpenCode
 
@@ -226,6 +270,9 @@ Exit:  pane_exited
 
 `herdr integration status` (로컬 예): 14 target 경로에 `herdr-agent-state` 설치 여부 표시.  
 조사 시점 머신에서는 전부 **not installed** — 설치는 옵트인 ops.
+
+**herdr 자체:** [github.com/ogulcancelik/herdr](https://github.com/ogulcancelik/herdr) · **AGPL-3.0-or-later** · 감지 매니페스트·integration install 자산 포함.  
+Loom은 AGPL 경계로 소스 벤더링 없이 **소켓 RPC만** 사용 (`HERDR_DESIGN`).
 
 ---
 
@@ -327,11 +374,13 @@ OpenCode/Kimi/Pi는:
 | D1 | 스크레이프 교체 금지 · hooks optional 센서 | **LOCKED** (§2.5) |
 | D2 | 본문 정본 ≠ hook payload | **LOCKED** (§2.5 / 0.26) |
 | D3 | 센서 수신 파이프 = loomDir 로컬 소켓/JSONL (inject-control 동형) | 0.26 선례 · 유지 권고 |
-| D4 | Grok = 오픈소스 + 공식 hooks 있음 · herdr integration 없음 → **직접 주입** | **조사 확정 2026-07-21** |
+| D4 | Grok = 오픈소스 + 공식 hooks 있음 · herdr integration role **`none`**(screen 전용) → Loom **직접 hooks 주입** (herdr install 대기 금지) | **조사 확정 2026-07-21** · 이유 §4.4.1 |
+| D4a | herdr 3단 등급 (lifecycle authority / session identity / none) 을 Loom 설계에 전제. authority ≠ “hooks API 존재” | **조사 확정 2026-07-21** |
 | D5 | Codex = Claude 동형 hooks → **공유 스키마 + 벤더 어댑터** | 권고 |
 | D6 | herdr integration install = ops 옵션, 제품 필수 아님 | 권고 |
 | D7 | OpenCode/Kimi/Pi agentKind wire 확장은 수요 pull + R{n} | 권고 |
 | D8 | 프로세스 exit code만으로 인터랙티브 턴 끝 판정 금지 | 권고 (세션 생존 ≠ 턴 끝) |
+| D9 | herdr AGPL 오픈소스 ≠ 개별 코딩 CLI 라이선스. “에이전트 코드 비공개” 혼동 금지 | **조사 확정 2026-07-21** |
 
 ---
 
@@ -359,15 +408,18 @@ OpenCode/Kimi/Pi는:
 | Grok hooks (설치본) | `~/.grok/docs/user-guide/10-hooks.md` · UI notif: `05-configuration.md` |
 | OpenCode plugins | https://opencode.ai/docs/plugins/ |
 | Kimi hooks | https://moonshotai.github.io/kimi-code/en/customization/hooks |
-| herdr v0.7.4 | `herdr integration status` · `herdr api schema` IntegrationTarget enum |
+| herdr 오픈소스 | https://github.com/ogulcancelik/herdr (AGPL) · https://herdr.dev |
+| herdr Agents / Integrations | https://herdr.dev/docs/agents/ · https://herdr.dev/docs/integrations/ |
+| herdr Grok screen 정본 | `src/detect/manifests/grok.toml` (OSC/title/`[stop]`/permission UI) · CHANGELOG #133 · #1017 · #1055 |
+| herdr v0.7.4 로컬 | `herdr integration status` · `herdr api schema` IntegrationTarget enum (grok 없음) |
 | Loom | `COMPETITIVE_NOTES` §2.5 · `HOOKS-SENSOR-SPIKE.md` · `HERDR_DESIGN.md` |
 
 ---
 
 ## 10. 다음 액션 (문서 이후)
 
-1. 본 문서를 PLAN 초안 작성 시 **입력 팩**으로 인용 (재조사 금지 범위 = §4 표 + D4).
-2. 오너 우선순위 확인: **Codex vs Grok** 어댑터 순서 (권고: Codex → Grok, 또는 병렬 소규모).
+1. 본 문서를 PLAN 초안 작성 시 **입력 팩**으로 인용 (재조사 금지 범위 = §4 표 + **§4.4.1** + D4/D4a/D9).
+2. 오너 우선순위 확인: **Codex vs Grok** 어댑터 순서 (권고: Codex → Grok, 또는 병렬 소규모). Grok은 herdr install **대기 금지**.
 3. (선택) 라이브 1-shot: Grok `Stop` hook → JSONL 1줄 실증 후 §4.4 “실측” 체크.
 4. (선택) `herdr integration install claude|codex` 옵트인 런북 절을 `USER_GUIDE` 또는 dogfood에 링크.
 

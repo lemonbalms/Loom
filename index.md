@@ -62,7 +62,7 @@
 
 | 파일 | 요약 | 최종 업데이트 | 커밋 |
 |------|------|:---:|:---:|
-| **`docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md`** | **설계 입력 팩.** CLI 종료·응답 공식 캐치 매트릭스 (Claude/Codex/**Grok 오픈소스 hooks**/OpenCode/Kimi/Pi · herdr 14종) · 어댑터 초안 D1–D8 | 2026-07-21 | 1 |
+| **`docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md`** | **설계 입력 팩.** CLI 종료·응답 매트릭스 · **§4.4.1 herdr가 Grok을 screen-only로 둔 이유** · D1–D9 | 2026-07-21 | 2 |
 | `docs/spikes/HOOKS-SENSOR-SPIKE.md` | Claude hooks 보조 센서 스파이크 (0.26 선행 · 최소 배선 5단계) | 2026-07-21 | 3 |
 | `docs/spikes/HOOK-CACHE-FIX-DESIGN.md` | hook 캐시 고정 설계 (웜베이스 후속) | 2026-07-20 | 2 |
 | `docs/spikes/WARM-BASE-FORK-SPIKE.md` | 웜베이스 포크 스파이크 | 2026-07-20 | 1 |

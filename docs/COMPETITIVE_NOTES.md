@@ -304,8 +304,8 @@ Loom 브릿지 경로:
 | 스파이크 ✅ | Claude hooks로 idle/permission **읽기만** — **완료(2026-07-19)** · [`docs/spikes/HOOKS-SENSOR-SPIKE.md`](spikes/HOOKS-SENSOR-SPIKE.md) (기술 가능성 확인 · 배선 전부 기존재 · 경량 R{n}) | `docs/spikes/HOOKS-SENSOR-SPIKE.md` |
 | 이득 수치 | 조기 done·승인 미탐지 감소가  empirically 있으면 다음 |
 | PATCH | optional sensor → notes / still-running 유예 입력만 | 필드 신설 시 R{n} · 0.26.x |
-| **멀티벤더 조사 ✅** | CLI 종료·응답 공식 캐치 매트릭스 (Claude/Codex/**Grok 오픈소스 hooks**/OpenCode/Kimi/Pi + herdr 14종) — **2026-07-21** · 설계 입력 팩 | [`docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md`](spikes/AGENT-CLI-LIFECYCLE-HOOKS.md) |
-| 이후 | **Codex → Grok 직접 hooks 어댑터** (Grok은 herdr integration 없음·자체 Stop 공식) · 그다음 OpenCode/Kimi/Pi | 위 팩 §6 |
+| **멀티벤더 조사 ✅** | CLI 종료·응답 공식 캐치 매트릭스 (Claude/Codex/**Grok 오픈소스 hooks**/OpenCode/Kimi/Pi + herdr 14종) — **2026-07-21** · 설계 입력 팩 · **§4.4.1 herdr가 Grok을 screen-only로 둔 이유** | [`docs/spikes/AGENT-CLI-LIFECYCLE-HOOKS.md`](spikes/AGENT-CLI-LIFECYCLE-HOOKS.md) |
+| 이후 | **Codex → Grok 직접 hooks 어댑터** (Grok=herdr role `none`·screen 정본 / CLI hooks는 Loom 직접 주입) · 그다음 OpenCode/Kimi/Pi | 위 팩 §6 · §4.4.1 |
 | 안 함 | 모바일 푸시 데몬 · moshi-hook 의존 · 스크레이프 폐기 | §2.6 H |
 
 ### 2.6 배울 점 → Loom 적용방안
