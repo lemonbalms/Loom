@@ -357,14 +357,20 @@ type HookHint = {
 3. 플라이트당 stop 계측 정책은 벤더별 동일 패턴 재사용.
 4. `hookSensor` 옵트인 기본 off (0.26).
 
-> **⚠️ 현행 코드가 불변식 1을 위반 중이다 (E15 · 아키텍트 축자 확인).**
+> **✅ 해소됨 (커밋 `2ca6748`, 2026-07-21 · 아키텍트 워킹트리 독립 검증).**
 > 구 문안은 “파싱 실패 → fail-open 폴백”이라고 적었으나, 이는 **코드와도 모순이고 목표 계약과도
-> 모순**이다. `packages/host/src/hook-sensor.ts:202`가 `let k = 'Stop'` **기본값** + `catch {}`
-> 구조라서, **malformed 입력을 유효한 `Stop`으로 승격**시킨다 — fail-open이 아니라 **fail-to-Stop**
-> 이다. 파싱할 수 없는 바이트가 “턴이 끝났다”는 증거로 둔갑한다.
+> 모순**이었다. `buildHookSocketWriteCommand`가 `let k = 'Stop'` **기본값** + `catch {}`
+> 구조라서, **malformed 입력을 유효한 `Stop`으로 승격**시켰다 — fail-open이 아니라 **fail-to-Stop**
+> 이다. 파싱할 수 없는 바이트가 “턴이 끝났다”는 증거로 둔갑했다.
 >
-> **목표 계약은 `malformed → none`이다.** 알 수 없는 입력은 어떤 명제에도 증거를 주지 않는다.
-> 이 갭은 hook 센서 어댑터 PATCH에서 닫는다(§6 테스트 설계 2번).
+> **달성된 계약: malformed → 무전송.** 알 수 없는 입력은 어떤 명제에도 증거를 주지 않는다.
+> 해법은 기본값 제거 + 알려진 4값 화이트리스트 검증 후에만 전송, 아니면 소켓 연결 없이 `exit(0)`.
+>
+> **`HookHintKind` union에 `none` 값은 추가하지 않았고, 추가해서는 안 된다.** “신호 없음”을
+> *값*으로 만들면 그것이 “신호 있음”의 한 종류가 되어 같은 결함이 형태만 바꿔 되돌아온다.
+> 부재(`hookHint === undefined`)가 이미 그 의미를 담당하며, `classifyCompletionFallback`이
+> 이를 `"no_hint"`로 계측한다. 잠금: `hook-sensor.test.ts` 37/37(신규 15 — 생성된 스크립트를
+> 실제 실행하는 end-to-end 케이스 포함, 결함 일시 복원 시 2 fail 재현 실증).
 
 ### 5.2 주입 전략 (벤더별)
 
@@ -454,7 +460,7 @@ OpenCode/Kimi/Pi는:
 | D9 | herdr AGPL 오픈소스 ≠ 개별 코딩 CLI 라이선스. “에이전트 코드 비공개” 혼동 금지 | **조사 확정 2026-07-21** |
 | **D10** | **herdr가 `none`으로 둔 벤더를 Loom 수신 스크립트가 `pane.report_agent`로 임의 승격시키는 것 금지** — herdr screen 판정과 이중 진실이 되어 herdr가 피하려던 상황을 재현한다 | **LOCKED** ((C) 전환 2026-07-21 · 구 “authority 탈취 주의” 권고에서 승격 · §4.4.1) |
 | **D11** | **센서 전역 우선순위 금지.** 결합 정본 = `PANE-DEATH-DESIGN.md` §6.0-bis 증거 명제표. `hookHint 우선`·`hook Stop 우선` 문안은 폐기 | **LOCKED** ((C) 전환 2026-07-21 · §2) |
-| **D12** | **`Stop`은 완료 확정이 아니다** — 허용 행동은 completion 재평가 트리거·poll 조기 실행·알림까지. 또한 **malformed hook 입력 → `none`**(현행 `hook-sensor.ts:202`는 위반 중) | **LOCKED** ((C) 전환 2026-07-21 · §5.1 · §6) |
+| **D12** | **`Stop`은 완료 확정이 아니다** — 허용 행동은 completion 재평가 트리거·poll 조기 실행·알림까지. 또한 **malformed hook 입력은 어떤 힌트도 발생시키지 않는다(무전송)** — `HookHintKind`에 `none` 값을 두지 않는다(신호 없음을 값으로 만들면 신호 있음의 한 종류가 된다) | **LOCKED** ((C) 전환 2026-07-21 · §5.1 · §6) · **코드 준수 `2ca6748`** |
 
 ---
 
@@ -469,7 +475,8 @@ OpenCode/Kimi/Pi는:
 | Stop 과다 발화 (Claude 커뮤니티 이슈) | still-running과 AND · 플라이트 단일 초크포인트 |
 | 본문 대용량 hook stdout | metadata-only · transcript_path |
 | herdr `done` report 제한 (C1) | idle+sawWorking. **`hook Stop 우선`은 폐기** — `Stop`은 P2 corroboration일 뿐이며 결합은 증거 명제표를 따른다(§2) |
-| malformed hook 입력이 유효 `Stop`으로 승격 (`hook-sensor.ts:202`) | 목표 계약 `malformed → none`으로 교정 · 어댑터 PATCH에서 유닛으로 잠금(§5.1 불변식 1) |
+| ~~malformed hook 입력이 유효 `Stop`으로 승격~~ | **해소 `2ca6748`** — 화이트리스트 미통과 시 무전송 `exit(0)`. `hook-sensor.test.ts` 37/37로 잠금(생성 스크립트 실행 end-to-end 포함) |
+| `Notification` 수신 분기의 `else if`/`else`가 동일 값(`permission_prompt`) — `idle` 아닌 모든 `Notification`이 최강 힌트로 승격 | **미해소 (Low)** — 주입 matcher가 `permission_prompt\|idle_prompt`로 좁혀 브릿지 주입 경로엔 노출면 없음. 방금 고친 것과 동일 결함 유형이므로 어댑터 PATCH에서 함께 정리 |
 
 ---
 
@@ -521,3 +528,7 @@ OpenCode/Kimi/Pi는:
 열 추가(E12), §10-3 라이브 실증을 필수로 승격 + 판정 기준 명기(E13), `pane.report_agent` authority
 승격을 D10으로 금지(E14), `Stop=완료 확정` 문구 교체 및 `hook-sensor.ts:202` malformed→`Stop` 승격
 결함 명기(E15). 근거 = codex 3차 검증 + 장기자문 2회 + fable-advisor 자문 2회.*
+
+***2026-07-21 후속:** E15가 명기한 malformed→`Stop` 승격 결함은 커밋 `2ca6748`에서 **해소**됐다.
+채택된 계약은 `none` **값** 도입이 아니라 **무전송**이다 — D12 문안을 그에 맞춰 교정했다(위 §7 표).
+잔여 동형 결함 1건(`Notification` 수신 분기, Low)은 §8 위험 표에 등재.*

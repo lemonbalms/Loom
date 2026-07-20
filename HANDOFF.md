@@ -18,14 +18,14 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH 설계 통합 패스 완료 — 3차 검증 대기 (2026-07-21).** codex 1차 reject(High 3)→락 교체(`5df040e`) → 2차 **reject/ready=no**(High 1·Medium 7)(`85465e2`) → **통합 패스 D1~D10 적용**(이번 커밋). 핸드오프가 적던 **조건 5건은 실측 오류 — 실제 10건**(codex §5 6건 중 3건 미전사 + 신규 발견 2건). 다음 = **codex 3차 검증**(발견자≠수정자). 상세 → **docs/HANDOFF_ARCHIVE.md**.
+> **🎯 PANE-DEATH (C) — 좌표 재실측 완료, 잔여는 PLAN + R{n} (2026-07-21).** 구 "수정 3건" 중 **2건은 `2ca6748`에서 이미 해소**(malformed→`Stop` 승격 · `sendFailedResult` ACK 관측). 남은 1건은 **국소 수정이 아니라 상태기계 변경**이라 코드 착수 불가 — PLAN 필요. 설계 문서 좌표·D12 락 문안은 이번 커밋에서 실측에 맞춰 교정. 상세 → **docs/HANDOFF_ARCHIVE.md**.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH (C) 하이브리드 — 코드 결함 3건 수정 (구현 착수 지점)** — 방향 전환 확정, 설계 문서 반영분 = 이번 커밋(E1~E15).
+0. **⭐ PANE-DEATH (C) — PLAN v0.27.0 작성 (발행 단일 소유권 + ACK 경계)**
    > **불변식:** 불확실한 관측은 **회복 가능한 행동만** 유발한다. 비가역 행동(result 발행·`pane.close`·dispose)은 **결정적 증거 또는 멱등 경로에서만**.
 
-   **수정 3건(축자 확인 완료)**: ① `hook-sensor.ts:202` malformed→`Stop` 승격 → `none` fail-open ② `bridge-runtime.ts:2123` `void sendFailedResult` fire-and-forget + `:2355` ACK 반환값 폐기 → 단일 소유권·멱등 전달·ACK 추적·durable alert. **자동 done을 없애도 남는 결함.** 레인 = grok. (C) 경계·근거(펼쳐보기).
+   **실측 정본 = `PANE-DEATH-DESIGN.md` §6.7 표**(구 `:2123`/`:2355`는 스테일). 잔여: `:2160`+**동형 `:2207`·`:2222`**(신규) fire-and-forget · `sendResult:2423` ACK 봉투 전량 폐기 · `finishCard:2349` 실패 경로 관측 누락. **착수 전 아키텍트 결정 2건**(failed result 자체의 ACK 처리 · 두 seq 출처 통일)**과 함정 3건 → §6.7-bis.**
 
 1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 실패(단독은 6/6 green). 변경 무관 확정. **방치 시 green 판정이 흐려진다**(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
@@ -34,6 +34,7 @@
 <details>
 <summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
 
+- (0) **착수 전 함정 3건 + 3차 리뷰 배관 정정** → `PANE-DEATH-DESIGN.md` **§6.7-bis**. 요약: `void`→`await` 단순 승격은 이중 발행 방어를 **약화**시킴 · strict ACK 본체는 `sendResult` 시그니처 교체 · `recipientCount=1`은 실측 전 금지.
 - (0) **(C) 경계**: 브릿지는 **자동 `done` 커밋 안 함** → 완료 후보는 단일 소유자가 멱등 `needs_verification`(board `blocked`)으로 전달, **사람이 워킹트리 독립 검증 후 확정**. 자동 `blocked`는 **결정적 부정 증거**(permission block·generation 결속 연속 absence)에만. 불확실한 status/scrape/timeout은 **알림만**(result 확정·close·dispose 금지). 자동 cleanup은 사람 확정 + tower receipt 뒤에만.
 - (0) **(C) 전환 근거 요약**(전문 → `docs/HANDOFF_ARCHIVE.md`): 규칙 7이 이미 `card.done`을 자문 등급으로 격하했다(fable) · **단 "3연속 reject = 기질 탓"은 기각**(codex — High-2는 아키텍트 결함) · **규칙 7 완화는 보류이지 포기 아님** · herdr 수렴 등급 **B+**, "Loom 신뢰 ≤ herdr 등급" 원칙은 **과도로 기각**.
 - (0) **잔존 2건(정직 고지)**: (C)로 3차 지적 6건 중 **4건만 닫힌다**. 남는 것 = ① 중복 발행(완료후보 `blocked` ↔ terminal `failed/blocked`) ② F5·F6(`terminalPending` 소비 + `blocked` result 자체의 ACK 유실·복구). **정확한 효과 = "거짓 성공 제거, 중복·유실·고아 존속."** 위 수정 3건이 이를 겨냥한다.
@@ -52,7 +53,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH (C) 하이브리드 전환 — 자동 `done` 폐지, 구현 착수 가능** (2026-07-21). 3연속 reject 후 codex 장기자문 2회 + fable-advisor 2회 교차 검증으로 방향 전환. **완료는 사람이 확정하고 브릿지는 전달·회복만 책임진다.** **다음 = 코드 결함 3건 수정**(malformed→Stop · 이중 발행 · ACK 폐기) → 증거표 반영 → 4차 검증.
+> **🎯 PANE-DEATH (C) — 좌표 재실측 완료, 잔여는 PLAN + R{n}** (2026-07-21). **완료는 사람이 확정하고 브릿지는 전달·회복만 책임진다.** 구 "수정 3건" 중 2건 = `2ca6748` 해소. 남은 1건(발행 단일 소유권 + ACK)은 **상태기계 변경 — 코드 착수 불가**. **다음 = PLAN v0.27.0** (결정 2건·함정 3건 → §6.7-bis).
 
 ---
 
