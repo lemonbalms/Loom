@@ -20,26 +20,28 @@
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH 설계 통합 패스** — 권고 **B** · 2차 검증 **reject/ready=no**. **구현 착수 전 5건**: ① **전이표 통합**(§5 B·§6.1·§6.2·§7.1을 락 5·9에 맞춰 하나로 — 현재 자기모순) ② **`generation` 정의**(매 `agent.start` bridge-local 불투명 token, `paneId`·`terminalId`·owner 결속, async 콜백은 캡처 token 재검증) ③ **reconcile cadence 수치**(간격·grace·최대 시도·시작/중단 phase) ④ **`terminalPending` 전이표 + `commit_unknown` 정책**(보존·운영자 회수 신호) ⑤ **락 10 승격**(§6.2 규칙 2·3 start-evidence·activity fence — 최초 결함 213이 현재 락 밖). **닫힘:** 구현 전 필수 실험 전건 종료(status replay=안 됨). 경위(펼쳐보기).
+0. **⭐ PANE-DEATH 설계 통합 패스** — 권고 **B** · 2차 검증 **reject/ready=no**. **구현 착수 전 5건**: ① **전이표 통합**(§5 B·§6.1·§6.2·§7.1을 락 5·9에 맞춰 하나로 — 현재 자기모순) ② **`generation` 정의**(매 `agent.start` 불투명 token · `paneId`/`terminalId`/owner 결속 · async 콜백은 token 재검증) ③ **reconcile cadence 수치**(간격·grace·최대 시도·시작/중단) ④ **`terminalPending` 전이표 + `commit_unknown` 정책** ⑤ **락 10 승격**(§6.2 규칙 2·3 — 최초 결함 213이 현재 락 밖). 권고 순서 ② → ①+④ → ③(⑤ 병렬). **닫힘:** 구현 전 필수 실험 전건 종료. 경위(펼쳐보기).
 
-1. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
-2. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
+1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 통합 테스트 실패(단독은 6/6 green). 변경과 무관 확정. **방치 시 모든 웨이브의 green 판정이 흐려진다**(펼쳐보기).
+2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
+3. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
 
 <details>
-<summary>1·2 부연 설명 (펼쳐보기)</summary>
+<summary>1·2·3 부연 설명 (펼쳐보기)</summary>
 
-- (1) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
+- (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 부하 기아만이 원인은 아님. 회귀 아님 근거 = `conv.test.ts` 베이스라인 3회·변경분 3회 모두 16 pass/0 fail(57.7s 동일) · 변경 파일을 import/read 하는 테스트 0건. 남은 가설 = 스위트 내 동시 실행 시 포트/소켓·타이밍 경합.
+- (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
 - (2) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 
 </details>
-3. **다음 대형 트랙 — 미정 (오너 결정 지점)**(펼쳐보기).
-4. **R{n} 게이트 유예 (기존)**(펼쳐보기).
+4. **다음 대형 트랙 — 미정 (오너 결정 지점)**(펼쳐보기).
+5. **R{n} 게이트 유예 (기존)**(펼쳐보기).
 
 <details>
-<summary>3·4 부연 설명 (펼쳐보기)</summary>
+<summary>4·5 부연 설명 (펼쳐보기)</summary>
 
-- (3) 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 out of scope.
-- (4) 브릿지 자동 git push(R26:431). 착수 시 R{n} 재리뷰 필수.
+- (4) 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 out of scope. **1번 flake도 이 결정 지점의 후보다.**
+- (5) 브릿지 자동 git push(R26:431). 착수 시 R{n} 재리뷰 필수.
 
 </details>
 <details><summary>5·6·7 — 잔존 Low 백로그 · npm publish 보류(오너 결정 대기) · 루트 <code>.loom-*</code> 부수 정리 (펼쳐보기)</summary>
@@ -54,11 +56,11 @@
 
 - **dispatch wrap 마커** = `▶ Loom dispatched task — …`, 검증 주장은 **디스패처 발신자 국한**(R42) · M-1 allowlist엔 **전체 peer ID**(`loom peers`는 절단 표시) · 디스패처 신원 `claude-impl`.
 - `bun test`는 `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`로(미제거 시 relay 테스트 깨짐). 워커 스위트와 **동시 실행 금지**(기아로 위양성).
-- **`card.done` ≠ 완료 · 회수(claim)까지 해야 카드가 닫힌다**(미회수 시 보드 `doing` 고착·pane 잔존). 산출물은 **워킹트리에서 독립 검증** — 회신도 못 믿는다(성공을 `failed reason=agent_blocked`로 · 산출물 0건을 `done`으로 실증). 종료 코드로 실패 판정 금지(정상 cleanup도 exit 129). `PaneDied for unknown pane`=herdr 내부 경고.
-- **워커 감시 = `scripts/watch-card.ts`**(marker 0/pane-gone 1/limit 2/timeout 3) · **`--pane` 명시 필수**(자동 탐색은 무관 pane 선택) · **파이프 금지**(종료 코드 삼킴).
-- **herdr terminal 이벤트는 신규 구독자에 재전달**(백로그 ≥10분)이고 **봉투에 사건 시각·seq·id가 없다** — 수신 시각으로 replay/live 구분 불가.
+- **`card.done` ≠ 완료 · claim까지 해야 카드가 닫힌다**(미회수 시 보드 `doing`·pane 잔존). 산출물은 **워킹트리 독립 검증** — 회신도 못 믿는다(성공→`failed agent_blocked` · 산출물 0건→`done` 실증). 종료 코드로 실패 판정 금지. `PaneDied unknown pane`=herdr 내부 경고.
+- **워커 감시 = `watch-card.ts`**(marker 0/pane-gone 1/limit 2/timeout 3) · **`--pane` 필수** · **파이프 금지**(종료 코드 삼킴).
+- **terminal 이벤트는 신규 구독자에 재전달**(백로그 ≥10분) · **봉투에 시각·seq·id 없음** → 수신 시각으로 replay/live 구분 불가.
 - **claude-mem 패치 비영속**(`autoUpdate`로 원복) — 방어선 `check:mem-header`, 재적용 `tasks/lessons/platform.md`.
-- **pane 레인 4개 중 3개 사망**(장기 리뷰·프로브) — pane 밖에선 매번 완주. 장기 카드는 **in-harness 폴백 우선**(`DOGFOOD_LOOP §1.2`).
+- **pane 레인 4개 중 3개 사망**(장기 카드) — pane 밖은 매번 완주. **in-harness 폴백 우선**(`DOGFOOD_LOOP §1.2`).
 - **`fake-herdr.ts:565` status는 underscore만, 실서버는 dotted** — 픽스처 갭(제품은 양쪽 수용).
 
 ### 하지 말 것
