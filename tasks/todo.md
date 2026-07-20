@@ -1,10 +1,27 @@
 # Todo — Loom
 
-## Next
+## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
 
-1. [ ] 잔존 Low들 — 상태줄 chrome · summary 타이밍줄 · orphan durable 룸 정리 등
-2. [ ] 신규 Low 후보(스모크발) — `stale_hint` reason 어휘 세분화 · 공유-홈 claude-mem 오염 완화 · `agent_blocked` 교정 라이브 실증(유닛 커버)
-3. [ ] (선택·이월) 마커/거부율 라이브 재스모크 — claude-mem 오염 잔존으로 비결정적이라 v0.26.1에서 유예
+> 이 섹션은 요약 뷰다. SSOT는 `HANDOFF.md` — 표현이 어긋나면 핸드오프가 우선한다.
+
+**로드맵 골격 완료**: MVP 종료(오너 2026-07-19) → 프로덕션 전환 · 멀티노드 단계 3 전 단계 완주(⓪~④·ⓐ·ⓑ·부팅 생존 상시화) · v0.26.0 hooks 센서 + v0.26.1 마커 교정 shipped(신 마커 SMOKE-SONNET26 라이브 실증 완료).
+
+1. **다음 대형 트랙 — 미정 (오너 결정 지점)** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 현재 out of scope 유지.
+2. [ ] **R{n} 게이트 걸린 기능 유예 (유일)** — 브릿지 자동 git push(R26:431 유예). 착수 시 R{n} 재리뷰 필수.
+3. [ ] **검증 유예 1건** — `agent_blocked` 1:1 교정 라이브 실증. 유닛 33/33 커버, 카드 경유 미실증. SMOKE-SONNET26(신 마커 sonnet 무거부 1회 실증)으로 재시도 여건 개선.
+4. **잔존 Low 백로그 (결함 아님/무해 확정)**
+   - [ ] summary 정보성 타이밍줄("Worked for Ns.") 개선
+   - [ ] orphan durable 룸 정리 (ops)
+   - [ ] 동시 디스패치 풀 탭 레이스 (무해 확정)
+   - [ ] `stale_hint` reason 어휘 세분화
+   - [ ] sleep형 still-running 상한 소진 시 pane 수동 정리
+   - [ ] 공유-홈 claude-mem 오염 완화 (스모크 운영성)
+   - [ ] conv 턴 조기 회신(~7–10s) 관찰 지속
+   - [ ] 경쟁 분석발 A: `scripts/pane-inject.sh` read-guard 원자화 (R-gate 불요)
+   - [ ] WSL non-root 전환 (선택)
+   - [ ] R28 L-1 conv 테스트 타이밍 플레이크 (최근 런 미재현)
+5. **오너 결정 대기** — npm publish 보류. 재개 시 계정+패키지명(`loom-terminal` vs `@lemonbalms/loom`) 선택 → login→meta→publish. 재조사 금지.
+6. [ ] **부수 정리 (선택)** — 루트 `.loom-*` untracked 브리프/디스패치 스크립트 ~60개 정리.
 
 ## Done (recent)
 
