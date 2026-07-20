@@ -20,7 +20,7 @@
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH 불변식-유도 재작성 (접근 전환)** — 3차 **reject/ready=no**(High 2·Medium 4 → `docs/reviews/PANEDEATH-CODEX-REVIEW3.md`). **fable-advisor: 3연속 reject = 접근 전환 신호.** "지적→축자 반영→새 모순"은 락들이 **공유 불변식 없이 개별 패치로 누적**된 탓 — **축자 반영을 중단**하고 아래 불변식을 정본으로 세운 뒤 **락 3·5·8·9를 유도해 재작성**한다. 리뷰 대상도 "10개 문안"이 아니라 **"불변식 1개 + 유도"**로 제시하면 모순 생성 경로가 닫힌다.
+0. **⭐ PANE-DEATH 불변식-유도 재작성 (접근 전환)** — 3차 **reject/ready=no**(High 2·Medium 4 → `docs/reviews/PANEDEATH-CODEX-REVIEW3.md`). **fable-advisor: 3연속 reject = 접근 전환 신호.** "지적→축자 반영→새 모순"은 락들이 **공유 불변식 없이 누적**된 탓 — **축자 반영 중단**, 아래 불변식을 정본으로 **락 3·5·8·9를 유도 재작성**. 리뷰 대상도 **"불변식 1개 + 유도"**로 제시(모순 생성 경로가 닫힌다).
    > **불변식:** 불확실한 관측은 **회복 가능한 행동만** 유발한다. 비가역 행동(result 발행·`pane.close`·dispose)은 **결정적 증거 또는 멱등 경로에서만**.
 
    필수 메커니즘 = **`commit_unknown` 분리**(`send_unknown` ↔ `presence_unknown`). 3차 원장·자기 결함 2건·복구 조건(펼쳐보기).
@@ -62,12 +62,12 @@
 ### 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)
 
 - **dispatch wrap 마커** = `▶ Loom dispatched task — …`, 검증 주장은 **디스패처 발신자 국한**(R42) · M-1 allowlist엔 **전체 peer ID** · 디스패처 신원 `claude-impl`.
-- `bun test`는 `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`로(미제거 시 relay 테스트 깨짐). 워커 스위트와 **동시 실행 금지**(기아로 위양성).
-- **`card.done` ≠ 완료 · claim까지 해야 카드가 닫힌다**(미회수 시 보드 `doing`·pane 잔존). 산출물은 **워킹트리 독립 검증** — 회신도 못 믿는다(성공→`failed agent_blocked` · 산출물 0건→`done` 실증). 종료 코드로 실패 판정 금지. `PaneDied unknown pane`=herdr 내부 경고.
-- **워커 감시 = `watch-card.ts`**(marker 0/pane-gone 1/limit 2/timeout 3) · **`--pane` 필수** · **파이프 금지**(종료 코드 삼킴).
-- **terminal 이벤트는 신규 구독자에 재전달**(백로그 ≥10분) · **봉투에 시각·seq·id 없음** → 수신 시각으로 replay/live 구분 불가.
-- **claude-mem 패치 비영속**(`autoUpdate`로 원복) — 방어선 `check:mem-header`, 재적용 `tasks/lessons/platform.md`.
-- **pane 레인 4개 중 3개 사망**(장기 카드) — pane 밖은 매번 완주. **in-harness 폴백 우선**(`DOGFOOD_LOOP §1.2`).
+- `bun test`는 `env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL bun test`로. 워커 스위트와 **동시 실행 금지**(기아로 위양성).
+- **`card.done` ≠ 완료 · claim까지 해야 닫힌다**(미회수 시 `doing`·pane 잔존). 산출물은 **워킹트리 독립 검증** — 회신 불신(성공→`failed` · 산출물 0건→`done` 실증). 종료 코드로 실패 판정 금지. `PaneDied unknown pane`=herdr 내부 경고.
+- **워커 감시 = `watch-card.ts`**(marker 0/pane-gone 1/limit 2/timeout 3) · `--pane` 필수 · 파이프 금지.
+- **terminal 이벤트는 신규 구독자에 재전달**(백로그 ≥10분) · **봉투에 시각·seq·id 없음** → replay/live 구분 불가.
+- **claude-mem 패치 비영속**(`autoUpdate` 원복) — 방어선 `check:mem-header`, 재적용 lessons platform.
+- **pane 레인 4개 중 3개 사망**(장기 카드) — **in-harness 폴백 우선**(`DOGFOOD_LOOP §1.2`).
 - **`fake-herdr.ts:565` status는 underscore만, 실서버는 dotted** — 픽스처 갭(제품은 양쪽 수용).
 
 ### 하지 말 것

@@ -46,7 +46,7 @@
 
 </details>
 
-- [orchestration] 2026-07-19 (7) PLAN 컨텍스트 최소화: 본세션 직접 코드정독 금지 — 조사·볼륨은 위임, 판단·락-인접만 본세션. "규모 작아도" 예외 없음.
+- [orchestration] 2026-07-19 (7) PLAN 컨텍스트 최소화: 본세션 코드정독 금지 — 조사·볼륨 위임, 판단·락-인접만. "규모 작아도" 예외 없음.
 <details><summary>경위·좌표</summary>
 
 [orchestration] 2026-07-19 (7) PLAN 컨텍스트 최소화: 본세션 직접 코드정독 금지 — ① 서브에이전트 증거팩 수집 ② 본세션은 판단-무거운 스펙 문안만. **"규모 작아도" 예외 없음**(20줄 스크립트·북키핑·조사도 위임). 성격으로 가름(판단·락-인접=본세션 / 볼륨·조사=위임).
@@ -60,7 +60,7 @@
 
 </details>
 
-- [orchestration] 2026-07-19 (18) 전체 스위트 = 아키텍트 몫(위임 경계): 워커가 중도 중단을 정직 보고하면 재디스패치 불요. 워커 몫은 신규 유닛+구현까지.
+- [orchestration] 2026-07-19 (18) 전체 스위트 = 아키텍트 몫: 워커가 중도 중단을 정직 보고하면 재디스패치 불요(워커 몫 = 신규 유닛+구현).
 <details><summary>경위·좌표</summary>
 
 [orchestration] 2026-07-19 (18) 전체 스위트 = 아키텍트 몫(위임 경계): 워커가 전체 `bun test` 중도 중단을 **정직 보고**하고 DONE 마커 보류 시 **재디스패치 불요** — 전체 회귀 판정 provenance는 애초 아키텍트 독립 실행이 SSOT(verification (4) 동시-실행 금지의 연장). 워커 deliverable = 신규 유닛 + 구현까지, 전체 스위트는 아키텍트 독립 실행으로 완결. 보드는 done 전이(중도 중단 ≠ 워커 실패, 과잉 주장 회피가 올바른 거동). 이번 실증(v0.25.0 IMPL-0250 grok, 538/0). cross-ref: verification·workers.
@@ -81,7 +81,7 @@
 
 </details>
 
-- [orchestration] 2026-07-20 (27) 위임 범위 축소가 정합성을 깰 수 있다 — 상태기계·타입·계약 변경은 참조처까지 최소범위.
+- [orchestration] 2026-07-20 (27) 위임 범위 축소가 정합성을 깬다 — 참조처까지 최소범위. **편집뿐 아니라 조사·스캔 범위도**(3회차 재범: §5~§8 한정 → 요약 표 누락 → reject).
 
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 
@@ -127,7 +127,7 @@
 
 </details>
 
-- [bridge-ops] 2026-07-19 카드 완료 인지: board 폴링은 자기참조 — 완료 신호는 inbox `card.done`. 발사 후 inbox 짧은 주기 감시.
+- [bridge-ops] 2026-07-19 카드 완료 인지: board 폴링은 자기참조 — 완료 신호는 inbox `card.done`(짧은 주기 감시).
 <details><summary>경위·좌표</summary>
 
 [bridge-ops] 2026-07-19 카드 완료 인지: board 폴링은 자기참조(전이는 tower가 claim해야 발생) — 신호는 inbox `card.done`. 발사 후 inbox 짧은 주기 감시, 회수는 claim 스크립트(parse→apply→accept).
@@ -148,7 +148,7 @@
 
 </details>
 
-- [bridge-ops] 2026-07-19 (17) 멀티룸 dispatch 라우팅: `dispatchCard`는 active 바인딩 룸으로만 나감 — `loom relay use` 전환 후 발사·회수.
+- [bridge-ops] 2026-07-19 (17) 멀티룸 dispatch: `dispatchCard`는 active 바인딩 룸으로만 — `loom relay use` 전환 후 발사·회수.
 <details><summary>경위·좌표</summary>
 
 [bridge-ops] 2026-07-19 (17) 멀티룸 dispatch 라우팅: `dispatchCard`는 `loadSession()` **active 바인딩 룸**으로만 나감 — 룸이 흩어지면 `loom relay use <name>` 전환 **후** 발사, 회수도 바인딩별 인박스. `@node` 어드레싱 자체는 기완비(신규 표면 없음). `loom bridge status`는 foreground bun 브릿지서 **false offline**(프로세스 직접 확인) · 원격 WSL 명령은 base64 래핑 · VPS stat은 UTC.
@@ -162,7 +162,7 @@
 
 </details>
 
-- [bridge-ops] 2026-07-20 (22) 임시 셸 감시 금지(4연속 실패) — `scripts/watch-card.ts`.
+- [bridge-ops] 2026-07-20 (22) 임시 셸 감시 금지(4연속 실패) — `watch-card.ts`.
 <details><summary>경위·좌표</summary>
 
 [bridge-ops] 2026-07-20 (22) 임시 셸 감시 4연속 실패: 손으로 짠 감시가 **매번 다른 곳에서** 뚫렸다 — ① 마커만 보고 **pane 사망을 놓침** ② "codex는 안 죽는다"는 **관측을 가정으로 승격**해 소멸 감시를 제외 → 사용자 수동 종료를 놓침 ③ macOS **bash 3.2 연관배열 미지원**으로 즉사하며 "35분 경과" **거짓 성공** 보고 ④ 마커 검출 후 종료하지 않아 **알림 미전달**. 규칙 = 임시 셸 감시 금지, **`scripts/watch-card.ts` 사용**(종료 사유를 exit code로 구분: `marker`=0 · `pane-gone`=1 · `limit`=2 · `timeout`=3). **완주와 사망을 같은 코드로 뭉개지 마라** — 그것이 거짓 성공의 근원이다. cross-ref: bridge-ops (21)·verification (23).
@@ -171,7 +171,7 @@
 
 ## verification — 차집합 판정·dist 재빌드 순서·독립검증·provenance·힌트 교차검증
 
-- [verification] 2026-07-11 Provenance: 툴이 인터랙티브 실행된 뒤 config가 예상과 다르면 툴 탓 전에 오너가 뭘 골랐는지 확인 — 오너가 방금 고른 설정 임의 원복 금지.
+- [verification] 2026-07-11 Provenance: config가 예상과 다르면 툴 탓 전에 오너 선택 여부 확인 — 방금 고른 설정 임의 원복 금지.
 - [verification] 2026-07-19 (4) 0.23.10 웨이브: 아키텍트 독립 `bun test`는 워커 스위트와 동시 실행 금지 · 스모크 페이로드 bare `sleep N` 금지.
 <details><summary>경위·좌표</summary>
 
@@ -179,7 +179,7 @@
 
 </details>
 
-- [verification] 2026-07-19 (10) 차집합 판정: 통합 테스트 회귀 판정에 절대 수치 금지 — HEAD 베이스라인과 fail 차집합만 본다(단위·typecheck는 절대 수치 OK).
+- [verification] 2026-07-19 (10) 차집합 판정: 통합 테스트 회귀에 절대 수치 금지 — HEAD 베이스라인과 fail 차집합만(단위·typecheck는 절대 수치 OK).
 <details><summary>경위·좌표</summary>
 
 [verification] 2026-07-19 (10) 차집합 판정: 통합 테스트 fail의 회귀 판정은 **절대 수치 금지** — 환경마다 스위트 수치 통째로 변동. HEAD 베이스라인 worktree에서 동일 스위트 돌려 fail 집합 확보 후 **차집합**만 본다(차집합 0=신규 회귀 없음). 단위 스위트·typecheck는 절대 수치 OK.
@@ -229,6 +229,20 @@
 </details>
 
 - [verification] 2026-07-20 (28) 부정 결과엔 게이트+대조군 필수 — 없으면 "없음"이 아니라 "미확인".
+
+- [verification] 2026-07-21 (30) 미실측 상수로 정확성 갭을 닫지 마라 — 타임아웃·grace는 튜닝값이지 correctness 근거가 아니다. 불변식으로 하중 이전.
+<details><summary>경위·좌표</summary>
+
+[verification] 2026-07-21 (30) 미실측 상수로 정확성 갭을 닫지 마라: 아키텍트가 reconcile cadence(`+1s / poll 5s / grace 3s / 연속 2회 / 최대 12회 / commit_unknown 10분`)를 **실측 없이** 설계 락에 넣었다. codex 3차가 ① 그 수치가 **새 High를 생성**(`present` 카운터 리셋 미규정 → 60초 넘게 도는 **건강한** flight가 `commit_unknown`으로 떨어져 완료 경로 소멸) ② 원래 막으려던 **두 실패 모드 어느 쪽도 배제 못함**(`pane.list` 가시성 지연 **상한 미실측**)을 잡았다. codex 원문: *"수치는 유리한 타이밍에서 확률을 낮출 뿐 불가능하게 만들지 못한다."* fable-advisor: 실측으로도 못 닫는다 — **실측은 분포를 줄 뿐 상한을 주지 않는다**(느린 것과 죽은 것의 원격 구별 불가 = 분산시스템 고전 한계). 규칙 = 상수는 **운영 튜닝 파라미터일 뿐 correctness 근거가 아니다**. 안전성이 상수에 의존하면 상수를 조정하지 말고 **불변식으로 하중을 옮겨라**: "불확실한 관측은 회복 가능한 행동만 유발한다. 비가역 행동은 결정적 증거 또는 멱등 경로에서만." cross-ref: verification (28)·(31).
+
+</details>
+
+- [verification] 2026-07-21 (31) 2회+ 연속 reject에 매번 새 결함 = 구조 문제. 축자 반영 중단 → 불변식 1개에서 유도.
+<details><summary>경위·좌표</summary>
+
+[verification] 2026-07-21 (31) 반복 reject는 문안 문제가 아니라 구조 문제 신호: `PANE-DEATH-DESIGN.md`가 **3연속 reject**. 매 라운드 대응이 "지적을 축자 반영"이었고 **매번 새 모순**이 났다 — 1차(High 3) → 락 문안 교체 → 본문과 자기모순 → 2차 High / 2차(High 1) → 본문 9지점 통합 → **요약 표 1곳 누락** + 아키텍트 수치가 새 High 생성 → **3차(High 2)**. fable-advisor 진단: **락들이 공유 불변식 없이 개별 패치로 누적된 결과** — 문안을 덧댈수록 상호 정합성 검증 부담이 조합적으로 커져 수렴하지 않는다. 규칙 = **2회 이상 연속 reject + 매번 새 결함**이면 반영을 **중단**하고 "이 문서/코드에 **공유 불변식이 있는가**"를 묻는다. 없으면 **불변식 1개를 정본으로 세우고 나머지를 거기서 유도해 재작성**하고, 리뷰어에게도 **"N개 문안"이 아니라 "불변식 1개 + 유도"**를 검증 대상으로 제시하라 — 모순 생성 경로 자체가 닫힌다. cross-ref: orchestration (27)·verification (30).
+
+</details>
 
 ## platform — Windows·WSL·경로 sep·크로스플랫폼 배포
 
@@ -283,14 +297,14 @@
 
 </details>
 
-- [workers] 2026-07-19 (5) claude 스모크 sonnet 강제(오너 지시): `agentArgv.claude` 스왑→재기동→스모크→**원복+재기동**까지 한 절차. 페이로드는 benign형.
+- [workers] 2026-07-19 (5) claude 스모크 sonnet 강제: `agentArgv.claude` 스왑→재기동→스모크→**원복+재기동**이 한 절차. 페이로드 benign형.
 <details><summary>경위·좌표</summary>
 
 [workers] 2026-07-19 (5) claude 스모크 sonnet 강제(오너 지시): 스모크 claude 워커는 sonnet — config `agentArgv.claude`를 `["claude","--model","sonnet"]`로 스왑→재기동→스모크→**원복(`["claude"]`)+재기동**까지 한 절차(R{n} 리뷰는 Fable 필수, 원복 잊으면 사고). 페이로드는 benign goal-ack형.
 
 </details>
 
-- [workers] 2026-07-19 (9) sonnet claude-mem 거부 루프: 거부가 저장돼 후속 benign 페이로드까지 재거부 — 처음부터 benign 설계, 거부 시 새 카드로 교체.
+- [workers] 2026-07-19 (9) sonnet claude-mem 거부 루프: 거부가 저장돼 benign 페이로드까지 재거부 — 처음부터 benign, 거부 시 새 카드.
 <details><summary>경위·좌표</summary>
 
 [workers] 2026-07-19 (9) sonnet claude-mem 거부 루프: 거부가 claude-mem에 저장돼 후속 benign 페이로드까지 재거부(공유-홈 오염은 자연문 승인 대기 유발까지 확산). 규칙 = 처음부터 benign goal-ack형 설계 · 거부 시 새 카드로 교체 · `permission_prompt` 재현은 수동 pane 스폰 + 워커 argv `--permission-mode default` 스왑. 신 마커(0.26.1) 무거부 완주 1회 실증했으나 변인 2개라 단독 효과 단정 금지.
