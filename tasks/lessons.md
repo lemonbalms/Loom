@@ -212,6 +212,20 @@
 
 </details>
 
+- [verification] 2026-07-20 (25) `watch-card`를 파이프로 실행 금지 — 종료 코드가 `tail`의 0이 돼 사망이 완주로 둔갑.
+<details><summary>경위·좌표</summary>
+
+[verification] 2026-07-20 (25) 감시 도구의 종료 코드를 파이프로 파괴하지 마라: 아키텍트가 `bun run scripts/watch-card.ts … | tail -20`으로 실행했다. 파이프라인 종료 코드는 마지막 명령(`tail`)의 **0**이 되므로, `watch-card`가 exit **1(`pane-gone`)**로 애써 구분해준 **사망을 완주로 오독**했다. stdout에는 `exit=pane-gone`이 찍혀 있었는데 종료 코드만 보고 "완주"로 보고했다. 이는 bridge-ops (22) "완주와 사망을 같은 코드로 뭉개지 마라"의 **재범**이며, 이번엔 도구가 아니라 **호출 방식**이 원인이다. 규칙 = `watch-card`는 **파이프 없이** 실행하고 종료 코드를 직접 읽어라. 파이프가 꼭 필요하면 `PIPESTATUS`/`set -o pipefail`을 쓰라. cross-ref: bridge-ops (22).
+
+</details>
+
+- [verification] 2026-07-20 (26) 관측자를 관측 대상과 같은 생명주기에 두지 마라 — 완주 마커 존재로 검증.
+<details><summary>경위·좌표</summary>
+
+[verification] 2026-07-20 (26) 관측자를 관측 대상과 같은 생명주기에 두지 마라: PANE-DEATH 스파이크에서 pane 사망을 관측하는 프로브를 **워커 pane 안에서** 돌렸다. pane이 죽자 프로브도 함께 죽어 시나리오 C가 절단됐고, `PaneDied` 로그 스크레이프가 **한 번도 실행되지 않았다**. **절단은 조용했다** — 마지막 줄은 문법적으로 유효한 JSON이었고 부분 산출물이 완전한 것처럼 보였다. pane 밖(하니스 백그라운드)에서 재실행하니 즉시 완주했고, **바로 그 마지막 단계가 §9-3을 닫는 결정적 증거**를 냈다. 규칙 = ① 무언가의 **죽음을 관측하는 도구는 그 죽음의 영향권 밖에서** 돌려라 ② 프로브 산출물은 **완주 마커(`PROBE_END`)의 존재로 검증**하라 — 줄 수나 파일 존재로 판단하지 마라. 좌표: `scripts/probe-pane-death.ts` · `docs/spikes/PANE-DEATH-OBSERVATIONS.md` §2. cross-ref: verification (25)·bridge-ops (21).
+
+</details>
+
 ## platform — Windows·WSL·경로 sep·크로스플랫폼 배포
 
 - [platform] 2026-07-19 (13) 경로 sep: 프리픽스/포함 비교에 `"/"` 하드코딩 금지(`node:path` `sep`). 신규 플랫폼 첫 배포는 라이브 스모크 필수.

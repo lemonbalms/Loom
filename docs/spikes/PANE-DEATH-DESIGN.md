@@ -469,24 +469,112 @@ attestation이라는 신뢰 경계와 기존 R29/R32/R33 M-lock에 인접한다.
 R 전에 구현하지 않는다. D처럼 sidecar/nonce protocol까지 확대하면 별도 MINOR + CONV_SPEC 개정
 후 재리뷰가 필요하다.
 
-## 9. 미확정 항목 — 구현자가 먼저 닫아야 할 것
+## 9. 미확정 항목 — 스파이크 결과 (2026-07-20 종결)
 
-1. **자연사 event**: real herdr v0.7.4가 process exit에 `pane.closed`와 `pane.exited` 중 무엇을
-   subscribe push로 보내는가. 둘 다이면 순서는 무엇인가.
-2. **payload**: exit code/signal이 socket event에 실제 포함되는가. fixture schema의 general
-   `pane_exited`는 pane/workspace ID만 보인다.
-3. **`PaneDied unknown` 의미**: 로그상 herdr 내부 registry miss까지는 확정했지만, 왜 API close마다
-   이미 registry에서 제거된 child-exit callback이 뒤늦게 오는지는 upstream source/issue 또는 raw
-   probe가 필요하다. Loom binding과 동일한 registry라고 쓰면 안 된다.
-4. **213 status sequence**: 초기 TUI가 어떤 `pane_agent_status_changed` sequence로 completion을
-   촉발했는지 bridge ingress 로그가 없어 미확정. 다음 스모크에는 event name/status/phase만
-   구조 로그로 남겨야 한다(본문 금지).
-5. **A/C commit timing**: 정상 산출물은 사후 확인됐지만 result ACK/marker/close의 정확한 순서가
-   보존되지 않았다. signal만으로 역추론하지 않는다.
-6. **bridge restart**: in-memory registry/tombstone은 bridge crash 후 사라진다. claim-after-crash
-   저널/supervision은 기존 out-of-scope이며 본 PATCH가 해결하지 않는다.
-7. **cleanup timeout**: result commit 뒤 `pane.close` ACK는 왔으나 terminal event가 영원히 안 오면
-   tombstone TTL과 pane leak을 어떻게 처리할지 R에서 수치 확정이 필요하다.
+> **스파이크 종결.** 관측 정본 = **`docs/spikes/PANE-DEATH-OBSERVATIONS.md`**(herdr v0.7.4 / protocol 16,
+> raw NDJSON 소켓 프로브 2라운드, 프로브 소스 `scripts/probe-pane-death.ts`).
+> 아래 판정은 그 문서의 §1 요약표·§9.1 사실표를 §9 항목별로 옮긴 것이다.
+> **본 절은 §5~§7의 설계 본문(권고 B)을 변경하지 않는다** — 잠글 항목은 §9-bis로 분리했다.
+
+| # | 주제 | 판정 |
+|---|---|---|
+| 1 | 자연사 event 종류 | **닫힘** |
+| 2 | payload에 exit code/signal | **닫힘 (부정)** |
+| 3 | `PaneDied unknown` 의미 | **닫힘** |
+| 4 | 213 status sequence | **범위 밖** (구현 PATCH로 이관) |
+| 5 | close 요청/ACK/event 순서 | **부분** — 불변식 금지 |
+| 6 | bridge restart registry/tombstone | **out-of-scope 확정** |
+| 7 | cleanup timeout / tombstone TTL | **결정 완료 — TTL 60s** |
+
+1. **자연사 event — 닫힘.** 프로세스 종료(exit 0)와 SIGKILL은 **`pane_exited`**, `pane.close` API는
+   **`pane_closed`**를 보낸다. 한 pane에 두 종류가 섞이는 일은 없다 — 2라운드 6개 pane 전수 일치,
+   혼재 **0건**. `pane.close` 후 10초를 계속 관측해도 늦은 `pane_exited`는 오지 않았다.
+   → "프로세스가 죽었다" vs "우리가 닫았다"는 **이벤트 타입으로 구분 가능하다**.
+
+2. **payload — 닫힘 (부정).** terminal event의 `data`는 2라운드 전수 예외 없이
+   **`{pane_id, type, workspace_id}`가 전부**다. **exit code·signal 부재**이며, 봉투(`{data, event}`)에도
+   **id·seq·timestamp가 없다**. exit 0(A)과 SIGKILL(B)의 payload는 `pane_id` 외 **완전히 동일**하다.
+   → 종료 코드로 성패를 판정할 수 없는 것이 아니라, **이벤트에 종료 코드가 애초에 없다.**
+   판정 근거는 이벤트 **외부**(결과 커밋 여부·marker·산출물)에서 와야 한다.
+
+3. **`PaneDied unknown` 의미 — 닫힘.** 이 경고는 **우리 자신의 `pane.close` 호출이 유발하는 herdr
+   내부 부기(bookkeeping) 경고**다. close 요청(11:51:18.625) → 경고(18.764598, **+139ms**) → ACK(18.766)
+   순으로 close 처리 **한가운데** 끼어 있다. 브릿지가 통지를 버렸다는 증거가 **아니다**.
+   또한 replay와 **무관하다** — 스테일 terminal 20건이 유입되는 동안 `PaneDied`는 0건이었다.
+   **근거의 한계 명시:** 경고의 `pane=236`은 herdr 내부 숫자 id이고 API의 `w3:p5J`와 **문자열 매칭이
+   되지 않는다.** 연결 근거는 **타이밍 대응**(스크레이프 창에서 `PaneDied` 1건·`pane.close` 1건, 시차 139ms)
+   이지 **식별자 매칭이 아니다.** 내부 id ↔ API `pane_id` 매핑을 확인하면 근거가 격상된다.
+
+4. **213 status sequence — 범위 밖.** herdr API 프로브로는 답할 수 없다 — bridge **ingress 구조 로그**가
+   있어야 한다(제품 코드 변경). **구현 PATCH로 이관**하며, 그 PATCH가 event name/status/phase만
+   구조 로그로 남긴다(본문 금지).
+
+5. **close 요청/ACK/event 순서 — 부분.** 순서 `요청 → ACK → 이벤트`는 **2/2 보존**됐다.
+   그러나 ACK→이벤트 마진이 **22ms ↔ 211ms로 약 10배 진동**하고, 두 값 모두 herdr의 ~110ms 전달
+   양자와 같은 자릿수라 관측된 것은 **전달 순서**이지 **서버 내부 인과 순서가 아니다**. **n=2**.
+   → **"ACK가 오면 이벤트가 뒤따른다"를 불변식으로 코드에 잠그지 말 것.**
+   확정하려면 close 시점을 ~110ms tick에 대해 무작위 오프셋으로 **n≥20회** 반복해야 한다.
+
+6. **bridge restart — out-of-scope 확정.** in-memory registry/tombstone은 bridge crash 후 사라지며,
+   claim-after-crash 저널/supervision은 기존 out-of-scope다. 본 PATCH가 해결하지 않는다.
+   **자문 근거(fable-advisor, 2026-07-20):** 브릿지가 재시작되면 tombstone이 방어하려던 **이벤트 경로
+   자체가 사라진다** — 구독도 flight도 함께 소멸하므로 묘비가 막을 오발화 대상이 존재하지 않는다.
+   따라서 이는 "나중에 풀 숙제"가 아니라 **본 PATCH의 설계 범위 밖**이다.
+
+7. **cleanup timeout / tombstone TTL — 결정 완료: 60s.** result commit 뒤 `pane.close` ACK는 왔으나
+   terminal event가 끝내 오지 않는 경우의 상한을 **60초**로 정한다.
+   **자문 근거(fable-advisor, 2026-07-20), 확신 = 중간.** 근거: 이벤트 도착 시각은 사건 발생 시각이
+   아니며(~110ms 양자화 + 백로그 드레인 지연), 이 지연을 예산에 포함해야 한다.
+   **WSL/VPS 실측 후 재조정 여지 있음. 단 30s 이하로는 내리지 말 것** — 드레인 지연이 정상 케이스를
+   타임아웃으로 오판한다. 만료 시 동작은 §9-bis 7에 락한다.
+
+## 9-bis. R{n} 락 후보 — 구현 PATCH가 R 게이트에서 잠글 항목
+
+> 스파이크가 닫은 사실과 자문 권고를 **구현 PATCH의 락 후보**로 정리한 것이다.
+> 각 항목 = **결정 1줄 + 근거 1줄**. 출처는 각 항목 말미에 표기한다.
+> 이 절은 후보 제시이며, 확정은 **R{n} 게이트**에서 이뤄진다(§8 `rgate=needed` 유지).
+
+1. **종료 판별은 이벤트 타입으로 한다** — `pane_exited`(프로세스 사망) vs `pane_closed`(우리가 닫음)를
+   구분해 처리하고, 이 구분을 다른 신호로 대체하지 않는다.
+   *근거:* 2라운드 6개 pane 전수에서 타입이 사인과 1:1 대응했고 혼재 0건이었다. (이번 스파이크 관측)
+
+2. **종료 코드·시그널 기반 판정 금지** — 성공/실패 판정에 exit code나 signal을 쓰지 않는다.
+   *근거:* terminal 이벤트 payload는 `{pane_id, type, workspace_id}`뿐이라 그 정보가 **애초에 없다**;
+   exit 0과 SIGKILL이 와이어에서 동일하다. (이번 스파이크 관측)
+
+3. **replay 방어 필수 — 펜스는 이중 조건에서만 발화한다:** ① 이벤트의 `pane_id`가 **현재 flight의
+   pane_id와 일치**하고 ② 그 이벤트가 **구독 시작 이후 도착**했을 때만 terminal로 취급한다.
+   *근거:* herdr는 신규 구독자에게 과거 terminal 이벤트를 **바이트 동일**로 재전달한다(슬라이딩 백로그,
+   연결당 **~110ms에 1건** 드레인, 보존 **≥10분**, **클라이언트 프로세스 사망을 넘어 생존**). `HerdrClient`가
+   증분 재구독을 하므로 **재구독마다 스테일 terminal이 유입**되며, 이벤트에는 재전달을 판별할 필드가
+   하나도 없다. **이 락이 없으면 위양성은 가능성이 아니라 확정이다.** (이번 스파이크 관측)
+
+4. **`PaneDied for unknown pane`을 진단 신호로 쓰지 말 것** — 이 로그 줄을 사망 판정·경보·통지 유실
+   진단의 근거로 삼지 않는다.
+   *근거:* 우리 자신의 `pane.close` 호출이 유발하는 herdr 내부 부기 경고의 부산물이다(close 요청 +139ms,
+   ACK 직전). (이번 스파이크 관측)
+
+5. **이중 발행 방지 — `result_sending` → `committed`를 단일 원자 CAS로 전이시키고, CAS 패자는 무조건
+   inert 처리한다(어떤 result도 발행하지 않는다).**
+   *근거:* 권고 B는 `sendResult` 완료까지 flight를 살려두므로 `pane_closed` 핸들러가 **이미 커밋된 카드에도
+   발화**한다(현행은 dispose가 선행해 우연히 드러나지 않을 뿐이다). **이것이 이 PATCH의 핵심 테스트다.**
+   (fable-advisor 자문, 2026-07-20)
+
+6. **unknown terminal = inert, result 절대 미발행** — 어떤 flight에도 바인딩되지 않은 terminal 이벤트는
+   카운터만 남기고 폐기하며, 결코 result를 발행하지 않는다.
+   *근거:* 나중에 `unbound_terminal`을 failed result 발행으로 승격하면, **브릿지 재시작 후 이미 `done`인
+   카드에 `blocked`가 덧붙는 정합성 버그**가 된다 — 락으로 명문화해 그 승격을 사전 차단한다.
+   (fable-advisor 자문, 2026-07-20)
+
+7. **cleanup TTL = 60s, 만료 시 동작 고정** — 만료되면 `pane.list`를 **1회** 확인 → pane이 존재하면
+   `pane.close`를 **1회** 재시도 → 그래도 실패하면 **counter만 남기고 폐기**한다(무한 재시도 금지).
+   *근거:* 이벤트 도착 지연(~110ms 양자화 + 백로그 드레인)을 예산에 포함한 값이며, 확신 중간 ·
+   WSL/VPS 실측 후 재조정 여지 · **30s 이하 금지**. (fable-advisor 자문, 2026-07-20)
+
+8. **bounded reconcile은 성공한 `pane.list` 응답에서 pane이 부재할 때만 1 strike를 센다** — RPC 오류·
+   타임아웃은 **unknown**으로 분류해 **카운트 0**으로 둔다.
+   *근거:* 오류를 absent로 세면 **살아있는 pane을 죽인다** — 네트워크·부하 스파이크가 곧바로 오탐
+   종료가 된다. (fable-advisor 자문, 2026-07-20)
 
 ## 10. 구현 게이트 체크리스트
 
