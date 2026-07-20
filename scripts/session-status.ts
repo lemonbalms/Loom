@@ -46,12 +46,13 @@ const openBlock = (() => {
   return plain.length ? plain.slice(0, 5).join(" · ") : "있음 (plan_review Open 표 확인)";
 })();
 
-// Prefer one-line resume from HANDOFF
-const resume = match1(handoff, />\s*`?([^`<\n]{20,200})`?/);
+// Prefer the anchored `## One-line resume` section; fall back to the first
+// long blockquote line only if that section is missing.
+const resume = match1(handoff, /## One-line resume[\s\S]*?>\s*(.+)/);
 const resumeLine =
   resume !== "—"
     ? resume
-    : match1(handoff, /## One-line resume[\s\S]*?>\s*(.+)/);
+    : match1(handoff, />\s*`?([^`<\n]{20,200})`?/);
 
 console.log(`## 세션 상태 (Loom)
 | 항목 | 값 |
