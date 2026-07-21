@@ -11,16 +11,16 @@
 #   bun run dogfood:up -- --status  # just report host online/offline per profile
 #
 # Then (only when actually processing work):
-#   bun run loom --profile claude-rev run claude
+#   bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write
 #   bun run loom --profile grok-impl  run grok
 # Stop hosts:
-#   bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev
+#   bun run loom down --profiles codex-arch,grok-impl,claude-impl,codex-impl,claude-rev,codex-rev
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-PROFILES="impl,claude-impl,codex-impl,claude-rev,codex-rev"
+PROFILES="codex-arch,grok-impl,claude-impl,codex-impl,claude-rev,codex-rev"
 
 loom() {
   bun run packages/cli/src/index.ts "$@"
@@ -51,6 +51,7 @@ echo " Dogfood room online in the background"
 echo " Closing this terminal is OK — peers stay online."
 echo "=========================================="
 echo "Process work (only when working):"
+echo "  bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write"
 echo "  bun run loom --profile claude-rev run claude"
 echo "  bun run loom --profile grok-impl  run grok"
 echo "Stop hosts:"

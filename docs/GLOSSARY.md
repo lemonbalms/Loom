@@ -110,7 +110,7 @@
 | **architect / session model** | 설계 작성, 검토 조율, 구현 결과 검증을 맡는 세션의 주 에이전트 |
 | **implementer** | 승인된 명세에 따라 코드와 테스트를 작성하는 에이전트 |
 | **reviewer / advisor** | 설계나 구현의 결함, 모순, 위험을 독립적으로 찾는 에이전트 |
-| **lane** | 역할과 모델을 분리한 실행 경로. 예: `grok-impl`, `codex-impl`, `codex-rev` |
+| **lane** | 역할과 모델을 분리한 실행 경로. 예: `codex-arch`, `grok-impl`, `codex-impl`, `codex-rev` |
 
 `blocked`는 board의 작업 상태 이름으로도 쓰이고, 세션을 멈춰야 하는 실제 장애물을 뜻하기도 한다. 문서에서는 가능하면 “board blocked”와 “외부 blocker”처럼 구분한다.
 

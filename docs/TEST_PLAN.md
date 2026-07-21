@@ -355,14 +355,14 @@ bun run desktop
 |---|------|------|------|
 | 12.G1 | 호스트 살아있는 프로필로 다시 `room create`/`join` | stderr `Stopped sticky host (room session changing — run bun run loom host start again)` 후 새 세션 저장 (+ auto-host 재기동, 단 `--no-host` 아니면) | 🖐 |
 
-### 12.H — dogfood:up 엔드투엔드 (5 프로필)
+### 12.H — dogfood:up 엔드투엔드 (6 프로필)
 
 | # | 단계 | 기대 | 자동 |
 |---|------|------|------|
-| 12.H1 | `bun run dogfood:room` | room `loom-dev` 생성/재조인, 5 프로필 join (`impl`/`claude-impl`/`codex-impl`/`claude-rev`/`codex-rev`), `.loom/dogfood-room.env` 기록 | 🖐 |
-| 12.H2 | `bun run dogfood:up` | 내부: room-up(`LOOM_NO_AUTO_HOST=1`) → `loom up --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev` (M-28 순차) → 5 호스트 online | 🖐 |
-| 12.H3 | `bun run dogfood:up --status` | 5 프로필 online/offline + pid | 🖐 |
-| 12.H4 | 정지 | `bun run loom down --profiles impl,claude-impl,codex-impl,claude-rev,codex-rev` → 전부 stopping (**`dogfood:down` 스크립트는 없음**) | 🖐 |
+| 12.H1 | `bun run dogfood:room` | room `loom-dev` 생성/재조인, 6 프로필 join (`codex-arch`/`grok-impl`/`claude-impl`/`codex-impl`/`claude-rev`/`codex-rev`), `.loom/dogfood-room.env` 기록 | 🖐 |
+| 12.H2 | `bun run dogfood:up` | 내부: room-up(`LOOM_NO_AUTO_HOST=1`) → `loom up --profiles codex-arch,grok-impl,claude-impl,codex-impl,claude-rev,codex-rev` (M-28 순차) → 6 호스트 online | 🖐 |
+| 12.H3 | `bun run dogfood:up --status` | 6 프로필 online/offline + pid | 🖐 |
+| 12.H4 | 정지 | `bun run loom down --profiles codex-arch,grok-impl,claude-impl,codex-impl,claude-rev,codex-rev` → 전부 stopping (**`dogfood:down` 스크립트는 없음**) | 🖐 |
 
 ### 12.I — 불변식 (횡단 확인)
 
@@ -372,7 +372,8 @@ bun run desktop
 | 12.I2 | 백그라운드 유지 | `up` 후 터미널 닫아도 peer online 유지 (detached/unref) |
 
 **통과 기준:** 12.A1–A3, 12.C2–C3, 12.D1, 12.E1–E2, 12.H2 ✅. (12.F2·12.A4는 선택/재현 난이도)
-**관련 자동:** `sticky-host.integration`, `sticky-meta` 단위(M-27), `smoke:desktop`(RPC).
+**관련 자동:** `sticky-host.integration`, `sticky-meta` 단위(M-27),
+`scripts/dogfood-profiles.test.ts`(6프로필 SSOT·legacy `impl` 부재), `smoke:desktop`(RPC).
 **공백(자동화 미비):** `up`/`down`/`--status`/auto-host 전용 스모크 없음 — 대부분 수동. → `smoke:uc`에 UC-12 블록 추가 검토(후속).
 
 ---

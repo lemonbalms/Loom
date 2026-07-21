@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create (or rejoin) the fixed dogfood room:
-#   impl + claude-impl + codex-impl + claude-rev + codex-rev
+#   codex-arch + grok-impl + claude-impl + codex-impl + claude-rev + codex-rev
 # State is written under repo .loom/ (gitignored).
 #
 # Usage (repo root):
@@ -10,7 +10,7 @@
 #
 # Next session:
 #   bun run dogfood:status
-#   bun run loom --profile grok-impl host start
+#   bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write
 #   bun run loom --profile grok-impl run grok
 #   bun run loom --profile claude-impl run claude
 #   bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
@@ -29,7 +29,9 @@ for arg in "$@"; do
   case "$arg" in
     --fresh|-f) FRESH=1 ;;
     -h|--help)
-      sed -n '2,20p' "$0" | sed 's/^# //' | sed 's/^#//'
+      sed -n '2,/^set -euo pipefail/{ /^set -euo pipefail/!p; }' "$0" |
+        sed 's/^# //' |
+        sed 's/^#//'
       exit 0
       ;;
   esac
@@ -60,8 +62,8 @@ if [[ "$FRESH" -eq 0 && -f "$STATE_FILE" ]]; then
 fi
 
 if [[ -z "$INVITE" || "$FRESH" -eq 1 ]]; then
-  echo "==> Creating room as impl / grok-impl …"
-  CREATE_OUT="$(loom --profile impl room create --as grok-impl --name "$ROOM_NAME" 2>&1)" || {
+  echo "==> Creating room as codex-arch / codex-architect …"
+  CREATE_OUT="$(loom --profile codex-arch room create --as codex-architect --name "$ROOM_NAME" 2>&1)" || {
     echo "$CREATE_OUT" >&2
     exit 1
   }
@@ -74,11 +76,15 @@ if [[ -z "$INVITE" || "$FRESH" -eq 1 ]]; then
   echo ""
   echo "==> Invite: $INVITE"
 else
-  echo "==> Rejoining existing room $INVITE as impl …"
-  loom --profile impl room join "$INVITE" --as grok-impl 2>&1 || {
-    echo "warn: impl join failed — try: bun run dogfood:room -- --fresh" >&2
+  echo "==> Rejoining existing room $INVITE as codex-architect …"
+  loom --profile codex-arch room join "$INVITE" --as codex-architect 2>&1 || {
+    echo "warn: codex-arch join failed — try: bun run dogfood:room -- --fresh" >&2
   }
 fi
+
+echo ""
+echo "==> Joining grok-impl as grok-impl …"
+loom --profile grok-impl room join "$INVITE" --as grok-impl 2>&1
 
 echo ""
 echo "==> Joining claude-impl as claude-impl …"
@@ -114,35 +120,44 @@ Invite:  $INVITE
 Room:    $ROOM_NAME
 State:   $STATE_FILE
 
-Next session (5 peers — open terminals as needed):
+Next session (6 peers — open terminals as needed):
 --------------------------------------------------
 # 0) status
 cd $ROOT && bun run status && bun run dogfood:status
 
-# A — Grok implementer
-bun run loom --profile grok-impl host start
-bun run loom --profile grok-impl run grok
+# A — Codex architect (PLAN/spec/review/verify; no locked-spec product coding)
+bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write
+# First prompt: read scripts/dogfood-architect-boot.txt
 
-# A2 — Claude implementer (parallel lane; PLAN draft + implement)
+# B — Grok implementer (default lane; claim before editing)
+bun run loom --profile grok-impl run grok
+# First prompt: read scripts/dogfood-grok-impl-boot.txt
+
+# B2 — Claude implementer (parallel implementation lane)
 bun run loom --profile claude-impl run claude
 
-# A3 — Codex implementer (parallel lane; claim board task first)
+# B3 — Codex implementer (fallback lane; claim board task first)
 bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
 
-# B — Claude primary reviewer (fable-advisor subagent required for R{n})
+# C — Claude primary reviewer (fable-advisor subagent required for R{n})
 bun run loom --profile claude-rev run claude
 
-# C — Codex second opinion (review only — not the same as codex-impl)
+# D — Codex second opinion (review only — not codex-arch/codex-impl)
 bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
+
+Architect → Grok default path:
+  bun run loom --profile codex-arch board add "<locked implementation task>" --as grok-impl
+  bun run loom --profile codex-arch handoff @grok-impl "[IMPL] <five-part locked spec>" --with-pack --with-board
 
 Review request (from any implementer):
   bun run loom --profile grok-impl handoff @claude-review "[R-REQUEST] … YOU MUST: fable-advisor subagent first …"
   bun run loom --profile grok-impl handoff @codex-review  "[R-REQUEST] adversarial …"
 
-Three implementers (impl=Grok, claude-impl=Claude, codex-impl=Codex) share the
-same board/PLAN — claim a board task (status: doing, assignee: your name)
+Three implementers (grok-impl=Grok, claude-impl=Claude, codex-impl=Codex) share the
+same board/PLAN — claim a locked implementation task (status: doing, assignee: your name)
 before starting work to avoid double-implementing the same PATCH.
-See docs/DOGFOOD_LOOP.md §1.1. Never mix codex-impl and codex-rev in one terminal.
+codex-arch authors specs and verifies; it never claims locked-spec implementation.
+See docs/DOGFOOD_LOOP.md §1.1. Never mix Codex profiles in one terminal.
 
 Docs: docs/DOGFOOD_LOOP.md
 EOF
@@ -157,5 +172,5 @@ echo "=========================================="
 echo ""
 cat "$CHEAT"
 echo ""
-echo "Peers (impl view):"
-loom --profile grok-impl peers 2>&1 || true
+echo "Peers (architect view):"
+loom --profile codex-arch peers 2>&1 || true

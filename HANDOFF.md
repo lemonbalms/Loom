@@ -24,6 +24,9 @@
 > HANDOFF를 전환해 lint를 green으로 만든 뒤, 새 세션 복원 스모크 통과 즉시 PATCH 1로 복귀한다.
 > Phase D는 실제 PATCH 전환 2회 뒤로 유예한다.
 
+> **운영 레인 보정 완료 (2026-07-22):** 다음 세션 기본 구조는 `codex-arch`(PLAN/spec·route·독립 verify)
+> → `grok-impl`(claim·구현·테스트·ship). `dogfood:up`/room/status와 부트 프롬프트가 6프로필로 동기화됐다.
+
 ### 다음 액션 (우선순위 · 유일 섹션)
 
 0. **⭐ SESSION-CONTINUITY — Phase B fixture + 단위 red 해소 + lint expected-red 고정**
