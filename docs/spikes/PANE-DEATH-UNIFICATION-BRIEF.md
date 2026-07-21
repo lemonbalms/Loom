@@ -121,7 +121,18 @@ codex H-new-4 수용부 **축자**:
   **"별도 PLAN/R{n}에서 함께 설계한다"**고 명시 → **브랜치는 main pre-C를 미래의 자기 자신으로
   기술하고 있다.**
 
-**브랜치가 물려받은 결함(main이 이미 고친 것):**
+**⚠️ 계보 확정 (아키텍트 재실측) — 두 커밋은 형제다. 브랜치는 pre-C를 "롤백"하지 않았다:**
+```
+✅ merge-base(7ed314c, ec99b2c) = 3961052   ← 이 base에 result-issuer.ts 없음
+✅ 7ed314c parent = 58d4a61  /  ec99b2c parent = 93f1db1   ← 어느 쪽도 상대의 후손이 아님
+✅ result-issuer.ts 삭제 커밋 = 0건 (git log --diff-filter=D --all)
+```
+`git diff 7ed314c ec99b2c`에서 `result-issuer.ts`·`result-quarantine.ts`·`impl-0270.test.ts`가
+"삭제(-834 등)"로 보이는 것은 **diff 방향 착시**다. **브랜치는 pre-C를 거부한 게 아니라 애초에
+가진 적이 없다.** → D2(전달층 전면 채택)에 **노선 충돌 근거가 없다** = D2 강화.
+설계 문안에 "브랜치가 pre-C를 삭제/거부했다"는 서술을 쓰지 말 것.
+
+**브랜치가 물려받은 결함(main이 형제 커밋에서 고쳤으나 브랜치엔 미반영):**
 - fire-and-forget **3곳 잔존** — 브랜치 `:2198` `void sendFailedResult` · `:2245`·`:2260`
   `void finishCardFailure`. main은 `scheduleOwnedCardResult`로 전환하고 재도입 금지를 코드 주석으로
   잠갔다(main `:2331-2333`)
@@ -141,7 +152,9 @@ codex H-new-4 수용부 **축자**:
 
 ```
 ✅ result-quarantine.ts:30   kind: "enter" | "ack" | "auto_resolve" | "re_escalate" | "process_exit"
-✅ result-quarantine.ts:303  kind: "ack" 실제 append        ← 기존 배선 존재 (자문은 "용처 미확인")
+✅ result-quarantine.ts:294  ack(...) 메서드 정의 (:303이 kind:"ack" append — 메서드 내부)
+✅ bridge-runtime.ts         quarantine.ack 호출 → 0건  ← ⚠️ 미배선
+     배선된 것: enter(:2105 :2126) · supersedePresence(:2583 :2644) · autoResolve(:2743)
 ✅ impl-0270.test.ts:720     quarantinePath("node-ack0270") ← quarantine 관측점 실재
 ✅ impl-0270.test.ts         closeCallsFor 사용 :667~:790
      양성(=== closesBefore+1): :675 :679 :696 :700 :786 :790
@@ -152,7 +165,25 @@ codex H-new-4 수용부 **축자**:
 브랜치 노선에서 `pane.close`가 사라지면 **부정 어서션 `=== closesBefore`가 전부 자동으로 참**이
 되어 조용히 무의미해진다. 이는 **교훈 (40) "skip 블록 안 어서션 = 검증된 적 없는 어서션"의
 정확한 재현**이다. 처방 = 양성 수신증 레코드(`kind:"ack"`)로 관측점 이전. `:303`에 이미 배선돼
-있으므로 **신규 기제가 아니라 재사용**이며, 후속 A의 apply receipt 방향과도 정합한다.
+이전.
+
+> **⚠️ 정정 (아키텍트 재실측, 2026-07-21):** 본 절 초판은 *"`kind:"ack"`이 `:303`에 이미 배선돼
+> 있으므로 신규 기제가 아니라 재사용"*이라 적었으나 **틀렸다.** `:303`은 `ack()` **메서드 내부**의
+> append이지 호출된다는 증거가 아니며, `bridge-runtime.ts`의 `quarantine.ack` 호출은 **0건**이다
+> (`presence_unknown`과 같은 미배선 상태). **배선은 신규다.**
+>
+> **추가 쟁점 — 의미 충돌:** R43b §4 "quarantine 내구 세부" 수용부는 `ack`을 **"운영자 ack도
+> append-only 레코드(원본 수정 없는 fold)"** — 즉 **사람이 quarantine 항목을 해소했다는 기록**으로
+> 규정한다. D4가 관측하려는 것은 **relay ACK accepted = 전달 성공**이다. 이 트랙의 불변식이
+> "완료는 사람이 확정, 브릿지는 전달·회복만"이므로 **사람 확정과 전달 확인은 분리해야 하는 두
+> 개념**이며, 같은 `kind`에 얹으면 그 경계가 데이터 레벨에서 무너진다.
+> → **D4는 개정·기각 후보다. 별도 kind 신설 / `resultPhase` 전이 관측 / 제3안 중 설계자 판단.**
+> (교훈 33 재현 — 존재의 증거를 서술의 증거로 오독한 사례)
+
+**미배선 항목 총괄 (설계 §2가 "동작하는 것 vs 껍데기"를 구분해야 하는 이유):**
+main pre-C에서 **정의만 있고 호출자가 0인 것** = `enterPresenceUnknown`(`:2117`/`:2139`) ·
+`quarantine.ack`(`:294`). **실제로 배선된 전달층** = `quarantine.enter`/`supersedePresence`/
+`autoResolve` + strict ACK 3분기(`classifyAck`) + issuer 중앙화 + tower currency gate.
 
 ---
 
@@ -183,8 +214,18 @@ codex H-new-4 수용부 **축자**:
 3. **conv 경로 ACK 폐기** — main 설계문 §6.7 표가 `:1300 :1319 :1777`에 동일 폐기를 기재.
    main pre-C가 conv까지 고쳤는지, 브랜치가 conv를 어떻게 뒀는지 **미대조**.
    브랜치는 conv를 명시적 범위 밖으로 뒀다(`AUTHORITY-BOUNDARY.md:200`).
-4. **브랜치 추가 테스트 수정 243줄** — `herdr-lifecycle` · `impl-0239` · `impl-02311` ·
-   `impl-02312` · `inject-verify` · `scrape-delta`. 조사는 지시받은 2파일만 실측. 어서션 약화 가능성 미확인.
+4. ~~브랜치 추가 테스트 수정 243줄~~ → **실측 완료 (2026-07-21)**. 결과:
+   - **진짜 약화 3건 (복원 대상)** — `impl-02311.test.ts:584-585`(⑤ supersession) ·
+     `:635-636`(⑥ deferral) · **`inject-verify.test.ts:369-375`(③ exhaust — 최우선)**.
+     셋 다 `closeCallsFor === 0` / `toHaveLength(0)` 형태로 반전돼 **pane.close가 사라지면
+     자동으로 참**이 된다(교훈 40). ③은 `closedPaneId` **형식 검사까지 소실**.
+   - **노선 무관 순이득 (전량 채택)** — `hasPaneStatusSubscription` 구독-대기 헬퍼 3파일
+     (`impl-02311:342-357` · `impl-02312:252-267` · `impl-0239:296-311`) ·
+     `scripts/test-setup.ts:9-18` env 오염 차단 · `bridge.test.ts:244-300` 가드 순서 고정 ·
+     `:344-346` fence 과확장 방지 · `:802-906` at-most-one result 3건 ·
+     `inject-verify:260-275` · `scrape-delta:527-529,548-549` ·
+     `herdr-lifecycle:366-367`(close를 `toHaveLength(1)` **정확 개수**로 고정 — 채택 권장 패턴)
+   - 나머지 status `"done"`→`"failed"`/`needs_verification` 전환분은 **(A) 예정된 계약 교체**.
 5. **`ROLE-PERMISSION-PROFILE-UNIFICATION.md`**(브랜치 신규 554줄) — PANE-DEATH와의 결합도 미확인.
 6. **`dist/` 번들** — 양쪽 독자 bump(0.27.0), 대조 안 함.
 7. **문서-코드 불일치 D-1** — main 설계문 §6.7 좌표표가 `void sendFailedResult`/`void finishCard`를
