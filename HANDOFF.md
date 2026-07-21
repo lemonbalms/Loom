@@ -18,37 +18,42 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH (C) — R43e approve · v0.27.0 `approved` (2026-07-21).** 4차 반영본을 R43e(codex 단일·경량)가 검증 — 1차 pending-revision(Low 1=D8 북키핑) → `cabcb48` 정정 → **마이크로 재확인 approve**. 5라운드 수렴 종결 · 코드 무변경(문서만). 원장 `PANEDEATH-R43E.md`. **다음 = v0.27.0 구현 웨이브.**
+> **🎯 PANE-DEATH — v0.27.0 (pre-C) 구현·검증 완료 (2026-07-21, `9c59f29`).** R43e approve → grok 구현(`7ed314c` · dist `e4f6c3c`) → **아키텍트 독립 검증에서 유닛 결함 2건 발견·해소**(`9c59f29`, 프로덕션 무변경). typecheck 6/6 · 회귀 게이트 4건 green · 전체 스위트 **차집합 0**. **다음 = (C) 본체 트랙 — PLAN 수립부터(오너 결정 대기).**
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH (C) — v0.27.0 구현 웨이브 (게이트 통과 · 착수)**
-   > **불변식:** 불확실한 관측은 **회복 가능한 행동만**. 비가역 행동(발행·`pane.close`·dispose)은 **결정적 증거·멱등 경로에서만**.
+0. **⭐ PANE-DEATH — (C) 본체 트랙 (오너 결정 · PLAN 수립 = R{n} 게이트 사안)**
+   > **불변식(승계):** 불확실한 관측은 **회복 가능한 행동만**. 비가역 행동(발행·`pane.close`·dispose)은 **결정적 증거·멱등 경로에서만**.
 
-   v0.27.0 `approved`(R43e). **구현 = grok 레인 · board claim §1.1 선행** · 불변식 유지 · payload 각인 비가역(tower inbox 영속). 착수점 = PLAN D1~D8 · 설계 §6.7~§6.7.3 · §9-bis 락 5·8·9·13.
+   pre-C 구조(issuer·strict ACK 3분기·durable quarantine·currency 게이트·순서 역전) 위에 **(C) 본체 8항목**: 자동 `done` 제거(락 11) · `needs_verification` 발행 + board `blocked` · `awaiting_human_verification` + 사람 확정 + tower receipt · `pane.close` 이동 · `rejection_escalation`(깊이 2) · phase registry(12원소) · lifecycle `generation`(락 8) · §7.1-0 "done 0건".
+   **착수 전 PLAN + R{n} 필요**(WORKFLOW §5.1 — M-lock 인접). 정본 `docs/spikes/PANE-DEATH-DESIGN.md` §6.7~§6.7.3 · §9-bis 락 5·8·9·**11**·13.
 
-1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 실패(단독은 6/6 green). 변경 무관 확정. **방치 시 green 판정이 흐려진다**(펼쳐보기).
-2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
+1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 2회에 **실패 집합 상이**(`conv R28 L-1`·`still-running ②`), 둘 다 **단독은 green**. 비결정성 확정(펼쳐보기).
+2. **HOOKCACHE-D-VERIFY 재개**(펼쳐보기).
 3. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
+4. **`.loom-impl-0270-brief.md` 처리 미정**(untracked 잔존) · **session-context 예산 초과** — 아래 details 참조.
 
 <details>
 <summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
 
-- (0) **PANE-DEATH (C) v0.27.0 = `approved` (R43e, 2026-07-21) — 5라운드 수렴 종결.** result 발행 단일 소유권(dispatch-scoped issuer) + ACK 경계(strict 3분기) + tower currency 게이트 + 진입 시점 durable quarantine(JSONL·판별 유니언 키) + fire-and-forget 제거. 수렴: R43 High6→R43b High4→R43c High0→R43d reject(7/9·잔여 3건 문면)→**4차 반영(문면)→R43e 1차 pending-revision(Low 1=D8 북키핑)→`cabcb48` 정정→마이크로 재확인 approve**. 대상 커밋 4차 `65b3fb3`·정정 `cabcb48`. 코드 무변경(문서만). 설계 정본 `PANE-DEATH-DESIGN.md` §6.7~§6.7.3·§6.7-bis·§9-bis 락 5·8·9·13.
-- (0) **구현 착수점(코드=SSOT)**: `sendResult` `:2408-2434` · `sendFailedResult` 7경로(Flight-less 3 = `:850·:1114·:1204`) · 호출 18개 · 가드 5곳(`:2019` 정상완료 유일 방어) · `disposeCardFlight` 15곳(순서 역전 대상) · `cardSeq`(`:575`)=attempt 카운터(삭제 철회). **(C) 경계**: 브릿지는 자동 `done` 안 함 → 완료 후보=멱등 `needs_verification`(board `blocked`), 사람 워킹트리 검증 후 close. **라운드별 세부·전제 P·Q·수렴 서사 = 원장 8본**(`PANEDEATH-CODEX-REVIEW{,2,3}.md`·`PANEDEATH-R43{,B,C,D,E}.md` — 수정 금지) + PLAN changelog + `docs/HANDOFF_ARCHIVE.md`. 교훈 (38)(39) `tasks/lessons/verification.md`(인용 단위=블록 전체 · 원장 수치 정정 전 직접 재실측).
+- (0) **v0.27.0 (pre-C) 종결 (2026-07-21).** 게이트 R43e approve(5라운드 수렴: R43 High6→R43b High4→R43c High0→R43d reject→4차 반영→R43e) → 구현 `7ed314c`·dist `e4f6c3c` → **아키텍트 검증발 유닛 결함 2건 해소 `9c59f29`**(프로덕션 무변경). 잠근 것 = dispatch-scoped issuer 중앙화 · strict ACK 3분기(`result_relay_accepted`) · durable quarantine JSONL · tower currency 게이트 · 순서 역전 15곳 · fire-and-forget 제거. **라운드별 서사 = 원장 8본**(`PANEDEATH-CODEX-REVIEW{,2,3}.md`·`PANEDEATH-R43{,B,C,D,E}.md` — 수정 금지) + PLAN changelog + `docs/HANDOFF_ARCHIVE.md`.
+- (0) **검증발 결함 2건(교훈화 완료)**: ⓐ 앰비언트 `LOOM_RELAY_TOKEN`이 통합 6개를 **조용히 미실행**시킴(24→19개 · fail 2→1로 *감소* = 거짓 개선) → `RelayServer` 생성을 `beforeAll` 내부로 옮겨 밀폐(생성자 latch라 삭제만으론 no-op) ⓑ ①·①b가 주입 ACK(전송 우회)와 tower 도달을 **동시 요구** → 종결 분기(`pane.close` 1회) 단언으로 재작성. 심을 relay로 옮기는 안은 **기각**(ACK 위조 심을 신뢰 경계 안에 두는 자기모순 · 커버리지는 `pane-cleanup.test.ts:244-268`이 이미 담당). 교훈 **(40)~(43)** `tasks/lessons/verification.md`.
 
 - (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 기아만이 원인 아님. 회귀 아님 근거 = 베이스라인·변경분 각 3회 16 pass/0 fail 동일 · 변경 파일 import 테스트 0건. 남은 가설 = 포트/소켓·타이밍 경합.
 - (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
 - (2) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 
+- (4) **`.loom-impl-0270-brief.md`**: 삭제 vs `docs/` 보존 미정. 보존 시 §2(room.ts 무변경) ↔ §4.6 D2(주입 지점) 문면이 아키텍트에게 **"스펙 모순" 오독**을 유발한 경위를 함께 남길 것 — 실제로는 모순이 아니라 **모호성**이었다(fable-advisor 판정: §2 잠금 심볼에 `routeHandoff` 없음 · "기본 경로 무변경"은 비활성 심 허용 독해 가능).
+- (4) **session-context 예산 초과 (2026-07-21 신규)**: `bun run session-context:lint` FAIL. **주의 — lint의 숫자는 절단 후 상수라 실제 초과분을 감춘다.** 실측은 `bun -e 'import {buildAllContext} from "./scripts/session-context.ts"; console.log(buildAllContext().length)'`. 2026-07-21 기준 원본 9628 > HARD_CAP 9500 → **매 세션 주입에서 tail(=workers 교훈)이 조용히 절단 중**이었고, 교훈 (40)~(43) 추가가 breach를 유발했다. 자체 압축으로 하드캡 이하 복귀. **SOFT_CAP 8500 복귀는 기존 내용 정리가 필요 = 오너 결정 사안.** cross-ref 교훈 (42).
+
 </details>
-4~8. 대형 트랙 미정 · R{n} 유예 · Low 백로그 · npm publish 보류 · `.loom-*` 정리 → `docs/HANDOFF_ARCHIVE.md`.
+5~8. 대형 트랙 미정 · R{n} 유예 · Low 백로그 · npm publish 보류 · `.loom-*` 정리 → `docs/HANDOFF_ARCHIVE.md`.
 
 ---
 
 ## One-line resume
 
-> **🎯 PANE-DEATH (C) — v0.27.0 `approved` (R43e, 2026-07-21).** **완료는 사람이 확정, 브릿지는 전달·회복만.** 5라운드 수렴 종결·코드 무변경. **다음 = v0.27.0 구현 웨이브(grok·board claim §1.1).**
+> **🎯 PANE-DEATH — v0.27.0 (pre-C) 구현·검증 완료 (2026-07-21, `9c59f29`).** **완료는 사람이 확정, 브릿지는 전달·회복만.** typecheck 6/6 · 회귀 게이트 green · 스위트 차집합 0. **다음 = (C) 본체 트랙 — PLAN 수립 + R{n} 게이트부터(오너 결정 대기).**
 
 ---
 
