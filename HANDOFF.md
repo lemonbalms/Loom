@@ -18,16 +18,18 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH — 통합 설계 + R44 통과 (2026-07-21, `3cf5139`).** 조사 3건+자문 → 증거 팩(`89dd931`·`75b7b11`) → **Fable 5 설계 정본**(`694e08c` 락 **U1~U11** — 오너 "중요 결정은 최상위 모델") → **R44 grok `pending-revision`**(High 0·**자기모순 0**) → Medium 4 반영. **다음 = PLAN v0.28.0.**
+> **🎯 PANE-DEATH — 두 노선 통합 설계 완료 + R44 게이트 통과 (2026-07-21, `3cf5139`).** 조사 3건 + fable-advisor 자문 → 증거 팩(`89dd931`·정정 `75b7b11`) → **Fable 5가 통합 설계 정본 작성**(`694e08c`, 락 **U1~U11**, 오너 지시 "중요한 결정을 최상위 모델에 위임") → **R44 grok 검증 `pending-revision`**(High 0 · **자기모순 0건** — 3연속 reject 근인 재발 없음) → Medium 4·Low 2 반영(`3cf5139`). **다음 = PLAN v0.28.0.**
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
 0. **⭐ PANE-DEATH — PLAN v0.28.0 작성 (설계·게이트 완료, 착수 가능)**
    > **불변식:** 완료는 **사람이 확정**, 브릿지는 **전달·회복만**.
 
-   정본 `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`(락 U1~U11) · 증거 팩 `…UNIFICATION-BRIEF.md` · 원장 `docs/reviews/PANEDEATH-R44.md`. 골격 = 브랜치 authority cut(의미론) × main HEAD(코드 기질) — **git 병합 아닌 재구현**(경쟁 16블록·상보 0).
-   **할 일:** 설계를 PATCH 분해 + R44 잔여 Low 3건 정정 → R{n}. **구현 레인 = Claude**(grok=R44 검증자). **codex 다운**(리셋 07-25) · `loom` 미설치로 **pane 불가**.
-   **⚠️ 착수 즉시:** R44 UNVERIFIED ⑥ — accepted **(a) 주입 seam** 양성 어서션이 주입 경로에서 관측 가능한가(불가면 재설계 · 교훈 40 재범 지점). ⑨ U8↔R43b §4는 codex 복구 후 우선 재검증(락 철회 정당성).
+   **설계 정본 = `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`** (락 U1~U11) · **증거 팩 = `…UNIFICATION-BRIEF.md`** · **원장 = `docs/reviews/PANEDEATH-R44.md`**. 골격 = 브랜치 authority cut(의미론) × main HEAD(코드 기질) — merge-tree 16블록 경쟁·상보 0이라 **git 병합이 아니라 재구현**이다.
+   **할 일:** 설계를 PATCH 단위로 분해 + 잔여 Low 3건 동반 정정(R44 §5) → R{n}.
+   **구현 레인 = Claude**(grok은 R44 검증자 — 발견자≠수정자 유지). **codex 다운**(사용량 한도, 리셋 **07-25 14:27**) · `loom` CLI가 PATH에 없어 **pane 레인 불가**.
+   **⚠️ 착수 즉시 확인 1건 (R44 UNVERIFIED ⑥):** accepted **(a) 주입 seam** 행의 양성 어서션이 주입 경로에서 **실제 관측 가능한가**. 불가면 (a) 행 재설계 — **교훈 40 재범 위험 지점**이다.
+   **codex 복구 후 우선 재검증 (UNVERIFIED ⑨):** U8 ↔ R43b §4 "락 11 재론 기각" 충돌 여부 — **락 철회의 정당성이 걸린 유일한 미검증 항목**.
 
 1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 2회에 **실패 집합 상이**(`conv R28 L-1`·`still-running ②`), 둘 다 **단독은 green**. 비결정성 확정(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개**(펼쳐보기).
@@ -44,9 +46,9 @@
 - (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
 - (2) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 
-- (0) **통합 웨이브 종결 (`89dd931`→`3cf5139`).** 조사가 핸드오프 가설 2개를 뒤집었다: ⓐ pre-C는 `presence_unknown` cadence **미구현**(`enterPresenceUnknown` 호출자 0·`:2139` `void`) → 개정 대상은 **문서**뿐 ⓑ 두 커밋은 **형제**(merge-base `3961052`) — 브랜치는 pre-C를 **가진 적이 없다**(diff 방향 착시). Fable 5가 D4 기각·D7 확대·D10 종결하고 결함 **4건** 추가 실측: `rejected` 조용한 정지(`:2769-2790` 정규식으로 correctness 분기) · **`pane_exited` 처리 전무**(자연사 인지 불가 → 후속 C) · quarantine `process_exit`가 미해소를 **해소로 fold**(`result-quarantine.ts:128-133`) · absent-합성이 **issuer 발행 예산 소진**. R44 M2(주입 seam ≠ wire 도달)는 v0.27.0 유닛 결함 ⓑ의 **설계층 재발**.
+- (0) **통합 웨이브 종결 (2026-07-21 · `89dd931`→`3cf5139`).** 조사 3건이 **핸드오프 가설 2개를 뒤집었다**: ⓐ main pre-C는 `presence_unknown` cadence를 **한 줄도 구현하지 않았다**(`enterPresenceUnknown` 호출자 0 · `:2139` `void` 봉인) → 제거할 코드가 없고 개정 대상은 **문서**뿐 ⓑ 두 커밋은 **형제**(merge-base `3961052`)라 브랜치는 pre-C를 **거부한 게 아니라 가진 적이 없다**(diff 방향 착시). **Fable 5가 아키텍트 초안 D1~D10 중 D4를 기각·D7을 확대·D10을 닫고**, 아키텍트가 못 본 결함 **4건**을 실측으로 추가했다: `rejected` 분기의 조용한 정지(`:2769-2790` — quarantine 미진입 + **메시지 정규식으로 correctness 분기**) · **`pane_exited` 처리 전무**(자연사 pane은 양 노선 모두 인지 불가 → 후속 C) · quarantine **`process_exit`가 미해소를 해소로 fold**(`result-quarantine.ts:128-133` — durable의 목적을 무력화) · absent-합성이 **issuer 발행 예산을 태워** 살아있는 pane의 진짜 결과를 봉쇄. R44가 잡은 **M2**(주입 seam ≠ wire 도달)는 v0.27.0 유닛 결함 ⓑ의 **설계층 재발**이라 경위를 註로 고정했다.
 
-- (0) ~~병존 발견~~ **→ 종결. 이하 역사.**
+- (0) ~~두 노선 병존 발견~~ **→ 위 (0)으로 종결. 이하는 발견 당시 기록(역사).**
   **오너 설계 의도(구두, 2026-07-21):** *"설계 관점을 지금 메인과 다르게 접근한 것. 메인이 하는 건 자동 종료를 **인지**하는 건데 지금 구조에서는 어렵다. 그래서 브랜치에서는 그 부분을 **인정하고 사람이 개입하는 형식**으로 접근하고, 해답이 나오면 보강하는 걸로. 이유는 현재 **herdr에서 정보를 가져오는 게 구조적인 문제**가 있어서."* → **폐기·중복 처리 금지.** 아키텍트가 1차에 "중복 구현"으로 오판하고 브랜치 폐기를 권고했다가 오너 정정으로 철회한 이력이 있다.
   **사실관계(실측):** 브랜치 = main 미포함 커밋 **10개**(`6d4b384` plan approve → `93f1db1` test lock → `ec99b2c` feat authority cut → `9c07003` G3/G4 증거 → `2676987` dist 0.27.0 → `ee7efa6` G4 ship) · **main보다 12커밋 뒤처짐** · 자체 HANDOFF = *"다음 = G4 독립 `[VERIFY]`, `codex-rev`에 발송"*(**미검증 상태**). 마커: `ec99b2c`에 `needs_verification` 2 · `blocked` 26 / **main HEAD는 `needs_verification` 0**(pre-C가 명시 금지). 브랜치엔 `result-issuer.ts`·`result-quarantine.ts`·`impl-0270.test.ts` **부재**. 양쪽 모두 VERSION·dist를 0.27.0으로 **독자 bump**.
   **충돌 면적:** `bridge-runtime.ts`를 양쪽이 대규모 재작성(main +473 / 브랜치 +218·-95) · `card-ops.ts`·`cli/index.ts`·`mcp-server/stdio.ts` 양쪽 수정 · 브랜치가 `pane-cleanup.test.ts`(62줄)·`still-running.test.ts`(24줄)를 수정했는데 **이는 main의 회귀 게이트**다. 그 워크트리(`../fable-advisor-pane-death-authority`)에 **미커밋** 변경 존재: `AGENTS.md`·`CLAUDE.md`·`tasks/lessons.md`(← main에서 `9c59f29`로 수정·푸시됨, **충돌 소지**)·`tasks/lessons/orchestration.md`.
@@ -56,7 +58,11 @@
   **설계 정본** `docs/spikes/PANE-DEATH-DESIGN.md` §6.7~§6.7.3 · §9-bis 락 5·8·9·11·13. **(C) 본체 8항목**(pre-C 브리프 §0 기준): 자동 `done` 제거(락 11) · `needs_verification` + board `blocked` · `awaiting_human_verification` + 사람 확정 + tower receipt · `pane.close` 이동 · `rejection_escalation`(깊이 2) · phase registry(12원소) · lifecycle `generation`(락 8) · §7.1-0 "done 0건". **단 이 8항목은 main 단독 노선 전제로 작성된 것이므로 통합 설계에서 재작성 대상이다.**
 
 - (4) **`.loom-impl-0270-brief.md`**: 삭제 vs `docs/` 보존 미정. 보존 시 §2(room.ts 무변경) ↔ §4.6 D2(주입 지점) 문면이 아키텍트에게 **"스펙 모순" 오독**을 유발한 경위를 함께 남길 것 — 실제로는 모순이 아니라 **모호성**이었다(fable-advisor 판정: §2 잠금 심볼에 `routeHandoff` 없음 · "기본 경로 무변경"은 비활성 심 허용 독해 가능).
-- (4) **⚠️ session-context HARD_CAP 재초과 (2026-07-21 세션 말 · 절단 진행 중)**: **RAW 9776 > 9500 = 276 초과** → tail(workers 교훈 끝)이 매 주입에서 잘린다. 원인 = 교훈 (44)~(46) 추가(+470, 시작 9306). **구조 진단 2건 확정(다음 세션 착수용):** ⓐ `stripDetailsBlocks`가 **HANDOFF·lessons 양쪽에 적용**되므로 `<details>` 안 내용(lessons의 21KB 경위 블록 포함)은 **애초에 예산에 안 들어간다** — 아키텍트가 이를 "중복 잔재"로 오진해 삭제할 뻔했다(`scripts/session-context.ts:145,168`) ⓑ 따라서 **압축 대상은 인덱스의 짧은 줄 + HANDOFF Current action(details 밖)뿐**이고, 이미 한계까지 줄였다. **→ 실질 해법은 기존 인덱스 항목 정리 = 오너 결정 사안.** 남의 교훈을 아키텍트가 임의 삭제하지 않았다.
+- (4) **session-context 예산 — 규정 완화 적용 (오너 지시 2026-07-21 "당분간 기존 규정 150%까지 허용")**: `SOFT_CAP` **8500 → 12750** 적용(`scripts/session-context.ts:21-40`). 압축 압력이 해소돼 **HANDOFF·lessons를 예산 때문에 깎지 않는다**.
+  **⚠️ 단 `HARD_CAP`(9500)은 올리지 않았다 — 정책 노브가 아니라 플랫폼 제약이다.** Claude Code SessionStart hook은 stdout을 **10,000자에서 조용히 자른다**(lessons platform (18), 공식 문서 대조). 9500 초과분은 우리 스크립트가 자르며 `…[truncated N chars]` 마커를 붙이는데, 14250까지 올리면 그 마커 없이 **플랫폼이 무경고로 자른다** — 통제되던 절단이 통제 불가로 바뀐다.
+  **현황:** RAW 9776 → **HARD_CAP 초과 276, 런타임 절단은 계속 진행 중**(tail = workers 교훈 끝). **SOFT_CAP 상향은 "커밋을 막지 않는다"는 뜻이지 "내용이 다 주입된다"는 뜻이 아니다.**
+  **→ 실제로 예산을 늘리는 유일한 방법 = hook 분할.** 각 hook이 10,000 캡을 **따로** 받는다(현재 state·lessons 2분할이 정확히 그 이유). lessons를 2개로 쪼개면 실효 예산이 ~19,000이 된다. **미착수 — 다음 세션 후보.**
+  *(구조 진단: `stripDetailsBlocks`가 HANDOFF·lessons 양쪽에 적용되므로 `<details>` 안 내용은 예산 미포함 — 아키텍트가 lessons의 21KB 경위 블록을 "중복 잔재"로 오진해 삭제할 뻔했다. `scripts/session-context.ts:145,168`)*
 - (4) **(구) session-context 예산 초과 경위**: `bun run session-context:lint` FAIL. **주의 — lint의 숫자는 절단 후 상수라 실제 초과분을 감춘다.** 실측은 `bun -e 'import {buildAllContext} from "./scripts/session-context.ts"; console.log(buildAllContext().length)'`. 2026-07-21 기준 원본 9628 > HARD_CAP 9500 → **매 세션 주입에서 tail(=workers 교훈)이 조용히 절단 중**이었고, 교훈 (40)~(43) 추가가 breach를 유발했다. 자체 압축으로 하드캡 이하 복귀. **SOFT_CAP 8500 복귀는 기존 내용 정리가 필요 = 오너 결정 사안.** cross-ref 교훈 (42).
 
 </details>

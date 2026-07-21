@@ -17,10 +17,28 @@ import {
 
 const root = join(import.meta.dir, "..");
 
-/** Runtime truncation threshold (Claude hook command cap is 10_000). */
+/**
+ * Runtime truncation threshold (Claude hook command cap is 10_000).
+ *
+ * NOT a policy knob — this is pinned under a **platform** limit. The Claude Code
+ * SessionStart hook truncates stdout at 10,000 chars **silently** (lessons platform (18),
+ * 공식 문서 대조 확정). Raising this past ~9,900 does not buy budget: it only replaces
+ * our truncation (which appends an explicit `…[truncated N chars]` marker) with the
+ * platform's, which gives no signal at all.
+ *
+ * To actually gain budget, split the payload across more hooks — each hook gets its own
+ * 10,000 cap. That is exactly why state/lessons are already 2 separate hooks.
+ */
 export const HARD_CAP = 9500;
-/** Commit-gate soft budget (15% headroom under the 10_000 char command cap). */
-export const SOFT_CAP = 8500;
+/**
+ * Commit-gate soft budget — **policy knob, safe to tune.**
+ *
+ * 2026-07-21 오너 지시: 기존 규정을 당분간 **150%까지 허용**한다 (8500 → 12750).
+ * 이 값은 lint 게이트일 뿐 런타임 절단과 무관하므로 상향에 부작용이 없다.
+ * ⚠️ 단 HARD_CAP(9500)을 넘는 구간에서는 런타임 절단이 계속 일어난다 — SOFT_CAP 상향은
+ * "커밋을 막지 않는다"는 뜻이지 "내용이 다 주입된다"는 뜻이 아니다. 근본 해법은 hook 분할.
+ */
+export const SOFT_CAP = 12750;
 
 const UNCLOSED_DETAILS_WARN =
   "⚠ [LOOM-SESSION-CONTEXT] 미닫힘 <details> 블록 제외됨";
