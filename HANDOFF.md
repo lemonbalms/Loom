@@ -18,31 +18,28 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 즉시 게이트 = G1 preflight scan.** G0 TEST-BASELINE PATCH는 제품 코드 변경 없이
-> test harness만 격리·동기화해 완료했다. PANE-DEATH authority cut PLAN v0.27.0 revision A는
-> `approved`(R43b author-close)이며, authority-cut 정본은
-> **`docs/spikes/PANE-DEATH-AUTHORITY-BOUNDARY.md`**. 다음은 repo producer/consumer 전역 scan과
-> 외부 consumer/body-only automation rolling-upgrade gate 확인이다.
+> **🎯 즉시 게이트 = G2 tests-only expected-red.** G0 baseline 복구와 G1 전역 scan이 끝났다.
+> PANE-DEATH authority cut PLAN v0.27.0 revision A는 `approved`(R43b author-close)이며,
+> authority-cut 정본은 **`docs/spikes/PANE-DEATH-AUTHORITY-BOUNDARY.md`**. 다음은 §8의
+> authority fence·proposal-only·single issuer·auto-close 0·양방향 rolling-upgrade 테스트를
+> production 변경 없이 추가하고 기대한 이유로 red를 확인해 독립 커밋하는 것이다.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
 0. **✅ G0 TEST-BASELINE PATCH — 완료, v0.27과 분리**
 
-   - relay 대표 실패의 실제 원인은 readiness race가 아니라 세션의 `LOOM_RELAY_TOKEN` 누수였다.
-     서버는 env token을 상속해 인증 relay가 됐고 무토큰 test client는 `/ws`에서 401을 받았다.
-     `scripts/test-setup.ts`가 ambient token을 제거하자 대표 테스트 1/1, relay 관련 181/181 green.
-   - 같은 계층의 `LOOM_PROFILE=codex-impl` 누수는 fixture의 `inject-default.sock`과 client의
-     `inject-codex-impl.sock`을 갈라 `no_listener`를 만들었다. 공용 preload에서 profile도 격리했다.
-   - 후속 14개 실패는 server-ready가 아니라 테스트가 pane `events.subscribe` ACK, reinject prompt
-     ACK 뒤 CR, scrape fixture 설치보다 먼저 이벤트/단언을 실행한 harness 순서 문제였다. 각 테스트가
-     실제 소비 준비 조건을 기다리도록 고쳤고 장기 통합 테스트 제한시간을 helper 상한과 맞췄다.
-   - 제품/relay 동작 변경 0. 검증: 대표 relay 1/1 · relay server/auth 17/17 · 관련 host 181/181 ·
-     전체 `bun test` 670/670 **3회 연속 green** (280.28s · 280.41s · 280.19s).
+   - 실제 원인: ambient `LOOM_RELAY_TOKEN`이 test server만 인증 relay로 만들어 무토큰 client가
+     `/ws` 401, `LOOM_PROFILE`이 inject fixture/client socket 경로를 분리했다. preload에서 둘을 격리했다.
+   - 나머지는 `events.subscribe`·reinject CR·scrape fixture보다 이벤트/단언이 앞선 harness 순서였다.
+     실제 소비 준비를 기다리게 하고 장기 테스트 제한시간을 helper 상한과 맞췄다. 제품 변경 0.
+   - 검증: relay 1/1 · server/auth 17/17 · 관련 host 181/181 · 전체 670/670 **3회 연속 green**
+     (280.28s · 280.41s · 280.19s).
 
-1. **G1 v0.27 preflight scan — G0 green 이후**
+1. **✅ G1 v0.27 preflight scan — 완료**
 
-   repo producer/consumer 전역 scan과 외부 consumer/body-only automation 존재 여부를 기록한다.
-   외부 consumer가 있으면 rolling-upgrade gate를 확정하기 전 다음 단계로 가지 않는다.
+   - producer 1 · board mutation consumer 1 · structured 운영 consumer 21/21 · repo body-only 자동
+     board consumer 0. 상세 증거는 설계 정본 §8 G1 블록.
+   - 외부 목록은 배포 전 운영자 확인, 존재 시 선이행 또는 배포 중단. G2는 진행 가능하다.
 
 2. **G2 v0.27 tests-only red commit — G1 이후**
 
@@ -62,15 +59,14 @@
    순서로 commit/push. 어느 게이트도 앞 단계의 실패를 뒤 단계의 증거로 대체하지 않는다.
 
 **선후관계 정본:** `G0 baseline green → G1 scan/rollout gate → G2 tests-only expected red →
-G3 delegated implementation → G4 independent green/ship`. 현재는 **G1**이다.
+G3 delegated implementation → G4 independent green/ship`. 현재는 **G2**다.
 
-**현재 증거:** `bun run status` approved/Open 없음 · `git diff --check` green · G0 격리/관련 테스트
-green · 전체 suite 670/670 3회 연속 green. G0는 test harness-only 별도 커밋으로 v0.27 제품
-변경과 분리했고 독립 `[VERIFY]` 요청 대상이다.
+**현재 증거:** G0 `504a5b3` pushed · 전체 suite 670/670 3회 연속 green · typecheck 6/6 ·
+G0 독립 `[VERIFY]` task `task_2c5afc3c18855251`. G1 repo scan은 producer 1 · mutation consumer 1 ·
+structured 운영 consumer 21 · body-only 자동 board consumer 0이며 외부 배포 gate를 명시했다.
 
-**Git 상태:** authority-cut 설계 baseline은 `6d4b384`로 원격 branch에 push됐다. G0는
-test harness-only 별도 커밋이며 제품 코드 변경은 없다. **reset/폐기하지 말고 이 워크트리에서
-G1부터 이어간다.**
+**Git 상태:** authority-cut 설계 baseline `6d4b384`, G0 test-harness commit `504a5b3`가 원격
+branch에 push됐다. 제품 코드 변경은 아직 없다. **reset/폐기하지 말고 G2 tests-only부터 이어간다.**
 
 5. **후속 MINOR 후보 — 역할·권한·프로필 통합 (G4 후)**: `<agent>-<role>` canonical identity,
    `codex-arch`, identity-neutral MCP, role-aware 권한/guard. 정본
@@ -104,7 +100,7 @@ G1부터 이어간다.**
 
 ## One-line resume
 
-> **🎯 다음 = G1 preflight scan.** G0는 ambient token/profile 격리와 harness readiness 동기화만으로 제품 변경 없이 복구됐고 전체 suite 670/670 3회 연속 green이다. repo producer/consumer 전역 scan과 외부 consumer rolling-upgrade gate를 확인한 뒤 G2 tests-only expected-red로 간다.
+> **🎯 다음 = G2 tests-only expected-red.** G0 `504a5b3` green/pushed, G1 scan은 producer 1·mutation consumer 1·structured 운영 consumer 21·repo body-only 자동 전이 0으로 기록됐다. 설계 §8 테스트만 추가해 production 무변경 상태의 의도된 red를 확인하고 독립 커밋한다.
 
 ---
 

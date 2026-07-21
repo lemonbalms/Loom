@@ -17,7 +17,10 @@
      test harness readiness wait만 수정, production 변경 0.
    - [x] **G0 완료 증거**: relay 대표 1/1 · relay server/auth 17/17 · 관련 host 181/181 ·
      전체 `bun test` 670/670 3회 연속 green (280.28s · 280.41s · 280.19s)
-   - [ ] **G1** repo producer/consumer scan 기록 + 외부 consumer rolling-upgrade gate 확인
+   - [x] **G1** repo producer/consumer scan 기록 + 외부 consumer rolling-upgrade gate 확인:
+     production producer 1(`bridge-runtime.sendResult`) · board mutation consumer 1
+     (`apply_card_result`→`applyCardResult`) · tracked structured claim consumer 21/21 · repo body-only
+     자동 board consumer 0. 외부 목록은 배포 전 운영자 확인, 존재 시 선이행 또는 배포 중단.
    - [ ] **G2** 설계 §8 tests-only 추가 → production 무변경 expected-red 확인 → 독립 커밋
    - [ ] **G3** 구현 lane 위임(`grok-impl` → `codex-impl` → lower-tier; 아키텍트 hand-code 금지)
    - [ ] **G4** 관련 테스트/스모크 + 아키텍트 전체 green → docs/source/dist commit·push
