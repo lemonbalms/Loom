@@ -196,12 +196,15 @@ export function applyCardResult(args: {
     }
   }
 
-  const status: TaskStatus =
-    payload.status === "done" ? "done" : "blocked";
+  // v0.27 authority fence: remote results are verification proposals, never
+  // completion authority. This remains after authenticity/terminal/stale guards.
+  const status: TaskStatus = "blocked";
   const reason =
-    payload.status === "failed" && payload.reason
-      ? ` failed reason=${payload.reason}`
-      : "";
+    payload.status === "done"
+      ? " reason=legacy_remote_done_requires_verification"
+      : payload.reason
+        ? ` failed reason=${payload.reason}`
+        : "";
   // PLAN 0.23.7 M-2: `last_seq=` must always survive the 1000-char notes cap.
   // Build head (summary + reason + optional note) within residual budget, then
   // append the seq token so the idempotency guard cannot be silently broken.

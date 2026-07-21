@@ -264,7 +264,7 @@ const TOOLS = [
   {
     name: "apply_card_result",
     description:
-      "Apply a claimed card result (loom-card-result attachment JSON) to the local board: done → done, failed → blocked, summary → notes. Pass fromPeerId/fromNode from the claimed handoff for L-2 forgery checks.",
+      "Apply a claimed remote card result (loom-card-result attachment JSON) as a local verification item: both done and failed results → blocked, summary → notes. A separate explicit local board mutation is required after verification. Pass fromPeerId/fromNode from the claimed handoff for L-2 forgery checks.",
     inputSchema: {
       type: "object",
       properties: {
@@ -400,7 +400,7 @@ async function handle(req: JsonRpcReq) {
       respond(req.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "loom", version: "0.26.1" },
+        serverInfo: { name: "loom", version: "0.27.0" },
       });
       return;
     case "notifications/initialized":

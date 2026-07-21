@@ -340,7 +340,7 @@ export async function toolDispatchCard(args: {
 }
 
 /**
- * PLAN 0.22.0 — apply claimed loom-card-result JSON to local board.
+ * PLAN 0.27.0 — apply claimed remote result as a blocked verification item.
  * L-2: pass fromPeerId/fromNode from the claimed handoff when available.
  */
 export async function toolApplyCardResult(args: {

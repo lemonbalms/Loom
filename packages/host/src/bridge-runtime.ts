@@ -357,10 +357,19 @@ function isInjectProbeHit(scrape: string, prompt: string): boolean {
   return norm.includes(probe);
 }
 
+/** v0.27: result authority lives for the dispatch, not the pane Flight. */
+type DispatchResultIssuer = {
+  dispatchHandoffId: string;
+  fromPeerId: string;
+  cardId?: string;
+  issued: boolean;
+};
+
 type Flight = {
   cardId: string;
   fromPeerId: string;
   dispatchHandoffId: string;
+  issuer: DispatchResultIssuer;
   paneId: string;
   terminalId: string;
   seq: number;
@@ -574,8 +583,40 @@ export async function startBridgeRuntime(opts?: {
   const flights = new Map<string, Flight>(); // paneId → flight
   const cardSeq = new Map<string, number>();
   const processedHandoffs = new Set<string>();
+  // Issued tombstones intentionally share processedHandoffs' process lifetime.
+  const resultIssuers = new Map<string, DispatchResultIssuer>();
   const convFlights = new Map<string, ConvFlight>(); // paneId → conv flight
   const convPaneByConvId = new Map<string, string>(); // convId → paneId
+
+  function createResultIssuer(
+    dispatchHandoffId: string,
+    fromPeerId: string,
+  ): DispatchResultIssuer {
+    const issuer: DispatchResultIssuer = {
+      dispatchHandoffId,
+      fromPeerId,
+      issued: false,
+    };
+    resultIssuers.set(dispatchHandoffId, issuer);
+    return issuer;
+  }
+
+  /** Acquire before any result-building await; first semantic result wins. */
+  function claimResultIssue(
+    issuer: DispatchResultIssuer,
+    cardId: string,
+  ): boolean {
+    if (issuer.issued) return false;
+    if (issuer.cardId !== undefined && issuer.cardId !== cardId) {
+      log(
+        `result issuer card mismatch for ${issuer.dispatchHandoffId}: ${issuer.cardId} != ${cardId}`,
+      );
+      return false;
+    }
+    issuer.cardId = cardId;
+    issuer.issued = true;
+    return true;
+  }
 
   /**
    * PLAN 0.23.9 ⑧: in-memory worker pool tab. pane.list is SSOT at spawn time;
@@ -838,6 +879,8 @@ export async function startBridgeRuntime(opts?: {
       (a) => a.kind === "text" && a.label === CARD_DISPATCH_LABEL,
     );
     if (!att) return;
+    // v0.27 A3: create after M-1 + attachment gates, before payload parse.
+    const issuer = createResultIssuer(h.id, fromPeerId);
 
     let payload: CardDispatchPayload;
     try {
@@ -846,8 +889,11 @@ export async function startBridgeRuntime(opts?: {
       // L-1: reply failed payload_invalid
       processedHandoffs.add(h.id);
       const claim = await client.claimHandoff(h.id, "claim");
-      if (!claim.ok) return;
-      await sendFailedResult({
+      if (!claim.ok) {
+        resultIssuers.delete(h.id);
+        return;
+      }
+      await sendFailedResult(issuer, {
         cardId: extractCardIdLoose(att.content) ?? "task_0",
         fromPeerId,
         dispatchHandoffId: h.id,
@@ -856,9 +902,11 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
+    issuer.cardId = payload.cardId;
     processedHandoffs.add(h.id);
     const claim = await client.claimHandoff(h.id, "claim");
     if (!claim.ok) {
+      resultIssuers.delete(h.id);
       log(`claim failed for ${h.id}:`, claim.error);
       return;
     }
@@ -867,6 +915,7 @@ export async function startBridgeRuntime(opts?: {
       payload,
       fromPeerId,
       dispatchHandoffId: h.id,
+      issuer,
     });
   }
 
@@ -1107,11 +1156,12 @@ export async function startBridgeRuntime(opts?: {
     payload: CardDispatchPayload;
     fromPeerId: string;
     dispatchHandoffId: string;
+    issuer: DispatchResultIssuer;
   }): Promise<void> {
-    const { payload, fromPeerId, dispatchHandoffId } = args;
+    const { payload, fromPeerId, dispatchHandoffId, issuer } = args;
     let argv = resolveAgentArgv(cfg, payload.agentKind);
     if (!argv) {
-      await sendFailedResult({
+      await sendFailedResult(issuer, {
         cardId: payload.cardId,
         fromPeerId,
         dispatchHandoffId,
@@ -1201,7 +1251,7 @@ export async function startBridgeRuntime(opts?: {
       });
     } catch (e) {
       pendingHookListener?.close();
-      await sendFailedResult({
+      await sendFailedResult(issuer, {
         cardId: payload.cardId,
         fromPeerId,
         dispatchHandoffId,
@@ -1215,6 +1265,7 @@ export async function startBridgeRuntime(opts?: {
       cardId: payload.cardId,
       fromPeerId,
       dispatchHandoffId,
+      issuer,
       paneId: agent.pane_id,
       terminalId: agent.terminal_id,
       seq,
@@ -1242,7 +1293,7 @@ export async function startBridgeRuntime(opts?: {
       // on the client covers the failed subscription entry — no prune here).
       log("events.subscribe failed:", e);
       disposeCardFlight(agent.pane_id, flight);
-      await sendFailedResult({
+      await sendFailedResult(issuer, {
         cardId: payload.cardId,
         fromPeerId,
         dispatchHandoffId,
@@ -1250,12 +1301,6 @@ export async function startBridgeRuntime(opts?: {
         detail: e instanceof Error ? e.message : String(e),
         paneId: agent.pane_id,
       });
-      // PLAN 0.23.4: best-effort pane close after card subscribe failure.
-      try {
-        await herdr.request("pane.close", { pane_id: agent.pane_id });
-      } catch {
-        /* ignore — close is best-effort */
-      }
       return;
     }
 
@@ -1267,7 +1312,7 @@ export async function startBridgeRuntime(opts?: {
     } catch (e) {
       disposeCardFlight(agent.pane_id, flight);
       herdr.eventsPrune(agent.pane_id);
-      await sendFailedResult({
+      await sendFailedResult(issuer, {
         cardId: payload.cardId,
         fromPeerId,
         dispatchHandoffId,
@@ -1907,7 +1952,7 @@ export async function startBridgeRuntime(opts?: {
         if (flight) {
           disposeCardFlight(paneId, flight);
           herdr.eventsPrune(paneId);
-          await sendFailedResult({
+          await sendFailedResult(flight.issuer, {
             cardId: flight.cardId,
             fromPeerId: flight.fromPeerId,
             dispatchHandoffId: flight.dispatchHandoffId,
@@ -1917,11 +1962,6 @@ export async function startBridgeRuntime(opts?: {
         } else {
           flights.delete(paneId);
           herdr.eventsPrune(paneId);
-        }
-        try {
-          await herdr.request("pane.close", { pane_id: paneId });
-        } catch {
-          /* best-effort close — same class as events_subscribe_failed */
         }
       } else {
         // Conv: blocked turn only — keep convFlight + pane for tower retry
@@ -2006,12 +2046,12 @@ export async function startBridgeRuntime(opts?: {
         disposeCardFlight(paneId, flight);
         herdr.eventsPrune(paneId);
         appendHookTelemetry({ type: "agent_blocked_correction" });
-        await finishCard(flight, "failed", "agent_blocked");
+        await finishCardFailure(flight, "agent_blocked");
         return;
       }
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
-      await finishCard(flight, "done", undefined);
+      await proposeCardVerification(flight);
       return;
     }
 
@@ -2020,21 +2060,20 @@ export async function startBridgeRuntime(opts?: {
     if (!flight.stillRunningDeferral) return;
 
     if (!hasStillRunningIndicator(scrape)) {
-      // No indicator → immediate finish; pass scrape (no re-scrape).
-      // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
+      // No indicator → propose verification; pass scrape (no re-scrape).
+      // v0.27: even a confident indicator-clear path retains the card pane.
       // PLAN 0.26.0 M-2 ③: permission_prompt live → correct to agent_blocked
       if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
         disposeCardFlight(paneId, flight);
         herdr.eventsPrune(paneId);
         appendHookTelemetry({ type: "agent_blocked_correction" });
-        await finishCard(flight, "failed", "agent_blocked");
+        await finishCardFailure(flight, "agent_blocked");
         return;
       }
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
-      await finishCard(flight, "done", undefined, {
+      await proposeCardVerification(flight, {
         scrape,
-        closePane: true,
       });
       return;
     }
@@ -2084,7 +2123,7 @@ export async function startBridgeRuntime(opts?: {
             const secs = Math.round(stillRunningMaxMs / 1000);
             disposeCardFlight(paneId, flight);
             herdr.eventsPrune(paneId);
-            await finishCard(flight, "done", undefined, {
+            await proposeCardVerification(flight, {
               note: `still_running deferral exhausted (${secs}s)`,
             });
           } else {
@@ -2097,23 +2136,22 @@ export async function startBridgeRuntime(opts?: {
         if (!flight.stillRunningDeferral) return;
 
         if (!hasStillRunningIndicator(scrape)) {
-          // Indicator cleared — finish with the scrape that proved clearance (L-1).
-          // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
+          // Indicator cleared — propose with the scrape that proved clearance (L-1).
+          // v0.27: completion confidence is not pane-cleanup authority.
           // PLAN 0.26.0 M-2 ③: live permission_prompt corrects → blocked
           if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
             disposeCardFlight(paneId, flight);
             herdr.eventsPrune(paneId);
             appendHookTelemetry({ type: "agent_blocked_correction" });
-            await finishCard(flight, "failed", "agent_blocked");
+            await finishCardFailure(flight, "agent_blocked");
             return;
           }
           const secs = Math.max(0, Math.round(elapsed / 1000));
           disposeCardFlight(paneId, flight);
           herdr.eventsPrune(paneId);
-          await finishCard(flight, "done", undefined, {
+          await proposeCardVerification(flight, {
             scrape,
             note: `completion deferred ${secs}s (still-running indicator)`,
-            closePane: true,
           });
           return;
         }
@@ -2127,13 +2165,13 @@ export async function startBridgeRuntime(opts?: {
             disposeCardFlight(paneId, flight);
             herdr.eventsPrune(paneId);
             appendHookTelemetry({ type: "agent_blocked_correction" });
-            await finishCard(flight, "failed", "agent_blocked");
+            await finishCardFailure(flight, "agent_blocked");
             return;
           }
           const secs = Math.round(stillRunningMaxMs / 1000);
           disposeCardFlight(paneId, flight);
           herdr.eventsPrune(paneId);
-          await finishCard(flight, "done", undefined, {
+          await proposeCardVerification(flight, {
             scrape,
             note: `still_running deferral exhausted (${secs}s)`,
           });
@@ -2157,7 +2195,7 @@ export async function startBridgeRuntime(opts?: {
       // Clean deferral timers before teardown (test ⑦ / leak guard).
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
-      void sendFailedResult({
+      void sendFailedResult(flight.issuer, {
         cardId: flight.cardId,
         fromPeerId: flight.fromPeerId,
         dispatchHandoffId: flight.dispatchHandoffId,
@@ -2204,7 +2242,7 @@ export async function startBridgeRuntime(opts?: {
       // hookHint absence → same path as 0.25.0 (D5 fail-open).
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
-      void finishCard(flight, "failed", "agent_blocked");
+      void finishCardFailure(flight, "agent_blocked");
       return;
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
@@ -2219,7 +2257,7 @@ export async function startBridgeRuntime(opts?: {
         disposeCardFlight(paneId, flight);
         herdr.eventsPrune(paneId);
         appendHookTelemetry({ type: "agent_blocked_correction" });
-        void finishCard(flight, "failed", "agent_blocked");
+        void finishCardFailure(flight, "agent_blocked");
         return;
       }
       // M-1: while deferral flag is set, completion-class events are no-ops —
@@ -2280,21 +2318,34 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
-  async function finishCard(
+  type CardObservationOpts = { scrape?: string; note?: string };
+
+  async function proposeCardVerification(
     flight: Flight,
-    status: "done" | "failed",
-    reason?: string,
-    /**
-     * PLAN 0.23.7 L-1: when the caller already holds the scrape that decided
-     * completion (indicator clearance / exhaust), pass it so finishCard does
-     * not re-scrape and drift from the decision sample. `note` is bridge-
-     * generated observability only (never scrape body).
-     * PLAN 0.23.8 R33 M-1: `closePane` is the *only* eligibility signal —
-     * never inferred from status/note. Set only by indicator-clear confident
-     * completion call sites (immediate no-indicator + deferred clear).
-     */
-    opts?: { scrape?: string; note?: string; closePane?: boolean },
+    opts?: CardObservationOpts,
   ): Promise<void> {
+    await issueObservedCardResult(flight, "proposal", undefined, opts);
+  }
+
+  async function finishCardFailure(
+    flight: Flight,
+    reason: string,
+    opts?: CardObservationOpts,
+  ): Promise<void> {
+    await issueObservedCardResult(flight, "failure", reason, opts);
+  }
+
+  /** v0.27: acquire the issuer synchronously before any result-building await. */
+  async function issueObservedCardResult(
+    flight: Flight,
+    outcome: "proposal" | "failure",
+    reason: string | undefined,
+    opts?: CardObservationOpts,
+  ): Promise<void> {
+    if (!claimResultIssue(flight.issuer, flight.cardId)) return;
+
+    let isProposal = outcome === "proposal";
+    let finalReason = isProposal ? "needs_verification" : reason;
     let output = "";
     let truncated = false;
     try {
@@ -2310,25 +2361,26 @@ export async function startBridgeRuntime(opts?: {
       truncated = t.truncated;
     } catch (e) {
       output = `(pane.read failed: ${e instanceof Error ? e.message : e})`;
-      if (status === "done") status = "failed";
-      reason = reason ?? "pane_read_failed";
+      if (isProposal) {
+        isProposal = false;
+        finalReason = "pane_read_failed";
+      }
     }
 
-    // PLAN 0.26.0 D6(b): true-done scrape fallback telemetry (after read flip).
-    // Single choke point for all done paths; L-2 gated inside helper.
-    if (status === "done") maybeAppendCompletionFallback(flight);
+    // PLAN 0.26.0 D6(b): completion-candidate fallback telemetry.
+    if (isProposal) maybeAppendCompletionFallback(flight);
 
-    // PLAN 0.23.6: summary from chrome-filtered input only; output body unfiltered (M-1).
-    // PLAN 0.23.11 ③: prefer real content over trailing pure timing lines.
+    // Proposals preserve the observed output summary despite using the
+    // wire-compatible failed status. Deterministic failures retain legacy text.
     const summary =
-      status === "done"
+      isProposal
         ? selectCardSummaryLine(stripTuiChrome(output))
-        : `failed${reason ? ` reason=${reason}` : ""}`.slice(0, 900);
+        : `failed${finalReason ? ` reason=${finalReason}` : ""}`.slice(0, 900);
 
     const payload: CardResultPayload = {
       v: CARD_CONTRACT_VERSION,
       cardId: flight.cardId,
-      status,
+      status: "failed",
       node: session!.displayName,
       seq: flight.seq,
       paneId: flight.paneId,
@@ -2338,37 +2390,34 @@ export async function startBridgeRuntime(opts?: {
       summary,
       startedAt: flight.startedAt,
       finishedAt: new Date().toISOString(),
-      reason,
+      reason: finalReason,
       ...(opts?.note
         ? { note: opts.note.slice(0, 500) }
         : {}),
     };
 
-    // Order invariant (0.23.8): flight already removed+pruned by caller →
-    // send result → best-effort close only on success + final status done.
     const sent = await sendResult(flight.fromPeerId, payload);
-    if (
-      opts?.closePane === true &&
-      status === "done" &&
-      sent &&
-      (cfg.paneCleanup ?? "auto") !== "keep"
-    ) {
-      try {
-        await herdr.request("pane.close", { pane_id: flight.paneId });
-      } catch {
-        /* best-effort — must not affect result delivery */
-      }
+    if (!sent) {
+      recordResultDeliveryUnconfirmed({
+        cardId: flight.cardId,
+        seq: flight.seq,
+        reason: finalReason,
+      });
     }
   }
 
-  async function sendFailedResult(opts: {
-    cardId: string;
-    fromPeerId: string;
-    dispatchHandoffId: string;
-    reason: string;
-    detail?: string;
-    paneId?: string;
-  }): Promise<void> {
+  async function sendFailedResult(
+    issuer: DispatchResultIssuer,
+    opts: {
+      cardId: string;
+      fromPeerId: string;
+      dispatchHandoffId: string;
+      reason: string;
+      detail?: string;
+      paneId?: string;
+    },
+  ): Promise<void> {
+    if (!claimResultIssue(issuer, opts.cardId)) return;
     const seq = (cardSeq.get(opts.cardId) ?? 0) + 1;
     cardSeq.set(opts.cardId, seq);
     const summary = `failed reason=${opts.reason}${
@@ -2401,10 +2450,7 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
-  /**
-   * Returns true only when the handoff was accepted. PLAN 0.23.8 uses this so
-   * pane.close never runs after a failed/missing result send.
-   */
+  /** Returns true only when the result handoff was accepted by the relay. */
   async function sendResult(
     toPeerId: string,
     payload: CardResultPayload,
