@@ -110,6 +110,8 @@ export type FakeHerdr = {
    * (hinted-spawn fail-open). Unhinted starts still succeed.
    */
   failHintedAgentStarts: (count: number) => void;
+  /** v0.27 issuer test: force next N agent.start RPCs to error. */
+  failAgentStarts: (count: number) => void;
   /**
    * PLAN 0.23.9: remove a tab from the pane.list view without closing panes
    * via RPC (simulates pool-tab disappearance / external tab kill).
@@ -172,6 +174,8 @@ export async function startFakeHerdr(
   let tabCreateFailRemaining = 0;
   /** PLAN 0.23.9: fail next N agent.start that include tab_id */
   let hintedStartFailRemaining = 0;
+  /** v0.27 issuer test: fail next N agent.start calls regardless of hints. */
+  let agentStartFailRemaining = 0;
   /** PLAN 0.23.12 ⓑ: fail next N pane.resize */
   let paneResizeFailRemaining = 0;
   /** PLAN 0.23.12 ⓑ: layout guard modes for equalize tests */
@@ -434,6 +438,12 @@ export async function startFakeHerdr(
           continue;
         }
         if (method === "agent.start") {
+          if (agentStartFailRemaining > 0) {
+            agentStartFailRemaining -= 1;
+            err("agent.start failed (test inject)");
+            sock.end();
+            continue;
+          }
           const tab_id_param =
             typeof params.tab_id === "string" ? params.tab_id : undefined;
           if (tab_id_param && hintedStartFailRemaining > 0) {
@@ -766,6 +776,9 @@ export async function startFakeHerdr(
     },
     failHintedAgentStarts(count: number) {
       hintedStartFailRemaining = Math.max(0, count);
+    },
+    failAgentStarts(count: number) {
+      agentStartFailRemaining = Math.max(0, count);
     },
     dropTab(tabId: string) {
       liveTabs.delete(tabId);

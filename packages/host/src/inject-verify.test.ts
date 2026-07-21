@@ -303,8 +303,8 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
 
     const result = await awaitCardResult(tower!, cardId);
-    expect(result?.status).toBe("done");
-    expect(result?.reason).not.toBe("inject_unconfirmed");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
 
     fake.setPaneReadText("*", null);
     fake.setDiscardInjects(false);
@@ -344,7 +344,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(result?.reason ?? result?.summary ?? "").toMatch(/inject_unconfirmed/);
   }, 20_000);
 
-  test("③ card exhaust → inject_unconfirmed + flight clear + prune + pane close", async () => {
+  test("③ card exhaust → inject_unconfirmed + flight clear + prune + pane retained", async () => {
     const cardId = "task_a333000000000003";
     const callsBefore = fake.calls.length;
     // F-5: eventsPrune restores per-pane sub count (client-side; observe via status)
@@ -352,26 +352,27 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     fake.setDiscardInjects(false);
     fake.setPaneReadText("*", null);
 
+    const panesBefore = new Set(fake.listPaneIds());
     await dispatchCard(cardId, "exhaust-card-verify-path");
+    const paneReady = await waitFor(
+      () => fake.listPaneIds().some((pane) => !panesBefore.has(pane)),
+      { timeoutMs: 8_000 },
+    );
+    expect(paneReady).toBe(true);
+    const paneId = fake.listPaneIds().find((pane) => !panesBefore.has(pane))!;
 
     const result = await awaitCardResult(tower!, cardId);
     expect(result?.status).toBe("failed");
     expect(result?.reason ?? result?.summary ?? "").toMatch(/inject_unconfirmed/);
 
-    // pane.close attempted (may race after card-result handoff — wait for it)
-    await waitFor(
-      () =>
-        fake.calls
-          .slice(callsBefore)
-          .filter((c) => c.method === "pane.close").length >= 1,
-    );
+    // v0.27: inject failure is diagnostic only and cannot close the card pane.
+    await Bun.sleep(200);
     const closes = fake.calls
       .slice(callsBefore)
-      .filter((c) => c.method === "pane.close");
-    expect(closes.length).toBeGreaterThanOrEqual(1);
-    const closedPaneId = closes[0]!.params.pane_id as string;
-    expect(typeof closedPaneId).toBe("string");
-    expect(closedPaneId.length).toBeGreaterThan(0);
+      .filter(
+        (c) => c.method === "pane.close" && c.params.pane_id === paneId,
+      );
+    expect(closes).toHaveLength(0);
 
     // F-5: eventsPrune(paneId) ran — per-pane sub gone, count back to baseline
     // (prune + flight clear may race after card-result handoff — wait)
@@ -530,7 +531,8 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
 
     const result = await awaitCardResult(tower!, cardId);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
 
     // Verify-loop paneRead uses lines:60; finishCard uses 200 — only check 60
     const verifyReads = verifyPaneReads(fake).length - readsBefore;
@@ -755,7 +757,8 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
 
     const result = await awaitCardResult(tower!, cardId);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
   }, 20_000);
 
   test("⑫ placeholder-only composer → CR branch, no reinject (R30 M-1)", async () => {

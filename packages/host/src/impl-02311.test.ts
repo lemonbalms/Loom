@@ -558,9 +558,9 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     30_000,
   );
 
-  // ⑤ probe sequence → immediate done + closePane (no deferral)
+  // ⑤ probe sequence → immediate proposal, pane retained (no deferral)
   test(
-    "⑤ supersession scrape → immediate done + closePane",
+    "⑤ supersession scrape → immediate proposal + pane retained",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "super-immediate");
@@ -575,14 +575,14 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toBeUndefined();
       expect(result!.output).toContain("[PROBE-0511-OK]");
       // summary prefers real content over trailing timing
       expect(result!.summary).not.toMatch(/^Worked for /);
-      // closePane on confident completion
-      await waitFor(() => closeCallsFor(paneId) >= 1, { timeoutMs: 3_000 });
-      expect(closeCallsFor(paneId)).toBeGreaterThanOrEqual(1);
+      await Bun.sleep(200);
+      expect(closeCallsFor(paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
@@ -627,12 +627,13 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(
         /completion deferred \d+s \(still-running indicator\)/,
       );
-      await waitFor(() => closeCallsFor(paneId) >= 1, { timeoutMs: 3_000 });
-      expect(closeCallsFor(paneId)).toBeGreaterThanOrEqual(1);
+      await Bun.sleep(200);
+      expect(closeCallsFor(paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
@@ -667,7 +668,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       // exhaust path
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/still_running deferral exhausted/);
       // exhausted → no closePane (0.23.8 M-1)
       expect(closeCallsFor(paneId)).toBe(0);
@@ -716,7 +718,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       );
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/completion deferred/);
       fake.setPaneReadText(paneId, null);
     },
@@ -753,7 +756,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       // Leave as-is → exhaust
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/still_running deferral exhausted/);
       fake.setPaneReadText(paneId, null);
     },
@@ -776,7 +780,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       // R31 M-1: output body unfiltered (statusline still present)
       expect(result!.output).toContain("Fable 5 ⚡high 🧠 │ fable-advisor main");
       expect(result!.output).toContain("Worked for 3s.");
@@ -791,7 +796,7 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
 
   // baseline card round-trip regression
   test(
-    "regression: plain done card still works",
+    "regression: plain completion still proposes verification",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "plain-done");
@@ -799,7 +804,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       emitWorkingThen(paneId, "done");
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("[IMPL-02311-DONE]");
       expect(result!.note).toBeUndefined();
       fake.setPaneReadText(paneId, null);

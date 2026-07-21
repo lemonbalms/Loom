@@ -362,6 +362,9 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     expect(result).toBeTruthy();
     expect(result!.status).toBe("failed");
     expect(result!.summary ?? "").toContain("events_subscribe_failed");
+    // v0.27 keeps the card pane. The single close is only the pool root shell.
+    const closeCalls = fake.calls.filter((c) => c.method === "pane.close");
+    expect(closeCalls).toHaveLength(1);
 
     // status: inFlight should be 0 after fail-visible cleanup
     const stRes = await fetch(`http://127.0.0.1:${bridge.meta.port}/rpc`, {
@@ -699,8 +702,13 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
           const content = hit.handoff.attachments!.find(
             (a) => a.label === CARD_RESULT_LABEL,
           )!.content;
-          const result = JSON.parse(content) as { status: string; cardId: string };
-          expect(result.status).toBe("done");
+          const result = JSON.parse(content) as {
+            status: string;
+            cardId: string;
+            reason?: string;
+          };
+          expect(result.status).toBe("failed");
+          expect(result.reason).toBe("needs_verification");
           expect(result.cardId).toBe(cardId);
           break;
         }
@@ -820,8 +828,13 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
           const content = hit.handoff.attachments!.find(
             (a) => a.label === CARD_RESULT_LABEL,
           )!.content;
-          const result = JSON.parse(content) as { status: string; cardId: string };
-          expect(result.status).toBe("done");
+          const result = JSON.parse(content) as {
+            status: string;
+            cardId: string;
+            reason?: string;
+          };
+          expect(result.status).toBe("failed");
+          expect(result.reason).toBe("needs_verification");
           expect(result.cardId).toBe(cardId);
           break;
         }
@@ -829,12 +842,12 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       expect(found).toBe(true);
     }
 
-    // Card A complete — PLAN 0.23.8 auto-closes pane on confident done, so
-    // capture pane_id from agent.start (listPaneIds is empty after close).
+    // Card A proposes verification and remains live; capture it, then emulate
+    // an explicit operator close to exercise the closed-pane subscription guard.
     const panesBeforeA = new Set(fake.listPaneIds());
     const startsBeforeA = fake.calls.filter((c) => c.method === "agent.start").length;
     const dispatchA = dispatchAndAwaitDone("task_aaaaaaaa00112233", "card A");
-    // Wait briefly for spawn so we can record paneA before auto-close.
+    // Wait briefly for spawn so we can record paneA.
     let paneA: string | undefined;
     for (let i = 0; i < 40; i++) {
       await Bun.sleep(50);
@@ -848,7 +861,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       if (starts.length > startsBeforeA) break;
     }
     await dispatchA;
-    // Prefer live pane id; else last pane.close (auto-cleanup) target.
+    // Prefer live pane id; the fallback only covers an unexpected fixture race.
     if (!paneA) {
       const closes = fake.calls.filter((c) => c.method === "pane.close");
       paneA = closes.length
@@ -857,7 +870,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     }
     expect(paneA).toBeTruthy();
 
-    // Ensure pane A is in the closed set (auto-close may already have done this).
+    // Explicit test/operator cleanup; card completion itself must not close it.
     fake.markPaneClosed(paneA!);
     try {
       await herdr.request("pane.close", { pane_id: paneA! });

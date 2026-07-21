@@ -226,7 +226,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
   async function awaitCardResult(
     cardId: string,
     timeoutMs = 12_000,
-  ): Promise<{ status?: string } | null> {
+  ): Promise<{ status?: string; reason?: string } | null> {
     if (!tower) return null;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -235,7 +235,12 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
         const att = e.handoff.attachments?.find(
           (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
         );
-        if (att) return JSON.parse(att.content) as { status?: string };
+        if (att) {
+          return JSON.parse(att.content) as {
+            status?: string;
+            reason?: string;
+          };
+        }
       }
       await Bun.sleep(80);
     }
@@ -529,7 +534,8 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
       agent_status: "idle",
     });
     const result = await awaitCardResult(cardId);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
   }, 20_000);
 
   // ⑧ ⑦

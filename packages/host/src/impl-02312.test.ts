@@ -414,7 +414,8 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     );
     emitDone(pane3);
     const result = await awaitCardResult(id3);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
     expect(result?.summary).toContain("SMOKE-02312-FAIL-OK");
   }, 20_000);
 
@@ -462,7 +463,8 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     fake.setPaneReadText(paneId, body);
     emitDone(paneId);
     const result = await awaitCardResult(id);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
     // summary path strips trailing TUI timestamp (and skips timing line)
     expect(result?.summary).toBe("⏺ [SMOKE-02312-TS-OK] name=loom");
     // R31 M-1: output body unfiltered — timestamp residue may remain

@@ -539,7 +539,8 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.summary).toBe("worker wrote the answer");
       expect(result!.summary).not.toContain("Shift+Tab");
       // M-1: output body still has the hint line
@@ -797,7 +798,8 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       const cPane = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
       fake.setPaneReadText(cPane, "card body ok\nfinal summary line");
       const result = await awaitCardResult(cardId);
-      expect(result?.status).toBe("done");
+      expect(result?.status).toBe("failed");
+      expect(result?.reason).toBe("needs_verification");
       expect(result?.summary).toBe("final summary line");
       expect(result?.output).toContain("card body ok");
     },
@@ -825,7 +827,8 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       fake.setPaneReadText(paneId, body);
 
       const result = await awaitCardResult(cardId);
-      expect(result?.status).toBe("done");
+      expect(result?.status).toBe("failed");
+      expect(result?.reason).toBe("needs_verification");
       // output body unfiltered — key-hint quotation preserved (M-1)
       expect(result?.output).toContain("Shift+Tab:mode │ Ctrl+.:shortcuts");
       expect(result?.output).toContain("was seen in board notes");

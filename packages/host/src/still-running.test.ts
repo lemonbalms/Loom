@@ -299,7 +299,7 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
   });
 
   test(
-    "① indicator hit → defer → clear → done with final output + deferred note",
+    "① indicator hit → defer → clear → proposal with final output + deferred note",
     async () => {
       const cardId = "task_a023700000000001";
       const paneId = await spawnCard(cardId, "still-run-defer-clear");
@@ -314,7 +314,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
       expect(result!.output).not.toMatch(/still running/i);
       expect(result!.note).toMatch(
@@ -365,7 +366,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
       // Either no note (immediate) or deferred if indicator briefly seen — both ok
       // but must not be exhaust note.
@@ -378,7 +380,7 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
   );
 
   test(
-    "③ max deferral exhaust → done with exhausted note",
+    "③ max deferral exhaust → proposal with exhausted note",
     async () => {
       const cardId = "task_a023700000000003";
       const paneId = await spawnCard(cardId, "still-run-exhaust");
@@ -389,7 +391,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/still_running deferral exhausted \(\d+s\)/);
       expect(result!.output).toMatch(/still running/i);
       fake.setPaneReadText(paneId, null);
@@ -398,7 +401,7 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
   );
 
   test(
-    "④ no indicator → immediate done (regression, no note)",
+    "④ no indicator → immediate proposal (regression, no note)",
     async () => {
       const cardId = "task_a023700000000004";
       const paneId = await spawnCard(cardId, "still-run-no-indicator");
@@ -408,7 +411,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
       expect(result!.note).toBeUndefined();
       fake.setPaneReadText(paneId, null);
@@ -440,7 +444,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toBeUndefined();
       expect(result!.output).toContain("final worker answer unique");
       fake.setPaneReadText(paneId, null);
@@ -529,7 +534,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
 
       await Bun.sleep(POLL_MS + 80);
       const inbox = await tower!.listInbox();

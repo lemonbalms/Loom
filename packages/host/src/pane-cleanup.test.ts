@@ -1,7 +1,7 @@
 /**
  * PLAN 0.23.8 — worker pane cleanup policy (tests ①–⑧, ⑬–⑭).
- * closePane is explicit (R33 M-1); paneCleanup keep opt-out; order invariant
- * flight teardown → sendResult success → best-effort pane.close.
+ * v0.27 authority cut: card paths never auto-close panes. Conv explicit close
+ * and pool-root placement cleanup remain separate behavior.
  */
 import { describe, expect, test, afterAll, beforeAll } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -265,7 +265,7 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   });
 
   test(
-    "① no-indicator immediate done → sendResult then pane.close exactly once",
+    "① no-indicator completion → proposal and pane retained",
     async () => {
       const cardId = "task_a023800000000001";
       const paneId = await spawnCard(cardId, "pane-cleanup-immediate");
@@ -276,22 +276,19 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
 
-      const closed = await waitFor(
-        () => closeCallsFor(fake, paneId) === closesBefore + 1,
-        { timeoutMs: 3_000 },
-      );
-      expect(closed).toBe(true);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
+      await Bun.sleep(200);
+      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
   );
 
   test(
-    "② deferral clear → close exactly once",
+    "② deferral clear → proposal and pane retained",
     async () => {
       const cardId = "task_a023800000000002";
       const paneId = await spawnCard(cardId, "pane-cleanup-defer-clear");
@@ -305,14 +302,12 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/completion deferred/);
 
-      const closed = await waitFor(
-        () => closeCallsFor(fake, paneId) === closesBefore + 1,
-        { timeoutMs: 3_000 },
-      );
-      expect(closed).toBe(true);
+      await Bun.sleep(200);
+      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
@@ -330,7 +325,8 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/still_running deferral exhausted/);
 
       await Bun.sleep(200);
@@ -402,10 +398,11 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   );
 
   test(
-    "⑧ pane.close reject → result still delivered (no throw propagation)",
+    "⑧ pane.close failure injection is untouched because card close is never attempted",
     async () => {
       const cardId = "task_a023800000000008";
       const paneId = await spawnCard(cardId, "pane-cleanup-close-reject");
+      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneCloseFail(true);
       try {
         fake.setPaneReadText(paneId, DONE_BODY);
@@ -413,12 +410,11 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
 
         const result = await awaitCardResult(cardId);
         expect(result).toBeTruthy();
-        expect(result!.status).toBe("done");
+        expect(result!.status).toBe("failed");
+        expect(result!.reason).toBe("needs_verification");
         expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
-        // close was attempted (recorded) even though it failed
-        await waitFor(() => closeCallsFor(fake, paneId) >= 1, {
-          timeoutMs: 3_000,
-        });
+        await Bun.sleep(200);
+        expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
       } finally {
         fake.setPaneCloseFail(false);
         fake.setPaneReadText(paneId, null);
@@ -456,7 +452,7 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   );
 
   test(
-    "⑬ regression: normal done path still delivers result (close additive only)",
+    "⑬ regression: normal completion still delivers verification proposal",
     async () => {
       fake.failPaneReads(0);
       const cardId = "task_a023800000000013";
@@ -466,7 +462,8 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("simple done output line");
       fake.setPaneReadText(paneId, null);
     },
@@ -661,7 +658,8 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
 
       await Bun.sleep(300);
       expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
@@ -671,7 +669,7 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
   );
 
   test(
-    "⑥b failure-path close (inject_unconfirmed) still runs under keep",
+    "⑥b inject_unconfirmed also retains the card pane",
     async () => {
       // With keep, only *new* auto closes are disabled — inject_unconfirmed
       // failure path still closes. Simulate by never reaching working and
@@ -707,17 +705,15 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
         );
         expect(ready).toBe(true);
         const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+        const closesBefore = closeCallsFor(fake, paneId);
 
         const result = await awaitCardResult(cardId, 15_000);
         expect(result).toBeTruthy();
         expect(result!.status).toBe("failed");
         expect(result!.reason).toBe("inject_unconfirmed");
 
-        const closed = await waitForLocal(
-          () => closeCallsFor(fake, paneId) >= 1,
-          5_000,
-        );
-        expect(closed).toBe(true);
+        await Bun.sleep(200);
+        expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
       } finally {
         fake.setDiscardInjects(false);
       }

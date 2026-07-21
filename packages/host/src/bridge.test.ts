@@ -33,7 +33,7 @@ import {
   setActiveProfile,
   type FableSession,
 } from "./session-store";
-import { addTask, loadTaskBoard } from "./task-board";
+import { addTask, loadTaskBoard, updateTask } from "./task-board";
 
 describe("M-1 dispatcher allowlist", () => {
   test("default deny when empty", () => {
@@ -165,7 +165,7 @@ describe("M-2 bare enter constant", () => {
   });
 });
 
-describe("apply_card_result L-2", () => {
+describe("apply_card_result authority fence (v0.27)", () => {
   const dir = join(tmpdir(), `loom-card-ops-${Date.now()}`);
   const sessionFile = join(dir, "session.json");
 
@@ -200,7 +200,7 @@ describe("apply_card_result L-2", () => {
     }
   });
 
-  test("done → done; node mismatch rejected", () => {
+  test("fresh legacy remote done → blocked; node mismatch rejected first", () => {
     const task = addTask({
       title: "t1",
       assignee: "node/wsl-1",
@@ -234,7 +234,127 @@ describe("apply_card_result L-2", () => {
       }),
     });
     expect(good.ok).toBe(true);
-    if (good.ok) expect(good.status).toBe("done");
+    if (good.ok) {
+      expect(good.status).toBe("blocked");
+      expect(good.task.notes).toContain(
+        "legacy_remote_done_requires_verification",
+      );
+    }
+  });
+
+  test("guard order: authenticity → terminal → stale → authority mapping", () => {
+    const finishedAt = new Date().toISOString();
+    const terminal = addTask({
+      title: "terminal-local-done",
+      assignee: "node/wsl-1",
+      status: "done",
+    });
+    const forged = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: terminal.id,
+        status: "done",
+        node: "node/evil",
+        seq: 9,
+        output: "forged",
+        summary: "forged",
+        finishedAt,
+      }),
+    });
+    expect(forged.ok).toBe(false);
+    if (!forged.ok) expect(forged.error).toContain("L-2");
+
+    const terminalReplay = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: terminal.id,
+        status: "failed",
+        node: "node/wsl-1",
+        seq: 9,
+        output: "late",
+        summary: "late",
+        finishedAt,
+      }),
+    });
+    expect(terminalReplay.ok).toBe(true);
+    if (terminalReplay.ok) expect(terminalReplay.status).toBe("done");
+
+    const stale = addTask({
+      title: "stale-before-mapping",
+      assignee: "node/wsl-1",
+      status: "doing",
+      notes: "seed last_seq=5",
+    });
+    const staleReplay = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: stale.id,
+        status: "done",
+        node: "node/wsl-1",
+        seq: 5,
+        output: "stale",
+        summary: "stale",
+        finishedAt,
+      }),
+    });
+    expect(staleReplay.ok).toBe(true);
+    if (staleReplay.ok) {
+      expect(staleReplay.status).toBe("doing");
+      expect(staleReplay.task.notes).toBe("seed last_seq=5");
+    }
+  });
+
+  test("rolling upgrade: new proposal and legacy done both converge to blocked", () => {
+    const finishedAt = new Date().toISOString();
+    const proposalTask = addTask({
+      title: "new-bridge-old-tower",
+      assignee: "node/wsl-1",
+      status: "doing",
+    });
+    const proposal = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: proposalTask.id,
+        status: "failed",
+        node: "node/wsl-1",
+        seq: 1,
+        output: "observed output",
+        summary: "observed summary",
+        reason: "needs_verification",
+        finishedAt,
+      }),
+    });
+    expect(proposal.ok).toBe(true);
+    if (proposal.ok) {
+      expect(proposal.status).toBe("blocked");
+      expect(proposal.task.notes).toContain("needs_verification");
+    }
+
+    const legacyTask = addTask({
+      title: "old-bridge-new-tower",
+      assignee: "node/wsl-1",
+      status: "doing",
+    });
+    const legacy = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: legacyTask.id,
+        status: "done",
+        node: "node/wsl-1",
+        seq: 1,
+        output: "legacy output",
+        summary: "legacy summary",
+        finishedAt,
+      }),
+    });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) expect(legacy.status).toBe("blocked");
+
+    const localTask = addTask({
+      title: "explicit-local-mutation",
+      status: "doing",
+    });
+    expect(updateTask(localTask.id, { status: "done" }).status).toBe("done");
   });
 
   test("⑪ note max length (500) still preserves last_seq parse (0.23.7 M-2)", () => {
@@ -471,7 +591,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     }
   });
 
-  test("authorized dispatch → [DONE] result", async () => {
+  test("authorized completion → verification proposal with observed summary", async () => {
     const cardId = "task_abcd1234ef567890";
     const payload = {
       v: CARD_CONTRACT_VERSION,
@@ -515,9 +635,15 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           status: string;
           cardId: string;
           node: string;
+          reason?: string;
+          summary: string;
+          output: string;
         };
         expect(result.cardId).toBe(cardId);
-        expect(result.status).toBe("done");
+        expect(result.status).toBe("failed");
+        expect(result.reason).toBe("needs_verification");
+        expect(result.summary).toContain("write hello");
+        expect(result.output).toContain("write hello");
         expect(result.node).toBe("node/wsl-1");
         break;
       }
@@ -672,6 +798,112 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           cardId,
     );
     expect(starts.length).toBe(0);
+
+    await Bun.sleep(200);
+    const matchingResults = (await tower!.listInbox()).filter((entry) =>
+      entry.handoff.attachments?.some(
+        (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
+      ),
+    );
+    expect(matchingResults).toHaveLength(1);
+  });
+
+  test("Flight-less payload_invalid dispatch issues at most one result after claim", async () => {
+    const cardId = "task_bad0000011223344";
+    await tower!.handoff({
+      to: "@node/wsl-1",
+      body: buildDispatchBody({
+        title: "invalid payload",
+        cardId,
+        node: "node/wsl-1",
+      }),
+      mode: "task",
+      attachments: [
+        serializeCardAttachment(CARD_DISPATCH_LABEL, {
+          v: CARD_CONTRACT_VERSION,
+          cardId,
+          sourceRoomId: session.roomId,
+          prompt: "",
+          agentKind: "claude",
+        }),
+      ],
+    });
+
+    let matchingResults: Awaited<ReturnType<RelayClient["listInbox"]>> = [];
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(100);
+      matchingResults = (await tower!.listInbox()).filter((entry) =>
+        entry.handoff.attachments?.some(
+          (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
+        ),
+      );
+      if (matchingResults.length > 0) break;
+    }
+    expect(matchingResults).toHaveLength(1);
+    const content = matchingResults[0]!.handoff.attachments!.find(
+      (a) => a.label === CARD_RESULT_LABEL,
+    )!.content;
+    const result = JSON.parse(content) as { status: string; reason?: string };
+    expect(result.status).toBe("failed");
+    expect(result.reason).toBe("payload_invalid");
+
+    await Bun.sleep(200);
+    const afterSettle = (await tower!.listInbox()).filter((entry) =>
+      entry.handoff.attachments?.some(
+        (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
+      ),
+    );
+    expect(afterSettle).toHaveLength(1);
+  });
+
+  test("Flight-less spawn failure issues at most one result after claim", async () => {
+    const cardId = "task_bad1111122334455";
+    // Pool path attempts one hinted start and one unhinted fallback.
+    fake.failAgentStarts(2);
+    await tower!.handoff({
+      to: "@node/wsl-1",
+      body: buildDispatchBody({
+        title: "spawn failure",
+        cardId,
+        node: "node/wsl-1",
+      }),
+      mode: "task",
+      attachments: [
+        serializeCardAttachment(CARD_DISPATCH_LABEL, {
+          v: CARD_CONTRACT_VERSION,
+          cardId,
+          sourceRoomId: session.roomId,
+          prompt: "spawn should fail",
+          agentKind: "claude",
+        }),
+      ],
+    });
+
+    let matchingResults: Awaited<ReturnType<RelayClient["listInbox"]>> = [];
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(100);
+      matchingResults = (await tower!.listInbox()).filter((entry) =>
+        entry.handoff.attachments?.some(
+          (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
+        ),
+      );
+      if (matchingResults.length > 0) break;
+    }
+    expect(matchingResults).toHaveLength(1);
+    const content = matchingResults[0]!.handoff.attachments!.find(
+      (a) => a.label === CARD_RESULT_LABEL,
+    )!.content;
+    const result = JSON.parse(content) as { status: string; reason?: string };
+    expect(result.status).toBe("failed");
+    expect(result.reason).toBe("herdr_spawn_failed");
+
+    await Bun.sleep(200);
+    const afterSettle = (await tower!.listInbox()).filter((entry) =>
+      entry.handoff.attachments?.some(
+        (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
+      ),
+    );
+    expect(afterSettle).toHaveLength(1);
   });
 
   test("fail-fast: herdr down refuses bridge start", async () => {
