@@ -14,7 +14,8 @@
 > **비가역 행동은 결정적 증거 또는 멱등 경로에서만 허용된다.**
 >
 > 본 문서의 모든 절은 이 불변식에서 유도해 쓰고, 지적-목록 땜질로 쓰지 않는다(교훈 31).
-> 좌표 표기: `:N`은 별도 표기 없으면 main HEAD(`89dd931` 시점 워킹트리)의
+> 좌표 표기: `:N`은 별도 표기 없으면 main HEAD(**`694e08c`** — 본 설계 커밋 시점. 초판이 적은
+> `89dd931`은 증거 팩 커밋이었다, R44 Low 1 정정)의
 > `packages/host/src/bridge-runtime.ts`. 브랜치 좌표는 `ec99b2c:<path>:N`으로 명시.
 > **실측**(본 설계 작성자가 코드/커밋에서 직접 확인)과 **인용**(브리프·아키텍트 재실측 승계)을
 > 구분해 표기한다.
@@ -211,8 +212,12 @@ v0.28.0: card pane은 브릿지가 닫지 않는다 (자동 pane.close 0곳 — 
 - **자동 `done` 구성 지점 5곳 제거:** `:2171 :2197 :2256 :2288 :2315`(실측). 제거 후 브릿지
   card 경로의 `status:"done"` 구성은 0곳이어야 한다(락 U1 · 브랜치 불변식 2).
 - 발행 소유권 규약 무변경: Flight-backed = lifecycle CAS(`tryAcquireFlightSideEffect` `:2058-2063`)
-  ∧ `issuer.acquire` · Flight-less 3경로(`:850 :1114 :1204` 상당 — main HEAD에서 `sendFailedResult`
-  Flight 옵션 인자 `:2627-2637`) = issuer 단독 acquire(구 락 5 R43b-2 각주 승계).
+  ∧ `issuer.acquire` · **Flight-less 3경로 = `:893`(payload_invalid) · `:1160`(agent_kind_not_allowed) ·
+  `:1250`(herdr_spawn_failed)** — 셋 다 `await sendFailedResult({` 실측(main HEAD `694e08c`).
+  `sendFailedResult`의 Flight 옵션 인자는 `:2627-2637`. = issuer 단독 acquire(구 락 5 R43b-2 각주 승계).
+  > **좌표 정정 (R44 Medium 1):** 초판은 구 문서에서 `:850 :1114 :1204`을 승계했으나 **셋 다
+  > `sendFailedResult`가 아니다**(각각 conv 라벨 비교 · pool tab `try {` · Stop hint). 구 좌표는
+  > **역사 기록으로만** 두고 구현 탐색에 쓰지 마라 — 이 트랙 3연속 reject의 1차 원인이 좌표 드리프트였다.
 
 **브랜치 인라인 issuer 폐기 절차(D3):** 브랜치 코드를 base로 쓰지 않으므로(§0.1) "제거 diff"는
 발생하지 않는다. 폐기는 두 가지로 실행된다 — (i) §5 마이그레이션이 브랜치 bridge-runtime 텍스트를
@@ -329,6 +334,14 @@ config 설명·status 도움말·`pane-cleanup.test.ts` 의미 갱신 포함).
 
 ### §4.1 원칙
 
+> **명명 규약 (R44 Medium 4 · Low 3 반영 — 문서 전역 적용).**
+> **"strict ACK 3분기"는 현행 코드 서술이다** — `SendResultOutcome`이 `accepted`/`rejected`/
+> `send_unknown` 3값을 갖는다(`:2671-2679`). **v0.28.0 목표 상태는 "2+1"이다** — 행동 분기는
+> **accepted vs 비수락 2갈래**이고, `rejected`는 삭제되지 않되 **행동을 바꾸지 않는 reason 접두**로만
+>남는다(§2.3 ①·락 U5). 따라서 "3분기를 구별한다"는 표현은 **관측 목표가 아니다** — 관측이 구별해야
+> 하는 것은 **accepted인가 아닌가** 2갈래뿐이고, 비수락 내부의 사유 구분은 quarantine `reason`
+> 문자열의 몫이다. 이하 본문에서 "3분기"가 나오면 현행 코드, "2+1"이면 목표 상태를 가리킨다.
+
 - **부정 어서션 단독 금지**(교훈 40): `pane.close` 제거 후 `closeCallsFor === closesBefore`는
   전 suite에서 자동 참이다. 각 분기는 "일어나야 할 일"의 양성 증거로 잠그고, 부정 어서션은
   보조로만 둔다.
@@ -346,17 +359,31 @@ config 설명·status 도움말·`pane-cleanup.test.ts` 의미 갱신 포함).
 
 | 분기 | 제품 측 기계 사실 (실측 좌표) | 테스트 양성 어서션 (필수) | 보조(부정 허용) |
 |---|---|---|---|
-| **accepted** | `flight.resultPhase="result_relay_accepted"` + `relayAcceptedAt`(`:2736-2740`) · relay가 payload 저장 | ① relay/tower가 `(cardId, dispatchHandoffId, seq≥1)` 각인 payload를 **정확 1건** 수신(`awaitCardResult` — `impl-0270.test.ts:768-794` ⑤의 기존 방식) ② payload가 `status="failed"`+`reason="needs_verification"`+실제 output summary 보존 ③ tower 적용 시 board `blocked` + notes `last_seq=N` ④ **pane 보존 양성**: `fake.listPaneIds()`에 paneId 잔존 | quarantine 미해소 증가 0 |
+| **accepted (a) 주입 seam 경로** — ACK 분기를 강제 주입해 **판정 로직**만 검증 | `flight.resultPhase="result_relay_accepted"` + `relayAcceptedAt`(`:2736-2740`) | ① 종결 분기 양성: 카드가 종결되고 **두 번째 result 발행 0건** ② **pane 보존 양성**: `fake.listPaneIds()`에 paneId 잔존 ③ quarantine 미해소 증가 0(양성 카운터 비교 — 진입 전후 `unresolvedCount()` 동일) | — |
+| **accepted (b) 실 relay 경로** — 실제 wire 전송으로 **도달**을 검증 | relay가 payload 저장 | ① relay/tower가 `(cardId, dispatchHandoffId, seq≥1)` 각인 payload를 **정확 1건** 수신(`awaitCardResult` — `impl-0270.test.ts:768-794` ⑤의 기존 방식) ② payload가 `status="failed"`+`reason="needs_verification"`+실제 output summary 보존 ③ tower 적용 시 board `blocked` + notes `last_seq=N` ④ pane 보존 양성 | quarantine 미해소 증가 0 |
 | **비수락(send_unknown)** | `resultPhase="send_unknown"`(`:2102`) + quarantine enter 1건(`:2105`) + 재알림 타이머 | ① quarantine JSONL에 `kind:"enter"`·`state:"send_unknown"`·해당 cardId 레코드 존재(`impl-0270.test.ts:707-732` ② 기존 방식 — ②b·③에도 동일 추가) ② `unresolvedCount() ≥ 1` ③ reason에 주입 사유 각인(`ack_…`/`transport:`/`reject:`) ④ pane 보존 양성 | relay 수신 payload ≤ 1(중복 발행 없음) |
 | **presence_unknown** [후속 C] | 진입 배선 없음 — 도달 불가(§2.5) | v0.28.0 테스트 대상 아님 — **suite에 "도달 불가" 명시 주석**(교훈 40의 역형: 존재하지 않는 경로를 스킵 블록으로 위장하지 않는다) | — |
-| **경쟁 패자(at-most-one)** | `issuer.acquire` 거부(`result-issuer.ts:46-50`) · latch(`:2361-2366`) | relay 수신 result **정확 1건**(`toHaveLength(1)` — 정확 개수, ≥/≤ 금지: `herdr-lifecycle.test.ts:366-367` 패턴 인용) | — |
+| **경쟁 패자(at-most-one)** | `issuer.acquire` 거부(`result-issuer.ts:46-50`) · latch(`:2361-2366`) | relay 수신 result **정확 1건**(`toHaveLength(1)` — 정확 개수, ≥/≤ 금지. 선례 패턴 = `herdr-lifecycle.test.ts:169`) | — |
+
+> **⚠️ 주입 seam ≠ wire 도달 (R44 Medium 2 반영 — 락 U7 부속).**
+> ACK 주입 경로는 **wire send를 하지 않고 early-return**한다 — `impl-0270.test.ts:669-671` 축자:
+> *"Injection early-returns without wire send — assert termination branch only (tower inbox reach is
+> covered by `pane-cleanup.test.ts` real-relay path)."*
+> 따라서 **주입 seam 테스트에 relay 수신 payload 어서션을 요구하면 영구 red**다. accepted 행을
+> (a)/(b)로 분리한 이유가 이것이다 — **(a)는 판정 로직, (b)는 도달.** 한 테스트에 둘을 동시
+> 요구하지 마라.
+> **이는 재발이다:** v0.27.0 구현 검증에서 아키텍트가 발견한 유닛 결함 ⓑ가 정확히
+> "①·①b가 주입 ACK(전송 우회)와 tower 도달을 동시 요구"였고, 그때 종결 분기 단언으로
+> 재작성하며 위 주석을 남겼다. 설계 층에서 같은 요구가 되살아났다 — **심을 relay로 옮기는 안은
+> 그때 이미 기각됐다**(ACK 위조 심을 신뢰 경계 안에 두는 자기모순).
 | **A4 보존 계약** | card close 호출 경로 부재 | 분기 무관 공통: 결과 종결 후 `fake.listPaneIds()`에 paneId 잔존 + (선택) `bridge status`의 보존 pane 카운트 | fake 전역 close 호출 수 불변 |
 
 ### §4.3 재기술 대상 명세 (D5 확장 — §5의 입력)
 
 | 파일:테스트 | 현재 어서션 | 재기술 |
 |---|---|---|
-| `impl-0270.test.ts` ①(:662-684) ①b(:686-705) | 양성이지만 **관측물이 close 횟수**(`closesBefore+1`) | accepted 행 ①~④로 이전 (close 관측 폐기) |
+| `impl-0270.test.ts` ①(:662-684) ①b(:686-705) | 양성이지만 **관측물이 close 횟수**(`closesBefore+1`) | **accepted (a) 주입 seam 행**으로 이전 — 종결 분기 + pane 보존 + quarantine 미증가. **relay 수신 payload를 요구하지 마라**(주입은 wire send를 우회한다 — §4.2 註). close 관측 폐기 |
+| **신설** — 실 relay accepted 도달 | (없음 — 현재 accepted 도달은 close 횟수로만 간접 관측) | **accepted (b) 행 신설**: `pane-cleanup.test.ts`의 real-relay 경로에 payload 정확 1건 + 각인 + board `blocked` 양성. (b)가 없으면 "전달됐는가"가 **어떤 테스트로도 관측되지 않는다** |
 | `impl-0270.test.ts` ②(:718) ②b(:744) ③(:761) | 부정 close + (②만) quarantine 양성 | 비수락 행 ①~④ — ②b·③에 quarantine 양성 추가 |
 | `impl-0270.test.ts` ⑤(:785-790) | payload 각인 양성 + close 1회 | payload 각인 유지 + pane 보존 양성으로 교체 |
 | 브랜치 ⑧(`ec99b2c:…pane-cleanup.test.ts:400-425`) ⑥b(:671-724) | payload 양성 + 부정 close (close-fail 주입은 no-op화) | 판정: **A4 명시 범위의 계약 교체 — 예정 범위 안**(브리프 §4-2 종결). 단 no-op 주입 제거 + pane 보존 양성 추가 |
