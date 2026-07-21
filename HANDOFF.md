@@ -18,18 +18,19 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH — 두 노선 통합 설계 완료 + R44 게이트 통과 (2026-07-21, `3cf5139`).** 조사 3건 + fable-advisor 자문 → 증거 팩(`89dd931`·정정 `75b7b11`) → **Fable 5가 통합 설계 정본 작성**(`694e08c`, 락 **U1~U11**, 오너 지시 "중요한 결정을 최상위 모델에 위임") → **R44 grok 검증 `pending-revision`**(High 0 · **자기모순 0건** — 3연속 reject 근인 재발 없음) → Medium 4·Low 2 반영(`3cf5139`). **다음 = PLAN v0.28.0.**
+> **🎯 PANE-DEATH — PLAN v0.28.0 `approved` (R45 author-close, 2026-07-21 · `08f5405`).** 통합 설계 정본(락 **U1~U11**) → **R44** grok `pending-revision`(High 0 · 자기모순 0) 반영 → **PLAN v0.28.0 작성**(`e65c5b0`) → **R45** grok `pending-revision`(High **0** · Medium 2 · Low 3 · 좌표 33건 중 1불일치) → **M1 기각**(검증자 트리 오독) · **M2 처방 정밀화**(U8 범위 무영향 실측) · Low 3 반영(`08f5405`). **다음 = PATCH 1(M1 tests-only expected-red) 착수.**
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH — PLAN v0.28.0 작성 (설계·게이트 완료, 착수 가능)**
+0. **⭐ PANE-DEATH — PATCH 1 (M1) 착수 (PLAN v0.28.0 `approved`, 게이트 완료)**
    > **불변식:** 완료는 **사람이 확정**, 브릿지는 **전달·회복만**.
 
-   **설계 정본 = `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`** (락 U1~U11) · **증거 팩 = `…UNIFICATION-BRIEF.md`** · **원장 = `docs/reviews/PANEDEATH-R44.md`**. 골격 = 브랜치 authority cut(의미론) × main HEAD(코드 기질) — merge-tree 16블록 경쟁·상보 0이라 **git 병합이 아니라 재구현**이다.
-   **할 일:** 설계를 PATCH 단위로 분해 + 잔여 Low 3건 동반 정정(R44 §5) → R{n}.
-   **구현 레인 = Claude**(grok은 R44 검증자 — 발견자≠수정자 유지). **codex 다운**(사용량 한도, 리셋 **07-25 14:27**) · `loom` CLI가 PATH에 없어 **pane 레인 불가**.
-   **⚠️ 착수 즉시 확인 1건 (R44 UNVERIFIED ⑥):** accepted **(a) 주입 seam** 행의 양성 어서션이 주입 경로에서 **실제 관측 가능한가**. 불가면 (a) 행 재설계 — **교훈 40 재범 위험 지점**이다.
-   **codex 복구 후 우선 재검증 (UNVERIFIED ⑨):** U8 ↔ R43b §4 "락 11 재론 기각" 충돌 여부 — **락 철회의 정당성이 걸린 유일한 미검증 항목**.
+   **설계 정본 = `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`** (락 U1~U11) · **PLAN = `docs/PLAN.md` v0.28.0 `approved`** · **원장 = `docs/reviews/PANEDEATH-R44.md`·`PANEDEATH-R45.md`**(둘 다 정본 — **수정 금지**).
+   **PATCH 1 (M1) = tests-only expected-red 커밋 — production 변경 0줄.** 내용 5건: ① 브릿지 `done` 구성 **0곳** 게이트 ② tower `done→blocked` fence ③ card close **3경로 pane 보존 양성**(부정 어서션 단독 금지) ④ **at-most-one 3건**(완료↔terminal · claimed 경로 · spawn 실패) ⑤ **가드 순서 고정**(§2.4 합성 순서). **⚠️ ①②③은 현행 red가 정상이고 ④⑤는 green 확인용** — 이 구분을 **커밋 메시지에 명기**하라(혼동하면 다음 단계 진단이 엉킨다).
+   **구현 레인 = Claude**(grok은 R44·R45 검증자 — 발견자≠수정자 유지) · **codex 복구 2026-07-25 14:27**.
+   **⚠️ 착수 즉시 주의 2건:** (a) **red-test 선행 규율** — 테스트와 production을 **같은 커밋에 섞지 마라**. 각 production diff는 **선행 red-test 커밋 해시**를 증거로 남긴다. (b) **이월 ⑪** — 그 규율의 **전 PATCH 경계 판정이 R45에서 이뤄지지 않았다**(미확인).
+   **codex 복구 후 최우선 = 이월 ⑨**(U8 ↔ R43b §4 축자 대조). **단 v0.28.0 착수를 막지 않는다** — U8은 PATCH 락 목록·게이트 **어디에도 없어 코드 표면 영향 0**이고, ⑨는 **후속 C의 선결 조건**이다.
+   **PATCH 3 ⑤ 착수 시 확인 = 이월 ④** — quarantine `process_exit` fold의 **원 구현 의도**. 그 정정이 이 해석 위에 서 있어, **해석이 틀리면 PATCH 3 ⑤가 무근**이 된다.
 
 1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 2회에 **실패 집합 상이**(`conv R28 L-1`·`still-running ②`), 둘 다 **단독은 green**. 비결정성 확정(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개**(펼쳐보기).
@@ -60,8 +61,15 @@
 - (4) **`.loom-impl-0270-brief.md`**: 삭제 vs `docs/` 보존 미정. 보존 시 §2(room.ts 무변경) ↔ §4.6 D2(주입 지점) 문면이 아키텍트에게 **"스펙 모순" 오독**을 유발한 경위를 함께 남길 것 — 실제로는 모순이 아니라 **모호성**이었다(fable-advisor 판정: §2 잠금 심볼에 `routeHandoff` 없음 · "기본 경로 무변경"은 비활성 심 허용 독해 가능).
 - (4) **session-context 예산 — 규정 완화 적용 (오너 지시 2026-07-21 "당분간 기존 규정 150%까지 허용")**: `SOFT_CAP` **8500 → 12750** 적용(`scripts/session-context.ts:21-40`). 압축 압력이 해소돼 **HANDOFF·lessons를 예산 때문에 깎지 않는다**.
   **⚠️ 단 `HARD_CAP`(9500)은 올리지 않았다 — 정책 노브가 아니라 플랫폼 제약이다.** Claude Code SessionStart hook은 stdout을 **10,000자에서 조용히 자른다**(lessons platform (18), 공식 문서 대조). 9500 초과분은 우리 스크립트가 자르며 `…[truncated N chars]` 마커를 붙이는데, 14250까지 올리면 그 마커 없이 **플랫폼이 무경고로 자른다** — 통제되던 절단이 통제 불가로 바뀐다.
-  **현황:** RAW 9776 → **HARD_CAP 초과 276, 런타임 절단은 계속 진행 중**(tail = workers 교훈 끝). **SOFT_CAP 상향은 "커밋을 막지 않는다"는 뜻이지 "내용이 다 주입된다"는 뜻이 아니다.**
-  **→ 실제로 예산을 늘리는 유일한 방법 = hook 분할.** 각 hook이 10,000 캡을 **따로** 받는다(현재 state·lessons 2분할이 정확히 그 이유). lessons를 2개로 쪼개면 실효 예산이 ~19,000이 된다. **미착수 — 다음 세션 후보.**
+  **⚠️ 현황 정정 (2026-07-21 실측 — 종전 서술은 틀렸다):** **런타임 절단은 일어나지 않고 있다.**
+  종전 *"RAW 9776 → HARD_CAP 초과 276, 절단 진행 중"*은 **`buildAllContext()` 수치를 파트별 캡과 비교한 오류**다.
+  `.claude/settings.json:20,25`가 SessionStart에 **`--part state`와 `--part lessons` 두 커맨드를 따로** 걸고,
+  `truncateContext`는 **파트별로** 적용된다(`session-context.ts:202` — `truncateContext(buildRaw(part))`).
+  **실측(교훈 (47)(48)(49) 추가 후): state 4363(마진 5137) · lessons 6958(마진 2542) — 둘 다 캡 이하.**
+  `buildAllContext()` 11327은 **어느 훅도 호출하지 않는 경로**이므로 예산 신호가 아니다.
+  **→ 판정에 쓸 수치는 `--part` 별 길이이지 `buildAllContext()`가 아니다.**
+  **→ hook 분할은 이미 적용돼 있다**(state·lessons 2분할 = 실효 예산 ~19,000). lessons를 더 쪼개는 안은
+  마진 2542가 남아 있어 **현재 불요**. cross-ref 교훈 (43)(50).
   *(구조 진단: `stripDetailsBlocks`가 HANDOFF·lessons 양쪽에 적용되므로 `<details>` 안 내용은 예산 미포함 — 아키텍트가 lessons의 21KB 경위 블록을 "중복 잔재"로 오진해 삭제할 뻔했다. `scripts/session-context.ts:145,168`)*
 - (4) **(구) session-context 예산 초과 경위**: `bun run session-context:lint` FAIL. **주의 — lint의 숫자는 절단 후 상수라 실제 초과분을 감춘다.** 실측은 `bun -e 'import {buildAllContext} from "./scripts/session-context.ts"; console.log(buildAllContext().length)'`. 2026-07-21 기준 원본 9628 > HARD_CAP 9500 → **매 세션 주입에서 tail(=workers 교훈)이 조용히 절단 중**이었고, 교훈 (40)~(43) 추가가 breach를 유발했다. 자체 압축으로 하드캡 이하 복귀. **SOFT_CAP 8500 복귀는 기존 내용 정리가 필요 = 오너 결정 사안.** cross-ref 교훈 (42).
 
@@ -72,7 +80,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH — 통합 설계 정본 + R44 통과 (2026-07-21, `3cf5139`).** **완료는 사람이 확정, 브릿지는 전달·회복만.** Fable 5 설계(락 U1~U11) · R44 grok `pending-revision`(High 0 · 자기모순 0) · Medium 4 반영 완료. **다음 = PLAN v0.28.0** — 구현 레인 Claude, codex 다운(07-25 복구).
+> **🎯 PANE-DEATH — PLAN v0.28.0 `approved` (R45 author-close, 2026-07-21 · `08f5405`).** **완료는 사람이 확정, 브릿지는 전달·회복만.** 설계 정본 락 U1~U11 · R44·R45 원장 2본 · M1 기각(트리 오독)·M2 범위 실측. **다음 = PATCH 1 (M1) tests-only expected-red** — 구현 레인 Claude, codex 복구 07-25 14:27.
 
 ---
 
@@ -146,8 +154,8 @@ herdr status   # LOOM_HERDR_SOCKET overrides socket path (tests/fake)
 | Item | Value |
 |------|--------|
 | **CLI / code** | **0.26.1 shipped** (소스 `47fc81c` · dist `66e0ba1` · push 완료) — dispatch 마커 오표기 교정 + `DISPATCHED_TASK_MARKER`/`wrapDispatchedPrompt` 개명. 직전 **0.26.0** hooks 센서(`0de6c4c` · dist `e1d9177`) |
-| **PLAN** | **v0.27.0 `approved`** (R43e approve, 2026-07-21 — 4차 반영본을 R43e codex 단일 레인이 검증: 1차 pending-revision(Low 1=D8 북키핑) → `cabcb48` 정정 → 마이크로 재확인 **approve**. 5라운드 수렴 R43 High6→R43b High4→R43c High0→R43d reject(7/9)→R43e approve. 원장 `docs/reviews/PANEDEATH-R43E.md`. 코드 무변경). 직전 **v0.26.1** `approved`(R42 author-close) → 구현·dist·push 완료 |
-| **Open blocking** | **없음** — v0.27.0 `approved`(R43e), R43d 잔여 3건 전부 resolved. 다음 = v0.27.0 **구현 웨이브**(코드 착수). R24–R43e closed · GitHub Issues 전부 closed |
+| **PLAN** | **v0.28.0 `approved`** (R45 author-close, 2026-07-21 — grok 레인 `pending-revision`(High 0 · Medium 2 · Low 3) → **M1 기각**(검증자가 브랜치 좌표를 main 트리로 대조한 오판 · 접두 누락은 Low로 재분류해 반영) · **M2 처방 정밀화**(U8 provisional 강등 대신 **범위 명시** — PATCH 락 목록·G-1~G-11 어디에도 U8 없음 실측) · Low 3 반영. 원장 `docs/reviews/PANEDEATH-R45.md`. 코드 무변경). 직전 **v0.27.0 `approved`** (R43e approve, 2026-07-21 — 4차 반영본을 R43e codex 단일 레인이 검증: 1차 pending-revision(Low 1=D8 북키핑) → `cabcb48` 정정 → 마이크로 재확인 **approve**. 5라운드 수렴 R43 High6→R43b High4→R43c High0→R43d reject(7/9)→R43e approve. 원장 `docs/reviews/PANEDEATH-R43E.md`. 코드 무변경). 직전 **v0.26.1** `approved`(R42 author-close) → 구현·dist·push 완료 |
+| **Open blocking** | **없음** — v0.28.0 `approved`(R45), R45 Medium 2·Low 3 전부 처리(M1 기각·M2 범위 명시). 다음 = **PATCH 1 (M1) tests-only expected-red**. R24–R45 closed · GitHub Issues 전부 closed. 이월 미확인 = **⑨**(U8↔R43b §4 · codex 복구 후 · **착수 비차단**) · **⑪**(red-test 선행 규율의 전 PATCH 경계 판정) · **④**(quarantine `process_exit` fold 원 의도 · PATCH 3 ⑤ 선결) |
 | **Tests** | 전체 **662개** — 재실행 시 실패 0건(1회차 1 fail = 등재된 통합 flake) · hook-sensor 37/37 · typecheck 6/6 |
 | **Verify** | VERIFY-0260 codex pane done — M-1·M-2·L-1..L-3·wire-lock PASS · D6(b)만 FAIL → FIX-0260b로 해소 |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · Conv spec `docs/CONV_SPEC.md` · hooks 정본 `docs/spikes/HOOKS-SENSOR-SPIKE.md` |

@@ -95,3 +95,31 @@ cross-ref: bridge-ops (21)(22)·verification (25)(26)·orchestration (27).
    워킹트리에서 독립 검증해야 확정된다"*가 여기에도 그대로 적용된다.
 
 cross-ref: bridge-ops (21) `card.done` ≠ 완료.
+
+## 2026-07-21 (48) — grok 헤드리스 read-only 구동은 allowlist가 아니라 샌드박스다
+
+**실증 (R44 → R45):** R44 원장이 *"읽기 전용 커맨드 allowlist를 세션 스코프로 부여해야 뜬다"* 를
+재현 절차로 남겼는데 **R45에서 그 처방이 틀렸음이 밝혀졌다.**
+
+4회 실패 후 확정된 근인(debug 로그 축자):
+
+```
+permission policy: ask rule matched, prompting user tool="run_terminal_command" source="policy"
+→ cancellationCategory: "PermissionCancelled"
+```
+
+즉 전역 `~/.claude/settings.json`의 `"defaultMode": "auto"` 를 grok이 **상속**해
+**LLM 권한 분류기**를 띄우고, 분류기가 미인식한 커맨드는 "ask"를 반환하는데
+**헤드리스는 프롬프트를 못 띄워 런 전체가 중단**된다. **allowlist를 아무리 넓혀도
+분류기 레이어를 못 넘는다.**
+
+**작동 구성 = `--permission-mode dontAsk --sandbox read-only`.**
+샌드박스는 실증 검증됐다 — 쓰기 시도가 `IO Error: Operation not permitted (os error 1)` 로
+실패하고 `git status` 불변. **allowlist보다 강하다: 커널 강제라 셸 리다이렉션(`echo x > f`)도
+못 뚫는다**(prefix 규칙은 뚫린다).
+
+**규칙:**
+1. read-only 검증 레인의 표준 배치는 **샌드박스**다.
+2. **원장에 남긴 재현 절차도 다음 라운드의 검증 대상이다** — R44 처방을 그대로 믿고 4회를 태웠다.
+
+cross-ref: orchestration (46)·verification (33).

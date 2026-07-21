@@ -266,6 +266,12 @@
 
 - [verification] 2026-07-21 (45) **diff 방향이 인과를 뒤집는다** — A→B diff에서 A의 신규 파일은 "삭제"로 보인다. "롤백했다" 주장 전 계보 확정: `merge-base`+parent, 삭제는 `--diff-filter=D`.
 
+- [verification] 2026-07-21 (47) **좌표에 트리 식별자를 붙여라** — 병존 브랜치 트랙에선 `ec99b2c:` 접두가 의무. 검증자의 좌표 지적은 **그가 어느 트리를 봤는지 먼저 확인**.
+
+- [verification] 2026-07-21 (49) **검증자 처방을 축자 반영하지 마라** — 지적의 타당성 ≠ 처방의 적합성. 락을 흔드는 처방은 **그 락이 이번 범위에 하중을 받는지 먼저 세어라**.
+
+- [verification] 2026-07-21 (50) **측정 경로 ≠ 실행 경로면 그 수치는 신호가 아니다** — `buildAllContext()`로 재고 파트별 캡과 비교해 없는 절단을 보고·이미 된 hook 분할을 "미착수"로 넘김. 캡은 적용 단위와 함께 인용.
+
 ## platform — Windows·WSL·경로 sep·크로스플랫폼 배포
 
 - [platform] 2026-07-19 (13) 경로 sep 하드코딩 금지(`node:path` `sep`). 신규 플랫폼 첫 배포는 라이브 스모크 필수.
@@ -336,3 +342,5 @@
 - [workers] 2026-07-20 (29) pane 레인 반복 실패 시 DOGFOOD_LOOP §1.2로 in-harness 하강.
 
 - [workers] 2026-07-21 (35) idle 통지 ≠ 실패 — nudge 1회 표준, 회신 전 워킹트리·`git diff --stat`으로 산출물 먼저 확인.
+
+- [workers] 2026-07-21 (48) **grok 헤드리스 read-only = 샌드박스** — `--permission-mode dontAsk --sandbox read-only`. allowlist는 분류기 레이어를 못 넘는다. 원장의 재현 절차도 검증 대상.

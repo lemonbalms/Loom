@@ -14,6 +14,8 @@
 - **claude-mem 패치 비영속**(`autoUpdate` 원복) — 방어선 `check:mem-header`, 재적용 lessons platform.
 - **pane 레인 4개 중 3개 사망**(장기 카드) — **in-harness 폴백 우선**(`DOGFOOD_LOOP §1.2`).
 - **`fake-herdr.ts:565` status는 underscore만, 실서버는 dotted** — 픽스처 갭(제품은 양쪽 수용).
+- **좌표는 트리를 명시한다** — 브랜치 좌표엔 `ec99b2c:` 접두 필수. 접두 없는 브랜치 좌표를 main으로 대조하면 **옳은 것이 틀린 것으로 보인다**(R45 M1 실증).
+- **grok 헤드리스 read-only = `--permission-mode dontAsk --sandbox read-only`** — allowlist로는 안 된다(R44 처방 오류, R45 정정).
 
 ## 하지 말 것
 
