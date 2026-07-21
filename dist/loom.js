@@ -5433,12 +5433,12 @@ var init_session_store = __esm(() => {
 
 // packages/relay/src/persist.ts
 import {
-  existsSync as existsSync16,
-  mkdirSync as mkdirSync15,
-  readFileSync as readFileSync10,
+  existsSync as existsSync17,
+  mkdirSync as mkdirSync16,
+  readFileSync as readFileSync11,
   writeFileSync as writeFileSync14,
   renameSync as renameSync3,
-  chmodSync as chmodSync8,
+  chmodSync as chmodSync9,
   copyFileSync as copyFileSync2,
   readdirSync as readdirSync2,
   statSync as statSync4,
@@ -5447,15 +5447,15 @@ import {
   unlinkSync as unlinkSync4,
   rmSync as rmSync3
 } from "fs";
-import { join as join18, dirname as dirname5, basename as basename3, resolve as resolve3, sep as sep2 } from "path";
+import { join as join19, dirname as dirname6, basename as basename3, resolve as resolve3, sep as sep2 } from "path";
 import { createHash as createHash4 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
-  return join18(homedir5(), ".loom", "relay-state");
+  return join19(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
   const h = createHash4("sha256").update(roomId).digest("hex").slice(0, 16);
-  return join18(stateDir2, `${h}.json`);
+  return join19(stateDir2, `${h}.json`);
 }
 function isPidAlive3(pid) {
   if (!Number.isFinite(pid) || pid <= 0)
@@ -5468,17 +5468,17 @@ function isPidAlive3(pid) {
   }
 }
 function processLockDir(stateDir2) {
-  return join18(stateDir2, ".relay-writer.lock");
+  return join19(stateDir2, ".relay-writer.lock");
 }
 function lockPidPath2(lockDir) {
-  return join18(lockDir, "owner.pid");
+  return join19(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
-  mkdirSync15(stateDir2, { recursive: true });
+  mkdirSync16(stateDir2, { recursive: true });
   const lockDir = processLockDir(stateDir2);
   const tryAcquire = () => {
     try {
-      mkdirSync15(lockDir);
+      mkdirSync16(lockDir);
     } catch {
       return false;
     }
@@ -5502,7 +5502,7 @@ function acquireStateDirLock(stateDir2) {
     const age = Date.now() - statSync4(lockDir).mtimeMs;
     let owner = null;
     try {
-      const raw = readFileSync10(lockPidPath2(lockDir), "utf8").trim();
+      const raw = readFileSync11(lockPidPath2(lockDir), "utf8").trim();
       const n = Number(raw);
       owner = Number.isFinite(n) ? n : null;
     } catch {
@@ -5526,10 +5526,10 @@ function acquireStateDirLock(stateDir2) {
 }
 function releaseStateDirLock(stateDir2) {
   const lockDir = processLockDir(stateDir2);
-  if (!existsSync16(lockDir))
+  if (!existsSync17(lockDir))
     return;
   try {
-    const raw = readFileSync10(lockPidPath2(lockDir), "utf8").trim();
+    const raw = readFileSync11(lockPidPath2(lockDir), "utf8").trim();
     const owner = Number(raw);
     if (Number.isFinite(owner) && owner !== process.pid)
       return;
@@ -5539,8 +5539,8 @@ function releaseStateDirLock(stateDir2) {
   } catch {}
 }
 function writeAtomicJson2(filePath, data) {
-  const parent = dirname5(resolve3(filePath));
-  mkdirSync15(parent, { recursive: true });
+  const parent = dirname6(resolve3(filePath));
+  mkdirSync16(parent, { recursive: true });
   let realParent;
   try {
     realParent = realpathSync2(parent);
@@ -5551,7 +5551,7 @@ function writeAtomicJson2(filePath, data) {
   if (!base || base === "." || base === "..") {
     throw new Error(`Invalid snapshot basename: ${filePath}`);
   }
-  const finalPath = join18(realParent, base);
+  const finalPath = join19(realParent, base);
   try {
     const st = lstatSync(finalPath);
     if (st.isSymbolicLink()) {
@@ -5566,29 +5566,29 @@ function writeAtomicJson2(filePath, data) {
         throw e;
     }
   }
-  const tmp = join18(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
+  const tmp = join19(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
   try {
     writeFileSync14(tmp, body, { encoding: "utf8", mode: 384 });
     renameSync3(tmp, finalPath);
     try {
-      chmodSync8(finalPath, 384);
+      chmodSync9(finalPath, 384);
     } catch {}
   } catch (e) {
     try {
-      if (existsSync16(tmp))
+      if (existsSync17(tmp))
         unlinkSync4(tmp);
     } catch {}
     throw e;
   }
 }
 function readJsonFile2(filePath) {
-  if (!existsSync16(filePath))
+  if (!existsSync17(filePath))
     return null;
   let raw;
   try {
-    raw = readFileSync10(filePath, "utf8");
+    raw = readFileSync11(filePath, "utf8");
   } catch (e) {
     throw new Error(`Failed to read ${filePath}: ${e instanceof Error ? e.message : e}`);
   }
@@ -5670,7 +5670,7 @@ function parseRoomSnapshot(raw) {
 function loadAllSnapshots(stateDir2) {
   const snapshots = [];
   const errors2 = [];
-  if (!existsSync16(stateDir2))
+  if (!existsSync17(stateDir2))
     return { snapshots, errors: errors2 };
   let names;
   try {
@@ -5682,7 +5682,7 @@ function loadAllSnapshots(stateDir2) {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith("."))
       continue;
-    const path = join18(stateDir2, name);
+    const path = join19(stateDir2, name);
     try {
       const st = statSync4(path);
       if (!st.isFile())
@@ -5707,7 +5707,7 @@ function loadAllSnapshots(stateDir2) {
   return { snapshots, errors: errors2 };
 }
 function saveRoomSnapshot(stateDir2, snap) {
-  mkdirSync15(stateDir2, { recursive: true });
+  mkdirSync16(stateDir2, { recursive: true });
   let realState;
   try {
     realState = realpathSync2(stateDir2);
@@ -6732,7 +6732,7 @@ init_session_store();
 
 // packages/host/src/relay-client.ts
 init_src();
-
+var __ackInjector = null;
 class RelayClient {
   ws = null;
   opts;
@@ -6966,6 +6966,26 @@ class RelayClient {
     }, (e) => e.type === "room.state" || e.type === "error");
   }
   async handoff(partial) {
+    const inj = __ackInjector?.() ?? null;
+    if (inj) {
+      if (inj.kind === "throw") {
+        throw new Error(inj.message ?? "injected transport error");
+      }
+      const ack = {
+        type: "handoff.ack",
+        v: PROTOCOL_VERSION,
+        roomId: this.roomId ?? "injected",
+        ts: new Date().toISOString(),
+        handoffId: inj.handoffId ?? `ho_inj_${Date.now().toString(16)}`,
+        to: inj.to ?? partial.to,
+        status: inj.status,
+        notified: inj.notified ?? inj.status === "delivered",
+        recipientCount: inj.recipientCount,
+        ...inj.message !== undefined ? { message: inj.message } : {}
+      };
+      this.lastHandoffAck = ack;
+      return ack;
+    }
     await this.connect();
     this.lastHandoffAck = null;
     const env2 = await this.requestOnce({
@@ -9768,6 +9788,358 @@ var MAX_WORKER_ARTIFACT_BYTES = 10 * 1024 * 1024;
 
 // packages/host/src/bridge-runtime.ts
 init_session_store();
+
+// packages/host/src/result-issuer.ts
+function issuerKey(cardId, dispatchHandoffId) {
+  if (cardId === "task_0")
+    return `ho:${dispatchHandoffId}`;
+  return `${cardId}\x00${dispatchHandoffId}`;
+}
+function createResultIssuer(cardId, dispatchHandoffId) {
+  const acquired = new Set;
+  let seq = 0;
+  return {
+    cardId,
+    dispatchHandoffId,
+    get seq() {
+      return seq;
+    },
+    set seq(v) {
+      seq = v;
+    },
+    acquired,
+    acquire(kind) {
+      if (acquired.has(kind))
+        return false;
+      acquired.add(kind);
+      return true;
+    },
+    nextSeq() {
+      seq += 1;
+      return seq;
+    },
+    currentSeq() {
+      return seq;
+    }
+  };
+}
+
+class ResultIssuerRegistry {
+  map = new Map;
+  getOrCreate(cardId, dispatchHandoffId) {
+    const key = issuerKey(cardId, dispatchHandoffId);
+    let issuer = this.map.get(key);
+    if (!issuer) {
+      issuer = createResultIssuer(cardId, dispatchHandoffId);
+      this.map.set(key, issuer);
+    }
+    return issuer;
+  }
+  get(cardId, dispatchHandoffId) {
+    return this.map.get(issuerKey(cardId, dispatchHandoffId));
+  }
+  clear() {
+    this.map.clear();
+  }
+  size() {
+    return this.map.size;
+  }
+}
+
+// packages/host/src/result-quarantine.ts
+init_session_store();
+import {
+  existsSync as existsSync13,
+  mkdirSync as mkdirSync8,
+  openSync as openSync3,
+  closeSync as closeSync3,
+  writeSync,
+  fsyncSync,
+  readFileSync as readFileSync7,
+  chmodSync as chmodSync7,
+  appendFileSync
+} from "fs";
+import { dirname as dirname3, join as join12 } from "path";
+var appendFailCount = 0;
+var tornLineCount = 0;
+function quarantinePath(profile) {
+  const safe = profile.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
+  return join12(loomDir(), "bridge", `${safe}-quarantine.jsonl`);
+}
+function keyId(cardId, dispatchHandoffId, key) {
+  if (key.tag === "presence") {
+    return `${cardId}\x00${dispatchHandoffId}\x00presence`;
+  }
+  return `${cardId}\x00${dispatchHandoffId}\x00seq:${key.seq}`;
+}
+function parseRecord(line) {
+  try {
+    const o = JSON.parse(line);
+    if (!o || typeof o !== "object")
+      return null;
+    if (!o.cardId || !o.dispatchHandoffId || !o.state || !o.key)
+      return null;
+    if (o.key.tag !== "seq" && o.key.tag !== "presence")
+      return null;
+    if (o.key.tag === "seq" && typeof o.key.seq !== "number")
+      return null;
+    return o;
+  } catch {
+    return null;
+  }
+}
+function foldQuarantineLines(lines, onTorn) {
+  const open = new Map;
+  for (let i = 0;i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim())
+      continue;
+    const rec = parseRecord(line);
+    if (!rec) {
+      if (i === lines.length - 1) {
+        tornLineCount += 1;
+        onTorn?.(line);
+        console.error("[loom-bridge] quarantine torn last line (counted, not dropped silently)", JSON.stringify({ event: "quarantine_torn_line", count: tornLineCount }));
+      }
+      continue;
+    }
+    const id = keyId(rec.cardId, rec.dispatchHandoffId, rec.key);
+    if (rec.kind === "enter") {
+      open.set(id, {
+        cardId: rec.cardId,
+        dispatchHandoffId: rec.dispatchHandoffId,
+        state: rec.state,
+        key: rec.key,
+        enteredAt: rec.at,
+        reason: rec.reason,
+        reEscalateCount: 0
+      });
+    } else if (rec.kind === "ack" || rec.kind === "auto_resolve" || rec.kind === "process_exit") {
+      open.delete(id);
+    } else if (rec.kind === "re_escalate") {
+      const cur = open.get(id);
+      if (cur)
+        cur.reEscalateCount += 1;
+    }
+  }
+  return open;
+}
+
+class QuarantineStore {
+  profile;
+  path;
+  unresolved = new Map;
+  reEscalateTimers = new Map;
+  reEscalateMs;
+  constructor(opts) {
+    this.profile = opts.profile;
+    this.path = quarantinePath(opts.profile);
+    this.reEscalateMs = opts.reEscalateMs ?? 10 * 60 * 1000;
+  }
+  load() {
+    if (!existsSync13(this.path)) {
+      this.unresolved = new Map;
+      return 0;
+    }
+    let raw;
+    try {
+      raw = readFileSync7(this.path, "utf8");
+    } catch (e) {
+      appendFailCount += 1;
+      console.error("[loom-bridge] quarantine load failed", e instanceof Error ? e.message : e);
+      this.unresolved = new Map;
+      return 0;
+    }
+    const lines = raw.split(/\n/);
+    this.unresolved = foldQuarantineLines(lines);
+    return this.unresolved.size;
+  }
+  unresolvedCount() {
+    return this.unresolved.size;
+  }
+  listUnresolved() {
+    return [...this.unresolved.values()];
+  }
+  append(rec) {
+    try {
+      mkdirSync8(dirname3(this.path), { recursive: true });
+      const line = `${JSON.stringify(rec)}
+`;
+      const fd = openSync3(this.path, "a", 384);
+      try {
+        writeSync(fd, line);
+        fsyncSync(fd);
+      } finally {
+        closeSync3(fd);
+      }
+      try {
+        chmodSync7(this.path, 384);
+      } catch {}
+      return true;
+    } catch (e) {
+      appendFailCount += 1;
+      console.error("[loom-bridge] quarantine append/fsync failed (fail-visible)", JSON.stringify({
+        event: "quarantine_append_fail",
+        count: appendFailCount,
+        err: e instanceof Error ? e.message : String(e)
+      }));
+      return false;
+    }
+  }
+  enter(args) {
+    const id = keyId(args.cardId, args.dispatchHandoffId, args.key);
+    if (this.unresolved.has(id))
+      return true;
+    const at = new Date().toISOString();
+    const ok = this.append({
+      kind: "enter",
+      cardId: args.cardId,
+      dispatchHandoffId: args.dispatchHandoffId,
+      state: args.state,
+      key: args.key,
+      at,
+      reason: args.reason,
+      counter: this.unresolved.size + 1
+    });
+    if (!ok)
+      return false;
+    this.unresolved.set(id, {
+      cardId: args.cardId,
+      dispatchHandoffId: args.dispatchHandoffId,
+      state: args.state,
+      key: args.key,
+      enteredAt: at,
+      reason: args.reason,
+      reEscalateCount: 0
+    });
+    this.scheduleReEscalate(id);
+    return true;
+  }
+  scheduleReEscalate(id) {
+    if (this.reEscalateTimers.has(id))
+      return;
+    const t = setTimeout(() => {
+      this.reEscalateTimers.delete(id);
+      const cur = this.unresolved.get(id);
+      if (!cur)
+        return;
+      cur.reEscalateCount += 1;
+      this.append({
+        kind: "re_escalate",
+        cardId: cur.cardId,
+        dispatchHandoffId: cur.dispatchHandoffId,
+        state: cur.state,
+        key: cur.key,
+        at: new Date().toISOString(),
+        reason: "timer_re_escalate",
+        counter: cur.reEscalateCount
+      });
+      console.error("[loom-bridge] quarantine re-escalate (timer; no dispose)", JSON.stringify({
+        event: "quarantine_re_escalate",
+        cardId: cur.cardId,
+        dispatchHandoffId: cur.dispatchHandoffId,
+        state: cur.state,
+        count: cur.reEscalateCount
+      }));
+      this.scheduleReEscalate(id);
+    }, this.reEscalateMs);
+    if (typeof t === "object" && t && "unref" in t) {
+      t.unref?.();
+    }
+    this.reEscalateTimers.set(id, t);
+  }
+  ack(args) {
+    const id = keyId(args.cardId, args.dispatchHandoffId, args.key);
+    const cur = this.unresolved.get(id);
+    if (!cur)
+      return false;
+    const ok = this.append({
+      kind: "ack",
+      cardId: args.cardId,
+      dispatchHandoffId: args.dispatchHandoffId,
+      state: cur.state,
+      key: args.key,
+      at: new Date().toISOString(),
+      reason: "operator_ack"
+    });
+    if (!ok)
+      return false;
+    this.clearTimer(id);
+    this.unresolved.delete(id);
+    return true;
+  }
+  autoResolve(args) {
+    const id = keyId(args.cardId, args.dispatchHandoffId, args.key);
+    const cur = this.unresolved.get(id);
+    if (!cur)
+      return false;
+    const ok = this.append({
+      kind: "auto_resolve",
+      cardId: args.cardId,
+      dispatchHandoffId: args.dispatchHandoffId,
+      state: cur.state,
+      key: args.key,
+      at: new Date().toISOString(),
+      reason: args.reason
+    });
+    if (!ok)
+      return false;
+    this.clearTimer(id);
+    this.unresolved.delete(id);
+    return true;
+  }
+  supersedePresence(args) {
+    this.autoResolve({
+      cardId: args.cardId,
+      dispatchHandoffId: args.dispatchHandoffId,
+      key: { tag: "presence" },
+      reason: "presence_superseded_by_seq"
+    });
+  }
+  onProcessExit() {
+    const n = this.unresolved.size;
+    if (n === 0)
+      return;
+    console.error("[loom-bridge] quarantine unresolved at process exit", JSON.stringify({
+      event: "quarantine_process_exit",
+      count: n,
+      items: this.listUnresolved().map((u) => ({
+        cardId: u.cardId,
+        dispatchHandoffId: u.dispatchHandoffId,
+        state: u.state
+      }))
+    }));
+    for (const u of this.listUnresolved()) {
+      this.append({
+        kind: "process_exit",
+        cardId: u.cardId,
+        dispatchHandoffId: u.dispatchHandoffId,
+        state: u.state,
+        key: u.key,
+        at: new Date().toISOString(),
+        reason: "process_exit",
+        counter: n
+      });
+    }
+    for (const id of [...this.reEscalateTimers.keys()]) {
+      this.clearTimer(id);
+    }
+  }
+  clearTimer(id) {
+    const t = this.reEscalateTimers.get(id);
+    if (t != null) {
+      clearTimeout(t);
+      this.reEscalateTimers.delete(id);
+    }
+  }
+  disposeTimers() {
+    for (const id of [...this.reEscalateTimers.keys()]) {
+      this.clearTimer(id);
+    }
+  }
+}
+
+// packages/host/src/bridge-runtime.ts
 init_src();
 init_session_store();
 var STILL_RUNNING_MAX_MS = 5 * 60000;
@@ -9784,13 +10156,13 @@ init_src();
 // packages/host/src/conv-node-hosts.ts
 init_session_store();
 import {
-  existsSync as existsSync13,
-  mkdirSync as mkdirSync8,
-  chmodSync as chmodSync7,
+  existsSync as existsSync14,
+  mkdirSync as mkdirSync9,
+  chmodSync as chmodSync8,
   writeFileSync as writeFileSync7,
-  readFileSync as readFileSync7
+  readFileSync as readFileSync8
 } from "fs";
-import { join as join12 } from "path";
+import { join as join13 } from "path";
 var CONV_NODE_PEER_ID_RE = /^p_[a-f0-9]{16}$/;
 var CONV_NODE_HOST_RE = /^[A-Za-z0-9._@-]+$/;
 function validateConvNodePeerId(peerId) {
@@ -9819,14 +10191,14 @@ function isWellFormedConvNodeMapping(peerId, host) {
   return validateConvNodePeerId(peerId) === null && validateConvNodeHost(host) === null;
 }
 function convNodeHostsPath() {
-  return join12(loomDir(), "conv-node-hosts.json");
+  return join13(loomDir(), "conv-node-hosts.json");
 }
 function loadConvNodeHosts() {
   const p = convNodeHostsPath();
-  if (!existsSync13(p))
+  if (!existsSync14(p))
     return {};
   try {
-    const raw = JSON.parse(readFileSync7(p, "utf8"));
+    const raw = JSON.parse(readFileSync8(p, "utf8"));
     if (!raw || typeof raw !== "object")
       return {};
     const out = {};
@@ -9841,7 +10213,7 @@ function loadConvNodeHosts() {
 }
 function saveConvNodeHosts(cfg) {
   ensureFableDir();
-  mkdirSync8(loomDir(), { recursive: true });
+  mkdirSync9(loomDir(), { recursive: true });
   const p = convNodeHostsPath();
   writeFileSync7(p, `${JSON.stringify(cfg, null, 2)}
 `, {
@@ -9849,7 +10221,7 @@ function saveConvNodeHosts(cfg) {
     mode: 384
   });
   try {
-    chmodSync7(p, 384);
+    chmodSync8(p, 384);
   } catch {}
 }
 function setConvNodeHost(peerId, host) {
@@ -9924,8 +10296,8 @@ function loomSystemHint(agentLabel) {
 }
 
 // packages/adapters/src/claude.ts
-import { mkdirSync as mkdirSync9, writeFileSync as writeFileSync8 } from "fs";
-import { join as join13 } from "path";
+import { mkdirSync as mkdirSync10, writeFileSync as writeFileSync8 } from "fs";
+import { join as join14 } from "path";
 var claudeAdapter = {
   id: "claude",
   label: "Claude Code",
@@ -9960,9 +10332,9 @@ var claudeAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const dir = join13(opts.cwd, ".loom");
-    mkdirSync9(dir, { recursive: true });
-    const path = join13(dir, "claude.mcp.json");
+    const dir = join14(opts.cwd, ".loom");
+    mkdirSync10(dir, { recursive: true });
+    const path = join14(dir, "claude.mcp.json");
     const config = {
       mcpServers: {
         loom: {
@@ -9982,8 +10354,8 @@ var claudeAdapter = {
 };
 
 // packages/adapters/src/user-mcp-config.ts
-import { existsSync as existsSync14, mkdirSync as mkdirSync10, readFileSync as readFileSync8, writeFileSync as writeFileSync9 } from "fs";
-import { dirname as dirname3 } from "path";
+import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync9, writeFileSync as writeFileSync9 } from "fs";
+import { dirname as dirname4 } from "path";
 var LOOM_BEGIN = "# --- Loom multiplayer (managed) BEGIN ---";
 var LOOM_END = "# --- Loom multiplayer (managed) END ---";
 var FABLE_BEGIN = "# --- Fable multiplayer (managed) BEGIN ---";
@@ -10085,10 +10457,10 @@ function stripAllLoomMcpSections(existing) {
 }
 function upsertUserMcpConfig(opts) {
   const { configPath, block } = opts;
-  mkdirSync10(dirname3(configPath), { recursive: true });
+  mkdirSync11(dirname4(configPath), { recursive: true });
   let existing = "";
-  if (existsSync14(configPath)) {
-    existing = readFileSync8(configPath, "utf8");
+  if (existsSync15(configPath)) {
+    existing = readFileSync9(configPath, "utf8");
   }
   const hadLegacy = existing.includes("[mcp_servers.fable]") || existing.includes("[mcp_servers.loom]") || existing.includes(FABLE_BEGIN) || existing.includes(LOOM_BEGIN) || /Fable multiplayer/i.test(existing) || /Loom multiplayer/i.test(existing);
   const base = stripAllLoomMcpSections(existing);
@@ -10128,8 +10500,8 @@ function projectMcpSnippetToml(opts) {
 }
 
 // packages/adapters/src/codex.ts
-import { mkdirSync as mkdirSync11, writeFileSync as writeFileSync10 } from "fs";
-import { join as join14 } from "path";
+import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync10 } from "fs";
+import { join as join15 } from "path";
 import { homedir as homedir3 } from "os";
 var codexAdapter = {
   id: "codex",
@@ -10160,9 +10532,9 @@ var codexAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join14(opts.cwd, ".loom");
-    mkdirSync11(projectDir, { recursive: true });
-    const snippetPath = join14(projectDir, "codex.mcp.toml");
+    const projectDir = join15(opts.cwd, ".loom");
+    mkdirSync12(projectDir, { recursive: true });
+    const snippetPath = join15(projectDir, "codex.mcp.toml");
     writeFileSync10(snippetPath, projectMcpSnippetToml({
       header: `# Generated by Loom \u2014 Codex MCP (project).
 ` + "# Session entry: read repo AGENTS.md + HANDOFF.md (or `bun run status`); brief user before large work.\n" + "# Prefer: loom run codex",
@@ -10170,7 +10542,7 @@ var codexAdapter = {
       sessionEnv: opts.sessionEnv
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join14(homedir3(), ".codex", "config.toml");
+      const configPath = join15(homedir3(), ".codex", "config.toml");
       const block = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv
@@ -10186,8 +10558,8 @@ var codexAdapter = {
 };
 
 // packages/adapters/src/grok.ts
-import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync11 } from "fs";
-import { join as join15 } from "path";
+import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync11 } from "fs";
+import { join as join16 } from "path";
 import { homedir as homedir4 } from "os";
 var grokAdapter = {
   id: "grok",
@@ -10218,9 +10590,9 @@ var grokAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join15(opts.cwd, ".loom");
-    mkdirSync12(projectDir, { recursive: true });
-    const snippetPath = join15(projectDir, "grok.mcp.toml");
+    const projectDir = join16(opts.cwd, ".loom");
+    mkdirSync13(projectDir, { recursive: true });
+    const snippetPath = join16(projectDir, "grok.mcp.toml");
     writeFileSync11(snippetPath, projectMcpSnippetToml({
       header: "# Generated by Loom \u2014 Grok MCP (project). Use: loom run grok --write-user-config to install into ~/.grok/config.toml",
       mcpStdioPath: opts.mcpStdioPath,
@@ -10228,7 +10600,7 @@ var grokAdapter = {
       extraServerLines: ["enabled = true"]
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join15(homedir4(), ".grok", "config.toml");
+      const configPath = join16(homedir4(), ".grok", "config.toml");
       const block = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv,
@@ -10332,17 +10704,17 @@ function capabilityMatrix() {
   }));
 }
 // packages/mcp-server/src/config.ts
-import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync12 } from "fs";
-import { join as join16 } from "path";
+import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync12 } from "fs";
+import { join as join17 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function resolveMcpStdio() {
   const here = fileURLToPath4(new URL(".", import.meta.url));
-  return join16(here, "stdio.ts");
+  return join17(here, "stdio.ts");
 }
 function writeMcpConfig(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync13(dir, { recursive: true });
-  const path = join16(dir, "mcp.json");
+  mkdirSync14(dir, { recursive: true });
+  const path = join17(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
   const config = {
     mcpServers: {
@@ -10359,8 +10731,8 @@ function writeMcpConfig(opts) {
 }
 function writeAgentHintFile(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync13(dir, { recursive: true });
-  const path = join16(dir, "AGENT_HINT.txt");
+  mkdirSync14(dir, { recursive: true });
+  const path = join17(dir, "AGENT_HINT.txt");
   const body = opts?.hint ?? [
     "Loom multiplayer room is active.",
     "MCP tools: list_peers, handoff, check_handoffs, claim_handoff, room_chat",
@@ -10375,13 +10747,13 @@ function writeAgentHintFile(opts) {
 // packages/cli/src/index.ts
 import { spawn as nodeSpawn, spawnSync } from "child_process";
 import {
-  openSync as openSync3,
-  closeSync as closeSync3,
-  writeSync,
+  openSync as openSync4,
+  closeSync as closeSync4,
+  writeSync as writeSync2,
   readSync as readSync2,
-  existsSync as existsSync17,
+  existsSync as existsSync18,
   readdirSync as readdirSync3,
-  readFileSync as readFileSync11,
+  readFileSync as readFileSync12,
   accessSync,
   constants as fsConstants2
 } from "fs";
@@ -10611,12 +10983,12 @@ function isLoopbackHost(host) {
 
 // packages/cli/src/inject-handoffs.ts
 import {
-  existsSync as existsSync15,
-  mkdirSync as mkdirSync14,
-  readFileSync as readFileSync9,
+  existsSync as existsSync16,
+  mkdirSync as mkdirSync15,
+  readFileSync as readFileSync10,
   writeFileSync as writeFileSync13
 } from "fs";
-import { dirname as dirname4, join as join17 } from "path";
+import { dirname as dirname5, join as join18 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -10642,17 +11014,17 @@ function mergeClaudeStopHook(settings, command) {
   return next;
 }
 function ensureClaudeStopHook(cwd, idleMarkerPath) {
-  const settingsPath = join17(cwd, ".claude", "settings.local.json");
+  const settingsPath = join18(cwd, ".claude", "settings.local.json");
   let settings = {};
-  if (existsSync15(settingsPath)) {
+  if (existsSync16(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync9(settingsPath, "utf8"));
+      settings = JSON.parse(readFileSync10(settingsPath, "utf8"));
     } catch {
       settings = {};
     }
   }
   const merged = mergeClaudeStopHook(settings, claudeStopHookCommand(idleMarkerPath));
-  mkdirSync14(dirname4(settingsPath), { recursive: true });
+  mkdirSync15(dirname5(settingsPath), { recursive: true });
   writeFileSync13(settingsPath, `${JSON.stringify(merged, null, 2)}
 `, {
     encoding: "utf8",
@@ -10662,10 +11034,10 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.26.1";
+var VERSION = "0.27.0";
 function eprint(msg) {
   try {
-    writeSync(2, msg);
+    writeSync2(2, msg);
   } catch {
     try {
       console.error(msg.replace(/\x1b\[[0-9;]*m/g, "").replace(/\n$/, ""));
@@ -10674,7 +11046,7 @@ function eprint(msg) {
 }
 function print(msg) {
   try {
-    writeSync(1, msg);
+    writeSync2(1, msg);
   } catch {
     try {
       console.log(msg.replace(/\n$/, ""));
@@ -10873,7 +11245,7 @@ async function autoHostAfterSession(flags) {
 }
 function profilesWithSession() {
   const dir = pathJoin(loomDir(), "profiles");
-  if (!existsSync17(dir))
+  if (!existsSync18(dir))
     return [];
   const out = [];
   for (const name of readdirSync3(dir)) {
@@ -10916,7 +11288,7 @@ async function cmdUp(flags) {
   console.log("loom up \u2014 sticky hosts:");
   for (const profile of profiles) {
     setActiveProfile(profile, { explicit: true });
-    if (!existsSync17(sessionPath()) || !loadSession()) {
+    if (!existsSync18(sessionPath()) || !loadSession()) {
       console.log(`  ${profile.padEnd(14)} skipped  (no session)`);
       continue;
     }
@@ -12059,10 +12431,10 @@ function readOnlySessionPath(home, flags) {
   return pathJoin(home, "session.json");
 }
 function loadSessionReadOnly(file) {
-  if (!existsSync17(file))
+  if (!existsSync18(file))
     return null;
   try {
-    const text = readFileSync11(file, "utf8").trim();
+    const text = readFileSync12(file, "utf8").trim();
     if (!text)
       return null;
     return normalizeSession(JSON.parse(text));
@@ -12071,7 +12443,7 @@ function loadSessionReadOnly(file) {
   }
 }
 function homeWritableStatus(home) {
-  const homeExists = existsSync17(home);
+  const homeExists = existsSync18(home);
   if (!homeExists)
     return { homeExists, homeWritable: null };
   try {
@@ -12655,7 +13027,7 @@ async function runTuiAgent(spec) {
   const attempts = [];
   const ptyHelper = pathJoin(import.meta.dir, "../../../scripts/run-with-pty.py");
   const ptyHelperAlt = pathJoin(import.meta.dir, "../../scripts/run-with-pty.py");
-  const helperPath = existsSync17(ptyHelper) ? ptyHelper : existsSync17(ptyHelperAlt) ? ptyHelperAlt : null;
+  const helperPath = existsSync18(ptyHelper) ? ptyHelper : existsSync18(ptyHelperAlt) ? ptyHelperAlt : null;
   if (helperPath && process.platform !== "win32") {
     attempts.push({
       label: "python-pty-winch",
@@ -12700,7 +13072,7 @@ function spawnOnDevTty(spec) {
   return new Promise((resolve4) => {
     const fds = [];
     try {
-      fds.push(openSync3("/dev/tty", "r"), openSync3("/dev/tty", "w"), openSync3("/dev/tty", "w"));
+      fds.push(openSync4("/dev/tty", "r"), openSync4("/dev/tty", "w"), openSync4("/dev/tty", "w"));
     } catch (e) {
       eprint(`\x1B[2m/dev/tty unavailable: ${e instanceof Error ? e.message : e}\x1B[0m
 `);
@@ -12715,7 +13087,7 @@ function spawnOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync3(fd);
+          closeSync4(fd);
         } catch {}
       }
     };
@@ -12767,7 +13139,7 @@ function spawnShellOnDevTty(spec) {
   return new Promise((resolve4) => {
     const fds = [];
     try {
-      fds.push(openSync3("/dev/tty", "r"), openSync3("/dev/tty", "w"), openSync3("/dev/tty", "w"));
+      fds.push(openSync4("/dev/tty", "r"), openSync4("/dev/tty", "w"), openSync4("/dev/tty", "w"));
     } catch {
       resolve4(0);
       return;
@@ -12780,7 +13152,7 @@ function spawnShellOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync3(fd);
+          closeSync4(fd);
         } catch {}
       }
       fds.length = 0;
