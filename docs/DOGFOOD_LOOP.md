@@ -71,6 +71,11 @@ default-on, each `room join` first stops the old-session host, then starts a new
 `dogfood:up` suppresses per-join auto-host (`LOOM_NO_AUTO_HOST=1`) and batches the
 hosts in one `loom up`, which is faster and clearer.
 
+Saved invite recovery is narrow: if the architect rejoin returns the definitive
+`No room for code` response, `dogfood:up` treats `.loom/dogfood-room.env` as stale
+and creates a fresh room automatically. Authentication, relay, or other join
+failures remain fail-closed and retain the saved invite for diagnosis.
+
 State (gitignored): `.loom/dogfood-room.env`, `.loom/dogfood-next-session.txt`
 
 ### Daily (after setup) — `run` only when actually working

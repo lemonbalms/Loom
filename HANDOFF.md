@@ -25,7 +25,8 @@
 > Phase D는 실제 PATCH 전환 2회 뒤로 유예한다.
 
 > **운영 레인 보정 완료 (2026-07-22):** 다음 세션 기본 구조는 `codex-arch`(PLAN/spec·route·독립 verify)
-> → `grok-impl`(claim·구현·테스트·ship). `dogfood:up`/room/status와 부트 프롬프트가 6프로필로 동기화됐다.
+> → `grok-impl`(claim·구현·테스트·ship). `dogfood:up`/room/status와 부트 프롬프트가 6프로필로 동기화됐고,
+> saved invite의 `No room for code`는 새 dogfood room 자동 생성으로 복구한다(그 밖의 join 오류는 fail-closed).
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 

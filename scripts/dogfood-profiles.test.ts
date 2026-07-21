@@ -33,6 +33,13 @@ describe("dogfood active profile contract", () => {
     expect(source).toContain('--profile grok-impl room join "$INVITE" --as grok-impl');
   });
 
+  test("stale saved invite self-heals only on a definitive missing-room error", () => {
+    const source = read("scripts/dogfood-room-up.sh");
+    expect(source).toContain('[[ "$JOIN_OUT" == *"No room for code"* ]]');
+    expect(source).toContain("saved invite $INVITE is stale");
+    expect(source).toContain("codex-arch join failed; saved invite retained");
+  });
+
   test("legacy impl profile is absent from active launcher commands", () => {
     for (const path of [
       "scripts/dogfood-up.sh",

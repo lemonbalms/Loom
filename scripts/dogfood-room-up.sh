@@ -46,6 +46,23 @@ loom() {
   bun run packages/cli/src/index.ts "$@"
 }
 
+create_room() {
+  local create_out
+  echo "==> Creating room as codex-arch / codex-architect …"
+  create_out="$(loom --profile codex-arch room create --as codex-architect --name "$ROOM_NAME" 2>&1)" || {
+    echo "$create_out" >&2
+    return 1
+  }
+  echo "$create_out"
+  INVITE="$(echo "$create_out" | grep -Eo 'LOOM-[A-Z0-9]+' | head -1 || true)"
+  if [[ -z "$INVITE" ]]; then
+    echo "error: could not parse invite code from room create output" >&2
+    return 1
+  fi
+  echo ""
+  echo "==> Invite: $INVITE"
+}
+
 mkdir -p "$STATE_DIR"
 
 INVITE=""
@@ -62,24 +79,26 @@ if [[ "$FRESH" -eq 0 && -f "$STATE_FILE" ]]; then
 fi
 
 if [[ -z "$INVITE" || "$FRESH" -eq 1 ]]; then
-  echo "==> Creating room as codex-arch / codex-architect …"
-  CREATE_OUT="$(loom --profile codex-arch room create --as codex-architect --name "$ROOM_NAME" 2>&1)" || {
-    echo "$CREATE_OUT" >&2
-    exit 1
-  }
-  echo "$CREATE_OUT"
-  INVITE="$(echo "$CREATE_OUT" | grep -Eo 'LOOM-[A-Z0-9]+' | head -1 || true)"
-  if [[ -z "$INVITE" ]]; then
-    echo "error: could not parse invite code from room create output" >&2
-    exit 1
-  fi
-  echo ""
-  echo "==> Invite: $INVITE"
+  create_room
 else
   echo "==> Rejoining existing room $INVITE as codex-architect …"
-  loom --profile codex-arch room join "$INVITE" --as codex-architect 2>&1 || {
-    echo "warn: codex-arch join failed — try: bun run dogfood:room -- --fresh" >&2
+  JOIN_OUT="$(loom --profile codex-arch room join "$INVITE" --as codex-architect 2>&1)" || {
+    echo "$JOIN_OUT" >&2
+    if [[ "$JOIN_OUT" == *"No room for code"* ]]; then
+      echo "warn: saved invite $INVITE is stale; creating a fresh dogfood room" >&2
+      INVITE=""
+      if ! create_room; then
+        exit 1
+      fi
+      JOIN_OUT=""
+    else
+      echo "error: codex-arch join failed; saved invite retained" >&2
+      exit 1
+    fi
   }
+  if [[ -n "$JOIN_OUT" && -n "$INVITE" ]]; then
+    echo "$JOIN_OUT"
+  fi
 fi
 
 echo ""
