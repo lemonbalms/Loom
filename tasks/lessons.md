@@ -74,7 +74,7 @@
 
 </details>
 
-- [orchestration] 2026-07-20 (24) 레인 분리: 구현=grok · 검증=codex · 자문=fable(발견자≠수정자).
+- [orchestration] 2026-07-20 (24·34) 레인 분리: 구현=grok · 검증=codex · 자문=fable(발견자≠수정자). `subagent_type` 지정 ≠ 실제 레인 — 신원 고지 의무, 폐기는 발견자≠수정자로 판정.
 <details><summary>경위·좌표</summary>
 
 [orchestration] 2026-07-20 (24) 검증 레인 분리(CLAUDE.md 규칙 5): **구현 = `grok`** · **검증 = `codex`** · **자문 = `fable-advisor`**(read-only). 검증을 구현자와 같은 레인에 주면 교차 검증이 성립하지 않는다 — 발견자와 수정자를 분리해야 한다. 이번 웨이브 실증: codex가 **아키텍트의 진단 오류**(`PaneDied for unknown pane` 오독)와 **감지기 결함 2건**을 잡아냈다. 같은 레인이었다면 자기 산출물을 자기가 승인하는 구조라 셋 다 통과했을 것이다. cross-ref: verification (23)·bridge-ops (21).
@@ -82,8 +82,6 @@
 </details>
 
 - [orchestration] 2026-07-20 (27) 위임 범위 축소가 정합성을 깬다 — 참조처까지 최소범위. **편집뿐 아니라 조사·스캔 범위도**(재범 3회).
-
-- [orchestration] 2026-07-21 (34) `subagent_type` 지정 ≠ 실제 레인 — 신원 고지 의무, 폐기는 발견자≠수정자로 판정.
 
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 
@@ -248,7 +246,7 @@
 
 - [verification] 2026-07-21 (32) "결정적 증거를 어디서 구하나"는 틀린 질문 — "증거가 불확실해도 안전한 구조"를 물어라.
 
-- [verification] 2026-07-21 (33·37) **지적·verdict는 존재의 증거일 뿐 서술의 증거가 아니다** — 전칭 부정은 코드 대조, 자문엔 내 리스크 서술도 검증 대상임을 명시, 새 용어는 락 대조 후 채택.
+- [verification] 2026-07-21 (33·37) **지적·verdict는 존재의 증거일 뿐 서술의 증거가 아니다** — 전칭 부정은 코드 대조 · 자문엔 내 리스크 서술도 검증 대상임을 명시 · **자문 용어 기각은 채택보다 높은 입증 책임**(락 본문만 보면 폐기 식별자 부활함)
 
 ## platform — Windows·WSL·경로 sep·크로스플랫폼 배포
 
