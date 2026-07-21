@@ -1,5 +1,11 @@
 # HANDOFF-CHECKPOINT-DESIGN 적대 리뷰 (인라인, 비-R{n})
 
+> **재리뷰 (2026-07-22, 개정판 대상): APPROVE** — 하단 [재리뷰 원장](#재리뷰-2026-07-22-개정판) 참조.
+> 아래 본문은 1차 리뷰(PENDING-REVISION) 원장으로 보존한다. 사실관계 보정은
+> [1차 리뷰 정오표](#1차-리뷰-정오표)를 따른다.
+> **Owner adoption (2026-07-22):** bounded Phase B→C를 PANE-DEATH PATCH 1 전에 선행하고,
+> 새 세션 복원 스모크 후 PATCH 1로 복귀한다. Phase D는 실제 PATCH 전환 2회 뒤로 유예한다.
+
 | Field | Value |
 |---|---|
 | **Target** | [`HANDOFF-CHECKPOINT-DESIGN.md`](./HANDOFF-CHECKPOINT-DESIGN.md) |
@@ -59,3 +65,60 @@
 3. Phase C 선행조건 = Open decision 3 종결 + 잠정 수납처 1줄 (F3), Phase C에 WORKFLOW 개정 추가 (F4)
 4. owner-pending 슬롯 규칙 + V2 반영 (F5), Phase B fixture에 state part 합산 실측 (F9)
 5. 문면 정정 3건: Blockers 템플릿(F6) · One-line lint 예외(F7) · 결정 1 수치(F8)
+
+---
+
+## 1차 리뷰 정오표
+
+1차 verdict와 finding 원문은 provenance를 위해 위에 보존하되, 다음 사실관계는 이 정오표가 우선한다.
+
+- **F2 실행 거동:** heading 불일치는 예외를 던져 전체 stdout을 없애는 경로가 아니다. 해당 섹션
+  추출만 `null`이 되어 `Current action`이 빠진 나머지 state payload가 exit 0으로 출력된다. 핵심
+  섹션의 조용한 탈락이라는 위험과 처방은 그대로 유효하다.
+- **F9 예산 수치·가시성:** 당시 `tasks/traps.md` 전체 파일은 2,217B였지만 실제 state 주입분은
+  1,820B였다. 또한 자체 `truncateContext` 절단은 앞쪽 경고를 표시하므로 조용하지 않다. 다만
+  꼬리의 traps 정보가 유실될 수 있다는 합산 예산 위험과 측정 게이트 처방은 그대로 유효하다.
+- **provenance 시점:** 1차 리뷰의 “설계 문서 2본 untracked·커밋 이력 0”은 **리뷰 당시** 관측이다.
+  이후 두 문서와 본 리뷰는 `2522442`에 커밋됐다.
+
+---
+
+# 재리뷰 2026-07-22 개정판
+
+**Verdict: APPROVE**
+
+**대상:** `2522442` 이후 워킹트리 개정판(+52/−14). **방법:** diff 전수 대조(F1~F9 요구 변경 ↔ 반영 지점) + 개정판이 새로 도입한 사실 주장 2건의 코드 실측.
+
+## 반영 판정 (9/9 해소)
+
+| ID | 판정 | 반영 지점 |
+|---|---|---|
+| F1 (High) | **해소** | V4에 traps 본문·무훅 traps 부분 읽기 명시, V5 입력 4번에 `tasks/traps.md` 추가 |
+| F2 | **해소** | §9.2 `REQUIRED_HANDOFF_HEADINGS` 단일 공유 상수 · Phase C 원자 전환으로 책임 단일화(중복이던 Phase D "대상 섹션 갱신" 제거) · V6에 heading 개명 주입 2건 추가 |
+| F3 | **해소** | §7 수납처를 "Open decision 3에서 확정"으로 결속 · Phase C 선행조건 + 전환기 잠정 수납처(`In progress evidence` 구획, 종결 이력과 분리) |
+| F4 | **해소** | Phase C에 `docs/WORKFLOW.md` §0.3 형상 계약 개정 추가 |
+| F5 | **해소** | `Owner pending` 필수 섹션 신설(계약·템플릿 표 `Safe default while pending` 포함) · §5.1에 현행 3건 명시 · V2 목록 반영 |
+| F9 | **해소** | §8 예산 산술 명문화 + Phase B fixture에 state part 합산(문자열 길이·UTF-8 바이트) 실측 및 `truncateContext` 적용 전 `state.length <= HARD_CAP` 게이트 · V4에 절단 미발생 조건 |
+| F6 | **해소** | Blockers `(none)` 단독 ↔ 표 교체 규칙 명문화(동시 표기 금지) |
+| F7 | **해소** | One-line resume PLAN 1회 표기 = lint 탐색용 예외, 반복 시 경고로 정리 |
+| F8 | **해소** | Open decision 1·§8 수치 교정(top-80 8,192B / 전체 16,384B) + 제안 8,192B와 현행 top-80 동치·범위 상이 명시 |
+
+## 신규 사실 주장 실측 (개정판이 도입한 서술 — 둘 다 코드 일치)
+
+1. **"HARD_CAP은 UTF-8 바이트가 아니라 JS 문자열 길이 적용"** — 일치. `truncateContext`는 `text.length` 기준(`session-context.ts:120-133`, HARD_CAP=9500 `:32`).
+2. **"초과 시 절단 경고가 앞에 표시되지만 꼬리 유실"** — 일치. head에 `⚠ … 예산 초과` 프리픽스 후 `text.slice(0, keep)`로 꼬리 절단(`:131-133`).
+
+## 신규 결함
+
+**0건.** 1차 리뷰의 우려(축자 반영이 새 모순을 만드는 패턴)에 해당하는 지점 없음 — F2·F9 처방이 문안 덧대기가 아니라 공유 상수·측정 게이트(불변식형)로 반영됐다.
+
+## 잔여 노트 (비차단, 코드 측)
+
+- `truncateContext` 경고 문구가 `tasks/lessons.md 정리 필요`로 하드코딩(`:125,:132`) — state part 절단 시 오도 가능. Phase D 구현 시 part별 문구로 교정 권고.
+- 1차 리뷰 baseline red 2건(handoff:lint top-80 초과 · test D4 SOFT_CAP 미동기)은 여전히 유효 — 본 설계와 무관한 별도 수정 대상.
+
+## 한정
+
+APPROVE는 **설계안으로서의 승인**이며 Owner는 2026-07-22 bounded Phase B→C rollout을 채택했다.
+구체 결정 D1~D7과 실행 순서는 설계 §13이 정본이다. 본 리뷰는 제품 PLAN v0.28.0의 의미·락을
+변경하거나 Phase D 조기 착수를 허가하지 않는다.

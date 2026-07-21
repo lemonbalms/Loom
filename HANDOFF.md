@@ -1,6 +1,6 @@
 # HANDOFF — Loom (next session)
 
-**Date:** 2026-07-21  
+**Date:** 2026-07-22
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
 **GitHub:** https://github.com/lemonbalms/Loom (`main`)  
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
@@ -18,27 +18,38 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH — PLAN v0.28.0 `approved` (R45 author-close, 2026-07-21 · `08f5405`).** 통합 설계 정본(락 **U1~U11**) → **R44** grok `pending-revision`(High 0 · 자기모순 0) 반영 → **PLAN v0.28.0 작성**(`e65c5b0`) → **R45** grok `pending-revision`(High **0** · Medium 2 · Low 3 · 좌표 33건 중 1불일치) → **M1 기각**(검증자 트리 오독) · **M2 처방 정밀화**(U8 범위 무영향 실측) · Low 3 반영(`08f5405`). **다음 = PATCH 1(M1 tests-only expected-red) 착수.**
+> **🎯 SESSION-CONTINUITY — bounded Phase B→C 선행 (Owner 결정 2026-07-22).** PANE-DEATH PLAN
+> v0.28.0·U1~U11은 그대로 두고 **PATCH 1 착수 전 clean boundary에서 일시 정지**한다. 다음 한 게이트는
+> **Phase B fixture + SOFT_CAP stale 테스트 해소 + HANDOFF lint expected-red 고정**이다. Phase C에서 실제
+> HANDOFF를 전환해 lint를 green으로 만든 뒤, 새 세션 복원 스모크 통과 즉시 PATCH 1로 복귀한다.
+> Phase D는 실제 PATCH 전환 2회 뒤로 유예한다.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH — PATCH 1 (M1) 착수 (PLAN v0.28.0 `approved`, 게이트 완료)**
-   > **불변식:** 완료는 **사람이 확정**, 브릿지는 **전달·회복만**.
+0. **⭐ SESSION-CONTINUITY — Phase B fixture + 단위 red 해소 + lint expected-red 고정**
+   - 설계·결정 정본: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` §10·§13
+   - session-context D4의 stale `SOFT_CAP=8,500` 기대값을 현행 12,750에 동기화해 단위 테스트 green
+   - `handoff:lint` top-80 12,674B 초과는 **Phase B expected-red**로 고정; 실제 해소는 Phase C
+   - fixture에서 V1~V6, 전체 8,192B, state `HARD_CAP` 무절단, traps·Owner pending·Don't redo 복원을 검증
+   - **금지:** Loom 제품 production 코드 변경 · PANE-DEATH PATCH 1 test/production diff 착수
 
-   **설계 정본 = `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`** (락 U1~U11) · **PLAN = `docs/PLAN.md` v0.28.0 `approved`** · **원장 = `docs/reviews/PANEDEATH-R44.md`·`PANEDEATH-R45.md`**(둘 다 정본 — **수정 금지**).
-   **PATCH 1 (M1) = tests-only expected-red 커밋 — production 변경 0줄.** 내용 5건: ① 브릿지 `done` 구성 **0곳** 게이트 ② tower `done→blocked` fence ③ card close **3경로 pane 보존 양성**(부정 어서션 단독 금지) ④ **at-most-one 3건**(완료↔terminal · claimed 경로 · spawn 실패) ⑤ **가드 순서 고정**(§2.4 합성 순서). **⚠️ ①②③은 현행 red가 정상이고 ④⑤는 green 확인용** — 이 구분을 **커밋 메시지에 명기**하라(혼동하면 다음 단계 진단이 엉킨다).
-   **구현 레인 = Claude**(grok은 R44·R45 검증자 — 발견자≠수정자 유지) · **codex 복구 2026-07-25 14:27**.
-   **⚠️ 착수 즉시 주의 2건:** (a) **red-test 선행 규율** — 테스트와 production을 **같은 커밋에 섞지 마라**. 각 production diff는 **선행 red-test 커밋 해시**를 증거로 남긴다. (b) **이월 ⑪** — 그 규율의 **전 PATCH 경계 판정이 R45에서 이뤄지지 않았다**(미확인).
-   **codex 복구 후 최우선 = 이월 ⑨**(U8 ↔ R43b §4 축자 대조). **단 v0.28.0 착수를 막지 않는다** — U8은 PATCH 락 목록·게이트 **어디에도 없어 코드 표면 영향 0**이고, ⑨는 **후속 C의 선결 조건**이다.
-   **PATCH 3 ⑤ 착수 시 확인 = 이월 ④** — quarantine `process_exit` fold의 **원 구현 의도**. 그 정정이 이 해석 위에 서 있어, **해석이 틀리면 PATCH 3 ⑤가 무근**이 된다.
+1. **Phase B green일 때만 Phase C 원자 전환**
+   - HANDOFF 새 구조 + `HANDOFF_ARCHIVE.md` `In progress evidence` + shared headings + AGENTS/WORKFLOW/session-context 동기화
+   - 실제 `HANDOFF.md` 전환 후 `bun run handoff:lint` green이 Phase C 완료 조건
+   - 새 세션 복원 스모크 실패 시 기존 구조로 복귀하고 PANE-DEATH를 더 지연하지 않음
 
-1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 2회에 **실패 집합 상이**(`conv R28 L-1`·`still-running ②`), 둘 다 **단독은 green**. 비결정성 확정(펼쳐보기).
-2. **HOOKCACHE-D-VERIFY 재개**(펼쳐보기).
-3. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
-4. **`.loom-impl-0270-brief.md` 처리 미정**(untracked 잔존) · **session-context 예산 초과** — 아래 details 참조.
+2. **복원 스모크 통과 즉시 PANE-DEATH PATCH 1 재개**
+   - PLAN v0.28.0·U1~U11·R44/R45·tests-only expected-red 규율은 변경 없음
+   - 설계 정본 `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`; PATCH 1 상세는 PLAN과 리뷰 원장을 따름
+
+3. **Phase D는 실제 PATCH 전환 2회 뒤 검토** — 그 전 lint CI 승격·front matter 도입 금지.
+
+4. **Owner pending / 기존 후보 (이번 bounded wave 비범위)**
+   - 통합 테스트 flake 트랙 선택 · HOOKCACHE-D-VERIFY 재개 · RULE-ENFORCEABILITY 적용 결정
+   - `.loom-impl-0270-brief.md` 처리 미정(untracked 잔존)
 
 <details>
-<summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
+<summary>기존 PANE-DEATH·후보 경위 (펼쳐보기)</summary>
 
 - (0) **v0.27.0 (pre-C) 종결 (2026-07-21).** 게이트 R43e approve(5라운드 수렴: R43 High6→R43b High4→R43c High0→R43d reject→4차 반영→R43e) → 구현 `7ed314c`·dist `e4f6c3c` → **아키텍트 검증발 유닛 결함 2건 해소 `9c59f29`**(프로덕션 무변경). 잠근 것 = dispatch-scoped issuer 중앙화 · strict ACK 3분기(`result_relay_accepted`) · durable quarantine JSONL · tower currency 게이트 · 순서 역전 15곳 · fire-and-forget 제거. **라운드별 서사 = 원장 8본**(`PANEDEATH-CODEX-REVIEW{,2,3}.md`·`PANEDEATH-R43{,B,C,D,E}.md` — 수정 금지) + PLAN changelog + `docs/HANDOFF_ARCHIVE.md`.
 - (0) **검증발 결함 2건(교훈화 완료)**: ⓐ 앰비언트 `LOOM_RELAY_TOKEN`이 통합 6개를 **조용히 미실행**시킴(24→19개 · fail 2→1로 *감소* = 거짓 개선) → `RelayServer` 생성을 `beforeAll` 내부로 옮겨 밀폐(생성자 latch라 삭제만으론 no-op) ⓑ ①·①b가 주입 ACK(전송 우회)와 tower 도달을 **동시 요구** → 종결 분기(`pane.close` 1회) 단언으로 재작성. 심을 relay로 옮기는 안은 **기각**(ACK 위조 심을 신뢰 경계 안에 두는 자기모순 · 커버리지는 `pane-cleanup.test.ts:244-268`이 이미 담당). 교훈 **(40)~(43)** `tasks/lessons/verification.md`.
@@ -80,7 +91,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH — PLAN v0.28.0 `approved` (R45 author-close, 2026-07-21 · `08f5405`).** **완료는 사람이 확정, 브릿지는 전달·회복만.** 설계 정본 락 U1~U11 · R44·R45 원장 2본 · M1 기각(트리 오독)·M2 범위 실측. **다음 = PATCH 1 (M1) tests-only expected-red** — 구현 레인 Claude, codex 복구 07-25 14:27.
+> **🎯 SESSION-CONTINUITY bounded wave.** PLAN v0.28.0 PANE-DEATH는 PATCH 1 전 일시 정지. **다음 = Phase B fixture + SOFT_CAP 단위 red 해소 + HANDOFF lint expected-red 고정** → Phase C에서 lint green·복원 스모크 → 즉시 PATCH 1 복귀.
 
 ---
 

@@ -1,5 +1,16 @@
 # Todo — Loom
 
+## Current override — SESSION-CONTINUITY bounded wave (Owner 2026-07-22)
+
+> SSOT는 `HANDOFF.md`. PANE-DEATH PLAN v0.28.0은 폐기·재설계가 아니라 PATCH 1 착수 전 clean
+> boundary에서 잠시 정지한다.
+
+0. [ ] **Phase B:** fixture V1~V6 + SOFT_CAP stale 단위 테스트 해소 + HANDOFF lint expected-red 고정 + state HARD_CAP 검증
+1. [ ] **Phase C:** archive 수납처·새 HANDOFF·shared headings·AGENTS/WORKFLOW/session-context 원자 전환 + 실제 handoff:lint green
+2. [ ] **새 세션 복원 스모크:** PLAN·next gate·traps·Owner pending·Don't redo 복원 확인
+3. [ ] **PANE-DEATH PATCH 1 즉시 재개:** v0.28.0·U1~U11·R44/R45 불변
+4. [ ] **Phase D 유예:** 실제 PATCH 전환 2회 green 뒤 lint/status 자동화 재검토
+
 ## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
 
 > 이 섹션은 요약 뷰다. SSOT는 `HANDOFF.md` — 표현이 어긋나면 핸드오프가 우선한다.
