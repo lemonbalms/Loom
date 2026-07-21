@@ -106,6 +106,16 @@ This file is for **during-implementation** plan deviations only.
 |------|----------|--------|-------------------|-----------|
 | 2026-07-19 | 0.23.9 R34 M-1 "말미 비공백 K줄(**권장 3**) line-anchored" | `DONE_PROPOSAL_TAIL_LINES = 10` (권장값 3 대신). SMOKE-0239 conv 라이브에서 규약-준수 claude 워커의 마커 줄이 kind=normal로 미탐지 — claude TUI가 답변 뒤에 **비콘텐츠 줄 3개**(타이밍 줄 `✻ Churned for 15s`·bare 컴포저 `❯`·상태줄 `Fable 5 ⚡… │ …`)를 덧붙이는데 보수 chrome 필터가 이들을 통과시켜 말미 3줄 창을 점유했다. | lock의 메커니즘(말미 비공백 K줄 line-anchored·판정 입력 통일·비-줄-선두 문안)은 그대로 — "권장" 파라미터만 0.23.7 still-running **말미 10줄 선례**와 일치시킴. 위양성 확대는 R34가 이미 수용한 노출 클래스(보드 노트 표시뿐, 자동 close 없음) 내에서 bounded. 대안(상태줄·타이밍줄을 chrome 필터에 추가)은 콘텐츠-포함 줄 패턴 확장이라 과필터 리스크가 더 큼 — 기각. | 재스모크로 kind=done_proposal 라이브 실증(아래 Implemented 블록). claude 상태줄(`Fable 5 ⚡… │ …`)의 summary 오염은 별도 후속 후보(이 웨이브 2회 관찰). |
 
+### §0.27.0 — PANE-DEATH (C) result 발행 소유권 + ACK 경계 (R43e MINOR · impl `7ed314c` · dist `e4f6c3c`)
+
+| Date | Plan ref | Choice | Why conservative | Follow-up |
+|------|----------|--------|-------------------|-----------|
+| 2026-07-21 | §6.7.1 presence supersede↔자동 해제(c) 순서 | presence supersede가 "seq 레코드로 흡수" 대신 **presence 레코드를 선-fold**하고, seq 레코드는 이후 `relay_accepted`에서 해소. 종단 불변식("presence+seq 동시 미해소 0") 보존 확인. | 설계 §6.7.1 순차 규약의 두 표현 중 **종단 불변식을 깨지 않는 쪽** 채택 — 거짓 미해소 quarantine 항목 잔존 0. 검증 레인(Claude opus) 수용(Low). | 없음. |
+| 2026-07-21 | §6.7.1 durable quarantine 해제 조건 | **명시적 rejected 분기는 durable quarantine 미기록**(definitive 결과 — log만). | rejected는 유실·미상이 아니라 **결정적 결과**라 회복 대상이 아니다 — quarantine(유실·고아 회복 매체)에 넣지 않는 것이 불변식 정합. 검증 레인 수용(Low). | 없음. |
+| 2026-07-21 | D7 ④ 소스-락 어서션 (grok 공개 편차) | ④ 소스-락 어서션이 `skipIf` 블록 안에 있어 **한 번도 실통과한 적 없음**이 활성 이동 시 노출. 프로덕션 주석 3곳이 금지 토큰을 **축자 인용**하던 것을 문구 변경으로 해소. | 주석-only·행동 무변경 — 락은 주석 포함 금지로 **더 엄격**해졌다(완화 아님). grok이 편차를 공개. | 교훈 (40) verification: skip 블록 안 어서션은 검증된 적 없는 어서션 — 환경 게이트 블록에 소스-락 금지. |
+| 2026-07-21 | D7 ①·①b strict ACK 성공 경로 유닛 (아키텍트 검증발) | ①·①b에서 **tower 전달 단언(`awaitCardResult`)을 제거**하고 **종결 분기(`pane.close` 정확히 1회)** 단언으로 재작성. 주입 자체(`queued_1`/`delivered_1`)는 유지. | D2 주입기가 `relay-client.ts:361-383`에서 **조기 반환**해 `:385` wire 전송에 미도달하므로, "ACK 강제"와 "전달 도착"은 **상호 배타**다 — 작성된 형태로는 통과 불가능한 단언이었다. 심을 relay 쪽(`handoffAckEnvelope`)으로 옮기는 대안은 **기각**: 이 PATCH가 잠그는 신뢰 경계가 "ACK의 진실성"인데 ACK 위조 심을 프로덕션 relay 패키지에 심으면 락 근거가 자기모순이 된다(fable-advisor 판정). **전달∧strict 성공 판정의 결합 커버리지는 `pane-cleanup.test.ts:244-268`(skipIf 없는 상시 실행 실 relay 경로)이 이미 담당** — 커버리지 손실 0. | 없음. `pane.close` 1회 발화는 **실측 확인**(예측 아님). |
+| 2026-07-21 | D7 통합 블록 앰비언트 env 밀폐 (아키텍트 검증발) | `RelayServer` 생성을 describe 본문 → **`beforeAll` 내부**(토큰 삭제 직후)로 이동. `LOOM_RELAY_TOKEN` 저장/삭제(`beforeAll`)·복원(`afterAll`) 추가. | 앰비언트 `LOOM_RELAY_TOKEN`이 있으면 루프백 relay가 인증 ON으로 뜨는데 테스트 클라이언트는 토큰 미전송 → `beforeAll` 사망 → **통합 6개가 조용히 미실행**(24→19개, fail 2→1로 *감소*). 서버 env 자동 채택(`server.ts:60`) vs 클라이언트 옵션 단독(`relay-client.ts:132`)은 **의도된 보안 비대칭**이라 프로덕션 무변경. 1차 시도(`beforeAll`에서 삭제만)는 **생성자 latch** 때문에 no-op — 생성 시점을 미루는 것이 해법이었다. | 교훈 (41)(42) verification. `FABLE_RELAY_TOKEN` 2차 경로 우려는 **반증**됨(`envLoom`은 0.10에서 dual-read 제거, 경고만). |
+
 ### Earlier waves (pointer only)
 
 | Range | Notes |

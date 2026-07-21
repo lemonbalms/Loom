@@ -472,7 +472,8 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   const sessionFile = join(dir, "session.json");
   const towerSessionFile = join(dir, "tower-session.json");
   const herdrSock = join(dir, "herdr.sock");
-  const relay = new RelayServer({ host: "127.0.0.1", port });
+  // Construct after LOOM_RELAY_TOKEN clear — constructor latches env (server.ts:60).
+  let relay: RelayServer | null = null;
 
   let fake: FakeHerdr;
   let bridge: BridgeRuntime | null = null;
@@ -481,6 +482,8 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   let towerSession: FableSession;
   let inviteCode = "";
   let cardCounter = 0;
+  /** Ambient LOOM_RELAY_TOKEN would enable auth on loopback relay while client has no token. */
+  let savedRelayToken: string | undefined;
 
   const cfg: BridgeConfig = {
     authorizedDispatchers: ["p_tower"],
@@ -558,6 +561,12 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
     process.env.LOOM_TEST_HOME = dir;
     process.env.LOOM_SESSION = sessionFile;
     process.env.LOOM_NO_AUTO_HOST = "1";
+    // Server adopts env token (secure-by-default); client does not — clear ambient
+    // so loopback relay stays unauthenticated for this suite.
+    savedRelayToken = process.env.LOOM_RELAY_TOKEN;
+    delete process.env.LOOM_RELAY_TOKEN;
+    // Construct after clear: RelayServer latches authToken in constructor, not start().
+    relay = new RelayServer({ host: "127.0.0.1", port });
     resetStateHomeDirCache();
     setActiveProfile(null);
     clearHandoffAckInjection();
@@ -631,12 +640,17 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
     tower?.close();
     await fake.close();
     try {
-      relay.stop();
+      relay?.stop();
     } catch {
       /* */
     }
     delete process.env.LOOM_TEST_HOME;
     delete process.env.LOOM_SESSION;
+    if (savedRelayToken !== undefined) {
+      process.env.LOOM_RELAY_TOKEN = savedRelayToken;
+    } else {
+      delete process.env.LOOM_RELAY_TOKEN;
+    }
     resetStateHomeDirCache();
     try {
       rmSync(dir, { recursive: true, force: true });
@@ -646,25 +660,23 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   });
 
   test(
-    "① strict ACK queued/1 → done + pane.close once (pre-C contract)",
+    "① strict ACK queued/1 → strict accept → pane.close once",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-queued-1");
       const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
-      // Inject AFTER spawn so only the result handoff is forced
+      // Inject AFTER spawn so only the result handoff is forced.
+      // Injection early-returns without wire send — assert termination branch only
+      // (tower inbox reach is covered by pane-cleanup.test.ts real-relay path).
       setHandoffAckInjection("queued_1");
       emitDone(paneId);
-      const result = await awaitCardResult(cardId);
-      expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
-      expect(result!.dispatchHandoffId).toBeTruthy();
-      expect(typeof result!.seq).toBe("number");
       const closed = await waitFor(
         () => closeCallsFor(fake, paneId) === closesBefore + 1,
         { timeoutMs: 3_000 },
       );
       expect(closed).toBe(true);
+      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
       clearHandoffAckInjection();
       fake.setPaneReadText(paneId, null);
     },
@@ -672,7 +684,7 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   );
 
   test(
-    "①b strict ACK delivered/1 → done + pane.close",
+    "①b strict ACK delivered/1 → strict accept → pane.close once",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-delivered-1");
@@ -680,14 +692,12 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
       fake.setPaneReadText(paneId, DONE_BODY);
       setHandoffAckInjection("delivered_1");
       emitDone(paneId);
-      const result = await awaitCardResult(cardId);
-      expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
       const closed = await waitFor(
         () => closeCallsFor(fake, paneId) === closesBefore + 1,
         { timeoutMs: 3_000 },
       );
       expect(closed).toBe(true);
+      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
       clearHandoffAckInjection();
       fake.setPaneReadText(paneId, null);
     },
@@ -761,6 +771,7 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
       clearHandoffAckInjection(); // real relay ACK (delivered/1 typically)
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-stamp");
+      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
       emitDone(paneId);
       const result = await awaitCardResult(cardId);
@@ -770,6 +781,13 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
       expect((result!.dispatchHandoffId as string).length).toBeGreaterThan(0);
       expect(typeof result!.seq).toBe("number");
       expect(result!.seq as number).toBeGreaterThanOrEqual(1);
+      // Real-path pre-C termination: pane.close exactly once after successful send
+      const closed = await waitFor(
+        () => closeCallsFor(fake, paneId) === closesBefore + 1,
+        { timeoutMs: 3_000 },
+      );
+      expect(closed).toBe(true);
+      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
