@@ -18,14 +18,14 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH (C) — PLAN v0.27.0 `pending-revision`, R43 **reject** (2026-07-21).** High 6·Med 5·Low 1. **차단 4 = H1 PLAN 내부 모순 · H2 락 8 자기모순(개정 필요) · H3 seq가 tower 소비자 파괴(범위 재획정) · H5 완료 판정이 틀린 명제를 잠금.** H2·H3만 설계 재론. 원장 **`docs/reviews/PANEDEATH-R43.md`**. **코드 무변경.**
+> **🎯 PANE-DEATH (C) — PLAN v0.27.0 `pending-revision`, R43c 재검증 중 (2026-07-21).** 2차 개정 완료. **수렴 High 6→4→0.** R43c claude 레인 = **pending-revision · 신규 High 0**, 차단 = **Med 1 + Low 3**(국소). **codex 회수 대기.** 원장 `PANEDEATH-R43B.md`. **코드 무변경.**
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH (C) — R43 reject 해소 → R43b (착수 지점, 순서 고정)**
-   > **불변식:** 불확실한 관측은 **회복 가능한 행동만** 유발한다. 비가역 행동(result 발행·`pane.close`·dispose)은 **결정적 증거 또는 멱등 경로에서만**.
+0. **⭐ PANE-DEATH (C) — R43c 회수 → 종결 판정 (순서 고정)**
+   > **불변식:** 불확실한 관측은 **회복 가능한 행동만**. 비가역 행동(발행·`pane.close`·dispose)은 **결정적 증거·멱등 경로에서만**.
 
-   **① 락 8 개정(H2)** → **② H3 범위 재획정** → **③ H1·H5 문면 수정** → **④ R43b**. ①②는 설계 재론이라 **fable-advisor 자문 선행 권장**(아키텍트 판단이 이 트랙에서 4회 뒤집힘). 전문·좌표·제안 → 원장 · PLAN §0.27.0 · 설계 §6.7-bis.
+   **① codex 회수 → ② 수렴 판정(양 레인 pending-revision이면 종결 후보) → ③ Med-1·Low 3 국소 문면(전이표 경계·presence·`:529`·폴백) → ④ R43d/종결 → 구현 웨이브 발주.**
 
 1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 실패(단독은 6/6 green). 변경 무관 확정. **방치 시 green 판정이 흐려진다**(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
@@ -34,14 +34,12 @@
 <details>
 <summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
 
-- (0) **R43이 밝힌 놓친 전제 2건 (아래 지적 다수의 공통 근인 — 재작업 전 필독)**: **P** `sendFailedResult` 호출자 7곳 중 **3곳(`:850`·`:1114`·`:1204`)에 Flight가 없다**(spawn 이전·cardId조차 추정). 흡수 상태·durable alert·타이머를 **둘 곳이 없다** → D4·D5·D6 동시 붕괴. **Q** 전역 `cardSeq`는 result 시퀀스가 아니라 **per-card dispatch attempt 카운터**(`:1124` "Fix 2 (live-measured)")이고 소비처가 **herdr agent name 유일성(`:1192`)·hook 소켓 경로(`:1141`)**다 — PLAN이 "누수"라 부른 성질이 **요구사항**이다. 삭제하면 live-measured 수정의 회귀.
-- (0) **착수 전 함정 3건 + 3차 리뷰 배관 정정** → `PANE-DEATH-DESIGN.md` **§6.7-bis**. 요약: `void`→`await` 단순 승격은 이중 발행 방어를 **약화**시킴 · strict ACK 본체는 `sendResult` 시그니처 교체 · `recipientCount=1`은 실측 전 금지.
-- (0) **좌표는 코드가 SSOT** — R43이 드리프트 6건 적발. `sendResult`는 `:2408-2434`(문서 `:2415-2440` 아님) · `sendFailedResult`의 관측 호출은 `:2395` · 호출지점 **18개(7·11)** · **가드 5곳**(`:2003 :2019 :2067 :2080 :2096` — `:2019`가 정상 완료 경로의 유일 방어) · **`disposeCardFlight` 호출 15곳**(PLAN은 6곳만 나열 — 순서 역전 대상이 6인지 15인지 미답, 부분 역전 시 latch가 일부 경로에서만 발화).
-- (0) **(C) 경계**: 브릿지는 **자동 `done` 커밋 안 함** → 완료 후보는 단일 소유자가 멱등 `needs_verification`(board `blocked`)으로 전달, **사람이 워킹트리 독립 검증 후 확정**. 자동 `blocked`는 **결정적 부정 증거**(permission block·generation 결속 연속 absence)에만. 불확실한 status/scrape/timeout은 **알림만**(result 확정·close·dispose 금지). 자동 cleanup은 사람 확정 + tower receipt 뒤에만.
-- (0) **종결 맥락**((C) 전환 근거 · 증거 명제표 P1~P7 · 미실측 상수 지위) → 정본 `PANE-DEATH-DESIGN.md` §6.0-bis·§6.6, 경위 `docs/HANDOFF_ARCHIVE.md`. **요지: hooks는 영원히 자문 신호**(커밋 트리거 승격 금지) · **cadence·타임아웃은 가역 행동만 유발**(correctness 근거 금지 — R43 H2가 이 원칙 위반을 잡았다).
-- (0) **잔존 2건**: (C)로 3차 지적 6건 중 **4건만 닫힌다**(중복 발행 · F5·F6). **효과 = "거짓 성공 제거, 중복·유실·고아 존속"** → PLAN v0.27.0이 겨냥.
-- (0) **원장**: 3차 = `docs/reviews/PANEDEATH-CODEX-REVIEW3.md` · **4차 = `docs/reviews/PANEDEATH-R43.md`**(High 6·Med 5·Low 1 + 미확인 7항 + 2레인 수렴표). R43 검증은 **in-harness Claude가 로컬 `codex-cli 0.144.6`을 병행 구동한 2레인** 산출이고 **두 레인이 독립적으로 reject 수렴**했다.
-- (0) **아키텍트 인용 결함 → 교훈 (38) `tasks/lessons/verification.md`**: 같은 세션 **4회 재범**(핸드오프만·락 5 본문만·락 8 표만·문서 좌표만). **규칙: 락을 권위로 인용할 때 단위는 줄이 아니라 블록 전체(본문+표+註+예외).** 설계 문서는 개정을 겪어 **자기모순이 기본값에 가깝다** — 충돌 발견은 결함 보고 대상이지 유리한 쪽을 고를 근거가 아니다.
+- (0) **2차 개정 완료** — 1차(`5cd070b`): 락 8 만료 dispose 삭제→진입 시점 durable quarantine JSONL(§6.7.1 신설, H2·H6) · dispatch-scoped result issuer(§6.7.2 신설, 전제 P·H4) · `cardSeq` 삭제 철회(전제 Q) · tower currency 게이트 편입(§6.7.3 신설, H3·락 9 범위 개정) · 가드 5곳·순서 역전 15곳(**아키텍트 직접 grep 재실측** — 증거 팩의 "14"는 오산, 교훈 (39)) · H1/M1~M5 문면. 2차(`2b5a951`): §6.7.3 dispatchHandoffId 폴백(`:850`) · issuer acquisition 보편 권위 · quarantine 태그드 키+내구(0600·fsync·replay·ack fold) · 전이표 logicalKind · seq 리셋 서술 철회(dispatchCard notes clobber 실측 `card-ops.ts:112-117`).
+- (0) **전제 2건(재작업 근거 — 이제 반영됨)**: **P** `sendFailedResult` 호출자 3곳(`:850`·`:1114`·`:1204`)에 Flight 없음(spawn 이전) → dispatch-scoped issuer로 해소. **Q** 전역 `cardSeq`는 result 시퀀스 아닌 **per-card dispatch attempt 카운터**(소비처 herdr agent name 유일성·hook 소켓 경로) → 삭제 철회.
+- (0) **좌표는 코드가 SSOT** — `sendResult` `:2408-2434` · 관측 `sendFailedResult` `:2395` · 호출 **18개** · **가드 5곳**(`:2019`가 정상 완료 경로 유일 방어) · **`disposeCardFlight` 15곳**(6 아님 — 부분 역전 시 latch가 일부 경로에서만 발화).
+- (0) **(C) 경계**: 브릿지는 **자동 `done` 커밋 안 함** → 완료 후보는 단일 소유자가 멱등 `needs_verification`(board `blocked`)으로 전달, **사람이 워킹트리 독립 검증 후 확정**. 자동 `blocked`는 **결정적 부정 증거**에만. 불확실한 status/scrape/timeout은 **알림만**. 종결 맥락((C) 전환 근거·증거 명제표 P1~P7·미실측 상수 지위) → `PANE-DEATH-DESIGN.md` §6.0-bis·§6.6.
+- (0) **원장 5본**: 3차 `PANEDEATH-CODEX-REVIEW3.md` · 4차 **`PANEDEATH-R43.md`**(reject 정본) · 5차 **`PANEDEATH-R43B.md`**(R43b 2레인 검증 + 아키텍트 판정표 — 수용 9·부분 1: 락 11 재론 기각+§9-ter 항목 3 정직 등재). R43·R43b·R43c는 **in-harness Claude + 로컬 `codex-cli 0.144.6` 2레인** 병행 산출.
+- (0) **아키텍트 인용/정정 결함 → 교훈 (38)(39) `tasks/lessons/verification.md`**: (38) 인용 단위는 줄이 아니라 **블록 전체**(본문+표+註+예외) — 설계 문서는 개정으로 **자기모순이 기본값에 가깝다**. (39) 서브에이전트 실측으로 원장 수치를 뒤집는 **정정 지시** 전 아키텍트 직접 재실측 선행 — 워커 "코드=SSOT 반증+판단요청" 절차가 오정정 차단.
 
 - (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 기아만이 원인 아님. 회귀 아님 근거 = 베이스라인·변경분 각 3회 16 pass/0 fail 동일 · 변경 파일 import 테스트 0건. 남은 가설 = 포트/소켓·타이밍 경합.
 - (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
@@ -54,7 +52,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH (C) — PLAN v0.27.0 `pending-revision`, R43 reject** (2026-07-21). **완료는 사람이 확정하고 브릿지는 전달·회복만 책임진다.** 이 세션은 **코드 무변경** — 스테일 좌표 4곳 교정 · §6.7-bis 신설 · PLAN D1~D8 작성 · R43에서 reject 회수. **다음 = 락 8 개정 → H3 범위 재획정 → 문면 수정 → R43b.**
+> **🎯 PANE-DEATH (C) — PLAN v0.27.0 `pending-revision`, R43c 재검증 중** (2026-07-21). **완료는 사람이 확정, 브릿지는 전달·회복만.** 세션 **코드 무변경** — 2차 개정 완료, 수렴 High6→4→0. **다음 = codex 회수 → 수렴 판정 → 국소 문면 → 종결/R43d.**
 
 ---
 
@@ -128,15 +126,15 @@ herdr status   # LOOM_HERDR_SOCKET overrides socket path (tests/fake)
 | Item | Value |
 |------|--------|
 | **CLI / code** | **0.26.1 shipped** (소스 `47fc81c` · dist `66e0ba1` · push 완료) — dispatch 마커 오표기 교정 + `DISPATCHED_TASK_MARKER`/`wrapDispatchedPrompt` 개명. 직전 **0.26.0** hooks 센서(`0de6c4c` · dist `e1d9177`) |
-| **PLAN** | **v0.27.0 `pending-revision`** (R43 reject/ready=no — High 6·Med 5·Low 1, 원장 `docs/reviews/PANEDEATH-R43.md`). 직전 **v0.26.1** `approved`(R42 author-close) → 구현·dist·push 완료 |
-| **Open blocking** | **R43 High 4건**(H1·H2·H3·H5) — 설계 재론 = H2(락 8 개정)·H3(범위 재획정), 나머지 문면. R24–R42 closed · GitHub Issues 전부 closed |
+| **PLAN** | **v0.27.0 `pending-revision`** (2차 개정 `2b5a951` — R43c 재검증 중: claude 레인 pending-revision·신규 High 0, codex 회수 대기. 수렴 R43 High6→R43b High4→R43c High0, 원장 `docs/reviews/PANEDEATH-R43B.md`). 직전 **v0.26.1** `approved`(R42 author-close) → 구현·dist·push 완료 |
+| **Open blocking** | **R43c Medium 1건**(§6.7.2 전이표 (C)/pre-C 시대 경계 미구분) + Low 3 — 전부 국소 문면(설계 재론 불요). R24–R42 closed · GitHub Issues 전부 closed |
 | **Tests** | 전체 **662개** — 재실행 시 실패 0건(1회차 1 fail = 등재된 통합 flake) · hook-sensor 37/37 · typecheck 6/6 |
 | **Verify** | VERIFY-0260 codex pane done — M-1·M-2·L-1..L-3·wire-lock PASS · D6(b)만 FAIL → FIX-0260b로 해소 |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · Conv spec `docs/CONV_SPEC.md` · hooks 정본 `docs/spikes/HOOKS-SENSOR-SPIKE.md` |
 | **Nodes** | mac-node · Windows relay(durable) · WSL node-wsl-1(부팅 생존) · VPS node-vps-1 / kb(`@reboot`) — loom-dev `LOOM-GT4B` |
 | **Boot persist** | 트랙 종료(2026-07-20, 오너 옵션 B) — 상세 lessons platform (17) · 팩 `.loom-boot-persist-pack.md` |
-| **Remote** | `origin/main` = HEAD (이 세션 커밋 전부 push 완료 — 2026-07-21 웨이브는 **코드 무변경 문서 6커밋**) |
-| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9-bis 락 **13개** — **락 8은 R43 H2로 자기모순 판정, 개정 대기** · §6.7 실측 좌표표 · §6.7-bis 함정·결정) + `PANE-DEATH-OBSERVATIONS.md` + 리뷰 **4본**: `PANEDEATH-CODEX-REVIEW.md`(1차) · `…REVIEW2.md`(2차) · `…REVIEW3.md`(3차) · **`PANEDEATH-R43.md`(4차 = 현행 reject 정본)** (리뷰 4본 수정 금지)** · **`AGENT-CLI-LIFECYCLE-HOOKS.md`(provisional)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
+| **Remote** | `origin/main` = `2b5a951` (이 세션 커밋 전부 push 완료 — 2026-07-21 웨이브는 **코드 무변경 문서 커밋**, R43b 2차 개정까지) |
+| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9-bis 락 — **락 8은 R43b에서 만료 dispose 삭제로 개정 완료** · §6.7~§6.7.3 실측 좌표·quarantine·issuer·currency 게이트) + `PANE-DEATH-OBSERVATIONS.md` + 리뷰 **5본**: `PANEDEATH-CODEX-REVIEW.md`(1차) · `…REVIEW2.md`(2차) · `…REVIEW3.md`(3차) · **`PANEDEATH-R43.md`(4차 = reject 정본)** · **`PANEDEATH-R43B.md`(5차 = R43b 2레인 검증 + 판정표)** (리뷰 5본 수정 금지)** · **`AGENT-CLI-LIFECYCLE-HOOKS.md`(provisional)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
 | **Untracked (커밋 제외)** | `scripts/check-mem-header.ts`(+test) · `scripts/watch-card.ts`(+test) · `scripts/session-context.test.ts` · `hook-sensor.ts`(+test) · `.loom-*` 브리프/디스패치 · `.playwright-mcp/` 등 |
 
 </details>
