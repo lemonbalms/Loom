@@ -29,7 +29,7 @@
 0. **⭐ SESSION-CONTINUITY — Phase B fixture + 단위 red 해소 + lint expected-red 고정**
    - 설계·결정 정본: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` §10·§13
    - session-context D4의 stale `SOFT_CAP=8,500` 기대값을 현행 12,750에 동기화해 단위 테스트 green
-   - `handoff:lint` top-80 12,674B 초과는 **Phase B expected-red**로 고정; 실제 해소는 Phase C
+   - `handoff:lint` 용량 초과는 **Phase B expected-red**로 고정(실측값은 명령 출력이 정본); 실제 해소는 Phase C
    - fixture에서 V1~V6, 전체 8,192B, state `HARD_CAP` 무절단, traps·Owner pending·Don't redo 복원을 검증
    - **금지:** Loom 제품 production 코드 변경 · PANE-DEATH PATCH 1 test/production diff 착수
 
@@ -46,7 +46,6 @@
 
 4. **Owner pending / 기존 후보 (이번 bounded wave 비범위)**
    - 통합 테스트 flake 트랙 선택 · HOOKCACHE-D-VERIFY 재개 · RULE-ENFORCEABILITY 적용 결정
-   - `.loom-impl-0270-brief.md` 처리 미정(untracked 잔존)
 
 <details>
 <summary>기존 PANE-DEATH·후보 경위 (펼쳐보기)</summary>
@@ -69,7 +68,7 @@
   **cross-ref 교훈 (30)** — *"미실측 상수로 정확성 갭을 닫지 마라 · 불변식으로 하중 이전"*, fable-advisor 당시 판정 *"실측은 분포를 줄 뿐 상한을 주지 않는다(느린 것과 죽은 것의 원격 구별 불가)"*. **오너의 herdr 구조 한계 판단은 이 교훈과 같은 결론이다** — 브랜치 노선이 트랙 불변식("완료는 사람이 확정")을 더 곧이곧대로 구현한 것으로 읽힌다.
   **설계 정본** `docs/spikes/PANE-DEATH-DESIGN.md` §6.7~§6.7.3 · §9-bis 락 5·8·9·11·13. **(C) 본체 8항목**(pre-C 브리프 §0 기준): 자동 `done` 제거(락 11) · `needs_verification` + board `blocked` · `awaiting_human_verification` + 사람 확정 + tower receipt · `pane.close` 이동 · `rejection_escalation`(깊이 2) · phase registry(12원소) · lifecycle `generation`(락 8) · §7.1-0 "done 0건". **단 이 8항목은 main 단독 노선 전제로 작성된 것이므로 통합 설계에서 재작성 대상이다.**
 
-- (4) **`.loom-impl-0270-brief.md`**: 삭제 vs `docs/` 보존 미정. 보존 시 §2(room.ts 무변경) ↔ §4.6 D2(주입 지점) 문면이 아키텍트에게 **"스펙 모순" 오독**을 유발한 경위를 함께 남길 것 — 실제로는 모순이 아니라 **모호성**이었다(fable-advisor 판정: §2 잠금 심볼에 `routeHandoff` 없음 · "기본 경로 무변경"은 비활성 심 허용 독해 가능).
+- (4) **`.loom-impl-0270-brief.md` 처리 종결 (2026-07-22): 제거.** v0.27.0 pre-C 임시 워커 브리프이며 구현·정본 이관이 끝나 v0.28.0에서 오인 위험만 남았다. §2(room.ts 무변경) ↔ §4.6 D2(테스트 주입)의 관계는 모순이 아니라 비활성 심 허용 범위의 모호성이었다는 경위만 이 문단에 보존한다. **재생성 금지.**
 - (4) **session-context 예산 — 규정 완화 적용 (오너 지시 2026-07-21 "당분간 기존 규정 150%까지 허용")**: `SOFT_CAP` **8500 → 12750** 적용(`scripts/session-context.ts:21-40`). 압축 압력이 해소돼 **HANDOFF·lessons를 예산 때문에 깎지 않는다**.
   **⚠️ 단 `HARD_CAP`(9500)은 올리지 않았다 — 정책 노브가 아니라 플랫폼 제약이다.** Claude Code SessionStart hook은 stdout을 **10,000자에서 조용히 자른다**(lessons platform (18), 공식 문서 대조). 9500 초과분은 우리 스크립트가 자르며 `…[truncated N chars]` 마커를 붙이는데, 14250까지 올리면 그 마커 없이 **플랫폼이 무경고로 자른다** — 통제되던 절단이 통제 불가로 바뀐다.
   **⚠️ 현황 정정 (2026-07-21 실측 — 종전 서술은 틀렸다):** **런타임 절단은 일어나지 않고 있다.**
