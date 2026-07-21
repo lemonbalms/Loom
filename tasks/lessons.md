@@ -83,6 +83,8 @@
 
 - [orchestration] 2026-07-20 (27) 위임 범위 축소가 정합성을 깬다 — 참조처까지 최소범위. **편집뿐 아니라 조사·스캔 범위도**(재범 3회).
 
+- [orchestration] 2026-07-21 (46) **레인 다운 시 재배정은 문자가 아니라 목적으로** — 발견자≠수정자+벤더 다양성 성립 여부. 워커 임의 대체는 결함. grok 헤드리스=읽기전용 allowlist 필수.
+
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 
 - [bridge-ops] 2026-07-18 잘린 peer ID: `loom peers` 표 ID는 표시용 절단값 — allowlist엔 전체 ID. 수정 후 브릿지 재시작 필수.
@@ -259,6 +261,10 @@
 - [verification] 2026-07-21 (42) **앰비언트 env 오염은 테스트를 사라지게 한다** — 판정은 pass/fail 아닌 **총수+실행시간**.
 
 - [verification] 2026-07-21 (43) **세션 메모리 서술도 검증 대상** — 오진 3회 동일 원인. 인과엔 대조군 선행.
+
+- [verification] 2026-07-21 (44) **정의부 존재 ≠ 호출의 증거** — 동작 주장엔 호출부 grep. 자문의 "미확인"을 자기 실측으로 뒤집을 땐 한 단계 더.
+
+- [verification] 2026-07-21 (45) **diff 방향이 인과를 뒤집는다** — A→B diff에서 A의 신규 파일은 "삭제"로 보인다. 계보=`merge-base`+parent, 삭제=`--diff-filter=D`.
 
 ## platform — Windows·WSL·경로 sep·크로스플랫폼 배포
 
