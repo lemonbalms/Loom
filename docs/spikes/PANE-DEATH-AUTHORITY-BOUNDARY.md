@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Date** | 2026-07-21 |
-| **Status** | **approved — R43b author-close, 구현 없음** |
+| **Status** | **approved — R43b author-close, G3 worktree 구현·green; ship/독립 검증 대기** |
 | **PLAN** | v0.27.0 revision A |
 | **Canonical** | 이 문서가 v0.27.0 구현 판단의 유일한 설계 정본 |
 | **Supersedes** | `PANE-DEATH-DESIGN.md`의 상태기계·락·체크리스트. 구 문서의 관측·실험 기록은 역사 증거로만 보존 |
@@ -316,3 +316,15 @@ R43b는 방향을 승인하고 세 문안 잠금을 조건으로 author-close를
 실제 guard 순서, (2) 외부 producer/body-only consumer의 조건부 rollout gate, (3) production 코드
 선행 red-test 커밋 요구를 반영했다. Advisor: fable-advisor consulted: yes. 구현은 별도 lane이 위
 사전 커밋 게이트를 충족한 뒤에만 시작한다.
+
+## 12. 구현 증거 (2026-07-21)
+
+- G0 test baseline `504a5b3`, G1 scan `971dd13`, G2 tests-only expected-red `93f1db1`은 각각
+  독립 커밋으로 원격 브랜치에 push됐다.
+- G3는 Tower authority fence, bridge proposal-only builder, dispatch-scoped synchronous issuer,
+  card `pane.close` 3경로 제거를 구현했다. `cardSeq`, card contract v1, relay/conv wire와 strict
+  ACK/outbox/cleanup grant는 변경하지 않았다.
+- 검증: bridge 29/29 · pane/inject/lifecycle 37/37 · 관련 회귀 94/94 · typecheck 6/6 · 전체
+  `bun test` 674/674(286.33s) · dist guard green · source/dist CLI 0.27.0.
+- 자동 승인 서비스 사용량 한도로 source/docs/dist commit·push와 Loom `[VERIFY]`만 대기한다.
+  외부 consumer rollout gate는 배포 전 조건으로 계속 유효하다.

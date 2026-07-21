@@ -6,6 +6,11 @@
 > 이 문서는 **시연(데모) 런북**이다. 제품 PLAN/게이트 아님. FREEZE와 무관한 docs.
 > room/프로파일(`demo` / `win-demo` / `mac`)은 **시연 전용** — 팀 dry-run 실제 room과 별개.
 
+> **v0.27 현재 의미론:** 아래 2026-07-17 기록의 `applyCardResult → board done`은 당시 동작을
+> 보존한 역사 증거다. 현재 bridge 완료 후보는 `failed + needs_verification`, legacy `done`도 Tower
+> ingress에서 `blocked`로 격리된다. 검증 후 `done`은 별도 명시적 로컬 board mutation으로만 만든다.
+> card pane 자동 close는 없다.
+
 ---
 
 ## 진행 상태
@@ -15,7 +20,7 @@
 | relay 상시화 (Windows) | ✅ `ws://100.65.103.113:7842` (`LoomRelayTeam` Task) |
 | room `demo` + Mac join + 양방향 handoff/board | ✅ `LOOM-4HXU` |
 | Mac bridge + **fake** herdr | ✅ `herdrOk:true` · allow `p_1f01c881dc5598d7` |
-| **dispatch_card 자동실행 (fake herdr)** | ✅ **완료** — dispatch `ho_52388ad0` → 무개입 `[DONE]` `ho_31cd036a` → `applyCardResult` → board `done` |
+| **dispatch_card 자동실행 (fake herdr, pre-v0.27 역사)** | ✅ **당시 완료** — dispatch `ho_52388ad0` → 무개입 `[DONE]` `ho_31cd036a` → 당시 `applyCardResult` → board `done` |
 | bun.lock 정합성 작업 board 위임 | ✅ `task_5b240cad6cabc37b` @mac (`ho_4c36b0bd`) |
 | **Mac 실물 herdr + bridge 전환** | ✅ **2026-07-17 Mac** — herdr **0.7.4**/protocol **16** · sock `~/.config/herdr/herdr.sock` · `herdrOk:true` · allow 유지 · repo cwd에서 server 기동 · claude **2.1.212** PATH |
 | **실물 herdr dispatch (bun.lock 카드)** | ⬅ **지금: Windows §3-2** `dispatchCard(task_5b240cad…)` |
@@ -49,7 +54,7 @@ LOOM_SESSION="C:\Users\34970\.loom\profiles\win-demo.json" \
 # → {ok:true,status:delivered,...} → Mac bridge 자동 claim → fake done → [DONE] Windows inbox
 ```
 
-**결과 반영(apply):** `[DONE]` handoff의 `loom-card-result` 첨부에서 resultJson을 꺼내 `applyCardResult({resultJson})` → board `doing→done`. (`opsListInbox` + `cardPayloadFromAttachments(atts, CARD_RESULT_LABEL, CardResultPayloadSchema)`)
+**당시 결과 반영(apply, pre-v0.27):** `[DONE]` handoff의 `loom-card-result` 첨부에서 resultJson을 꺼내 `applyCardResult({resultJson})` → 당시 board `doing→done`. 현재는 동일 호출이 `blocked` 검증 항목을 만들며, 확인 후 별도 로컬 mutation이 필요하다. (`opsListInbox` + `cardPayloadFromAttachments(atts, CARD_RESULT_LABEL, CardResultPayloadSchema)`)
 
 > fake herdr는 **실제 Claude 실행 없음** — 배관(dispatch→spawn→[DONE]→board)만 무개입 실증. 실제 작업 실행은 §3 실물 herdr 필요.
 

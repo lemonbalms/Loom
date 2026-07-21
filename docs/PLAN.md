@@ -122,6 +122,13 @@ approved.** 구 D1~D8 반영 충실도가 아니라 bridge/tower 양쪽 authorit
 자동 close 0, delivery/cleanup 후속 분리를 검증했다. R43b 조건 3건(guard 순서·조건부 rollout·선행
 red-test 커밋)을 본문에 잠갔다. Advisor: fable-advisor consulted: yes.
 
+**Implementation evidence (2026-07-21, ship pending):** G0 `504a5b3`, G1 `971dd13`, tests-only
+expected-red `93f1db1`을 선행 분리했다. G3 worktree는 remote result→blocked, bridge
+`failed + needs_verification`, dispatch-scoped single issuer, card auto-close 0과 CLI/MCP v0.27.0을
+구현했다. bridge 29/29 · pane/inject/lifecycle 37/37 · 관련 회귀 94/94 · typecheck 6/6 · 전체
+674/674 · dist guard green. source/docs/dist commit·push와 독립 `[VERIFY]`는 실행 승인 서비스 한도로
+대기하며, 이 문단은 독립 검증 완료를 주장하지 않는다.
+
 #### 0.27.0 R43-rejected 초안 — 2026-07-21 (**역사 기록, 비규범** — result 발행 단일 소유권 + ACK 경계)
 
 **Product one-liner:** 브릿지는 지금 카드 result를 **보내고 잊는다** — `bridge-runtime.ts:2160`의 `void sendFailedResult(...)`와 동형 결함 `:2207`·`:2222`의 `void finishCard(...)`는 전달 결과를 아무도 읽지 않고, `sendResult:2423`은 relay가 돌려준 ACK 봉투(`status` `recipientCount` `handoffId` `notified` `message`)를 **전량 폐기하고 `boolean`으로 뭉갠다**. 그 결과 발행 소유권 기제는 사실상 **`flights` 맵 삭제 하나뿐**이고(호출지점 기준 17개로 흩어짐 — `sendFailedResult` 7 · `finishCard` 10), 알림이 도착했는지 **아무도 모른다**. 이 MINOR는 **result 발행의 단일 소유권 + ACK 경계**를 세워 (C) 하이브리드 전환이 닫지 못한 **liveness 축(유실·고아)**을 닫는다 — [`docs/spikes/PANE-DEATH-DESIGN.md`](spikes/PANE-DEATH-DESIGN.md) **§6.7**(요구사항)·**§6.7-bis**(함정 3건 + 아키텍트 결정 2건 확정본)·**§9-bis 락 5·9·13**이 설계 정본이다. **(C) 전환은 거짓 성공만 없앴을 뿐 유실을 없애지 않았다**(§9-ter — "거짓 성공 제거, 중복·유실·고아 존속"): `done` 대신 `needs_verification`을 보내더라도 **그것이 도착했는지 모르는 것은 똑같기 때문**이다.

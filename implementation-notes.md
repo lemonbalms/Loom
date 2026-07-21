@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-18 (0.23.1 artifact 패키징 호출부) |
+| **Last updated** | 2026-07-21 (0.27.0 authority cut) |
 
 ---
 
@@ -120,6 +120,7 @@ Record successes so the next agent does not “fix” what was intentional.
 
 | Topic | Status |
 |-------|--------|
+| v0.27 authority cut | Plan-aligned: Tower remote results always block; Bridge completion emits a `needs_verification` proposal; dispatch issuer is single-shot; card auto-close paths are zero. `cardSeq`, wire schemas/enums, relay/conv behavior, strict ACK/outbox and cleanup grant remain unchanged. G2 tests-only commit: `93f1db1`; full suite 674/674. |
 | Live-PID gate before `~/.fable` → `~/.loom` rename | Implemented; M-16 tests cover live vs dead pid |
 | No dual-read of `*_RELAY_INSECURE_OPEN` | LOOM only |
 | Invite: mint `LOOM-`; lookup full-code case-fold; **no** FABLE→LOOM rewrite | Tested |
