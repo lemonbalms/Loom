@@ -134,9 +134,36 @@ export type ApplyCardResultResult =
   | { ok: true; task: TaskItem; status: TaskStatus }
   | { ok: false; error: string };
 
+/** PLAN 0.27.0 currency-gate observability (never silent swallow). */
+let currencyStaleDropCount = 0;
+let handoffUnmappedOrStaleCount = 0;
+let currencyDuplicateHandoffDropCount = 0;
+
+export function currencyGateStaleDrops(): number {
+  return currencyStaleDropCount;
+}
+export function currencyGateHandoffUnmapped(): number {
+  return handoffUnmappedOrStaleCount;
+}
+export function currencyGateDuplicateHandoffDrops(): number {
+  return currencyDuplicateHandoffDropCount;
+}
+export function resetCurrencyGateCounters(): void {
+  currencyStaleDropCount = 0;
+  handoffUnmappedOrStaleCount = 0;
+  currencyDuplicateHandoffDropCount = 0;
+}
+
+function findTasksByHandoffId(handoffId: string): TaskItem[] {
+  const board = loadTaskBoard();
+  if (!board) return [];
+  return board.tasks.filter((t) => t.handoffId === handoffId);
+}
+
 /**
  * Apply loom-card-result JSON to local board.
  * L-2: optional fromPeerId/node must match card assignee when provided.
+ * PLAN 0.27.0 §6.7.3: tower currency gate — dispatchHandoffId vs task.handoffId.
  */
 export function applyCardResult(args: {
   resultJson: string;
@@ -156,9 +183,98 @@ export function applyCardResult(args: {
     };
   }
 
-  const task = findTask(payload.cardId);
-  if (!task) {
-    return { ok: false, error: `task not found: ${payload.cardId}` };
+  // PLAN 0.27.0 currency gate: findTask → (miss | task_0) scan fallback → dedup
+  let task = findTask(payload.cardId);
+
+  if (!task || payload.cardId === "task_0") {
+    // findTask miss (or degraded cardId) → dispatchHandoffId scan fallback
+    if (payload.dispatchHandoffId) {
+      const matches = findTasksByHandoffId(payload.dispatchHandoffId);
+      if (matches.length > 1) {
+        currencyDuplicateHandoffDropCount += 1;
+        console.error(
+          "[loom-tower] currency gate: duplicate handoffId match (fail-visible drop)",
+          JSON.stringify({
+            event: "currency_duplicate_handoff",
+            dispatchHandoffId: payload.dispatchHandoffId,
+            count: currencyDuplicateHandoffDropCount,
+            taskIds: matches.map((t) => t.id),
+          }),
+        );
+        return {
+          ok: false,
+          error: `handoff_duplicate_match: ${payload.dispatchHandoffId}`,
+        };
+      }
+      if (matches.length === 1) {
+        const candidate = matches[0]!;
+        // cardId cross-check: if payload cardId is not the degraded value and
+        // disagrees with candidate → drop. Degraded "task_0" skips mismatch.
+        if (
+          payload.cardId !== "task_0" &&
+          payload.cardId !== candidate.id
+        ) {
+          currencyStaleDropCount += 1;
+          console.error(
+            "[loom-tower] currency gate: cardId mismatch after handoff scan (drop)",
+            JSON.stringify({
+              event: "currency_cardid_mismatch",
+              payloadCardId: payload.cardId,
+              taskId: candidate.id,
+              dispatchHandoffId: payload.dispatchHandoffId,
+              count: currencyStaleDropCount,
+            }),
+          );
+          return {
+            ok: false,
+            error: `currency_cardid_mismatch: payload=${payload.cardId} task=${candidate.id}`,
+          };
+        }
+        // Fall-through: mismatch gate is identity on degraded path → seq dedup
+        task = candidate;
+      } else {
+        handoffUnmappedOrStaleCount += 1;
+        console.error(
+          "[loom-tower] currency gate: handoff_unmapped_or_stale",
+          JSON.stringify({
+            event: "handoff_unmapped_or_stale",
+            cardId: payload.cardId,
+            dispatchHandoffId: payload.dispatchHandoffId,
+            count: handoffUnmappedOrStaleCount,
+          }),
+        );
+        return {
+          ok: false,
+          error: `handoff_unmapped_or_stale: ${payload.cardId}`,
+        };
+      }
+    } else if (!task) {
+      return { ok: false, error: `task not found: ${payload.cardId}` };
+    }
+  }
+
+  // General path (findTask hit): stale dispatchHandoffId → drop
+  if (
+    task &&
+    payload.dispatchHandoffId &&
+    task.handoffId &&
+    payload.dispatchHandoffId !== task.handoffId
+  ) {
+    currencyStaleDropCount += 1;
+    console.error(
+      "[loom-tower] currency gate: stale dispatchHandoffId (drop)",
+      JSON.stringify({
+        event: "currency_stale_dispatch",
+        cardId: payload.cardId,
+        payloadHandoffId: payload.dispatchHandoffId,
+        taskHandoffId: task.handoffId,
+        count: currencyStaleDropCount,
+      }),
+    );
+    return {
+      ok: false,
+      error: `currency_stale_dispatch: payload=${payload.dispatchHandoffId} task=${task.handoffId}`,
+    };
   }
 
   // L-2: assignee / node forgery guard
@@ -188,6 +304,8 @@ export function applyCardResult(args: {
   }
 
   // seq idempotency: notes may hold last_seq=N
+  // When dispatchHandoffId present + matches → per-dispatch seq dedup (same scalar notes form).
+  // When dispatchHandoffId absent → scalar fallback (backward compat).
   const lastSeqMatch = /last_seq=(\d+)/.exec(task.notes ?? "");
   if (lastSeqMatch) {
     const last = Number(lastSeqMatch[1]);

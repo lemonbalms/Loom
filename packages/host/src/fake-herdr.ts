@@ -8,12 +8,162 @@
  * timers below) are therefore broadcast to whatever sockets are still open
  * — in practice only the events.subscribe connection, since request
  * connections are ended right after their response.
+ *
+ * PLAN 0.27.0 D2: also hosts the test-only handoff.ack injection surface
+ * (relay ACK is not otherwise mocked by fake-herdr — production path unchanged).
  */
 import { unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Server, Socket } from "node:net";
 import { createServer } from "node:net";
 import { BARE_ENTER } from "./herdr-client";
+import type { HandoffSendStatus } from "@loom/protocol";
+import {
+  __setHandoffAckInjector,
+  type HandoffAckInjectionResult,
+} from "./relay-client";
+
+// ─── PLAN 0.27.0 D2: relay ACK injection (test-only) ─────────────────────────
+// Forces the next RelayClient.handoff() response to one of 5 deterministic combos:
+//   queued/1 · delivered/1 · peer_unknown/0 · delivered/2 · transport-throw
+// Production default path is unchanged when no injection is set.
+// Dependency is inverted: this module installs into RelayClient's seam;
+// production relay-client never imports fake-herdr.
+
+export type HandoffAckInjection =
+  | {
+      kind: "ack";
+      status: HandoffSendStatus;
+      recipientCount: number;
+      notified?: boolean;
+      message?: string;
+      handoffId?: string;
+      to?: string;
+    }
+  | { kind: "throw"; message?: string };
+
+/** Named presets for the 5 D2 combos. */
+export type HandoffAckInjectionPreset =
+  | "queued_1"
+  | "delivered_1"
+  | "peer_unknown_0"
+  | "delivered_2"
+  | "transport_throw";
+
+let handoffAckInjection: HandoffAckInjection | null = null;
+/** When true, injection is cleared after one consume. Default true. */
+let handoffAckInjectionOnce = true;
+
+/** Map local injection shape → production seam result. */
+function toInjectionResult(
+  inj: HandoffAckInjection,
+): HandoffAckInjectionResult {
+  if (inj.kind === "throw") {
+    return { kind: "throw", message: inj.message };
+  }
+  return {
+    kind: "ack",
+    status: inj.status,
+    recipientCount: inj.recipientCount,
+    notified: inj.notified,
+    handoffId: inj.handoffId,
+    to: inj.to,
+    message: inj.message,
+  };
+}
+
+/** Register (or clear) the production seam injector after local state changes. */
+function syncAckInjectorToProduction(): void {
+  if (handoffAckInjection === null) {
+    __setHandoffAckInjector(null);
+    return;
+  }
+  __setHandoffAckInjector(() => {
+    const cur = consumeHandoffAckInjection();
+    return cur ? toInjectionResult(cur) : null;
+  });
+}
+
+export function setHandoffAckInjection(
+  inj: HandoffAckInjection | HandoffAckInjectionPreset | null,
+  opts?: { once?: boolean },
+): void {
+  handoffAckInjectionOnce = opts?.once !== false;
+  if (inj === null) {
+    handoffAckInjection = null;
+    syncAckInjectorToProduction();
+    return;
+  }
+  if (typeof inj === "string") {
+    handoffAckInjection = presetToInjection(inj);
+  } else {
+    handoffAckInjection = inj;
+  }
+  syncAckInjectorToProduction();
+}
+
+function presetToInjection(p: HandoffAckInjectionPreset): HandoffAckInjection {
+  switch (p) {
+    case "queued_1":
+      return {
+        kind: "ack",
+        status: "queued",
+        recipientCount: 1,
+        notified: false,
+      };
+    case "delivered_1":
+      return {
+        kind: "ack",
+        status: "delivered",
+        recipientCount: 1,
+        notified: true,
+      };
+    case "peer_unknown_0":
+      return {
+        kind: "ack",
+        status: "peer_unknown",
+        recipientCount: 0,
+        notified: false,
+        message: "No peer matching (injected)",
+      };
+    case "delivered_2":
+      return {
+        kind: "ack",
+        status: "delivered",
+        recipientCount: 2,
+        notified: true,
+      };
+    case "transport_throw":
+      return { kind: "throw", message: "injected transport error" };
+  }
+}
+
+/**
+ * Consume the current injection (if any). Called via the production seam
+ * injector registered by setHandoffAckInjection.
+ * Returns null when no injection is active (production / default test path).
+ */
+export function consumeHandoffAckInjection(): HandoffAckInjection | null {
+  const cur = handoffAckInjection;
+  if (!cur) return null;
+  if (handoffAckInjectionOnce) {
+    handoffAckInjection = null;
+    // Once-shot consumed: unregister so later handoffs hit the wire path.
+    __setHandoffAckInjector(null);
+  }
+  return cur;
+}
+
+/** Peek without consuming (test assertions). */
+export function peekHandoffAckInjection(): HandoffAckInjection | null {
+  return handoffAckInjection;
+}
+
+export function clearHandoffAckInjection(): void {
+  handoffAckInjection = null;
+  handoffAckInjectionOnce = true;
+  __setHandoffAckInjector(null);
+}
 
 export type FakeHerdrOptions = {
   socketPath: string;

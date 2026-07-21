@@ -10,6 +10,36 @@ import {
   envTokenInQuery,
 } from "@loom/protocol";
 
+/**
+ * PLAN 0.27.0 D2: test-only handoff.ack injection result.
+ * Production path is unchanged when no injector is registered.
+ * Shape mirrors fields read in RelayClient.handoff() injection block.
+ */
+export type HandoffAckInjectionResult =
+  | { kind: "throw"; message?: string }
+  | {
+      kind: "ack";
+      status: string;
+      recipientCount: number;
+      notified?: boolean;
+      handoffId?: string;
+      to?: string;
+      message?: string;
+    };
+
+type HandoffAckInjector = () => HandoffAckInjectionResult | null;
+
+/** Module-level injector; null = production wire path. */
+let __ackInjector: HandoffAckInjector | null = null;
+
+/**
+ * Register (or clear) a test-only handoff.ack injector.
+ * Tests install via this seam; production never sets this.
+ */
+export function __setHandoffAckInjector(fn: HandoffAckInjector | null): void {
+  __ackInjector = fn;
+}
+
 export type JoinCredentials = {
   inviteCode: string;
   displayName: string;
@@ -325,6 +355,33 @@ export class RelayClient {
     mode?: "message" | "task";
     attachments?: HandoffPayload["attachments"];
   }): Promise<Extract<Envelope, { type: "handoff.ack" }>> {
+    // PLAN 0.27.0 D2: test-only ACK injection via production seam.
+    // When __ackInjector is null (default), production wire path runs unchanged.
+    // Tests register the injector (inverted dependency — no test imports here).
+    const inj = __ackInjector?.() ?? null;
+    if (inj) {
+      if (inj.kind === "throw") {
+        throw new Error(inj.message ?? "injected transport error");
+      }
+      const ack = {
+        type: "handoff.ack" as const,
+        v: PROTOCOL_VERSION,
+        roomId: this.roomId ?? "injected",
+        ts: new Date().toISOString(),
+        handoffId: inj.handoffId ?? `ho_inj_${Date.now().toString(16)}`,
+        to: inj.to ?? partial.to,
+        status: inj.status as Extract<
+          Envelope,
+          { type: "handoff.ack" }
+        >["status"],
+        notified: inj.notified ?? inj.status === "delivered",
+        recipientCount: inj.recipientCount,
+        ...(inj.message !== undefined ? { message: inj.message } : {}),
+      } satisfies Extract<Envelope, { type: "handoff.ack" }>;
+      this.lastHandoffAck = ack;
+      return ack;
+    }
+
     await this.connect();
     this.lastHandoffAck = null;
     const env = await this.requestOnce(
