@@ -26,6 +26,8 @@ Full team dry-run (Windows/WSL, remote relay, smoke): [`docs/DRY_RUN_RUNBOOK.md`
 | **Packages** | `@loom/*` (Bun monorepo) |
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) — product plan SSOT (versioned) |
 | **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
+| **Docs index** | [`index.md`](index.md) — 문서 지도와 권장 읽기 순서 |
+| **Glossary** | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — Loom 약어·내부 용어 설명 (non-normative) |
 | **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
 | **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
@@ -92,6 +94,7 @@ Loom/
 │   ├── PLAN.md                  # Product plan SSOT (versioned)
 │   ├── plan_review.md           # Review gate (R1…)
 │   ├── PRIORITIES.md            # What to do next (short-term)
+│   ├── GLOSSARY.md              # Project terms and abbreviations (non-normative)
 │   ├── USER_GUIDE.md            # End-user scenarios (Korean)
 │   ├── TEST_PLAN.md             # Per-scenario test checklist
 │   ├── PROTOCOL.md              # Wire protocol

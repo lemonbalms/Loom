@@ -5,8 +5,8 @@
 
 | 항목 | 값 |
 |------|-----|
-| **인덱스 생성 시점** | 2026-07-21 (부분 갱신: lifecycle hooks 설계 팩 · USER_GUIDE §12) |
-| **기준 커밋(HEAD)** | `48cd95e` — docs(spikes): agent CLI lifecycle hooks 설계 입력 팩 |
+| **인덱스 생성 시점** | 2026-07-22 (부분 갱신: GLOSSARY · SESSION-CONTINUITY 진입 순서) |
+| **기준 커밋(HEAD)** | `b59bcae` — docs: add Loom project glossary |
 | **최신성 기준** | "최종 업데이트" = 해당 파일의 **git 마지막 커밋 author-date**. 미추적 파일은 `mtime`으로 표기하고 ⚠️ 표시 |
 | **활동량 읽는 법** | 커밋 수 = 문서의 변경 빈도. 많을수록 살아있는 SSOT, 적을수록 1회성 산출물/배경자료 |
 
@@ -40,6 +40,7 @@
 | 파일 | 요약 | 최종 업데이트 | 커밋 |
 |------|------|:---:|:---:|
 | `README.md` | 프로젝트 개요 (제품명 = Loom, name: `loom`) | 2026-07-10 | 27 |
+| `docs/GLOSSARY.md` | **용어·약어 안내(non-normative).** Loom/Fable·제품 handoff/세션 HANDOFF·M/R/U/G 표기·완료 권한·전달 신뢰성 용어를 쉬운 말로 구분 | 2026-07-22 | 1 |
 | `docs/PITCH.md` | 제품 피치 — "connect your agents, and your teammates" | 2026-07-10 | 3 |
 | `docs/USER_GUIDE.md` | 사용자 가이드 — 사용 사례로 배우기 (**§12** 오케스트레이터 CLI 전환·bridge 복구) | 2026-07-20 | 10 |
 | `docs/TEST_PLAN.md` | 테스트 계획 — 사용 사례별 (도그푸드 시나리오 근거) | 2026-07-10 | 10 |
@@ -106,10 +107,11 @@
 ## 도그푸딩·기능 리스트업 시 읽는 순서 (권장)
 
 1. `HANDOFF.md` ⭐ 블록 → 지금 하려던 것
-2. `docs/PLAN.md` + `docs/PRIORITIES.md` + `tasks/todo.md` → 후보 기능 풀
-3. `docs/UNKNOWNS.md` → 미결 리스크
-4. `docs/TEST_PLAN.md` + `docs/USER_GUIDE.md` → 실제 사용 시나리오(=도그푸드 대상)
-5. `docs/DOGFOOD_LOOP.md` → 어떤 레인·규율로 개발할지
+2. `docs/GLOSSARY.md` → 낯선 약어·내부 표현 확인(non-normative)
+3. `docs/PLAN.md` + `docs/PRIORITIES.md` + `tasks/todo.md` → 후보 기능 풀
+4. `docs/UNKNOWNS.md` → 미결 리스크
+5. `docs/TEST_PLAN.md` + `docs/USER_GUIDE.md` → 실제 사용 시나리오(=도그푸드 대상)
+6. `docs/DOGFOOD_LOOP.md` → 어떤 레인·규율로 개발할지
 
 ### hooks / 워커 관측 설계 시
 
