@@ -1,5 +1,11 @@
 # 워커 pane 종료 인지 — 판정·바인딩 설계 (설계 전용 · 적용 없음)
 
+> [!WARNING]
+> **v0.27.0 구현 정본에서 제외됨 (2026-07-21).** 이 문서의 관측·프로브 기록은 역사 증거로
+> 보존하지만, 상태기계·락·체크리스트는 R43 reject 뒤 **비규범(non-normative)** 으로 격하됐다.
+> 현재 설계 정본은 [`PANE-DEATH-AUTHORITY-BOUNDARY.md`](./PANE-DEATH-AUTHORITY-BOUNDARY.md)다.
+> 특히 락 3·5·6·8·9·10·13 및 §10을 구현 지시로 사용하지 않는다.
+
 | Field | Value |
 |---|---|
 | **Date** | 2026-07-20 |

@@ -1,8 +1,8 @@
 # HANDOFF — Loom (next session)
 
 **Date:** 2026-07-21  
-**Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`  
-**GitHub:** https://github.com/lemonbalms/Loom (`main`)  
+**Workspace:** `/Users/kyoungsiklee/projects/fable-advisor-pane-death-authority`
+**GitHub:** https://github.com/lemonbalms/Loom (`design/pane-death-authority-boundary`)
 **Language:** user often Korean · **Autonomy:** brief status → execute gate (no mid-wave "할까요?")
 
 > ### Windows에서 볼 때
@@ -18,21 +18,64 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH (C) — PLAN v0.27.0 `pending-revision`, R43 **reject** (2026-07-21).** High 6·Med 5·Low 1. **차단 4 = H1 PLAN 내부 모순 · H2 락 8 자기모순(개정 필요) · H3 seq가 tower 소비자 파괴(범위 재획정) · H5 완료 판정이 틀린 명제를 잠금.** H2·H3만 설계 재론. 원장 **`docs/reviews/PANEDEATH-R43.md`**. **코드 무변경.**
+> **🎯 즉시 게이트 = TEST-BASELINE PATCH.** PANE-DEATH authority cut PLAN v0.27.0 revision A는
+> `approved`(R43b author-close)이지만, 현행 `main`에서도 relay/WebSocket 연결 직후 실패가 재현돼
+> 전체 suite가 568 pass/14 fail이다. 따라서 **v0.27 red test보다 먼저** 이 베이스라인 결함을
+> 별도 PATCH로 진단·해소하고 green을 복구한다. authority-cut 정본은
+> **`docs/spikes/PANE-DEATH-AUTHORITY-BOUNDARY.md`**, 현재 **제품 코드 변경 0**.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH (C) — R43 reject 해소 → R43b (착수 지점, 순서 고정)**
-   > **불변식:** 불확실한 관측은 **회복 가능한 행동만** 유발한다. 비가역 행동(result 발행·`pane.close`·dispose)은 **결정적 증거 또는 멱등 경로에서만**.
+0. **⭐ G0 TEST-BASELINE PATCH — v0.27과 섞지 않음**
 
-   **① 락 8 개정(H2)** → **② H3 범위 재획정** → **③ H1·H5 문면 수정** → **④ R43b**. ①②는 설계 재론이라 **fable-advisor 자문 선행 권장**(아키텍트 판단이 이 트랙에서 4회 뒤집힘). 전문·좌표·제안 → 원장 · PLAN §0.27.0 · 설계 §6.7-bis.
+   - 재현 시작점: `bun test packages/host/src/relay-client.l4.test.ts` — 변경 없는 `main`에서도
+     `WebSocket error connecting to ws://127.0.0.1:<random>/ws`로 0/1 fail.
+   - 실제 server-ready/connect 호출 사슬을 따라 원인을 확정한다. test harness 수정으로 충분하면
+     그 범위만 PATCH; **제품 relay 동작 변경이 필요하면 코딩 전에 PLAN PATCH를 먼저 연다.**
+   - 완료 증거: 대표 격리 테스트 green + 전체 `bun test` **3회 연속 green**. 다른 워커/전체
+     suite와 동시 실행하지 않는다.
 
-1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 3회에 **매번 다른** conv/scrape 실패(단독은 6/6 green). 변경 무관 확정. **방치 시 green 판정이 흐려진다**(펼쳐보기).
-2. **HOOKCACHE-D-VERIFY 재개 (0번 후)**(펼쳐보기).
-3. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
+1. **G1 v0.27 preflight scan — G0 green 이후**
+
+   repo producer/consumer 전역 scan과 외부 consumer/body-only automation 존재 여부를 기록한다.
+   외부 consumer가 있으면 rolling-upgrade gate를 확정하기 전 다음 단계로 가지 않는다.
+
+2. **G2 v0.27 tests-only red commit — G1 이후**
+
+   설계 §8의 Tower guard 순서·bridge proposal-only·Flight-less issuer·auto-close 0·양방향 rolling
+   upgrade 테스트만 추가한다. **production 변경 없이 기대한 이유로 red임을 확인한 뒤 tests-only로
+   커밋**한다. G0의 실패 로그는 이 red 증거를 대신할 수 없다.
+
+3. **G3 구현 위임 — G2 커밋 이후**
+
+   승인 설계와 red commit을 `grok-impl` → `codex-impl` → lower-tier 순으로 위임한다. 아키텍트는
+   hand-code하지 않는다. **불변식:** remote result는 board `done`을 만들지 않고 card 자동
+   `pane.close`는 0이다. strict ACK/outbox/seq 재설계/cleanup grant는 이 버전에 합치지 않는다.
+
+4. **G4 독립 검증·ship — G3 이후**
+
+   관련 단위/통합·스모크 → 아키텍트 전체 `bun test` green → docs/HANDOFF/todo 동기 → source/dist
+   순서로 commit/push. 어느 게이트도 앞 단계의 실패를 뒤 단계의 증거로 대체하지 않는다.
+
+**선후관계 정본:** `G0 baseline green → G1 scan/rollout gate → G2 tests-only expected red →
+G3 delegated implementation → G4 independent green/ship`. 현재는 **G0만 실행 가능**하다.
+
+**현재 증거:** `bun run status` approved/Open 없음 · `handoff:lint` · `git diff --check` green.
+샌드박스 밖 전체 suite 568 pass/14 fail, `--max-concurrency=1`도 동일 14 fail. 변경 없는 `main`의
+대표 테스트에서도 재현했으므로 설계 diff 회귀는 아니지만, **운영상 implementation gate는 닫혀 있다.**
+
+**Git 상태:** 이 워크트리의 PLAN/review/spike/HANDOFF/todo 변경은 **docs-only 미커밋**이다.
+베이스라인 red 때문에 설계 웨이브를 ship하지 않았다. **reset/폐기하지 말고 이 워크트리에서
+G0부터 이어간다.** `git status --short`로 범위를 재확인하되 제품 코드 변경은 없어야 한다.
+
+5. **HOOKCACHE-D-VERIFY 재개 (G4 후)**(펼쳐보기).
+6. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
 
 <details>
-<summary>0 적용 내역 + 1·2·3 부연 설명 (펼쳐보기)</summary>
+<summary>R43 rejected 초안 역사 근거 + 후속 트랙 부연 (비규범, 펼쳐보기)</summary>
+
+> 아래 (0)은 R43가 폐기한 결합 설계의 역사 증거다. v0.27.0 구현 지시로 사용하지 않는다.
+> 현재 정본은 `PANE-DEATH-AUTHORITY-BOUNDARY.md`와 PLAN revision A다.
 
 - (0) **R43이 밝힌 놓친 전제 2건 (아래 지적 다수의 공통 근인 — 재작업 전 필독)**: **P** `sendFailedResult` 호출자 7곳 중 **3곳(`:850`·`:1114`·`:1204`)에 Flight가 없다**(spawn 이전·cardId조차 추정). 흡수 상태·durable alert·타이머를 **둘 곳이 없다** → D4·D5·D6 동시 붕괴. **Q** 전역 `cardSeq`는 result 시퀀스가 아니라 **per-card dispatch attempt 카운터**(`:1124` "Fix 2 (live-measured)")이고 소비처가 **herdr agent name 유일성(`:1192`)·hook 소켓 경로(`:1141`)**다 — PLAN이 "누수"라 부른 성질이 **요구사항**이다. 삭제하면 live-measured 수정의 회귀.
 - (0) **착수 전 함정 3건 + 3차 리뷰 배관 정정** → `PANE-DEATH-DESIGN.md` **§6.7-bis**. 요약: `void`→`await` 단순 승격은 이중 발행 방어를 **약화**시킴 · strict ACK 본체는 `sendResult` 시그니처 교체 · `recipientCount=1`은 실측 전 금지.
@@ -43,9 +86,8 @@
 - (0) **원장**: 3차 = `docs/reviews/PANEDEATH-CODEX-REVIEW3.md` · **4차 = `docs/reviews/PANEDEATH-R43.md`**(High 6·Med 5·Low 1 + 미확인 7항 + 2레인 수렴표). R43 검증은 **in-harness Claude가 로컬 `codex-cli 0.144.6`을 병행 구동한 2레인** 산출이고 **두 레인이 독립적으로 reject 수렴**했다.
 - (0) **아키텍트 인용 결함 → 교훈 (38) `tasks/lessons/verification.md`**: 같은 세션 **4회 재범**(핸드오프만·락 5 본문만·락 8 표만·문서 좌표만). **규칙: 락을 권위로 인용할 때 단위는 줄이 아니라 블록 전체(본문+표+註+예외).** 설계 문서는 개정을 겪어 **자기모순이 기본값에 가깝다** — 충돌 발견은 결함 보고 대상이지 유리한 쪽을 고를 근거가 아니다.
 
-- (1) 실증: 부하 시 `R26 §5.2`+`scrape-delta ④`, 조용할 때 `conv R28 L-1`. 스위트 285s(정상)에서도 발생 → 기아만이 원인 아님. 회귀 아님 근거 = 베이스라인·변경분 각 3회 16 pass/0 fail 동일 · 변경 파일 import 테스트 0건. 남은 가설 = 포트/소켓·타이밍 경합.
-- (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
-- (2) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
+- (HOOKCACHE-D-VERIFY) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
+- (RULE-ENFORCEABILITY) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 
 </details>
 4~8. 대형 트랙 미정 · R{n} 유예 · Low 백로그 · npm publish 보류 · `.loom-*` 정리 → `docs/HANDOFF_ARCHIVE.md`.
@@ -54,7 +96,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH (C) — PLAN v0.27.0 `pending-revision`, R43 reject** (2026-07-21). **완료는 사람이 확정하고 브릿지는 전달·회복만 책임진다.** 이 세션은 **코드 무변경** — 스테일 좌표 4곳 교정 · §6.7-bis 신설 · PLAN D1~D8 작성 · R43에서 reject 회수. **다음 = 락 8 개정 → H3 범위 재획정 → 문면 수정 → R43b.**
+> **🎯 다음 = G0 TEST-BASELINE PATCH.** 변경 없는 `main`에서도 재현되는 relay/WebSocket server-ready/connect 레이스를 v0.27과 분리해 진단·수정하고, 대표 격리 테스트 + 전체 suite 3회 연속 green을 만든다. **그 전에는 v0.27 red test·구현 위임 금지.** 이후 순서 = G1 scan → G2 tests-only red commit → G3 구현 위임 → G4 독립 green/ship.
 
 ---
 
@@ -128,15 +170,15 @@ herdr status   # LOOM_HERDR_SOCKET overrides socket path (tests/fake)
 | Item | Value |
 |------|--------|
 | **CLI / code** | **0.26.1 shipped** (소스 `47fc81c` · dist `66e0ba1` · push 완료) — dispatch 마커 오표기 교정 + `DISPATCHED_TASK_MARKER`/`wrapDispatchedPrompt` 개명. 직전 **0.26.0** hooks 센서(`0de6c4c` · dist `e1d9177`) |
-| **PLAN** | **v0.27.0 `pending-revision`** (R43 reject/ready=no — High 6·Med 5·Low 1, 원장 `docs/reviews/PANEDEATH-R43.md`). 직전 **v0.26.1** `approved`(R42 author-close) → 구현·dist·push 완료 |
-| **Open blocking** | **R43 High 4건**(H1·H2·H3·H5) — 설계 재론 = H2(락 8 개정)·H3(범위 재획정), 나머지 문면. R24–R42 closed · GitHub Issues 전부 closed |
-| **Tests** | 전체 **662개** — 재실행 시 실패 0건(1회차 1 fail = 등재된 통합 flake) · hook-sensor 37/37 · typecheck 6/6 |
+| **PLAN** | **v0.27.0 revision A `approved`** (R43b author-close — guard 순서·조건부 rollout gate·선행 red-test 커밋 반영). 직전 R43 rejected 초안은 역사 기록 |
+| **Open blocking** | PLAN/review blocking 없음. 구현 ship은 production 선행 red-test + 외부 consumer rollout 확인 + 전체 suite green이 필요 |
+| **Tests** | 설계 문서 검증 green. 전체 suite **568 pass/14 fail** — 기존 relay/WebSocket 연결 레이스, 변경 없는 main 대표 테스트도 동일 재현. 제품 코드 차집합 0이나 green 주장은 금지 |
 | **Verify** | VERIFY-0260 codex pane done — M-1·M-2·L-1..L-3·wire-lock PASS · D6(b)만 FAIL → FIX-0260b로 해소 |
 | **Herdr design** | `docs/HERDR_DESIGN.md` · Conv spec `docs/CONV_SPEC.md` · hooks 정본 `docs/spikes/HOOKS-SENSOR-SPIKE.md` |
 | **Nodes** | mac-node · Windows relay(durable) · WSL node-wsl-1(부팅 생존) · VPS node-vps-1 / kb(`@reboot`) — loom-dev `LOOM-GT4B` |
 | **Boot persist** | 트랙 종료(2026-07-20, 오너 옵션 B) — 상세 lessons platform (17) · 팩 `.loom-boot-persist-pack.md` |
-| **Remote** | `origin/main` = HEAD (이 세션 커밋 전부 push 완료 — 2026-07-21 웨이브는 **코드 무변경 문서 6커밋**) |
-| **Spikes** | **`PANE-DEATH-DESIGN.md`(§9-bis 락 **13개** — **락 8은 R43 H2로 자기모순 판정, 개정 대기** · §6.7 실측 좌표표 · §6.7-bis 함정·결정) + `PANE-DEATH-OBSERVATIONS.md` + 리뷰 **4본**: `PANEDEATH-CODEX-REVIEW.md`(1차) · `…REVIEW2.md`(2차) · `…REVIEW3.md`(3차) · **`PANEDEATH-R43.md`(4차 = 현행 reject 정본)** (리뷰 4본 수정 금지)** · **`AGENT-CLI-LIFECYCLE-HOOKS.md`(provisional)** · **`RULE-ENFORCEABILITY.md`(미적용)** · `HOOK-CACHE-FIX-DESIGN.md`(적용 완료) · `WARM-BASE-FORK-SPIKE.md` `defer` · hooks 센서 · DISPATCH-DEMO · STEP0/0.5 |
+| **Remote** | 설계 브랜치 `design/pane-death-authority-boundary`; suite baseline fail 때문에 아직 commit/push하지 않음 |
+| **Spikes** | **현행 정본 `PANE-DEATH-AUTHORITY-BOUNDARY.md`**. 구 `PANE-DEATH-DESIGN.md` 상태기계·락·체크리스트는 비규범 역사 증거. R43 원장과 앞선 리뷰본은 수정 금지 |
 | **Untracked (커밋 제외)** | `scripts/check-mem-header.ts`(+test) · `scripts/watch-card.ts`(+test) · `scripts/session-context.test.ts` · `hook-sensor.ts`(+test) · `.loom-*` 브리프/디스패치 · `.playwright-mcp/` 등 |
 
 </details>

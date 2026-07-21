@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document** | `docs/PLAN.md` |
 | **Version** | **0.27.0** |
-| **Status** | **`pending-revision` (R43 reject/ready=no, 2026-07-21 — High 6건: H1 PLAN 내부 모순(D4↔D7④) · **H2 락 8 자기모순 + 만료 dispose가 불변식 위반** · H3 seq 규약이 tower 현행 소비자(`card-ops.ts:190-197` 스칼라 `payload.seq <= last`) 파괴 · H4 재귀깊이 2가 Flight-less 3경로에 미정의 · H5 완료 판정이 틀린 명제를 잠금(순서 역전은 가드를 **정의상** 무력화) · H6 durable alert 저장 매체 미규정(현행은 `console.error`). **설계 재론 필요 = H2(락 8 개정)·H3(범위 경계 재획정), 나머지는 문면 수정**. 원장 `docs/reviews/PANEDEATH-R43.md`) → 직전 `pending-review` (R43, 2026-07-21 — **result 발행 단일 소유권 + ACK 경계 — relay ACK 실측 선결 · strict ACK 판정 · seq 소유권 이전 · fire-and-forget 제거** (MINOR)):** (C) 하이브리드 전환이 닫지 못한 **liveness 축(유실·고아)**을 닫는다 — 브릿지는 지금 result를 보내고 잊으며(`bridge-runtime.ts:2160`·`:2207`·`:2222` fire-and-forget), `sendResult:2423`은 relay ACK 봉투를 전량 폐기해 **수신자 0(`peer_unknown`)도 "전송 성공"으로 읽고** 그 위에서 `pane.close`까지 게이팅한다. 단계는 **선결(D1 relay ACK 실측 · D2 relay 주입 표면) → 본체(D3 `sendResult` 시그니처 교체+strict 3분기 · D4 failed send의 strict ACK 1회+단일 흡수 상태+durable alert · D5 CAS/latch 단일 소유권 · D6 seq Flight 소유+멱등키 각인) → 검증(D7 회귀 게이트 · D8 R43)** 이며 **D1은 하드 게이트**다(미실측 상수로 correctness를 닫지 않는다 — lessons (30)). **relay wire protocol v1 · conv wire · MCP 도구 · herdr RPC 표면 전부 무변경** — 바뀌는 것은 브릿지-로컬 판정과 payload 기존 필드의 값뿐이다. 단 `(cardId, seq, dispatchHandoffId)` 각인은 **tower inbox 영속이라 비가역**이다. 설계 정본 [`docs/spikes/PANE-DEATH-DESIGN.md`](spikes/PANE-DEATH-DESIGN.md) §6.7·§6.7-bis·§9-bis 락 5·9·13. **R43 필수 — author-close 불가**(WORKFLOW §5.1 신규 MINOR + 신뢰 경계, 설계 §8 `rgate=needed`). 직전: **`approved` (R42 author-close, 2026-07-20 — **브릿지 워커 주입 마커 신뢰-수준 정확화** (PATCH))** → implemented `47fc81c`. 직전: **`approved` (R41 author-close, 2026-07-20 — M-1·M-2 binding lock 반영 + L-1..L-3 author-close, no R41b — Fable 사전 승인 · **hooks 보조 센서 (claude 워커 상태 힌트) — 스파이크 최소 배선 5단계** (MINOR)):** claude 워커의 상태 전이(승인 대기·턴 종료·작업 시작)를 claude Code hook(`Stop`·`Notification` matcher `permission_prompt`/`idle_prompt`·`UserPromptSubmit`)이 브릿지-로컬 0600 소켓으로 무전하면 브릿지가 **완료 힌트로만** 쓴다(`flight.hookHint` 적재 + `onCardHerdrEvent`·still-running poll 우선 분기). **교체가 아니라 센서를 더한다(§2.5.2)** — 스크레이프는 공통 눈 유지, hook은 있으면 힌트·없으면 현행 그대로(fail-open·무회귀), **자동 close·approve 없음**, 본문 정본은 §5.1 artifact 유지. 신규 표면 2개(브릿지 config hook 주입 옵션 + 브릿지-로컬 소켓 리스너)는 `inject-control` loomDir 0600 소켓 선례라 **경량 R41** 예상. **relay/conv wire · MCP 도구 · herdr RPC 표면 전부 무변경** — 개선되는 것은 "언제/어떻게 done 판정"뿐. claude 워커만 배선(codex/grok 어댑터는 이득 증명 후 — §2.6 H). empirical 명분: 통증 2(승인 미탐지 — 정면·완화 전무·codex 물증 3건+claude 재발) · 통증 3(스크레이프 아티팩트 — 부분 해소) · 통증 1(조기 done — 0.23.7 기해소·보조). 스파이크 정본 [`docs/spikes/HOOKS-SENSOR-SPIKE.md`](spikes/HOOKS-SENSOR-SPIKE.md). 직전: **`approved` (R40, 2026-07-19 — M-A~M-D binding lock 반영 + L-1..L-3, 정식 리뷰·author-close 아님 — **conv artifact fetch 자동 실행 — 신규 MCP 툴 `conv_fetch` (scp transport v1)** (MINOR)): R26(0.23.1)이 확립한 *"fetch 명령 제시까지 — 자동 실행 없음"* 유예를 해제하는 트리거다. 이 유예 해제는 R26 decision note(`plan_review.md:599,612`)가 못박은 대로 **M-1(scp host 출처)·M-2(제시 문자열)가 즉시 High로 승격**되므로 **R40 정식 리뷰 필수 — author-close 불가**(WORKFLOW §5.1 보안·신뢰 경계 변경). 실행 표면은 신규 MCP 툴 `conv_fetch(convId, seq, index)` **단일**(데몬 자동·convAwait 자동 방출은 명시 기각), **scp transport만**(git fetch 자동은 제시-only 유예 존치), 셸 미경유 argv 직접 spawn + 실행 직전 `validateScpArtifactRef`/`resolveConvNodeHost` 재검증 fail-closed + post-fetch sha256 격리. **relay 와이어 무변경 · CONV_SPEC §5.3 스키마 무변경(스펙 재론 아님).**)** 직전: **`approved` (R39 author-close, 2026-07-19 — M-1(D1 부정 테스트 → containment 어서션 재정의 — 해시 파생이라 거부 분기 공개 표면 도달 불가) lock 반영 + L-1..L-4 author-close, no R39b — Fable 사전 승인)** — **Windows 실배포 결함 2건 수정 — persist 경로 가드 POSIX 구분자 오탐 + relay 메시지 핸들러 uncaught 크래시** (PATCH): Windows에서 스냅샷 저장이 결정론적으로 거부되던 경로 가드(`persist.ts:389`의 POSIX `"/"` 하드코딩 — `roomStatePath`가 `join()`으로 산출한 백슬래시 경로와 불일치해 **모든 스냅샷 쓰기 거부**, 0.14.x부터 잠복)를 `node:path`의 `sep`로 교정하고(의미론 불변·가드 완화 아님 — POSIX 판정 동일·파생 경로라 프리픽스 이탈 불가), persist 실패가 relay 프로세스 전체를 죽이던 `server.ts:176` ws 메시지 핸들러의 uncaught 전파를 try/catch로 차단한다(create의 롤백·rethrow fail-closed는 무변경·프로세스 생존만 추가). 전부 2026-07-19 Windows v0.24.1 재배포 라이브 실증(durable 기동 후 **첫 room create에서 relay 사망** 2회 재현·err.log 스택 `Snapshot path escapes state dir` 포집). **relay 와이어 무변경 · MCP 도구 무변경 · 스냅샷 형식 무변경.** 직전: 0.24.1 **`approved` (R38 author-close, 2026-07-19 — M-1(D6 헬퍼 경계 = options 반환까지·생성/에러/exit는 호출자 유지·`resolveRegistryOptionsFromEnv()` 개명) lock 반영 + L-1..L-4 author-close, no R38b — Fable 사전 승인)** — **relay 룸 영속화 배선 갭 보완 — `loom relay` 포그라운드 durable 배선** (PATCH): `loom relay` 포그라운드 서버가 로컬 데몬과 동일하게 durable RoomRegistry로 기동해 relay 재시작 시 룸·초대코드·멤버십이 보존된다 — 근인은 `packages/cli/src/index.ts:3204` 포그라운드 분기가 `RelayServer`를 `registry` 옵션 없이 생성(→ `server.ts:59` 무인자 `RoomRegistry` = `stateDir=null·durable=false`, `room.ts:674-677`)해 durable 경로(`packages/relay/src/cli.ts:38-80`)의 배선만 이 분기에서 누락된 갭. 영속화·기동 복원·멤버십 복원 체인은 전부 기구현·정상 — 배선만 이식(PATCH). **relay 와이어 무변경 · MCP 도구 무변경 · `persist.ts`·`room.ts`·`server.ts` 로직 무변경.** 직전: 0.24.0 **`approved` (R37 author-close, 2026-07-19 — M-1·M-2 PLAN 문안 lock 반영 + L-1..L-5 author-close, no R37b — Fable 사전 승인)** — **단독 모드 기능화: relay 명시 전환(`loom relay use`) + 프로필 relay별 신원 병존(`relays` 맵) + 로컬 relay 라이프사이클(`loom relay local`)** (MINOR): 현행 relay 전환 = 프로필 디렉터리 통째 백업/스왑 수동 절차(HANDOFF `profiles.bak-sglr-20260719`)를 제품 기능으로 대체 — `LoomSession`에 additive `relayName?`+`relays?` 맵(**top-level = 활성 바인딩 정본 유지, 기존 소비자 전원 무변경**), fail-closed 명시 전환(자동 생성·자동 failover 금지 — 오너 결정), `--relay-name`/`--as` 명명 + mirror-on-save 불변식 + **이종-relay 파괴 가드(M-1, 명명·무명 공통)**·**`--as` 기존-상이 fail-closed(M-2)**, `relay local start|stop|status`는 relay-daemon 조각 재사용. **relay 와이어 무변경 · MCP 도구 무변경 · 신규 표면은 로컬 CLI 3종+additive 플래그·additive 스키마 2필드.** 직전: 0.23.12 **`approved` (R36, 2026-07-19 — M 부재(R27 이후 첫 무-M 직행), L-1·L-2 author-close 문안 반영 + ⓒ 등재 보정) → implemented `d3afb55`+dist `1ef2a2c`** — **summary 말미 TUI 타임스탬프 소거 + 풀 pane 균등 폭 `pane.resize` 후처리 (0-b ⓐⓑ + ⓒ 타이밍줄 공백 복합형, 오너 지시 2026-07-19 "2·3번 묶어서 0.23.12로")** (PATCH): ⓐ claude TUI가 콘텐츠 줄 내부 우측에 렌더하는 타임스탬프(`10:50 AM`)가 summary 말미에 잔존 — 줄-단위 필터 불가, **줄-내부 말미 편집(신규 필터 클래스, R31 M-1 경계 인접)**으로 summary 선별 경로에서만 소거. ⓑ 0.23.10 실측(agent.start ratio 무시 → right-split 반감 누적 50/25/25)을 스폰 후 `pane.resize` 후처리로 균등화 — **2026-07-19 사전 라이브 프로브로 RPC 의미론 확정**(amount=직속 split ratio delta·임의 float 정밀 설정·응답에 새 layout 포함·글로벌 포커스 무침입). **wire 무변경 · MCP 도구 무변경 · herdr 기존 op 신규 호출 2종(pane.layout/pane.resize)만 — R34 ⑧ 동형.** 직전: 0.23.11 **`approved` (R35 author-close, 2026-07-19 — M-1 lock 반영, no R35b) → implemented `0ee8c50` + 라이브 보정 `a47aaae`·`20972a4`·`c4f5a55`** (§0.23.11 Implemented·Deviations 참조) — **잔여 후보 일괄 적용: claude 상태줄 chrome 필터 + summary 타이밍줄 선별 + 풀 탭 동시 스폰 직렬화 + still-running 지표 supersession (후보 ①③④⑤)** (PATCH): 라이브 실증 4건 일괄 해소(오너 지시 2026-07-19 "모두 다음 세션에서 적용해") — ① claude 상태줄(`Fable 5 ⚡high 🧠 │ …`)이 콘텐츠-포함 줄이라 0.23.8 보수 필터 미커버로 summary·보드 노트 유입(2회 실증), ③ summary 선별이 말미 비공백 줄 기계 채택이라 정보성 타이밍줄("Worked for Ns.")이 실내용을 밀어냄, ④ 동시 디스패치 2건이 각자 풀 탭 생성(workerPool 실사→스폰 비원자 경합 — R34 L-1 cosmetic 수용을 라이브 재현으로 승격·직렬화), ⑤ sleep형 페이로드 3건 전부 still-running 유예 300s 소진 — **원인 규명 완료(2026-07-19 라이브 프로브)**: grok TUI가 지표줄을 영구 트랜스크립트로 잔존시켜 tail-10 창을 계속 매치 → 후속 완료-타이밍줄에 의한 supersession 판정 추가. **wire 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경 — 전부 브릿지-로컬 read-only shaping·스케줄링.** 직전: 0.23.10 **`approved` (author-close, Low backlog — 오너 지시 배치 방향, R{n} 불요) → implemented `cf7d867`** — **워커 풀 탭 수평(좌우) 배치** (PATCH): 0.23.9 ⑧ 풀 탭의 2·3번째 워커 split을 down→right로 통일해 워커 pane을 좌우 나란히 배치(오너 지시 2026-07-19). 실측: herdr `agent.start` ratio 무시 — 균등 폭 불가(반감 누적), `pane.resize` 후처리는 후속 후보. **wire·MCP·herdr RPC 표면 무변경.** 직전: 0.23.9 **`approved` → implemented `201e2db`+`5f8bf12`** (R34 author-close `approved` no R34b — M-1 lock(② 탐지 말미 K줄 line-anchored) + L-1·L-2 author-close · 구현+독립 검증+라이브 스모크(⑧ 풀 탭 무침입 배치·② done_proposal 라이브 탐지·pane/탭 자동 정리 실증) 완료, 라이브 보정 K 3→10(Deviations §0.23.9) — §0.23.9 Implemented 참조) — **conv done_proposal 규약 완결 + conv.open deny 클레임 정합 + 브릿지 pane 배치 정책 (후보 ②③⑧)** (PATCH): 브릿지에만 존재하고 워커는 알 길이 없던 done_proposal 탐지 규약(0.23.6 L-4 구현·규약 미고지로 라이브 도달 불가)을 conv open 규약 블록 안내 + 타워 보드 표면화로 완결하고(② — 자동 close 없음, 타워 전권 유지), 비인가 conv.open을 선클레임 후 버리던 카드-관례 divergence를 무클레임 ignore+log로 정합하며(③ — turn/close는 현행), 무힌트 스폰이 글로벌 포커스 탭을 분할-침입하던 것(라이브 프로브 실증)을 브릿지-로컬 워커 풀 탭 정책(tab_id/split 힌트 + pane.list 실사, 탭당 최대 4 워커, 만석 시 새 탭, fail-open 폴백, opt-out `panePlacement:"legacy"`)으로 대체한다(⑧ — §1.3 self-enforcing). **wire 무변경 · MCP 도구 무변경 · herdr 기존 op의 파라미터 전달·기존 op 신규 호출 2종(tab.create/pane.list)만.** 직전: 0.23.8 **`approved` → implemented `93c6283`** (R33 author-close `approved` no R33b — M-1·M-2 lock + L-1·L-2 반영 · 구현+독립 검증+라이브 스모크(⑥ 자동 close·chrome 소거·⑦ CLI 왕복 실증) 완료 — §0.23.8 Implemented 참조) — **워커 pane 정리 정책 + conv-hosts CLI + chrome known-hint 2종 (후보 ⑥⑦ + 0.23.7 부수 관찰)** (PATCH): 카드 done·conv close 후 워커 pane이 무기한 잔존해 수동 정리 관례에 의존한다(0.23.0 스모크부터 "후보 ⑥ 미구현 관례", 오너 pane 배치 규칙 §1.3(탭당 최대 4개)과 충돌). 완료-확신 시점(지표-소거 done·conv.close 수신)에만 결과 전송 성공 후 best-effort `pane.close`를 수행하고(**exhausted·failed 경로는 pane 유지** — 진행-중 작업 kill·진단 표면 상실 배제, 로컬 opt-out `paneCleanup:"keep"`), conv scp 호스트 매핑(M-2 해석의 유일 출처)에 검증된 CLI `loom conv-hosts set|list|rm`을 제공하며(현행 손편집 — corrupt 시 침묵 miss), 라이브 3회 실증된 chrome 미커버 2종(grok 상태줄 콘텐츠-포함 box줄·claude `⏵⏵ auto mode on` 힌트줄)을 보수 필터에 추가한다(summary·conv inline만 — R31 M-1 경계 유지). **wire 무변경 · MCP 도구 무변경 · herdr RPC 표면 무변경(기존 `pane.close` op 재사용).** 직전: 0.23.7 **`approved` → implemented `1160b38`** (R32 author-close `approved` no R32b · 구현+독립 검증+라이브 스모크(유예 실발화·실완료본 회신 실증) 완료 — §0.23.7 Implemented 참조) — **카드 완료 판정 still-running 유예 (card.done 조기 회신 수정)** (PATCH): herdr가 워커 백그라운드 커맨드 실행 중에도 idle을 방출해 브릿지가 미완 화면("1 command still running")을 그대로 card.done `output`으로 조기 회신한다(2026-07-19 카드 웨이브 라이브 2회 실증 — 실완주는 ~4분 뒤). 완료 판정 시 스크레이프 말미의 still-running 지표를 보수 감지하면 결과 회신을 상한부 유예(폴링)하고, 유예 사실을 additive optional `note`로 관측 가능하게 한다. **herdr RPC 표면 무변경 · MCP 도구 무변경 · wire는 additive optional 1필드(`note`)만.** 직전: 0.23.6 **`approved` → implemented `5bdeae7`** (R31 author-close `approved` no R31b · 구현+독립 검증 완료, codex 자문 부분 종결(공회전 — Med 표면화 없음), M-1 라이브 검증 불요 — §0.23.6 Implemented 참조) — **워커 pane 스크레이프 delta화 + TUI chrome 필터 (후보 ⑤ + 관찰 ⓐⓒ)** (PATCH): conv 워커 턴·카드 결과가 pane 최근 200줄 전체를 매번 실어 보내 이전 턴 전문·TUI chrome이 좁은 스크레이프 창(실측 상한 claude ~5.3k/grok ~2.2k/codex ~1.4k)을 잠식한다. delta 앵커(직전 턴 꼬리, 공백-정규화 매치)로 신규 내용만 싣고, 명백한 chrome 줄(box-drawing·키 힌트)을 보수 필터하며, idle 직후 렌더 미완 스크레이프를 settle 재독으로 안정화한다. **wire·MCP·herdr RPC 표면 무변경, 신규 신뢰 표면 없음(untrusted 콘텐츠 read-only shaping).** |
+| **Status** | **`approved` — v0.27.0 revision A authority cut, R43b author-close 2026-07-21. guard 순서·조건부 rollout gate·선행 red-test 커밋 잠금 반영. R43 reject 초안은 같은 Changelog 아래 역사 기록으로 보존.** |
 | **Supersedes** | 0.26.1 |
 | **Last updated** | 2026-07-21 |
 | **Approval** | **R32 author-close `approved`**(0.23.7) → implemented `1160b38` + 라이브 스모크(SMOKE-0237 유예 실발화) · 직전: **R31 author-close `approved`**(0.23.6) → implemented `5bdeae7` · **R30 author-close `approved`**(0.23.5) → implemented `8148642` + codex 자문 REJECT 7건 반영. 스펙 정본 `docs/CONV_SPEC.md`는 R24 approved 유지(재론 없음 — 이 PATCH는 브릿지 pane 수명·로컬 CLI·필터 패턴 추가, conv/card 프로토콜 의미 무변경). |
@@ -50,7 +50,79 @@
 
 ### Changelog
 
-#### 0.27.0 — 2026-07-21 (`pending-review` R43 — **result 발행 단일 소유권 + ACK 경계 — relay ACK 실측 선결 · strict ACK 판정 · seq 소유권 이전 · fire-and-forget 제거** (MINOR))
+#### 0.27.0 revision A — 2026-07-21 (`approved` R43b author-close — **bridge/tower 완료 권한 절단** (MINOR))
+
+**Product one-liner:** 브릿지가 remote card result로 board `done`을 만들고 같은 경로에서
+`pane.close`까지 수행하는 권한을 제거한다. Bridge는 완료 후보를 기존 wire-compatible
+`status="failed", reason="needs_verification"`으로만 제안하고, Tower remote-result ingress는
+legacy `status="done"`도 `blocked`로 격리한다. 제품이 강제하는 완료 경계는 명시적 로컬 board
+mutation이며, 사람이 검증 뒤 호출한다는 것은 provenance로 강제되지 않는 운영 규약이다. 설계 정본은
+[`PANE-DEATH-AUTHORITY-BOUNDARY.md`](spikes/PANE-DEATH-AUTHORITY-BOUNDARY.md)다.
+
+**불변식:**
+
+> 불확실한 관측은 되돌릴 수 있는 attention/verification 요청과 진단만 만든다.
+> Remote result는 `done`을 만들지 못하며, v0.27에는 card 자동 `pane.close`가 없다.
+
+**Why:**
+
+- R43의 High 6건은 문면 오류가 아니라 완료 판정·result delivery·dedup·cleanup을 하나의
+  `Flight` 상태기계에 결합한 구조에서 나왔다.
+- status/scrape/hook/terminal/presence/timeout은 느림과 죽음을 결정적으로 구별하지 못한다.
+- rolling upgrade에서 bridge만 고치면 구 bridge가 다시 `done`을 보낼 수 있으므로 Tower ingress
+  fence가 함께 필요하다.
+- 안전성 먼저, delivery liveness와 cleanup은 후속으로 분리해야 각 단계의 권한과 실패가 검증 가능하다.
+
+**What:**
+
+| 단계 | 항목 | 완료 기준 |
+|---|---|---|
+| **A1** | Bridge completion API를 proposal 전용으로 축소 | card bridge의 `status="done"` 구성 0곳. 완료 후보는 `failed + needs_verification`; 별도 builder가 실제 output summary 보존 |
+| **A2** | Tower remote-result authority fence | schema parse→task lookup→assignee/fromNode authenticity→terminal→stale-seq 순서를 보존한 뒤 fresh remote `done|failed`은 board `blocked`; remote result로 `done` 전이 0건. 명시적 로컬 board mutation은 유지. MCP 설명·HERDR_DESIGN·DISPATCH-DEMO·테스트 동기화 |
+| **A3** | dispatch-scoped 단일 issuer | M-1+card attachment 확인 뒤·parse/spawn 전에 생성, cardId는 issue 때 결속, claim 실패 시 폐기. issued tombstone은 processed-handoff 수명 동안 유지(프로세스 한정), 한 dispatch result 최대 1건 |
+| **A4** | card 자동 cleanup 제거 | card `pane.close` 3경로 제거. `paneCleanup:auto`는 card에 무효·conv 명시 close만 제어; pool-root close는 설정 무관 placement 정리로 불변. config/status/테스트 동기화 |
+| **A5** | identity/wire 동결 | `cardSeq`, scalar seq 소비자, card contract v1 enum, relay/conv wire, MCP 이름·입력 schema, herdr RPC 표면 유지. MCP remote `done` 적용 의미는 의도적으로 변경 |
+| **A6** | authority-cut 회귀 게이트 | remote result→done 0, bridge done 0, auto-close 0, 가짜-done 재현이 `blocked + pane retained` |
+
+**정직한 보장 경계:**
+
+- 보장: 거짓 자동 성공 제거, 불확실한 신호에 의한 자동 pane 파괴 제거, remote result와 명시적 로컬 mutation의 물리적 분리.
+- 미보장: 로컬 mutation 호출자가 사람/verifier임을 증명하는 provenance.
+- 미보장: result 유실 방지, bridge crash recovery, exactly-once, 자동 cleanup, 카드 영구 정지 방지.
+- relay ACK는 진단 입력일 뿐 tower 적용 증거나 cleanup 권한이 아니다.
+- `cardSeq`는 agent name·hook socket·result가 함께 소비하므로 이번 버전에서 삭제·재정의하지 않는다.
+
+**Out of scope / 후속:**
+
+1. **후속 A — durable delivery:** persist-before-send outbox, stable event ID, 동일 payload retry,
+   Tower atomic dedup + apply receipt, Flight-less startup recovery. 별도 PLAN/R{n}.
+2. **후속 B — verifier provenance + explicit cleanup/GC:** 검증 provenance, Tower→Bridge cleanup
+   grant, attempt/pane generation 결속. 별도 wire 표면이므로 별도 MINOR/R{n}.
+3. conv의 ACK 폐기·비가역 state advance, bridge restart binding 복원, 새 result status enum.
+
+**R43 disposition:** H1/H2의 timeout dispose 요구를 삭제하고, H3의 seq 변경을 철회하며,
+H4는 Flight 이전 issuer로 닫고, H5는 동기 first-issue latch로 축소한다. H6은 durable 완료 주장을
+삭제해 후속 A의 명시적 gate로 남긴다. 상세 매핑과 R43b 질문은 새 설계 §7·§9.
+
+**Unknowns:**
+
+- 저장소 내부 producer는 bridge 한 곳뿐임을 확인. 저장소 밖 producer와 `[DONE]` body-only 자동화는
+  일반 호환 보장에서 제외하고 조건부 rollout gate로 전환: 구현 전 repo scan 기록, 배포 전 운영자
+  external-consumer 확인, 존재 시 선이행 또는 배포 중단.
+- issuer 생성 이후 기존 claim-success 게이트가 Flight-less 3경로 전부에서 유지되는지.
+- card auto-close 3경로 목록의 완전성.
+- `failed + needs_verification`의 현재 CLI/board 표시가 사람 검증 큐로 충분한지.
+
+**구현 선행 게이트:** production 코드보다 먼저 authority fence·proposal-only·Flight-less 단일 issuer·
+card auto-close 0·양방향 rolling-upgrade를 고정하는 red tests를 독립 커밋하고, 그 해시와 repo
+producer/consumer scan을 구현 증거에 남긴다. 상세 파일/기대값은 설계 정본 §8.
+
+**Review impact:** 완료 권한과 rolling-upgrade 신뢰 경계를 바꾸는 MINOR다. **R43b author-close
+approved.** 구 D1~D8 반영 충실도가 아니라 bridge/tower 양쪽 authority fence, 단일 issuer 보편성,
+자동 close 0, delivery/cleanup 후속 분리를 검증했다. R43b 조건 3건(guard 순서·조건부 rollout·선행
+red-test 커밋)을 본문에 잠갔다. Advisor: fable-advisor consulted: yes.
+
+#### 0.27.0 R43-rejected 초안 — 2026-07-21 (**역사 기록, 비규범** — result 발행 단일 소유권 + ACK 경계)
 
 **Product one-liner:** 브릿지는 지금 카드 result를 **보내고 잊는다** — `bridge-runtime.ts:2160`의 `void sendFailedResult(...)`와 동형 결함 `:2207`·`:2222`의 `void finishCard(...)`는 전달 결과를 아무도 읽지 않고, `sendResult:2423`은 relay가 돌려준 ACK 봉투(`status` `recipientCount` `handoffId` `notified` `message`)를 **전량 폐기하고 `boolean`으로 뭉갠다**. 그 결과 발행 소유권 기제는 사실상 **`flights` 맵 삭제 하나뿐**이고(호출지점 기준 17개로 흩어짐 — `sendFailedResult` 7 · `finishCard` 10), 알림이 도착했는지 **아무도 모른다**. 이 MINOR는 **result 발행의 단일 소유권 + ACK 경계**를 세워 (C) 하이브리드 전환이 닫지 못한 **liveness 축(유실·고아)**을 닫는다 — [`docs/spikes/PANE-DEATH-DESIGN.md`](spikes/PANE-DEATH-DESIGN.md) **§6.7**(요구사항)·**§6.7-bis**(함정 3건 + 아키텍트 결정 2건 확정본)·**§9-bis 락 5·9·13**이 설계 정본이다. **(C) 전환은 거짓 성공만 없앴을 뿐 유실을 없애지 않았다**(§9-ter — "거짓 성공 제거, 중복·유실·고아 존속"): `done` 대신 `needs_verification`을 보내더라도 **그것이 도착했는지 모르는 것은 똑같기 때문**이다.
 

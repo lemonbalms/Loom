@@ -1,20 +1,31 @@
 # Todo — Loom
 
-## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
+## 잔여 작업 로드맵 (2026-07-21, v0.27.0 revision A 설계 승인 후)
 
 > 이 섹션은 요약 뷰다. SSOT는 `HANDOFF.md` — 표현이 어긋나면 핸드오프가 우선한다.
 
 **로드맵 골격 완료**: MVP 종료(오너 2026-07-19) → 프로덕션 전환 · 멀티노드 단계 3 전 단계 완주(⓪~④·ⓐ·ⓑ·부팅 생존 상시화) · v0.26.0 hooks 센서 + v0.26.1 마커 교정 shipped(신 마커 SMOKE-SONNET26 라이브 실증 완료).
 
-0. **핸드오프 전환 비용 최적화** (2026-07-20 착수, 3-레인 수렴·R{n} 불요 만장일치)
+0. **PANE-DEATH authority cut 구현** — PLAN v0.27.0 revision A `approved` (R43b author-close)
+   - [x] 새 설계 워크트리/브랜치 생성
+   - [x] R43 결합 설계 폐기 → authority cut 정본 작성
+   - [x] R43b + fable-advisor 자문, 조건 3건 반영 후 author-close approved
+   - [x] 설계 문서 검증(status/handoff lint/diff-check green); 전체 suite 베이스라인 WebSocket race는 HANDOFF 기록
+   - [ ] **G0** TEST-BASELINE PATCH: server-ready/connect 레이스 원인 확정·v0.27과 분리 수정
+   - [ ] **G0 완료 증거**: 대표 격리 테스트 + 전체 `bun test` 3회 연속 green
+   - [ ] **G1** repo producer/consumer scan 기록 + 외부 consumer rolling-upgrade gate 확인
+   - [ ] **G2** 설계 §8 tests-only 추가 → production 무변경 expected-red 확인 → 독립 커밋
+   - [ ] **G3** 구현 lane 위임(`grok-impl` → `codex-impl` → lower-tier; 아키텍트 hand-code 금지)
+   - [ ] **G4** 관련 테스트/스모크 + 아키텍트 전체 green → docs/source/dist commit·push
+1. **핸드오프 전환 비용 최적화** (2026-07-20 착수, 3-레인 수렴·R{n} 불요 만장일치)
    - [x] ~~WP1 HANDOFF 다이어트 `0c82108` (상단 26KB→7.6KB·완결 8블록 ARCHIVE 이관·정보손실 0)~~
    - [x] ~~WP2+WP3 SessionStart hook 2분할 `41b0877` (matcher `startup|clear`·state+lessons 각 ≤9,500 하드캡·fail-open·timeout 30s → 리추얼 3왕복→0 · `handoff:lint` >8,192B 경고 · AGENTS 센티널 분기)~~
    - [x] ~~WP4 claude-mem 주입 하향 (OBSERVATIONS 50→20·SESSION_COUNT 10→5, 백업 `settings.json.pre-ho`=롤백 복사 1줄, 전 프로젝트 공용)~~
    - [ ] **WP5 웜베이스 포크 스파이크 + hook 발효 실측** (새 세션 착수 — 미지수 5건·Go/No-Go 정량 기준). `docs/spikes/WARM-BASE-FORK-SPIKE.md`(HOOKS-SENSOR-SPIKE 형식) → Go 충족 시만 절차화(bake 스크립트+AGENTS 분기). 효과 실측(자동 주입 절반↓·리추얼 3왕복→0)은 새 세션 기동이 곧 hook 발효 실증 겸행.
-1. **다음 대형 트랙 — 미정 (오너 결정 지점)** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 현재 out of scope 유지.
-2. [ ] **R{n} 게이트 걸린 기능 유예 (유일)** — 브릿지 자동 git push(R26:431 유예). 착수 시 R{n} 재리뷰 필수.
-3. [ ] **검증 유예 1건** — `agent_blocked` 1:1 교정 라이브 실증. 유닛 33/33 커버, 카드 경유 미실증. SMOKE-SONNET26(신 마커 sonnet 무거부 1회 실증)으로 재시도 여건 개선.
-4. **잔존 Low 백로그 (결함 아님/무해 확정)**
+2. **다음 대형 트랙 — 미정 (오너 결정 지점)** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 현재 out of scope 유지.
+3. [ ] **R{n} 게이트 걸린 기능 유예 (유일)** — 브릿지 자동 git push(R26:431 유예). 착수 시 R{n} 재리뷰 필수.
+4. [ ] **검증 유예 1건** — `agent_blocked` 1:1 교정 라이브 실증. 유닛 33/33 커버, 카드 경유 미실증. SMOKE-SONNET26(신 마커 sonnet 무거부 1회 실증)으로 재시도 여건 개선.
+5. **잔존 Low 백로그 (결함 아님/무해 확정)**
    - [ ] summary 정보성 타이밍줄("Worked for Ns.") 개선
    - [ ] orphan durable 룸 정리 (ops)
    - [ ] 동시 디스패치 풀 탭 레이스 (무해 확정)
@@ -25,8 +36,8 @@
    - [ ] 경쟁 분석발 A: `scripts/pane-inject.sh` read-guard 원자화 (R-gate 불요)
    - [ ] WSL non-root 전환 (선택)
    - [ ] R28 L-1 conv 테스트 타이밍 플레이크 (최근 런 미재현)
-5. **오너 결정 대기** — npm publish 보류. 재개 시 계정+패키지명(`loom-terminal` vs `@lemonbalms/loom`) 선택 → login→meta→publish. 재조사 금지.
-6. [ ] **부수 정리 (선택)** — 루트 `.loom-*` untracked 브리프/디스패치 스크립트 ~60개 정리.
+6. **오너 결정 대기** — npm publish 보류. 재개 시 계정+패키지명(`loom-terminal` vs `@lemonbalms/loom`) 선택 → login→meta→publish. 재조사 금지.
+7. [ ] **부수 정리 (선택)** — 루트 `.loom-*` untracked 브리프/디스패치 스크립트 ~60개 정리.
 
 ## Done (recent)
 

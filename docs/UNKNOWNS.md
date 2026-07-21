@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-07-20 |
+| **Last updated** | 2026-07-21 |
 
 ---
 
@@ -41,6 +41,25 @@
 ---
 
 ## Gate log
+
+### 0.27.0 revision A — PANE-DEATH authority cut
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.27.0 revision A (`approved`, R43b author-close) |
+| **Date** | 2026-07-21 |
+| **Review** | R43b required — 완료 권한·rolling-upgrade trust boundary 변경 |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | Bridge가 `done`을 만드는 호출 5곳, card 자동 `pane.close` 3곳, Tower `applyCardResult`의 remote `done→done` 적용이 현행 권위 경계다. 저장소 내부 production result producer는 bridge 한 곳뿐이다. 로컬 `done`은 MCP/CLI/sticky/import mutation으로 가능하며 사람 provenance는 강제되지 않는다. Flight-less result 경로 3곳이 있고 `cardSeq`는 agent name·hook socket·result가 함께 소비하므로 v0.27에서 삭제할 수 없다. 기존 `failed`는 구 Tower에서도 `blocked`로 적용된다. |
+| Known unknowns | (1) M-1+card attachment 확인 뒤·parse 전 issuer가 기존 claim-success 게이트와 모든 Flight-less 경로를 함께 덮는가 (2) `failed + needs_verification`의 현재 표시가 사람 검증 큐로 충분한가. card auto-close 3경로 목록은 전역 코드 scan으로 닫힘. 저장소 밖 producer/body-only 자동화는 존재 여부 추측 대신 조건부 rollout gate(구현 전 repo scan 기록·배포 전 운영자 목록 확인·존재 시 선이행 또는 배포 중단)로 전환. |
+| Unknown knowns | Tower ingress fence를 함께 배포해야 구 bridge도 격리된다. 새 status enum은 구 Tower parser를 깨므로 기존 `failed` shim이 rolling upgrade의 보수적 기본이다. 안전성은 ACK·timeout의 정확도와 무관하게 성립해야 한다. |
+| Unknown unknowns | card에서 `paneCleanup:auto`가 무효화되어 생기는 장기 pane 누적 비용, provenance 없는 로컬 모델이 운영 규약을 어기고 `done`을 쓰는 위험, 수동 검증 큐 증가가 실제 처리량에 미치는 영향. 외부 자동화 영향은 미지로 방치하지 않고 rollout 조건으로 승격했다. |
+
+**분리된 후속:** durable delivery(outbox·event ID·Tower receipt)와 explicit cleanup/GC는 각각
+별도 PLAN/R{n}. v0.27은 유실 방지·exactly-once·자동 cleanup을 주장하지 않는다.
+구현은 설계 §8의 red tests를 production 코드보다 먼저 독립 커밋한 뒤에만 시작한다.
 
 ### 0.26.0 — hooks 보조 센서 (claude 워커 상태 힌트 · 스파이크 최소 배선 5단계)
 
