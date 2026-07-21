@@ -25,8 +25,8 @@
      `93f1db1` pushed
    - [x] **G3** `codex-impl` 구현: remote result→blocked, bridge proposal-only, dispatch issuer,
      card auto-close 0. 관련 29/29 + 37/37 + 94/94 · typecheck 6/6 green
-   - [ ] **G4** 검증은 완료: 전체 674/674 · dist guard · source/dist version 0.27.0 green.
-     자동 승인 서비스 사용량 한도로 source/docs/dist commit·push와 Loom `[VERIFY]`만 대기
+   - [x] **G4** ship 완료: source `ec99b2c` · docs `9c07003` · dist `2676987` pushed.
+     전체 674/674 · dist guard · source/dist version 0.27.0. 남은 것은 독립 Loom `[VERIFY]`
 1. **핸드오프 전환 비용 최적화** (2026-07-20 착수, 3-레인 수렴·R{n} 불요 만장일치)
    - [x] ~~WP1 HANDOFF 다이어트 `0c82108` (상단 26KB→7.6KB·완결 8블록 ARCHIVE 이관·정보손실 0)~~
    - [x] ~~WP2+WP3 SessionStart hook 2분할 `41b0877` (matcher `startup|clear`·state+lessons 각 ≤9,500 하드캡·fail-open·timeout 30s → 리추얼 3왕복→0 · `handoff:lint` >8,192B 경고 · AGENTS 센티널 분기)~~
