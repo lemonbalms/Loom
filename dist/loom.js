@@ -10662,7 +10662,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.26.1";
+var VERSION = "0.27.0";
 function eprint(msg) {
   try {
     writeSync(2, msg);
