@@ -326,12 +326,34 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     );
     expect(ready).toBe(true);
     const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(fake, paneId),
+      { timeoutMs: 10_000 },
+    );
+    expect(subscribed).toBe(true);
     fake.pushEvent("pane_agent_status_changed", {
       pane_id: paneId,
       agent_status: "working",
     });
     await Bun.sleep(80);
     return paneId;
+  }
+
+  function hasPaneStatusSubscription(target: FakeHerdr, paneId: string): boolean {
+    return target.calls.some((call) => {
+      if (call.method !== "events.subscribe") return false;
+      const subscriptions = call.params.subscriptions;
+      return (
+        Array.isArray(subscriptions) &&
+        subscriptions.some(
+          (subscription) =>
+            typeof subscription === "object" &&
+            subscription !== null &&
+            "pane_id" in subscription &&
+            subscription.pane_id === paneId,
+        )
+      );
+    });
   }
 
   function emitWorkingThen(

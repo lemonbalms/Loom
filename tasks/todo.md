@@ -11,8 +11,12 @@
    - [x] R43 결합 설계 폐기 → authority cut 정본 작성
    - [x] R43b + fable-advisor 자문, 조건 3건 반영 후 author-close approved
    - [x] 설계 문서 검증(status/handoff lint/diff-check green); 전체 suite 베이스라인 WebSocket race는 HANDOFF 기록
-   - [ ] **G0** TEST-BASELINE PATCH: server-ready/connect 레이스 원인 확정·v0.27과 분리 수정
-   - [ ] **G0 완료 증거**: 대표 격리 테스트 + 전체 `bun test` 3회 연속 green
+   - [x] **G0** TEST-BASELINE PATCH: 실제 원인은 server-ready race가 아니라 ambient
+     `LOOM_RELAY_TOKEN`(무토큰 client에 401)·`LOOM_PROFILE`(inject socket 경로 불일치) 누수와
+     테스트의 subscription/ACK/scrape-fixture 준비 전 이벤트 발행이었다. 공용 preload 환경 격리와
+     test harness readiness wait만 수정, production 변경 0.
+   - [x] **G0 완료 증거**: relay 대표 1/1 · relay server/auth 17/17 · 관련 host 181/181 ·
+     전체 `bun test` 670/670 3회 연속 green (280.28s · 280.41s · 280.19s)
    - [ ] **G1** repo producer/consumer scan 기록 + 외부 consumer rolling-upgrade gate 확인
    - [ ] **G2** 설계 §8 tests-only 추가 → production 무변경 expected-red 확인 → 독립 커밋
    - [ ] **G3** 구현 lane 위임(`grok-impl` → `codex-impl` → lower-tier; 아키텍트 hand-code 금지)

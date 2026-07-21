@@ -525,6 +525,9 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       ].join("\n");
 
       const panesBefore = new Set(fake.listPaneIds());
+      // autoStatus completes 40ms after Enter. Seed the scrape before dispatch
+      // so completion cannot outrun the fixture while this test finds the pane.
+      fake.setPaneReadText("*", body);
       await dispatchCard(cardId, "summary chrome filter");
 
       const paneReady = await waitFor(
@@ -533,7 +536,6 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       );
       expect(paneReady).toBe(true);
       const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
-      fake.setPaneReadText(paneId, body);
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
@@ -542,6 +544,8 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       expect(result!.summary).not.toContain("Shift+Tab");
       // M-1: output body still has the hint line
       expect(result!.output).toContain("Shift+Tab:mode");
+      fake.setPaneReadText("*", null);
+      fake.setPaneReadText(paneId, null);
     },
     20_000,
   );

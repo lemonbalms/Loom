@@ -257,16 +257,19 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
     await dispatchCard(cardId, promptBody);
 
-    // Wait for reinject: second non-CR agent.send after baseline
+    // Wait for reinject and its separately submitted CR. Observing the prompt
+    // request alone is too early: the bridge sends CR only after that RPC ACKs.
     const reinjected = await waitFor(() => {
-      const recent = fake.calls
-        .slice(callsBefore)
-        .filter(
-          (c) =>
-            c.method === "agent.send" &&
-            c.params.text === expectedPrompt,
-        );
-      return recent.length >= 2; // initial + reinject
+      const recent = fake.calls.slice(callsBefore);
+      const promptIdxs = recent
+        .map((c, i) =>
+          c.method === "agent.send" && c.params.text === expectedPrompt ? i : -1,
+        )
+        .filter((i) => i >= 0);
+      if (promptIdxs.length < 2) return false;
+      return recent
+        .slice(promptIdxs[1]! + 1)
+        .some((c) => c.method === "agent.send" && c.params.text === BARE_ENTER);
     }, { timeoutMs: 10_000 });
     expect(reinjected).toBe(true);
 
@@ -279,7 +282,9 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
       .filter((i) => i >= 0);
     expect(promptIdxs.length).toBeGreaterThanOrEqual(2);
     const reinjectIdx = promptIdxs[1]!;
-    const afterReinject = slice[reinjectIdx + 1];
+    const afterReinject = slice
+      .slice(reinjectIdx + 1)
+      .find((call) => call.method === "agent.send");
     expect(afterReinject?.method).toBe("agent.send");
     expect(afterReinject?.params.text).toBe(BARE_ENTER);
 
@@ -909,4 +914,3 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     useWorkerSession();
   }, 45_000);
 });
-

@@ -171,7 +171,27 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
       { timeoutMs: 8_000 },
     );
     expect(ready).toBe(true);
-    return fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () =>
+        fake.calls.some((call) => {
+          if (call.method !== "events.subscribe") return false;
+          const subscriptions = call.params.subscriptions;
+          return (
+            Array.isArray(subscriptions) &&
+            subscriptions.some(
+              (subscription) =>
+                typeof subscription === "object" &&
+                subscription !== null &&
+                "pane_id" in subscription &&
+                subscription.pane_id === paneId,
+            )
+          );
+        }),
+      { timeoutMs: 8_000 },
+    );
+    expect(subscribed).toBe(true);
+    return paneId;
   }
 
   /** Drive working → idle/done completion event. */

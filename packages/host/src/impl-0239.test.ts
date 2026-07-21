@@ -272,6 +272,11 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     );
     expect(ready).toBe(true);
     const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(fake, paneId),
+      { timeoutMs: 10_000 },
+    );
+    expect(subscribed).toBe(true);
     // autoStatus:"none" does not broadcast working on BARE_ENTER — push it so
     // inject verify sees sawWorking and does not tear down the pane (needed
     // for pool occupancy tests that keep multiple workers live).
@@ -281,6 +286,23 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     });
     await Bun.sleep(80);
     return paneId;
+  }
+
+  function hasPaneStatusSubscription(target: FakeHerdr, paneId: string): boolean {
+    return target.calls.some((call) => {
+      if (call.method !== "events.subscribe") return false;
+      const subscriptions = call.params.subscriptions;
+      return (
+        Array.isArray(subscriptions) &&
+        subscriptions.some(
+          (subscription) =>
+            typeof subscription === "object" &&
+            subscription !== null &&
+            "pane_id" in subscription &&
+            subscription.pane_id === paneId,
+        )
+      );
+    });
   }
 
   function agentStarts(): FakeHerdr["calls"] {

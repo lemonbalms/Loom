@@ -236,12 +236,34 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     );
     expect(ready).toBe(true);
     const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(fake, paneId),
+      { timeoutMs: 10_000 },
+    );
+    expect(subscribed).toBe(true);
     fake.pushEvent("pane_agent_status_changed", {
       pane_id: paneId,
       agent_status: "working",
     });
     await Bun.sleep(50);
     return paneId;
+  }
+
+  function hasPaneStatusSubscription(target: FakeHerdr, paneId: string): boolean {
+    return target.calls.some((call) => {
+      if (call.method !== "events.subscribe") return false;
+      const subscriptions = call.params.subscriptions;
+      return (
+        Array.isArray(subscriptions) &&
+        subscriptions.some(
+          (subscription) =>
+            typeof subscription === "object" &&
+            subscription !== null &&
+            "pane_id" in subscription &&
+            subscription.pane_id === paneId,
+        )
+      );
+    });
   }
 
   function emitDone(paneId: string): void {
@@ -357,7 +379,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     // Second spawn triggers equalize; target=0.5 current=0.5 → skip resize.
     expect(layoutCalls().length).toBeGreaterThan(nLayout);
     expect(resizeCalls().length).toBe(nResize);
-  });
+  }, 20_000);
 
   test("ⓑ 3-pane 50/25/25 → 1/3 then 1/2 sequence (amount·direction)", async () => {
     await resetPoolFresh();
@@ -373,7 +395,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     const amount = r.params.amount as number;
     expect(Math.abs(amount - (0.5 - 1 / 3))).toBeLessThan(0.001);
     // Second step target 0.5 ≈ current 0.5 → skipped.
-  });
+  }, 20_000);
 
   test("ⓑ resize failure still returns spawn (fail-open) + card completes", async () => {
     await resetPoolFresh();
@@ -394,7 +416,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     const result = await awaitCardResult(id3);
     expect(result?.status).toBe("done");
     expect(result?.summary).toContain("SMOKE-02312-FAIL-OK");
-  });
+  }, 20_000);
 
   test("ⓑ non-chain layout guard → skip resize", async () => {
     await resetPoolFresh();
@@ -405,7 +427,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     // layout may be read; resize must not run.
     expect(resizeCalls().length).toBe(nResize);
     fake.setLayoutMode("normal");
-  });
+  }, 20_000);
 
   test("ⓑ L-2: non-unique x-match → abort (no resize)", async () => {
     await resetPoolFresh();
@@ -415,7 +437,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     await spawnCard(nextCardId(), "amb-b");
     expect(resizeCalls().length).toBe(nResize);
     fake.setLayoutMode("normal");
-  });
+  }, 20_000);
 
   test("ⓑ legacy placement → no pane.layout / pane.resize", async () => {
     await resetPoolFresh();
@@ -427,7 +449,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     expect(layoutCalls().length).toBe(nLayout);
     expect(resizeCalls().length).toBe(nResize);
     await restartBridge("pool");
-  });
+  }, 20_000);
 
   test("regression: card roundtrip summary strips timestamp; output body keeps it", async () => {
     await resetPoolFresh();
@@ -445,5 +467,5 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     expect(result?.summary).toBe("⏺ [SMOKE-02312-TS-OK] name=loom");
     // R31 M-1: output body unfiltered — timestamp residue may remain
     expect(result?.output).toContain("  10:50 AM");
-  });
+  }, 20_000);
 });
