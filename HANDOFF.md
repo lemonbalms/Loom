@@ -18,15 +18,15 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 PANE-DEATH — v0.27.0 (pre-C) 구현·검증 완료 (2026-07-21, `9c59f29`).** R43e approve → grok 구현(`7ed314c` · dist `e4f6c3c`) → **아키텍트 독립 검증에서 유닛 결함 2건 발견·해소**(`9c59f29`, 프로덕션 무변경). typecheck 6/6 · 회귀 게이트 4건 green · 전체 스위트 **차집합 0**. **다음 = (C) 본체 트랙 — PLAN 수립부터(오너 결정 대기).**
+> **🎯 PANE-DEATH — v0.27.0 (pre-C) 구현·검증 완료 (2026-07-21, `9c59f29`).** R43e approve → grok 구현(`7ed314c` · dist `e4f6c3c`) → **아키텍트 독립 검증에서 유닛 결함 2건 발견·해소**(`9c59f29`, 프로덕션 무변경). typecheck 6/6 · 회귀 게이트 4건 green · 전체 스위트 **차집합 0**. **세션 말미에 `design/pane-death-authority-boundary`의 병행 노선 발견 — 중복 아닌 의도된 설계 분기(오너). 다음 = 두 노선 통합 설계, 조사 3건 선행.**
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ PANE-DEATH — (C) 본체 트랙 (오너 결정 · PLAN 수립 = R{n} 게이트 사안)**
-   > **불변식(승계):** 불확실한 관측은 **회복 가능한 행동만**. 비가역 행동(발행·`pane.close`·dispose)은 **결정적 증거·멱등 경로에서만**.
+0. **⭐ PANE-DEATH — 두 노선 통합 설계 (오너 지시 2026-07-21 · 조사 선행)**
+   > **불변식:** 완료는 **사람이 확정**, 브릿지는 **전달·회복만**.
 
-   pre-C 구조(issuer·strict ACK 3분기·durable quarantine·currency 게이트·순서 역전) 위에 **(C) 본체 8항목**: 자동 `done` 제거(락 11) · `needs_verification` 발행 + board `blocked` · `awaiting_human_verification` + 사람 확정 + tower receipt · `pane.close` 이동 · `rejection_escalation`(깊이 2) · phase registry(12원소) · lifecycle `generation`(락 8) · §7.1-0 "done 0건".
-   **착수 전 PLAN + R{n} 필요**(WORKFLOW §5.1 — M-lock 인접). 정본 `docs/spikes/PANE-DEATH-DESIGN.md` §6.7~§6.7.3 · §9-bis 락 5·8·9·**11**·13.
+   `main`(pre-C = **전달 무결성**)과 `design/pane-death-authority-boundary`(authority cut = **사람 개입**)는 **의도된 설계 분기다 — 중복 구현이 아니다.** herdr 정보 취득의 구조적 한계로 자동 완료 **인지**가 어렵다는 판단에서, 브랜치가 그 한계를 인정하고 사람 개입으로 우회했다(해답 나오면 보강 — 오너).
+   **다음 = 상보/충돌 판별 조사 3건 → 통합 설계 → PLAN + R{n}.** 조사 항목·사실관계 = 아래 details (0).
 
 1. **통합 테스트 flake — 트랙 후보(오너 결정)**: 스위트 2회에 **실패 집합 상이**(`conv R28 L-1`·`still-running ②`), 둘 다 **단독은 green**. 비결정성 확정(펼쳐보기).
 2. **HOOKCACHE-D-VERIFY 재개**(펼쳐보기).
@@ -43,6 +43,15 @@
 - (2) `blocked`, 아키텍트 독립 검증 완료. 보드 `task_c636c29485a4ae2b`, pane 4회 발사 모두 위 결함으로 미완. 검증 상세: 유닛 13/13 · `check:mem-header` OK — 이 검증은 이중 확인.
 - (2) 정본 `docs/spikes/RULE-ENFORCEABILITY.md` §7 판별표·§7.1 우선순위. 문서에만 있어 4/4 위반된 규칙(스킬 로드·board claim·pane 우선·마커 echo 오탐)의 층 이동 결정·구현. 보탬 2건: (a) 압축 후 receipt 무효화 여부 (b) 마커 검출 후 미종료 → 알림 미전달.
 
+- (0) **⚠️ 두 노선 병존 — 2026-07-21 세션 말미 발견 · 다음 세션 착수점.**
+  **오너 설계 의도(구두, 2026-07-21):** *"설계 관점을 지금 메인과 다르게 접근한 것. 메인이 하는 건 자동 종료를 **인지**하는 건데 지금 구조에서는 어렵다. 그래서 브랜치에서는 그 부분을 **인정하고 사람이 개입하는 형식**으로 접근하고, 해답이 나오면 보강하는 걸로. 이유는 현재 **herdr에서 정보를 가져오는 게 구조적인 문제**가 있어서."* → **폐기·중복 처리 금지.** 아키텍트가 1차에 "중복 구현"으로 오판하고 브랜치 폐기를 권고했다가 오너 정정으로 철회한 이력이 있다.
+  **사실관계(실측):** 브랜치 = main 미포함 커밋 **10개**(`6d4b384` plan approve → `93f1db1` test lock → `ec99b2c` feat authority cut → `9c07003` G3/G4 증거 → `2676987` dist 0.27.0 → `ee7efa6` G4 ship) · **main보다 12커밋 뒤처짐** · 자체 HANDOFF = *"다음 = G4 독립 `[VERIFY]`, `codex-rev`에 발송"*(**미검증 상태**). 마커: `ec99b2c`에 `needs_verification` 2 · `blocked` 26 / **main HEAD는 `needs_verification` 0**(pre-C가 명시 금지). 브랜치엔 `result-issuer.ts`·`result-quarantine.ts`·`impl-0270.test.ts` **부재**. 양쪽 모두 VERSION·dist를 0.27.0으로 **독자 bump**.
+  **충돌 면적:** `bridge-runtime.ts`를 양쪽이 대규모 재작성(main +473 / 브랜치 +218·-95) · `card-ops.ts`·`cli/index.ts`·`mcp-server/stdio.ts` 양쪽 수정 · 브랜치가 `pane-cleanup.test.ts`(62줄)·`still-running.test.ts`(24줄)를 수정했는데 **이는 main의 회귀 게이트**다. 그 워크트리(`../fable-advisor-pane-death-authority`)에 **미커밋** 변경 존재: `AGENTS.md`·`CLAUDE.md`·`tasks/lessons.md`(← main에서 `9c59f29`로 수정·푸시됨, **충돌 소지**)·`tasks/lessons/orchestration.md`.
+  **가설(미검증 — 아키텍트 1차 판단):** 두 노선은 **경쟁이 아니라 상보**일 수 있다. pre-C가 잠근 것은 전부 *"결정이 전달됐는가"* 층(issuer 소유권·strict ACK 도달·quarantine 회복·currency stale 차단)이지 *"결정을 어떻게 내리는가"* 층이 아니며, 사람 확정 모델에서도 그 확정은 relay를 타고 **유실될 수 있으므로** 필요하다. **단 예외** — pre-C의 `presence_unknown` poll/strike/grace cadence(락 8)는 herdr 관측 기반이라 **오너가 지적한 구조 문제에 정면으로 걸린다** → 재검토 대상. 이 가설은 **커밋 통계·마커 카운트만으로 세운 것**이고 브랜치 diff·설계 문서를 읽지 않았다.
+  **조사 3건(다음 세션 착수 · 코드 정독이므로 서브에이전트 위임):** ① `ec99b2c`와 `7ed314c`의 `bridge-runtime.ts` diff가 **같은 함수·같은 결정 지점**을 건드리는가 ② 브랜치 authority cut이 main의 issuer/ACK 층을 **전제하는가 대체하는가** ③ pre-C `presence_unknown` cadence가 브랜치 관점에서 **살아남는가**. → 결과로 통합 설계 → PLAN + R{n}(M-lock 인접, WORKFLOW §5.1).
+  **cross-ref 교훈 (30)** — *"미실측 상수로 정확성 갭을 닫지 마라 · 불변식으로 하중 이전"*, fable-advisor 당시 판정 *"실측은 분포를 줄 뿐 상한을 주지 않는다(느린 것과 죽은 것의 원격 구별 불가)"*. **오너의 herdr 구조 한계 판단은 이 교훈과 같은 결론이다** — 브랜치 노선이 트랙 불변식("완료는 사람이 확정")을 더 곧이곧대로 구현한 것으로 읽힌다.
+  **설계 정본** `docs/spikes/PANE-DEATH-DESIGN.md` §6.7~§6.7.3 · §9-bis 락 5·8·9·11·13. **(C) 본체 8항목**(pre-C 브리프 §0 기준): 자동 `done` 제거(락 11) · `needs_verification` + board `blocked` · `awaiting_human_verification` + 사람 확정 + tower receipt · `pane.close` 이동 · `rejection_escalation`(깊이 2) · phase registry(12원소) · lifecycle `generation`(락 8) · §7.1-0 "done 0건". **단 이 8항목은 main 단독 노선 전제로 작성된 것이므로 통합 설계에서 재작성 대상이다.**
+
 - (4) **`.loom-impl-0270-brief.md`**: 삭제 vs `docs/` 보존 미정. 보존 시 §2(room.ts 무변경) ↔ §4.6 D2(주입 지점) 문면이 아키텍트에게 **"스펙 모순" 오독**을 유발한 경위를 함께 남길 것 — 실제로는 모순이 아니라 **모호성**이었다(fable-advisor 판정: §2 잠금 심볼에 `routeHandoff` 없음 · "기본 경로 무변경"은 비활성 심 허용 독해 가능).
 - (4) **session-context 예산 초과 (2026-07-21 신규)**: `bun run session-context:lint` FAIL. **주의 — lint의 숫자는 절단 후 상수라 실제 초과분을 감춘다.** 실측은 `bun -e 'import {buildAllContext} from "./scripts/session-context.ts"; console.log(buildAllContext().length)'`. 2026-07-21 기준 원본 9628 > HARD_CAP 9500 → **매 세션 주입에서 tail(=workers 교훈)이 조용히 절단 중**이었고, 교훈 (40)~(43) 추가가 breach를 유발했다. 자체 압축으로 하드캡 이하 복귀. **SOFT_CAP 8500 복귀는 기존 내용 정리가 필요 = 오너 결정 사안.** cross-ref 교훈 (42).
 
@@ -53,7 +62,7 @@
 
 ## One-line resume
 
-> **🎯 PANE-DEATH — v0.27.0 (pre-C) 구현·검증 완료 (2026-07-21, `9c59f29`).** **완료는 사람이 확정, 브릿지는 전달·회복만.** typecheck 6/6 · 회귀 게이트 green · 스위트 차집합 0. **다음 = (C) 본체 트랙 — PLAN 수립 + R{n} 게이트부터(오너 결정 대기).**
+> **🎯 PANE-DEATH — v0.27.0 (pre-C) 구현·검증 완료 (2026-07-21, `9c59f29`).** **완료는 사람이 확정, 브릿지는 전달·회복만.** typecheck 6/6 · 회귀 게이트 green · 스위트 차집합 0. **다음 = `main`(전달 무결성) ↔ `design/pane-death-authority-boundary`(사람 개입) **두 노선 통합 설계** — 조사 3건 선행(details 0).**
 
 ---
 
