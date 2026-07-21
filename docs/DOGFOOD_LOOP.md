@@ -391,3 +391,47 @@ Handoffs are **pull**: Claude/Codex must `check_handoffs` / `claim_handoff` (or 
 | doing | One claimed implementer is drafting or implementing |
 | blocked | Waiting R{n} / Open Med |
 | done | Verified + shipped |
+
+---
+
+## 8. Multi-checkout / worktree interrupt (다음 dogfood 확인)
+
+> **Status:** open probe — 2026-07-21 오너 실증 · 제품 수정 전 운영 확인 항목  
+> **Not** a PLAN SSOT. Cross-ref: `docs/UNKNOWNS.md` (candidate), `HANDOFF.md` 후속.
+
+### 8.1 실증 (이미 관측)
+
+| Field | Value |
+|-------|--------|
+| **When** | 2026-07-21 |
+| **Setup** | git worktree `fable-advisor-pane-death-authority` · branch `design/pane-death-authority-boundary` · G0~G3 authority-cut 웨이브 |
+| **Shared** | 메인 checkout과 **같은 Loom dogfood room** (board = `~/.loom/boards/<roomHash>.json` · relay inbox 공유) |
+| **Signal** | worktree 라인 카드/결과 handoff가 메인 peer에 도착 — **동명 오탐이 아니라 이 작업(G0~G3) 실통보** |
+| **Harm** | 메인에서 **진행 중이던 작업을 중지**하고 결과 확인 루틴으로 컨텍스트 전환 |
+| **Class** | 완료 권한 위조 버그 아님 · **workstream 비격리 → foreign interrupt** (Med~High, 작업 연속성) |
+
+**경계 기억:** git worktree ≠ Loom 격리. Board/room은 **roomId·OS user** 스코프. cwd/브랜치를 모름.
+
+### 8.2 다음 dogfood에서 확인할 것 (재현·판정)
+
+병렬 라인(worktree 또는 두 번째 checkout) + **메인 dogfood peer가 이미 `doing`인 상태**에서:
+
+| # | 확인 | Pass (현 제품 기대) | Fail / 기록할 관찰 |
+|---|------|---------------------|-------------------|
+| D1 | 메인·worktree `loom --profile <p> board` 의 `file:` 경로 | **동일**이면 shared board 확정 | 경로가 다르면 room 분리됨 — 이 프로브 전제 불성립 |
+| D2 | worktree에서 카드 1장 완료 후보 발행 (`[DONE]` / card result / board mutation) | 메인 `inbox`/`board`에 **같은 `task_<id>`** 가 보임 | id 없이 title만 보이면 관측 방법 보완 |
+| D3 | 메인 peer(에이전트 세션) 행동 | **금지 기대(목표):** 자기 `doing` 유지 · foreign card **claim/중단 없음** · 로그 한 줄만 | **현  empirically 흔한 실패:** 하던 일 pause → foreign 결과 확인 (2026-07-21) |
+| D4 | 메인 assignee / 자기 claim 필터 | foreign handoff를 무시하거나 defer | “inbox 있으면 처리”로 자기 일 중단 |
+| D5 | (선택) room 분리 대조군 | worktree 전용 room이면 메인 interrupt **0** | 분리 room에서도 통보되면 다른 경로 조사 |
+
+### 8.3 운영 완화 (구현 전 · 다음 dogfood부터 시도 가능)
+
+1. **라인마다 room 분리** — 가장 확실 (board 파일·inbox 분리).
+2. 같은 room이면 result/`[DONE]` 수신 peer를 **검증 레인만**으로 좁히고, 메인 워커 peer 제외.
+3. 에이전트 규약: foreign handoff = **pause 금지 · claim 금지 · 기록만** (현재 `doing` cardId와 불일치 시).
+4. 카드 title 접두 `[wt-…]` / `[main-…]` 는 사람 가독용일 뿐 — **조작은 항상 task id**.
+
+### 8.4 기록 위치
+
+재현 결과(D1~D5 PASS/FAIL + 한 줄 근거)는 다음 세션이 `HANDOFF.md` 또는 이 절 하단에 붙인다.  
+제품화 후보(workstream 태그·inbox filter)는 ROLE 통합 / RULE-ENFORCEABILITY 트랙과 별도 — **v0.27 authority cut과 섞지 않는다**.

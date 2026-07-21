@@ -38,6 +38,11 @@
    - [ ] P0 증거 뒤 PLAN 승격 + R{n}; 구현 전 tests-only red commit
    - [ ] canonical `<agent>-<role>` + `codex-arch` + neutral MCP + role guard 구현
    - **동결:** 현재 v0.27 G0~G4에 섞지 않는다. 저널·supervision은 out of scope 유지.
+2b. **다음 dogfood 프로브 — multi-checkout foreign interrupt** (오너 실증 2026-07-21)
+   - [ ] D1~D5 재현·기록 — 정본 `docs/DOGFOOD_LOOP.md` §8 (메인 doing 중 worktree 결과 통보 → pause 여부)
+   - [ ] 운영 완화 시도 기록: room 분리 또는 foreign claim 금지 규약
+   - [ ] 결과에 따라 제품 후보(workstream 태그·inbox filter) vs 문서 규약만 결정
+   - **동결:** v0.27 authority cut / G4 VERIFY와 섞지 않는다.
 3. [ ] **R{n} 게이트 걸린 기능 유예 (유일)** — 브릿지 자동 git push(R26:431 유예). 착수 시 R{n} 재리뷰 필수.
 4. [ ] **검증 유예 1건** — `agent_blocked` 1:1 교정 라이브 실증. 유닛 33/33 커버, 카드 경유 미실증. SMOKE-SONNET26(신 마커 sonnet 무거부 1회 실증)으로 재시도 여건 개선.
 5. **잔존 Low 백로그 (결함 아님/무해 확정)**

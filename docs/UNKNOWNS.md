@@ -42,6 +42,22 @@
 
 ## Gate log
 
+### Candidate — multi-checkout foreign interrupt (다음 dogfood 프로브)
+
+| Field | Value |
+|-------|-------|
+| **Design / runbook** | `docs/DOGFOOD_LOOP.md` §8 |
+| **Date** | 2026-07-21 |
+| **Status** | open probe — PLAN SSOT 아님 · 제품 수정 전 운영 확인 |
+| **Evidence** | 오너: worktree G0~G3 결과가 같은 dogfood room으로 메인에 도착 → 메인 **진행 작업 중지 후 확인** |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | Board = roomId 로컬 파일(`task-board.ts`) · relay handoff는 룸 peer 공유 · git worktree/cwd는 Loom 격리 키가 아님 · task 상관 키는 `task_<id>`(title 아님). |
+| Known unknowns | U1 sticky host/에이전트가 foreign card result를 자동 interrupt로 승격하는 정확한 트리거(inbox poll vs board watch vs human paste). U2 room 분리만으로 interrupt 0이 되는지. U3 같은 room + assignee/claim 필터 규약만으로 메인이 자기 doing을 지키는지. U4 handoff에 workstream/branch 태그를 넣을 제품 비용. |
+| Unknown knowns | “inbox 오면 확인” 루프는 dogfood 기본 습관이라 foreign true-signal도 메인 작업을 끊는다. v0.27 authority cut은 자동 done만 막고 foreign interrupt는 막지 않는다. |
+| Unknown unknowns | 다중 worktree × 다중 room 운영비가 ROLE 통합·로스터 규모와 어떻게 겹치는지. |
+
 ### Candidate — 역할·권한·프로필 통합 (v0.27.0 G4 이후)
 
 | Field | Value |
@@ -312,6 +328,7 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-07-21 | multi-checkout foreign interrupt candidate + dogfood §8 프로브 (메인 작업 중지 실증) |
 | 2026-07-09 | 초안 + 0.11 stub |
 | 2026-07-09 | R13 fill; 0.11.1 locks |
 | 2026-07-10 | 0.14.0 P2 durable inbox unknowns |

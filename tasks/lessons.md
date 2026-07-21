@@ -11,6 +11,13 @@
 
 ## orchestration — 위임·model 명시·autonomy·next-action·PLAN 분업·레인 지시
 
+- [orchestration] 2026-07-21 (39) git worktree ≠ Loom 격리: 같은 room worktree 완료 통보가 메인 **doing 중단**을 유발. 다음 dogfood §8 D1~D5.
+<details><summary>경위·좌표</summary>
+
+[orchestration] 2026-07-21 (39) multi-checkout foreign interrupt: pane-death worktree G0~G3 결과가 공유 dogfood room relay/board로 메인에 도착했고, 메인이 진행 중이던 작업을 멈추고 확인했다. 동명 오탐·권한 위조 아님. Board/room은 roomId 스코프, cwd/브랜치 모름. 완화 1순위 room 분리. 재현 표·운영 완화 = `docs/DOGFOOD_LOOP.md` §8. v0.27과 섞지 않음.
+
+</details>
+
 - [orchestration] 2026-07-10 Autonomy: 게이트마다 "이어서 할까요?" 금지 — 웨이브 체인 자율 진행(멈춤 조건 4가지).
 <details><summary>경위·좌표</summary>
 

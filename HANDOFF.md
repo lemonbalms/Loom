@@ -77,6 +77,8 @@ typecheck 6/6, dist guard와 source/dist version smoke green. G0 독립 `[VERIFY
    PLAN 승격·구현 금지.
 6. **HOOKCACHE-D-VERIFY 재개 (G4 후)**(펼쳐보기).
 7. **RULE-ENFORCEABILITY 적용 결정**(펼쳐보기).
+8. **다음 dogfood 확인 — multi-checkout foreign interrupt** (2026-07-21): worktree G0~G3 결과가
+   같은 room으로 메인에 와 **메인 doing이 끊김**. 정본·D1~D5 = `docs/DOGFOOD_LOOP.md` **§8**.
 
 <details>
 <summary>R43 rejected 초안 역사 근거 + 후속 트랙 부연 (비규범, 펼쳐보기)</summary>

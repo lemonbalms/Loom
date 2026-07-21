@@ -190,3 +190,20 @@ cross-ref: verification (31).
    "레인 지시가 지켜졌다"는 잘못된 전제로 굳는다.
 
 cross-ref: orchestration (24)·verification (33).
+
+## 2026-07-21 — Multi-checkout foreign interrupt (worktree ≠ Loom isolation)
+
+**Observation (Owner):** A parallel git worktree running the v0.27 G0~G3 wave shared the
+main dogfood Loom room. When that line's results landed on relay/board, the **main**
+session **paused its in-progress work** to inspect them. Not a same-title false match —
+it was the real workstream (branch + G0~G3). Not an authority-forgery bug.
+
+**Rule:** `git worktree` / checkout path is **not** a Loom isolation boundary. Board is
+`roomId`-scoped local file; handoffs fan out to room peers. Foreign true-signals can
+interrupt a peer that follows “inbox → claim → handle” without a workstream filter.
+
+**Next dogfood:** Reproduce and score D1~D5 in `docs/DOGFOOD_LOOP.md` §8. Prefer room
+separation per parallel line; if same room, foreign handoff = no pause / no claim.
+
+**Where encoded:** `docs/DOGFOOD_LOOP.md` §8 · `docs/UNKNOWNS.md` candidate · `HANDOFF.md`
+item 8 · `tasks/todo.md` 2b · `tasks/lessons.md` index (39) · this file.
