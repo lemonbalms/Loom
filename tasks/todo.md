@@ -22,7 +22,12 @@
    - [x] ~~WP2+WP3 SessionStart hook 2분할 `41b0877` (matcher `startup|clear`·state+lessons 각 ≤9,500 하드캡·fail-open·timeout 30s → 리추얼 3왕복→0 · `handoff:lint` >8,192B 경고 · AGENTS 센티널 분기)~~
    - [x] ~~WP4 claude-mem 주입 하향 (OBSERVATIONS 50→20·SESSION_COUNT 10→5, 백업 `settings.json.pre-ho`=롤백 복사 1줄, 전 프로젝트 공용)~~
    - [ ] **WP5 웜베이스 포크 스파이크 + hook 발효 실측** (새 세션 착수 — 미지수 5건·Go/No-Go 정량 기준). `docs/spikes/WARM-BASE-FORK-SPIKE.md`(HOOKS-SENSOR-SPIKE 형식) → Go 충족 시만 절차화(bake 스크립트+AGENTS 분기). 효과 실측(자동 주입 절반↓·리추얼 3왕복→0)은 새 세션 기동이 곧 hook 발효 실증 겸행.
-2. **다음 대형 트랙 — 미정 (오너 결정 지점)** — 멀티노드 단계 3이 마지막 확정 트랙. 저널·supervision은 현재 out of scope 유지.
+2. **다음 MINOR 후보 — 역할·권한·프로필 통합** (v0.27.0 G4 이후, 아직 PLAN 아님)
+   - [x] 후보 설계 `docs/spikes/ROLE-PERMISSION-PROFILE-UNIFICATION.md`
+   - [ ] P0: MCP env 상속·Claude/Grok permission 표면·display rename 영향·동시 profile 실측
+   - [ ] P0 증거 뒤 PLAN 승격 + R{n}; 구현 전 tests-only red commit
+   - [ ] canonical `<agent>-<role>` + `codex-arch` + neutral MCP + role guard 구현
+   - **동결:** 현재 v0.27 G0~G4에 섞지 않는다. 저널·supervision은 out of scope 유지.
 3. [ ] **R{n} 게이트 걸린 기능 유예 (유일)** — 브릿지 자동 git push(R26:431 유예). 착수 시 R{n} 재리뷰 필수.
 4. [ ] **검증 유예 1건** — `agent_blocked` 1:1 교정 라이브 실증. 유닛 33/33 커버, 카드 경유 미실증. SMOKE-SONNET26(신 마커 sonnet 무거부 1회 실증)으로 재시도 여건 개선.
 5. **잔존 Low 백로그 (결함 아님/무해 확정)**

@@ -42,6 +42,25 @@
 
 ## Gate log
 
+### Candidate — 역할·권한·프로필 통합 (v0.27.0 G4 이후)
+
+| Field | Value |
+|-------|-------|
+| **Design** | `docs/spikes/ROLE-PERMISSION-PROFILE-UNIFICATION.md` |
+| **Date** | 2026-07-21 |
+| **Status** | candidate only — PLAN SSOT 아님 |
+| **Review** | PLAN 승격 시 MINOR + R{n} 필수 |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | Loom roster는 `*-impl`/`*-rev`를 별도 peer로 정의하지만 Codex 권한 profile(`loom-design`/`loom-code`)은 Loom identity를 포함하지 않는다. 전역 Codex MCP block은 현재 `codex-rev` session에 pinned되고 `--write-user-config`가 마지막 실행 profile로 이를 다시 쓴다. `loom run` 자체는 선택 profile의 `LOOM_SESSION`/`LOOM_PROFILE`을 agent child env에 넣는다. |
+| Known unknowns | U1 Codex MCP child env 상속 실물 보장, U2 Claude/Grok의 버전별 permission/hook 강제 표면, U3 display rename의 peerId·allowlist·inbox 영향, U4 local cooperative role과 remote security ACL의 경계, U5 locked-spec 상태를 write guard에 공급할 방법, U6 auto-review destructive boundary의 agent별 동등성, U7 alias 제거 버전, U8 architect profile materialize 범위. |
+| Unknown knowns | `-a never + workspace-write`는 sandbox 밖을 자동 승인하지 않고 실패시켜 commit/push mandate와 충돌한다. profile·display·assignee 어휘가 다르면 사람이 번역해야 하고 오라우팅이 조용해진다. 문서 규칙만으로는 재범을 막지 못하므로 launch·operation·ship 세 층의 guard가 필요하다. |
+| Unknown unknowns | role metadata를 후일 relay-authenticated principal로 승격할 때 wire/room migration 비용, agent CLI 업데이트가 role permission 번역을 깨는 양상, active architect agent 교체 빈도와 3×3 template 운영비. |
+
+**선후관계:** v0.27 G4 → P0 실측 → PLAN MINOR/R{n} → tests-only red commit → 구현.
+P0 전에는 전역 MCP env 제거·display rename·새 `codex-arch` peer 생성을 하지 않는다.
+
 ### 0.27.0 revision A — PANE-DEATH authority cut
 
 | Field | Value |
