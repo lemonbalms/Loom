@@ -341,6 +341,66 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
     }
   });
 
+  async function fetchBridgeStatus(): Promise<{
+    preservedCardPanes?: number;
+    quarantineUnresolved?: number;
+    paneCleanup?: string;
+  }> {
+    const meta = bridge!.meta;
+    const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${meta.token}`,
+      },
+      body: JSON.stringify({ op: "status" }),
+    });
+    expect(res.ok).toBe(true);
+    return (await res.json()) as {
+      preservedCardPanes?: number;
+      quarantineUnresolved?: number;
+      paneCleanup?: string;
+    };
+  }
+
+  // PLAN 0.28.0 M5 — preservedCardPanes observation (process-local count only).
+  // These run first so the shared fixture has not yet preserved any card panes.
+  test("M5 preservedCardPanes: initial live status count is 0", async () => {
+    const st = await fetchBridgeStatus();
+    expect(st.preservedCardPanes).toBe(0);
+    expect(typeof st.quarantineUnresolved).toBe("number");
+  });
+
+  test(
+    "M5 preservedCardPanes: after accepted real-relay card result count is 1",
+    async () => {
+      const before = await fetchBridgeStatus();
+      expect(before.preservedCardPanes).toBe(0);
+
+      // TaskIdSchema: /^task_[a-f0-9]+$/i
+      const cardId = "task_a028000000000005";
+      const { paneId } = await spawnCard(cardId, "m5-preserved-count");
+      fake.setPaneReadText(paneId, DONE_BODY);
+      emitWorkingThen(paneId, "idle");
+
+      const collected = await awaitExactCardResults(cardId, 1, 12_000);
+      expect(collected).toHaveLength(1);
+      const result = collected[0]!.result;
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe("needs_verification");
+      expect(result.paneId).toBe(paneId);
+
+      await Bun.sleep(200);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
+
+      const after = await fetchBridgeStatus();
+      expect(after.preservedCardPanes).toBe(1);
+      fake.setPaneReadText(paneId, null);
+    },
+    20_000,
+  );
+
   test(
     "③a expected-red: completion card pane remains present after terminal receipt",
     async () => {

@@ -20,8 +20,9 @@ export type BridgeConfig = {
    * PLAN 0.23.8 / 0.28.0: worker pane cleanup policy.
    * `"auto"` (default) = best-effort pane.close on **explicit conv close** only.
    * `"keep"` = disable that conv auto-close.
-   * Card worker paths never auto-close (PANE-DEATH U3) — this flag does not
-   * control card panes. Load sanitizes unknown values to `"auto"`.
+   * Card worker panes are always preserved (PANE-DEATH U3) — this flag never
+   * controls card panes; only explicit conv close is gated. Load sanitizes
+   * unknown values to `"auto"`.
    */
   paneCleanup?: "auto" | "keep";
   /**

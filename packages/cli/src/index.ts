@@ -143,7 +143,7 @@ import {
   shouldActivateHandoffInject,
 } from "./inject-handoffs";
 
-const VERSION = "0.27.0";
+const VERSION = "0.28.0";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -1887,6 +1887,11 @@ async function cmdBridge(
       } catch {
         /* */
       }
+      // PLAN 0.28.0 M5: preservedCardPanes is process-local live observation only —
+      // offline has no current-process map to reconstruct earlier bridge panes.
+      console.log(
+        "  preservedCardPanes: unavailable (bridge offline)",
+      );
       console.log(`Tip: ${loomCmd()} bridge start --allow <towerPeerId>`);
       return;
     }
@@ -1909,6 +1914,10 @@ async function cmdBridge(
     console.log(
       `  paneCleanup: ${paneCleanup} (conv-only; card panes kept)`,
     );
+    // PLAN 0.28.0 M5: observation-only count of Flight-backed preserved card panes.
+    if (health && typeof health.preservedCardPanes === "number") {
+      console.log(`  preservedCardPanes: ${health.preservedCardPanes}`);
+    }
     if (st.health && typeof st.health === "object") {
       console.log(`  health: ${JSON.stringify(st.health)}`);
     }

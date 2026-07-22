@@ -672,6 +672,37 @@ export async function startBridgeRuntime(opts?: {
   quarantine.load();
 
   /**
+   * PLAN 0.28.0 M5 / U3: process-local observation of card panes preserved after
+   * a Flight-backed result path. Count-only on status RPC — never identities,
+   * never closes, never recovery/authority. Does not reconstruct panes from a
+   * prior bridge process. Cleared on stop.
+   */
+  const preservedCardPaneIds = new Set<string>();
+  /** Pane ids already observed terminal this process (closed/exited). */
+  const terminalObservedPaneIds = new Set<string>();
+
+  function noteTerminalPaneObservation(paneId: string): void {
+    if (!paneId) return;
+    terminalObservedPaneIds.add(paneId);
+    preservedCardPaneIds.delete(paneId);
+  }
+
+  function notePreservedCardPane(paneId: string | undefined): void {
+    if (!paneId) return;
+    if (terminalObservedPaneIds.has(paneId)) return;
+    preservedCardPaneIds.add(paneId);
+  }
+
+  function isTerminalPaneEvent(ev: string, event: string): boolean {
+    return (
+      ev === "pane_closed" ||
+      event === "pane.closed" ||
+      ev === "pane_exited" ||
+      event === "pane.exited"
+    );
+  }
+
+  /**
    * PLAN 0.23.9 ⑧: in-memory worker pool tab. pane.list is SSOT at spawn time;
    * this only holds the candidate tab key + pane ids the bridge registered.
    * Race / restart rediscovery are cosmetic (R34 L-1/L-2) — no extra machinery.
@@ -814,6 +845,8 @@ export async function startBridgeRuntime(opts?: {
             panePlacement: cfg.panePlacement ?? "pool",
             // PLAN 0.28.0 M3: unresolved durable quarantine count (U6)
             quarantineUnresolved: quarantine.unresolvedCount(),
+            // PLAN 0.28.0 M5: observation-only count of preserved card panes (U3)
+            preservedCardPanes: preservedCardPaneIds.size,
           });
         }
         // PLAN 0.28.0 M3: operator quarantine ack against this process's store
@@ -2134,6 +2167,10 @@ export async function startBridgeRuntime(opts?: {
     // PLAN 0.28.0 G-10: card/conv flight map miss after removeCardFlight — inert
     // observability only (no recovery, no authority, no re-issue).
     recordFlightMapMiss({ paneId, event, ev });
+    // M5: map-miss terminal observations also clear preserved-card tracking.
+    if (isTerminalPaneEvent(ev, event)) {
+      noteTerminalPaneObservation(paneId);
+    }
   }
 
   function clearStillRunningTimers(flight: Flight): void {
@@ -2479,6 +2516,8 @@ export async function startBridgeRuntime(opts?: {
     d: Record<string, unknown>,
   ): void {
     if (ev === "pane_closed" || event === "pane.closed") {
+      // M5: observed terminal — never count this pane as preserved later.
+      noteTerminalPaneObservation(paneId);
       // PLAN 0.27.0: if already result_sending, latch only (no second result).
       if (flight.flightSideEffectOwner || flight.resultPhase === "result_sending") {
         latchTerminalPending(flight, "pane_closed");
@@ -2842,6 +2881,11 @@ export async function startBridgeRuntime(opts?: {
     payload: CardResultPayload,
     flight?: Flight,
   ): Promise<SendResultOutcome> {
+    // M5: after any Flight-backed result path the card pane is preserved (U3).
+    // Observation only — no close, no authority change. Skip if already terminal.
+    const notePreservedIfFlight = (): void => {
+      if (flight) notePreservedCardPane(flight.paneId);
+    };
     if (!toPeerId) {
       log("sendResult: missing toPeerId");
       enterSendUnknown({
@@ -2851,6 +2895,7 @@ export async function startBridgeRuntime(opts?: {
         reason: "missing_toPeerId",
         flight,
       });
+      notePreservedIfFlight();
       return { branch: "send_unknown", reason: "missing_toPeerId" };
     }
     try {
@@ -2882,6 +2927,7 @@ export async function startBridgeRuntime(opts?: {
             reason: "relay_accepted",
           });
         }
+        notePreservedIfFlight();
         return {
           branch: "accepted",
           relayAcceptedAt,
@@ -2897,6 +2943,7 @@ export async function startBridgeRuntime(opts?: {
         reason: `ack_${ack.status}_rc${ack.recipientCount}`,
         flight,
       });
+      notePreservedIfFlight();
       return {
         branch: "send_unknown",
         reason: `ack_${ack.status}_rc${ack.recipientCount}`,
@@ -2923,6 +2970,7 @@ export async function startBridgeRuntime(opts?: {
         reason: reasonPrefix,
         flight,
       });
+      notePreservedIfFlight();
       return { branch: "send_unknown", reason: reasonPrefix };
     }
   }
@@ -2937,6 +2985,9 @@ export async function startBridgeRuntime(opts?: {
       clearStillRunningState(f);
     }
     flights.clear();
+    // PLAN 0.28.0 M5: process-local preserved-pane tracking ends with the process.
+    preservedCardPaneIds.clear();
+    terminalObservedPaneIds.clear();
     // PLAN 0.27.0: unresolved quarantine is fail-visible on process/bridge exit
     try {
       quarantine.onProcessExit();

@@ -9624,247 +9624,31 @@ function resolveAliveBridgeMeta(forSessionPath) {
 }
 // packages/host/src/bridge-spawn.ts
 var {spawn: spawn4 } = globalThis.Bun;
-import { existsSync as existsSync12, mkdirSync as mkdirSync7, openSync as openSync2, closeSync as closeSync2, chmodSync as chmodSync6 } from "fs";
-import { join as join11 } from "path";
+import { existsSync as existsSync13, mkdirSync as mkdirSync8, openSync as openSync3, closeSync as closeSync3, chmodSync as chmodSync7 } from "fs";
+import { join as join12 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 init_session_store();
 init_session_store();
-function sanitizeProfileLogName(profile) {
-  let s = profile.replace(/[^A-Za-z0-9._-]/g, "-");
-  s = s.replace(/^[.\-]+/, (m) => "_".repeat(m.length));
-  return s.length > 0 ? s : "default";
-}
-function bridgeMainPath() {
-  const here = fileURLToPath3(new URL(".", import.meta.url));
-  const candidate = join11(here, "bridge-main.ts");
-  if (existsSync12(candidate))
-    return candidate;
-  const fromCwd = join11(process.cwd(), "packages/host/src/bridge-main.ts");
-  if (existsSync12(fromCwd))
-    return fromCwd;
-  throw new Error("Cannot find bridge-main.ts");
-}
-async function bridgePing(meta) {
-  try {
-    const res = await fetch(`http://127.0.0.1:${meta.port}/ping`, {
-      headers: { Authorization: `Bearer ${meta.token}` },
-      signal: AbortSignal.timeout(2000)
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-async function startBridgeProcess() {
-  const alive = resolveAliveBridgeMeta();
-  if (alive) {
-    if (await bridgePing(alive)) {
-      return { ok: true, alreadyRunning: true, meta: alive };
-    }
-    await stopBridgeProcess();
-  }
-  const main = bridgeMainPath();
-  const sp = sessionPath();
-  const env2 = {
-    ...process.env,
-    LOOM_SESSION: sp
-  };
-  const profile = getActiveProfile() ?? "default";
-  if (getActiveProfile())
-    env2.LOOM_PROFILE = profile;
-  const safeProfile = sanitizeProfileLogName(profile);
-  const logDir = join11(loomDir(), "bridge");
-  mkdirSync7(logDir, { recursive: true });
-  const stderrPath = join11(logDir, `${safeProfile}.stderr.log`);
-  let stderrFd;
-  try {
-    stderrFd = openSync2(stderrPath, "w", 384);
-    try {
-      chmodSync6(stderrPath, 384);
-    } catch {}
-  } catch {
-    stderrFd = undefined;
-  }
-  const proc = spawn4({
-    cmd: ["bun", "run", main],
-    env: env2,
-    stdout: "ignore",
-    stderr: stderrFd !== undefined ? stderrFd : "ignore",
-    stdin: "ignore"
-  });
-  if (stderrFd !== undefined) {
-    try {
-      closeSync2(stderrFd);
-    } catch {}
-  }
-  proc.unref();
-  const deadline = Date.now() + 12000;
-  while (Date.now() < deadline) {
-    await Bun.sleep(80);
-    const meta = loadBridgeMeta(sessionPath());
-    if (meta && isPidAlive(meta.pid)) {
-      if (await bridgePing(meta)) {
-        return { ok: true, alreadyRunning: false, meta };
-      }
-    }
-    if (proc.exitCode !== null && proc.exitCode !== undefined) {
-      return {
-        ok: false,
-        error: `bridge exited early (code ${proc.exitCode}). herdr up? session active? authorizedDispatchers set?`
-      };
-    }
-  }
-  return { ok: false, error: "bridge did not become ready in time" };
-}
-async function stopBridgeProcess() {
-  const meta = resolveAliveBridgeMeta() ?? loadBridgeMeta();
-  if (!meta) {
-    clearBridgeMeta(sessionPath());
-    return { ok: true, message: "no bridge running" };
-  }
-  try {
-    await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${meta.token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ op: "stop" }),
-      signal: AbortSignal.timeout(2000)
-    });
-  } catch {}
-  const deadline = Date.now() + 3000;
-  while (Date.now() < deadline && isPidAlive(meta.pid)) {
-    await Bun.sleep(50);
-  }
-  if (isPidAlive(meta.pid)) {
-    if (pidLooksLikeBridge(meta.pid)) {
-      try {
-        process.kill(meta.pid, "SIGTERM");
-      } catch {}
-    } else {
-      clearBridgeMeta(sessionPath());
-      return {
-        ok: true,
-        message: `bridge meta cleared; pid ${meta.pid} did not verify as bridge-main \u2014 NOT killed (M-27)`
-      };
-    }
-  }
-  clearBridgeMeta(sessionPath());
-  return { ok: true, message: "bridge stopped" };
-}
-async function bridgeStatus() {
-  const meta = resolveAliveBridgeMeta();
-  if (!meta)
-    return { running: false, meta: null };
-  try {
-    const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${meta.token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ op: "status" }),
-      signal: AbortSignal.timeout(2000)
-    });
-    if (!res.ok)
-      return { running: true, meta, health: { ok: false } };
-    return { running: true, meta, health: await res.json() };
-  } catch {
-    return { running: true, meta, health: { ok: false, error: "rpc failed" } };
-  }
-}
-// packages/host/src/bridge-runtime.ts
-init_src();
-init_src();
-
-// packages/host/src/conv-state.ts
-init_session_store();
-
-// packages/host/src/conv-artifact-pack.ts
-init_src();
-init_session_store();
-var MAX_WORKER_ARTIFACT_BYTES = 10 * 1024 * 1024;
-
-// packages/host/src/bridge-runtime.ts
-init_session_store();
-
-// packages/host/src/result-issuer.ts
-function issuerKey(cardId, dispatchHandoffId) {
-  if (cardId === "task_0")
-    return `ho:${dispatchHandoffId}`;
-  return `${cardId}\x00${dispatchHandoffId}`;
-}
-function createResultIssuer(cardId, dispatchHandoffId) {
-  const acquired = new Set;
-  let seq = 0;
-  return {
-    cardId,
-    dispatchHandoffId,
-    get seq() {
-      return seq;
-    },
-    set seq(v) {
-      seq = v;
-    },
-    acquired,
-    acquire(kind) {
-      if (acquired.has(kind))
-        return false;
-      acquired.add(kind);
-      return true;
-    },
-    nextSeq() {
-      seq += 1;
-      return seq;
-    },
-    currentSeq() {
-      return seq;
-    }
-  };
-}
-
-class ResultIssuerRegistry {
-  map = new Map;
-  getOrCreate(cardId, dispatchHandoffId) {
-    const key = issuerKey(cardId, dispatchHandoffId);
-    let issuer = this.map.get(key);
-    if (!issuer) {
-      issuer = createResultIssuer(cardId, dispatchHandoffId);
-      this.map.set(key, issuer);
-    }
-    return issuer;
-  }
-  get(cardId, dispatchHandoffId) {
-    return this.map.get(issuerKey(cardId, dispatchHandoffId));
-  }
-  clear() {
-    this.map.clear();
-  }
-  size() {
-    return this.map.size;
-  }
-}
 
 // packages/host/src/result-quarantine.ts
 init_session_store();
 import {
-  existsSync as existsSync13,
-  mkdirSync as mkdirSync8,
-  openSync as openSync3,
-  closeSync as closeSync3,
+  existsSync as existsSync12,
+  mkdirSync as mkdirSync7,
+  openSync as openSync2,
+  closeSync as closeSync2,
   writeSync,
   fsyncSync,
   readFileSync as readFileSync7,
-  chmodSync as chmodSync7,
+  chmodSync as chmodSync6,
   appendFileSync
 } from "fs";
-import { dirname as dirname3, join as join12 } from "path";
+import { dirname as dirname3, join as join11 } from "path";
 var appendFailCount = 0;
 var tornLineCount = 0;
 function quarantinePath(profile) {
   const safe = profile.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
-  return join12(loomDir(), "bridge", `${safe}-quarantine.jsonl`);
+  return join11(loomDir(), "bridge", `${safe}-quarantine.jsonl`);
 }
 function keyId(cardId, dispatchHandoffId, key) {
   if (key.tag === "presence") {
@@ -9914,9 +9698,9 @@ function foldQuarantineLines(lines, onTorn) {
         reason: rec.reason,
         reEscalateCount: 0
       });
-    } else if (rec.kind === "ack" || rec.kind === "auto_resolve" || rec.kind === "process_exit") {
+    } else if (rec.kind === "ack" || rec.kind === "auto_resolve") {
       open.delete(id);
-    } else if (rec.kind === "re_escalate") {
+    } else if (rec.kind === "process_exit") {} else if (rec.kind === "re_escalate") {
       const cur = open.get(id);
       if (cur)
         cur.reEscalateCount += 1;
@@ -9937,7 +9721,7 @@ class QuarantineStore {
     this.reEscalateMs = opts.reEscalateMs ?? 10 * 60 * 1000;
   }
   load() {
-    if (!existsSync13(this.path)) {
+    if (!existsSync12(this.path)) {
       this.unresolved = new Map;
       return 0;
     }
@@ -9962,18 +9746,18 @@ class QuarantineStore {
   }
   append(rec) {
     try {
-      mkdirSync8(dirname3(this.path), { recursive: true });
+      mkdirSync7(dirname3(this.path), { recursive: true });
       const line = `${JSON.stringify(rec)}
 `;
-      const fd = openSync3(this.path, "a", 384);
+      const fd = openSync2(this.path, "a", 384);
       try {
         writeSync(fd, line);
         fsyncSync(fd);
       } finally {
-        closeSync3(fd);
+        closeSync2(fd);
       }
       try {
-        chmodSync7(this.path, 384);
+        chmodSync6(this.path, 384);
       } catch {}
       return true;
     } catch (e) {
@@ -10068,6 +9852,62 @@ class QuarantineStore {
     this.unresolved.delete(id);
     return true;
   }
+  ackOperator(args) {
+    if (args.key) {
+      const id = keyId(args.cardId, args.dispatchHandoffId, args.key);
+      if (!this.unresolved.has(id)) {
+        return {
+          ok: false,
+          error: "not_found",
+          message: `no unresolved entry for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId} key=${JSON.stringify(args.key)}`
+        };
+      }
+      const closed2 = this.ack({
+        cardId: args.cardId,
+        dispatchHandoffId: args.dispatchHandoffId,
+        key: args.key
+      });
+      if (!closed2) {
+        return {
+          ok: false,
+          error: "append_failed",
+          message: `quarantine ack append/fsync failed for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId} key=${JSON.stringify(args.key)}`
+        };
+      }
+      return { ok: true, key: args.key };
+    }
+    const matches = this.listUnresolved().filter((u) => u.cardId === args.cardId && u.dispatchHandoffId === args.dispatchHandoffId);
+    if (matches.length === 0) {
+      return {
+        ok: false,
+        error: "not_found",
+        message: `no unresolved entry for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId}`
+      };
+    }
+    if (matches.length > 1) {
+      const keys = matches.map((m) => m.key);
+      return {
+        ok: false,
+        error: "ambiguous",
+        message: `multiple unresolved entries for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId}; pass --seq N or --presence`,
+        matches: keys
+      };
+    }
+    const only = matches[0];
+    const closed = this.ack({
+      cardId: args.cardId,
+      dispatchHandoffId: args.dispatchHandoffId,
+      key: only.key
+    });
+    if (!closed) {
+      return {
+        ok: false,
+        error: "append_failed",
+        message: "quarantine ack append failed"
+      };
+    }
+    return { ok: true, key: only.key };
+  }
   autoResolve(args) {
     const id = keyId(args.cardId, args.dispatchHandoffId, args.key);
     const cur = this.unresolved.get(id);
@@ -10136,6 +9976,303 @@ class QuarantineStore {
     for (const id of [...this.reEscalateTimers.keys()]) {
       this.clearTimer(id);
     }
+  }
+}
+
+// packages/host/src/bridge-spawn.ts
+function sanitizeProfileLogName(profile) {
+  let s = profile.replace(/[^A-Za-z0-9._-]/g, "-");
+  s = s.replace(/^[.\-]+/, (m) => "_".repeat(m.length));
+  return s.length > 0 ? s : "default";
+}
+function bridgeMainPath() {
+  const here = fileURLToPath3(new URL(".", import.meta.url));
+  const candidate = join12(here, "bridge-main.ts");
+  if (existsSync13(candidate))
+    return candidate;
+  const fromCwd = join12(process.cwd(), "packages/host/src/bridge-main.ts");
+  if (existsSync13(fromCwd))
+    return fromCwd;
+  throw new Error("Cannot find bridge-main.ts");
+}
+async function bridgePing(meta) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${meta.port}/ping`, {
+      headers: { Authorization: `Bearer ${meta.token}` },
+      signal: AbortSignal.timeout(2000)
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+async function startBridgeProcess() {
+  const alive = resolveAliveBridgeMeta();
+  if (alive) {
+    if (await bridgePing(alive)) {
+      return { ok: true, alreadyRunning: true, meta: alive };
+    }
+    await stopBridgeProcess();
+  }
+  const main = bridgeMainPath();
+  const sp = sessionPath();
+  const env2 = {
+    ...process.env,
+    LOOM_SESSION: sp
+  };
+  const profile = getActiveProfile() ?? "default";
+  if (getActiveProfile())
+    env2.LOOM_PROFILE = profile;
+  const safeProfile = sanitizeProfileLogName(profile);
+  const logDir = join12(loomDir(), "bridge");
+  mkdirSync8(logDir, { recursive: true });
+  const stderrPath = join12(logDir, `${safeProfile}.stderr.log`);
+  let stderrFd;
+  try {
+    stderrFd = openSync3(stderrPath, "w", 384);
+    try {
+      chmodSync7(stderrPath, 384);
+    } catch {}
+  } catch {
+    stderrFd = undefined;
+  }
+  const proc = spawn4({
+    cmd: ["bun", "run", main],
+    env: env2,
+    stdout: "ignore",
+    stderr: stderrFd !== undefined ? stderrFd : "ignore",
+    stdin: "ignore"
+  });
+  if (stderrFd !== undefined) {
+    try {
+      closeSync3(stderrFd);
+    } catch {}
+  }
+  proc.unref();
+  const deadline = Date.now() + 12000;
+  while (Date.now() < deadline) {
+    await Bun.sleep(80);
+    const meta = loadBridgeMeta(sessionPath());
+    if (meta && isPidAlive(meta.pid)) {
+      if (await bridgePing(meta)) {
+        return { ok: true, alreadyRunning: false, meta };
+      }
+    }
+    if (proc.exitCode !== null && proc.exitCode !== undefined) {
+      return {
+        ok: false,
+        error: `bridge exited early (code ${proc.exitCode}). herdr up? session active? authorizedDispatchers set?`
+      };
+    }
+  }
+  return { ok: false, error: "bridge did not become ready in time" };
+}
+async function stopBridgeProcess() {
+  const meta = resolveAliveBridgeMeta() ?? loadBridgeMeta();
+  if (!meta) {
+    clearBridgeMeta(sessionPath());
+    return { ok: true, message: "no bridge running" };
+  }
+  try {
+    await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${meta.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ op: "stop" }),
+      signal: AbortSignal.timeout(2000)
+    });
+  } catch {}
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline && isPidAlive(meta.pid)) {
+    await Bun.sleep(50);
+  }
+  if (isPidAlive(meta.pid)) {
+    if (pidLooksLikeBridge(meta.pid)) {
+      try {
+        process.kill(meta.pid, "SIGTERM");
+      } catch {}
+    } else {
+      clearBridgeMeta(sessionPath());
+      return {
+        ok: true,
+        message: `bridge meta cleared; pid ${meta.pid} did not verify as bridge-main \u2014 NOT killed (M-27)`
+      };
+    }
+  }
+  clearBridgeMeta(sessionPath());
+  return { ok: true, message: "bridge stopped" };
+}
+async function bridgeStatus() {
+  const meta = resolveAliveBridgeMeta();
+  if (!meta)
+    return { running: false, meta: null };
+  try {
+    const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${meta.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ op: "status" }),
+      signal: AbortSignal.timeout(2000)
+    });
+    if (!res.ok)
+      return { running: true, meta, health: { ok: false } };
+    return { running: true, meta, health: await res.json() };
+  } catch {
+    return { running: true, meta, health: { ok: false, error: "rpc failed" } };
+  }
+}
+async function bridgeQuarantineAck(args) {
+  const meta = resolveAliveBridgeMeta();
+  if (meta) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${meta.token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          op: "quarantine_ack",
+          cardId: args.cardId,
+          dispatchHandoffId: args.dispatchHandoffId,
+          ...args.key ? { key: args.key } : {}
+        }),
+        signal: AbortSignal.timeout(3000)
+      });
+      let body = {};
+      try {
+        body = await res.json();
+      } catch {}
+      if (!res.ok && body.ok !== true && body.ok !== false) {
+        return {
+          ok: false,
+          error: "append_failed",
+          message: `bridge quarantine_ack RPC failed (HTTP ${res.status}); refuse local dual-store ack while daemon is live`,
+          via: "rpc"
+        };
+      }
+      if (body.ok === true && body.key) {
+        return {
+          ok: true,
+          key: body.key,
+          via: "rpc",
+          quarantineUnresolved: body.quarantineUnresolved
+        };
+      }
+      if (body.ok === false) {
+        const err = body.error === "not_found" || body.error === "ambiguous" || body.error === "append_failed" ? body.error : "append_failed";
+        return {
+          ok: false,
+          error: err,
+          message: body.message ?? `bridge quarantine_ack failed (HTTP ${res.status})`,
+          ...body.matches ? { matches: body.matches } : {},
+          via: "rpc",
+          quarantineUnresolved: body.quarantineUnresolved
+        };
+      }
+      return {
+        ok: false,
+        error: "append_failed",
+        message: `bridge quarantine_ack RPC returned unexpected body (HTTP ${res.status}); refuse local dual-store ack while daemon is live`,
+        via: "rpc"
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        error: "append_failed",
+        message: `bridge quarantine_ack RPC error: ${e instanceof Error ? e.message : String(e)}; refuse local dual-store ack while daemon is live`,
+        via: "rpc"
+      };
+    }
+  }
+  const profile = args.profile ?? getActiveProfile() ?? "default";
+  const store = new QuarantineStore({ profile });
+  store.load();
+  const result = store.ackOperator({
+    cardId: args.cardId,
+    dispatchHandoffId: args.dispatchHandoffId,
+    key: args.key
+  });
+  const remaining = store.unresolvedCount();
+  store.disposeTimers();
+  if (result.ok) {
+    return { ...result, via: "local", quarantineUnresolved: remaining };
+  }
+  return { ...result, via: "local", quarantineUnresolved: remaining };
+}
+// packages/host/src/bridge-runtime.ts
+init_src();
+init_src();
+
+// packages/host/src/conv-state.ts
+init_session_store();
+
+// packages/host/src/conv-artifact-pack.ts
+init_src();
+init_session_store();
+var MAX_WORKER_ARTIFACT_BYTES = 10 * 1024 * 1024;
+
+// packages/host/src/bridge-runtime.ts
+init_session_store();
+
+// packages/host/src/result-issuer.ts
+function issuerKey(cardId, dispatchHandoffId) {
+  if (cardId === "task_0")
+    return `ho:${dispatchHandoffId}`;
+  return `${cardId}\x00${dispatchHandoffId}`;
+}
+function createResultIssuer(cardId, dispatchHandoffId) {
+  const acquired = new Set;
+  let seq = 0;
+  return {
+    cardId,
+    dispatchHandoffId,
+    get seq() {
+      return seq;
+    },
+    set seq(v) {
+      seq = v;
+    },
+    acquired,
+    acquire(kind) {
+      if (acquired.has(kind))
+        return false;
+      acquired.add(kind);
+      return true;
+    },
+    nextSeq() {
+      seq += 1;
+      return seq;
+    },
+    currentSeq() {
+      return seq;
+    }
+  };
+}
+
+class ResultIssuerRegistry {
+  map = new Map;
+  getOrCreate(cardId, dispatchHandoffId) {
+    const key = issuerKey(cardId, dispatchHandoffId);
+    let issuer = this.map.get(key);
+    if (!issuer) {
+      issuer = createResultIssuer(cardId, dispatchHandoffId);
+      this.map.set(key, issuer);
+    }
+    return issuer;
+  }
+  get(cardId, dispatchHandoffId) {
+    return this.map.get(issuerKey(cardId, dispatchHandoffId));
+  }
+  clear() {
+    this.map.clear();
+  }
+  size() {
+    return this.map.size;
   }
 }
 
@@ -11034,7 +11171,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.27.0";
+var VERSION = "0.28.0";
 function eprint(msg) {
   try {
     writeSync2(2, msg);
@@ -11089,7 +11226,8 @@ var BOOLEAN_FLAGS = new Set([
   "no-host",
   "link",
   "status",
-  "inject-handoffs"
+  "inject-handoffs",
+  "presence"
 ]);
 function usage() {
   return `
@@ -11109,7 +11247,7 @@ Usage:
   loom up [--profiles a,b] [--status]   # background sticky host per profile (0.17)
   loom down [--profiles a,b]            # stop sticky hosts (idempotent)
   loom host start | stop | status   # sticky long-lived relay connection (advanced)
-  loom bridge start | stop | status # herdr node bridge daemon (0.22)
+  loom bridge start | stop | status | quarantine ack  # herdr node bridge (0.22+)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -12277,7 +12415,7 @@ async function cmdConvHosts(sub, rest) {
   console.error("Usage: loom conv-hosts set <peerId> <host> | list | rm <peerId>");
   process.exit(1);
 }
-async function cmdBridge(sub, _rest, flags) {
+async function cmdBridge(sub, rest, flags) {
   if (sub === "start") {
     if (!loadSession()) {
       console.error("No session. Create or join a room first.");
@@ -12320,21 +12458,91 @@ async function cmdBridge(sub, _rest, flags) {
     console.log(r.message);
     return;
   }
+  if (sub === "quarantine") {
+    const action = rest[0];
+    if (action !== "ack") {
+      console.error("Usage: loom bridge quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]");
+      process.exit(1);
+    }
+    const cardId = rest[1];
+    const dispatchHandoffId = rest[2];
+    if (!cardId || !dispatchHandoffId) {
+      console.error("Usage: loom bridge quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]");
+      process.exit(1);
+    }
+    const presence2 = flags.presence === true;
+    const seqRaw = flags.seq;
+    if (presence2 && seqRaw !== undefined) {
+      console.error("Provide either --seq N or --presence, not both");
+      process.exit(1);
+    }
+    let key;
+    if (presence2) {
+      key = { tag: "presence" };
+    } else if (seqRaw !== undefined) {
+      const n = typeof seqRaw === "string" ? Number(seqRaw) : Number(seqRaw);
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        console.error("--seq requires a non-negative integer");
+        process.exit(1);
+      }
+      key = { tag: "seq", seq: n };
+    }
+    const profile = getActiveProfile() ?? loadSession()?.displayName ?? "default";
+    const result = await bridgeQuarantineAck({
+      cardId,
+      dispatchHandoffId,
+      key,
+      profile
+    });
+    if (!result.ok) {
+      console.error(`quarantine ack failed: ${result.message}`);
+      if (result.error === "ambiguous" && result.matches) {
+        console.error(`  matches: ${JSON.stringify(result.matches)} \u2014 pass --seq N or --presence`);
+      }
+      process.exit(1);
+    }
+    console.log(`quarantine ack recorded (${result.via}): cardId=${cardId} dispatchHandoffId=${dispatchHandoffId} key=${JSON.stringify(result.key)}`);
+    if (typeof result.quarantineUnresolved === "number") {
+      console.log(`  quarantineUnresolved: ${result.quarantineUnresolved}`);
+    }
+    return;
+  }
   if (sub === "status" || !sub) {
     const st = await bridgeStatus();
+    const profile = getActiveProfile() ?? loadSession()?.displayName ?? "default";
     if (!st.running) {
       console.log("bridge: offline");
+      try {
+        const store = new QuarantineStore({ profile });
+        const n = store.load();
+        store.disposeTimers();
+        console.log(`  quarantineUnresolved: ${n}`);
+      } catch {}
+      try {
+        const cfg = loadBridgeConfig(profile);
+        console.log(`  paneCleanup: ${cfg.paneCleanup ?? "auto"} (conv-only; card panes kept)`);
+      } catch {}
+      console.log("  preservedCardPanes: unavailable (bridge offline)");
       console.log(`Tip: ${loomCmd()} bridge start --allow <towerPeerId>`);
       return;
     }
     console.log(`bridge: online pid=${st.meta?.pid} port=${st.meta?.port} peer=${st.meta?.displayName}`);
     console.log(`  herdr: ${st.meta?.herdrSocketPath}`);
+    const health = st.health && typeof st.health === "object" && st.health !== null ? st.health : null;
+    if (health && typeof health.quarantineUnresolved === "number") {
+      console.log(`  quarantineUnresolved: ${health.quarantineUnresolved}`);
+    }
+    const paneCleanup = health && typeof health.paneCleanup === "string" ? health.paneCleanup : loadBridgeConfig(profile).paneCleanup ?? "auto";
+    console.log(`  paneCleanup: ${paneCleanup} (conv-only; card panes kept)`);
+    if (health && typeof health.preservedCardPanes === "number") {
+      console.log(`  preservedCardPanes: ${health.preservedCardPanes}`);
+    }
     if (st.health && typeof st.health === "object") {
       console.log(`  health: ${JSON.stringify(st.health)}`);
     }
     return;
   }
-  console.error("Usage: loom bridge start|stop|status [--allow <peerId>]");
+  console.error("Usage: loom bridge start|stop|status|quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]");
   process.exit(1);
 }
 async function cmdHost(sub) {
