@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-07-20 |
+| **Last updated** | 2026-07-22 |
 
 ---
 
@@ -41,6 +41,17 @@
 ---
 
 ## Gate log
+
+### herdr 0.7.5 / protocol 17 compatibility (follow-up PATCH candidate)
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 로컬 0.7.5 schema와 공식 릴리스 노트에서 breaking agent facade 확인: 구 `agent.start(argv/cwd/env/placement)`·`agent.send(text)`가 existing-pane `agent.start(kind/pane_id/args)`·atomic `agent.prompt`·logical `agent.send_keys`로 변경. protocol 숫자만 17로 바꾸면 ping/subscription은 통과하지만 실제 card spawn 호환 증거가 아니다. 근거 `docs/spikes/HERDR-0.7.5-COMPAT.md`. |
+| Known unknowns | 기존 topology planner를 `workspace/tab/pane` 생성 → env 각인 → named agent start로 어떻게 원자화할지; `agent.prompt`의 자체 Enter·wait와 Loom inject-confirm/hook sensor의 역할 중복; protocol 16/17 동시 지원 기간과 adapter 선택 기준. |
+| Unknown knowns | 0.7.5의 server-owned prompt/wait는 기존 TUI별 Enter 주입과 startup race를 제거할 가능성이 크지만, Loom의 M-1 dispatcher 인가·`LOOM_CARD` 상관·결과 issuer 규율을 대신하지 않는다. |
+| Unknown unknowns | `pane.agent_detected.final_status/released`가 기존 completion/pane-death 관측에 주는 영향; named-agent uniqueness와 동시 card 풀의 충돌; 0.7.5 실제 Grok/Codex/Claude별 ready/prompt/wait 상태 전이. |
+
+**Current decision:** 오너 표준은 최신 0.7.5/protocol 17이며 downgrade/병행 0.7.4가 목표가 아니다. bounded SESSION-CONTINUITY wave 중 production 변경 금지이므로 현재 `dogfood:herdr`가 dispatch를 fail-closed. 후속 PATCH 착수 전 별도 0.7.5 fixture·live smoke·PLAN 범위 확정.
 
 ### 0.26.0 — hooks 보조 센서 (claude 워커 상태 힌트 · 스파이크 최소 배선 5단계)
 

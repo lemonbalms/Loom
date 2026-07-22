@@ -617,6 +617,8 @@ bun run status
 |------|------|
 | “relay를 다시 띄웠다” | 로그상 **bridge** 재기동인 경우가 많음 (`Bridge started (pid …)`) |
 | “Grok CLI = 구현 레인” | Grok CLI는 **아키텍트 터미널**. 워커는 **herdr pane + card** |
+| `loom run grok/codex` 화면이 깨짐 | live relay callback과 full-screen TUI가 **같은 PTY**에 출력. 아키텍트는 직접 실행하고 워커는 `dispatch_card`로 pane 생성 |
+| herdr 0.7.5에서 bridge만 online | protocol 17은 ping은 통과해도 agent start/prompt가 breaking change. `bun run dogfood:herdr` 통과 전 card 발사 금지 |
 | PID 숫자 (예: 10814 → 78818) | OS **프로세스 ID**. 재기동마다 바뀜. meta 파일의 `"pid"`와 대조 |
 
 ### 12.4 사용 사례 B — codex 무인 검증 때문에 bridge를 재기동할 때

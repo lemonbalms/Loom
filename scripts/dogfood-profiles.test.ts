@@ -60,4 +60,35 @@ describe("dogfood active profile contract", () => {
     expect(grok).toContain("implementer, not architect or reviewer");
     expect(grok).toContain("@codex-architect");
   });
+
+  test("interactive agents do not share Loom's live PTY", () => {
+    const up = read("scripts/dogfood-up.sh");
+    const room = read("scripts/dogfood-room-up.sh");
+    const architect = read("scripts/dogfood-architect.sh");
+    expect(up).not.toContain("--profile grok-impl  run grok");
+    expect(room).not.toContain("--profile grok-impl run grok");
+    expect(architect).toContain("--write-user-config -- --version");
+    expect(architect).toContain('exec codex -a never -s workspace-write "$@"');
+  });
+
+  test("dogfood bridge binds mac-node to the architect room fail-closed", () => {
+    const source = read("scripts/dogfood-bridge-up.sh");
+    expect(source).toContain("bash scripts/dogfood-herdr-check.sh");
+    expect(source).toContain("refusing room rebind/restart");
+    expect(source).toContain("LOOM_NO_AUTO_HOST=1");
+    expect(source).toContain('bridge start --allow "$ARCH_PEER_ID"');
+    expect(source).toContain('NODE_ROOM_ID" != "$ARCH_ROOM_ID');
+  });
+
+  test("herdr upgrades fail before a false-positive bridge start", () => {
+    const source = read("scripts/dogfood-herdr-check.sh");
+    const up = read("scripts/dogfood-up.sh");
+    expect(source).toContain('REQUIRED_VERSION="0.7.5"');
+    expect(source).toContain('REQUIRED_PROTOCOL="17"');
+    expect(source).toContain("LOOM_PROTOCOL");
+    expect(source).toContain("first card will fail");
+    expect(up.indexOf("dogfood-herdr-check.sh")).toBeLessThan(
+      up.indexOf("dogfood-room-up.sh"),
+    );
+  });
 });

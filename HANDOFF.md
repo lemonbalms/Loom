@@ -28,6 +28,13 @@
 > **운영 레인 보정 완료 (2026-07-22):** 다음 세션 기본 구조는 `codex-arch`(PLAN/spec·route·독립 verify)
 > → `grok-impl`(claim·구현·테스트·ship). `dogfood:up`/room/status와 부트 프롬프트가 6프로필로 동기화됐고,
 > saved invite의 `No room for code`는 새 dogfood room 자동 생성으로 복구한다(그 밖의 join 오류는 fail-closed).
+> **PTY 보정:** interactive `loom run`은 relay callback과 TUI가 같은 PTY를 써 화면을 깨뜨릴 수 있으므로
+> 기본 경로에서 제외했다. `bun run dogfood:architect`는 MCP 설정용 `--version` one-shot 뒤 Codex를 직접
+> `exec`하고, 구현은 `dispatch_card(node=mac-node, agentKind=grok)`가 별도 herdr pane에 주입한다.
+> `dogfood:bridge`는 in-flight가 있으면 재결합을 거부하고 room·전체 peer ID allowlist를 맞춘다.
+> **herdr 업그레이드 차단(2026-07-22):** 오너 표준은 최신 0.7.5/protocol 17. ping-only bridge online까지는
+> 되지만 구 `agent.start`·`agent.send` wire와 card 호환이 아니다. downgrade/0.7.4 병행은 채택하지 않고,
+> adapter 이행 전 `dogfood:herdr`가 fail-closed. 근거/이행 범위 `docs/spikes/HERDR-0.7.5-COMPAT.md`.
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 

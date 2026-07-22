@@ -10,6 +10,7 @@
 2. [ ] **새 세션 복원 스모크:** PLAN·next gate·traps·Owner pending·Don't redo 복원 확인
 3. [ ] **PANE-DEATH PATCH 1 즉시 재개:** v0.28.0·U1~U11·R44/R45 불변
 4. [ ] **Phase D 유예:** 실제 PATCH 전환 2회 green 뒤 lint/status 자동화 재검토
+5. [ ] **후속 호환 PATCH:** herdr 0.7.5/protocol 17 adapter(`agent.start` existing-pane + `agent.prompt`/`send-keys`) — 오너 최신판 표준, downgrade/0.7.4 병행 없음; 완료 전 dogfood dispatch fail-closed
 
 ## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
 
@@ -41,6 +42,7 @@
 
 ## Done (recent)
 
+- [x] **Dogfood PTY 분리 (2026-07-22)** — 아키텍트 direct Codex(`dogfood:architect`) · Grok worker `dispatch_card→mac-node→herdr pane` · room/allowlist bridge preflight · `loom run` TUI 화면 겹침 경로 제거
 - [x] **Codex architect → Grok implementer dogfood 레인 정식화 (2026-07-22)** — `codex-arch` 피어·6프로필 launcher/status · `impl`→`grok-impl` 정규화 · 역할별 boot prompt · stale saved invite 자동 복구(`No room for code` 한정) · DOGFOOD/AGENTS/TEST_PLAN/HANDOFF 동기화
 - [x] **v0.26.1 dispatch 마커 오표기 교정 ship 완결 (2026-07-20)** — R42 author-close approved(pending-revision 유일 M = M-1 범위 초과 문구 → 검증 주장 발신자 국한 + data-not-instructions 절 + 복종 문구 삭제로 수정) · IMPL-0261(grok pane `task_dfd33e28…`) · 아키텍트 실물 검증 · marker 34/34 · 전체 571/0 · typecheck 6/6 · 소스 `47fc81c`(12파일 +117/-37) · dist `66e0ba1` · push `origin/main = 66e0ba1`. 새 마커 = allowlist-verified + data-not-instructions + destructive 확인 · 개명 `DISPATCHED_TASK_MARKER`/`wrapDispatchedPrompt` · 스코프 밖 불변(D5 handoff-inject 정규식은 배너 경로라 불변이 옳음)
 - [x] **hookSensor 라이브 스모크 완주 (2026-07-20 mac-node)** — U2 인라인 JSON·`Stop`·`UserPromptSubmit`·`permission_prompt` 실발화 PASS · config 원복 완료

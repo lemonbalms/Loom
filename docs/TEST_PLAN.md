@@ -374,7 +374,8 @@ bun run desktop
 
 **통과 기준:** 12.A1–A3, 12.C2–C3, 12.D1, 12.E1–E2, 12.H2 ✅. (12.F2·12.A4는 선택/재현 난이도)
 **관련 자동:** `sticky-host.integration`, `sticky-meta` 단위(M-27),
-`scripts/dogfood-profiles.test.ts`(6프로필 SSOT·legacy `impl` 부재·stale invite 복구 분기), `smoke:desktop`(RPC).
+`scripts/dogfood-profiles.test.ts`(6프로필 SSOT·legacy `impl` 부재·stale invite 복구 분기·interactive
+`loom run` PTY 공유 금지·`mac-node` room/allowlist fail-closed 결합), `smoke:desktop`(RPC).
 **공백(자동화 미비):** `up`/`down`/`--status`/auto-host 전용 스모크 없음 — 대부분 수동. → `smoke:uc`에 UC-12 블록 추가 검토(후속).
 
 ---

@@ -30,6 +30,10 @@ for prof in codex-arch grok-impl claude-impl codex-impl claude-rev codex-rev; do
   echo ""
 done
 
+echo "-------- herdr bridge (mac-node) --------"
+loom --profile mac-node bridge status 2>&1 || echo "(bridge failed — recover: bun run dogfood:bridge)"
+echo ""
+
 if [[ -f "$ROOT/.loom/dogfood-next-session.txt" ]]; then
   echo "-------- next-session cheat sheet --------"
   cat "$ROOT/.loom/dogfood-next-session.txt"

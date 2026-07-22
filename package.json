@@ -35,6 +35,9 @@
     "dogfood:room": "bash scripts/dogfood-room-up.sh",
     "dogfood:up": "bash scripts/dogfood-up.sh",
     "dogfood:status": "bash scripts/dogfood-room-status.sh",
+    "dogfood:herdr": "bash scripts/dogfood-herdr-check.sh",
+    "dogfood:bridge": "bash scripts/dogfood-bridge-up.sh",
+    "dogfood:architect": "bash scripts/dogfood-architect.sh",
     "spike:pty": "bun run packages/cli/src/index.ts spike pty",
     "dev:relay": "bun run packages/relay/src/cli.ts",
     "relay:lan": "LOOM_RELAY_HOST=0.0.0.0 LOOM_RELAY_TOKEN=${LOOM_RELAY_TOKEN:?set LOOM_RELAY_TOKEN} bun run packages/relay/src/cli.ts"

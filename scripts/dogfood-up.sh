@@ -10,9 +10,9 @@
 #   bun run dogfood:up -- --fresh # force a new room first
 #   bun run dogfood:up -- --status  # just report host online/offline per profile
 #
-# Then (only when actually processing work):
-#   bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write
-#   bun run loom --profile grok-impl  run grok
+# Then (inside the existing architect/herdr pane):
+#   bun run dogfood:architect
+# Workers are created with Loom MCP dispatch_card → mac-node → herdr pane.
 # Stop hosts:
 #   bun run loom down --profiles codex-arch,grok-impl,claude-impl,codex-impl,claude-rev,codex-rev
 set -euo pipefail
@@ -34,6 +34,11 @@ for arg in "$@"; do
   fi
 done
 
+# Step 0 — external wire compatibility. Must run before any room/profile/host
+# mutation; protocol 17 can pass bridge ping but fail on the first worker card.
+echo "==> Checking herdr bridge compatibility …"
+bash scripts/dogfood-herdr-check.sh
+
 # Step 1 — joins only. LOOM_NO_AUTO_HOST=1 avoids per-join auto-host (we batch
 # the hosts in one sequential `loom up` below, which is faster and clearer).
 echo "==> Ensuring room + joining dogfood profiles (hosts started in step 2) …"
@@ -45,14 +50,19 @@ echo ""
 echo "==> Bringing sticky hosts online (loom up) …"
 loom up --profiles "$PROFILES"
 
+# Step 3 — the bridge is a seventh infrastructure identity, not a worker profile.
+# It must share the architect's room and authorize the architect's full peer id.
+echo ""
+echo "==> Preparing mac-node herdr card bridge …"
+bash scripts/dogfood-bridge-up.sh
+
 echo ""
 echo "=========================================="
 echo " Dogfood room online in the background"
 echo " Closing this terminal is OK — peers stay online."
 echo "=========================================="
-echo "Process work (only when working):"
-echo "  bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write"
-echo "  bun run loom --profile claude-rev run claude"
-echo "  bun run loom --profile grok-impl  run grok"
+echo "Start the architect in the existing herdr pane:"
+echo "  bun run dogfood:architect"
+echo "Do not run Grok with 'loom run'; use dispatch_card(node=mac-node, agentKind=grok)."
 echo "Stop hosts:"
 echo "  bun run loom down --profiles $PROFILES"

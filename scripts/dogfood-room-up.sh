@@ -9,13 +9,9 @@
 #   bash scripts/dogfood-room-up.sh --fresh
 #
 # Next session:
-#   bun run dogfood:status
-#   bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write
-#   bun run loom --profile grok-impl run grok
-#   bun run loom --profile claude-impl run claude
-#   bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
-#   bun run loom --profile claude-rev run claude
-#   bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
+#   bun run dogfood:up
+#   bun run dogfood:architect   # inside the existing architect/herdr pane
+#   # implementation workers: MCP dispatch_card → mac-node → herdr pane
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -139,44 +135,30 @@ Invite:  $INVITE
 Room:    $ROOM_NAME
 State:   $STATE_FILE
 
-Next session (6 peers — open terminals as needed):
---------------------------------------------------
+Next session (architect pane + bridge-managed worker panes):
+-----------------------------------------------------------
 # 0) status
 cd $ROOT && bun run status && bun run dogfood:status
 
-# A — Codex architect (PLAN/spec/review/verify; no locked-spec product coding)
-bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write
+# A — run this in the existing Codex/herdr architect pane.
+# It writes the codex-arch MCP binding with a non-interactive --version call,
+# then execs Codex directly. Loom does not remain as a live PTY wrapper.
+bun run dogfood:architect
 # First prompt: read scripts/dogfood-architect-boot.txt
 
-# B — Grok implementer (default lane; claim before editing)
-bun run loom --profile grok-impl run grok
-# First prompt: read scripts/dogfood-grok-impl-boot.txt
-
-# B2 — Claude implementer (parallel implementation lane)
-bun run loom --profile claude-impl run claude
-
-# B3 — Codex implementer (fallback lane; claim board task first)
-bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
-
-# C — Claude primary reviewer (fable-advisor subagent required for R{n})
-bun run loom --profile claude-rev run claude
-
-# D — Codex second opinion (review only — not codex-arch/codex-impl)
-bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
-
 Architect → Grok default path:
-  bun run loom --profile codex-arch board add "<locked implementation task>" --as grok-impl
-  bun run loom --profile codex-arch handoff @grok-impl "[IMPL] <five-part locked spec>" --with-pack --with-board
+  1. MCP add_task(title=<locked implementation task>, notify=false)
+  2. MCP dispatch_card(taskId=<id>, node=mac-node, agentKind=grok,
+       prompt=<five-part locked spec + final marker>)
+  3. Receive/claim card.done, apply_card_result, then verify pane marker + worktree.
 
-Review request (from any implementer):
-  bun run loom --profile grok-impl handoff @claude-review "[R-REQUEST] … YOU MUST: fable-advisor subagent first …"
-  bun run loom --profile grok-impl handoff @codex-review  "[R-REQUEST] adversarial …"
+Never start a full-screen worker with 'loom run grok/codex/claude'. Loom relay
+events and the agent TUI would write to the same PTY. The bridge owns worker panes.
 
-Three implementers (grok-impl=Grok, claude-impl=Claude, codex-impl=Codex) share the
-same board/PLAN — claim a locked implementation task (status: doing, assignee: your name)
-before starting work to avoid double-implementing the same PATCH.
-codex-arch authors specs and verifies; it never claims locked-spec implementation.
-See docs/DOGFOOD_LOOP.md §1.1. Never mix Codex profiles in one terminal.
+For corrections/review/ship, create a new explicit card and dispatch the selected
+agentKind. dispatch_card performs the doing/mac-node claim transition; do not
+pre-claim under grok-impl. codex-arch authors specs and independently verifies.
+See docs/DOGFOOD_LOOP.md §1.1. Never mix agent roles in one pane.
 
 Docs: docs/DOGFOOD_LOOP.md
 EOF

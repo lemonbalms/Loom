@@ -61,9 +61,19 @@ bun run dogfood:status        # invite + peers for all six active profiles
 ```
 
 `dogfood:up` brings **every profile online in the background** (a sticky host each,
-started sequentially per M-28). Close the terminal — peers stay online. Send work
-with `board add`/`handoff`; open a `run` TUI **only to process** (see Daily below).
-Stop all hosts with `bun run loom down`.
+started sequentially per M-28), then binds the seventh infrastructure identity
+`mac-node` to the same room and starts its herdr bridge. It refuses to rebind a
+bridge with in-flight cards. Close the terminal — peers and bridge stay online.
+Stop all sticky hosts with `bun run loom down`; stop the bridge separately with
+`bun run loom --profile mac-node bridge stop`.
+
+**herdr version gate:** the owner standard is current **herdr 0.7.5 / protocol
+17**. `dogfood:up`/`dogfood:bridge` run `bun run dogfood:herdr` before room or
+bridge mutation and require Loom's committed adapter protocol to match. Loom is
+still protocol 16 at this checkpoint, so dispatch is intentionally blocked until
+the adapter migration lands. Changing only bridge config to 17 creates a
+false-positive startup. See
+[`spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md).
 
 `dogfood:room` still exists for **join-only** setup. Note (L-34): with auto-host
 default-on, each `room join` first stops the old-session host, then starts a new one
@@ -78,65 +88,68 @@ failures remain fail-closed and retain the saved invite for diagnosis.
 
 State (gitignored): `.loom/dogfood-room.env`, `.loom/dogfood-next-session.txt`
 
-### Daily (after setup) — `run` only when actually working
+### Daily (after setup) — architect direct, workers via bridge card
 
-Peers are already **online in the background** from `dogfood:up` — no `host start`
-needed. Sending work needs no TUI (`board add`/`handoff`); open a `run` window
-**only to process** claimed work. Stop hosts with `bun run loom down`.
+Peers are already **online in the background** from `dogfood:up`; no `host start`
+is needed. Run the architect directly in the existing herdr pane. Worker TUIs are
+created only by `dispatch_card → mac-node bridge → herdr pane`.
 
 ```bash
-# A — Codex architect (PLAN/spec/review/verify; no locked-spec product coding)
-bun run loom --profile codex-arch run codex --write-user-config -- -a never -s workspace-write
+# A — existing Codex/herdr architect pane
+bun run dogfood:architect
 # first prompt: scripts/dogfood-architect-boot.txt
 
-# B — Grok implementer (online already; open run only to process)
-bun run loom --profile grok-impl run grok
-# first prompt: scripts/dogfood-grok-impl-boot.txt
-
-# B2 — Claude implementer (parallel lane; claim a board task first, see §1.1)
-bun run loom --profile claude-impl run claude
-
-# B3 — Codex implementer (fallback lane; separate from codex-arch/codex-rev)
-bun run loom --profile codex-impl run codex --write-user-config -- -a never -s workspace-write
-
-# C — Claude primary reviewer
-bun run loom --profile claude-rev run claude   # 0.13.14+ for resize; R{n} → fable-advisor subagent
-
-# D — Codex second opinion
-# Autonomy without full FS escape: approval never + workspace-write sandbox
-bun run loom --profile codex-rev run codex --write-user-config -- -a never -s workspace-write
-# equivalent env default:
-#   LOOM_CODEX_ARGS="-a never -s workspace-write" bun run loom --profile codex-rev run codex --write-user-config
+# infrastructure preflight/recovery (normally dogfood:up/architect does this)
+bun run dogfood:bridge
 ```
 
-When using multiple Codex lanes, start them **sequentially** and let each launch
-finish before starting the next. `--write-user-config` rebinds the single managed
-`mcp_servers.loom` block to that launch's profile; an already-running Codex/MCP
-process keeps its own session, while later Codex launches use the latest block.
+`dogfood:architect` uses `loom run codex --write-user-config -- --version` only as
+a short, non-interactive MCP config writer. That process exits, then the script
+`exec`s Codex directly. A live Loom relay client therefore never shares the
+full-screen TUI's PTY.
+
+**Do not launch an interactive agent with `loom run codex|grok|claude` in a
+worker/architect pane.** `loom run` keeps a relay client whose handoff, peer-join,
+chat, and error callbacks write asynchronously to the same terminal. Those writes
+can interleave with the agent TUI redraw and corrupt the screen.
 
 ### Codex architect → Grok implementation path
 
 1. `codex-arch` completes the session ritual, chooses the gate, and locks a
    five-part implementation contract: scope, non-goals, invariants, verification,
    and return/ship contract.
-2. It creates/assigns a board task to `grok-impl` and sends the detailed handoff.
-3. `grok-impl` claims the task as `doing/grok-impl`, then becomes the only writer
-   for the assigned shared-worktree scope. The architect does not edit overlapping
-   files while implementation is in flight.
-4. Grok returns `[IMPL-RESULT]` before shipping. Codex inspects the diff and runs
-   independent verification; corrections go back through handoff, not architect
-   hand-coding.
-5. Codex sends `[SHIP]` only after verification; Grok commits/pushes and returns
-   the SHA. Codex confirms the remote and updates gate bookkeeping.
+2. It calls MCP `add_task` with `notify:false`, then `dispatch_card` with the
+   returned task id, `node:"mac-node"`, `agentKind:"grok"`, and the complete
+   contract. Use `scripts/dogfood-worker-card-prompt.txt` as the prompt skeleton.
+3. `dispatch_card` moves the card to `doing/mac-node`; the bridge creates a Grok
+   herdr pane and injects the literal prompt. The architect does not edit
+   overlapping files while the card is in flight.
+4. Grok edits/tests but does not ship on the implementation card. The architect
+   claims `card.done`, calls `apply_card_result`, then checks both the unique pane
+   marker and the shared worktree before independent verification. A `card.done`
+   handoff by itself is not proof of success.
+5. Corrections are new explicit cards. After verification, dispatch a separate
+   `[SHIP]` card to commit/push the already-reviewed diff and return the SHA; Codex
+   confirms the remote and updates gate bookkeeping.
 
-```bash
-bun run loom --profile codex-arch board add "<locked implementation task>" --as grok-impl
-bun run loom --profile codex-arch handoff @grok-impl \
-  "[IMPL] <five-part locked spec>" --with-pack --with-board
+```jsonc
+// Loom MCP calls from the architect session
+add_task({
+  "title": "<locked implementation task>",
+  "notes": "<scope/non-goals/invariants/verification/return contract>",
+  "notify": false
+})
+dispatch_card({
+  "taskId": "<task id returned above>",
+  "node": "mac-node",
+  "agentKind": "grok",
+  "prompt": "<five-part locked spec + unique final marker>"
+})
 ```
 
-Boot prompts: `scripts/dogfood-architect-boot.txt` and
-`scripts/dogfood-grok-impl-boot.txt`.
+Boot/prompt templates: `scripts/dogfood-architect-boot.txt` and
+`scripts/dogfood-worker-card-prompt.txt`. `scripts/dogfood-grok-impl-boot.txt`
+remains only for explicit peer-TUI fallback diagnosis, not the default lane.
 
 ### 1.1 Three implementers — avoid double work
 
@@ -145,14 +158,13 @@ product code against the **same git working tree**. Without
 coordination they can pick up the same PATCH/phase and collide (merge conflicts,
 duplicate PLAN sections). Rule:
 
-1. Before starting new work, run `check_handoffs` + board `list_tasks` and
-   look for a task already `doing` with the *other* implementer as assignee.
-   If found, skip it — do not start the same work.
-2. Claim your task first: `update_task` → `status: doing`, `assignee: <your
-   display name>` (`grok-impl`, `claude-impl`, or `codex-impl`) — *then* start editing files.
-3. Prefer explicit routing: the Owner (human) or a handoff addresses work to
-   `@grok-impl`, `@claude-impl`, or `@codex-impl` by name. Unaddressed board items are
-   first-claim-wins per rule 2.
+1. Before dispatching, run `check_handoffs` + `list_tasks` and look for a card
+   already `doing` whose scope overlaps. If found, do not dispatch duplicate work.
+2. `dispatch_card` is the claim transition: it moves the existing card to `doing`
+   and assigns the bridge node. Do not pre-claim it under a peer profile.
+3. Prefer explicit `agentKind` routing (`grok`, `claude`, or `codex`) and put the
+   lane role in the literal card prompt. The node owns execution; the peer profile
+   remains a room identity, not the worker pane identity.
 4. If both sessions are mid-flight on unrelated phases, that's fine — the
    collision risk is same-phase/same-PATCH, not general parallelism.
 
