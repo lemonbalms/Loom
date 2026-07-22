@@ -5,7 +5,7 @@
 
 | 항목 | 값 |
 |------|-----|
-| **인덱스 생성 시점** | 2026-07-22 (부분 갱신: GLOSSARY · SESSION-CONTINUITY 진입 순서) |
+| **인덱스 생성 시점** | 2026-07-22 (부분 갱신: HERDR-0.7.5-COMPAT 정본 등재) |
 | **기준 커밋(HEAD)** | `b59bcae` — docs: add Loom project glossary |
 | **최신성 기준** | "최종 업데이트" = 해당 파일의 **git 마지막 커밋 author-date**. 미추적 파일은 `mtime`으로 표기하고 ⚠️ 표시 |
 | **활동량 읽는 법** | 커밋 수 = 문서의 변경 빈도. 많을수록 살아있는 SSOT, 적을수록 1회성 산출물/배경자료 |
@@ -71,6 +71,7 @@
 | `docs/spikes/PANE-DEATH-OBSERVATIONS.md` | pane 사망 라이브 관측 기록 | (동 계열) | — |
 | `docs/spikes/PHASE-1.5-PTY.md` | PTY / stdin inject 스파이크 (no-go 계열) | 2026-07-09 | 1 |
 | `docs/spikes/STEP0.5-HERDR.md` | herdr v0.7.4 실측 fixture | (동 계열) | — |
+| **`docs/spikes/HERDR-0.7.5-COMPAT.md`** | **herdr 0.7.5/protocol 17 호환 정본.** 릴리즈 노트·스키마 갭·spawn/inject 이행·dogfood fail-closed | 2026-07-22 | 갱신 |
 
 ## Tier 5 — 메타 · 조사 · 배경 (필요 시 참고)
 

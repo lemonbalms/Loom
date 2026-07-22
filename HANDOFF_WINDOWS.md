@@ -19,19 +19,24 @@
 ## ⭐ Current action (Windows — read first)
 
 > **🎯 다음 = §3-2 실물 herdr `dispatchCard(bun.lock 카드)`.**  
-> Mac: 실물 herdr 0.7.4 + bridge **ready** (fake 아님).  
-> → **`git pull`** 후 **[`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) §3-2** (서술형 prompt).  
-> 기대: 실 Claude 작업 **또는** M-4 거부(둘 다 OK).
+> **⚠️ 2026-07-22:** Mac herdr는 **0.7.5 / protocol 17**이 오너 표준이다. Loom 어댑터는 아직
+> protocol 16 (`HERDR_PROTOCOL_EXPECTED=16`)이라 **dogfood/mac-node dispatch는 fail-closed**.
+> 정본·이행 범위 → [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./docs/spikes/HERDR-0.7.5-COMPAT.md).  
+> 구 서술 “Mac 실물 herdr 0.7.4 + bridge ready”는 **protocol-16 시대 스냅샷**이며 재세팅 목표가 아니다.  
+> → **`git pull`** 후 어댑터 ship 전에는 Windows 측에서도 **실물 카드 발사 기대하지 말 것**.  
+> 어댑터 이후: [`docs/spikes/DISPATCH-DEMO.md`](./docs/spikes/DISPATCH-DEMO.md) §3-2 (서술형 prompt).
 >
 > ### 이미 끝난 것 (다시 하지 말 것)
 > | 항목 | 상태 |
 > |------|------|
 > | relay Task · room `demo` · fake dispatch 시연 | ✅ |
-> | Mac §3 실물 herdr 전환 | ✅ (재세팅 금지) |
+> | Mac §3 실물 herdr 전환 (0.7.4 시대) | ✅ (재세팅 금지 · 버전은 0.7.5로 상향됨) |
 > | PLAN/코드 수정 | Windows 코딩 금지 |
 >
 > ### 하지 말 것
-> - Mac bridge/herdr 재기동 요청 (이미 real sock)
+> - herdr 0.7.4 다운그레이드 / 0.7.4 병행 세션 요청 (오너 기각)
+> - config `herdrProtocol`만 17로 올려 ping-only green 위장
+> - Mac bridge/herdr 재기동 요청 (어댑터 웨이브 전 무의미 반복 금지)
 > - 명령형 prompt로 push 강제 (M-4 — 서술형 사용)
 > - `--insecure-open` · 제품 코드 수정
 

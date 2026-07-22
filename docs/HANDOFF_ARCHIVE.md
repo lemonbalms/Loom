@@ -9,18 +9,24 @@
 > 이 구획은 **진행 중** 실행·실패·검증 provenance의 임시 수납처다. 아래의 종결 웨이브
 > append-only 이력과 섞지 않으며, 게이트가 종결되면 해당 결과를 완료 이력으로 이관한다.
 
-### SESSION-CONTINUITY Phase C — locally green, ship blocked (2026-07-22)
+### herdr 0.7.5 release-notes review (2026-07-22) — adapter still blocked
+
+- Official [v0.7.5 notes](https://github.com/ogulcancelik/herdr/releases/tag/v0.7.5) + live
+  `herdr api schema --json` (protocol **17**) vs immutable `docs/spikes/fixtures/herdr-v0.7.4`
+  (protocol **16**) mapped into **`docs/spikes/HERDR-0.7.5-COMPAT.md`** (full impact map).
+- P0 breaks confirmed: `agent.start` is existing-pane + `kind` only; `agent.send` gone →
+  `agent.prompt` / `agent.send_keys`; env/cwd move to `tab.create` / `pane.split`.
+- Loom still `HERDR_PROTOCOL_EXPECTED = 16`; dogfood fail-closed until compatibility PATCH.
+- Non-goals locked: no 0.7.4 downgrade; no PANE-DEATH authority rewrite inside this PATCH.
+
+### SESSION-CONTINUITY Phase C — shipped (2026-07-22 · `8a3ddba`)
 
 - Live HANDOFF nine-section transition, whole-file 8,192B D1 gate, shared headings, all-section
-  state injection, and entry contract are implemented by the **lower-tier in-harness Codex fallback**.
-  Focused checkpoint/context tests **61/61**, `handoff:lint`, `session-context:lint`, independent
-  verification, and `[RESTORE-SMOKE] verdict=pass` are green.
-- Full-suite comparison found clean HEAD and changed tree both at **573 pass / 46 fail / 3 errors**,
-  31 unique failure names, tree-only delta **0**. These results are reviewed but **unshipped**.
-- Explicit `git add` and `git commit -m "feat(session): complete continuity Phase C"` both failed
-  before staging: `fatal: Unable to create .../.git/index.lock: Operation not permitted`. Current
-  environment `.git` is read-only; preserve the reviewed worktree and ship only in a git-writable
-  session. Do not start PATCH 1 before the remote SHA exists.
+  state injection, and entry contract shipped: **`8a3ddba`**
+  `feat(handoff): ship session continuity Phase C` on `origin/main`.
+- Prior in-progress note: locally green / `[RESTORE-SMOKE] verdict=pass` / tree-only suite delta 0;
+  temporary `index.lock` Operation not permitted was environment-only and cleared in a
+  git-writable session.
 
 ---
 
