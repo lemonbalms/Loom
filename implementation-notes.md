@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-22 (0.28.0 PANE-DEATH PATCH 3) |
+| **Last updated** | 2026-07-22 (0.28.0 PANE-DEATH PATCH 4) |
 
 ---
 
@@ -27,12 +27,14 @@ This file is for **during-implementation** plan deviations only.
 
 ## Deviations
 
-### §0.28.0 — PANE-DEATH PATCH 3 bridge authority cut
+### §0.28.0 — PANE-DEATH implementation wave
 
 | Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-22 | “작업 line” 의미 · PLAN v0.28.0 PATCH 3 | 실제 PATCH 3 전체 chain은 **Codex orchestration → Grok implementation → Codex verification**이다. “작업 line”을 단일 구현 레인으로 기록한 것을 폐기하고, 세션 전체 역할 연결로 정정했다. | 실제 provenance를 소급 미화하지 않고, 다음 세션이 실제 직전 chain을 기본으로 복원하게 한다. | 다음 기본은 Codex→Grok→Codex. HANDOFF/AGENTS briefing은 Claude·Grok·기타 CLI의 전체 선택 chain도 함께 표시한다. |
 | 2026-07-22 | PATCH 3 대상 파일 표(bridge-runtime/result-quarantine/bridge-config/CLI) · 운영자 ack는 미해소를 실제로 닫아야 함 | live bridge가 있을 때 CLI의 별도 `QuarantineStore`를 쓰지 않고, `bridge-spawn.ts`의 인증된 loopback control RPC로 daemon의 **동일 in-memory store**를 ack한다. 이를 위해 host re-export 포함 지원 파일 2개가 target 표보다 늘었다. live RPC 실패 시 local fallback 없이 fail-closed하고, offline일 때만 local durable store를 연다. | 별도 store append는 disk replay만 바꾸고 daemon timer/map/status를 stale로 남겨 재진입·오표시를 만든다. 동일 authority를 갱신하는 것이 데이터 일관성과 실패 안전성을 보존한다. | PATCH 4에서 live/offline ack 양성 테스트를 고정한다. |
+| 2026-07-22 | PATCH 4 대상 파일 표 · HANDOFF의 분류된 33 legacy 실패 | PLAN 표에 빠졌지만 HANDOFF가 명시한 `scrape-delta.test.ts`와 `herdr-lifecycle.test.ts`를 tests-only 범위에 포함해 proposal/pane-preserved 기대와 브랜치 fixture/close-count 순이득을 이식했다. | 이미 분류된 legacy 실패를 남기지 않고, production 0줄 경계를 유지한 채 탐지력만 복원한다. | 없음 — `f9b0230`에 포함. |
+| 2026-07-22 | PATCH 4 브랜치 `ec99b2c:bridge.test.ts` +244 전량 감사 | main의 PATCH 1 테스트가 guard-order/local-done과 completion↔terminal·claimed deny·spawn failure exact-one을 더 강하게 이미 고정해 `bridge.test.ts`는 변경하지 않았다. | 동일 계약의 약한 복제를 이식해 테스트를 흔드는 대신 현재의 더 강한 증거를 보존한다. | PATCH 5에서 재작업 금지; 감사 결과만 인용. |
 
 ### 0.9.0 / 0.9.1 — Loom rename + R11 patch
 
