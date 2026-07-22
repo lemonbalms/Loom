@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-18 (0.23.1 artifact 패키징 호출부) |
+| **Last updated** | 2026-07-22 (0.28.0 PANE-DEATH PATCH 3) |
 
 ---
 
@@ -26,6 +26,13 @@ This file is for **during-implementation** plan deviations only.
 ---
 
 ## Deviations
+
+### §0.28.0 — PANE-DEATH PATCH 3 bridge authority cut
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-07-22 | PLAN v0.28.0 PATCH 3 구현 레인 = Claude | Owner가 이 웨이브를 **Grok 4.5 headless 구현 레인**으로 명시 선택했다. `AGENTS.md`의 canonical `grok --prompt-file … --permission-mode acceptEdits`를 사용했고, Codex 아키텍트가 diff와 검증을 독립 수행하며 두 차례 수정 라운드를 Grok에 반환했다. | Grok의 선행 R44 검증과 이번 구현이 같은 모델 계열이라는 편차는 숨기지 않되, 세션 아키텍트가 구현하지 않고 별도 검증·수정 판정을 소유해 자기승인을 막았다. | PATCH 4 tests-only는 HANDOFF의 현재 레인/검증 분리를 다시 확인한다. |
+| 2026-07-22 | PATCH 3 대상 파일 표(bridge-runtime/result-quarantine/bridge-config/CLI) · 운영자 ack는 미해소를 실제로 닫아야 함 | live bridge가 있을 때 CLI의 별도 `QuarantineStore`를 쓰지 않고, `bridge-spawn.ts`의 인증된 loopback control RPC로 daemon의 **동일 in-memory store**를 ack한다. 이를 위해 host re-export 포함 지원 파일 2개가 target 표보다 늘었다. live RPC 실패 시 local fallback 없이 fail-closed하고, offline일 때만 local durable store를 연다. | 별도 store append는 disk replay만 바꾸고 daemon timer/map/status를 stale로 남겨 재진입·오표시를 만든다. 동일 authority를 갱신하는 것이 데이터 일관성과 실패 안전성을 보존한다. | PATCH 4에서 live/offline ack 양성 테스트를 고정한다. |
 
 ### 0.9.0 / 0.9.1 — Loom rename + R11 patch
 

@@ -9,6 +9,13 @@
 > 이 구획은 **진행 중** 실행·실패·검증 provenance의 임시 수납처다. 아래의 종결 웨이브
 > append-only 이력과 섞지 않으며, 게이트가 종결되면 해당 결과를 완료 이력으로 이관한다.
 
+### PANE-DEATH PATCH 3 (M3) — bridge authority cut (2026-07-22 · `c475604`)
+
+- Owner-selected Grok 4.5 headless implementer가 `AGENTS.md` canonical prompt-file/acceptEdits 명령으로 production 6파일(+587/−135)을 구현했고, Codex 아키텍트가 diff·정적 게이트·타입체크·집중/전체 suite를 독립 검증했다. live quarantine authority와 explicit ack 오류 구분에 대해 두 차례 Grok 수정 라운드를 거쳤다.
+- card result는 `failed/needs_verification` 제안만 발행하고 실제 summary를 보존한다. card `done` 구성과 card auto-close는 0곳; 비수락 ACK는 단일 `send_unknown` quarantine; `process_exit`는 unresolved를 보존한다. CLI ack는 live daemon의 인증 loopback RPC 또는 offline durable store를 사용하며 selector 생략 시 단일 unresolved만 추론한다.
+- 검증: host·CLI typecheck, diff-check, 정적 done/close 게이트, quarantine/CLI/classifier smoke(**unresolved=0 · classify=4/4**) green. 집중 PATCH 1 게이트의 authority cut·pane 보존이 green으로 전환됐다. 전체 suite **691 pass / 8 skip / 37 fail**은 PATCH 4 legacy 기대 33, 선재 checkpoint 1, macOS 장경로 socket 2, 선재 offline durability fixture 1로 전량 분류했다.
+- 선행 production = `0b335a1`; 다음 제품 gate = **PATCH 4 (M4) tests-only 재기술**. production·dist/version을 섞지 않는다.
+
 ### PANE-DEATH PATCH 2 (M2) — tower A2 fence (2026-07-22 · `0b335a1`)
 
 - Grok 4.5 headless implementer로 지정 4파일만 구현하고 Codex 아키텍트가 diff·테스트를 독립 검증했다. 호출은 Codex 정본 `grok --prompt-file "$SPEC" -m grok-4.5 --permission-mode acceptEdits --output-format plain --cwd "$(pwd)"`를 사용했으며 구현 lane에는 sandbox/always-approve를 쓰지 않았다.
