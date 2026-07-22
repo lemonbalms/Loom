@@ -16,7 +16,7 @@ import {
   wrapDispatchedPrompt,
 } from "@loom/protocol";
 import { RelayClient } from "./relay-client";
-import { HerdrClient, BARE_ENTER } from "./herdr-client";
+import { HerdrClient } from "./herdr-client";
 import { startFakeHerdr, type FakeHerdr } from "./fake-herdr";
 import { startBridgeRuntime, type BridgeRuntime } from "./bridge-runtime";
 import type { BridgeConfig } from "./bridge-config";
@@ -34,9 +34,29 @@ type CardResult = {
   cardId?: string;
 };
 
+/** Protocol-17 bounded Enter nudge (agent.send_keys keys includes "\r"). */
+const CR_NUDGE = "\r";
+
+function isCrSendKeys(c: { method: string; params: Record<string, unknown> }): boolean {
+  return (
+    c.method === "agent.send_keys" &&
+    Array.isArray(c.params.keys) &&
+    (c.params.keys as string[]).includes(CR_NUDGE)
+  );
+}
+
 function crSends(fake: FakeHerdr) {
-  return fake.calls.filter(
-    (c) => c.method === "agent.send" && c.params.text === BARE_ENTER,
+  return fake.calls.filter(isCrSendKeys);
+}
+
+function promptInjects(
+  calls: { method: string; params: Record<string, unknown> }[],
+  text?: string,
+) {
+  return calls.filter(
+    (c) =>
+      c.method === "agent.prompt" &&
+      (text === undefined || c.params.text === text),
   );
 }
 
@@ -141,7 +161,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
   };
 
   beforeAll(async () => {
@@ -201,7 +221,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
       session,
       profile: "node-inject-verify",
       config: cfg,
-      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock }),
       // Short real timers — enough for tests to push working mid-wait, cheap for suite
       submitVerify: { waitMs: 250, retries: 2 },
     });
@@ -272,43 +292,33 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     };
   }
 
-  test("① empty composer (probe miss) → reinject (prompt+CR) then working = recovery", async () => {
+  test("① empty composer (probe miss) → reinject (agent.prompt) then working = recovery", async () => {
     const cardId = "task_a111000000000001";
     const promptBody = "recover-after-paste-loss-unique-tail-xyz";
     const expectedPrompt = wrapDispatchedPrompt(promptBody);
     const callsBefore = fake.calls.length;
 
-    // Force empty composer scrape regardless of accumulated send text
+    // Force empty composer scrape regardless of accumulated prompt text
     fake.setPaneReadText("*", "");
     fake.setDiscardInjects(true);
 
     await dispatchCard(cardId, promptBody);
 
-    // Wait for reinject: second non-CR agent.send after baseline
+    // Wait for reinject: second agent.prompt with same cached string
     const reinjected = await waitFor(() => {
-      const recent = fake.calls
-        .slice(callsBefore)
-        .filter(
-          (c) =>
-            c.method === "agent.send" &&
-            c.params.text === expectedPrompt,
-        );
-      return recent.length >= 2; // initial + reinject
+      return promptInjects(fake.calls.slice(callsBefore), expectedPrompt).length >= 2;
     }, { timeoutMs: 10_000 });
     expect(reinjected).toBe(true);
 
-    // Separate CR after reinject prompt
+    // Protocol 17: reinject is atomic agent.prompt only (CR nudge is a later
+    // verify attempt via send_keys if still unconfirmed — not dual-send).
     const slice = fake.calls.slice(callsBefore);
     const promptIdxs = slice
       .map((c, i) =>
-        c.method === "agent.send" && c.params.text === expectedPrompt ? i : -1,
+        c.method === "agent.prompt" && c.params.text === expectedPrompt ? i : -1,
       )
       .filter((i) => i >= 0);
     expect(promptIdxs.length).toBeGreaterThanOrEqual(2);
-    const reinjectIdx = promptIdxs[1]!;
-    const afterReinject = slice[reinjectIdx + 1];
-    expect(afterReinject?.method).toBe("agent.send");
-    expect(afterReinject?.params.text).toBe(BARE_ENTER);
 
     // Recovery: push working → done
     const panes = fake.listPaneIds();
@@ -347,18 +357,14 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
     await dispatchCard(cardId, promptBody);
 
-    // Wait until verify exhausts (fail-visible) or enough CRs
-    // retries=2 → initial submit CR + up to 2 verify CRs (≥3 total CR delta)
-    await waitFor(() => crSends(fake).length - crBefore >= 3, {
+    // Wait until verify exhausts (fail-visible) or enough CR nudges.
+    // Protocol 17: initial inject is agent.prompt (no separate CR); retries=2
+    // → up to 2 verify send_keys CR nudges on probe hit.
+    await waitFor(() => crSends(fake).length - crBefore >= 2, {
       timeoutMs: 10_000,
     });
 
-    const promptSends = fake.calls
-      .slice(callsBefore)
-      .filter(
-        (c) =>
-          c.method === "agent.send" && c.params.text === expectedPrompt,
-      );
+    const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
     // Only the initial inject — no reinject of the full prompt
     expect(promptSends.length).toBe(1);
 
@@ -459,12 +465,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
     const turn2Injected = await waitFor(
       () =>
-        fake.calls
-          .slice(callsBeforeTurn2)
-          .some(
-            (c) =>
-              c.method === "agent.send" && c.params.text === turn2Prompt,
-          ),
+        promptInjects(fake.calls.slice(callsBeforeTurn2), turn2Prompt).length >= 1,
       { timeoutMs: 10_000 },
     );
     expect(turn2Injected).toBe(true);
@@ -503,12 +504,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(result?.status).toBe("failed");
     expect(result?.reason ?? result?.summary ?? "").toMatch(/inject_unconfirmed/);
 
-    const promptSends = fake.calls
-      .slice(callsBefore)
-      .filter(
-        (c) =>
-          c.method === "agent.send" && c.params.text === expectedPrompt,
-      );
+    const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
     // initial inject + exactly one reinject
     expect(promptSends.length).toBe(2);
 
@@ -518,7 +514,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
   test("⑥ working within first wait → no verify paneRead (fast-path)", async () => {
     // Restart-less: push working immediately after inject using a helper card
-    // with autoStatus temporarily simulated via push right after first send.
+    // with autoStatus temporarily simulated via push right after first prompt.
     const cardId = "task_a666000000000006";
     const promptBody = "fast-path-working-no-probe-read";
     const callsBefore = fake.calls.length;
@@ -529,14 +525,14 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
     await dispatchCard(cardId, promptBody);
 
-    // As soon as first agent.send lands, push working+done before verify wait ends
+    // As soon as first agent.prompt lands, push working+done before verify wait ends
     const injected = await waitFor(
       () =>
         fake.calls
           .slice(callsBefore)
           .some(
             (c) =>
-              c.method === "agent.send" &&
+              c.method === "agent.prompt" &&
               typeof c.params.text === "string" &&
               (c.params.text as string).includes(promptBody),
           ),
@@ -580,18 +576,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(result?.status).toBe("failed");
     expect(result?.reason ?? result?.summary ?? "").toMatch(/inject_unconfirmed/);
 
-    const promptSends = fake.calls
-      .slice(callsBefore)
-      .filter(
-        (c) =>
-          c.method === "agent.send" && c.params.text === expectedPrompt,
-      );
+    const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
     expect(promptSends.length).toBe(1); // no reinject on read-fail
 
-    const crs = fake.calls
-      .slice(callsBefore)
-      .filter((c) => c.method === "agent.send" && c.params.text === BARE_ENTER);
-    // initial submit CR + retry CRs
+    const crs = fake.calls.slice(callsBefore).filter(isCrSendKeys);
+    // Protocol 17: no initial CR; verify retries issue send_keys CR only
     expect(crs.length).toBeGreaterThanOrEqual(2);
 
     fake.failPaneReads(0);
@@ -648,19 +637,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     await dispatchCard(cardId, promptBody);
 
     await waitFor(
-      () =>
-        fake.calls.slice(callsBefore).filter(
-          (c) => c.method === "agent.send" && c.params.text === BARE_ENTER,
-        ).length >= 3,
+      () => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2,
       { timeoutMs: 10_000 },
     );
 
-    const promptSends = fake.calls
-      .slice(callsBefore)
-      .filter(
-        (c) =>
-          c.method === "agent.send" && c.params.text === expectedPrompt,
-      );
+    const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
     // hit → no reinject
     expect(promptSends.length).toBe(1);
 
@@ -721,13 +702,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(sent.ok).toBe(true);
 
     const reinjected = await waitFor(() => {
-      const prompts = fake.calls
-        .slice(callsBefore)
-        .filter(
-          (c) =>
-            c.method === "agent.send" && c.params.text === turn2Prompt,
-        );
-      return prompts.length >= 2;
+      return promptInjects(fake.calls.slice(callsBefore), turn2Prompt).length >= 2;
     }, { timeoutMs: 12_000 });
     expect(reinjected).toBe(true);
 
@@ -764,7 +739,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
           .slice(callsBefore)
           .some(
             (c) =>
-              c.method === "agent.send" &&
+              c.method === "agent.prompt" &&
               typeof c.params.text === "string" &&
               (c.params.text as string).includes(promptBody),
           ),
@@ -801,19 +776,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
       await dispatchCard(cardId, promptBody);
 
       await waitFor(
-        () =>
-          fake.calls.slice(callsBefore).filter(
-            (c) => c.method === "agent.send" && c.params.text === BARE_ENTER,
-          ).length >= 3,
+        () => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2,
         { timeoutMs: 10_000 },
       );
 
-      const promptSends = fake.calls
-        .slice(callsBefore)
-        .filter(
-          (c) =>
-            c.method === "agent.send" && c.params.text === expectedPrompt,
-        );
+      const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
       expect(promptSends.length).toBe(1);
 
       const result = await awaitCardResult(tower!, cardId);
@@ -834,19 +801,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
       await dispatchCard(cardId, promptBody);
 
       await waitFor(
-        () =>
-          fake.calls.slice(callsBefore).filter(
-            (c) => c.method === "agent.send" && c.params.text === BARE_ENTER,
-          ).length >= 3,
+        () => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2,
         { timeoutMs: 10_000 },
       );
 
-      const promptSends = fake.calls
-        .slice(callsBefore)
-        .filter(
-          (c) =>
-            c.method === "agent.send" && c.params.text === expectedPrompt,
-        );
+      const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
       // wrap-tolerant placeholder hit → CR branch, no reinject
       expect(promptSends.length).toBe(1);
 
@@ -881,10 +840,9 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     const turn1Reinject = await waitFor(() => {
       const prompts = fake.calls.filter(
         (c) =>
-          c.method === "agent.send" &&
+          c.method === "agent.prompt" &&
           typeof c.params.text === "string" &&
-          (c.params.text as string).includes("m2-reset-turn1-goal-CCCC") &&
-          c.params.text !== BARE_ENTER,
+          (c.params.text as string).includes("m2-reset-turn1-goal-CCCC"),
       );
       return prompts.length >= 2;
     }, { timeoutMs: 12_000 });
@@ -918,13 +876,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(sent.ok).toBe(true);
 
     const turn2Reinject = await waitFor(() => {
-      const prompts = fake.calls
-        .slice(callsBefore)
-        .filter(
-          (c) =>
-            c.method === "agent.send" && c.params.text === turn2Prompt,
-        );
-      return prompts.length >= 2;
+      return promptInjects(fake.calls.slice(callsBefore), turn2Prompt).length >= 2;
     }, { timeoutMs: 12_000 });
     expect(turn2Reinject).toBe(true);
 

@@ -114,7 +114,7 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
   };
 
   // Short real timers so suite stays fast.
@@ -272,7 +272,6 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
       config: cfg,
       herdr: new HerdrClient({
         socketPath: herdrSock,
-        submitDelayMs: 0,
       }),
       // Short verify so tests reach idle path quickly
       submitVerify: { waitMs: 250, retries: 1 },

@@ -1,13 +1,17 @@
 /**
- * Fixture-shaped fake herdr Unix NDJSON server for tests (protocol 16).
+ * Fixture-shaped fake herdr Unix NDJSON server for tests (protocol 17 / 0.7.5).
  *
- * Transport-honest per measured real herdr v0.7.4 behavior: every RPC gets
- * exactly one response then the server ends the connection (FIN). The one
- * exception is `events.subscribe`, whose connection stays open to carry
- * `{event,data}` pushes. Async pushes (e.g. the auto-status-after-send
- * timers below) are therefore broadcast to whatever sockets are still open
- * — in practice only the events.subscribe connection, since request
- * connections are ended right after their response.
+ * Transport-honest per measured real herdr: every RPC gets exactly one
+ * response then the server ends the connection (FIN). The one exception is
+ * `events.subscribe`, whose connection stays open to carry `{event,data}`
+ * pushes. Async pushes (e.g. auto-status after agent.prompt / send_keys CR)
+ * are therefore broadcast to whatever sockets are still open — in practice
+ * only the events.subscribe connection, since request connections are ended
+ * right after their response.
+ *
+ * Protocol 17: allocate shell panes via `tab.create` / `pane.split` (cwd+env),
+ * then named `agent.start` on an existing pane_id; inject with atomic
+ * `agent.prompt` and bounded `agent.send_keys` CR nudge.
  *
  * PLAN 0.27.0 D2: also hosts the test-only handoff.ack injection surface
  * (relay ACK is not otherwise mocked by fake-herdr — production path unchanged).
@@ -16,12 +20,14 @@ import { unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Server, Socket } from "node:net";
 import { createServer } from "node:net";
-import { BARE_ENTER } from "./herdr-client";
 import type { HandoffSendStatus } from "@loom/protocol";
 import {
   __setHandoffAckInjector,
   type HandoffAckInjectionResult,
 } from "./relay-client";
+
+/** Measured terminal Enter for agent.send_keys CR nudge only. */
+const CR_ENTER = "\r";
 
 // ─── PLAN 0.27.0 D2: relay ACK injection (test-only) ─────────────────────────
 // Forces the next RelayClient.handoff() response to one of 5 deterministic combos:
@@ -198,9 +204,10 @@ export type FakeHerdrOptions = {
    */
   failSubscribeOnClosedPane?: boolean;
   /**
-   * PLAN 0.23.5: when true, agent.send of non-BARE_ENTER does not append to
-   * the pane text used by pane.read (simulates TUI startup paste loss —
-   * inject lands nowhere visible). BARE_ENTER still flips status / autoStatus.
+   * PLAN 0.23.5: when true, agent.prompt does not append to the pane text
+   * used by pane.read (simulates TUI startup paste loss — inject lands
+   * nowhere visible). CR nudge via agent.send_keys still flips status /
+   * autoStatus.
    */
   discardInjects?: boolean;
 };
@@ -215,7 +222,10 @@ export type FakeHerdr = {
   setPaneText: (paneId: string, text: string) => void;
   /** Test-only: read back a pane's currently stored text. */
   getPaneText: (paneId: string) => string | undefined;
-  /** Test-only: pane_id assigned to the most recent agent.start carrying this LOOM_CONV env. */
+  /**
+   * Test-only: pane_id for the most recent shell pane (tab.create/pane.split)
+   * that carried this LOOM_CONV env (protocol 17 env lives on the pane).
+   */
   paneIdForConv: (convId: string) => string | undefined;
   /** Test-only: all pane ids currently tracked (not yet closed). */
   listPaneIds: () => string[];
@@ -256,8 +266,9 @@ export type FakeHerdr = {
    */
   failTabCreates: (count: number) => void;
   /**
-   * PLAN 0.23.9: force next N agent.start RPCs that carry tab_id to error
-   * (hinted-spawn fail-open). Unhinted starts still succeed.
+   * PLAN 0.23.9 / 0.28.1: force next N pane.split RPCs that carry
+   * target_pane_id to error (hinted-split fail-open). Unhinted splits and
+   * agent.start on existing panes still succeed.
    */
   failHintedAgentStarts: (count: number) => void;
   /**
@@ -294,16 +305,22 @@ export async function startFakeHerdr(
     opts.subscribeFailFromCall != null
       ? (opts.subscribeFailCount ?? Number.POSITIVE_INFINITY)
       : 0;
-  const panes = new Map<
-    string,
-    {
-      terminal_id: string;
-      text: string;
-      status: string;
-      tab_id: string;
-      workspace_id: string;
-    }
-  >();
+  type FakePane = {
+    terminal_id: string;
+    text: string;
+    status: string;
+    tab_id: string;
+    workspace_id: string;
+    /** Protocol 17: cwd attached at tab.create / pane.split. */
+    cwd?: string | null;
+    /** Protocol 17: env attached at tab.create / pane.split. */
+    env?: Record<string, string>;
+    /** Recorded by agent.start (kind + args); never allocates the pane. */
+    agentKind?: string;
+    agentArgs?: string[];
+    agentName?: string;
+  };
+  const panes = new Map<string, FakePane>();
   /** Tabs that still appear in pane.list (dropTab removes without pane.close). */
   const liveTabs = new Set<string>();
   const closedPanes = new Set<string>();
@@ -320,7 +337,7 @@ export async function startFakeHerdr(
   let paneCloseFail = false;
   /** PLAN 0.23.9: fail next N tab.create */
   let tabCreateFailRemaining = 0;
-  /** PLAN 0.23.9: fail next N agent.start that include tab_id */
+  /** PLAN 0.23.9 / 0.28.1: fail next N pane.split that include target_pane_id */
   let hintedStartFailRemaining = 0;
   /** PLAN 0.23.12 ⓑ: fail next N pane.resize */
   let paneResizeFailRemaining = 0;
@@ -494,6 +511,67 @@ export async function startFakeHerdr(
     removePaneFromChain(paneId);
   }
 
+  function attachEnvCwd(
+    p: FakePane,
+    params: Record<string, unknown>,
+    paneId: string,
+  ): void {
+    if (params.cwd !== undefined) {
+      p.cwd = params.cwd === null ? null : String(params.cwd);
+    }
+    if (params.env && typeof params.env === "object" && !Array.isArray(params.env)) {
+      p.env = { ...(params.env as Record<string, string>) };
+      if (p.env.LOOM_CONV) paneIdByConv.set(p.env.LOOM_CONV, paneId);
+    }
+  }
+
+  function findPaneByTarget(target: string): [string, FakePane] | undefined {
+    if (!target) return undefined;
+    const direct = panes.get(target);
+    if (direct) return [target, direct];
+    for (const [paneId, p] of panes) {
+      if (p.terminal_id === target) return [paneId, p];
+    }
+    return undefined;
+  }
+
+  /** Drive working → autoStatus events (agent.prompt atomic submit / CR nudge). */
+  function scheduleAutoStatus(paneId: string, p: FakePane): void {
+    p.status = "working";
+    const auto = opts.autoStatus ?? "done";
+    if (auto === "none") return;
+    const delay = opts.autoStatusDelayMs ?? 30;
+    setTimeout(() => {
+      p.status = auto === "idle" ? "idle" : auto;
+      const event = "pane_agent_status_changed";
+      const finalStatus = auto === "idle" ? "idle" : auto;
+      // Always emit working first so M-2 / 0.23.5 verify sees sawWorking.
+      broadcast(event, {
+        pane_id: paneId,
+        agent_status: "working",
+      });
+      setTimeout(() => {
+        broadcast(event, {
+          pane_id: paneId,
+          agent_status: finalStatus,
+        });
+      }, 10);
+    }, delay);
+  }
+
+  function paneInfoPayload(paneId: string, p: FakePane): Record<string, unknown> {
+    return {
+      pane_id: paneId,
+      terminal_id: p.terminal_id,
+      workspace_id: p.workspace_id,
+      tab_id: p.tab_id,
+      focused: false,
+      agent_status: p.status,
+      revision: 0,
+      cwd: p.cwd ?? null,
+    };
+  }
+
   const server: Server = createServer((sock) => {
     sockets.add(sock);
     let buf = "";
@@ -532,8 +610,8 @@ export async function startFakeHerdr(
         if (method === "ping") {
           reply({
             type: "pong",
-            version: opts.version ?? "0.7.4",
-            protocol: opts.protocol ?? 16,
+            version: opts.version ?? "0.7.5",
+            protocol: opts.protocol ?? 17,
             capabilities: { live_handoff: true },
           });
           sock.end();
@@ -554,18 +632,76 @@ export async function startFakeHerdr(
               ? params.workspace_id
               : "";
           liveTabs.add(tab_id);
-          panes.set(root_pane_id, {
+          const root: FakePane = {
             terminal_id: `root_term_${tabCounter}`,
             text: "",
             status: "unknown",
             tab_id,
             workspace_id,
-          });
+          };
+          attachEnvCwd(root, params, root_pane_id);
+          panes.set(root_pane_id, root);
           closedPanes.delete(root_pane_id);
+          // Protocol 17: shell root is allocated here (before agent.start).
+          addPaneToChain(tab_id, root_pane_id);
           reply({
             type: "tab_created",
             tab: { tab_id, label: params.label ?? null },
             root_pane: { pane_id: root_pane_id, tab_id },
+          });
+          sock.end();
+          continue;
+        }
+        if (method === "pane.split") {
+          const target_pane_id =
+            typeof params.target_pane_id === "string"
+              ? params.target_pane_id
+              : params.target_pane_id === null
+                ? ""
+                : "";
+          if (target_pane_id && hintedStartFailRemaining > 0) {
+            hintedStartFailRemaining -= 1;
+            err("pane.split hinted spawn failed (test inject)");
+            sock.end();
+            continue;
+          }
+          paneCounter += 1;
+          const pane_id = `w1:p${paneCounter}`;
+          const terminal_id = `term_${paneCounter.toString(16)}`;
+          let tab_id = "";
+          let workspace_id =
+            typeof params.workspace_id === "string" && params.workspace_id
+              ? params.workspace_id
+              : "";
+          if (target_pane_id && panes.has(target_pane_id)) {
+            const parent = panes.get(target_pane_id)!;
+            tab_id = parent.tab_id;
+            if (!workspace_id) workspace_id = parent.workspace_id;
+          } else if (target_pane_id && !panes.has(target_pane_id)) {
+            err("pane.split: target_pane_id not found");
+            sock.end();
+            continue;
+          } else {
+            // Unhinted split: synthetic focus tab (legacy fail-open path).
+            tabCounter += 1;
+            tab_id = `tab_focus_${tabCounter}`;
+            liveTabs.add(tab_id);
+          }
+          if (tab_id && !liveTabs.has(tab_id)) liveTabs.add(tab_id);
+          const pane: FakePane = {
+            terminal_id,
+            text: "",
+            status: "unknown",
+            tab_id,
+            workspace_id,
+          };
+          attachEnvCwd(pane, params, pane_id);
+          panes.set(pane_id, pane);
+          closedPanes.delete(pane_id);
+          addPaneToChain(tab_id, pane_id);
+          reply({
+            type: "pane_info",
+            pane: paneInfoPayload(pane_id, pane),
           });
           sock.end();
           continue;
@@ -584,46 +720,34 @@ export async function startFakeHerdr(
           continue;
         }
         if (method === "agent.start") {
-          const tab_id_param =
-            typeof params.tab_id === "string" ? params.tab_id : undefined;
-          if (tab_id_param && hintedStartFailRemaining > 0) {
-            hintedStartFailRemaining -= 1;
-            err("agent.start hinted spawn failed (test inject)");
+          const pane_id =
+            typeof params.pane_id === "string" ? params.pane_id : "";
+          if (!pane_id) {
+            err("agent.start: pane_id required");
             sock.end();
             continue;
           }
-          paneCounter += 1;
-          const pane_id = `w1:p${paneCounter}`;
-          const terminal_id = `term_${paneCounter.toString(16)}`;
-          // Unhinted starts land on a synthetic "focus" tab so pane.list is
-          // consistent; hinted starts use the provided tab_id.
-          let tab_id = tab_id_param;
-          if (!tab_id) {
-            tabCounter += 1;
-            tab_id = `tab_focus_${tabCounter}`;
-            liveTabs.add(tab_id);
-          } else if (!liveTabs.has(tab_id)) {
-            liveTabs.add(tab_id);
+          const p = panes.get(pane_id);
+          if (!p) {
+            err("agent.start: pane_id does not exist");
+            sock.end();
+            continue;
           }
-          panes.set(pane_id, {
-            terminal_id,
-            text: "",
-            status: "unknown",
-            tab_id,
-            workspace_id: "",
-          });
-          closedPanes.delete(pane_id);
-          // PLAN 0.23.12 ⓑ: track horizontal chain for pane.layout/resize sim.
-          addPaneToChain(tab_id, pane_id);
-          const env = (params.env ?? {}) as Record<string, string>;
-          if (env.LOOM_CONV) paneIdByConv.set(env.LOOM_CONV, pane_id);
+          // Protocol 17: never allocate a pane — record kind/args on existing.
+          if (typeof params.kind === "string") p.agentKind = params.kind;
+          if (Array.isArray(params.args)) {
+            p.agentArgs = params.args.map(String);
+          }
+          if (typeof params.name === "string") p.agentName = params.name;
+          // Conversation mapping derives from env stored on the shell pane.
+          if (p.env?.LOOM_CONV) paneIdByConv.set(p.env.LOOM_CONV, pane_id);
           reply({
             type: "agent_started",
             agent: {
               pane_id,
-              terminal_id,
-              name: params.name ?? "agent",
-              agent_status: "unknown",
+              terminal_id: p.terminal_id,
+              name: params.name ?? p.agentName ?? "agent",
+              agent_status: p.status,
             },
           });
           sock.end();
@@ -694,41 +818,36 @@ export async function startFakeHerdr(
           sock.end();
           continue;
         }
-        if (method === "agent.send") {
+        if (method === "agent.prompt") {
+          // Protocol 17 atomic paste+Enter — primary inject path.
           const target = String(params.target ?? "");
           const text = String(params.text ?? "");
-          for (const [paneId, p] of panes) {
-            if (p.terminal_id === target) {
-              // PLAN 0.23.5: discardInjects simulates paste-loss (empty composer)
-              if (!(discardInjects && text !== BARE_ENTER)) {
-                p.text += text;
-              }
-              // M-2: bare Enter is separate call — when we see BARE_ENTER (CR,
-              // the terminal Enter key) after content, mark working
-              if (text === BARE_ENTER) {
-                p.status = "working";
-                const auto = opts.autoStatus ?? "done";
-                if (auto !== "none") {
-                  const delay = opts.autoStatusDelayMs ?? 30;
-                  setTimeout(() => {
-                    p.status = auto === "idle" ? "idle" : auto;
-                    const event = "pane_agent_status_changed";
-                    const finalStatus = auto === "idle" ? "idle" : auto;
-                    // Always emit working first so M-2 / 0.23.5 verify sees
-                    // sawWorking (real herdr: working → idle/done/blocked).
-                    broadcast(event, {
-                      pane_id: paneId,
-                      agent_status: "working",
-                    });
-                    setTimeout(() => {
-                      broadcast(event, {
-                        pane_id: paneId,
-                        agent_status: finalStatus,
-                      });
-                    }, 10);
-                  }, delay);
-                }
-              }
+          const found = findPaneByTarget(target);
+          if (found) {
+            const [paneId, p] = found;
+            // PLAN 0.23.5: discardInjects simulates paste-loss (empty composer)
+            if (!discardInjects) {
+              p.text += text;
+            }
+            // Atomic submit includes Enter — drive working/status simulation.
+            scheduleAutoStatus(paneId, p);
+          }
+          reply({ type: "ok" });
+          sock.end();
+          continue;
+        }
+        if (method === "agent.send_keys") {
+          // Protocol 17 logical keys; CR-only nudge drives enter/working.
+          const target = String(params.target ?? "");
+          const keys = Array.isArray(params.keys)
+            ? params.keys.map(String)
+            : [];
+          const found = findPaneByTarget(target);
+          if (found) {
+            const [paneId, p] = found;
+            // Sole recognized nudge is measured CR; no named Enter token.
+            if (keys.includes(CR_ENTER)) {
+              scheduleAutoStatus(paneId, p);
             }
           }
           reply({ type: "ok" });

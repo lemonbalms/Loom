@@ -317,9 +317,9 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       authorizedDispatchers: ["p_tower"],
       herdrSocketPath: herdrSock,
       agentArgv: { claude: ["claude"] },
-      herdrProtocol: 16,
+      herdrProtocol: 17,
     };
-    const herdr = new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0, timeoutMs: 2_000 });
+    const herdr = new HerdrClient({ socketPath: herdrSock, timeoutMs: 2_000 });
     const bridge = await startBridgeRuntime({
       session,
       profile: "node-subfail",
@@ -362,10 +362,11 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     expect(result).toBeTruthy();
     expect(result!.status).toBe("failed");
     expect(result!.summary ?? "").toContain("events_subscribe_failed");
-    // v0.28 U3: card pane is preserved. The single close is only the pool-root shell
-    // (ec99b2c:herdr-lifecycle exact close-count branch benefit).
+    // Protocol 17: agent runs on tab.create root pane — no disposable root shell
+    // is closed before start. Card pane is still preserved on fail-visible
+    // subscribe failure, so automatic pane.close count is 0.
     const closeCalls = fake.calls.filter((c) => c.method === "pane.close");
-    expect(closeCalls).toHaveLength(1);
+    expect(closeCalls).toHaveLength(0);
 
     // status: inFlight should be 0 after fail-visible cleanup
     const stRes = await fetch(`http://127.0.0.1:${bridge.meta.port}/rpc`, {
@@ -465,7 +466,6 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     resetStateHomeDirCache();
     const herdr = new HerdrClient({
       socketPath: herdrSock,
-      submitDelayMs: 0,
       timeoutMs: 2_000,
     });
     const bridge = await startBridgeRuntime({
@@ -475,7 +475,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
         authorizedDispatchers: ["p_tower"],
         herdrSocketPath: herdrSock,
         agentArgv: { claude: ["claude"] },
-        herdrProtocol: 16,
+        herdrProtocol: 17,
       },
       herdr,
       submitVerify: { waitMs: 200, retries: 0 },
@@ -633,7 +633,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       updatedAt: new Date().toISOString(),
     };
     writeFileSync(sessionFile, JSON.stringify(session), "utf8");
-    const herdr = new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 });
+    const herdr = new HerdrClient({ socketPath: herdrSock });
     const bridge = await startBridgeRuntime({
       session,
       profile: "node-prune",
@@ -641,7 +641,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
         authorizedDispatchers: ["p_tower"],
         herdrSocketPath: herdrSock,
         agentArgv: { claude: ["claude"] },
-        herdrProtocol: 16,
+        herdrProtocol: 17,
       },
       herdr,
       submitVerify: { waitMs: 300, retries: 1 },
@@ -781,7 +781,6 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     writeFileSync(sessionFile, JSON.stringify(session), "utf8");
     const herdr = new HerdrClient({
       socketPath: herdrSock,
-      submitDelayMs: 0,
       timeoutMs: 2_000,
     });
     const bridge = await startBridgeRuntime({
@@ -791,7 +790,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
         authorizedDispatchers: ["p_tower"],
         herdrSocketPath: herdrSock,
         agentArgv: { claude: ["claude"] },
-        herdrProtocol: 16,
+        herdrProtocol: 17,
       },
       herdr,
       submitVerify: { waitMs: 300, retries: 1 },
@@ -887,7 +886,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     }
 
     const subBeforeB = fake.calls.filter((c) => c.method === "events.subscribe").length;
-    const agentSendBeforeB = fake.calls.filter((c) => c.method === "agent.send").length;
+    const agentPromptBeforeB = fake.calls.filter((c) => c.method === "agent.prompt").length;
 
     // Card B — must ACK subscribe (no A in payload) and reach inject
     await dispatchAndAwaitProposal("task_bbbbbbbb00112233", "card B");
@@ -904,9 +903,9 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       expect(subs.some((s) => s.pane_id === paneA)).toBe(false);
     }
 
-    // Inject reached (agent.send after B dispatch)
-    const agentSendAfterB = fake.calls.filter((c) => c.method === "agent.send").length;
-    expect(agentSendAfterB).toBeGreaterThan(agentSendBeforeB);
+    // Inject reached (agent.prompt after B dispatch)
+    const agentPromptAfterB = fake.calls.filter((c) => c.method === "agent.prompt").length;
+    expect(agentPromptAfterB).toBeGreaterThan(agentPromptBeforeB);
 
     await bridge.stop();
     tower.close();

@@ -244,7 +244,7 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
     paneCleanup: "auto",
     panePlacement: placement,
   });
@@ -268,7 +268,7 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       session,
       profile: placement === "legacy" ? "impl-02311-legacy" : "impl-02311",
       config: baseCfg(placement),
-      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock }),
       settleMs: SETTLE_MS,
       submitVerify: { waitMs: 300, retries: 1 },
       stillRunningPollMs: POLL_MS,
@@ -425,7 +425,7 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     fake = await startFakeHerdr({
       socketPath: herdrSock,
       autoStatus: "none",
-      protocol: 16,
+      protocol: 17,
     });
 
     tower = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
@@ -514,23 +514,26 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       const newTabs = tabCreates().slice(nTabs);
       expect(newTabs.length).toBe(1);
 
-      const newStarts = agentStarts()
-        .slice(nStarts)
-        .filter((s) => typeof s.params.tab_id === "string");
+      // Protocol 17: both agent.starts target panes on the same pool tab
+      // (first on tab root, second via pane.split). tab_id is not on start.
+      const newStarts = agentStarts().slice(nStarts);
       expect(newStarts.length).toBeGreaterThanOrEqual(2);
-      const tabId = String(newStarts[0]!.params.tab_id);
-      expect(newStarts[0]!.params.tab_id).toBe(tabId);
-      expect(newStarts[1]!.params.tab_id).toBe(tabId);
+      const paneIds = newStarts
+        .map((s) => String(s.params.pane_id ?? ""))
+        .filter(Boolean);
+      expect(paneIds.length).toBeGreaterThanOrEqual(2);
+      const tabIds = new Set(
+        paneIds.map((id) => fake.tabIdForPane(id)).filter(Boolean),
+      );
+      expect(tabIds.size).toBe(1);
 
       // Keep panes alive long enough for assertions; mark working so verify
       // does not tear them down mid-check.
       for (const id of fake.listPaneIds()) {
-        if (!id.includes("root")) {
-          fake.pushEvent("pane_agent_status_changed", {
-            pane_id: id,
-            agent_status: "working",
-          });
-        }
+        fake.pushEvent("pane_agent_status_changed", {
+          pane_id: id,
+          agent_status: "working",
+        });
       }
     },
     30_000,
@@ -547,6 +550,7 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       await restartBridge("pool");
       fake.failTabCreates(1);
       const nStarts = agentStarts().length;
+      const nSplits = fake.calls.filter((c) => c.method === "pane.split").length;
       const id1 = nextCardId();
       const id2 = nextCardId();
       await Promise.all([
@@ -558,11 +562,18 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
         { timeoutMs: 12_000 },
       );
       expect(ready).toBe(true);
-      // At least one unhinted fallback from the failed create path,
+      // At least one unhinted pane.split fallback from the failed create path,
       // and both spawns produced panes (chain not poisoned).
       const newStarts = agentStarts().slice(nStarts);
       expect(newStarts.length).toBeGreaterThanOrEqual(2);
-      const unhinted = newStarts.filter((s) => s.params.tab_id === undefined);
+      const newSplits = fake.calls
+        .filter((c) => c.method === "pane.split")
+        .slice(nSplits);
+      const unhinted = newSplits.filter(
+        (s) =>
+          s.params.target_pane_id === undefined ||
+          s.params.target_pane_id === null,
+      );
       expect(unhinted.length).toBeGreaterThanOrEqual(1);
     },
     30_000,
@@ -579,6 +590,7 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       await waitFor(() => agentStarts().length > nStarts);
       expect(tabCreates().length).toBe(nTabs);
       const last = agentStarts()[agentStarts().length - 1]!;
+      expect(last.params.pane_id).toBeTruthy();
       expect(last.params.tab_id).toBeUndefined();
       await restartBridge("pool");
     },

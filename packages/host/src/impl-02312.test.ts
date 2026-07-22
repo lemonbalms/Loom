@@ -154,7 +154,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
     paneCleanup: "auto",
     panePlacement: placement,
   });
@@ -178,7 +178,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
       session,
       profile: placement === "legacy" ? "impl-02312-legacy" : "impl-02312",
       config: baseCfg(placement),
-      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock }),
       settleMs: 15,
       submitVerify: { waitMs: 300, retries: 1 },
       stillRunningPollMs: 80,
@@ -308,7 +308,7 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     fake = await startFakeHerdr({
       socketPath: herdrSock,
       autoStatus: "none",
-      protocol: 16,
+      protocol: 17,
     });
 
     tower = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });

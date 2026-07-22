@@ -74,7 +74,6 @@ import {
   HerdrRpcError,
   stripAnsi,
   HERDR_PROTOCOL_EXPECTED,
-  BARE_ENTER,
   type HerdrAgentStarted,
 } from "./herdr-client";
 import { ResultIssuerRegistry } from "./result-issuer";
@@ -123,6 +122,11 @@ export type BridgeRuntime = {
  */
 const SUBMIT_VERIFY_MS = 4_000;
 const SUBMIT_RETRIES = 3;
+/**
+ * Bounded protocol-17 Enter nudge for agent.send_keys only.
+ * Fixture has no named key vocabulary — measured CR only; not exported.
+ */
+const AGENT_SEND_KEYS_CR_NUDGE: string[] = ["\r"];
 /** PLAN 0.23.6: settle re-read delay between pane reads (idle render settle). */
 const SETTLE_MS = 250;
 /**
@@ -2159,7 +2163,7 @@ export async function startBridgeRuntime(opts?: {
           // Bounded Enter nudge only — never prompt text; not primary inject path
           await herdr.agentSendKeys({
             target: paneId,
-            keys: [BARE_ENTER],
+            keys: AGENT_SEND_KEYS_CR_NUDGE,
           });
         } catch (e) {
           // Branch-only: round + structural code (or unknown). Never message/prompt.

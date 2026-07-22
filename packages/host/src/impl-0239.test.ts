@@ -183,7 +183,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
     paneCleanup: "keep",
     panePlacement: placement,
   });
@@ -214,7 +214,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
       session,
       profile: placement === "legacy" ? "impl-0239-legacy" : "impl-0239",
       config: baseCfg(placement),
-      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock }),
       settleMs: 15,
       // Match pane-cleanup/conv harness — too-tight verify closes panes and
       // collapses pool occupancy (liveIds always 0 → perpetual split:right).
@@ -296,7 +296,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
       { timeoutMs: 5_000 },
     );
     expect(subscribed).toBe(true);
-    // autoStatus:"none" does not broadcast working on BARE_ENTER — push it so
+    // autoStatus:"none" does not broadcast working on agent.prompt — push it so
     // inject verify sees sawWorking and does not tear down the pane (needed
     // for pool occupancy tests that keep multiple workers live).
     fake.pushEvent("pane_agent_status_changed", {
@@ -315,6 +315,10 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     return fake.calls.filter((c) => c.method === "tab.create");
   }
 
+  function paneSplits(): FakeHerdr["calls"] {
+    return fake.calls.filter((c) => c.method === "pane.split");
+  }
+
   beforeAll(async () => {
     mkdirSync(dir, { recursive: true });
     process.env.LOOM_NO_AUTO_HOST = "1";
@@ -327,7 +331,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     fake = await startFakeHerdr({
       socketPath: herdrSock,
       autoStatus: "none",
-      protocol: 16,
+      protocol: 17,
     });
 
     // Bootstrap room as tower, keep tower connection for card dispatches.
@@ -376,7 +380,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
       session,
       profile: "impl-0239",
       config: baseCfg("pool"),
-      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock }),
       settleMs: 15,
       submitVerify: { waitMs: 300, retries: 1 },
     });
@@ -396,7 +400,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
   });
 
   // ⑧ ①
-  test("⑧① first card spawn: tab.create → agent.start tab_id/split:right → root close", async () => {
+  test("⑧① first card spawn: tab.create → agent.start on root pane (no root close)", async () => {
     const nTabs = tabCreates().length;
     const nStarts = agentStarts().length;
     const paneId = await spawnCard(nextCardId(), "first pool worker");
@@ -407,37 +411,49 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     expect(creates.length).toBeGreaterThanOrEqual(1);
     expect(creates[0]!.params.label).toBe("loom-workers");
     expect(creates[0]!.params.focus).toBe(false);
+    // Protocol 17: cwd/env on tab.create, not agent.start
+    expect(creates[0]!.params.env).toBeDefined();
 
     const starts = agentStarts().slice(nStarts);
-    const hinted = starts.find((s) => typeof s.params.tab_id === "string");
-    expect(hinted).toBeDefined();
-    expect(hinted!.params.split).toBe("right");
-    expect(hinted!.params.tab_id).toBeTruthy();
+    expect(starts.length).toBeGreaterThanOrEqual(1);
+    const first = starts[0]!;
+    // Named start on existing root shell pane — no legacy tab_id/split
+    expect(first.params.pane_id).toBeTruthy();
+    expect(first.params.tab_id).toBeUndefined();
+    expect(first.params.split).toBeUndefined();
+    expect(first.params.env).toBeUndefined();
+    expect(first.params.cwd).toBeUndefined();
 
-    const tabId = String(hinted!.params.tab_id);
+    // Protocol 17: worker runs on the root shell pane; do not close root.
     const rootClose = fake.calls.some(
       (c) =>
         c.method === "pane.close" &&
         String(c.params.pane_id ?? "").includes("root"),
     );
-    expect(rootClose).toBe(true);
-    expect(fake.tabIdForPane(paneId)).toBe(tabId);
+    expect(rootClose).toBe(false);
+    expect(fake.tabIdForPane(paneId)).toBeTruthy();
   }, 15_000);
 
   // ⑧ ②
-  test("⑧② second–fourth spawns: same tab_id, split right/right/right", async () => {
+  test("⑧② second–fourth spawns: same pool tab via pane.split direction right", async () => {
     await Bun.sleep(200);
     const nStarts = agentStarts().length;
-    const firstHinted = agentStarts().find(
-      (s) => typeof s.params.tab_id === "string",
-    );
-    expect(firstHinted).toBeDefined();
-    const poolTab = String(firstHinted!.params.tab_id);
+    const nSplits = paneSplits().length;
+    const firstTab = tabCreates()[0]
+      ? fake.tabIdForPane(
+          fake.listPaneIds().find((id) => fake.tabIdForPane(id)) ?? "",
+        )
+      : undefined;
+    // Resolve pool tab from any live pane after first spawn
+    const poolTab =
+      firstTab ??
+      fake.listPaneIds().map((id) => fake.tabIdForPane(id)).find(Boolean);
+    expect(poolTab).toBeTruthy();
 
     // Ensure first pane still listed (verify must not have closed it)
     const liveBefore = fake
       .listPaneIds()
-      .filter((id) => fake.tabIdForPane(id) === poolTab && !id.includes("root"));
+      .filter((id) => fake.tabIdForPane(id) === poolTab);
     expect(liveBefore.length).toBeGreaterThanOrEqual(1);
 
     const p2 = await spawnCard(nextCardId(), "second");
@@ -445,15 +461,24 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     const p4 = await spawnCard(nextCardId(), "fourth");
 
     await waitFor(() => agentStarts().length >= nStarts + 3);
-    const newStarts = agentStarts()
-      .slice(nStarts)
-      .filter((s) => typeof s.params.tab_id === "string");
-    expect(newStarts.length).toBeGreaterThanOrEqual(3);
+    await waitFor(() => paneSplits().length >= nSplits + 3);
 
-    const splits = newStarts.slice(0, 3).map((s) => s.params.split);
-    expect(splits).toEqual(["right", "right", "right"]);
+    const newSplits = paneSplits().slice(nSplits);
+    expect(newSplits.length).toBeGreaterThanOrEqual(3);
+    const directions = newSplits.slice(0, 3).map((s) => s.params.direction);
+    expect(directions).toEqual(["right", "right", "right"]);
+    for (const s of newSplits.slice(0, 3)) {
+      expect(s.params.target_pane_id).toBeTruthy();
+      expect(s.params.env).toBeDefined();
+      expect(s.params.focus).toBe(false);
+    }
+    // agent.start only carries pane_id (no tab_id/split)
+    const newStarts = agentStarts().slice(nStarts);
+    expect(newStarts.length).toBeGreaterThanOrEqual(3);
     for (const s of newStarts.slice(0, 3)) {
-      expect(s.params.tab_id).toBe(poolTab);
+      expect(s.params.pane_id).toBeTruthy();
+      expect(s.params.tab_id).toBeUndefined();
+      expect(s.params.split).toBeUndefined();
     }
     expect(fake.tabIdForPane(p2)).toBe(poolTab);
     expect(fake.tabIdForPane(p3)).toBe(poolTab);
@@ -470,16 +495,14 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
 
   // ⑧ ④
   test("⑧④ pane.list SSOT: closed pane frees a slot on same tab", async () => {
-    const hinted = agentStarts().filter(
-      (s) => typeof s.params.tab_id === "string",
-    );
-    expect(hinted.length).toBeGreaterThan(0);
-    const firstTab = String(hinted[0]!.params.tab_id);
+    const firstTab = fake
+      .listPaneIds()
+      .map((id) => fake.tabIdForPane(id))
+      .find(Boolean);
+    expect(firstTab).toBeTruthy();
     const firstTabPanes = fake
       .listPaneIds()
-      .filter(
-        (id) => fake.tabIdForPane(id) === firstTab && !id.includes("root"),
-      );
+      .filter((id) => fake.tabIdForPane(id) === firstTab);
     expect(firstTabPanes.length).toBeGreaterThan(0);
 
     fake.markPaneClosed(firstTabPanes[0]!);
@@ -492,12 +515,19 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
 
   // ⑧ ⑤
   test("⑧⑤ pool tab gone from pane.list → new tab.create", async () => {
-    const lastHinted = [...agentStarts()]
-      .reverse()
-      .find((s) => typeof s.params.tab_id === "string");
-    expect(lastHinted).toBeDefined();
-    const tabId = String(lastHinted!.params.tab_id);
-    fake.dropTab(tabId);
+    // Seed a worker if this test runs filtered (no prior ⑧①–④ state).
+    if (agentStarts().length === 0) {
+      await spawnCard(nextCardId(), "seed pool for drop");
+    }
+    // Drop the tab of the most recent agent.start pane (not an arbitrary live
+    // tab) so the pool loses its tracked tab and spawn must tab.create again.
+    const starts = agentStarts();
+    expect(starts.length).toBeGreaterThan(0);
+    const lastStart = starts[starts.length - 1]!;
+    const lastPaneId = lastStart.params.pane_id as string;
+    const tabId = fake.tabIdForPane(lastPaneId);
+    expect(tabId).toBeTruthy();
+    fake.dropTab(tabId!);
 
     const nTabs = tabCreates().length;
     await spawnCard(nextCardId(), "after drop");
@@ -506,18 +536,26 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
   }, 15_000);
 
   // ⑧ ⑥
-  test("⑧⑥ tab.create failure → unhinted agent.start fallback", async () => {
+  test("⑧⑥ tab.create failure → unhinted pane.split fallback", async () => {
     for (const id of fake.listPaneIds()) {
       const t = fake.tabIdForPane(id);
       if (t) fake.dropTab(t);
     }
     fake.failTabCreates(1);
     const nStarts = agentStarts().length;
+    const nSplits = paneSplits().length;
     const cardId = nextCardId();
     const paneId = await spawnCard(cardId, "tabcreate fail path");
     await waitFor(() => agentStarts().length > nStarts);
 
+    // Unhinted fallback: pane.split without target_pane_id, then agent.start
+    const newSplits = paneSplits().slice(nSplits);
+    const unhinted = newSplits.filter(
+      (s) => s.params.target_pane_id === undefined || s.params.target_pane_id === null,
+    );
+    expect(unhinted.length).toBeGreaterThanOrEqual(1);
     const last = agentStarts()[agentStarts().length - 1]!;
+    expect(last.params.pane_id).toBeTruthy();
     expect(last.params.tab_id).toBeUndefined();
     expect(paneId).toBeTruthy();
 
@@ -536,24 +574,24 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
   }, 20_000);
 
   // ⑧ ⑦
-  test("⑧⑦ hinted agent.start failure → unhinted fallback", async () => {
+  test("⑧⑦ hinted pane.split failure → unhinted fallback", async () => {
     fake.failHintedAgentStarts(0);
     const seedPane = await spawnCard(nextCardId(), "seed pool");
-    const seedStart = [...agentStarts()]
-      .reverse()
-      .find((s) => typeof s.params.tab_id === "string");
-    expect(seedStart).toBeDefined();
+    expect(seedPane).toBeTruthy();
 
     fake.failHintedAgentStarts(1);
     const nStarts = agentStarts().length;
+    const nSplits = paneSplits().length;
     const paneId = await spawnCard(nextCardId(), "hint fail path");
     await waitFor(() => agentStarts().length > nStarts);
 
-    const newStarts = agentStarts().slice(nStarts);
-    const unhinted = newStarts.filter((s) => s.params.tab_id === undefined);
+    const newSplits = paneSplits().slice(nSplits);
+    // At least one unhinted split (no target) after the hinted failure
+    const unhinted = newSplits.filter(
+      (s) => s.params.target_pane_id === undefined || s.params.target_pane_id === null,
+    );
     expect(unhinted.length).toBeGreaterThanOrEqual(1);
     expect(paneId).toBeTruthy();
-    expect(seedPane).toBeTruthy();
   }, 20_000);
 
   // ⑧ ⑧
@@ -561,19 +599,30 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     await restartBridge("legacy");
     const nTabs = tabCreates().length;
     const nStarts = agentStarts().length;
+    const nSplits = paneSplits().length;
     await spawnCard(nextCardId(), "legacy path");
     await waitFor(() => agentStarts().length > nStarts);
     expect(tabCreates().length).toBe(nTabs);
+    // Legacy = unhinted pane.split + agent.start on returned pane
+    const newSplits = paneSplits().slice(nSplits);
+    expect(newSplits.length).toBeGreaterThanOrEqual(1);
+    expect(
+      newSplits.some(
+        (s) => s.params.target_pane_id === undefined || s.params.target_pane_id === null,
+      ),
+    ).toBe(true);
     const last = agentStarts()[agentStarts().length - 1]!;
+    expect(last.params.pane_id).toBeTruthy();
     expect(last.params.tab_id).toBeUndefined();
 
     await restartBridge("pool");
   }, 30_000);
 
   // ⑧ ⑨
-  test("⑧⑨ conv open spawn goes through pool (tab.create + tab_id)", async () => {
+  test("⑧⑨ conv open spawn goes through pool (tab.create + env on alloc)", async () => {
     useTowerSession();
     const nStarts = agentStarts().length;
+    const nTabs = tabCreates().length;
     const opened = await convOpen({
       node: "node/wsl-1",
       goal: "conv pool path check",
@@ -582,23 +631,33 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     if (!opened.ok) return;
 
     await waitFor(
+      () => Boolean(fake.paneIdForConv(opened.convId)),
+      { timeoutMs: 10_000 },
+    );
+    const paneId = fake.paneIdForConv(opened.convId)!;
+    await waitFor(
       () =>
         agentStarts().some(
-          (s, i) =>
-            i >= nStarts &&
-            (s.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
-              opened.convId,
+          (s, i) => i >= nStarts && s.params.pane_id === paneId,
         ),
       { timeoutMs: 10_000 },
     );
-    const convStart = agentStarts().find(
-      (s) =>
-        (s.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
-        opened.convId,
-    );
+    const convStart = agentStarts().find((s) => s.params.pane_id === paneId);
     expect(convStart).toBeDefined();
-    expect(convStart!.params.tab_id).toBeTruthy();
-    expect(convStart!.params.split).toBeTruthy();
+    expect(convStart!.params.pane_id).toBe(paneId);
+    expect(convStart!.params.tab_id).toBeUndefined();
+    // Pool path: either new tab.create with LOOM_CONV, or pane.split with env
+    const envAlloc = fake.calls.find(
+      (c) =>
+        (c.method === "tab.create" || c.method === "pane.split") &&
+        (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
+          opened.convId,
+    );
+    expect(envAlloc).toBeDefined();
+    // Prefer pool (tab.create when empty, or split into existing pool tab)
+    expect(
+      tabCreates().length > nTabs || envAlloc!.method === "pane.split",
+    ).toBe(true);
 
     await convClose({ convId: opened.convId, reason: "abort" });
   }, 25_000);
@@ -798,12 +857,15 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     });
 
     await Bun.sleep(700);
-    const starts = agentStarts().filter(
-      (s) =>
-        (s.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
-        convId,
+    // Unauthorized: no pane alloc with LOOM_CONV and no agent.start growth
+    expect(fake.paneIdForConv(convId)).toBeUndefined();
+    const envAllocs = fake.calls.filter(
+      (c) =>
+        (c.method === "tab.create" || c.method === "pane.split") &&
+        (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
+          convId,
     );
-    expect(starts.length).toBe(0);
+    expect(envAllocs.length).toBe(0);
     expect(agentStarts().length).toBe(nStarts);
 
     // Bridge did not claim — entry may still be claimable by worker peer

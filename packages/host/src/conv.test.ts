@@ -160,7 +160,7 @@ describe("conv (multiturn) vertical slice", () => {
       authorizedDispatchers: ["p_tower"],
       herdrSocketPath: herdrSock,
       agentArgv: { claude: ["claude"] },
-      herdrProtocol: 16,
+      herdrProtocol: 17,
     };
 
     // startBridgeRuntime is passed `session` explicitly, but on a successful
@@ -179,7 +179,7 @@ describe("conv (multiturn) vertical slice", () => {
       session: workerSession,
       profile: "node",
       config: cfg,
-      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock }),
       submitVerify: { waitMs: 300, retries: 1 },
     });
 
@@ -234,13 +234,20 @@ describe("conv (multiturn) vertical slice", () => {
         expect(turnResult.artifactCommands).toBeUndefined();
       }
 
-      // R23 M-2 applied to the initial injection too: separate agent.send + BARE_ENTER.
-      const sends = fake.calls.filter(
+      // Protocol 17: initial injection is atomic agent.prompt (no dual bare Enter).
+      const prompts = fake.calls.filter(
         (c) =>
-          c.method === "agent.send" &&
+          c.method === "agent.prompt" &&
           (c.params.target as string | undefined)?.length,
       );
-      expect(sends.some((s) => s.params.text === "\r")).toBe(true);
+      expect(prompts.length).toBeGreaterThanOrEqual(1);
+      expect(
+        prompts.some(
+          (s) =>
+            typeof s.params.text === "string" &&
+            String(s.params.text).includes("write hello"),
+        ),
+      ).toBe(true);
 
       // Tower closes with done → board done.
       const closed = await convClose({ convId: opened.convId, reason: "done" });
@@ -267,7 +274,7 @@ describe("conv (multiturn) vertical slice", () => {
       await convAwait({ convId: opened.convId, timeoutSec: 15 }); // first worker turn
 
       const injectCountBefore = fake.calls.filter(
-        (c) => c.method === "agent.send",
+        (c) => c.method === "agent.prompt",
       ).length;
 
       // Evil (unauthorized, not pinned) forges a turn addressed to the worker.
@@ -291,7 +298,7 @@ describe("conv (multiturn) vertical slice", () => {
       await Bun.sleep(500);
       // Bridge must not have injected anything on the forged turn's behalf.
       const injectCountAfter = fake.calls.filter(
-        (c) => c.method === "agent.send",
+        (c) => c.method === "agent.prompt",
       ).length;
       expect(injectCountAfter).toBe(injectCountBefore);
 
@@ -360,25 +367,27 @@ describe("conv (multiturn) vertical slice", () => {
       await rawTowerHandoff("@node/wsl-1", body, [attachment]);
       await rawTowerHandoff("@node/wsl-1", body, [attachment]); // redelivery
 
-      let starts: typeof fake.calls = [];
+      let paneId: string | undefined;
       for (let i = 0; i < 40; i++) {
         await Bun.sleep(100);
-        starts = fake.calls.filter(
-          (c) =>
-            c.method === "agent.start" &&
-            (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
-              convId,
-        );
-        if (starts.length >= 1) break;
+        paneId = fake.paneIdForConv(convId);
+        if (paneId) break;
       }
+      expect(paneId).toBeTruthy();
       // Give the second (duplicate) delivery time to be processed too.
       await Bun.sleep(300);
-      starts = fake.calls.filter(
-        (c) =>
-          c.method === "agent.start" &&
-          (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV === convId,
+      // Protocol 17: LOOM_CONV on pane alloc; agent.start targets that pane once.
+      const starts = fake.calls.filter(
+        (c) => c.method === "agent.start" && c.params.pane_id === paneId,
       );
       expect(starts.length).toBe(1); // exactly one pane despite two opens
+      const envAllocs = fake.calls.filter(
+        (c) =>
+          (c.method === "tab.create" || c.method === "pane.split") &&
+          (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
+            convId,
+      );
+      expect(envAllocs.length).toBe(1);
 
       await convClose({ convId, reason: "abort" });
     },
@@ -511,11 +520,10 @@ describe("conv (multiturn) vertical slice", () => {
       // test's own polling ever gets a chance to intervene (accept itself
       // is only observed via convAwait's 700ms inbox poll). Worse: this
       // fixture's autoStatus never broadcasts a "working" event, so
-      // verifyConvSubmitOrRetry always times out and resends BARE_ENTER
-      // once — meaning that *one* initial inject naturally yields *two*
-      // small turns already queued by the time we get here. Drain them
-      // (short timeouts — nothing else pending) before staging the big
-      // payload for a turn *we* trigger.
+      // verifyInjectOrRetry may CR-nudge via send_keys once — meaning that
+      // *one* initial inject can yield *two* small turns already queued by
+      // the time we get here. Drain them (short timeouts — nothing else
+      // pending) before staging the big payload for a turn *we* trigger.
       for (let i = 0; i < 4; i++) {
         const r = await convAwait({ convId: opened.convId, timeoutSec: 1 });
         if (r.status === "timeout") break;
@@ -527,7 +535,7 @@ describe("conv (multiturn) vertical slice", () => {
       fake.setPaneText(paneId!, bigOutput);
 
       // A tower-sent turn triggers a fresh re-inject (§4.2) — the fixture's
-      // agent.send accumulates onto the pane text we just staged, so the
+      // agent.prompt accumulates onto the pane text we just staged, so the
       // resulting worker turn(s) read back >32k regardless of the same
       // resend-duplication behavior noted above.
       const sent = await convSendTurn({ convId: opened.convId, text: "continue with big output" });
@@ -605,20 +613,19 @@ describe("conv (multiturn) vertical slice", () => {
       expect(accept.status).toBe("accept");
 
       // Bridge accepted ⇒ scope carried a registered kind; default is claude
-      // (fixture only registers claude). Assert via agent.start argv.
+      // (fixture only registers claude). Assert via agent.start kind.
       let starts: typeof fake.calls = [];
       for (let i = 0; i < 40; i++) {
         await Bun.sleep(100);
+        const paneId = fake.paneIdForConv(opened.convId);
+        if (!paneId) continue;
         starts = fake.calls.filter(
-          (c) =>
-            c.method === "agent.start" &&
-            (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
-              opened.convId,
+          (c) => c.method === "agent.start" && c.params.pane_id === paneId,
         );
         if (starts.length >= 1) break;
       }
       expect(starts.length).toBeGreaterThanOrEqual(1);
-      expect(starts[0]!.params.argv).toEqual(["claude"]);
+      expect(starts[0]!.params.kind).toBe("claude");
 
       await convClose({ convId: opened.convId, reason: "abort" });
     },
@@ -645,13 +652,14 @@ describe("conv (multiturn) vertical slice", () => {
         expect(result.reason).toBe("agent_kind_not_allowed");
       }
 
-      const starts = fake.calls.filter(
+      expect(fake.paneIdForConv(opened.convId)).toBeUndefined();
+      const envAllocs = fake.calls.filter(
         (c) =>
-          c.method === "agent.start" &&
+          (c.method === "tab.create" || c.method === "pane.split") &&
           (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
             opened.convId,
       );
-      expect(starts.length).toBe(0);
+      expect(envAllocs.length).toBe(0);
     },
     20_000,
   );
@@ -671,20 +679,20 @@ describe("conv (multiturn) vertical slice", () => {
 
       await convAwait({ convId: opened.convId, timeoutSec: 15 }); // accept
 
-      // R28 L-2: agent.start must carry LOOM_ARTIFACTS_DIR = measured path
-      let starts: typeof fake.calls = [];
+      // R28 L-2 / protocol 17: LOOM_ARTIFACTS_DIR on pane alloc (tab.create/pane.split)
+      let envAlloc: (typeof fake.calls)[number] | undefined;
       for (let i = 0; i < 40; i++) {
         await Bun.sleep(100);
-        starts = fake.calls.filter(
+        envAlloc = fake.calls.find(
           (c) =>
-            c.method === "agent.start" &&
+            (c.method === "tab.create" || c.method === "pane.split") &&
             (c.params.env as { LOOM_CONV?: string } | undefined)?.LOOM_CONV ===
               opened.convId,
         );
-        if (starts.length >= 1) break;
+        if (envAlloc) break;
       }
-      expect(starts.length).toBeGreaterThanOrEqual(1);
-      const env = starts[0]!.params.env as {
+      expect(envAlloc).toBeDefined();
+      const env = envAlloc!.params.env as {
         LOOM_CONV?: string;
         LOOM_ARTIFACTS_DIR?: string;
       };
@@ -709,7 +717,7 @@ describe("conv (multiturn) vertical slice", () => {
       writeFileSync(join(artDir, filename), body, "utf8");
       const expectedSha = createHash("sha256").update(body, "utf8").digest("hex");
 
-      // Trailing newline required: agent.send appends the tower inject onto
+      // Trailing newline required: agent.prompt appends the tower inject onto
       // pane text; without a final \n the marker line would glue to the
       // untrusted-wrapper chrome and fail the exact-line anchor (R28 L-1).
       const scrape = [

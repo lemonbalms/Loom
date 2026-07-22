@@ -1,8 +1,8 @@
 /**
- * PLAN 0.28.1 PATCH 1 — herdr 0.7.5 / protocol-17 expected-red contract.
+ * PLAN 0.28.1 — herdr 0.7.5 / protocol-17 adapter contract.
  *
- * Fixture assertions are green. Production assertions intentionally stay red
- * until PATCH 2–4 migrate the adapter. Do not weaken them to make PATCH 1 green.
+ * Fixture + adapter assertions are green after PATCH 2–4a (protocol-17 client,
+ * bridge CR nudge local to send_keys, fake-herdr 0.7.5 model).
  */
 import { describe, expect, test } from "bun:test";
 import * as herdrClientModule from "./herdr-client";
@@ -26,7 +26,6 @@ function recordingClient(): {
   const calls: CapturedCall[] = [];
   const client = new HerdrClient({
     socketPath: "/fixture/not-connected.sock",
-    submitDelayMs: 0,
   });
   client.request = async (method, params = {}) => {
     calls.push({ method, params });
@@ -149,7 +148,7 @@ describe("protocol-17 additive event compatibility (green guard)", () => {
   });
 });
 
-describe("PLAN 0.28.1 protocol-17 adapter (expected red)", () => {
+describe("PLAN 0.28.1 protocol-17 adapter", () => {
   test("client protocol cutover is 17", () => {
     expect(HERDR_PROTOCOL_EXPECTED).toBe(17);
   });

@@ -87,7 +87,7 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
     paneCleanup: "auto",
   };
 
@@ -315,7 +315,6 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
       config: cfg,
       herdr: new HerdrClient({
         socketPath: herdrSock,
-        submitDelayMs: 0,
       }),
       submitVerify: { waitMs: 250, retries: 1 },
       settleMs: SETTLE_MS,
@@ -584,7 +583,7 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   test(
     "③c expected-red: events-subscribe failure card pane remains present",
     async () => {
-      const failureSock = join(dir, "herdr-subscribe-failure.sock");
+      const failureSock = join(dir, "h-subfail.sock");
       const failureFake = await startFakeHerdr({
         socketPath: failureSock,
         autoStatus: "none",
@@ -608,9 +607,9 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
             authorizedDispatchers: ["p_tower"],
             herdrSocketPath: failureSock,
             agentArgv: { claude: ["claude"] },
-            herdrProtocol: 16,
+            herdrProtocol: 17,
           },
-          herdr: new HerdrClient({ socketPath: failureSock, submitDelayMs: 0 }),
+          herdr: new HerdrClient({ socketPath: failureSock }),
           submitVerify: { waitMs: 100, retries: 0 },
         });
         await tower!.handoff({
@@ -900,7 +899,7 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
       authorizedDispatchers: ["p_tower"],
       herdrSocketPath: herdrSock,
       agentArgv: { claude: ["claude"] },
-      herdrProtocol: 16,
+      herdrProtocol: 17,
       paneCleanup: "keep",
     };
 
@@ -910,7 +909,6 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
       config: cfg,
       herdr: new HerdrClient({
         socketPath: herdrSock,
-        submitDelayMs: 0,
       }),
       submitVerify: { waitMs: 250, retries: 1 },
       settleMs: SETTLE_MS,
@@ -1118,12 +1116,11 @@ describe("PLAN 0.23.8 sendResult failure → no close (⑦)", () => {
         authorizedDispatchers: ["p_tower"],
         herdrSocketPath: herdrSock,
         agentArgv: { claude: ["claude"] },
-        herdrProtocol: 16,
+        herdrProtocol: 17,
         paneCleanup: "auto",
       },
       herdr: new HerdrClient({
         socketPath: herdrSock,
-        submitDelayMs: 0,
       }),
       submitVerify: { waitMs: 250, retries: 1 },
       settleMs: 15,

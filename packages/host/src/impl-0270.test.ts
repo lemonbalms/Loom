@@ -611,7 +611,7 @@ describe("PLAN 0.28.0 strict ACK integration", () => {
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
     paneCleanup: "auto",
   };
 
@@ -746,7 +746,6 @@ describe("PLAN 0.28.0 strict ACK integration", () => {
       config: cfg,
       herdr: new HerdrClient({
         socketPath: herdrSock,
-        submitDelayMs: 0,
       }),
       submitVerify: { waitMs: 250, retries: 1 },
       settleMs: 15,

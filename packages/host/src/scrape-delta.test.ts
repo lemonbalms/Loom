@@ -186,7 +186,7 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
     authorizedDispatchers: ["p_tower"],
     herdrSocketPath: herdrSock,
     agentArgv: { claude: ["claude"] },
-    herdrProtocol: 16,
+    herdrProtocol: 17,
   };
 
   function useTowerSession(): void {
@@ -319,7 +319,6 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       config: cfg,
       herdr: new HerdrClient({
         socketPath: herdrSock,
-        submitDelayMs: 0,
       }),
       submitVerify: { waitMs: 300, retries: 1 },
       // Short real settle delay so tests stay fast (still exercises re-read).

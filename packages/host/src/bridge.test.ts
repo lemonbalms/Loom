@@ -15,7 +15,7 @@ import {
   serializeCardAttachment,
 } from "@loom/protocol";
 import { RelayClient } from "./relay-client";
-import { HerdrClient, BARE_ENTER } from "./herdr-client";
+import { HerdrClient } from "./herdr-client";
 import { startFakeHerdr } from "./fake-herdr";
 import { startBridgeRuntime } from "./bridge-runtime";
 import {
@@ -29,11 +29,35 @@ import {
 } from "./bridge-config";
 import { applyCardResult } from "./card-ops";
 import {
+  loadSession,
   resetStateHomeDirCache,
   setActiveProfile,
   type FableSession,
 } from "./session-store";
 import { addTask, loadTaskBoard, updateTask } from "./task-board";
+
+/** Protocol-17 Enter nudge keys (bridge-local; not exported from client). */
+const CR_NUDGE = "\r";
+
+function isCrSendKeys(c: { method: string; params: Record<string, unknown> }): boolean {
+  return (
+    c.method === "agent.send_keys" &&
+    Array.isArray(c.params.keys) &&
+    (c.params.keys as string[]).includes(CR_NUDGE)
+  );
+}
+
+function envAllocCalls(
+  calls: { method: string; params: Record<string, unknown> }[],
+  key: string,
+  value: string,
+) {
+  return calls.filter(
+    (c) =>
+      (c.method === "tab.create" || c.method === "pane.split") &&
+      (c.params.env as Record<string, string> | undefined)?.[key] === value,
+  );
+}
 
 describe("M-1 dispatcher allowlist", () => {
   test("default deny when empty", () => {
@@ -158,10 +182,13 @@ describe("bridge-config agentArgv sanitize (R27 L-1)", () => {
   });
 });
 
-describe("M-2 bare enter constant", () => {
-  test("BARE_ENTER is a bare carriage return (terminal Enter)", () => {
-    expect(BARE_ENTER).toBe("\r");
-    expect(BARE_ENTER.includes("Untrusted")).toBe(false);
+describe("protocol-17 inject surface", () => {
+  test("agent.prompt primary inject; agentSend/BARE_ENTER surface gone", () => {
+    const proto = HerdrClient.prototype as unknown as Record<string, unknown>;
+    expect(typeof proto.agentPrompt).toBe("function");
+    expect(typeof proto.agentSendKeys).toBe("function");
+    expect(typeof proto.agentSend).toBe("undefined");
+    expect(typeof proto.injectPromptAndSubmit).toBe("function");
   });
 });
 
@@ -353,46 +380,54 @@ describe("herdr client + fake server", () => {
     await fake.close();
   });
 
-  test("ping + start + send M-2 separation", async () => {
-    const c = new HerdrClient({ socketPath: sock, submitDelayMs: 0 });
+  test("ping + tab.create + agent.start + agent.prompt inject", async () => {
+    const c = new HerdrClient({ socketPath: sock });
     const pong = await c.ping();
-    expect(pong.protocol).toBe(16);
-    const agent = await c.agentStart({
-      name: "t",
-      argv: ["claude"],
+    expect(pong.protocol).toBe(17);
+    const tab = await c.tabCreate({
+      label: "t",
       env: { LOOM_CARD: "task_abc" },
     });
+    const agent = await c.agentStart({
+      name: "t",
+      kind: "claude",
+      paneId: tab.rootPaneId,
+    });
     expect(agent.pane_id).toBeTruthy();
-    await c.injectPromptAndSubmit(agent.terminal_id, "hello-prompt");
+    await c.injectPromptAndSubmit(agent.pane_id, "hello-prompt");
     // Wait for auto done event path
     await Bun.sleep(80);
     const text = await c.paneRead(agent.pane_id);
     expect(text).toContain("hello-prompt");
-    // M-2: two agent.send calls — prompt then bare enter
-    const sends = fake.calls.filter((x) => x.method === "agent.send");
-    expect(sends.length).toBeGreaterThanOrEqual(2);
-    expect(sends[0]!.params.text).toBe("hello-prompt");
-    expect(sends[1]!.params.text).toBe(BARE_ENTER);
+    // Protocol 17: one atomic agent.prompt (no dual-send bare Enter)
+    const prompts = fake.calls.filter((x) => x.method === "agent.prompt");
+    expect(prompts.length).toBeGreaterThanOrEqual(1);
+    expect(prompts.some((p) => p.params.text === "hello-prompt")).toBe(true);
     // No pane.run with prompt
     expect(fake.calls.every((x) => x.method !== "pane.run")).toBe(true);
     c.close();
   });
 
-  test("sequential RPCs survive per-response FIN (ping → agentSend → agentSend)", async () => {
+  test("sequential RPCs survive per-response FIN (ping → agentPrompt → agentPrompt)", async () => {
     // Real herdr closes (FIN) each connection right after its response; the
     // client must open a fresh connection per call rather than reuse one.
     const c = new HerdrClient({ socketPath: sock });
     const pong = await c.ping();
-    expect(pong.protocol).toBe(16);
-    const agent = await c.agentStart({ name: "seq", argv: ["claude"] });
-    await c.agentSend(agent.terminal_id, "one");
-    await c.agentSend(agent.terminal_id, "two");
-    const sends = fake.calls.filter(
-      (x) => x.method === "agent.send" && x.params.target === agent.terminal_id,
+    expect(pong.protocol).toBe(17);
+    const tab = await c.tabCreate({ label: "seq" });
+    const agent = await c.agentStart({
+      name: "seq",
+      kind: "claude",
+      paneId: tab.rootPaneId,
+    });
+    await c.agentPrompt({ target: agent.pane_id, text: "one" });
+    await c.agentPrompt({ target: agent.pane_id, text: "two" });
+    const prompts = fake.calls.filter(
+      (x) => x.method === "agent.prompt" && x.params.target === agent.pane_id,
     );
-    expect(sends.length).toBe(2);
-    expect(sends[0]!.params.text).toBe("one");
-    expect(sends[1]!.params.text).toBe("two");
+    expect(prompts.length).toBe(2);
+    expect(prompts[0]!.params.text).toBe("one");
+    expect(prompts[1]!.params.text).toBe("two");
     c.close();
   });
 
@@ -442,6 +477,8 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
   let bridge: Awaited<ReturnType<typeof startBridgeRuntime>> | null = null;
   let tower: RelayClient | null = null;
   let session: FableSession;
+  /** Main node session captured before auxiliary bridges overwrite LOOM_SESSION. */
+  let mainRejoinSession: FableSession | null = null;
   let inviteCode = "";
 
   beforeAll(async () => {
@@ -488,7 +525,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       authorizedDispatchers: ["p_tower"],
       herdrSocketPath: herdrSock,
       agentArgv: { claude: ["claude"] },
-      herdrProtocol: 16,
+      herdrProtocol: 17,
     };
 
     bridge = await startBridgeRuntime({
@@ -497,10 +534,12 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       config: cfg,
       herdr: new HerdrClient({
         socketPath: herdrSock,
-        submitDelayMs: 0,
       }),
       submitVerify: { waitMs: 300, retries: 1 },
     });
+
+    // Capture main peer while LOOM_SESSION still holds p_node (before race/spawn aux bridges).
+    mainRejoinSession = loadSession() ?? session;
 
     // Keep tower secret for rejoin test
     void towerSecret;
@@ -594,10 +633,9 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     }
     expect(found).toBe(true);
 
-    // M-2: inject used separate send for enter
-    const sends = fake.calls.filter((c) => c.method === "agent.send");
-    expect(sends.some((s) => s.params.text === BARE_ENTER)).toBe(true);
-    const promptSend = sends.find(
+    // Protocol 17: primary inject is atomic agent.prompt (no dual bare Enter)
+    const prompts = fake.calls.filter((c) => c.method === "agent.prompt");
+    const promptSend = prompts.find(
       (s) =>
         typeof s.params.text === "string" &&
         String(s.params.text).includes("write hello"),
@@ -607,7 +645,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
 
   test("④ green control: completion↔terminal emits exactly one relay receipt", async () => {
     const cardId = "task_abcd1234abcde001";
-    const raceSock = join(dir, "herdr-completion-terminal-race.sock");
+    const raceSock = join(dir, "h-ctr.sock");
     const raceFake = await startFakeHerdr({
       socketPath: raceSock,
       autoStatus: "none",
@@ -627,9 +665,9 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           authorizedDispatchers: ["p_tower"],
           herdrSocketPath: raceSock,
           agentArgv: { claude: ["claude"] },
-          herdrProtocol: 16,
+          herdrProtocol: 17,
         },
-        herdr: new HerdrClient({ socketPath: raceSock, submitDelayMs: 0 }),
+        herdr: new HerdrClient({ socketPath: raceSock }),
         submitVerify: { waitMs: 100, retries: 0 },
       });
       await tower!.handoff({
@@ -709,17 +747,19 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     let starts: typeof fake.calls = [];
     for (let i = 0; i < 40; i++) {
       await Bun.sleep(100);
+      // Protocol 17: LOOM_CARD lives on tab.create/pane.split; name still
+      // embeds the card id (unique per attempt).
       starts = fake.calls.filter(
         (c) =>
           c.method === "agent.start" &&
-          (c.params.env as { LOOM_CARD?: string } | undefined)?.LOOM_CARD ===
-            cardId,
+          String(c.params.name ?? "").includes(cardId.slice(0, 20)),
       );
       if (starts.length >= 2) break;
     }
     expect(starts.length).toBeGreaterThanOrEqual(2);
     const names = starts.map((s) => s.params.name);
     expect(new Set(names).size).toBe(names.length);
+    expect(envAllocCalls(fake.calls, "LOOM_CARD", cardId).length).toBeGreaterThanOrEqual(2);
   });
 
   test("M-1: unauthorized dispatcher ignored (no result)", async () => {
@@ -750,12 +790,12 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, payload)],
     });
     await Bun.sleep(500);
-    // No agent.start for evil card (LOOM_CARD)
+    // No allocation/start for evil card (LOOM_CARD on pane alloc only)
+    expect(envAllocCalls(fake.calls, "LOOM_CARD", cardId).length).toBe(0);
     const starts = fake.calls.filter(
       (c) =>
         c.method === "agent.start" &&
-        (c.params.env as { LOOM_CARD?: string } | undefined)?.LOOM_CARD ===
-          cardId,
+        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
     );
     expect(starts.length).toBe(0);
     evil.close();
@@ -812,11 +852,11 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     }
     expect(found).toBe(true);
 
+    expect(envAllocCalls(fake.calls, "LOOM_CARD", cardId).length).toBe(0);
     const starts = fake.calls.filter(
       (c) =>
         c.method === "agent.start" &&
-        (c.params.env as { LOOM_CARD?: string } | undefined)?.LOOM_CARD ===
-          cardId,
+        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
     );
     expect(starts.length).toBe(0);
 
@@ -833,7 +873,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       socketPath: spawnSock,
       autoStatus: "none",
     });
-    const spawnHerdr = new HerdrClient({ socketPath: spawnSock, submitDelayMs: 0 });
+    const spawnHerdr = new HerdrClient({ socketPath: spawnSock });
     let agentStartReached = false;
     spawnHerdr.agentStart = async () => {
       agentStartReached = true;
@@ -855,7 +895,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           authorizedDispatchers: ["p_tower"],
           herdrSocketPath: spawnSock,
           agentArgv: { claude: ["claude"] },
-          herdrProtocol: 16,
+          herdrProtocol: 17,
         },
         herdr: spawnHerdr,
         submitVerify: { waitMs: 100, retries: 0 },
@@ -944,19 +984,19 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     });
     expect(ack.status).toBe("queued");
 
-    // Reload session (peerSecret may have been saved)
-    const { loadSession } = await import("./session-store");
-    const reloaded = loadSession() ?? session;
+    // Rejoin as the main node peer captured before aux bridges overwrote LOOM_SESSION.
+    expect(mainRejoinSession).not.toBeNull();
+    if (!mainRejoinSession) throw new Error("mainRejoinSession missing after beforeAll");
 
     bridge = await startBridgeRuntime({
-      session: reloaded,
+      session: mainRejoinSession,
       profile: "node",
       config: {
         authorizedDispatchers: ["p_tower"],
         herdrSocketPath: herdrSock,
         agentArgv: { claude: ["claude"] },
       },
-      herdr: new HerdrClient({ socketPath: herdrSock, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock }),
       submitVerify: { waitMs: 300, retries: 1 },
     });
 
@@ -1001,7 +1041,7 @@ describe("M-2 submit verify + retry", () => {
     setActiveProfile(null);
     relay2.start();
     // autoStatus "none": the pane never reports "working" — forces the
-    // verify loop to time out and resend BARE_ENTER (live-measured M-2 fix).
+    // verify loop to time out and nudge via agent.send_keys CR.
     fake2 = await startFakeHerdr({
       socketPath: herdrSock2,
       autoStatus: "none",
@@ -1037,7 +1077,7 @@ describe("M-2 submit verify + retry", () => {
         herdrSocketPath: herdrSock2,
         agentArgv: { claude: ["claude"] },
       },
-      herdr: new HerdrClient({ socketPath: herdrSock2, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock2 }),
       // Test-tuned: tiny waitMs so the suite doesn't pay the production
       // SUBMIT_VERIFY_MS/SUBMIT_RETRIES cost.
       submitVerify: { waitMs: 40, retries: 2 },
@@ -1059,7 +1099,7 @@ describe("M-2 submit verify + retry", () => {
     }
   });
 
-  test("unconfirmed submit (no working event) resends BARE_ENTER up to retries", async () => {
+  test("unconfirmed submit (no working event) CR-nudges via send_keys up to retries", async () => {
     const cardId = "task_facade00112233";
     const payload = {
       v: CARD_CONTRACT_VERSION,
@@ -1075,18 +1115,15 @@ describe("M-2 submit verify + retry", () => {
       attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, payload)],
     });
 
-    // Poll like the other dispatch tests (bridge inbox poll interval is
-    // 1500ms) until the initial submit + at least one resend land, since
-    // "working" never arrives with autoStatus "none".
-    let sends: typeof fake2.calls = [];
+    // Poll until verify issues at least two bounded CR nudges (probe hit on
+    // accumulated prompt text → CR-only branch; no full reinject).
+    let nudges: typeof fake2.calls = [];
     for (let i = 0; i < 40; i++) {
       await Bun.sleep(100);
-      sends = fake2.calls.filter(
-        (c) => c.method === "agent.send" && c.params.text === BARE_ENTER,
-      );
-      if (sends.length >= 2) break;
+      nudges = fake2.calls.filter(isCrSendKeys);
+      if (nudges.length >= 2) break;
     }
-    expect(sends.length).toBeGreaterThanOrEqual(2);
+    expect(nudges.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -1144,9 +1181,9 @@ describe("bridge runtime codex argv registered (0.23.2 R27)", () => {
         authorizedDispatchers: ["p_tower"],
         herdrSocketPath: herdrSock3,
         agentArgv: { claude: ["claude"], codex: ["codex"] },
-        herdrProtocol: 16,
+        herdrProtocol: 17,
       },
-      herdr: new HerdrClient({ socketPath: herdrSock3, submitDelayMs: 0 }),
+      herdr: new HerdrClient({ socketPath: herdrSock3 }),
       submitVerify: { waitMs: 300, retries: 1 },
     });
   });
@@ -1166,7 +1203,7 @@ describe("bridge runtime codex argv registered (0.23.2 R27)", () => {
     }
   });
 
-  test("registered codex agentKind spawns with argv [\"codex\"]", async () => {
+  test("registered codex agentKind spawns with kind \"codex\"", async () => {
     const cardId = "task_c0de0000aabb0011";
     const payload = {
       v: CARD_CONTRACT_VERSION,
@@ -1189,16 +1226,19 @@ describe("bridge runtime codex argv registered (0.23.2 R27)", () => {
     let starts: typeof fake3.calls = [];
     for (let i = 0; i < 40; i++) {
       await Bun.sleep(100);
+      // Protocol 17: LOOM_CARD on pane alloc; agent.start carries kind/name/pane_id
       starts = fake3.calls.filter(
         (c) =>
           c.method === "agent.start" &&
-          (c.params.env as { LOOM_CARD?: string } | undefined)?.LOOM_CARD ===
-            cardId,
+          String(c.params.name ?? "").includes(cardId.slice(0, 20)),
       );
       if (starts.length >= 1) break;
     }
     expect(starts.length).toBeGreaterThanOrEqual(1);
-    expect(starts[0]!.params.argv).toEqual(["codex"]);
+    expect(starts[0]!.params.kind).toBe("codex");
+    // Executable stays local; bare ["codex"] → empty args (omitted on wire)
+    expect(starts[0]!.params.args).toBeUndefined();
+    expect(envAllocCalls(fake3.calls, "LOOM_CARD", cardId).length).toBeGreaterThanOrEqual(1);
   });
 });
 

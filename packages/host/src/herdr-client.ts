@@ -26,16 +26,6 @@ import { join } from "node:path";
 export const HERDR_PROTOCOL_EXPECTED = 17;
 export const DEFAULT_HERDR_SOCKET = join(homedir(), ".config", "herdr", "herdr.sock");
 
-/**
- * Bare carriage return (terminal Enter) for legacy dual-send inject paths.
- *
- * @deprecated Temporary compat for PATCH 3 production (`bridge-runtime.ts`)
- * which still imports this symbol. Not used by any protocol-17 client behavior
- * (agent.prompt / agent.send_keys). Remove in PATCH 3 or 4 when dual-send is
- * retired.
- */
-export const BARE_ENTER = "\r";
-
 const EVENT_RECONNECT_BASE_MS = 500;
 const EVENT_RECONNECT_MAX_MS = 5_000;
 
