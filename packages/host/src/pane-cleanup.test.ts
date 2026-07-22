@@ -36,6 +36,7 @@ type CardResult = {
   note?: string;
   output?: string;
   cardId?: string;
+  paneId?: string;
 };
 
 const STILL_LINE = "Worked for 48s. 1 command still running";
@@ -242,26 +243,22 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   });
 
   test(
-    "① no-indicator immediate done → sendResult then pane.close exactly once",
+    "③a expected-red: completion card pane remains present after terminal receipt",
     async () => {
       const cardId = "task_a023800000000001";
       const paneId = await spawnCard(cardId, "pane-cleanup-immediate");
-      const closesBefore = closeCallsFor(fake, paneId);
-
       fake.setPaneReadText(paneId, DONE_BODY);
       emitWorkingThen(paneId, "idle");
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
 
-      const closed = await waitFor(
-        () => closeCallsFor(fake, paneId) === closesBefore + 1,
-        { timeoutMs: 3_000 },
-      );
-      expect(closed).toBe(true);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
+      // Quiesce first; then directly observe the actual pane membership.
+      await Bun.sleep(250);
+      expect(fake.listPaneIds()).toContain(paneId);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
@@ -333,6 +330,85 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
 
       await Bun.sleep(200);
       expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
+    },
+    20_000,
+  );
+
+  test(
+    "③c expected-red: events-subscribe failure card pane remains present",
+    async () => {
+      const failureSock = join(dir, "herdr-subscribe-failure.sock");
+      const failureFake = await startFakeHerdr({
+        socketPath: failureSock,
+        autoStatus: "none",
+        // First subscribe is bridge-global; the card subscription takes 1305.
+        subscribeFailFromCall: 2,
+        subscribeFailCount: 1,
+      });
+      const failureSession: FableSession = {
+        ...session,
+        peerId: "p_node_subscribe_failure",
+        displayName: "node/subscribe-failure",
+        peerSecret: undefined,
+      };
+      let failureBridge: BridgeRuntime | null = null;
+      const cardId = "task_a023800000000003c";
+      try {
+        failureBridge = await startBridgeRuntime({
+          session: failureSession,
+          profile: "node-subscribe-failure",
+          config: {
+            authorizedDispatchers: ["p_tower"],
+            herdrSocketPath: failureSock,
+            agentArgv: { claude: ["claude"] },
+            herdrProtocol: 16,
+          },
+          herdr: new HerdrClient({ socketPath: failureSock, submitDelayMs: 0 }),
+          submitVerify: { waitMs: 100, retries: 0 },
+        });
+        await tower!.handoff({
+          to: "@node/subscribe-failure",
+          body: buildDispatchBody({
+            title: "subscribe failure retains pane",
+            cardId,
+            node: "node/subscribe-failure",
+          }),
+          mode: "task",
+          attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, {
+            v: CARD_CONTRACT_VERSION,
+            cardId,
+            sourceRoomId: towerSession.roomId,
+            prompt: "subscribe failure",
+            agentKind: "claude",
+          })],
+        });
+        const result = await awaitCardResult(cardId);
+        expect(result).toBeTruthy();
+        expect(result!.status).toBe("failed");
+        expect(result!.reason).toBe("events_subscribe_failed");
+        const paneIds = failureFake.calls.flatMap((call) => {
+          if (call.method !== "events.subscribe") return [];
+          const subscriptions = call.params.subscriptions;
+          if (!Array.isArray(subscriptions)) return [];
+          return subscriptions.flatMap((subscription) =>
+            typeof subscription === "object" &&
+            subscription !== null &&
+            "pane_id" in subscription &&
+            typeof subscription.pane_id === "string"
+              ? [subscription.pane_id]
+              : [],
+          );
+        });
+        expect(paneIds).toHaveLength(1);
+        const paneId = paneIds[0]!;
+        expect(paneId).not.toBe("");
+        await Bun.sleep(250);
+        // Direct membership ties preservation to this failed card subscription.
+        expect(failureFake.listPaneIds()).toContain(paneId);
+      } finally {
+        if (failureBridge) await failureBridge.stop();
+        await failureFake.close();
+      }
     },
     20_000,
   );
@@ -648,7 +724,7 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
   );
 
   test(
-    "⑥b failure-path close (inject_unconfirmed) still runs under keep",
+    "③b expected-red: inject_unconfirmed card pane remains present",
     async () => {
       // With keep, only *new* auto closes are disabled — inject_unconfirmed
       // failure path still closes. Simulate by never reaching working and
@@ -690,11 +766,8 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
         expect(result!.status).toBe("failed");
         expect(result!.reason).toBe("inject_unconfirmed");
 
-        const closed = await waitForLocal(
-          () => closeCallsFor(fake, paneId) >= 1,
-          5_000,
-        );
-        expect(closed).toBe(true);
+        await Bun.sleep(250);
+        expect(fake.listPaneIds()).toContain(paneId);
       } finally {
         fake.setDiscardInjects(false);
       }

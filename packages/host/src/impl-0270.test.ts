@@ -797,6 +797,22 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
 // ─── Source-level connection-rule assertions (units ⑩ ⑪) ─────────────────────
 
 describe("PLAN 0.27.0 connection rules (source assertions)", () => {
+  test("① expected-red: bridge card result status done construction has zero sites", async () => {
+    const src = await Bun.file(
+      new URL("./bridge-runtime.ts", import.meta.url).pathname,
+    ).text();
+    // Card-only API shape: a status input must not admit `done`.
+    const statusInputApiShapes = src.match(
+      /async function finishCard\([\s\S]*?status:\s*"done"\s*\|\s*"failed"/g,
+    );
+    expect(statusInputApiShapes ?? []).toHaveLength(0);
+    // Callsite lock is separate: whitespace/newline-insensitive and currently 5.
+    const doneCallsites = src.match(
+      /\bfinishCard\s*\(\s*flight\s*,\s*"done"/g,
+    );
+    expect(doneCallsites ?? []).toHaveLength(0);
+  });
+
   test(
     "④ fire-and-forget sites removed (source lock)",
     async () => {

@@ -33,7 +33,7 @@ import {
   setActiveProfile,
   type FableSession,
 } from "./session-store";
-import { addTask, loadTaskBoard } from "./task-board";
+import { addTask, loadTaskBoard, updateTask } from "./task-board";
 
 describe("M-1 dispatcher allowlist", () => {
   test("default deny when empty", () => {
@@ -165,7 +165,7 @@ describe("M-2 bare enter constant", () => {
   });
 });
 
-describe("apply_card_result L-2", () => {
+describe("apply_card_result authority fence (PATCH 1 M1)", () => {
   const dir = join(tmpdir(), `loom-card-ops-${Date.now()}`);
   const sessionFile = join(dir, "session.json");
 
@@ -200,7 +200,7 @@ describe("apply_card_result L-2", () => {
     }
   });
 
-  test("done → done; node mismatch rejected", () => {
+  test("② expected-red: fresh remote done → blocked; node mismatch remains first", () => {
     const task = addTask({
       title: "t1",
       assignee: "node/wsl-1",
@@ -234,7 +234,57 @@ describe("apply_card_result L-2", () => {
       }),
     });
     expect(good.ok).toBe(true);
-    if (good.ok) expect(good.status).toBe("done");
+    if (good.ok) {
+      expect(good.status).toBe("blocked");
+      expect(good.task.notes).toContain(
+        "legacy_remote_done_requires_verification",
+      );
+    }
+  });
+
+  test("⑤ green control: guard order authenticity → terminal → stale is preserved", () => {
+    const finishedAt = new Date().toISOString();
+    const terminal = addTask({
+      title: "terminal-local-done",
+      assignee: "node/wsl-1",
+      status: "done",
+    });
+    const forged = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1, cardId: terminal.id, status: "done", node: "node/evil", seq: 9,
+        output: "forged", summary: "forged", finishedAt,
+      }),
+    });
+    expect(forged.ok).toBe(false);
+    if (!forged.ok) expect(forged.error).toContain("L-2");
+
+    const terminalReplay = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1, cardId: terminal.id, status: "failed", node: "node/wsl-1", seq: 9,
+        output: "late", summary: "late", finishedAt,
+      }),
+    });
+    expect(terminalReplay.ok).toBe(true);
+    if (terminalReplay.ok) expect(terminalReplay.status).toBe("done");
+
+    const stale = addTask({
+      title: "stale-before-authority-mapping", assignee: "node/wsl-1",
+      status: "doing", notes: "seed last_seq=5",
+    });
+    const staleReplay = applyCardResult({
+      resultJson: JSON.stringify({
+        v: 1, cardId: stale.id, status: "done", node: "node/wsl-1", seq: 5,
+        output: "stale", summary: "stale", finishedAt,
+      }),
+    });
+    expect(staleReplay.ok).toBe(true);
+    if (staleReplay.ok) {
+      expect(staleReplay.status).toBe("doing");
+      expect(staleReplay.task.notes).toBe("seed last_seq=5");
+    }
+
+    const localTask = addTask({ title: "explicit-local-mutation", status: "doing" });
+    expect(updateTask(localTask.id, { status: "done" }).status).toBe("done");
   });
 
   test("⑪ note max length (500) still preserves last_seq parse (0.23.7 M-2)", () => {
@@ -471,7 +521,25 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     }
   });
 
-  test("authorized dispatch → [DONE] result", async () => {
+  async function exactCardResults(cardId: string): Promise<{
+    cardId?: string;
+    status?: string;
+    reason?: string;
+  }[]> {
+    const inbox = await tower!.listInbox();
+    return inbox.flatMap((entry) =>
+      (entry.handoff.attachments ?? [])
+        .filter((attachment) => attachment.label === CARD_RESULT_LABEL)
+        .map((attachment) => JSON.parse(attachment.content) as {
+          cardId?: string;
+          status?: string;
+          reason?: string;
+        })
+        .filter((result) => result.cardId === cardId),
+    );
+  }
+
+  test("① expected-red: authorized completion emits a verification proposal", async () => {
     const cardId = "task_abcd1234ef567890";
     const payload = {
       v: CARD_CONTRACT_VERSION,
@@ -515,9 +583,11 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           status: string;
           cardId: string;
           node: string;
+          reason?: string;
         };
         expect(result.cardId).toBe(cardId);
-        expect(result.status).toBe("done");
+        expect(result.status).toBe("failed");
+        expect(result.reason).toBe("needs_verification");
         expect(result.node).toBe("node/wsl-1");
         break;
       }
@@ -533,6 +603,83 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
         String(s.params.text).includes("write hello"),
     );
     expect(promptSend).toBeTruthy();
+  });
+
+  test("④ green control: completion↔terminal emits exactly one relay receipt", async () => {
+    const cardId = "task_abcd1234abcde001";
+    const raceSock = join(dir, "herdr-completion-terminal-race.sock");
+    const raceFake = await startFakeHerdr({
+      socketPath: raceSock,
+      autoStatus: "none",
+    });
+    const raceSession: FableSession = {
+      ...session,
+      peerId: "p_node_completion_terminal_race",
+      displayName: "node/completion-terminal-race",
+      peerSecret: undefined,
+    };
+    let raceBridge: Awaited<ReturnType<typeof startBridgeRuntime>> | null = null;
+    try {
+      raceBridge = await startBridgeRuntime({
+        session: raceSession,
+        profile: "node-completion-terminal-race",
+        config: {
+          authorizedDispatchers: ["p_tower"],
+          herdrSocketPath: raceSock,
+          agentArgv: { claude: ["claude"] },
+          herdrProtocol: 16,
+        },
+        herdr: new HerdrClient({ socketPath: raceSock, submitDelayMs: 0 }),
+        submitVerify: { waitMs: 100, retries: 0 },
+      });
+      await tower!.handoff({
+        to: "@node/completion-terminal-race",
+        body: buildDispatchBody({
+          title: "at-most-one",
+          cardId,
+          node: "node/completion-terminal-race",
+        }),
+        mode: "task",
+        attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, {
+          v: CARD_CONTRACT_VERSION,
+          cardId,
+          sourceRoomId: session.roomId,
+          prompt: "completion terminal race",
+          agentKind: "claude",
+        })],
+      });
+      let paneId = "";
+      for (let i = 0; i < 40; i++) {
+        await Bun.sleep(100);
+        paneId = raceFake.listPaneIds()[0] ?? "";
+        if (paneId) break;
+      }
+      expect(paneId).not.toBe("");
+      raceFake.setPaneReadText(paneId, "completion terminal race");
+      raceFake.pushEvent("pane_agent_status_changed", {
+        pane_id: paneId,
+        agent_status: "working",
+      });
+      raceFake.pushEvent("pane_agent_status_changed", {
+        pane_id: paneId,
+        agent_status: "idle",
+      });
+      raceFake.pushEvent("pane.closed", { pane_id: paneId });
+      let results: Awaited<ReturnType<typeof exactCardResults>> = [];
+      for (let i = 0; i < 40; i++) {
+        await Bun.sleep(100);
+        results = await exactCardResults(cardId);
+        if (results.length > 0) break;
+      }
+      await Bun.sleep(250);
+      results = await exactCardResults(cardId);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.cardId).toBe(cardId);
+      expect(results[0]!.reason).not.toBe("payload_invalid");
+    } finally {
+      if (raceBridge) await raceBridge.stop();
+      await raceFake.close();
+    }
   });
 
   test("re-dispatch of same card uses a unique agent.start name per attempt", async () => {
@@ -614,7 +761,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     evil.close();
   });
 
-  test("codex agentKind without local argv → agent_kind_not_allowed (0.23.2 R27)", async () => {
+  test("④ green control: Flight-less agent_kind_not_allowed emits exactly one relay receipt", async () => {
     // Default bridge cfg registers claude only — codex fails closed.
     const cardId = "task_c0deffff00112233";
     const payload = {
@@ -672,6 +819,80 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           cardId,
     );
     expect(starts.length).toBe(0);
+
+    await Bun.sleep(250);
+    const results = await exactCardResults(cardId);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.cardId).toBe(cardId);
+    expect(results[0]!.reason).toBe("agent_kind_not_allowed");
+  });
+
+  test("④ green control: spawn failure emits exactly one relay receipt", async () => {
+    const spawnSock = join(dir, "herdr-spawn-failure.sock");
+    const spawnFake = await startFakeHerdr({
+      socketPath: spawnSock,
+      autoStatus: "none",
+    });
+    const spawnHerdr = new HerdrClient({ socketPath: spawnSock, submitDelayMs: 0 });
+    let agentStartReached = false;
+    spawnHerdr.agentStart = async () => {
+      agentStartReached = true;
+      throw new Error("test spawn failure");
+    };
+    const spawnSession: FableSession = {
+      ...session,
+      peerId: "p_node_spawn_failure",
+      displayName: "node/spawn-failure",
+      peerSecret: undefined,
+    };
+    let spawnBridge: Awaited<ReturnType<typeof startBridgeRuntime>> | null = null;
+    const cardId = "task_abcd1234abcde0f1";
+    try {
+      spawnBridge = await startBridgeRuntime({
+        session: spawnSession,
+        profile: "node-spawn-failure",
+        config: {
+          authorizedDispatchers: ["p_tower"],
+          herdrSocketPath: spawnSock,
+          agentArgv: { claude: ["claude"] },
+          herdrProtocol: 16,
+        },
+        herdr: spawnHerdr,
+        submitVerify: { waitMs: 100, retries: 0 },
+      });
+      await tower!.handoff({
+        to: "@node/spawn-failure",
+        body: buildDispatchBody({
+          title: "spawn failure",
+          cardId,
+          node: "node/spawn-failure",
+        }),
+        mode: "task",
+        attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, {
+          v: CARD_CONTRACT_VERSION,
+          cardId,
+          sourceRoomId: session.roomId,
+          prompt: "spawn should fail",
+          agentKind: "claude",
+        })],
+      });
+      let results: { cardId?: string; status?: string; reason?: string }[] = [];
+      for (let i = 0; i < 40; i++) {
+        await Bun.sleep(100);
+        results = await exactCardResults(cardId);
+        if (results.length > 0) break;
+      }
+      expect(agentStartReached).toBe(true);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.cardId).toBe(cardId);
+      expect(results[0]!.reason).toBe("herdr_spawn_failed");
+      await Bun.sleep(250);
+      const settled = await exactCardResults(cardId);
+      expect(settled).toHaveLength(1);
+    } finally {
+      if (spawnBridge) await spawnBridge.stop();
+      await spawnFake.close();
+    }
   });
 
   test("fail-fast: herdr down refuses bridge start", async () => {
