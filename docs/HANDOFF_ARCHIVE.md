@@ -9,6 +9,10 @@
 > 이 구획은 **진행 중** 실행·실패·검증 provenance의 임시 수납처다. 아래의 종결 웨이브
 > append-only 이력과 섞지 않으며, 게이트가 종결되면 해당 결과를 완료 이력으로 이관한다.
 
+### Lane provenance correction (2026-07-22)
+
+- Owner의 “Grok 레인”은 최상위 **Grok CLI orchestration line** 선택이었으나 Codex가 구현자 레인으로 오독했다. PATCH 3의 실제 provenance는 Codex CLI orchestrator + Grok 4.5 headless implementer이며, 아래 “Owner-selected implementer” 표현은 이 정정으로 대체한다. 제품 검증 효력은 유지하되 요청한 orchestration routing은 충족하지 못한 것으로 기록한다. 다음 세션 기본 orchestrator = **Grok CLI**.
+
 ### PANE-DEATH PATCH 3 (M3) — bridge authority cut (2026-07-22 · `c475604`)
 
 - Owner-selected Grok 4.5 headless implementer가 `AGENTS.md` canonical prompt-file/acceptEdits 명령으로 production 6파일(+587/−135)을 구현했고, Codex 아키텍트가 diff·정적 게이트·타입체크·집중/전체 suite를 독립 검증했다. live quarantine authority와 explicit ack 오류 구분에 대해 두 차례 Grok 수정 라운드를 거쳤다.
