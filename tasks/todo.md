@@ -3,7 +3,7 @@
 ## Current override — PANE-DEATH v0.28.0 implementation wave
 
 > SSOT는 `HANDOFF.md`. SESSION-CONTINUITY Phase B/C는 ship 완료. 다음 제품 게이트는
-> **PATCH 5 (version/dist/config/status/docs 마감)**. herdr 0.7.5 adapter는 dogfood fail-closed 정본으로 독립 웨이브.
+> **후속 호환 PATCH — herdr 0.7.5/protocol 17 adapter**. PANE-DEATH PATCH 1–5는 v0.28.0 `d49a6b1`로 종결.
 
 0. [x] **Phase B:** fixture V1~V6 + SOFT_CAP stale 단위 테스트 해소 + HANDOFF lint expected-red 고정 + state HARD_CAP 검증 (`e281587`)
 1. [x] **Phase C:** archive 수납처·nine-section HANDOFF·shared headings·entry/session-context 동기화 → `handoff:lint` green (lower-tier in-harness fallback)
@@ -13,9 +13,9 @@
 5. [x] **PANE-DEATH PATCH 2 (M2) tower A2 fence:** `0b335a1` — `card-ops.ts` remote done→blocked + reason · MCP/HERDR_DESIGN/DISPATCH-DEMO 공개 계약 · 선행 red `24ceede` · 집중 3/3 · host/MCP typecheck green
 6. [x] **PANE-DEATH PATCH 3 (M3):** `c475604` — bridge proposal API · card auto-done/auto-close 0 · 비수락 ACK 단일 quarantine · replay-preserving fold · live/offline ack CLI · `classifyAck` · map-miss 관측; Grok 4.5 구현 + Codex 독립 검증
 7. [x] **PANE-DEATH PATCH 4 (M4):** `f9b0230` — tests-only 재기술 10파일(+923/−227) · §4.3/브랜치 순이득 감사 · production 0줄 · focused 165/1(known) · typecheck 6/6 · full 738/5 전량 분류
-8. [ ] **⭐ PANE-DEATH PATCH 5 (M5):** dist/version 0.28.0 + 최종 config/status/docs 마감
-9. [ ] **Phase D 유예:** 실제 PATCH 전환 2회 green 뒤 lint/status 자동화 재검토
-10. [ ] **후속 호환 PATCH — herdr 0.7.5/protocol 17 adapter:** 정본 `docs/spikes/HERDR-0.7.5-COMPAT.md`. dogfood fail-closed until ship. PATCH 5와 혼합 금지.
+8. [x] **PANE-DEATH PATCH 5 (M5):** `d49a6b1` — CLI/MCP 0.28.0 · `preservedCardPanes` 관측 · dist 재번들 · typecheck/dist green · full 741/4 전량 분류
+9. [ ] **Phase D 유예 해제:** PATCH 4→5 두 전환 green — adapter 뒤 lint/status 자동화 재검토
+10. [ ] **⭐ 후속 호환 PATCH — herdr 0.7.5/protocol 17 adapter:** 정본 `docs/spikes/HERDR-0.7.5-COMPAT.md` §6. dogfood fail-closed until ship.
 
 ## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
 

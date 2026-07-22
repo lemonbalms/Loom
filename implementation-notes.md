@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-22 (0.28.0 PANE-DEATH PATCH 4) |
+| **Last updated** | 2026-07-22 (0.28.0 PANE-DEATH PATCH 5) |
 
 ---
 
@@ -35,6 +35,7 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-22 | PATCH 3 대상 파일 표(bridge-runtime/result-quarantine/bridge-config/CLI) · 운영자 ack는 미해소를 실제로 닫아야 함 | live bridge가 있을 때 CLI의 별도 `QuarantineStore`를 쓰지 않고, `bridge-spawn.ts`의 인증된 loopback control RPC로 daemon의 **동일 in-memory store**를 ack한다. 이를 위해 host re-export 포함 지원 파일 2개가 target 표보다 늘었다. live RPC 실패 시 local fallback 없이 fail-closed하고, offline일 때만 local durable store를 연다. | 별도 store append는 disk replay만 바꾸고 daemon timer/map/status를 stale로 남겨 재진입·오표시를 만든다. 동일 authority를 갱신하는 것이 데이터 일관성과 실패 안전성을 보존한다. | PATCH 4에서 live/offline ack 양성 테스트를 고정한다. |
 | 2026-07-22 | PATCH 4 대상 파일 표 · HANDOFF의 분류된 33 legacy 실패 | PLAN 표에 빠졌지만 HANDOFF가 명시한 `scrape-delta.test.ts`와 `herdr-lifecycle.test.ts`를 tests-only 범위에 포함해 proposal/pane-preserved 기대와 브랜치 fixture/close-count 순이득을 이식했다. | 이미 분류된 legacy 실패를 남기지 않고, production 0줄 경계를 유지한 채 탐지력만 복원한다. | 없음 — `f9b0230`에 포함. |
 | 2026-07-22 | PATCH 4 브랜치 `ec99b2c:bridge.test.ts` +244 전량 감사 | main의 PATCH 1 테스트가 guard-order/local-done과 completion↔terminal·claimed deny·spawn failure exact-one을 더 강하게 이미 고정해 `bridge.test.ts`는 변경하지 않았다. | 동일 계약의 약한 복제를 이식해 테스트를 흔드는 대신 현재의 더 강한 증거를 보존한다. | PATCH 5에서 재작업 금지; 감사 결과만 인용. |
+| 2026-07-22 | PATCH 5 대상 파일 표 · 보존 card pane 카운트 의무 | PLAN 표에 없던 `bridge-runtime.ts`와 양성 상태 테스트를 포함했다. `preservedCardPanes`는 현재 bridge 프로세스가 Flight-backed result 뒤 보존했다고 아는 pane ID 집합의 **count-only** 관측이며 terminal 관찰/stop에서 제거한다. 이전 프로세스 pane은 복원하지 않는다. | status RPC 구현 파일 없이는 카운트를 만들 수 없고, process-local 숫자로 제한해야 자동 cleanup·receipt·복원 권위를 새로 발명하지 않는다. | 후속 B의 cleanup grant와 혼동 금지. `d49a6b1`에 포함. |
 
 ### 0.9.0 / 0.9.1 — Loom rename + R11 patch
 
