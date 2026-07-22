@@ -531,6 +531,7 @@ export async function startFakeHerdr(
     if (direct) return [target, direct];
     for (const [paneId, p] of panes) {
       if (p.terminal_id === target) return [paneId, p];
+      if (p.agentName === target) return [paneId, p];
     }
     return undefined;
   }

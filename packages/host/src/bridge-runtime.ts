@@ -391,6 +391,12 @@ type Flight = {
   fromPeerId: string;
   dispatchHandoffId: string;
   paneId: string;
+  /**
+   * Unique agent.start name for this attempt. Protocol-17 submission ops
+   * (agent.prompt / agent.send_keys) must target this name — not paneId.
+   * Pane IDs remain for pane.read, events, layout, cleanup, and pane.close.
+   */
+  agentTarget: string;
   terminalId: string;
   /**
    * Attempt-axis seq (from cardSeq) — agent name uniqueness / hook socket path.
@@ -517,6 +523,12 @@ type ConvFlight = {
   convId: string;
   pinnedPeerId: string;
   paneId: string;
+  /**
+   * Unique agent.start name for this conv worker. Protocol-17 submission ops
+   * (agent.prompt / agent.send_keys) must target this name — not paneId.
+   * Pane IDs remain for pane.read, events, layout, cleanup, and pane.close.
+   */
+  agentTarget: string;
   terminalId: string;
   sawWorking: boolean;
   /** R28 L-1: filename → sha256 of already-emitted worker file artifacts (stale-marker dedup). */
@@ -1437,10 +1449,13 @@ export async function startBridgeRuntime(opts?: {
       }
     }
 
+    // Unique agent.start name — generated once, stored on flight, used for
+    // every protocol-17 submission op (not optional response agent.name).
+    const agentTarget = `loom-${payload.cardId.slice(0, 20)}-${seq}`;
     let agent: HerdrAgentStarted;
     try {
       agent = await spawnWorkerAgent({
-        name: `loom-${payload.cardId.slice(0, 20)}-${seq}`,
+        name: agentTarget,
         kind: payload.agentKind,
         // Executable stays local allowlist only — protocol-17 args are the tail.
         args: argv.slice(1),
@@ -1469,6 +1484,7 @@ export async function startBridgeRuntime(opts?: {
       fromPeerId,
       dispatchHandoffId,
       paneId: agent.pane_id,
+      agentTarget,
       terminalId: agent.terminal_id,
       seq,
       startedAt,
@@ -1516,7 +1532,8 @@ export async function startBridgeRuntime(opts?: {
     const prompt = wrapDispatchedPrompt(payload.prompt);
     try {
       // Atomic agent.prompt (opaque text); stalled ≠ certain failure
-      await herdr.injectPromptAndSubmit(agent.pane_id, prompt);
+      // Protocol-17 submission target = unique agent.start name (not pane_id)
+      await herdr.injectPromptAndSubmit(agentTarget, prompt);
     } catch (e) {
       if (isAgentPromptStalled(e)) {
         // Uncertain submission — fixed branch log only (no message/prompt).
@@ -1543,6 +1560,7 @@ export async function startBridgeRuntime(opts?: {
     await verifyInjectOrRetry({
       kind: "card",
       paneId: agent.pane_id,
+      agentTarget,
       prompt,
     });
   }
@@ -1689,7 +1707,8 @@ export async function startBridgeRuntime(opts?: {
       const prompt = wrapDispatchedPrompt(payload.text);
       try {
         flight.sawWorking = false;
-        await herdr.injectPromptAndSubmit(flight.paneId, prompt);
+        // Protocol-17 submission target = unique agent.start name (not pane_id)
+        await herdr.injectPromptAndSubmit(flight.agentTarget, prompt);
       } catch (e) {
         if (isAgentPromptStalled(e)) {
           // Fixed branch log only — no e.message / error object / prompt.
@@ -1703,6 +1722,7 @@ export async function startBridgeRuntime(opts?: {
       await verifyInjectOrRetry({
         kind: "conv",
         paneId: flight.paneId,
+        agentTarget: flight.agentTarget,
         prompt,
       });
       return;
@@ -1758,10 +1778,13 @@ export async function startBridgeRuntime(opts?: {
     // R28 L-2: pass measured artifacts dir (not a hardcoded ~/.loom literal)
     // so legacy loomDir() divergence still lands markers where the bridge reads.
     const artifactsDir = convArtifactsDir(payload.convId);
+    // Unique agent.start name — generated once, stored on flight, used for
+    // every protocol-17 submission op (not optional response agent.name).
+    const agentTarget = `loom-conv-${payload.convId.slice(5, 21)}`;
     let agent: HerdrAgentStarted;
     try {
       agent = await spawnWorkerAgent({
-        name: `loom-conv-${payload.convId.slice(5, 21)}`,
+        name: agentTarget,
         kind: payload.scope.agentKind,
         args: argv.slice(1),
         env: {
@@ -1779,6 +1802,7 @@ export async function startBridgeRuntime(opts?: {
       convId: payload.convId,
       pinnedPeerId: fromPeerId,
       paneId: agent.pane_id,
+      agentTarget,
       terminalId: agent.terminal_id,
       sawWorking: false,
     };
@@ -1825,7 +1849,8 @@ export async function startBridgeRuntime(opts?: {
     // Full inject cache includes artifact convention suffix (R30 L-1 / L-2)
     const prompt = `${untrusted}${artifactConvention}`;
     try {
-      await herdr.injectPromptAndSubmit(agent.pane_id, prompt);
+      // Protocol-17 submission target = unique agent.start name (not pane_id)
+      await herdr.injectPromptAndSubmit(agentTarget, prompt);
     } catch (e) {
       if (isAgentPromptStalled(e)) {
         // Fixed branch log only — no e.message / error object / prompt.
@@ -1841,6 +1866,7 @@ export async function startBridgeRuntime(opts?: {
     await verifyInjectOrRetry({
       kind: "conv",
       paneId: agent.pane_id,
+      agentTarget,
       prompt,
     });
   }
@@ -2081,9 +2107,11 @@ export async function startBridgeRuntime(opts?: {
   async function verifyInjectOrRetry(opts: {
     kind: "card" | "conv";
     paneId: string;
+    /** Unique agent.start name — sole target for agent.prompt / agent.send_keys. */
+    agentTarget: string;
     prompt: string;
   }): Promise<void> {
-    const { kind, paneId, prompt } = opts;
+    const { kind, paneId, agentTarget, prompt } = opts;
     const pollMs = Math.max(
       10,
       Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10),
@@ -2125,6 +2153,7 @@ export async function startBridgeRuntime(opts?: {
       let action: "reinject" | "cr" = "cr";
 
       try {
+        // paneId only — pane.read coordinate, not submission target
         const scrape = await herdr.paneRead(paneId, {
           source: "recent",
           lines: 60,
@@ -2150,8 +2179,8 @@ export async function startBridgeRuntime(opts?: {
       if (action === "reinject") {
         try {
           // Same cached string only — no re-derive (R30 L-1); one atomic prompt
-          // Protocol-17 target = pane_id (unique name also accepted; not terminal_id)
-          await herdr.agentPrompt({ target: paneId, text: prompt });
+          // Protocol-17 submission target = unique agent.start name (not pane_id)
+          await herdr.agentPrompt({ target: agentTarget, text: prompt });
         } catch (e) {
           // Branch-only: round + structural code (or unknown). Never message/prompt.
           log(
@@ -2161,8 +2190,9 @@ export async function startBridgeRuntime(opts?: {
       } else {
         try {
           // Bounded Enter nudge only — never prompt text; not primary inject path
+          // Protocol-17 submission target = unique agent.start name (not pane_id)
           await herdr.agentSendKeys({
-            target: paneId,
+            target: agentTarget,
             keys: AGENT_SEND_KEYS_CR_NUDGE,
           });
         } catch (e) {
