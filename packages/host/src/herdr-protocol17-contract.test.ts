@@ -162,6 +162,7 @@ describe("PLAN 0.28.1 protocol-17 adapter", () => {
       args: ["--example"],
       timeoutMs: null,
     } as never);
+    // Non-pending start: resolve immediately; do not poll agent.get.
     expect(calls).toEqual([
       {
         method: "agent.start",
@@ -174,6 +175,82 @@ describe("PLAN 0.28.1 protocol-17 adapter", () => {
         },
       },
     ]);
+    client.close();
+  });
+
+  /**
+   * PATCH5 expected-red (live protocol-17 2026-07-22): agent.start may return
+   * launch_pending=true before the named agent is interactive_ready. The wrapper
+   * must not resolve that pending record; it must observe agent.get{target:pane_id}
+   * until interactive_ready=true and launch_pending is not true.
+   */
+  test("agentStart barriers on agent.get until interactive_ready when launch_pending", async () => {
+    const calls: CapturedCall[] = [];
+    const client = new HerdrClient({
+      socketPath: "/fixture/not-connected.sock",
+    });
+    client.request = async (method, params = {}) => {
+      calls.push({ method, params });
+      if (method === "agent.start") {
+        return {
+          type: "agent_started",
+          agent: {
+            pane_id: "w1:p_launch",
+            terminal_id: "term_launch",
+            name: "loom-launch-worker",
+            launch_pending: true,
+            agent_status: "unknown",
+          },
+        };
+      }
+      if (method === "agent.get") {
+        // First get is ready (deterministic; no sleeps). launch_pending omitted
+        // matches live serialization where false is omitted.
+        return {
+          type: "agent",
+          agent: {
+            pane_id: "w1:p_launch",
+            terminal_id: "term_launch",
+            name: "loom-launch-worker",
+            interactive_ready: true,
+            agent_status: "idle",
+          },
+        };
+      }
+      return { type: "ok" };
+    };
+
+    const started = await client.agentStart({
+      name: "loom-launch-worker",
+      kind: "grok",
+      paneId: "w1:p_launch",
+      timeoutMs: 120_000,
+    });
+
+    expect(calls).toEqual([
+      {
+        method: "agent.start",
+        params: {
+          name: "loom-launch-worker",
+          kind: "grok",
+          pane_id: "w1:p_launch",
+          timeout_ms: 120_000,
+        },
+      },
+      {
+        method: "agent.get",
+        params: { target: "w1:p_launch" },
+      },
+    ]);
+    expect(started).toMatchObject({
+      pane_id: "w1:p_launch",
+      terminal_id: "term_launch",
+      name: "loom-launch-worker",
+      interactive_ready: true,
+    });
+    expect(
+      (started as { launch_pending?: boolean }).launch_pending,
+    ).not.toBe(true);
     client.close();
   });
 
