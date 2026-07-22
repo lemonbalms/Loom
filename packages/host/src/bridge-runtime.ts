@@ -71,6 +71,7 @@ import {
 import { RelayClient } from "./relay-client";
 import {
   HerdrClient,
+  HerdrRpcError,
   stripAnsi,
   HERDR_PROTOCOL_EXPECTED,
   BARE_ENTER,
@@ -360,6 +361,15 @@ function isInjectProbeHit(scrape: string, prompt: string): boolean {
   const probe = injectProbeTail(prompt);
   if (!probe) return false;
   return norm.includes(probe);
+}
+
+/**
+ * PLAN 0.28.1 / R46 M-1: structured stall only — no message regex.
+ * agent_prompt_stalled means no observed state transition, not proof of
+ * non-submission. Callers must probe/verify, not reissue immediately.
+ */
+function isAgentPromptStalled(e: unknown): boolean {
+  return e instanceof HerdrRpcError && e.code === "agent_prompt_stalled";
 }
 
 /**
@@ -1094,14 +1104,18 @@ export async function startBridgeRuntime(opts?: {
   let spawnChain: Promise<void> = Promise.resolve();
 
   /**
-   * PLAN 0.23.9 ⑧: spawn a worker agent into the bridge-local pool tab.
-   * pane.list is SSOT; fail-open to one unhinted agentStart on any pool path
-   * failure. `"legacy"` bypasses the pool entirely.
+   * PLAN 0.23.9 ⑧ / 0.28.1: spawn a worker agent into the bridge-local pool tab.
+   * Protocol 17: shell pane first (tab.create / pane.split with cwd+env), then
+   * named agent.start{name,kind,pane_id,args?}. pane.list is SSOT; fail-open
+   * to one unhinted pane-first spawn on any pool path failure. `"legacy"` uses
+   * the same unhinted form (no protocol-16 fields).
    * PLAN 0.23.11 ④: entry serialized via spawnChain (legacy included).
+   * `kind`/`args` come from allowlisted local argv (executable is never sent).
    */
   async function spawnWorkerAgent(opts: {
     name: string;
-    argv: string[];
+    kind: string;
+    args?: string[];
     env?: Record<string, string>;
     cwd?: string;
   }): Promise<HerdrAgentStarted> {
@@ -1190,25 +1204,48 @@ export async function startBridgeRuntime(opts?: {
 
   async function spawnWorkerAgentBody(opts: {
     name: string;
-    argv: string[];
+    kind: string;
+    args?: string[];
     env?: Record<string, string>;
     cwd?: string;
   }): Promise<HerdrAgentStarted> {
-    const base = {
-      name: opts.name,
-      argv: opts.argv,
-      env: opts.env,
-      cwd: opts.cwd,
-      focus: false as const,
+    /** Named start on an existing shell pane — env/cwd already on that pane. */
+    const startOnPane = (paneId: string): Promise<HerdrAgentStarted> => {
+      const startOpts: {
+        name: string;
+        kind: string;
+        paneId: string;
+        args?: string[];
+      } = {
+        name: opts.name,
+        kind: opts.kind,
+        paneId,
+      };
+      if (opts.args !== undefined && opts.args.length > 0) {
+        startOpts.args = opts.args;
+      }
+      return herdr.agentStart(startOpts);
     };
-    if ((cfg.panePlacement ?? "pool") === "legacy") {
-      return herdr.agentStart(base);
-    }
 
+    /**
+     * Protocol-17 unhinted pane-first form (legacy + every pool fallback):
+     * pane.split direction right with cwd/env/focus:false and no invented
+     * target, then named agent.start on the returned pane. Fail-visible.
+     */
     const unhintedFallback = async (why: string): Promise<HerdrAgentStarted> => {
       log(`pane placement fallback (unhinted): ${why}`);
-      return herdr.agentStart(base);
+      const split = await herdr.paneSplit({
+        direction: "right",
+        cwd: opts.cwd,
+        env: opts.env,
+        focus: false,
+      });
+      return startOnPane(split.paneId);
     };
+
+    if ((cfg.panePlacement ?? "pool") === "legacy") {
+      return unhintedFallback("panePlacement=legacy");
+    }
 
     try {
       const listed = await herdr.paneList();
@@ -1226,14 +1263,17 @@ export async function startBridgeRuntime(opts?: {
             // Full — drop pool so next path creates a new tab. Existing panes stay.
             workerPool = null;
           } else if (liveIds.length > 0) {
-            // PLAN 0.23.10 오너 지시: always horizontal (right) splits — no down.
-            const split: "right" | "down" = "right";
+            // Deterministic live pool pane as split target; always right split.
+            const targetPaneId = [...liveIds].sort()[0]!;
             try {
-              const agent = await herdr.agentStart({
-                ...base,
-                tabId: workerPool.tabId,
-                split,
+              const split = await herdr.paneSplit({
+                targetPaneId,
+                direction: "right",
+                cwd: opts.cwd,
+                env: opts.env,
+                focus: false,
               });
+              const agent = await startOnPane(split.paneId);
               workerPool.paneIds.add(agent.pane_id);
               // PLAN 0.23.12 ⓑ: equalize inside spawnChain before return (L-2 ii).
               if (workerPool.paneIds.size >= 2) {
@@ -1245,54 +1285,54 @@ export async function startBridgeRuntime(opts?: {
                 `hinted spawn failed: ${e instanceof Error ? e.message : e}`,
               );
             }
-          }
-          // liveIds.length === 0 but tab still listed (empty pool tab) —
-          // fall through to create path is wrong; reuse empty tab with split right.
-          if (workerPool && liveIds.length === 0) {
-            try {
-              const agent = await herdr.agentStart({
-                ...base,
-                tabId: workerPool.tabId,
-                split: "right",
-              });
-              workerPool.paneIds.add(agent.pane_id);
-              // First pane on empty tab — size 1, equalize no-ops.
-              if (workerPool.paneIds.size >= 2) {
-                await equalizePoolPaneWidths();
+          } else if (workerPool) {
+            // Tracked set empty but tab listed: use pane.list evidence, else abandon.
+            const tabPane = listed.find((p) => p.tabId === workerPool!.tabId);
+            if (tabPane) {
+              try {
+                const split = await herdr.paneSplit({
+                  targetPaneId: tabPane.paneId,
+                  direction: "right",
+                  cwd: opts.cwd,
+                  env: opts.env,
+                  focus: false,
+                });
+                const agent = await startOnPane(split.paneId);
+                workerPool.paneIds.add(agent.pane_id);
+                if (workerPool.paneIds.size >= 2) {
+                  await equalizePoolPaneWidths();
+                }
+                return agent;
+              } catch (e) {
+                workerPool = null;
+                return unhintedFallback(
+                  `empty-pool spawn failed: ${e instanceof Error ? e.message : e}`,
+                );
               }
-              return agent;
-            } catch (e) {
-              workerPool = null;
-              return unhintedFallback(
-                `empty-pool spawn failed: ${e instanceof Error ? e.message : e}`,
-              );
             }
+            // No pane evidence in the pool tab — abandon stale pool, new tab.
+            workerPool = null;
           }
         }
       }
 
-      // New pool tab: tab.create → first worker (split right) → root close.
+      // New pool tab: tab.create (cwd+env) → named start on root shell pane.
+      // Do not create a second pane just to close the root (protocol 17).
       try {
         const tab = await herdr.tabCreate({
           workspaceId: cfg.paneWorkspaceId,
           label: "loom-workers",
+          cwd: opts.cwd,
+          env: opts.env,
         });
         workerPool = { tabId: tab.tabId, paneIds: new Set() };
         try {
-          const agent = await herdr.agentStart({
-            ...base,
-            tabId: tab.tabId,
-            split: "right",
-          });
-          try {
-            await herdr.request("pane.close", { pane_id: tab.rootPaneId });
-          } catch {
-            /* best-effort — root shell only, just-created tab */
-          }
+          const agent = await startOnPane(tab.rootPaneId);
           workerPool.paneIds.add(agent.pane_id);
           // First worker alone — equalize skipped (size < 2).
           return agent;
         } catch (e) {
+          // Shell pane may remain; no destructive broad cleanup (PANE-DEATH).
           workerPool = null;
           return unhintedFallback(
             `first pool spawn failed: ${e instanceof Error ? e.message : e}`,
@@ -1397,7 +1437,9 @@ export async function startBridgeRuntime(opts?: {
     try {
       agent = await spawnWorkerAgent({
         name: `loom-${payload.cardId.slice(0, 20)}-${seq}`,
-        argv,
+        kind: payload.agentKind,
+        // Executable stays local allowlist only — protocol-17 args are the tail.
+        args: argv.slice(1),
         env: {
           LOOM_CARD: payload.cardId,
           ...(pendingHookListener
@@ -1466,33 +1508,37 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
-    let prompt: string;
+    // PLAN 0.28.1: cache exact inject string before send (stalled path reuses it)
+    const prompt = wrapDispatchedPrompt(payload.prompt);
     try {
-      // M-2: dispatched prompt via agent.send only; bare Enter separate constant
-      prompt = wrapDispatchedPrompt(payload.prompt);
-      await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
+      // Atomic agent.prompt (opaque text); stalled ≠ certain failure
+      await herdr.injectPromptAndSubmit(agent.pane_id, prompt);
     } catch (e) {
-      if (!tryAcquireFlightSideEffect(flight)) return;
-      disposeCardFlight(agent.pane_id, flight);
-      herdr.eventsPrune(agent.pane_id);
-      await sendFailedResult({
-        cardId: payload.cardId,
-        fromPeerId,
-        dispatchHandoffId,
-        reason: "prompt_inject_failed",
-        detail: e instanceof Error ? e.message : String(e),
-        paneId: agent.pane_id,
-        flight,
-      });
-      removeCardFlight(agent.pane_id, flight);
-      return;
+      if (isAgentPromptStalled(e)) {
+        // Uncertain submission — fixed branch log only (no message/prompt).
+        log("card inject agent_prompt_stalled (uncertain; probe next)");
+      } else {
+        if (!tryAcquireFlightSideEffect(flight)) return;
+        disposeCardFlight(agent.pane_id, flight);
+        herdr.eventsPrune(agent.pane_id);
+        await sendFailedResult({
+          cardId: payload.cardId,
+          fromPeerId,
+          dispatchHandoffId,
+          reason: "prompt_inject_failed",
+          detail: e instanceof Error ? e.message : String(e),
+          paneId: agent.pane_id,
+          flight,
+        });
+        removeCardFlight(agent.pane_id, flight);
+        return;
+      }
     }
 
     // PLAN 0.23.5: pass the exact inject cache string (no re-derive — R30 L-1)
     await verifyInjectOrRetry({
       kind: "card",
       paneId: agent.pane_id,
-      terminalId: agent.terminal_id,
       prompt,
     });
   }
@@ -1634,21 +1680,25 @@ export async function startBridgeRuntime(opts?: {
         );
         return;
       }
-      let prompt: string;
+      // R23 M-2 applies every turn (R24/R25 L-4), not just the first prompt.
+      // Cache before send so stalled path reuses the exact string (R30 L-1).
+      const prompt = wrapDispatchedPrompt(payload.text);
       try {
-        // R23 M-2 applies every turn (R24/R25 L-4), not just the first prompt.
-        prompt = wrapDispatchedPrompt(payload.text);
         flight.sawWorking = false;
-        await herdr.injectPromptAndSubmit(flight.terminalId, prompt);
+        await herdr.injectPromptAndSubmit(flight.paneId, prompt);
       } catch (e) {
-        log("conv turn inject failed:", e);
-        return;
+        if (isAgentPromptStalled(e)) {
+          // Fixed branch log only — no e.message / error object / prompt.
+          log("conv turn inject agent_prompt_stalled (uncertain; probe next)");
+        } else {
+          log("conv turn inject failed:", e);
+          return;
+        }
       }
       // PLAN 0.23.5: per-turn probe from this inject's cache string (R30 L-1)
       await verifyInjectOrRetry({
         kind: "conv",
         paneId: flight.paneId,
-        terminalId: flight.terminalId,
         prompt,
       });
       return;
@@ -1708,7 +1758,8 @@ export async function startBridgeRuntime(opts?: {
     try {
       agent = await spawnWorkerAgent({
         name: `loom-conv-${payload.convId.slice(5, 21)}`,
-        argv,
+        kind: payload.scope.agentKind,
+        args: argv.slice(1),
         env: {
           LOOM_CONV: payload.convId,
           LOOM_ARTIFACTS_DIR: artifactsDir,
@@ -1745,43 +1796,47 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
-    let prompt: string;
+    // Goal doubles as the first turn's prompt — the worker starts on
+    // accept, mirroring card dispatch's prompt-on-start.
+    // R28 L-2 / §5.1: bridge-authored artifact convention OUTSIDE the
+    // dispatched wrapper (bridge authors it; goal stays data-not-instructions).
+    // Cache exact inject string before send so stalled path reuses it (R30 L-1).
+    const untrusted = wrapDispatchedPrompt(payload.goal);
+    // PLAN 0.23.9 ② / R34 M-1: done_proposal marker must NOT lead a convention
+    // line (echo would false-positive the tail line-anchored detector). Same
+    // form as [ARTIFACT]: "print a final line exactly: …".
+    const artifactConvention = [
+      "",
+      "--- Loom conv artifact convention (§5.1 / PLAN 0.23.3) ---",
+      "If an output exceeds 32k characters (or cannot be fully conveyed via the pane),",
+      `write the full content to the artifacts directory: ${artifactsDir}`,
+      "(also available as $LOOM_ARTIFACTS_DIR). Create it with `mkdir -p -m 700` if needed.",
+      "Then print a final line exactly: [ARTIFACT] <filename>",
+      "Filename rules: filename only (no path separators); charset [A-Za-z0-9._-];",
+      "must not start with - or .; must not match turn-* (bridge-reserved).",
+      "When you judge the goal complete, print a final line exactly: [DONE_PROPOSAL] <one-line summary>",
+      "(bridge surfaces the proposal on the board; tower accepts with conv.close reason done).",
+      "--- end convention ---",
+    ].join("\n");
+    // Full inject cache includes artifact convention suffix (R30 L-1 / L-2)
+    const prompt = `${untrusted}${artifactConvention}`;
     try {
-      // Goal doubles as the first turn's prompt — the worker starts on
-      // accept, mirroring card dispatch's prompt-on-start.
-      // R28 L-2 / §5.1: bridge-authored artifact convention OUTSIDE the
-      // dispatched wrapper (bridge authors it; goal stays data-not-instructions).
-      const untrusted = wrapDispatchedPrompt(payload.goal);
-      // PLAN 0.23.9 ② / R34 M-1: done_proposal marker must NOT lead a convention
-      // line (echo would false-positive the tail line-anchored detector). Same
-      // form as [ARTIFACT]: "print a final line exactly: …".
-      const artifactConvention = [
-        "",
-        "--- Loom conv artifact convention (§5.1 / PLAN 0.23.3) ---",
-        "If an output exceeds 32k characters (or cannot be fully conveyed via the pane),",
-        `write the full content to the artifacts directory: ${artifactsDir}`,
-        "(also available as $LOOM_ARTIFACTS_DIR). Create it with `mkdir -p -m 700` if needed.",
-        "Then print a final line exactly: [ARTIFACT] <filename>",
-        "Filename rules: filename only (no path separators); charset [A-Za-z0-9._-];",
-        "must not start with - or .; must not match turn-* (bridge-reserved).",
-        "When you judge the goal complete, print a final line exactly: [DONE_PROPOSAL] <one-line summary>",
-        "(bridge surfaces the proposal on the board; tower accepts with conv.close reason done).",
-        "--- end convention ---",
-      ].join("\n");
-      // Full inject cache includes artifact convention suffix (R30 L-1 / L-2)
-      prompt = `${untrusted}${artifactConvention}`;
-      await herdr.injectPromptAndSubmit(agent.terminal_id, prompt);
+      await herdr.injectPromptAndSubmit(agent.pane_id, prompt);
     } catch (e) {
-      log("conv initial inject failed:", e);
-      convFlights.delete(agent.pane_id);
-      convPaneByConvId.delete(payload.convId);
-      herdr.eventsPrune(agent.pane_id);
-      return;
+      if (isAgentPromptStalled(e)) {
+        // Fixed branch log only — no e.message / error object / prompt.
+        log("conv initial inject agent_prompt_stalled (uncertain; probe next)");
+      } else {
+        log("conv initial inject failed:", e);
+        convFlights.delete(agent.pane_id);
+        convPaneByConvId.delete(payload.convId);
+        herdr.eventsPrune(agent.pane_id);
+        return;
+      }
     }
     await verifyInjectOrRetry({
       kind: "conv",
       paneId: agent.pane_id,
-      terminalId: agent.terminal_id,
       prompt,
     });
   }
@@ -2011,18 +2066,20 @@ export async function startBridgeRuntime(opts?: {
   }
 
   /**
-   * PLAN 0.23.5 unified inject verify (card + conv).
+   * PLAN 0.23.5 / 0.28.1 unified inject verify (card + conv).
    * `prompt` is the exact string last passed to injectPromptAndSubmit — never
-   * re-derived (R30 L-1). Reinject at most once per verify call (R30 M-2).
+   * re-derived (R30 L-1). Full reissue at most once per verify call on positive
+   * scrape miss only (R30 M-2 / R46 M-1). Hit (incl. Ink placeholder) and
+   * read-fail prohibit full reissue — bounded agent.send_keys nudge only.
    * Flight gone between timeout and action = success (R30 L-3).
+   * Timing: existing submitVerify.waitMs/retries only — no new constants.
    */
   async function verifyInjectOrRetry(opts: {
     kind: "card" | "conv";
     paneId: string;
-    terminalId: string;
     prompt: string;
   }): Promise<void> {
-    const { kind, paneId, terminalId, prompt } = opts;
+    const { kind, paneId, prompt } = opts;
     const pollMs = Math.max(
       10,
       Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10),
@@ -2070,7 +2127,7 @@ export async function startBridgeRuntime(opts?: {
         });
         probe = isInjectProbeHit(scrape, prompt) ? "hit" : "miss";
       } catch {
-        // Scrape failure ≠ inject failure — fall back to CR (existing path)
+        // Scrape failure ≠ inject failure — nudge only (no full reissue)
         probe = "read-fail";
       }
       lastProbe = probe;
@@ -2079,7 +2136,7 @@ export async function startBridgeRuntime(opts?: {
         action = "reinject";
         reinjectUsed = true;
       } else {
-        // hit (incl. placeholder), read-fail, or miss after reinject budget → CR
+        // hit (incl. placeholder), read-fail, or miss after reinject budget → nudge
         action = "cr";
       }
 
@@ -2088,17 +2145,27 @@ export async function startBridgeRuntime(opts?: {
 
       if (action === "reinject") {
         try {
-          // Same cached string only — no re-derive (R30 L-1); separate CR
-          await herdr.agentSend(terminalId, prompt);
-          await herdr.agentSend(terminalId, BARE_ENTER);
+          // Same cached string only — no re-derive (R30 L-1); one atomic prompt
+          // Protocol-17 target = pane_id (unique name also accepted; not terminal_id)
+          await herdr.agentPrompt({ target: paneId, text: prompt });
         } catch (e) {
-          log(`verify reinject attempt ${attempt} failed:`, e);
+          // Branch-only: round + structural code (or unknown). Never message/prompt.
+          log(
+            `verify reinject attempt ${attempt} failed: ${e instanceof HerdrRpcError ? e.code : "unknown"}`,
+          );
         }
       } else {
         try {
-          await herdr.agentSend(terminalId, BARE_ENTER);
+          // Bounded Enter nudge only — never prompt text; not primary inject path
+          await herdr.agentSendKeys({
+            target: paneId,
+            keys: [BARE_ENTER],
+          });
         } catch (e) {
-          log(`verify CR attempt ${attempt} failed:`, e);
+          // Branch-only: round + structural code (or unknown). Never message/prompt.
+          log(
+            `verify CR attempt ${attempt} failed: ${e instanceof HerdrRpcError ? e.code : "unknown"}`,
+          );
         }
       }
 

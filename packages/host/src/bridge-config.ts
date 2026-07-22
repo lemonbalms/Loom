@@ -5,7 +5,10 @@
 import { existsSync, mkdirSync, chmodSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loomDir, ensureFableDir } from "./session-store";
-import { DEFAULT_HERDR_SOCKET } from "./herdr-client";
+import {
+  DEFAULT_HERDR_SOCKET,
+  HERDR_PROTOCOL_EXPECTED,
+} from "./herdr-client";
 import type { DispatchAgentKind } from "@loom/protocol";
 
 export type BridgeConfig = {
@@ -14,7 +17,11 @@ export type BridgeConfig = {
   herdrSocketPath: string;
   /** Local argv map — wire never carries argv. shell permanently excluded. */
   agentArgv: Partial<Record<DispatchAgentKind, string[]>>;
-  /** Expected herdr protocol (default 16). */
+  /**
+   * Expected herdr protocol. Default is `HERDR_PROTOCOL_EXPECTED` (17).
+   * Config-only bump without the protocol-17 spawn/inject adapter is not a
+   * supported cutover (COMPAT §5-2).
+   */
   herdrProtocol?: number;
   /**
    * PLAN 0.23.8 / 0.28.0: worker pane cleanup policy.
@@ -26,9 +33,12 @@ export type BridgeConfig = {
    */
   paneCleanup?: "auto" | "keep";
   /**
-   * PLAN 0.23.9: worker pane placement policy.
-   * `"pool"` (default) = bridge-local worker-pool tab (tab.create + tab_id/split).
-   * `"legacy"` = unhinted agent.start (pre-0.23.9 global-focus split).
+   * PLAN 0.23.9 / 0.28.1: worker pane placement policy (public shape unchanged).
+   * `"pool"` (default) = bridge-local worker-pool tab via protocol-17
+   * `tab.create` / `pane.split` (cwd+env on the shell pane) then named
+   * `agent.start{name,kind,pane_id,args?}`.
+   * `"legacy"` = protocol-17 unhinted pane-first form (`pane.split` direction
+   * right without invented target, then named start) — no protocol-16 fields.
    * Load sanitizes unknown values to `"pool"`.
    */
   panePlacement?: "pool" | "legacy";
@@ -65,7 +75,7 @@ export function defaultBridgeConfig(): BridgeConfig {
     herdrSocketPath:
       process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
-    herdrProtocol: 16,
+    herdrProtocol: HERDR_PROTOCOL_EXPECTED,
     paneCleanup: "auto",
     panePlacement: "pool",
     hookSensor: false,
