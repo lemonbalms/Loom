@@ -81,6 +81,7 @@
 
 | 파일 | 요약 |
 |------|------|
+| [`docs/PROBLEM_CONSCIOUSNESS.md`](./docs/PROBLEM_CONSCIOUSNESS.md) | 문제의식 철학 해석 (non-normative) |
 | `docs/LOOM_PURPOSE_REVIEW.md` | 목적 타당성 |
 | `docs/COMPETITIVE_NOTES.md` | 경쟁·hooks vs scrape |
 | `docs/RENAME_TO_LOOM.md` | Fable→Loom 이력 |
