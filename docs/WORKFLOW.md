@@ -35,7 +35,10 @@
 
 ### 0.3 세션 종료 / 게이트 완료 시
 
-다음 진입이 맞도록 **`HANDOFF.md`** 를 갱신한다 (Where we are, next steps, resume prompt).
+다음 진입이 맞도록 **`HANDOFF.md`** 를 갱신한다. HANDOFF는 완료 작업일지가 아니라
+9개 canonical checkpoint section(`One-line resume`부터 `Don't redo`)으로 현재 loop와 하나의
+다음 gate를 복원한다. 활성 함정은 HANDOFF에 중복하지 않고 `tasks/traps.md`의 `활성 함정`·
+`하지 말 것` 두 섹션을 함께 확인한다. 완료 서사·실행 provenance는 `docs/HANDOFF_ARCHIVE.md`에 둔다.
 
 ---
 

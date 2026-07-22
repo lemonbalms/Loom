@@ -6,11 +6,12 @@
 > boundary에서 잠시 정지한다.
 
 0. [x] **Phase B:** fixture V1~V6 + SOFT_CAP stale 단위 테스트 해소 + HANDOFF lint expected-red 고정 + state HARD_CAP 검증 (`e281587`)
-1. [ ] **⭐ Phase C — 다음 유일 게이트:** 구현 명세 잠금 → grok-impl 배정 → archive 수납처·새 HANDOFF·shared headings·AGENTS/WORKFLOW/session-context 원자 전환 → 실제 handoff:lint green
-2. [ ] **새 세션 복원 스모크:** PLAN·next gate·traps·Owner pending·Don't redo 복원 확인
-3. [ ] **PANE-DEATH PATCH 1 즉시 재개:** v0.28.0·U1~U11·R44/R45 불변
-4. [ ] **Phase D 유예:** 실제 PATCH 전환 2회 green 뒤 lint/status 자동화 재검토
-5. [ ] **후속 호환 PATCH:** herdr 0.7.5/protocol 17 adapter(`agent.start` existing-pane + `agent.prompt`/`send-keys`) — 오너 최신판 표준, downgrade/0.7.4 병행 없음; 완료 전 dogfood dispatch fail-closed
+1. [x] **Phase C:** archive 수납처·nine-section HANDOFF·shared headings·entry/session-context 동기화 → `handoff:lint` green (lower-tier in-harness fallback)
+2. [x] **새 세션 복원 스모크:** PLAN·next gate·traps·Owner pending·Don't redo 복원 확인 (`[RESTORE-SMOKE] verdict=pass`)
+3. [ ] **⭐ Phase C ship:** git-writable session에서 이미 검토된 11-file diff를 commit/push; `index.lock` 권한 거부 해결 전 PATCH 1 금지
+4. [ ] **PANE-DEATH PATCH 1 (M1) tests-only expected-red:** Phase C ship 뒤 v0.28.0·U1~U11·R44/R45 불변
+5. [ ] **Phase D 유예:** 실제 PATCH 전환 2회 green 뒤 lint/status 자동화 재검토
+6. [ ] **후속 호환 PATCH:** herdr 0.7.5/protocol 17 adapter(`agent.start` existing-pane + `agent.prompt`/`send-keys`) — 오너 최신판 표준, downgrade/0.7.4 병행 없음; 완료 전 dogfood dispatch fail-closed
 
 ## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
 

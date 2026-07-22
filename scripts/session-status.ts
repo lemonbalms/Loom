@@ -5,12 +5,14 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import {
+  ONE_LINE_RESUME_HEADING,
+  extractHandoffSection,
+} from "./handoff-headings.ts";
 
 const root = join(import.meta.dir, "..");
 
-const TOP_LINES = 80;
-const TOP_BUDGET_BYTES = 8192;
-const FILE_BUDGET_BYTES = 16384;
+export const HANDOFF_UTF8_BUDGET = 8192;
 
 function read(rel: string): string {
   const p = join(root, rel);
@@ -57,9 +59,11 @@ export function buildStatus(): string {
       : "있음 (plan_review Open 표 확인)";
   })();
 
-  // Prefer the anchored `## One-line resume` section; fall back to the first
-  // long blockquote line only if that section is missing.
-  const resume = match1(handoff, /## One-line resume[\s\S]*?>\s*(.+)/);
+  // The shared extractor keeps status and SessionStart aligned on the same
+  // canonical heading. Fallback preserves a useful status line for malformed
+  // legacy handoffs without making that fallback an authority.
+  const resumeSection = extractHandoffSection(handoff, ONE_LINE_RESUME_HEADING);
+  const resume = match1(resumeSection ?? "", />\s*(.+)/);
   const resumeLine =
     resume !== "—"
       ? resume
@@ -83,23 +87,15 @@ Run: bun test · bun run loom --version
 }
 
 /**
- * HANDOFF.md size budget (UTF-8 bytes). Returns a one-line warning or null.
- * - top 80 lines > 8192 B, or
- * - full file ≥ 16384 B
+ * HANDOFF.md whole-file UTF-8 budget. Returns a one-line warning or null.
  */
 export function checkHandoffBudget(): string | null {
   const p = join(root, "HANDOFF.md");
   if (!existsSync(p)) return null;
   const text = readFileSync(p, "utf8");
   const fullBytes = Buffer.byteLength(text, "utf8");
-  const topText = text.split("\n").slice(0, TOP_LINES).join("\n");
-  const topBytes = Buffer.byteLength(topText, "utf8");
-
-  if (topBytes > TOP_BUDGET_BYTES) {
-    return `⚠ HANDOFF top-80 = ${topBytes}B > ${TOP_BUDGET_BYTES} — 종결 웨이브를 docs/HANDOFF_ARCHIVE.md로 이관(규칙 L15)`;
-  }
-  if (fullBytes >= FILE_BUDGET_BYTES) {
-    return `⚠ HANDOFF full = ${fullBytes}B ≥ ${FILE_BUDGET_BYTES} — 종결 웨이브를 docs/HANDOFF_ARCHIVE.md로 이관(규칙 L15)`;
+  if (fullBytes > HANDOFF_UTF8_BUDGET) {
+    return `⚠ HANDOFF full = ${fullBytes}B > ${HANDOFF_UTF8_BUDGET}B — 종결 웨이브를 docs/HANDOFF_ARCHIVE.md로 이관(규칙 D1)`;
   }
   return null;
 }

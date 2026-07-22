@@ -14,6 +14,11 @@ import {
   buildStatus,
   checkHandoffBudget,
 } from "./session-status.ts";
+import {
+  REQUIRED_HANDOFF_HEADINGS,
+  extractHandoffSection,
+  extractMarkdownSection,
+} from "./handoff-headings.ts";
 
 const root = join(import.meta.dir, "..");
 
@@ -47,18 +52,6 @@ function read(rel: string): string {
   const p = join(root, rel);
   if (!existsSync(p)) return "";
   return readFileSync(p, "utf8");
-}
-
-/** Extract markdown section body under `## heading` until the next `## ` heading. */
-function extractSection(text: string, heading: string): string | null {
-  const needle = `## ${heading}`;
-  const start = text.indexOf(needle);
-  if (start < 0) return null;
-  const bodyStart = start + needle.length;
-  const next = text.indexOf("\n## ", bodyStart);
-  const body =
-    next >= 0 ? text.slice(bodyStart, next) : text.slice(bodyStart);
-  return `${needle}${body}`.trimEnd();
 }
 
 /**
@@ -142,7 +135,7 @@ export function buildTrapsBlock(trapsText?: string): string {
   const traps = trapsText ?? read("tasks/traps.md");
   if (!traps) return "";
   const sections = ["활성 함정", "하지 말 것"]
-    .map((h) => extractSection(traps, h))
+    .map((h) => extractMarkdownSection(traps, h))
     .filter((s): s is string => s !== null);
   if (sections.length === 0) return "";
   return stripDetailsBlocks(sections.join("\n\n"));
@@ -162,13 +155,20 @@ export function buildStateContext(
 
   const handoff = handoffText ?? read("HANDOFF.md");
   if (handoff) {
-    const oneLine = extractSection(handoff, "One-line resume");
-    if (oneLine) parts.push(stripDetailsBlocks(oneLine));
-    // Heading includes the star emoji as written in HANDOFF.md
-    const current =
-      extractSection(handoff, "⭐ Current action (read first)") ??
-      extractSection(handoff, "⭐ Current action");
-    if (current) parts.push(stripDetailsBlocks(current));
+    const missing: string[] = [];
+    for (const heading of REQUIRED_HANDOFF_HEADINGS) {
+      const section = extractHandoffSection(handoff, heading);
+      if (section) {
+        parts.push(stripDetailsBlocks(section));
+      } else {
+        missing.push(heading);
+      }
+    }
+    if (missing.length > 0) {
+      parts.push(
+        `⚠ [LOOM-SESSION-CONTEXT] required HANDOFF sections missing: ${missing.join(", ")}`,
+      );
+    }
   }
 
   // Traps used to live inside the HANDOFF "Current action" section; keep them

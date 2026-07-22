@@ -4,6 +4,26 @@
 
 ---
 
+## In progress evidence
+
+> 이 구획은 **진행 중** 실행·실패·검증 provenance의 임시 수납처다. 아래의 종결 웨이브
+> append-only 이력과 섞지 않으며, 게이트가 종결되면 해당 결과를 완료 이력으로 이관한다.
+
+### SESSION-CONTINUITY Phase C — locally green, ship blocked (2026-07-22)
+
+- Live HANDOFF nine-section transition, whole-file 8,192B D1 gate, shared headings, all-section
+  state injection, and entry contract are implemented by the **lower-tier in-harness Codex fallback**.
+  Focused checkpoint/context tests **61/61**, `handoff:lint`, `session-context:lint`, independent
+  verification, and `[RESTORE-SMOKE] verdict=pass` are green.
+- Full-suite comparison found clean HEAD and changed tree both at **573 pass / 46 fail / 3 errors**,
+  31 unique failure names, tree-only delta **0**. These results are reviewed but **unshipped**.
+- Explicit `git add` and `git commit -m "feat(session): complete continuity Phase C"` both failed
+  before staging: `fatal: Unable to create .../.git/index.lock: Operation not permitted`. Current
+  environment `.git` is read-only; preserve the reviewed worktree and ship only in a git-writable
+  session. Do not start PATCH 1 before the remote SHA exists.
+
+---
+
 ## Current action — (직전) 웨이브 블록·종결 기록 (아카이브)
 
 > (직전) **🎯 PANE-DEATH 통합 웨이브 종결 — PLAN v0.28.0 `approved` (R45 author-close, 2026-07-21 · `e65c5b0`→`08f5405`).** **무엇:** 두 노선(main pre-C 전달층 · 브랜치 authority cut)의 통합 설계 정본(`docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`, 락 **U1~U11**, 작성 = Fable 5)을 **PATCH 1~5 경계**로 분해한 PLAN v0.28.0이 R45를 통과했다. **R44 잔여 종결(`e65c5b0`):** L2·L4 반영 · **L5는 no-op 기각** — 지적된 문자열이 검증 대상 커밋 `694e08c`에 **존재한 적이 없음**을 아키텍트가 직접 실측(**검증자의 지적도 검증 대상이라는 실례** — 교훈 (33)의 재실증). **UNVERIFIED ⑥ 종결 — 관측 불가 확정:** `type Flight` 미export + `flights` 클로저 로컬 + U3가 유일한 양성 부수효과(`pane.close`)를 제거 → **accepted 양성 관측물 0**. 따라서 (a) 주입 seam 행을 **음성 대조군으로 재설계**하고 판정 로직의 양성 락을 **신설 `classifyAck` 순수 유닛(G-11)** 으로 이관했다. **안 1(accepted 관측 카운터 제품 코드 신설)은 기각 · 재론 금지** — 설계 §5.1이 `recordResultDeliveryUnconfirmed`를 휘발 카운터로 폐기한 것과 같은 종이다. **R45 결과(`08f5405`):** grok 레인 `pending-revision` — High **0** · Medium 2 · Low 3 · **자기모순 9축 전수 0건** · 좌표 33건 검사 **1불일치**. **M1은 기각** — 검증자가 설계 §5.1(브랜치 채택 표)의 `herdr-lifecycle:366-367`을 **main HEAD로 대조**해 "close 정확-개수 패턴이 아니다"라고 냈으나, `git show ec99b2c:packages/host/src/herdr-lifecycle.test.ts` `:366-367`은 축자로 `const closeCalls = fake.calls.filter((c) => c.method === "pane.close");` / `expect(closeCalls).toHaveLength(1);` — **패턴 그 자체였다**. 좌표는 옳았고 검증자가 다른 트리를 봤다. 단 같은 표의 다른 행은 `ec99b2c:` 접두를 달았는데 그 셀만 없었던 것이 근인이므로 **Low로 재분류해 반영**하고 표 스캔으로 5좌표를 추가 정정했다(교훈 (47)). **M2는 처방 정밀화** — "락 U8 provisional 강등" 대신 **범위 명시**를 채택: U8이 PATCH 1~5 락 목록(`U1·U2·U3·U4·U7` / `U2·U10` / `U1·U3·U4·U5·U6·U7` / `U7` / `U10·U11`)과 게이트 G-1~G-11 판정 근거 **어디에도 없음**을 실측했고, presence 배선은 후속 C이며 `presence_unknown`은 v0.28.0에서 **도달 불가**라 **코드 표면 영향 0**이다 → 이월 ⑨는 착수를 막지 않고 **후속 C의 선결 조건**이다(교훈 (49)). Low 3건 반영 완료. **레인:** 설계·PLAN 작성 = Fable 5 / 검증 R44·R45 = **grok**(codex 사용량 한도로 재배정 — 벤더 다양성·발견자≠수정자 성립, 복구 **2026-07-25 14:27**). grok 헤드리스 read-only 구동은 R44 원장의 allowlist 처방이 틀렸고 **`--permission-mode dontAsk --sandbox read-only`** 가 정답임이 R45에서 확정됐다(4회 실패 후 · 교훈 (48)). **코드 무변경(문서만).** 원장 `docs/reviews/PANEDEATH-R44.md`·`PANEDEATH-R45.md`(정본·수정 금지). **다음 = PATCH 1(M1) tests-only expected-red 커밋** — 구현 레인 Claude. **교훈 (47)(48)(49)** (`tasks/lessons/verification.md`·`workers.md`).

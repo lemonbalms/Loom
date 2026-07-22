@@ -1,5 +1,5 @@
 /**
- * SESSION-CONTINUITY Phase B — fixture V1–V6 + handoff:lint expected-red lock.
+ * SESSION-CONTINUITY Phase B fixture preservation + Phase C live checkpoint lock.
  *
  * Test-only validator. Does NOT wire into production/session-start path.
  * Authority: docs/spikes/SESSION-CONTINUITY-PHASE-B-LOCK.md · HANDOFF-CHECKPOINT-DESIGN §11.
@@ -8,25 +8,22 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { HARD_CAP, buildTrapsBlock, truncateContext } from "./session-context.ts";
-import { buildStatus } from "./session-status.ts";
+import {
+  HARD_CAP,
+  buildStateContext,
+  buildTrapsBlock,
+  truncateContext,
+} from "./session-context.ts";
+import { HANDOFF_UTF8_BUDGET, buildStatus } from "./session-status.ts";
+import {
+  REQUIRED_HANDOFF_HEADINGS,
+  extractHandoffSection as extractSection,
+  extractMarkdownSection,
+} from "./handoff-headings.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const FIXTURE_REL = "scripts/fixtures/handoff-checkpoint-phase-b.md";
 const FIXTURE_PATH = join(ROOT, FIXTURE_REL);
-
-/** Required headings from design §4 (exact `## ` titles). */
-const REQUIRED_HEADINGS = [
-  "One-line resume",
-  "Current loop",
-  "Current action",
-  "Active checks",
-  "Owner pending",
-  "Blockers",
-  "Invariants",
-  "Evidence",
-  "Don't redo",
-] as const;
 
 const FORBIDDEN_HISTORY_HEADINGS = [
   "Completed waves",
@@ -35,8 +32,6 @@ const FORBIDDEN_HISTORY_HEADINGS = [
   "Archive",
   "WORKLOG",
 ] as const;
-
-const UTF8_BUDGET = 8192;
 
 // ---------------------------------------------------------------------------
 // Pure helpers (test-only — not imported by production)
@@ -62,21 +57,6 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function extractSection(text: string, heading: string): string | null {
-  const needle = `## ${heading}`;
-  const start = text.indexOf(needle);
-  if (start < 0) return null;
-  // Reject ### partial matches: needle must be at line start
-  if (start > 0 && text[start - 1] !== "\n") {
-    // might still be at file start
-    if (start !== 0) return null;
-  }
-  const bodyStart = start + needle.length;
-  const next = text.indexOf("\n## ", bodyStart);
-  const body = next >= 0 ? text.slice(bodyStart, next) : text.slice(bodyStart);
-  return `${needle}${body}`.trimEnd();
-}
-
 /**
  * Loud structural validation of a Phase-B-shaped checkpoint document.
  * Returns [] when valid; otherwise human-readable failure reasons (never silent ok).
@@ -86,6 +66,7 @@ export function validateCheckpoint(doc: string, opts?: {
   trapsText?: string;
   requireEvidenceTargets?: boolean;
   root?: string;
+  expectedGate?: RegExp;
 }): string[] {
   const errors: string[] = [];
   const root = opts?.root ?? ROOT;
@@ -96,7 +77,7 @@ export function validateCheckpoint(doc: string, opts?: {
     errors.push("forbidden <details> present");
   }
 
-  for (const h of REQUIRED_HEADINGS) {
+  for (const h of REQUIRED_HANDOFF_HEADINGS) {
     const n = countHeading(doc, h);
     if (n === 0) errors.push(`missing required heading: ${h}`);
     if (n > 1) errors.push(`duplicate heading: ${h} (count=${n})`);
@@ -114,8 +95,8 @@ export function validateCheckpoint(doc: string, opts?: {
   }
 
   const bytes = utf8Bytes(doc);
-  if (bytes > UTF8_BUDGET) {
-    errors.push(`UTF-8 size ${bytes}B > ${UTF8_BUDGET}`);
+  if (bytes > HANDOFF_UTF8_BUDGET) {
+    errors.push(`UTF-8 size ${bytes}B > ${HANDOFF_UTF8_BUDGET}`);
   }
 
   // V1: PLAN version must appear; do not invent a second review authority table.
@@ -126,14 +107,15 @@ export function validateCheckpoint(doc: string, opts?: {
     errors.push("second PLAN/review authority section present");
   }
 
-  // Unique next gate: Current action must mention Phase B uniquely as gate title.
+  // Unique next gate is configurable so the historical Phase B fixture remains
+  // immutable while the live Phase C checkpoint gets its own assertion.
   const action = extractSection(doc, "Current action");
   if (action) {
     const gateTitles = [...action.matchAll(/^###\s+(.+)$/gm)].map((m) => m[1]!.trim());
     if (gateTitles.length !== 1) {
       errors.push(`Current action gate titles must be exactly 1, got ${gateTitles.length}`);
-    } else if (!/Phase B/i.test(gateTitles[0]!)) {
-      errors.push(`unique next gate must be Phase B, got: ${gateTitles[0]}`);
+    } else if (opts?.expectedGate && !opts.expectedGate.test(gateTitles[0]!)) {
+      errors.push(`unique next gate does not match expected contract: ${gateTitles[0]}`);
     }
   }
 
@@ -185,8 +167,8 @@ export function validateCheckpoint(doc: string, opts?: {
   if (opts?.trapsText !== undefined) {
     const trapsText = opts.trapsText;
     if (trapsText.length > 0) {
-      const active = extractSection(trapsText, "활성 함정");
-      const dont = extractSection(trapsText, "하지 말 것");
+      const active = extractMarkdownSection(trapsText, "활성 함정");
+      const dont = extractMarkdownSection(trapsText, "하지 말 것");
       if (!active) errors.push("traps missing exact section: 활성 함정");
       if (!dont) errors.push("traps missing exact section: 하지 말 것");
       const block = buildTrapsBlock(trapsText);
@@ -245,7 +227,7 @@ export function assemblePhaseBState(fixture: string, trapsText?: string): string
     "[LOOM-SESSION-CONTEXT v1 · state · phase-b-fixture]",
     buildStatus(),
   ];
-  for (const h of REQUIRED_HEADINGS) {
+  for (const h of REQUIRED_HANDOFF_HEADINGS) {
     const sec = extractSection(fixture, h);
     if (sec) parts.push(sec);
   }
@@ -301,6 +283,7 @@ export function restorationAnswers(fixture: string): {
 
 const fixture = readRepo(FIXTURE_REL);
 const liveTraps = readRepo("tasks/traps.md");
+const liveHandoff = readRepo("HANDOFF.md");
 const planHead = readRepo("docs/PLAN.md").slice(0, 4000);
 
 // ---------------------------------------------------------------------------
@@ -371,8 +354,8 @@ describe("V2 — information mapping", () => {
 
 describe("V3 — size and singularity", () => {
   test("UTF-8 ≤ 8192, required headings once, no details, no history block", () => {
-    expect(utf8Bytes(fixture)).toBeLessThanOrEqual(UTF8_BUDGET);
-    for (const h of REQUIRED_HEADINGS) {
+    expect(utf8Bytes(fixture)).toBeLessThanOrEqual(HANDOFF_UTF8_BUDGET);
+    for (const h of REQUIRED_HANDOFF_HEADINGS) {
       expect(countHeading(fixture, h)).toBe(1);
     }
     expect(/(^|\n)\s*<details[\s>]/m.test(fixture)).toBe(false);
@@ -399,7 +382,7 @@ describe("V4 — state assembly HARD_CAP (status + fixture + traps)", () => {
     // V4 FIX: live buildStatus() after sentinel.
     expect(state.includes("## 세션 상태 (Loom)")).toBe(true);
     expect(state.includes(buildStatus().split("\n")[0]!)).toBe(true);
-    for (const h of REQUIRED_HEADINGS) {
+    for (const h of REQUIRED_HANDOFF_HEADINGS) {
       expect(state.includes(`## ${h}`)).toBe(true);
     }
     expect(state.includes("## 활성 함정")).toBe(true);
@@ -429,6 +412,47 @@ describe("V5 — restoration questions", () => {
     expect(a.mustNotChange).toMatch(/packages|HANDOFF|PATCH/i);
     expect(a.nowVsDeferred).toMatch(/Phase C|PATCH 1/);
     expect(a.dontRedo.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Phase C live checkpoint", () => {
+  test("live HANDOFF is the canonical checkpoint with all V2 information", () => {
+    const errs = validateCheckpoint(liveHandoff, {
+      planVersion: "0.28.0",
+      trapsText: liveTraps,
+      expectedGate: /SESSION-CONTINUITY Phase C ship/i,
+    });
+    expect(errs).toEqual([]);
+    expect(liveHandoff).toMatch(/Goal:/);
+    expect(liveHandoff).toMatch(/Expected:/);
+    expect(liveHandoff).toMatch(/Must not change:/);
+    expect(liveHandoff).toMatch(/Done when:/);
+    expect(extractSection(liveHandoff, "Owner pending")).toMatch(/Safe default/i);
+    expect(extractSection(liveHandoff, "Evidence")).toMatch(/HANDOFF_WINDOWS\.md/);
+    expect(extractSection(liveHandoff, "Don't redo")).toMatch(/e281587|herdr/i);
+    expect(extractSection(liveHandoff, "Current loop")).toMatch(/PATCH 1 waits for Phase C ship/i);
+    expect(extractSection(liveHandoff, "Current action")).toMatch(/git-writable session/i);
+    expect(extractSection(liveHandoff, "Blockers")).toMatch(/index\.lock|git-writable session/i);
+  });
+
+  test("state injects all canonical sections and traps without truncation", () => {
+    const state = buildStateContext(liveHandoff, liveTraps);
+    expect(state.length).toBeLessThanOrEqual(HARD_CAP);
+    expect(utf8Bytes(state)).toBeGreaterThan(0);
+    expect(truncateContext(state)).toBe(state);
+    expect(state.includes("⚠ [LOOM-SESSION-CONTEXT]")).toBe(false);
+    expect(state.includes("…[truncated")).toBe(false);
+    for (const heading of REQUIRED_HANDOFF_HEADINGS) {
+      expect(state.includes(`## ${heading}`)).toBe(true);
+    }
+    expect(state.includes("## 활성 함정")).toBe(true);
+    expect(state.includes("## 하지 말 것")).toBe(true);
+  });
+
+  test("renamed Current action is loud in checkpoint validation", () => {
+    const renamed = liveHandoff.replace("## Current action", "## Current task");
+    const errs = validateCheckpoint(renamed, { trapsText: liveTraps });
+    expect(errs.some((e) => e.includes("missing required heading: Current action"))).toBe(true);
   });
 });
 
@@ -576,8 +600,8 @@ describe("V6 — drift/failure injection (loud reject, no live mutation)", () =>
   });
 });
 
-describe("Phase B live handoff:lint expected-red lock", () => {
-  test("bun run handoff:lint exits 1 with top-80 > 8192 capacity class", async () => {
+describe("Phase C live handoff:lint", () => {
+  test("bun run handoff:lint exits 0 for the whole-file D1 budget", async () => {
     const proc = Bun.spawn(["bun", "run", "handoff:lint"], {
       cwd: ROOT,
       stdout: "pipe",
@@ -589,10 +613,9 @@ describe("Phase B live handoff:lint expected-red lock", () => {
       new Response(proc.stderr).text(),
     ]);
     const out = `${stdout}\n${stderr}`;
-    // Phase B treats this red as expected success of the lock, not failure of the wave.
-    expect(code).toBe(1);
-    expect(out).toMatch(/HANDOFF top-80\s*=\s*\d+B\s*>\s*8192/);
-    expect(out).toMatch(/HANDOFF_ARCHIVE\.md|규칙 L15/);
+    expect(code).toBe(0);
+    expect(out).not.toMatch(/HANDOFF full\s*=|HANDOFF top-80|⚠/);
+    expect(utf8Bytes(liveHandoff)).toBeLessThanOrEqual(HANDOFF_UTF8_BUDGET);
   });
 });
 

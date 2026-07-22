@@ -14,6 +14,7 @@ import {
   stripDetailsBlocks,
   truncateContext,
 } from "./session-context.ts";
+import { REQUIRED_HANDOFF_HEADINGS } from "./handoff-headings.ts";
 
 function sha256(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
@@ -154,7 +155,7 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
       "</details>",
       "resume-after-details",
       "",
-      "## ⭐ Current action (read first)",
+      "## Current action",
       "action-visible-line",
       "<details open>",
       "SYNTH_ACTION_DETAILS_HIDDEN",
@@ -182,7 +183,7 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
       "</details>",
       "KEEP_RESUME_TAIL",
       "",
-      "## ⭐ Current action (read first)",
+      "## Current action",
       "KEEP_ACTION_OUTER",
       "<details>",
       "drop-action",
@@ -205,7 +206,7 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
       "plain-resume-alpha",
       "plain-resume-beta",
       "",
-      "## ⭐ Current action (read first)",
+      "## Current action",
       "plain-action-gamma",
     ].join("\n");
 
@@ -213,7 +214,7 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     expect(out.includes("## One-line resume")).toBe(true);
     expect(out.includes("plain-resume-alpha")).toBe(true);
     expect(out.includes("plain-resume-beta")).toBe(true);
-    expect(out.includes("## ⭐ Current action (read first)")).toBe(true);
+    expect(out.includes("## Current action")).toBe(true);
     expect(out.includes("plain-action-gamma")).toBe(true);
     expect(out.startsWith("⚠")).toBe(false);
   });
@@ -226,13 +227,46 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
       "hidden",
       "</details>",
       "",
-      "## ⭐ Current action (read first)",
+      "## Current action",
       "y",
     ].join("\n");
 
     const out = buildStateContext(handoff);
     expect(out.includes("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(true);
     expect(out.indexOf("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(0);
+  });
+
+  test("canonical nine-section HANDOFF injects every required section in order", () => {
+    const handoff = [
+      "# HANDOFF — Loom",
+      "",
+      ...REQUIRED_HANDOFF_HEADINGS.flatMap((heading) => [
+        `## ${heading}`,
+        `${heading}-visible`,
+        "",
+      ]),
+    ].join("\n");
+    const out = buildStateContext(handoff, "");
+    let previous = -1;
+    for (const heading of REQUIRED_HANDOFF_HEADINGS) {
+      const index = out.indexOf(`## ${heading}`);
+      expect(index).toBeGreaterThan(previous);
+      expect(out.includes(`${heading}-visible`)).toBe(true);
+      previous = index;
+    }
+    expect(out.includes("required HANDOFF sections missing")).toBe(false);
+    expect(truncateContext(out)).toBe(out);
+  });
+
+  test("renamed required heading is visible in the fail-open state payload", () => {
+    const handoff = REQUIRED_HANDOFF_HEADINGS.map((heading) =>
+      heading === "Current action"
+        ? "## Current task\nrenamed"
+        : `## ${heading}\n${heading}`,
+    ).join("\n\n");
+    const out = buildStateContext(handoff, "");
+    expect(out).toContain("required HANDOFF sections missing: Current action");
+    expect(out).not.toContain("## Current action\n");
   });
 });
 
@@ -285,7 +319,7 @@ describe("tasks/traps.md injection (활성 함정 · 하지 말 것)", () => {
       "## One-line resume",
       "resume-line",
       "",
-      "## ⭐ Current action (read first)",
+      "## Current action",
       "action-line",
     ].join("\n");
     const out = buildStateContext(handoff, "");
