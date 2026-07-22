@@ -5,6 +5,7 @@
  * bridge CR nudge local to send_keys, fake-herdr 0.7.5 model).
  */
 import { describe, expect, test } from "bun:test";
+import * as bridgeRuntimeModule from "./bridge-runtime";
 import * as herdrClientModule from "./herdr-client";
 import { HERDR_PROTOCOL_EXPECTED, HerdrClient } from "./herdr-client";
 
@@ -149,6 +150,31 @@ describe("protocol-17 additive event compatibility (green guard)", () => {
 });
 
 describe("PLAN 0.28.1 protocol-17 adapter", () => {
+  test("card agent targets preserve complete collision-free identity", () => {
+    const build = (bridgeRuntimeModule as Record<string, unknown>).buildCardAgentTarget;
+    expect(typeof build).toBe("function");
+    if (typeof build !== "function") return;
+    const target = build as (cardId: string, seq: number) => string | null;
+
+    const first = target("task_a023600000000009", 1);
+    expect(first).toBe("loom-task_a023600000000009-1");
+
+    const second = target("task_a02360000000000a", 1);
+    expect(second).toBe("loom-task_a02360000000000a-1");
+    expect(second).not.toBe(first);
+
+    for (const seq of [0, 1, 9, 10, 99999]) {
+      expect(target("task_a023600000000009", seq)).toBe(`loom-task_a023600000000009-${seq}`);
+    }
+
+    expect(target("task_A023600000000009", 1)).toBeNull();
+    expect(target("task_a023600000000009000000000000", 1)).toBeNull();
+    expect(target("task_a023600000000009", 100000)).toBeNull();
+    expect(target("task_a023600000000009", -1)).toBeNull();
+    expect(target("task_a023600000000009", 1.5)).toBeNull();
+    expect(target("task_a023600000000009", Number.MAX_SAFE_INTEGER + 1)).toBeNull();
+  });
+
   test("client protocol cutover is 17", () => {
     expect(HERDR_PROTOCOL_EXPECTED).toBe(17);
   });

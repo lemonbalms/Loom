@@ -2,37 +2,37 @@
  * PLAN 0.22.0 bridge tests — fake herdr + in-process relay.
  * Covers M-1/M-2, at-most-once paths, fail-fast, peerSecret rejoin durability hooks.
  */
-import { describe, expect, test, afterAll, beforeAll } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { RelayServer } from "@loom/relay";
+import { join } from "node:path";
 import {
+  buildDispatchBody,
   CARD_CONTRACT_VERSION,
   CARD_DISPATCH_LABEL,
   CARD_RESULT_LABEL,
-  buildDispatchBody,
   serializeCardAttachment,
 } from "@loom/protocol";
-import { RelayClient } from "./relay-client";
-import { HerdrClient } from "./herdr-client";
-import { startFakeHerdr } from "./fake-herdr";
-import { startBridgeRuntime } from "./bridge-runtime";
+import { RelayServer } from "@loom/relay";
 import {
-  isAuthorizedDispatcher,
-  resolveAgentArgv,
-  defaultBridgeConfig,
-  loadBridgeConfig,
+  type BridgeConfig,
   bridgeConfigDir,
   bridgeConfigPath,
-  type BridgeConfig,
+  defaultBridgeConfig,
+  isAuthorizedDispatcher,
+  loadBridgeConfig,
+  resolveAgentArgv,
 } from "./bridge-config";
+import { startBridgeRuntime } from "./bridge-runtime";
 import { applyCardResult } from "./card-ops";
+import { startFakeHerdr } from "./fake-herdr";
+import { HerdrClient } from "./herdr-client";
+import { RelayClient } from "./relay-client";
 import {
+  type FableSession,
   loadSession,
   resetStateHomeDirCache,
   setActiveProfile,
-  type FableSession,
 } from "./session-store";
 import { addTask, loadTaskBoard, updateTask } from "./task-board";
 
@@ -84,9 +84,7 @@ describe("M-1 dispatcher allowlist", () => {
       agentArgv: { claude: ["bash"] },
     };
     expect(resolveAgentArgv(cfg, "claude")).toBeNull();
-    expect(resolveAgentArgv(defaultBridgeConfig(), "claude")).toEqual([
-      "claude",
-    ]);
+    expect(resolveAgentArgv(defaultBridgeConfig(), "claude")).toEqual(["claude"]);
   });
 
   test("defaultBridgeConfig has no codex/grok argv (fail-closed until registered)", () => {
@@ -115,7 +113,10 @@ describe("M-1 dispatcher allowlist", () => {
 });
 
 describe("bridge-config agentArgv sanitize (R27 L-1)", () => {
-  const dir = join(tmpdir(), `loom-bridge-config-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const dir = join(
+    tmpdir(),
+    `loom-bridge-config-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
   const profile = `cfg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   beforeAll(() => {
@@ -153,11 +154,7 @@ describe("bridge-config agentArgv sanitize (R27 L-1)", () => {
 
   test("empty array agentArgv entry is dropped", () => {
     const p = `${profile}-empty`;
-    writeFileSync(
-      bridgeConfigPath(p),
-      JSON.stringify({ agentArgv: { codex: [] } }),
-      "utf8",
-    );
+    writeFileSync(bridgeConfigPath(p), JSON.stringify({ agentArgv: { codex: [] } }), "utf8");
     expect(resolveAgentArgv(loadBridgeConfig(p), "codex")).toBeNull();
   });
 
@@ -173,11 +170,7 @@ describe("bridge-config agentArgv sanitize (R27 L-1)", () => {
 
   test("well-formed agentArgv merges correctly", () => {
     const p = `${profile}-ok`;
-    writeFileSync(
-      bridgeConfigPath(p),
-      JSON.stringify({ agentArgv: { codex: ["codex"] } }),
-      "utf8",
-    );
+    writeFileSync(bridgeConfigPath(p), JSON.stringify({ agentArgv: { codex: ["codex"] } }), "utf8");
     expect(resolveAgentArgv(loadBridgeConfig(p), "codex")).toEqual(["codex"]);
   });
 });
@@ -263,9 +256,7 @@ describe("apply_card_result authority fence (PATCH 1 M1)", () => {
     expect(good.ok).toBe(true);
     if (good.ok) {
       expect(good.status).toBe("blocked");
-      expect(good.task.notes).toContain(
-        "legacy_remote_done_requires_verification",
-      );
+      expect(good.task.notes).toContain("legacy_remote_done_requires_verification");
     }
   });
 
@@ -278,8 +269,14 @@ describe("apply_card_result authority fence (PATCH 1 M1)", () => {
     });
     const forged = applyCardResult({
       resultJson: JSON.stringify({
-        v: 1, cardId: terminal.id, status: "done", node: "node/evil", seq: 9,
-        output: "forged", summary: "forged", finishedAt,
+        v: 1,
+        cardId: terminal.id,
+        status: "done",
+        node: "node/evil",
+        seq: 9,
+        output: "forged",
+        summary: "forged",
+        finishedAt,
       }),
     });
     expect(forged.ok).toBe(false);
@@ -287,21 +284,35 @@ describe("apply_card_result authority fence (PATCH 1 M1)", () => {
 
     const terminalReplay = applyCardResult({
       resultJson: JSON.stringify({
-        v: 1, cardId: terminal.id, status: "failed", node: "node/wsl-1", seq: 9,
-        output: "late", summary: "late", finishedAt,
+        v: 1,
+        cardId: terminal.id,
+        status: "failed",
+        node: "node/wsl-1",
+        seq: 9,
+        output: "late",
+        summary: "late",
+        finishedAt,
       }),
     });
     expect(terminalReplay.ok).toBe(true);
     if (terminalReplay.ok) expect(terminalReplay.status).toBe("done");
 
     const stale = addTask({
-      title: "stale-before-authority-mapping", assignee: "node/wsl-1",
-      status: "doing", notes: "seed last_seq=5",
+      title: "stale-before-authority-mapping",
+      assignee: "node/wsl-1",
+      status: "doing",
+      notes: "seed last_seq=5",
     });
     const staleReplay = applyCardResult({
       resultJson: JSON.stringify({
-        v: 1, cardId: stale.id, status: "done", node: "node/wsl-1", seq: 5,
-        output: "stale", summary: "stale", finishedAt,
+        v: 1,
+        cardId: stale.id,
+        status: "done",
+        node: "node/wsl-1",
+        seq: 5,
+        output: "stale",
+        summary: "stale",
+        finishedAt,
       }),
     });
     expect(staleReplay.ok).toBe(true);
@@ -560,20 +571,25 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     }
   });
 
-  async function exactCardResults(cardId: string): Promise<{
-    cardId?: string;
-    status?: string;
-    reason?: string;
-  }[]> {
+  async function exactCardResults(cardId: string): Promise<
+    {
+      cardId?: string;
+      status?: string;
+      reason?: string;
+    }[]
+  > {
     const inbox = await tower!.listInbox();
     return inbox.flatMap((entry) =>
       (entry.handoff.attachments ?? [])
         .filter((attachment) => attachment.label === CARD_RESULT_LABEL)
-        .map((attachment) => JSON.parse(attachment.content) as {
-          cardId?: string;
-          status?: string;
-          reason?: string;
-        })
+        .map(
+          (attachment) =>
+            JSON.parse(attachment.content) as {
+              cardId?: string;
+              status?: string;
+              reason?: string;
+            },
+        )
         .filter((result) => result.cardId === cardId),
     );
   }
@@ -608,9 +624,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       await Bun.sleep(100);
       const inbox = await tower!.listInbox();
       const hit = inbox.find((e) =>
-        e.handoff.attachments?.some(
-          (a) => a.label === CARD_RESULT_LABEL,
-        ),
+        e.handoff.attachments?.some((a) => a.label === CARD_RESULT_LABEL),
       );
       if (hit) {
         found = true;
@@ -636,9 +650,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     // Protocol 17: primary inject is atomic agent.prompt (no dual bare Enter)
     const prompts = fake.calls.filter((c) => c.method === "agent.prompt");
     const promptSend = prompts.find(
-      (s) =>
-        typeof s.params.text === "string" &&
-        String(s.params.text).includes("write hello"),
+      (s) => typeof s.params.text === "string" && String(s.params.text).includes("write hello"),
     );
     expect(promptSend).toBeTruthy();
 
@@ -646,13 +658,12 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     // unique agent.start name — pane_id is unsafe for Claude agent.prompt.
     const startCall = fake.calls.find(
       (c) =>
-        c.method === "agent.start" &&
-        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+        c.method === "agent.start" && String(c.params.name ?? "").includes(cardId.slice(0, 20)),
     );
     expect(startCall).toBeTruthy();
     const startName = String(startCall!.params.name);
-    // Generated form: loom-${cardId.slice(0,20)}-${seq} (seq=1 on first attempt)
-    expect(startName).toBe(`loom-${cardId.slice(0, 20)}-1`);
+    // Generated form: loom-${cardId}-${seq} (seq=1 on first attempt)
+    expect(startName).toBe(`loom-${cardId}-1`);
     expect(promptSend!.params.target).toBe(startName);
     expect(promptSend!.params.target).not.toBe(startCall!.params.pane_id);
   });
@@ -692,13 +703,15 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           node: "node/completion-terminal-race",
         }),
         mode: "task",
-        attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, {
-          v: CARD_CONTRACT_VERSION,
-          cardId,
-          sourceRoomId: session.roomId,
-          prompt: "completion terminal race",
-          agentKind: "claude",
-        })],
+        attachments: [
+          serializeCardAttachment(CARD_DISPATCH_LABEL, {
+            v: CARD_CONTRACT_VERSION,
+            cardId,
+            sourceRoomId: session.roomId,
+            prompt: "completion terminal race",
+            agentKind: "claude",
+          }),
+        ],
       });
       let paneId = "";
       for (let i = 0; i < 40; i++) {
@@ -765,8 +778,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       // embeds the card id (unique per attempt).
       starts = fake.calls.filter(
         (c) =>
-          c.method === "agent.start" &&
-          String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+          c.method === "agent.start" && String(c.params.name ?? "").includes(cardId.slice(0, 20)),
       );
       if (starts.length >= 2) break;
     }
@@ -808,8 +820,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     expect(envAllocCalls(fake.calls, "LOOM_CARD", cardId).length).toBe(0);
     const starts = fake.calls.filter(
       (c) =>
-        c.method === "agent.start" &&
-        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+        c.method === "agent.start" && String(c.params.name ?? "").includes(cardId.slice(0, 20)),
     );
     expect(starts.length).toBe(0);
     evil.close();
@@ -842,9 +853,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       const inbox = await tower!.listInbox();
       const hit = inbox.find((e) =>
         e.handoff.attachments?.some(
-          (a) =>
-            a.label === CARD_RESULT_LABEL &&
-            a.content.includes(cardId),
+          (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
         ),
       );
       if (hit) {
@@ -869,8 +878,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     expect(envAllocCalls(fake.calls, "LOOM_CARD", cardId).length).toBe(0);
     const starts = fake.calls.filter(
       (c) =>
-        c.method === "agent.start" &&
-        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+        c.method === "agent.start" && String(c.params.name ?? "").includes(cardId.slice(0, 20)),
     );
     expect(starts.length).toBe(0);
 
@@ -879,6 +887,50 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.cardId).toBe(cardId);
     expect(results[0]!.reason).toBe("agent_kind_not_allowed");
+  });
+
+  test("unrepresentable card agent target fails before herdr traffic", async () => {
+    // Lowercase + 28 hex after task_; full exact name exceeds 32 characters (herdr limit).
+    const cardId = "task_a023600000000009000000000000";
+    const callsBefore = fake.calls.length;
+    const payload = {
+      v: CARD_CONTRACT_VERSION,
+      cardId,
+      sourceRoomId: session.roomId,
+      prompt: "unrepresentable name",
+      agentKind: "claude" as const,
+    };
+    await tower!.handoff({
+      to: "@node/wsl-1",
+      body: buildDispatchBody({
+        title: "unrepresentable agent name",
+        cardId,
+        node: "node/wsl-1",
+      }),
+      mode: "task",
+      attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, payload)],
+    });
+
+    let results: Awaited<ReturnType<typeof exactCardResults>> = [];
+    for (let i = 0; i < 40; i++) {
+      await Bun.sleep(100);
+      results = await exactCardResults(cardId);
+      if (results.length > 0) break;
+    }
+    expect(results).toHaveLength(1);
+    expect(results[0]!.status).toBe("failed");
+    expect(results[0]!.reason).toBe("agent_name_unrepresentable");
+
+    const herdrTraffic = new Set([
+      "pane.list",
+      "tab.create",
+      "pane.split",
+      "agent.start",
+      "agent.prompt",
+      "pane.send_keys",
+    ]);
+    const after = fake.calls.slice(callsBefore);
+    expect(after.filter((c) => herdrTraffic.has(c.method))).toHaveLength(0);
   });
 
   test("④ green control: spawn failure emits exactly one relay receipt", async () => {
@@ -922,13 +974,15 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
           node: "node/spawn-failure",
         }),
         mode: "task",
-        attachments: [serializeCardAttachment(CARD_DISPATCH_LABEL, {
-          v: CARD_CONTRACT_VERSION,
-          cardId,
-          sourceRoomId: session.roomId,
-          prompt: "spawn should fail",
-          agentKind: "claude",
-        })],
+        attachments: [
+          serializeCardAttachment(CARD_DISPATCH_LABEL, {
+            v: CARD_CONTRACT_VERSION,
+            cardId,
+            sourceRoomId: session.roomId,
+            prompt: "spawn should fail",
+            agentKind: "claude",
+          }),
+        ],
       });
       let results: { cardId?: string; status?: string; reason?: string }[] = [];
       for (let i = 0; i < 40; i++) {
@@ -1021,9 +1075,7 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
       if (
         inbox.some((e) =>
           e.handoff.attachments?.some(
-            (a) =>
-              a.label === CARD_RESULT_LABEL &&
-              a.content.includes(cardId),
+            (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
           ),
         )
       ) {
@@ -1217,7 +1269,7 @@ describe("bridge runtime codex argv registered (0.23.2 R27)", () => {
     }
   });
 
-  test("registered codex agentKind spawns with kind \"codex\"", async () => {
+  test('registered codex agentKind spawns with kind "codex"', async () => {
     const cardId = "task_c0de0000aabb0011";
     const payload = {
       v: CARD_CONTRACT_VERSION,
@@ -1243,8 +1295,7 @@ describe("bridge runtime codex argv registered (0.23.2 R27)", () => {
       // Protocol 17: LOOM_CARD on pane alloc; agent.start carries kind/name/pane_id
       starts = fake3.calls.filter(
         (c) =>
-          c.method === "agent.start" &&
-          String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+          c.method === "agent.start" && String(c.params.name ?? "").includes(cardId.slice(0, 20)),
       );
       if (starts.length >= 1) break;
     }

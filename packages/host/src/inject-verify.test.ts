@@ -2,30 +2,26 @@
  * PLAN 0.23.5 — inject verify loop 3-way branch (tests ①–⑬).
  * Fake herdr composer hooks + short real timers (no Bun fake-timer — R29 F-4).
  */
-import { describe, expect, test, afterAll, beforeAll } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { RelayServer } from "@loom/relay";
+import { join } from "node:path";
 import {
+  buildDispatchBody,
   CARD_CONTRACT_VERSION,
   CARD_DISPATCH_LABEL,
   CARD_RESULT_LABEL,
-  buildDispatchBody,
   serializeCardAttachment,
   wrapDispatchedPrompt,
 } from "@loom/protocol";
-import { RelayClient } from "./relay-client";
-import { HerdrClient } from "./herdr-client";
-import { startFakeHerdr, type FakeHerdr } from "./fake-herdr";
-import { startBridgeRuntime, type BridgeRuntime } from "./bridge-runtime";
+import { RelayServer } from "@loom/relay";
 import type { BridgeConfig } from "./bridge-config";
-import {
-  resetStateHomeDirCache,
-  setActiveProfile,
-  type FableSession,
-} from "./session-store";
-import { convOpen, convSendTurn, convAwait, convClose } from "./conv-ops";
+import { type BridgeRuntime, startBridgeRuntime } from "./bridge-runtime";
+import { convAwait, convClose, convOpen, convSendTurn } from "./conv-ops";
+import { type FakeHerdr, startFakeHerdr } from "./fake-herdr";
+import { HerdrClient } from "./herdr-client";
+import { RelayClient } from "./relay-client";
+import { type FableSession, resetStateHomeDirCache, setActiveProfile } from "./session-store";
 
 type CardResult = {
   status?: string;
@@ -54,16 +50,12 @@ function promptInjects(
   text?: string,
 ) {
   return calls.filter(
-    (c) =>
-      c.method === "agent.prompt" &&
-      (text === undefined || c.params.text === text),
+    (c) => c.method === "agent.prompt" && (text === undefined || c.params.text === text),
   );
 }
 
 function verifyPaneReads(fake: FakeHerdr) {
-  return fake.calls.filter(
-    (c) => c.method === "pane.read" && c.params.lines === 60,
-  );
+  return fake.calls.filter((c) => c.method === "pane.read" && c.params.lines === 60);
 }
 
 async function waitFor(
@@ -101,10 +93,7 @@ function countCardResults(
   const matches: CardResult[] = [];
   for (const e of towerInbox) {
     for (const att of e.handoff.attachments ?? []) {
-      if (
-        att.label === CARD_RESULT_LABEL &&
-        att.content.includes(cardId)
-      ) {
+      if (att.label === CARD_RESULT_LABEL && att.content.includes(cardId)) {
         matches.push(JSON.parse(att.content) as CardResult);
       }
     }
@@ -254,10 +243,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     setActiveProfile(null);
   }
 
-  async function dispatchCard(
-    cardId: string,
-    prompt: string,
-  ): Promise<void> {
+  async function dispatchCard(cardId: string, prompt: string): Promise<void> {
     await tower!.handoff({
       to: "@node/wsl-1",
       body: buildDispatchBody({ title: prompt.slice(0, 20), cardId, node: "node/wsl-1" }),
@@ -305,18 +291,19 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     await dispatchCard(cardId, promptBody);
 
     // Wait for reinject: second agent.prompt with same cached string
-    const reinjected = await waitFor(() => {
-      return promptInjects(fake.calls.slice(callsBefore), expectedPrompt).length >= 2;
-    }, { timeoutMs: 10_000 });
+    const reinjected = await waitFor(
+      () => {
+        return promptInjects(fake.calls.slice(callsBefore), expectedPrompt).length >= 2;
+      },
+      { timeoutMs: 10_000 },
+    );
     expect(reinjected).toBe(true);
 
     // Protocol 17: reinject is atomic agent.prompt only (CR nudge is a later
     // verify attempt via send_keys if still unconfirmed — not dual-send).
     const slice = fake.calls.slice(callsBefore);
     const promptIdxs = slice
-      .map((c, i) =>
-        c.method === "agent.prompt" && c.params.text === expectedPrompt ? i : -1,
-      )
+      .map((c, i) => (c.method === "agent.prompt" && c.params.text === expectedPrompt ? i : -1))
       .filter((i) => i >= 0);
     expect(promptIdxs.length).toBeGreaterThanOrEqual(2);
 
@@ -324,12 +311,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     // agent.start name (not pane_id). Pane IDs remain for pane.read/events/close.
     const startCall = slice.find(
       (c) =>
-        c.method === "agent.start" &&
-        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+        c.method === "agent.start" && String(c.params.name ?? "").includes(cardId.slice(0, 20)),
     );
     expect(startCall).toBeTruthy();
     const startName = String(startCall!.params.name);
-    expect(startName).toBe(`loom-${cardId.slice(0, 20)}-1`);
+    expect(startName).toBe(`loom-${cardId}-1`);
     const promptSends = promptInjects(slice, expectedPrompt);
     expect(promptSends.length).toBeGreaterThanOrEqual(2);
     for (const p of promptSends) {
@@ -389,12 +375,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     // Live gate: prompt + CR nudge targets = unique agent.start name (not pane_id).
     const startCall = slice.find(
       (c) =>
-        c.method === "agent.start" &&
-        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+        c.method === "agent.start" && String(c.params.name ?? "").includes(cardId.slice(0, 20)),
     );
     expect(startCall).toBeTruthy();
     const startName = String(startCall!.params.name);
-    expect(startName).toBe(`loom-${cardId.slice(0, 20)}-1`);
+    expect(startName).toBe(`loom-${cardId}-1`);
     expect(promptSends[0]!.params.target).toBe(startName);
     expect(promptSends[0]!.params.target).not.toBe(startCall!.params.pane_id);
     const crAfter = slice.filter(isCrSendKeys);
@@ -431,15 +416,11 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(result.reason ?? result.summary ?? "").toMatch(/inject_unconfirmed/);
 
     // Pane preserved positive (not inverted to zero closes alone)
-    const paneId =
-      fake.listPaneIds().find((p) => !panesBefore.has(p)) ??
-      fake.listPaneIds().at(-1);
+    const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p)) ?? fake.listPaneIds().at(-1);
     expect(paneId).toBeTruthy();
     await Bun.sleep(200);
     expect(fake.listPaneIds()).toContain(paneId!);
-    const closes = fake.calls
-      .slice(callsBefore)
-      .filter((c) => c.method === "pane.close");
+    const closes = fake.calls.slice(callsBefore).filter((c) => c.method === "pane.close");
     expect(closes.length).toBe(0);
 
     // F-5: eventsPrune(paneId) ran — per-pane sub gone, count back to baseline
@@ -500,15 +481,12 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(sent.ok).toBe(true);
 
     const turn2Injected = await waitFor(
-      () =>
-        promptInjects(fake.calls.slice(callsBeforeTurn2), turn2Prompt).length >= 1,
+      () => promptInjects(fake.calls.slice(callsBeforeTurn2), turn2Prompt).length >= 1,
       { timeoutMs: 10_000 },
     );
     expect(turn2Injected).toBe(true);
     // Same convFlight pane — no new agent.start
-    const newStarts = fake.calls
-      .slice(callsBeforeTurn2)
-      .filter((c) => c.method === "agent.start");
+    const newStarts = fake.calls.slice(callsBeforeTurn2).filter((c) => c.method === "agent.start");
     expect(newStarts.length).toBe(0);
 
     // Recover turn2 so close is clean
@@ -633,10 +611,7 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     await dispatchCard(cardId, promptBody);
 
     const injected = await waitFor(
-      () =>
-        fake.calls
-          .slice(callsBefore)
-          .some((c) => c.method === "agent.start"),
+      () => fake.calls.slice(callsBefore).some((c) => c.method === "agent.start"),
       { timeoutMs: 8_000 },
     );
     expect(injected).toBe(true);
@@ -652,16 +627,13 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     // pane_closed fail-visible from onCardHerdrEvent — not inject_unconfirmed
     expect(result?.status).toBe("failed");
     expect(result?.reason ?? result?.summary ?? "").toMatch(/pane_closed/);
-    expect(result?.reason ?? result?.summary ?? "").not.toMatch(
-      /inject_unconfirmed/,
-    );
+    expect(result?.reason ?? result?.summary ?? "").not.toMatch(/inject_unconfirmed/);
   }, 20_000);
 
   test("⑨ probe whitespace normalize — TUI-wrapped prompt still hits", async () => {
     const cardId = "task_a999000000000009";
     // Long unique tail so last-48 of normalized form is distinctive
-    const promptBody =
-      "ws-normalize-probe-aaaaaaaaaaaaaaaaaaaaaaaa-TAILEND99";
+    const promptBody = "ws-normalize-probe-aaaaaaaaaaaaaaaaaaaaaaaa-TAILEND99";
     const expectedPrompt = wrapDispatchedPrompt(promptBody);
     const callsBefore = fake.calls.length;
 
@@ -672,10 +644,9 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
     await dispatchCard(cardId, promptBody);
 
-    await waitFor(
-      () => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2,
-      { timeoutMs: 10_000 },
-    );
+    await waitFor(() => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2, {
+      timeoutMs: 10_000,
+    });
 
     const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
     // hit → no reinject
@@ -701,10 +672,9 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     if (!opened.ok) return;
 
     // accept is sent before agent.start completes — wait for pane mapping
-    const paneReady = await waitFor(
-      () => Boolean(fake.paneIdForConv(opened.convId)),
-      { timeoutMs: 10_000 },
-    );
+    const paneReady = await waitFor(() => Boolean(fake.paneIdForConv(opened.convId)), {
+      timeoutMs: 10_000,
+    });
     expect(paneReady).toBe(true);
     const paneId = fake.paneIdForConv(opened.convId)!;
 
@@ -737,9 +707,12 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
     expect(sent.ok).toBe(true);
 
-    const reinjected = await waitFor(() => {
-      return promptInjects(fake.calls.slice(callsBefore), turn2Prompt).length >= 2;
-    }, { timeoutMs: 12_000 });
+    const reinjected = await waitFor(
+      () => {
+        return promptInjects(fake.calls.slice(callsBefore), turn2Prompt).length >= 2;
+      },
+      { timeoutMs: 12_000 },
+    );
     expect(reinjected).toBe(true);
 
     // Finish turn 2 cleanly
@@ -811,10 +784,9 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
       await dispatchCard(cardId, promptBody);
 
-      await waitFor(
-        () => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2,
-        { timeoutMs: 10_000 },
-      );
+      await waitFor(() => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2, {
+        timeoutMs: 10_000,
+      });
 
       const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
       expect(promptSends.length).toBe(1);
@@ -836,10 +808,9 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
       await dispatchCard(cardId, promptBody);
 
-      await waitFor(
-        () => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2,
-        { timeoutMs: 10_000 },
-      );
+      await waitFor(() => fake.calls.slice(callsBefore).filter(isCrSendKeys).length >= 2, {
+        timeoutMs: 10_000,
+      });
 
       const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
       // wrap-tolerant placeholder hit → CR branch, no reinject
@@ -865,23 +836,25 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(opened.ok).toBe(true);
     if (!opened.ok) return;
 
-    const paneReady = await waitFor(
-      () => Boolean(fake.paneIdForConv(opened.convId)),
-      { timeoutMs: 10_000 },
-    );
+    const paneReady = await waitFor(() => Boolean(fake.paneIdForConv(opened.convId)), {
+      timeoutMs: 10_000,
+    });
     expect(paneReady).toBe(true);
     const paneId = fake.paneIdForConv(opened.convId)!;
 
     // Wait for turn1 reinject (goal wrap + optional convention suffix)
-    const turn1Reinject = await waitFor(() => {
-      const prompts = fake.calls.filter(
-        (c) =>
-          c.method === "agent.prompt" &&
-          typeof c.params.text === "string" &&
-          (c.params.text as string).includes("m2-reset-turn1-goal-CCCC"),
-      );
-      return prompts.length >= 2;
-    }, { timeoutMs: 12_000 });
+    const turn1Reinject = await waitFor(
+      () => {
+        const prompts = fake.calls.filter(
+          (c) =>
+            c.method === "agent.prompt" &&
+            typeof c.params.text === "string" &&
+            (c.params.text as string).includes("m2-reset-turn1-goal-CCCC"),
+        );
+        return prompts.length >= 2;
+      },
+      { timeoutMs: 12_000 },
+    );
     expect(turn1Reinject).toBe(true);
 
     // Recover turn1
@@ -911,9 +884,12 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
     expect(sent.ok).toBe(true);
 
-    const turn2Reinject = await waitFor(() => {
-      return promptInjects(fake.calls.slice(callsBefore), turn2Prompt).length >= 2;
-    }, { timeoutMs: 12_000 });
+    const turn2Reinject = await waitFor(
+      () => {
+        return promptInjects(fake.calls.slice(callsBefore), turn2Prompt).length >= 2;
+      },
+      { timeoutMs: 12_000 },
+    );
     expect(turn2Reinject).toBe(true);
 
     fake.setDiscardInjects(false);
@@ -931,4 +907,3 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     useWorkerSession();
   }, 45_000);
 });
-
