@@ -17,10 +17,11 @@ export type BridgeConfig = {
   /** Expected herdr protocol (default 16). */
   herdrProtocol?: number;
   /**
-   * PLAN 0.23.8: worker pane cleanup after confident completion / conv close.
-   * `"auto"` (default) = best-effort pane.close on eligible paths.
-   * `"keep"` = disable *new* auto-closes (failure-path closes still run).
-   * Load sanitizes unknown values to `"auto"`.
+   * PLAN 0.23.8 / 0.28.0: worker pane cleanup policy.
+   * `"auto"` (default) = best-effort pane.close on **explicit conv close** only.
+   * `"keep"` = disable that conv auto-close.
+   * Card worker paths never auto-close (PANE-DEATH U3) — this flag does not
+   * control card panes. Load sanitizes unknown values to `"auto"`.
    */
   paneCleanup?: "auto" | "keep";
   /**

@@ -48,6 +48,16 @@ export type QuarantineUnresolved = {
   reEscalateCount: number;
 };
 
+/** PLAN 0.28.0 M3: operator ack result (explicit key or single-match inference). */
+export type QuarantineAckResult =
+  | { ok: true; key: QuarantineKey }
+  | {
+      ok: false;
+      error: "not_found" | "ambiguous" | "append_failed";
+      message: string;
+      matches?: QuarantineKey[];
+    };
+
 let appendFailCount = 0;
 let tornLineCount = 0;
 
@@ -125,12 +135,12 @@ export function foldQuarantineLines(
         reason: rec.reason,
         reEscalateCount: 0,
       });
-    } else if (
-      rec.kind === "ack" ||
-      rec.kind === "auto_resolve" ||
-      rec.kind === "process_exit"
-    ) {
+    } else if (rec.kind === "ack" || rec.kind === "auto_resolve") {
+      // Operator ack / auto-resolve fold closes the unresolved entry.
       open.delete(id);
+    } else if (rec.kind === "process_exit") {
+      // PLAN 0.28.0 / U6: process_exit is observation only — do not resolve.
+      // Restart replay must restore unresolved counts after a clean exit.
     } else if (rec.kind === "re_escalate") {
       const cur = open.get(id);
       if (cur) cur.reEscalateCount += 1;
@@ -312,6 +322,80 @@ export class QuarantineStore {
     this.clearTimer(id);
     this.unresolved.delete(id);
     return true;
+  }
+
+  /**
+   * PLAN 0.28.0 M3 operator ack with optional key selector.
+   * - explicit key → not_found if absent; append_failed if present but durable
+   *   ack append/fsync fails; success otherwise
+   * - no key → match (cardId, dispatchHandoffId); ack only if exactly one
+   * Clears re-escalate timer + in-memory map on success (same as ack()).
+   */
+  ackOperator(args: {
+    cardId: string;
+    dispatchHandoffId: string;
+    key?: QuarantineKey;
+  }): QuarantineAckResult {
+    if (args.key) {
+      // Distinguish absent entry vs durable append failure (ack() collapses both to false).
+      const id = keyId(args.cardId, args.dispatchHandoffId, args.key);
+      if (!this.unresolved.has(id)) {
+        return {
+          ok: false,
+          error: "not_found",
+          message: `no unresolved entry for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId} key=${JSON.stringify(args.key)}`,
+        };
+      }
+      const closed = this.ack({
+        cardId: args.cardId,
+        dispatchHandoffId: args.dispatchHandoffId,
+        key: args.key,
+      });
+      if (!closed) {
+        return {
+          ok: false,
+          error: "append_failed",
+          message: `quarantine ack append/fsync failed for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId} key=${JSON.stringify(args.key)}`,
+        };
+      }
+      return { ok: true, key: args.key };
+    }
+
+    const matches = this.listUnresolved().filter(
+      (u) =>
+        u.cardId === args.cardId &&
+        u.dispatchHandoffId === args.dispatchHandoffId,
+    );
+    if (matches.length === 0) {
+      return {
+        ok: false,
+        error: "not_found",
+        message: `no unresolved entry for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId}`,
+      };
+    }
+    if (matches.length > 1) {
+      const keys = matches.map((m) => m.key);
+      return {
+        ok: false,
+        error: "ambiguous",
+        message: `multiple unresolved entries for cardId=${args.cardId} dispatchHandoffId=${args.dispatchHandoffId}; pass --seq N or --presence`,
+        matches: keys,
+      };
+    }
+    const only = matches[0]!;
+    const closed = this.ack({
+      cardId: args.cardId,
+      dispatchHandoffId: args.dispatchHandoffId,
+      key: only.key,
+    });
+    if (!closed) {
+      return {
+        ok: false,
+        error: "append_failed",
+        message: "quarantine ack append failed",
+      };
+    }
+    return { ok: true, key: only.key };
   }
 
   /**

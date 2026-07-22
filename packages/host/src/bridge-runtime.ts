@@ -555,6 +555,60 @@ export function recordResultDeliveryUnconfirmed(d: {
   );
 }
 
+/**
+ * PLAN 0.28.0 G-10: herdr event for a pane with no card/conv flight
+ * (typical after removeCardFlight). Observability only — no recovery authority.
+ */
+export const FLIGHT_MAP_MISS = "flight_map_miss";
+
+let flightMapMissCount = 0;
+
+/** Process-wide count of inert flight-map-miss herdr events. */
+export function flightMapMiss(): number {
+  return flightMapMissCount;
+}
+
+/** Test helper — resets the G-10 observability counter. */
+export function resetFlightMapMiss(): void {
+  flightMapMissCount = 0;
+}
+
+function recordFlightMapMiss(d: {
+  paneId: string;
+  event: string;
+  ev: string;
+}): void {
+  flightMapMissCount += 1;
+  log(
+    FLIGHT_MAP_MISS,
+    JSON.stringify({
+      event: FLIGHT_MAP_MISS,
+      paneId: d.paneId,
+      herdrEvent: d.event,
+      ev: d.ev,
+      count: flightMapMissCount,
+    }),
+  );
+}
+
+/**
+ * PLAN 0.27.0 / 0.28.0 strict ACK classifier (pure, module-scope for G-11).
+ * status ∈ {queued, delivered} ∧ recipientCount === 1 → accepted;
+ * every other shape → send_unknown. No message-regex behavioral split.
+ */
+export function classifyAck(ack: {
+  status: string;
+  recipientCount: number;
+}): "accepted" | "send_unknown" {
+  if (
+    (ack.status === "queued" || ack.status === "delivered") &&
+    ack.recipientCount === 1
+  ) {
+    return "accepted";
+  }
+  return "send_unknown";
+}
+
 function hasDispatchLabel(h: HandoffPayload): boolean {
   return Boolean(
     h.attachments?.some(
@@ -730,7 +784,13 @@ export async function startBridgeRuntime(opts?: {
         });
       }
       if (url.pathname === "/rpc" && req.method === "POST") {
-        const body = (await req.json()) as { op?: string };
+        const body = (await req.json()) as {
+          op?: string;
+          cardId?: string;
+          dispatchHandoffId?: string;
+          /** Optional tagged key: {tag:"seq",seq:n} | {tag:"presence"} */
+          key?: { tag?: string; seq?: number };
+        };
         if (body.op === "ping") {
           return Response.json({ ok: true, op: "ping" });
         }
@@ -748,10 +808,78 @@ export async function startBridgeRuntime(opts?: {
             eventConnected: herdr.eventConnected,
             lastSubscribeAck: herdr.lastSubscribeAck,
             eventSubscriptions: herdr.eventSubscriptions,
-            // PLAN 0.23.8 pane cleanup policy
+            // PLAN 0.23.8 / 0.28.0: conv-close policy only (card never auto-closes)
             paneCleanup: cfg.paneCleanup ?? "auto",
             // PLAN 0.23.9 worker pane placement policy
             panePlacement: cfg.panePlacement ?? "pool",
+            // PLAN 0.28.0 M3: unresolved durable quarantine count (U6)
+            quarantineUnresolved: quarantine.unresolvedCount(),
+          });
+        }
+        // PLAN 0.28.0 M3: operator quarantine ack against this process's store
+        // (clears timer + in-memory unresolved — never a second local store).
+        if (body.op === "quarantine_ack") {
+          const cardId =
+            typeof body.cardId === "string" ? body.cardId.trim() : "";
+          const dispatchHandoffId =
+            typeof body.dispatchHandoffId === "string"
+              ? body.dispatchHandoffId.trim()
+              : "";
+          if (!cardId || !dispatchHandoffId) {
+            return Response.json(
+              {
+                ok: false,
+                op: "quarantine_ack",
+                error: "invalid_args",
+                message:
+                  "cardId and dispatchHandoffId are required",
+              },
+              { status: 400 },
+            );
+          }
+          let key: QuarantineKey | undefined;
+          if (body.key != null && typeof body.key === "object") {
+            if (body.key.tag === "presence") {
+              key = { tag: "presence" };
+            } else if (
+              body.key.tag === "seq" &&
+              typeof body.key.seq === "number" &&
+              Number.isInteger(body.key.seq) &&
+              body.key.seq >= 0
+            ) {
+              key = { tag: "seq", seq: body.key.seq };
+            } else {
+              return Response.json(
+                {
+                  ok: false,
+                  op: "quarantine_ack",
+                  error: "invalid_args",
+                  message: "key must be {tag:\"presence\"} or {tag:\"seq\",seq:N}",
+                },
+                { status: 400 },
+              );
+            }
+          }
+          const result = quarantine.ackOperator({
+            cardId,
+            dispatchHandoffId,
+            key,
+          });
+          if (!result.ok) {
+            return Response.json({
+              ok: false,
+              op: "quarantine_ack",
+              error: result.error,
+              message: result.message,
+              ...(result.matches ? { matches: result.matches } : {}),
+              quarantineUnresolved: quarantine.unresolvedCount(),
+            });
+          }
+          return Response.json({
+            ok: true,
+            op: "quarantine_ack",
+            key: result.key,
+            quarantineUnresolved: quarantine.unresolvedCount(),
           });
         }
         if (body.op === "stop") {
@@ -1300,12 +1428,8 @@ export async function startBridgeRuntime(opts?: {
         flight,
       });
       removeCardFlight(agent.pane_id, flight);
-      // PLAN 0.23.4: best-effort pane close after card subscribe failure.
-      try {
-        await herdr.request("pane.close", { pane_id: agent.pane_id });
-      } catch {
-        /* ignore — close is best-effort */
-      }
+      // PLAN 0.28.0 U3: card auto pane.close removed (events_subscribe_failed).
+      // Pane remains for operator cleanup; result already failed above.
       return;
     }
 
@@ -1977,11 +2101,8 @@ export async function startBridgeRuntime(opts?: {
           flights.delete(paneId);
           herdr.eventsPrune(paneId);
         }
-        try {
-          await herdr.request("pane.close", { pane_id: paneId });
-        } catch {
-          /* best-effort close — same class as events_subscribe_failed */
-        }
+        // PLAN 0.28.0 U3: card auto pane.close removed (inject_unconfirmed).
+        // Pane remains for operator cleanup; failed result already sent above.
       } else {
         // Conv: blocked turn only — keep convFlight + pane for tower retry
         const flight = convFlights.get(paneId);
@@ -2009,6 +2130,10 @@ export async function startBridgeRuntime(opts?: {
       onConvHerdrEvent(convFlight, paneId, ev, event, d);
       return;
     }
+
+    // PLAN 0.28.0 G-10: card/conv flight map miss after removeCardFlight — inert
+    // observability only (no recovery, no authority, no re-issue).
+    recordFlightMapMiss({ paneId, event, ev });
   }
 
   function clearStillRunningTimers(flight: Flight): void {
@@ -2151,8 +2276,8 @@ export async function startBridgeRuntime(opts?: {
     try {
       scrape = await settlePaneRead(paneId);
     } catch {
-      // Settle failed — fall through to finishCard which re-reads and maps
-      // read failure to failed (same as pre-0.23.7 path).
+      // Settle failed — fall through to proposeCardVerification which re-reads
+      // (read failure still yields needs_verification with error body).
       // PLAN 0.27.0 guard site (~:2003): CAS ownership + flight map check
       if (!guardFlightCompletion(paneId, flight)) return;
       // PLAN 0.26.0 M-2 ③: live permission_prompt corrects completion → blocked
@@ -2161,14 +2286,14 @@ export async function startBridgeRuntime(opts?: {
         disposeCardFlight(paneId, flight);
         herdr.eventsPrune(paneId);
         appendHookTelemetry({ type: "agent_blocked_correction" });
-        await finishCard(flight, "failed", "agent_blocked");
+        await finishCardFailure(flight, "agent_blocked");
         removeCardFlight(paneId, flight);
         return;
       }
       if (!tryAcquireFlightSideEffect(flight)) return;
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
-      await finishCard(flight, "done", undefined);
+      await proposeCardVerification(flight);
       removeCardFlight(paneId, flight);
       return;
     }
@@ -2179,25 +2304,22 @@ export async function startBridgeRuntime(opts?: {
     }
 
     if (!hasStillRunningIndicator(scrape)) {
-      // No indicator → immediate finish; pass scrape (no re-scrape).
-      // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
+      // No indicator → immediate verification proposal; pass scrape (no re-scrape).
+      // PLAN 0.28.0 U3: no card auto pane.close (closePane removed).
       // PLAN 0.26.0 M-2 ③: permission_prompt live → correct to agent_blocked
       if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
         if (!tryAcquireFlightSideEffect(flight)) return;
         disposeCardFlight(paneId, flight);
         herdr.eventsPrune(paneId);
         appendHookTelemetry({ type: "agent_blocked_correction" });
-        await finishCard(flight, "failed", "agent_blocked");
+        await finishCardFailure(flight, "agent_blocked");
         removeCardFlight(paneId, flight);
         return;
       }
       if (!tryAcquireFlightSideEffect(flight)) return;
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
-      await finishCard(flight, "done", undefined, {
-        scrape,
-        closePane: true,
-      });
+      await proposeCardVerification(flight, { scrape });
       removeCardFlight(paneId, flight);
       return;
     }
@@ -2253,7 +2375,7 @@ export async function startBridgeRuntime(opts?: {
             const secs = Math.round(stillRunningMaxMs / 1000);
             disposeCardFlight(paneId, flight);
             herdr.eventsPrune(paneId);
-            await finishCard(flight, "done", undefined, {
+            await proposeCardVerification(flight, {
               note: `still_running deferral exhausted (${secs}s)`,
             });
             removeCardFlight(paneId, flight);
@@ -2269,15 +2391,15 @@ export async function startBridgeRuntime(opts?: {
         }
 
         if (!hasStillRunningIndicator(scrape)) {
-          // Indicator cleared — finish with the scrape that proved clearance (L-1).
-          // PLAN 0.23.8 R33 M-1: confident indicator-clear path → closePane.
+          // Indicator cleared — propose with the scrape that proved clearance (L-1).
+          // PLAN 0.28.0 U3: no card auto pane.close.
           // PLAN 0.26.0 M-2 ③: live permission_prompt corrects → blocked
           if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
             if (!tryAcquireFlightSideEffect(flight)) return;
             disposeCardFlight(paneId, flight);
             herdr.eventsPrune(paneId);
             appendHookTelemetry({ type: "agent_blocked_correction" });
-            await finishCard(flight, "failed", "agent_blocked");
+            await finishCardFailure(flight, "agent_blocked");
             removeCardFlight(paneId, flight);
             return;
           }
@@ -2285,10 +2407,9 @@ export async function startBridgeRuntime(opts?: {
           const secs = Math.max(0, Math.round(elapsed / 1000));
           disposeCardFlight(paneId, flight);
           herdr.eventsPrune(paneId);
-          await finishCard(flight, "done", undefined, {
+          await proposeCardVerification(flight, {
             scrape,
             note: `completion deferred ${secs}s (still-running indicator)`,
-            closePane: true,
           });
           removeCardFlight(paneId, flight);
           return;
@@ -2296,15 +2417,15 @@ export async function startBridgeRuntime(opts?: {
 
         // Indicator still present: M-2 ④ Stop alone must NOT complete.
         if (elapsed >= stillRunningMaxMs) {
-          // Cap exhausted — fail-visible note, still status=done with latest scrape.
-          // PLAN 0.23.8: exhausted is NOT close-eligible (R33 M-1 — work may continue).
+          // Cap exhausted — fail-visible note, needs_verification with latest scrape.
+          // PLAN 0.28.0 U3: no card auto pane.close.
           // PLAN 0.26.0 M-2 ③: live permission_prompt → blocked correction
           if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
             if (!tryAcquireFlightSideEffect(flight)) return;
             disposeCardFlight(paneId, flight);
             herdr.eventsPrune(paneId);
             appendHookTelemetry({ type: "agent_blocked_correction" });
-            await finishCard(flight, "failed", "agent_blocked");
+            await finishCardFailure(flight, "agent_blocked");
             removeCardFlight(paneId, flight);
             return;
           }
@@ -2312,7 +2433,7 @@ export async function startBridgeRuntime(opts?: {
           const secs = Math.round(stillRunningMaxMs / 1000);
           disposeCardFlight(paneId, flight);
           herdr.eventsPrune(paneId);
-          await finishCard(flight, "done", undefined, {
+          await proposeCardVerification(flight, {
             scrape,
             note: `still_running deferral exhausted (${secs}s)`,
           });
@@ -2329,8 +2450,9 @@ export async function startBridgeRuntime(opts?: {
   /**
    * PLAN 0.27.0: terminal/completion side-effect runner for the sync hotpath.
    * Ownership is CAS/latch (not await on onHerdrEvent). ACK is consumed inside
-   * finishCard/sendFailedResult. Do NOT reintroduce fire-and-forget emission at those
-   * three call sites — they were converted to awaited/owned completion.
+   * proposeCardVerification/finishCardFailure/sendFailedResult. Do NOT reintroduce
+   * fire-and-forget emission at those call sites — they were converted to
+   * awaited/owned completion.
    */
   function scheduleOwnedCardResult(
     paneId: string,
@@ -2433,7 +2555,7 @@ export async function startBridgeRuntime(opts?: {
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
       scheduleOwnedCardResult(paneId, flight, () =>
-        finishCard(flight, "failed", "agent_blocked"),
+        finishCardFailure(flight, "agent_blocked"),
       );
       return;
     }
@@ -2455,7 +2577,7 @@ export async function startBridgeRuntime(opts?: {
         herdr.eventsPrune(paneId);
         appendHookTelemetry({ type: "agent_blocked_correction" });
         scheduleOwnedCardResult(paneId, flight, () =>
-          finishCard(flight, "failed", "agent_blocked"),
+          finishCardFailure(flight, "agent_blocked"),
         );
         return;
       }
@@ -2517,32 +2639,24 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
-  async function finishCard(
+  /**
+   * PLAN 0.28.0 A1: success-candidate proposal (U1).
+   * Emits status:"failed" + reason:"needs_verification" while preserving the
+   * real output summary. Issuer acquire → seq → supersede → payload stamp →
+   * strict ACK. Never constructs status:"done". Never pane.close (U3).
+   */
+  async function proposeCardVerification(
     flight: Flight,
-    status: "done" | "failed",
-    reason?: string,
-    /**
-     * PLAN 0.23.7 L-1: when the caller already holds the scrape that decided
-     * completion (indicator clearance / exhaust), pass it so finishCard does
-     * not re-scrape and drift from the decision sample. `note` is bridge-
-     * generated observability only (never scrape body).
-     * PLAN 0.23.8 R33 M-1: `closePane` is the *only* eligibility signal —
-     * never inferred from status/note. Set only by indicator-clear confident
-     * completion call sites (immediate no-indicator + deferred clear).
-     * PLAN 0.27.0: caller must hold flightSideEffectOwner (CAS) for
-     * Flight-backed paths; issuer.acquire is performed here.
-     */
-    opts?: { scrape?: string; note?: string; closePane?: boolean },
+    opts?: { scrape?: string; note?: string },
   ): Promise<void> {
     const issuer = issuers.getOrCreate(
       flight.cardId,
       flight.dispatchHandoffId,
     );
     // Flight-backed: lifecycle CAS already held by caller; issuer acquire too.
-    // If issuer refuses, no send (local single-issue).
     if (!issuer.acquire("initial")) {
       log(
-        `card ${flight.cardId}: finishCard issuer.acquire(initial) denied`,
+        `card ${flight.cardId}: proposeCardVerification issuer.acquire(initial) denied`,
       );
       return;
     }
@@ -2550,7 +2664,7 @@ export async function startBridgeRuntime(opts?: {
     let output = "";
     let truncated = false;
     try {
-      // PLAN 0.23.6: settle re-read (shared with conv); output body stays unfiltered (R31 M-1).
+      // PLAN 0.23.6: settle re-read; output body unfiltered (R31 M-1).
       // PLAN 0.23.7 L-1: prefer caller-supplied scrape (no re-scrape).
       const raw =
         opts?.scrape !== undefined
@@ -2562,24 +2676,15 @@ export async function startBridgeRuntime(opts?: {
       truncated = t.truncated;
     } catch (e) {
       output = `(pane.read failed: ${e instanceof Error ? e.message : e})`;
-      if (status === "done") status = "failed";
-      reason = reason ?? "pane_read_failed";
     }
 
-    // PLAN 0.26.0 D6(b): true-done scrape fallback telemetry (after read flip).
-    // Single choke point for all done paths; L-2 gated inside helper.
-    if (status === "done") maybeAppendCompletionFallback(flight);
+    // PLAN 0.26.0 D6(b): completion-class scrape fallback telemetry.
+    maybeAppendCompletionFallback(flight);
 
-    // PLAN 0.23.6: summary from chrome-filtered input only; output body unfiltered (M-1).
-    // PLAN 0.23.11 ③: prefer real content over trailing pure timing lines.
-    const summary =
-      status === "done"
-        ? selectCardSummaryLine(stripTuiChrome(output))
-        : `failed${reason ? ` reason=${reason}` : ""}`.slice(0, 900);
+    // Preserve real output summary even though status is failed (U1/A1).
+    const summary = selectCardSummaryLine(stripTuiChrome(output));
 
-    // Issuer owns payload seq (+1 on new composition). Stamp (cardId, dispatchHandoffId, seq).
     const seq = issuer.nextSeq();
-    // presence→send supersede if a presence quarantine record exists
     quarantine.supersedePresence({
       cardId: flight.cardId,
       dispatchHandoffId: flight.dispatchHandoffId,
@@ -2588,7 +2693,71 @@ export async function startBridgeRuntime(opts?: {
     const payload: CardResultPayload = {
       v: CARD_CONTRACT_VERSION,
       cardId: flight.cardId,
-      status,
+      status: "failed",
+      node: session!.displayName,
+      seq,
+      paneId: flight.paneId,
+      dispatchHandoffId: flight.dispatchHandoffId,
+      output,
+      truncated,
+      summary,
+      startedAt: flight.startedAt,
+      finishedAt: new Date().toISOString(),
+      reason: "needs_verification",
+      ...(opts?.note ? { note: opts.note.slice(0, 500) } : {}),
+    };
+
+    // U3: no card auto pane.close after accepted ACK.
+    await sendResult(flight.fromPeerId, payload, flight);
+  }
+
+  /**
+   * PLAN 0.28.0 A1: deterministic failure for Flight-backed card paths.
+   * Same issuer/seq/supersede/ACK machinery; status:"failed" with reason.
+   * Never constructs status:"done". Never pane.close (U3).
+   */
+  async function finishCardFailure(
+    flight: Flight,
+    reason: string,
+    opts?: { scrape?: string; note?: string },
+  ): Promise<void> {
+    const issuer = issuers.getOrCreate(
+      flight.cardId,
+      flight.dispatchHandoffId,
+    );
+    if (!issuer.acquire("initial")) {
+      log(
+        `card ${flight.cardId}: finishCardFailure issuer.acquire(initial) denied reason=${reason}`,
+      );
+      return;
+    }
+
+    let output = "";
+    let truncated = false;
+    try {
+      const raw =
+        opts?.scrape !== undefined
+          ? opts.scrape
+          : await settlePaneRead(flight.paneId);
+      const stripped = stripAnsi(raw);
+      const t = truncateTail(stripped, 200_000);
+      output = t.text;
+      truncated = t.truncated;
+    } catch (e) {
+      output = `(pane.read failed: ${e instanceof Error ? e.message : e})`;
+    }
+
+    const summary = `failed reason=${reason}`.slice(0, 900);
+    const seq = issuer.nextSeq();
+    quarantine.supersedePresence({
+      cardId: flight.cardId,
+      dispatchHandoffId: flight.dispatchHandoffId,
+    });
+
+    const payload: CardResultPayload = {
+      v: CARD_CONTRACT_VERSION,
+      cardId: flight.cardId,
+      status: "failed",
       node: session!.displayName,
       seq,
       paneId: flight.paneId,
@@ -2599,27 +2768,10 @@ export async function startBridgeRuntime(opts?: {
       startedAt: flight.startedAt,
       finishedAt: new Date().toISOString(),
       reason,
-      ...(opts?.note
-        ? { note: opts.note.slice(0, 500) }
-        : {}),
+      ...(opts?.note ? { note: opts.note.slice(0, 500) } : {}),
     };
 
-    // pre-C: success-form initial issues current `done`; strict ACK decides sent.
-    // sent && pane.close contract preserved on accept (lock pre-C).
-    const outcome = await sendResult(flight.fromPeerId, payload, flight);
-    const sent = outcome.branch === "accepted";
-    if (
-      opts?.closePane === true &&
-      status === "done" &&
-      sent &&
-      (cfg.paneCleanup ?? "auto") !== "keep"
-    ) {
-      try {
-        await herdr.request("pane.close", { pane_id: flight.paneId });
-      } catch {
-        /* best-effort — must not affect result delivery */
-      }
-    }
+    await sendResult(flight.fromPeerId, payload, flight);
   }
 
   async function sendFailedResult(opts: {
@@ -2667,7 +2819,11 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
-  /** PLAN 0.27.0 strict ACK 3-branch outcome (lock 5 / lock 9). */
+  /**
+   * PLAN 0.28.0 strict ACK 2-branch outcome (U5).
+   * accepted | send_unknown only — rejected variant removed; non-accepted
+   * always absorbs via enterSendUnknown (reason prefixes only).
+   */
   type SendResultOutcome =
     | {
         branch: "accepted";
@@ -2675,32 +2831,11 @@ export async function startBridgeRuntime(opts?: {
         status: string;
         recipientCount: number;
       }
-    | { branch: "rejected"; reason: string }
     | { branch: "send_unknown"; reason: string };
 
   /**
-   * Strict ACK: status ∈ {queued, delivered} ∧ recipientCount === 1 → accepted
-   * (D1: peer_unknown returns normal ACK with recipientCount=0 — not success).
-   * Explicit relay error envelope → rejected. Transport/unexpected → send_unknown.
-   * Phase name: result_relay_accepted (the former relay-commit phase name is retired). residual 0.
-   */
-  function classifyAck(ack: {
-    status: string;
-    recipientCount: number;
-  }): "accepted" | "send_unknown" {
-    if (
-      (ack.status === "queued" || ack.status === "delivered") &&
-      ack.recipientCount === 1
-    ) {
-      return "accepted";
-    }
-    // peer_unknown/0, delivered/2, and any other shape → absorb
-    return "send_unknown";
-  }
-
-  /**
-   * Returns strict-ACK 3-branch outcome. Consumes full ACK envelope (no boolean squash).
-   * pane.close gates on branch === "accepted" only.
+   * Returns strict-ACK 2-branch outcome. Consumes full ACK envelope (no boolean squash).
+   * Non-accepted → single send_unknown + one durable quarantine enter (U5/U6).
    */
   async function sendResult(
     toPeerId: string,
@@ -2767,27 +2902,28 @@ export async function startBridgeRuntime(opts?: {
         reason: `ack_${ack.status}_rc${ack.recipientCount}`,
       };
     } catch (e) {
-      // Explicit relay-level error envelope → rejected (client.handoff throws on type:error)
-      // vs transport loss → send_unknown. We cannot always distinguish; prefer send_unknown
-      // for transport, rejected when message looks like a policy/reject (not network).
+      // PLAN 0.28.0 U5: non-accepted is always send_unknown + quarantine enter.
+      // Rejection vs transport is reason-prefix only (reject: / transport:), not
+      // a behavioral branch — no message-regex split, no rejected variant.
       const msg = e instanceof Error ? e.message : String(e);
       const looksTransport =
         /injected transport|ECONN|socket|closed|timeout|WebSocket|fetch failed|network/i.test(
           msg,
         ) || msg === "injected transport error";
-      if (!looksTransport && /reject|denied|forbidden|invalid/i.test(msg)) {
-        log("sendResult explicit reject:", msg);
-        return { branch: "rejected", reason: msg };
-      }
-      log("sendResult transport/unknown:", e);
+      const reasonPrefix = looksTransport
+        ? `transport:${msg.slice(0, 120)}`
+        : /reject|denied|forbidden|invalid/i.test(msg)
+          ? `reject:${msg.slice(0, 120)}`
+          : `transport:${msg.slice(0, 120)}`;
+      log("sendResult non-accepted (send_unknown):", msg);
       enterSendUnknown({
         cardId: payload.cardId,
         dispatchHandoffId: payload.dispatchHandoffId ?? "",
         seq: payload.seq,
-        reason: `transport:${msg.slice(0, 120)}`,
+        reason: reasonPrefix,
         flight,
       });
-      return { branch: "send_unknown", reason: msg };
+      return { branch: "send_unknown", reason: reasonPrefix };
     }
   }
 

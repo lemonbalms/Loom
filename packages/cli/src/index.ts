@@ -30,8 +30,10 @@ import {
   startBridgeProcess,
   stopBridgeProcess,
   bridgeStatus,
+  bridgeQuarantineAck,
   loadBridgeConfig,
   saveBridgeConfig,
+  QuarantineStore,
   loadConvNodeHosts,
   setConvNodeHost,
   removeConvNodeHost,
@@ -219,6 +221,8 @@ const BOOLEAN_FLAGS = new Set([
   "link",
   "status",
   "inject-handoffs",
+  // PLAN 0.28.0 M3: quarantine ack key tag
+  "presence",
 ]);
 
 function usage(): string {
@@ -239,7 +243,7 @@ Usage:
   loom up [--profiles a,b] [--status]   # background sticky host per profile (0.17)
   loom down [--profiles a,b]            # stop sticky hosts (idempotent)
   loom host start | stop | status   # sticky long-lived relay connection (advanced)
-  loom bridge start | stop | status # herdr node bridge daemon (0.22)
+  loom bridge start | stop | status | quarantine ack  # herdr node bridge (0.22+)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -1737,7 +1741,7 @@ async function cmdConvHosts(
 
 async function cmdBridge(
   sub: string | undefined,
-  _rest: string[],
+  rest: string[],
   flags: Record<string, string | boolean>,
 ) {
   if (sub === "start") {
@@ -1794,10 +1798,95 @@ async function cmdBridge(
     console.log(r.message);
     return;
   }
+  // PLAN 0.28.0 M3: operator quarantine ack (not delivery proof).
+  // Live daemon → authenticated RPC on its store; offline → local durable fold.
+  if (sub === "quarantine") {
+    const action = rest[0];
+    if (action !== "ack") {
+      console.error(
+        "Usage: loom bridge quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]",
+      );
+      process.exit(1);
+    }
+    const cardId = rest[1];
+    const dispatchHandoffId = rest[2];
+    if (!cardId || !dispatchHandoffId) {
+      console.error(
+        "Usage: loom bridge quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]",
+      );
+      process.exit(1);
+    }
+    const presence = flags.presence === true;
+    const seqRaw = flags.seq;
+    if (presence && seqRaw !== undefined) {
+      console.error("Provide either --seq N or --presence, not both");
+      process.exit(1);
+    }
+    // Selector optional: omit both → single-match inference on (cardId, dispatchHandoffId).
+    let key:
+      | { tag: "seq"; seq: number }
+      | { tag: "presence" }
+      | undefined;
+    if (presence) {
+      key = { tag: "presence" };
+    } else if (seqRaw !== undefined) {
+      const n =
+        typeof seqRaw === "string" ? Number(seqRaw) : Number(seqRaw);
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        console.error("--seq requires a non-negative integer");
+        process.exit(1);
+      }
+      key = { tag: "seq", seq: n };
+    }
+    const profile =
+      getActiveProfile() ?? loadSession()?.displayName ?? "default";
+    const result = await bridgeQuarantineAck({
+      cardId,
+      dispatchHandoffId,
+      key,
+      profile,
+    });
+    if (!result.ok) {
+      console.error(`quarantine ack failed: ${result.message}`);
+      if (result.error === "ambiguous" && result.matches) {
+        console.error(
+          `  matches: ${JSON.stringify(result.matches)} — pass --seq N or --presence`,
+        );
+      }
+      process.exit(1);
+    }
+    console.log(
+      `quarantine ack recorded (${result.via}): cardId=${cardId} dispatchHandoffId=${dispatchHandoffId} key=${JSON.stringify(result.key)}`,
+    );
+    if (typeof result.quarantineUnresolved === "number") {
+      console.log(`  quarantineUnresolved: ${result.quarantineUnresolved}`);
+    }
+    return;
+  }
   if (sub === "status" || !sub) {
     const st = await bridgeStatus();
+    const profile =
+      getActiveProfile() ?? loadSession()?.displayName ?? "default";
     if (!st.running) {
       console.log("bridge: offline");
+      // Offline unresolved from durable JSONL (no live daemon owns state).
+      try {
+        const store = new QuarantineStore({ profile });
+        const n = store.load();
+        store.disposeTimers();
+        console.log(`  quarantineUnresolved: ${n}`);
+      } catch {
+        /* */
+      }
+      // PLAN 0.28.0 M3: paneCleanup status help (conv-only; card panes kept).
+      try {
+        const cfg = loadBridgeConfig(profile);
+        console.log(
+          `  paneCleanup: ${cfg.paneCleanup ?? "auto"} (conv-only; card panes kept)`,
+        );
+      } catch {
+        /* */
+      }
       console.log(`Tip: ${loomCmd()} bridge start --allow <towerPeerId>`);
       return;
     }
@@ -1805,12 +1894,29 @@ async function cmdBridge(
       `bridge: online pid=${st.meta?.pid} port=${st.meta?.port} peer=${st.meta?.displayName}`,
     );
     console.log(`  herdr: ${st.meta?.herdrSocketPath}`);
+    const health =
+      st.health && typeof st.health === "object" && st.health !== null
+        ? (st.health as Record<string, unknown>)
+        : null;
+    if (health && typeof health.quarantineUnresolved === "number") {
+      console.log(`  quarantineUnresolved: ${health.quarantineUnresolved}`);
+    }
+    // PLAN 0.28.0 M3: status help — paneCleanup is conv close only (U3).
+    const paneCleanup =
+      health && typeof health.paneCleanup === "string"
+        ? health.paneCleanup
+        : (loadBridgeConfig(profile).paneCleanup ?? "auto");
+    console.log(
+      `  paneCleanup: ${paneCleanup} (conv-only; card panes kept)`,
+    );
     if (st.health && typeof st.health === "object") {
       console.log(`  health: ${JSON.stringify(st.health)}`);
     }
     return;
   }
-  console.error("Usage: loom bridge start|stop|status [--allow <peerId>]");
+  console.error(
+    "Usage: loom bridge start|stop|status|quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]",
+  );
   process.exit(1);
 }
 

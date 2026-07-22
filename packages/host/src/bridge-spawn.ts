@@ -15,6 +15,11 @@ import {
 } from "./bridge-meta";
 import { isPidAlive } from "./session-store";
 import { getActiveProfile, sessionPath, loomDir } from "./session-store";
+import {
+  QuarantineStore,
+  type QuarantineAckResult,
+  type QuarantineKey,
+} from "./result-quarantine";
 
 /**
  * PLAN 0.23.4: map profile to a filename-safe token so stderr logs stay under
@@ -193,4 +198,123 @@ export async function bridgeStatus(): Promise<{
   } catch {
     return { running: true, meta, health: { ok: false, error: "rpc failed" } };
   }
+}
+
+/**
+ * PLAN 0.28.0 M3: operator quarantine ack against the authoritative store.
+ * - Live bridge (alive meta) → authenticated RPC on that process's store
+ *   (clears timer/map + live status). Fail closed if RPC fails — never a
+ *   second local store while a daemon owns state.
+ * - No bridge → load durable JSONL locally and ack there.
+ */
+export async function bridgeQuarantineAck(args: {
+  cardId: string;
+  dispatchHandoffId: string;
+  /** Omit for single-match inference on (cardId, dispatchHandoffId). */
+  key?: QuarantineKey;
+  profile?: string;
+}): Promise<
+  QuarantineAckResult & {
+    via: "rpc" | "local";
+    quarantineUnresolved?: number;
+  }
+> {
+  const meta = resolveAliveBridgeMeta();
+  if (meta) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${meta.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          op: "quarantine_ack",
+          cardId: args.cardId,
+          dispatchHandoffId: args.dispatchHandoffId,
+          ...(args.key ? { key: args.key } : {}),
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+      let body: {
+        ok?: boolean;
+        key?: QuarantineKey;
+        error?: string;
+        message?: string;
+        matches?: QuarantineKey[];
+        quarantineUnresolved?: number;
+      } = {};
+      try {
+        body = (await res.json()) as typeof body;
+      } catch {
+        /* non-JSON */
+      }
+      if (!res.ok && body.ok !== true && body.ok !== false) {
+        return {
+          ok: false,
+          error: "append_failed",
+          message: `bridge quarantine_ack RPC failed (HTTP ${res.status}); refuse local dual-store ack while daemon is live`,
+          via: "rpc",
+        };
+      }
+      if (body.ok === true && body.key) {
+        return {
+          ok: true,
+          key: body.key,
+          via: "rpc",
+          quarantineUnresolved: body.quarantineUnresolved,
+        };
+      }
+      if (body.ok === false) {
+        const err =
+          body.error === "not_found" ||
+          body.error === "ambiguous" ||
+          body.error === "append_failed"
+            ? body.error
+            : "append_failed";
+        return {
+          ok: false,
+          error: err,
+          message:
+            body.message ??
+            `bridge quarantine_ack failed (HTTP ${res.status})`,
+          ...(body.matches ? { matches: body.matches } : {}),
+          via: "rpc",
+          quarantineUnresolved: body.quarantineUnresolved,
+        };
+      }
+      return {
+        ok: false,
+        error: "append_failed",
+        message: `bridge quarantine_ack RPC returned unexpected body (HTTP ${res.status}); refuse local dual-store ack while daemon is live`,
+        via: "rpc",
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        error: "append_failed",
+        message: `bridge quarantine_ack RPC error: ${
+          e instanceof Error ? e.message : String(e)
+        }; refuse local dual-store ack while daemon is live`,
+        via: "rpc",
+      };
+    }
+  }
+
+  // Offline: authoritative durable store is local JSONL (no live daemon).
+  const profile =
+    args.profile ?? getActiveProfile() ?? "default";
+  const store = new QuarantineStore({ profile });
+  store.load();
+  const result = store.ackOperator({
+    cardId: args.cardId,
+    dispatchHandoffId: args.dispatchHandoffId,
+    key: args.key,
+  });
+  const remaining = store.unresolvedCount();
+  store.disposeTimers();
+  if (result.ok) {
+    return { ...result, via: "local", quarantineUnresolved: remaining };
+  }
+  return { ...result, via: "local", quarantineUnresolved: remaining };
 }

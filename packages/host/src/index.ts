@@ -24,6 +24,7 @@ export * from "./bridge-config";
 export * from "./bridge-meta";
 export * from "./bridge-spawn";
 export * from "./bridge-runtime";
+export * from "./result-quarantine";
 export * from "./card-ops";
 export * from "./conv-state";
 export * from "./conv-ops";
