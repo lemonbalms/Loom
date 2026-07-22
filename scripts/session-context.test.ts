@@ -367,8 +367,9 @@ describe("D3 loud truncateContext", () => {
 });
 
 describe("D4 SOFT_CAP + checkSoftCap", () => {
-  test("SOFT_CAP is 8500", () => {
-    expect(SOFT_CAP).toBe(8500);
+  test("SOFT_CAP is 12750", () => {
+    // Policy knob (owner 2026-07-21): 8500 × 150% = 12750. HARD_CAP stays 9500.
+    expect(SOFT_CAP).toBe(12750);
   });
 
   test("HARD_CAP is 9500", () => {
