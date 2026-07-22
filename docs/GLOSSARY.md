@@ -39,6 +39,9 @@
 | **`done_proposal`** | 워커가 완료되었다고 제안한 상태. 아직 사람 또는 타워의 검증이 필요하다. |
 | **`needs_verification`** | 결과는 왔지만 완료 확정을 위해 검증이 필요하다는 상태 |
 | **프로세스 종료** | 실행 중인 프로세스나 pane이 끝났다는 뜻일 뿐, 작업 성공이나 board `done`을 자동으로 뜻하지 않는다. |
+| **`card.done`** | bridge→peer handoff/result **후보**(의도·마커). board `done`이나 검증된 완료를 뜻하지 않는다. |
+
+`card.done` ≠ board `done`. 원격 result `status:"done"`은 tower board에 **`blocked`로만** 격리되며 자동 `done`이 아니다.
 
 ## 2. 문서와 의사결정 체계
 
@@ -131,13 +134,13 @@
 
 | 용어 | 일반적인 설명 |
 |---|---|
-| **PANE-DEATH** | worker가 실행되던 pane 또는 프로세스의 종료를 어떻게 관측하고, 작업 결과·완료 권한·자원 정리와 어떻게 분리할지 다루는 문제 영역 |
+| **PANE-DEATH** | worker가 실행되던 pane 또는 프로세스의 종료를 어떻게 관측하고, 작업 결과·완료 권한·자원 정리와 어떻게 분리할지 다루는 문제 영역 · 정본: `PANE-DEATH-UNIFIED-DESIGN.md` (U 락) |
 | **peer** | Loom room에 참여해 메시지를 주고받는 하나의 에이전트 또는 실행 주체 |
 | **relay** | 피어 사이의 WebSocket 메시지를 받아 전달하고 필요한 상태를 보관하는 중계 서버 |
 | **bridge** | Loom의 카드·handoff와 외부 에이전트 실행 환경을 연결하는 프로세스 |
 | **tower** | 작업을 배정하고 결과를 받아 적용 여부를 판단하는 조정 측 주체 |
 | **worker** | 배정된 개별 작업을 실제로 수행하는 에이전트 프로세스 |
-| **Herdr** | 워커와 터미널 pane을 생성·관찰·종료하는 외부 실행 계층의 이름 |
+| **Herdr** | 워커와 터미널 pane을 생성·관찰·종료하는 외부 실행 계층의 이름 · 제품 0.28.1 런타임 타깃 **0.7.5** (protocol **17**) |
 | **pane** | 워커가 실행되는 터미널 세션 또는 터미널 분할 창 단위 |
 | **card** | board에서 추적하고 워커에게 배정할 수 있는 작업 단위 |
 | **board** | 카드와 그 상태를 저장·조회하는 작업 목록 |
@@ -164,7 +167,7 @@
 | **`agent.send_keys`** | 논리 키·키 조합 전용. 프롬프트 본문 제출 경로가 아님(Enter 넛지 등 경계 있는 사용). |
 | **named agent / exact agent name** | herdr에 붙인 에이전트의 **이름** 식별자. prompt 타깃은 pane id가 아니라 이 이름. 형식 예: `loom-${cardId}-${seq}`. |
 | **`agent_name_unrepresentable`** | 이름을 안전하게 만들 수 없을 때 **실패로 닫는** 결과. 해시·절단으로 충돌을 숨기지 않음. |
-| **completion authority / 완료 권한** | board를 `done`으로 **확정**할 수 있는 권한. 관측·회신·pane 종료만으로는 갖지 않음 (0.28.0). |
+| **completion authority / 완료 권한** | board를 `done`으로 **확정**할 수 있는 권한. **`card.done`·회신·pane/process exit·원격 result 단독**으로는 board `done`을 갖지 않음 (0.28.0). |
 | **`blocked` (remote result)** | 원격이 done을 주장해도 tower board가 자동 완료하지 않고 **검증 대기로 격리**한 상태. |
 | **`legacy_remote_done_requires_verification`** | 위 격리 시 notes/reason에 붙는 대표 사유 문자열. |
 | **config-only protocol bump** | herdrProtocol 숫자만 17로 올려 ping 등만 통과시키는 우회. **금지** — 어댑터 없이 첫 스폰이 깨짐. |
@@ -313,7 +316,7 @@
 | `blocked` | 외부 조건이나 선행 문제 때문에 진행할 수 없는 작업 |
 | `done` | 요구된 검증을 거쳐 완료로 확정한 작업 |
 
-상태 전이는 단순한 문구 변경이 아니라 권한과 증거를 동반한다. 특히 worker나 bridge의 종료 신호만으로 `done`을 자동 생성하지 않는 것이 현재 handoff·pane-death 설계의 핵심 구분이다.
+상태 전이는 단순한 문구 변경이 아니라 권한과 증거를 동반한다. 특히 worker나 bridge의 종료 신호만으로 `done`을 자동 생성하지 않는 것이 현재 handoff·pane-death 설계의 핵심 구분이다. **`card.done`은 board `done`이 아니며**, 원격 result `status:"done"`은 명시적 로컬 전이 전까지 **`blocked`로만** 적용된다(위 **completion authority** · **`blocked` (remote result)** 항목).
 
 ## 10. 문서를 읽을 때의 우선순위
 
@@ -322,14 +325,16 @@
 1. 현재 버전과 범위: `docs/PLAN.md`
 2. 작업·리뷰 절차: `docs/WORKFLOW.md`, `docs/DOGFOOD_LOOP.md`
 3. 프로토콜과 구조: `docs/PROTOCOL.md`, `docs/ARCHITECTURE.md`
-4. 특정 문제의 잠금 설계: 해당 spike 또는 통합 설계 문서
+4. 특정 문제의 잠금 설계: 해당 spike 또는 통합 설계 문서 (예: `PANE-DEATH-UNIFIED-DESIGN.md` — **locked** shipped SSOT, not an open proposal)
 5. 실제 구현 여부: 코드와 테스트
 6. 현재 세션 재개 지점: `HANDOFF.md`
 
-관련 제안 문서:
+관련 문서:
 
+- `docs/PROTOCOL.md` — Loom relay wire v1 / room protocol (distinct axis from herdr local RPC; see §5 `protocol 16/17` note)
+- `docs/spikes/HERDR-0.7.5-COMPAT.md` — herdr 0.7.5 / protocol-17 call-shape SSOT for §5 adapter terms (`agent.prompt`, `HERDR_PROTOCOL_EXPECTED`, config-only bump ban)
 - `docs/spikes/LOOM-DEVELOPMENT-FLYWHEEL.md` — Loom 개발·도그푸딩·하네스 일반화의 전체 순환
 - `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` — 세션 handoff 체크포인트의 역할과 경계
-- `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md` — pane 종료와 결과 전달 생명주기의 통합 설계
+- `docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md` — **0.28.0 PANE-DEATH 완료 권한 락 SSOT (U1–U11 · G-1–G-11)**; 0.28.1 preserves; not a pending proposal (CHANGELOG 정본 표 '완료 권한·U 락')
 
 용어를 새로 추가할 때는 약어만 정의하지 말고, “무엇을 뜻하는가”, “무엇과 혼동하면 안 되는가”, “어느 문서가 정본인가”를 함께 적는다.

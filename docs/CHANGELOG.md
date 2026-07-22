@@ -66,7 +66,7 @@
 
 - 브릿지가 relay ACK를 버리고 “보낸 척”한 뒤 pane을 닫던 fire-and-forget 경로를 정리.
 - 전송 성공 ≠ tower 적용 ≠ 작업 완료. `peer_unknown` 등을 성공으로 읽지 않음.
-- 설계·문서 게이트 다수 라운드 후 구현; 상세는 PLAN 0.27.0 / PANE-DEATH §6.7 계열.
+- 설계·문서 게이트 다수 라운드 후 구현; 상세는 PLAN 0.27.0 / [`PANE-DEATH` §6.7](./spikes/PANE-DEATH-DESIGN.md) 계열.
 
 ---
 
@@ -78,7 +78,7 @@
 | **0.25** | `conv_fetch` — scp transport v1, 자동 셸 금지, fail-closed 검증. |
 | **0.24** | Windows 실배포 결함(persist 경로 가드·relay uncaught) · relay durable 배선 보강. |
 | **0.23** | scrape delta · TUI chrome 필터 · inject 제어 · conv/card 운영 품질. |
-| **0.22** | **herdr 노드 브릿지** 수직 슬라이스 — card dispatch · M-1 allowlist · M-2 제출 분리(당시 p16). 설계서: `HERDR_DESIGN.md` (baseline; as-built는 0.28.x 배너). |
+| **0.22** | **herdr 노드 브릿지** 수직 슬라이스 — card dispatch · M-1 allowlist · M-2 제출 분리(당시 p16). 설계: `HERDR_DESIGN.md` (0.22 baseline). as-built 호출 형상: `spikes/HERDR-0.7.5-COMPAT.md` (0.28.1/p17). |
 
 ---
 

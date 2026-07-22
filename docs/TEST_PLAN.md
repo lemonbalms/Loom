@@ -64,6 +64,8 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 7. 🤖 **UC-17** (원격 result → board `blocked`) — 단위 테스트로 커버 시 수동 생략 가능  
 8. 환경 있으면 🤖/🖐 **UC-16** (`dogfood:herdr` 0.7.5/17)  
 
+정본: herdr/protocol-17 → [spikes/HERDR-0.7.5-COMPAT.md](./spikes/HERDR-0.7.5-COMPAT.md); 완료 권한/pane-death U1–U11 → [spikes/PANE-DEATH-UNIFIED-DESIGN.md](./spikes/PANE-DEATH-UNIFIED-DESIGN.md).
+
 해당 영역 건드렸으면 추가:
 
 | 변경 영역 | 추가 UC |
@@ -298,7 +300,7 @@ bun run desktop
 
 | # | 명령 | 기대 |
 |---|------|------|
-| 11.1 | `bun test` | 전부 pass (현재 ~140) |
+| 11.1 | `bun test` | 전부 pass (absolute pass count is not SSOT; see ⚠ Historical snapshot for dated totals) |
 | 11.2 | `bun run smoke:desktop` | status/peers/inbox/board/handoff/chat/401/stop |
 | 11.3 | `bun run smoke:uc` | UC-0/1/3/5/6/7 + **UC-9** MCP (격리 홈) |
 | 11.4 | (선택) `cd apps/desktop/src-tauri && cargo test` | Rust sticky path 단위 |
@@ -573,6 +575,10 @@ Blockers:
 
 ## 실행 기록 (실제)
 
+## ⚠ Historical snapshot — 현재 SSOT 아님
+
+아래 실행 기록은 **과거 증거**만이다 (0.13.x–0.17.1 시대 SHA/버전). 현재 핀·필수 UC는 헤더 표 + §0.4 + UC-15–18 (제품 **0.28.1**); 당시 P0 pass 행을 오늘 ship gate로 읽지 않는다. 새 통과분은 날짜 하위 섹션으로 추가하고 Build = `loom --version` + git SHA. 현재 주장: [`CHANGELOG.md`](./CHANGELOG.md) · [`PLAN.md`](./PLAN.md).
+
 ### Test run — 2026-07-10 (P0 release gate)
 
 | Field | Value |
@@ -715,7 +721,7 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 
 ## UC-15 — 완료 권한 (0.28.0) (P0 when bridge/board authority touched)
 
-가이드: USER_GUIDE §12.8 · §13. 설계: PANE-DEATH U1–U11.
+가이드: [USER_GUIDE](./USER_GUIDE.md) §12.8 · §13. 설계 정본: [PANE-DEATH-UNIFIED-DESIGN.md](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) 락 U1–U11.
 
 | # | 단계 | 기대 | 자동 |
 |---|------|------|------|
@@ -729,6 +735,8 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 ---
 
 ## UC-16 — herdr 0.7.5 / protocol 17 준비 (0.28.1) (P0 when adapter/dogfood)
+
+정본: [HERDR-0.7.5-COMPAT.md](./spikes/HERDR-0.7.5-COMPAT.md) §1–§6 · PLAN 0.28.1.
 
 | # | 단계 | 기대 | 자동 |
 |---|------|------|------|
@@ -785,4 +793,4 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 
 ---
 
-*기준 버전: 제품 **0.13.12**. UC 번호는 USER_GUIDE와 동기. 기능 추가 시 이 표에 행을 추가한다.*
+*기준 버전: 제품 **0.28.1**. UC 번호는 USER_GUIDE와 동기. 기능 추가 시 이 표에 행을 추가한다.*

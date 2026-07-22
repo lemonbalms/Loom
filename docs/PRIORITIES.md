@@ -7,7 +7,7 @@
 | **문서** | `docs/PRIORITIES.md` |
 | **제품 핀** | PLAN / CLI **v0.28.1** `approved` (2026-07-22) |
 | **게이트 핀** | `HANDOFF.md` · `bun run status` (항상 이 파일보다 우선) |
-| **관련** | [`CHANGELOG.md`](./CHANGELOG.md) · [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) · [`DOC-REFRESH-PLAN.md`](./DOC-REFRESH-PLAN.md) |
+| **관련** | [`CHANGELOG.md`](./CHANGELOG.md) · [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) · [`DOC-REFRESH-PLAN.md`](./DOC-REFRESH-PLAN.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) |
 
 ---
 
@@ -51,7 +51,7 @@
 | — | 운영 품질 · conv · hooks | 0.23–0.26 |
 | — | result issuer · PANE-DEATH · p17 adapter | 0.27–0.28.1 |
 
-상세 사용자 노트: [`CHANGELOG.md`](./CHANGELOG.md).
+상세 사용자 노트: [`CHANGELOG.md`](./CHANGELOG.md). 설계 SSOT: [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md).
 
 ---
 
@@ -69,8 +69,8 @@
 
 - Protocol research / COMPAT 전면 재매핑  
 - herdr 0.7.4 다운그레이드 · dual session · config-only protocol 17  
-- `card.done` / pane exit를 완료 권위로 취급  
-- PANE-DEATH U1–U11 · adapter through `6e2df8a` 재발명  
+- [`card.done`](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) / pane exit를 완료 권위로 취급  
+- [PANE-DEATH U1–U11](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) · [adapter](./spikes/HERDR-0.7.5-COMPAT.md) through `6e2df8a` 재발명  
 - Phase E / ROADMAP **before** Phase D lands  
 - 이미 그린 live 3-kind / dogfood 전면 재실행 (신규 결함 없을 때)
 

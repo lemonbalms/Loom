@@ -552,6 +552,8 @@ bun run loom --profile codex-side run codex
 **하고 싶은 일:** Claude Code로 카드/검증 웨이브를 돌리다 세션이 먹통이 되어, **Grok CLI(또는 다른 터미널)에서 같은 작업을 이어간다.**  
 (2026-07-20 실측 시나리오: Claude 중단 → Grok에서 VERIFY 디스패치 → mac-node bridge 재기동 → Claude 복구 후에도 **같은 bridge 재사용**.)
 
+> **스냅샷 · 제품 SSOT 아님:** 위 (2026-07-20 실측) 문장과 §12.3의 status/HANDOFF/suite-*/verify-* 카드 이름은 이 레포 dogfood 실측 예다. 제품 계약·완료 권한 SSOT가 아니다 — 완료는 §12.8·§13·CHANGELOG 0.28.0. 층 진단(12.1–12.2)과 bridge 재기동·재사용(12.4–12.5)은 현재 운영 절차로 유지. 멀티 에이전트 dogfood 룸 절차는 DOGFOOD_LOOP.md.
+
 ### 12.1 층을 먼저 나눈다 (혼동 방지)
 
 | 층 | 무엇 | 죽으면 증상 | 누가 소유 |
@@ -617,7 +619,7 @@ bun run status
    - 카드 디스패치가 안 되거나 meta pid가 죽었을 때만  
 4. **카드 재발사** (예: verify를 codex pane으로)  
    - 기존 dispatch 스크립트/`dispatchCard` 경로 사용  
-   - 신호는 보드 폴링이 아니라 **inbox `card.done`**  
+   - 워커 회신 **관측**은 보드 폴링이 아니라 inbox 결과/`card.done` handoff (**후보 증거만** — board `done` 아님; §12.8)  
 5. Claude가 나중에 살아나면 → **같은 bridge를 그대로 사용** (아래 12.5). 새 bridge를 또 띄울 필요 없음
 
 **실측 함정 (이름을 헷갈리기 쉬운 지점):**
@@ -627,7 +629,7 @@ bun run status
 | “relay를 다시 띄웠다” | 로그상 **bridge** 재기동인 경우가 많음 (`Bridge started (pid …)`) |
 | “Grok CLI = 구현 레인” | Grok CLI는 **아키텍트 터미널**. 워커는 **herdr pane + card** |
 | `loom run grok/codex` 화면이 깨짐 | live relay callback과 full-screen TUI가 **같은 PTY**에 출력. 아키텍트는 직접 실행하고 워커는 `dispatch_card`로 pane 생성 |
-| herdr 0.7.5 / protocol 17 (Loom **0.28.1** adapter shipped) | **필수:** `bun run dogfood:herdr`로 live 0.7.5/17 + Loom expected-17 호환을 확인한 뒤 dispatch. 구 bridge config의 `herdrProtocol:16`은 dogfood:up 경로에서 **auto-migrate**된다 — **config만 17로 올리는 bypass는 금지**. prompt/`send_keys`는 **exact named agent target**(pane id 아님). herdr 다운그레이드·0.7.4 병존 세션 금지. 사용자당 1회 **plugin reinstall/relink** 후 protocol 17 확인. |
+| herdr 0.7.5 / protocol 17 (Loom **0.28.1** adapter shipped) | **필수:** `bun run dogfood:herdr`로 live 0.7.5/17 + Loom expected-17 호환을 확인한 뒤 dispatch. 구 bridge config의 `herdrProtocol:16`은 dogfood:up 경로에서 **auto-migrate**된다 — **config만 17로 올리는 bypass는 금지**. prompt/`send_keys`는 **exact named agent target**(pane id 아님). herdr 다운그레이드·0.7.4 병존 세션 금지. 사용자당 1회 **plugin reinstall/relink** 후 protocol 17 확인. 정본: [`HERDR-0.7.5-COMPAT`](./spikes/HERDR-0.7.5-COMPAT.md) · 표·절차 §14. |
 | PID 숫자 (예: 10814 → 78818) | OS **프로세스 ID**. 재기동마다 바뀜. meta 파일의 `"pid"`와 대조 |
 
 ### 12.4 사용 사례 B — codex 무인 검증 때문에 bridge를 재기동할 때
@@ -718,6 +720,8 @@ PY
 | [`CHANGELOG.md`](./CHANGELOG.md) | 0.28.x 사용자 노트 |
 | [`HANDOFF.md`](../HANDOFF.md) | 현재 게이트·노드 실측 함정 |
 | `tasks/lessons/bridge-ops.md` | 주입 레이스·card.done·잘린 peer id |
+| [`spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md) | herdr 0.7.5 / protocol-17 호출 형상 정본 (0.28.1) |
+| [`spikes/PANE-DEATH-UNIFIED-DESIGN.md`](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) | 완료 권한·U1–U11 락 (0.28.0, 0.28.1 유지) |
 
 ### 12.8 완료 권한 (0.28.0) — 운영 체크리스트
 

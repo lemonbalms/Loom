@@ -24,6 +24,7 @@ Full team dry-run (Windows/WSL, remote relay, smoke): [`docs/DRY_RUN_RUNBOOK.md`
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
+| **Product pin** | **v0.28.1** — PLAN SSOT [`docs/PLAN.md`](docs/PLAN.md) · user notes [`docs/CHANGELOG.md`](docs/CHANGELOG.md) |
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) — product plan SSOT (versioned) |
 | **Changelog** | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — **what shipped** (user language, 0.22–0.28.1) |
 | **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
@@ -34,7 +35,7 @@ Full team dry-run (Windows/WSL, remote relay, smoke): [`docs/DRY_RUN_RUNBOOK.md`
 | **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |
-| **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) (relay wire; herdr → COMPAT spike) |
+| **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) (relay wire v1) · herdr **0.7.5 / protocol 17** → [`docs/spikes/HERDR-0.7.5-COMPAT.md`](docs/spikes/HERDR-0.7.5-COMPAT.md) |
 
 ---
 
@@ -68,10 +69,11 @@ Core mechanisms:
 | **Room** | Shared session keyed by invite code (`LOOM-XXXX`) |
 | **Peer** | Human + agent identity on the roster (`online` / offline) |
 | **Handoff** | Message/task to `@name`, `id`, or `*` — queued in inbox |
-| **Relay** | WebSocket fan-out + in-memory roster/inbox |
+| **Relay** | WebSocket fan-out + durable roster/inbox (disk snapshot; LOOM_RELAY_EPHEMERAL=1 for in-memory) |
 | **Host / sticky** | Long-lived connection so the peer stays online |
 | **MCP** | Agents call `check_handoffs`, `claim_handoff`, `handoff`, board/pack tools |
 | **Pack / board** | Local room-scoped context and tasks; optional handoff attach for multi-machine |
+| **Completion / board done** | `card.done`, scrape, hooks, and pane/process exit are candidate evidence only — they do **not** set board `done`; board `done` requires explicit local mutation after verification (0.28.0 locks; see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § Completion authority and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) 0.28.0) |
 
 ---
 
@@ -100,15 +102,17 @@ Loom/
 │   ├── GLOSSARY.md              # Project terms (non-normative)
 │   ├── USER_GUIDE.md            # End-user scenarios (Korean)
 │   ├── TEST_PLAN.md             # Per-scenario test checklist
-│   ├── PROTOCOL.md              # Relay wire protocol v1
+│   ├── PROTOCOL.md              # Relay WebSocket wire protocol v1 (not herdr RPC)
 │   ├── ARCHITECTURE.md          # Component map + bridge/authority
-│   ├── ADAPTERS.md              # MCP + herdr worker surfaces
+│   ├── ADAPTERS.md              # MCP + herdr worker surfaces (herdr 0.7.5 / protocol 17)
 │   ├── HERDR_DESIGN.md          # Bridge baseline + as-built banner
 │   ├── DOC-REFRESH-PLAN.md      # Docs as-built alignment plan
 │   ├── RENAME_TO_LOOM.md        # Fable→Loom rename (historical)
-│   └── spikes/                  # COMPAT, PANE-DEATH, fixtures, …
+│   └── spikes/                  # HERDR-0.7.5-COMPAT.md, PANE-DEATH-UNIFIED-DESIGN.md, fixtures, …
 └── tasks/                       # Local checklists (optional)
 ```
+
+Normative spikes: [`docs/spikes/HERDR-0.7.5-COMPAT.md`](docs/spikes/HERDR-0.7.5-COMPAT.md) · [`docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md`](docs/spikes/PANE-DEATH-UNIFIED-DESIGN.md).
 
 ### Package roles
 
@@ -127,7 +131,7 @@ Loom/
 Agent CLIs ──MCP/CLI──► Host ──WebSocket──► Relay
                          │                   │
                          ~/.loom session     roster + online map
-                         pack / board        per-peer inbox (in-memory)
+                         pack / board        per-peer inbox (durable by default)
 ```
 
 ---
@@ -296,7 +300,7 @@ Planning docs live under `docs/`. Implementation follows `docs/PLAN.md` version 
 
 ## License / status
 
-Private/experimental monorepo under active development (0.x).  
+Private/experimental monorepo under active development (0.x; current pin **v0.28.1** — see [`docs/PLAN.md`](docs/PLAN.md)).  
 Issues and collaboration: use this GitHub repository.
 
 **Maintainer remote:** https://github.com/lemonbalms/Loom

@@ -17,6 +17,7 @@ They **do** automate read-heavy audit / verify / evidence assembly that this rep
 | Name | File | Purpose | Typical agents |
 |------|------|---------|----------------|
 | `docs-asbuilt-audit` | `docs-asbuilt-audit.rhai` | Doc pin/drift audit | ~12–15 |
+| `docs-high-patch` | `docs-high-patch.rhai` | High findings: plan → **human approve** → fix → verify | ~7–12 |
 | `handoff-path-equivalence` | `handoff-path-equivalence.rhai` | SessionStart vs no-hook gaps (Phase D) | ~4–5 |
 | `gate-adversarial-verify` | `gate-adversarial-verify.rhai` | Dimensional review + skeptic panel | ~8–20 |
 | `preflight-dont-redo` | `preflight-dont-redo.rhai` | traps / don't-redo / lessons match | ~5 |
@@ -32,6 +33,7 @@ From repo root (`fable-advisor` / Loom):
 
 ```text
 /docs-asbuilt-audit
+/docs-high-patch
 /handoff-path-equivalence
 /gate-adversarial-verify
 /preflight-dont-redo
@@ -42,6 +44,9 @@ From repo root (`fable-advisor` / Loom):
 
 ```text
 /workflow docs-asbuilt-audit {"pin":"0.28.1"}
+
+/workflow docs-high-patch {"pin":"0.28.1"}
+/workflow docs-high-patch {"pin":"0.28.1","findings":[{"file":"docs/TEST_PLAN.md","issue":"Footer pin lag","severity":"High"}]}
 
 /workflow handoff-path-equivalence {"mode":"preflight"}
 /workflow handoff-path-equivalence {"mode":"postcheck"}
@@ -80,7 +85,30 @@ From repo root (`fable-advisor` / Loom):
 
 **Output:** `findings[]`, scratch `docs-asbuilt-audit.md`
 
-**Next step:** open High items → edit docs (or dispatch a docs PATCH). No code required.
+**Next step:** open High items → `/docs-high-patch` (or hand-edit). No code required.
+
+---
+
+### 1b. `docs-high-patch` (semi-auto)
+
+**When:** after `docs-asbuilt-audit` when High findings need a gated fix wave.
+
+**Flow:** Select → Plan (read-only) → **`await_user` approval** → Fix (read-write) → Verify → report.
+
+**Args**
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `pin` | `0.28.1` | Product version pin |
+| `findings` | last-audit High×3 defaults | `[{file, issue, evidence?, severity}]` — only `High` applied |
+
+**Defaults (when `findings` omitted):** HERDR_DESIGN §4.1.1 completion authority · TEST_PLAN footer pin · README relay durability.
+
+**Output:** scratch `docs-high-patch-plan.md` then `docs-high-patch-result.md`; working-tree edits only if you **resume** after the gate.
+
+**Does not:** commit, push, formal R{n}, or product code.
+
+**Next step:** `git diff` → optional re-audit → commit when satisfied.
 
 ---
 
@@ -167,7 +195,8 @@ From repo root (`fable-advisor` / Loom):
 4. `handoff-path-equivalence` `mode=postcheck`  
 5. `ship-evidence-pack` before push  
 6. `docs-asbuilt-audit` if docs moved  
-7. `gate-adversarial-verify` on the ship range  
+7. `docs-high-patch` for High residuals (approve gate → resume)  
+8. `gate-adversarial-verify` on the ship range  
 
 ---
 
