@@ -54,9 +54,12 @@ Use Korean if the user writes Korean. Do **not** skip this briefing — keep it 
 | PLAN | vX.Y.Z (`status`) |
 | Open blocking | … or 없음 |
 | 다음 액션 | … (from HANDOFF / `bun run status`) |
+| 작업 라인 | Default 전체 체인 + 선택 가능한 Claude/Grok/기타 CLI 체인 (HANDOFF 그대로) |
 | 워크플로 | docs/WORKFLOW.md |
 | 주의 | Loom=제품 · Fable 5=리뷰 에이전트 (혼동 금지) |
 ```
+
+`작업 라인`은 구현자 하나가 아니라 **orchestrator → implementation → verification/advice 전체 연결**이다. 사용자가 새 line을 고르지 않으면 HANDOFF의 직전 세션 승계 Default를 사용하고, 선택지는 작업 시작 전에 위 표로 보여준다.
 
 **Do not** end with “이어서 할까요?” / “진행할까요?” / “커밋할까요?” as a default.  
 Owner wants **stepwise autonomous progress** through the current gate wave.

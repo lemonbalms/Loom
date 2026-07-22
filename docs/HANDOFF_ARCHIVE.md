@@ -12,6 +12,7 @@
 ### Lane provenance correction (2026-07-22)
 
 - Owner의 “Grok 레인”은 최상위 **Grok CLI orchestration line** 선택이었으나 Codex가 구현자 레인으로 오독했다. PATCH 3의 실제 provenance는 Codex CLI orchestrator + Grok 4.5 headless implementer이며, 아래 “Owner-selected implementer” 표현은 이 정정으로 대체한다. 제품 검증 효력은 유지하되 요청한 orchestration routing은 충족하지 못한 것으로 기록한다. 다음 세션 기본 orchestrator = **Grok CLI**.
+- **후속 Owner 정리(최종):** “작업 line”은 orchestrator 단독이 아니라 orchestrator→implementation→verification/advice 전체 chain이다. 따라서 위 마지막 문장의 Grok 단독 default를 폐기하고, 실제 직전 구성 **Codex→Grok→Codex verification**을 다음 세션 Default로 승계한다. 선택 chain은 DOGFOOD_LOOP §0.5가 정본이다.
 
 ### PANE-DEATH PATCH 3 (M3) — bridge authority cut (2026-07-22 · `c475604`)
 

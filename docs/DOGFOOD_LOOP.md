@@ -26,6 +26,21 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 
 ---
 
+## 0.5 Session orchestration line selector
+
+“작업 line”은 단일 구현자 profile이 아니라 **최상위 orchestrator → implementation → verification/advice 전체 연결**이다. 새 세션은 Owner가 별도 선택하지 않으면 HANDOFF에 기록된 **직전 세션의 실제 전체 chain을 Default로 승계**한다. 세션 시작 briefing에서 Default와 아래 선택지를 먼저 보여주고, 선택이 없으면 Default로 즉시 진행한다.
+
+| Choice | Orchestrator → implementation → verification/advice |
+|---|---|
+| **Current inherited default** | **Codex → Grok → Codex verification** |
+| Claude line | **Claude → Grok → Claude Advisor** (`fable-advisor`) |
+| Grok line | **Grok → Grok → Claude + Codex verification**; 둘 다 불가하면 **Grok verification fallback** |
+| Other CLI | 설치·인증된 CLI를 선택할 수 있으나, 시작 전에 세 역할과 fallback을 명시 |
+
+선택된 orchestrator 안에서는 **복잡·모호·설계/보안 판단 = 해당 CLI의 최상위 모델**, 그 외 승인·락된 일반 작업 = 차상위 모델을 쓴다. 아래 `*-impl`/`*-rev` profile은 이 전체 line 안에서 orchestrator가 배치하는 subordinate lane이며, 그 자체를 세션 “작업 line”으로 부르지 않는다.
+
+---
+
 ## 1. Room & profiles (owner-configurable roster)
 
 **이 표가 역할 배정의 SSOT다.** 아래 배정은 **기본값(default)**이며, 고정이 아니라

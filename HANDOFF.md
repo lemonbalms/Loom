@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> PATCH 3 bridge authority cut shipped (`c475604`) · next = PANE-DEATH PATCH 4 (tests-only rewrite) · next orchestration CLI = Grok (Owner-selected).
+> PATCH 3 bridge authority cut shipped (`c475604`) · next = PANE-DEATH PATCH 4 (tests-only rewrite) · default chain = Codex orchestrate → Grok implement → Codex verify.
 
 ## Current loop
 
@@ -20,16 +20,16 @@
 
 ### PANE-DEATH PATCH 4 (M4) — tests-only rewrite
 
-**Orchestration lane handoff — 최상위 세션 CLI 선택이며 구현자 레인이 아님:**
+**Orchestration line handoff — 세션 전체 역할 연결:**
 
-| Item | Assignment |
+| Choice | Orchestrator → implementation → verification/advice |
 |---|---|
-| General default | Owner의 별도 선택이 없으면 **직전 세션의 실제 최상위 orchestration CLI를 승계** |
-| Next-session default | **Grok CLI** — Owner가 이번 대화에서 명시 선택했으므로 자동 승계보다 우선 |
-| Selectable orchestrators | **Claude CLI · Grok CLI · Codex CLI · 그 밖의 설치·인증된 CLI** |
-| Model tier inside the chosen CLI | 복잡·모호·설계/보안 판단은 해당 CLI의 최상위 모델; 승인·락된 일반 작업은 차상위 모델 |
-| Subordinate routing | `grok-impl`/`claude-impl`/`codex-impl` 및 review lane은 선택된 orchestrator가 내부 배치하는 하위 레인으로, 이 표의 “작업 라인” 선택지가 아님 |
-| Provenance correction | PATCH 3 실제 구성은 **Codex CLI orchestrator + Grok 4.5 headless implementer**였음; Owner의 “Grok 레인” 지시를 구현 레인으로 해석한 것은 오라우팅 |
+| **Default (previous-session inheritance)** | **Codex → Grok → Codex verification** — PATCH 3의 실제 구성 |
+| Claude line | **Claude → Grok → Claude Advisor** |
+| Grok line | **Grok → Grok → Claude + Codex verification**; 두 검증 레인이 불가하면 **Grok verification fallback** |
+| Other CLI | 설치·인증된 다른 CLI를 선택할 수 있으며, 시작 전에 전체 역할 연결을 명시 |
+
+Model tier: 선택된 orchestrator는 복잡·모호·설계/보안 판단에 최상위 모델을, 그 외 승인·락된 일반 작업에 차상위 모델을 사용한다. Owner가 다른 line을 고르면 즉시 override하고, 별도 선택이 없으면 Default로 바로 진행한다.
 
 Goal:
 - Rewrite §4.3 expectations around the shipped authority cut: accepted seam + real relay positives, `classifyAck` 4-way unit lock, non-accepted quarantine positives, exact-one result and pane-preservation assertions, plus approved branch test benefits.
@@ -78,7 +78,7 @@ Done when:
 - Windows entry is evidence only; herdr 0.7.5 adapter remains fail-closed until COMPAT done-when is met.
 - Do not downgrade herdr or run a parallel 0.7.4 session.
 - PATCH 1 tests-only contract = `24ceede`, PATCH 2 tower fence = `0b335a1`, PATCH 3 authority cut = `c475604`; PATCH 4 may change tests only.
-- Every gate handoff records the actual top-level orchestration CLI, next-session default, and selectable orchestrator CLIs. Owner override wins; otherwise the prior session's orchestration CLI is inherited. Implementation/review lanes are recorded separately as subordinate routing.
+- Every gate handoff records the full actual chain (orchestrator → implementation → verification/advice), the inherited next-session default, and configured choices. Owner override wins; otherwise the prior session's full chain is inherited.
 
 ## Evidence
 
@@ -90,7 +90,7 @@ Done when:
 - Continuity design/lock: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` · `docs/spikes/SESSION-CONTINUITY-PHASE-C-LOCK.md`
 - herdr 0.7.5 release-notes + schema impact map: `docs/spikes/HERDR-0.7.5-COMPAT.md`
 - Current execution and verification provenance: `docs/HANDOFF_ARCHIVE.md`
-- Orchestration selection: Owner directive in this handoff; subordinate lane roster/escalation: `docs/DOGFOOD_LOOP.md` §1·§1.2 · `AGENTS.md` Impl delegation
+- Orchestration-line selection: `docs/DOGFOOD_LOOP.md` §0.5; subordinate lane roster/escalation: §1·§1.2 · `AGENTS.md`
 - Traps and lessons: `tasks/traps.md` · `tasks/lessons.md`
 - Windows entry: `HANDOFF_WINDOWS.md`
 
