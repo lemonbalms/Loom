@@ -1,19 +1,31 @@
 # Loom 도그푸드 기능 리스트업 (`docs/DOGFOOD_FEATURES.md`)
 
-> "지금까지 개발된 Loom을 도그푸딩"하기 위한 기능/시나리오 목록.
-> `TEST_PLAN.md`의 UC 시나리오 + `PLAN`/`PRIORITIES`/`HANDOFF`/`UNKNOWNS`의 미결 작업 + 전략 지시(`LOOM_PURPOSE_REVIEW`)를 합쳐 우선순위화했다.
+**철학 (첫 문단):** 도그푸드 목록은 **그 시점의 빈틈을 드러내는 스냅샷**이다. 스냅샷을 최신 제품 SSOT처럼 읽으면 잘못된 우선순위를 고른다. 아래 본문은 **2026-07-11 / v0.17.1 역사 기록**이며, 현재 기능·검증·다음 한 수는 포인터 표를 따른다.
 
-| 항목 | 값 |
+## ⚠ Historical snapshot — 현재 SSOT 아님
+
+| 알고 싶은 것 | **지금** 읽을 곳 |
+|--------------|------------------|
+| 무엇이 shipped 됐나 | [`CHANGELOG.md`](./CHANGELOG.md) |
+| 어떻게 쓰나 | [`USER_GUIDE.md`](./USER_GUIDE.md) |
+| 어떻게 검증하나 | [`TEST_PLAN.md`](./TEST_PLAN.md) (핀 **v0.28.1**, UC-15–18 포함) |
+| 다음 게이트 | `HANDOFF.md` · `bun run status` · [`PRIORITIES.md`](./PRIORITIES.md) |
+| dogfood 룸·레인 절차 | [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md) |
+| 문서 정렬 계획 | [`DOC-REFRESH-PLAN.md`](./DOC-REFRESH-PLAN.md) |
+
+| 항목 (스냅샷 메타) | 값 |
 |------|-----|
 | **생성 시점** | 2026-07-11 18:48 KST |
 | **기준 커밋(HEAD)** | `0ad1f66` |
-| **제품 버전** | Loom **0.17.1** (approved) |
-| **소스 문서** | `TEST_PLAN.md` · `docs/PLAN.md` · `docs/PRIORITIES.md` · `HANDOFF.md` · `docs/UNKNOWNS.md` · `docs/LOOM_PURPOSE_REVIEW.md` |
-| **착수 순서 (결정됨)** | **Tier B 최신 기능 UC부터** (검증 공백 해소) |
+| **스냅샷 제품 버전** | Loom **0.17.1** (approved) — **≠ 현재 0.28.1** |
+| **소스 문서 (당시)** | `TEST_PLAN.md` · `docs/PLAN.md` · `docs/PRIORITIES.md` · `HANDOFF.md` · `docs/UNKNOWNS.md` · `docs/LOOM_PURPOSE_REVIEW.md` |
+| **착수 순서 (당시 결정)** | **Tier B 최신 기능 UC부터** (검증 공백 해소) |
 
 ---
 
-## ⚠️ 핵심 발견 — 테스트 계획이 제품보다 4버전 뒤처짐
+## ⚠️ 핵심 발견 (당시) — 테스트 계획이 제품보다 4버전 뒤처짐
+
+> **2026-07-22 주석:** 아래 “TEST_PLAN이 0.13” 진단은 스냅샷 당시 사실이다. 현재 TEST_PLAN은 **v0.28.1**으로 재핀되었고 UC-15–18이 추가됐다. 이 절을 현재 결함 보고로 인용하지 말 것.
 
 `TEST_PLAN.md` 기준 버전은 **0.13.12**인데 제품은 **0.17.1**. 0.14~0.17에서 shipped된 최신 기능 3개가 UC 시나리오에 없다 = 가장 버그 확률 높은 코드에 검증 시나리오가 없음.
 

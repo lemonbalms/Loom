@@ -1,5 +1,7 @@
 # Protocol
 
+**철학 (첫 문단):** 이 문서는 Loom **relay WebSocket 와이어(protocol v1)** 만 다룬다 — room·handoff·inbox·presence의 봉투와 라우팅. **herdr 로컬 소켓 RPC**(agent/pane/tab)는 이 파일의 범위가 아니며, as-built 정본은 [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md)다. 이름을 섞어 쓰지 않는다.
+
 Version: **1** (`v: 1` on every envelope) — M1.1 + M-7 + Loom rename (PLAN 0.9.0)
 
 Default relay: `ws://127.0.0.1:7842/ws`  
@@ -12,7 +14,7 @@ Remote clients:
 ```
 LOOM_RELAY_URL=ws://host:7842
 LOOM_RELAY_TOKEN=secret
-# or: fable --relay ws://host:7842 --token secret room join …
+# or: loom --relay ws://host:7842 --token secret room join …
 ```
 
 ## Roster vs socket

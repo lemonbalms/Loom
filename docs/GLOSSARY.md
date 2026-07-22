@@ -1,14 +1,10 @@
 # Loom 프로젝트 용어집
 
-> **상태:** 설명용 참조 문서(non-normative)
->
-> **작성일:** 2026-07-22
->
+**철학 (첫 문단):** 용어집은 계약을 새로 만들지 않는다. **이미 코드와 정본 문서에 있는 말을 쉬운 한국어로 풀어**, 같은 글자가 문맥마다 다른 뜻으로 쓰일 때 사고를 줄인다. 충돌 시 PLAN · COMPAT · PROTOCOL · 테스트가 이긴다.
+
+> **상태:** 설명용 참조 문서(non-normative)  
+> **작성일:** 2026-07-22 · **핀:** 제품 **v0.28.1** 용어 보강  
 > **대상:** `HANDOFF.md`, `docs/PLAN.md`, 설계·리뷰·운영 문서를 읽는 사람
-
-이 문서는 Loom 프로젝트에서 반복해서 사용하는 축약어와 내부 표현을 일반적인 말로 설명한다. 새로 참여한 사람이 문서의 뜻을 빠르게 파악하도록 돕는 것이 목적이다.
-
-이 문서는 기술 규칙의 정본이 아니다. 설명이 실제 계약과 다르면 `docs/PLAN.md`, 해당 설계 문서, `docs/PROTOCOL.md`, 코드와 테스트 순으로 현재 적용 대상을 확인한다.
 
 ## 1. 먼저 구분해야 하는 이름
 
@@ -162,6 +158,19 @@
 | **presence** | 특정 피어·프로세스·pane이 현재 살아 있거나 연결돼 있는지에 대한 관찰 상태 |
 | **`presence_unknown`** | 살아 있음도 종료도 확정할 수 없는 상태 |
 | **`pane_exited` / `process_exit`** | 터미널 pane 또는 프로세스가 종료되었다는 사건. 작업 성공을 자동으로 뜻하지 않는다. |
+| **protocol 16 / 17** | herdr **로컬 RPC** 프로토콜 세대. Loom relay wire v1과 **다른 축**. 0.28.1 런타임 타깃은 **17**. |
+| **`HERDR_PROTOCOL_EXPECTED`** | Loom이 기대하는 herdr protocol 상수. **17**이며 어댑터 코드와 함께 올라간다. 설정만 바꿔 green 만드는 것은 금지. |
+| **`agent.prompt`** | protocol 17의 **원자적** 텍스트 제출 원시(붙여넣기+제출을 서버가 소유). 구 `agent.send`+Enter 분할을 대체. |
+| **`agent.send_keys`** | 논리 키·키 조합 전용. 프롬프트 본문 제출 경로가 아님(Enter 넛지 등 경계 있는 사용). |
+| **named agent / exact agent name** | herdr에 붙인 에이전트의 **이름** 식별자. prompt 타깃은 pane id가 아니라 이 이름. 형식 예: `loom-${cardId}-${seq}`. |
+| **`agent_name_unrepresentable`** | 이름을 안전하게 만들 수 없을 때 **실패로 닫는** 결과. 해시·절단으로 충돌을 숨기지 않음. |
+| **completion authority / 완료 권한** | board를 `done`으로 **확정**할 수 있는 권한. 관측·회신·pane 종료만으로는 갖지 않음 (0.28.0). |
+| **`blocked` (remote result)** | 원격이 done을 주장해도 tower board가 자동 완료하지 않고 **검증 대기로 격리**한 상태. |
+| **`legacy_remote_done_requires_verification`** | 위 격리 시 notes/reason에 붙는 대표 사유 문자열. |
+| **config-only protocol bump** | herdrProtocol 숫자만 17로 올려 ping 등만 통과시키는 우회. **금지** — 어댑터 없이 첫 스폰이 깨짐. |
+| **reinject / 중복 제출 방지 4절** | stall 시 전문 재발행 규칙: 시도당 1회 기본 · 프로브 선행 · 양성 미스에서만 재발행 · 히트/read-fail은 넛지만 · 예산 소진 fail-visible. |
+| **`interactive_ready`** | agent 기동이 프롬프트를 받을 준비된 상태. `agent.wait` idle과 **동의어가 아님**. |
+| **SessionStart / no-hook path** | 개발 세션 컨텍스트 주입 경로(훅 있음 vs 없음). 제품 room handoff와 별개 — harness continuity. |
 
 ### 상태기계와 권한 표현
 

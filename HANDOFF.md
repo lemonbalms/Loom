@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 release close complete/shipped; source through `6e2df8a` · next = Phase D automation · default chain = Codex orchestrate → Grok implement → Codex verify.
+> Loom v0.28.1 release close complete/shipped; source through `6e2df8a` · docs as-built 0.28 wave landed (`docs/DOC-REFRESH-PLAN.md`) · next = Phase D automation · default chain = Codex orchestrate → Grok implement → Codex verify.
 
 ## Current loop
 
@@ -84,6 +84,7 @@ Done when:
 - Host **462/0**; first full **761/2** classified as checkpoint hardcode drift only; authoritative final full **763/0** (2760 expect, 58 files, 302.48s); checkpoint **24/0**
 - Version/dist: release close complete, dist green, CLI Loom v0.28.1; COMPAT/PLAN/archive/DOGFOOD/Windows/traps
 - Continuity: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` · Phase C `8a3ddba`
+- Docs as-built (0.28.1): `docs/CHANGELOG.md` · `docs/ARCHITECTURE.md` · `docs/USER_GUIDE.md` · `docs/HERDR_DESIGN.md` banner · `docs/TEST_PLAN.md` UC-15–18 · `index.md` · `docs/DOC-REFRESH-PLAN.md` (philosophy-first)
 - Provenance: `docs/HANDOFF_ARCHIVE.md` · traps `tasks/traps.md` · Windows `HANDOFF_WINDOWS.md`
 
 ## Don't redo

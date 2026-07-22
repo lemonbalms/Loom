@@ -25,14 +25,16 @@ Full team dry-run (Windows/WSL, remote relay, smoke): [`docs/DRY_RUN_RUNBOOK.md`
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) — product plan SSOT (versioned) |
+| **Changelog** | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — **what shipped** (user language, 0.22–0.28.1) |
 | **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
 | **Docs index** | [`index.md`](index.md) — 문서 지도와 권장 읽기 순서 |
 | **Glossary** | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — Loom 약어·내부 용어 설명 (non-normative) |
-| **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어) |
+| **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어, v0.28.1) |
+| **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — packages · bridge · completion authority |
 | **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
 | **Session entry** | [`AGENTS.md`](AGENTS.md) (Codex+Claude) · [`HANDOFF.md`](HANDOFF.md) · `bun run status` |
-| **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) |
+| **Protocol** | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) (relay wire; herdr → COMPAT spike) |
 
 ---
 
@@ -92,16 +94,19 @@ Loom/
 │   └── relay-cloud/             # Remote/LAN relay ops notes (README)
 ├── docs/
 │   ├── PLAN.md                  # Product plan SSOT (versioned)
+│   ├── CHANGELOG.md             # User-facing release notes
 │   ├── plan_review.md           # Review gate (R1…)
 │   ├── PRIORITIES.md            # What to do next (short-term)
-│   ├── GLOSSARY.md              # Project terms and abbreviations (non-normative)
+│   ├── GLOSSARY.md              # Project terms (non-normative)
 │   ├── USER_GUIDE.md            # End-user scenarios (Korean)
 │   ├── TEST_PLAN.md             # Per-scenario test checklist
-│   ├── PROTOCOL.md              # Wire protocol
-│   ├── ARCHITECTURE.md          # Component map
-│   ├── ADAPTERS.md              # Agent adapter matrix
-│   ├── RENAME_TO_LOOM.md        # Fable→Loom rename plan (historical)
-│   └── spikes/                  # e.g. PTY inject no-go
+│   ├── PROTOCOL.md              # Relay wire protocol v1
+│   ├── ARCHITECTURE.md          # Component map + bridge/authority
+│   ├── ADAPTERS.md              # MCP + herdr worker surfaces
+│   ├── HERDR_DESIGN.md          # Bridge baseline + as-built banner
+│   ├── DOC-REFRESH-PLAN.md      # Docs as-built alignment plan
+│   ├── RENAME_TO_LOOM.md        # Fable→Loom rename (historical)
+│   └── spikes/                  # COMPAT, PANE-DEATH, fixtures, …
 └── tasks/                       # Local checklists (optional)
 ```
 

@@ -1,14 +1,13 @@
 # Loom 사용자 가이드 — 사용 사례로 배우기
 
+**철학 (첫 문단):** 이 가이드는 **지금 버전으로 할 수 있는 일**을 시나리오로 가르치되, **완료처럼 보이는 신호를 완료로 착각하지 않게** 같은 호흡으로 경고한다. Loom은 또 하나의 코딩 에이전트가 아니라 — *connect your agents, and your teammates* — Room·handoff·inbox·board·MCP·bridge를 붙여 **이종 에이전트와 사람이 일을 넘기는** 레이어다.
+
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.20.0** / desktop UI **v0.12.2** 기준 |
-| **관련** | [README](../README.md) · [TEST_PLAN](./TEST_PLAN.md) (사례별 검증) · [ADAPTERS](./ADAPTERS.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
-
-이 문서는 **지금까지 구현된 기능으로 실제로 할 수 있는 일**을 시나리오 중심으로 정리합니다.  
-Loom은 코딩 에이전트 자체가 아니라, **Room · 핸드오프 · 인박스 · 보드 · MCP · 데스크톱** 을 붙이는 멀티플레이어 레이어입니다.
+| **제품 버전** | CLI **v0.28.1** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
 
@@ -49,10 +48,15 @@ loom doctor
 | **Inbox** | 내가 받은 handoff 목록. 오프라인이어도 쌓임 |
 | **Sticky host** | `host start` — 연결을 유지해 피어를 online으로 유지 |
 | **Pack** | 방 단위 로컬 컨텍스트(요약·경로·노트). 핸드오프에 선택 첨부 |
-| **Board** | 방 단위 로컬 태스크 보드 (CLI·MCP·데스크톱 공유 파일) |
+| **Board** | 방 단위 **로컬** 태스크 보드 (머신마다 파일; 실시간 CRDT 아님) |
 | **Relay** | 메시지 중계 서버. 로컬 자동 또는 LAN/원격 수동 |
 | **Bridge** | 노드에서 카드(dispatch)를 받아 워커 pane(claude/codex/grok)을 돌리는 장수 프로세스 |
-| **Card** | handoff attachment로 실리는 작업 계약 — 노드 bridge가 claim·실행·`card.done` 회신 |
+| **Card** | handoff attachment로 실리는 작업 계약 — 노드 bridge가 claim·실행·결과 회신 |
+| **Herdr** | 워커 pane을 띄우는 외부 멀티플렉서. Loom 0.28.1 기준 **0.7.5 / protocol 17** |
+| **완료 권한** | board를 `done`으로 확정할 수 있는 권한. **`card.done`·pane 종료·원격 result만으로는 없음** (0.28.0) |
+| **`blocked` (원격 result)** | 원격이 `done`을 주장해도 tower board는 **검증 대기 격리**로만 옮김 |
+
+**한 줄 규칙 (0.28):** 회신이 왔다고 일을 끝내지 마라. **로컬에서 산출물을 확인한 뒤** board를 옮긴다.
 
 ### 0.3 세션·프로필
 
@@ -95,6 +99,11 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 10 | LAN/원격 멀티 머신 | loom relay, --relay, --token |
 | 11 | 헤드리스 회귀 확인 | smoke:desktop, bun test |
 | 12 | 오케스트레이터 CLI 전환·bridge 복구 (Claude 먹통 → Grok 이어하기) | relay vs bridge vs 세션, card 디스패치 |
+| 13 | 완료 권한 — `card.done` 이후 board를 어떻게 닫나 (0.28.0) | blocked · 로컬 검증 · 명시 mutation |
+| 14 | herdr 0.7.5 dogfood 준비 (0.28.1) | `dogfood:herdr` · named agent · config migrate |
+| 15 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
+
+릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
@@ -705,13 +714,62 @@ PY
 | 문서 | 내용 |
 |------|------|
 | [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md) | 프로필·카드 디스패치 dogfood 절차 |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | relay / host / bridge 패키지 맵 |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | relay / host / bridge · 완료 권한 맵 |
+| [`CHANGELOG.md`](./CHANGELOG.md) | 0.28.x 사용자 노트 |
 | [`HANDOFF.md`](../HANDOFF.md) | 현재 게이트·노드 실측 함정 |
 | `tasks/lessons/bridge-ops.md` | 주입 레이스·card.done·잘린 peer id |
 
+### 12.8 완료 권한 (0.28.0) — 운영 체크리스트
+
+카드를 돌린 뒤 **절대** 이렇게 닫지 마세요.
+
+| 신호 | 해석 | board에 할 일 |
+|------|------|----------------|
+| inbox에 `card.done` / 결과 handoff | **후보 증거** | 워킹트리·테스트로 **독립 검증** |
+| herdr pane 종료 · 프로세스 exit | 자원 정리 이슈일 수 있음 | 성공으로 간주 **금지** |
+| 원격 노드가 `status:"done"` 주장 | untrusted | 타워 board는 **`blocked`** (검증 대기)로만 |
+| 로컬에서 검증 통과 | 완료 확정 가능 | **명시적** `board set … done` (또는 동등 MCP) |
+
+상세 설계: [`ARCHITECTURE.md`](./ARCHITECTURE.md) 「Completion authority」 · [`spikes/PANE-DEATH-UNIFIED-DESIGN.md`](./spikes/PANE-DEATH-UNIFIED-DESIGN.md).
+
 ---
 
-## 13. 명령 치트시트
+## 13. 완료 권한 시나리오 — “done 왔는데 끝인가?” (0.28.0)
+
+**하고 싶은 일:** 워커가 결과를 돌려준 뒤 보드를 올바르게 닫는다.
+
+1. 디스패치 후 inbox / board 상태를 본다.  
+2. **산출물을 워킹트리에서 직접 확인**한다 (`bun test`, diff, 파일 존재). 에이전트 회신 문장만 믿지 않는다.  
+3. 원격 노드 result만 도착했다면 board가 **`blocked`** 인지 확인한다 — 이게 정상이다.  
+4. 검증 후에야 로컬에서 `done`(또는 `failed`)으로 옮긴다.  
+5. pane이 사라졌다는 이유만으로 성공 처리하지 않는다.
+
+**실패 모드:** “`card.done` 수신 = 완료”로 다음 카드를 연쇄 발행 → 미검증 작업이 done 컬럼에 쌓임.
+
+---
+
+## 14. herdr 0.7.5 dogfood 준비 (0.28.1)
+
+**하고 싶은 일:** 카드 워커를 띄우기 전 호스트 herdr와 Loom 어댑터가 맞는지 확인한다.
+
+```bash
+bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
+# 실패 시: herdr 업그레이드 · plugin reinstall/relink · Loom 0.28.1+ 사용
+# 금지: herdrProtocol만 17로 수동 위장, 0.7.4 다운그레이드·병존 세션
+```
+
+| 규칙 | 이유 |
+|------|------|
+| prompt 타깃 = **agent name** | pane id는 침묵 오배송 |
+| `agent.prompt` | p17에서 `agent.send` 없음 |
+| launch 후 `interactive_ready` 대기 | `agent.wait` idle ≠ 기동 완료 |
+| allowlist = **전체 peer id** | `loom peers` 표 절단값 금지 |
+
+정본: [`spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md) · 절차: [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md).
+
+---
+
+## 15. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -735,7 +793,7 @@ bun test
 
 ---
 
-## 14. 자주 하는 실수
+## 16. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -750,33 +808,41 @@ bun test
 | “relay 재기동” 했는데 health는 이미 ok | 실제로는 bridge 재기동이 필요했음 | health와 `bridge-main` pid를 분리 확인 |
 | bridge 재기동 후 codex가 승인 대기 | argv 원복/미설정 | `agentArgv.codex` + bridge restart (§12.4) |
 | 핫픽스 반영이 안 됨 | 구 bridge PID가 옛 코드 유지 | bridge restart로 소스 재로드 (§12.5) |
+| `card.done` 보고 board를 done으로 | 완료 권한 오해 (0.28) | §12.8 · §13 — 로컬 검증 후 명시 mutation |
+| herdr 0.7.5인데 카드 스폰 실패 | p16 어댑터/설정 또는 config-only 17 | §14 · `dogfood:herdr` · Loom 0.28.1+ |
+| prompt가 다른 pane으로 감 | pane id 타깃 | exact agent **name** |
 
 ---
 
-## 15. 지금 버전에서 **아직** 못 하는 것
+## 17. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
 - 보드 **실시간 멀티라이터 CRDT** / relay 영속 보드  
-- 에이전트 TUI **stdin 자동 주입** (카드/bridge pane 경로는 별도 — dogfood)  
 - 클라우드 계정·멀티테넌시  
-- 전역 `loom` 설치 스크립트 기본 제공 (원하면 alias · `scripts/install.sh` 참고)
+- herdr **0.7.4 / protocol 16** 동시 지원 (0.28.1은 17 컷오버; 다운그레이드 비목표)  
+- 원격 result만으로 타워 board **`done`** (0.28.0 이후 의도적 금지 — `blocked` 후 로컬 확정)  
+- 전역 `loom` 설치가 OS 패키지 매니저 기본 제공 (원하면 `scripts/install.sh` · `link:loom`)
+
+**할 수 있는 것 (0.28.1 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · dogfood 3-kind · 완료 권한 분리 운영.
 
 ---
 
-## 16. 더 읽을 문서
+## 18. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|
 | [README.md](../README.md) | 제품 소개·퀵스타트 |
+| [CHANGELOG.md](./CHANGELOG.md) | 버전별 사용자 노트 |
 | [PITCH.md](./PITCH.md) | 짧은 피치 + 데모 GIF |
-| [ADAPTERS.md](./ADAPTERS.md) | 에이전트별 MCP |
+| [ADAPTERS.md](./ADAPTERS.md) | MCP 스폰 + herdr 워커 축 |
 | [apps/desktop/README.md](../apps/desktop/README.md) | 데스크톱 규칙 (토큰·XSS) |
-| [PROTOCOL.md](./PROTOCOL.md) | 와이어 프로토콜 |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 패키지 구조 |
+| [PROTOCOL.md](./PROTOCOL.md) | relay 와이어 프로토콜 |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 패키지·권한·bridge 지도 |
 | [DOGFOOD_LOOP.md](./DOGFOOD_LOOP.md) | 멀티 에이전트 dogfood 룸·프로필 |
 | [PLAN.md](./PLAN.md) | 기능 계획 SSOT (개발용) |
+| [GLOSSARY.md](./GLOSSARY.md) | 용어 |
 
 ---
 
-*가이드 버전: 제품 기능 집합 + **§12 오케스트레이터 CLI 전환·bridge 복구** 사용 사례(2026-07-20 실측). 기능이 늘면 이 문서의 사례 표를 갱신한다.*
+*가이드 핀: 제품 **v0.28.1** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*

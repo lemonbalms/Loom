@@ -1,146 +1,91 @@
 # Loom 우선순위 (Priorities)
 
-> ### ⭐ 재판정 (2026-07-19, 오너) — 이 문서의 P0~P2.7은 전부 완료됨 (기준 시점 v0.17.0은 스테일)
-> **MVP 종료 선언 — 프로덕션 단계 전환.** MVP 범위 = 코어 멀티플레이 + 브릿지(0.22.0) + conv 멀티턴 + 0.23.x 운영 품질(R23–R35).  
-> **다음 제품 트랙 = 멀티노드 단계 3** (아키텍처 권고 §06 잔여 — Windows relay 복귀 → WSL/Linux 노드 복제 → `@node` 라우팅 → SSH/git 전송 자동화 점진 도입). 상세·순서 = `HANDOFF.md` 다음 액션 0-c / Strategic context.  
-> 아래 본문은 v0.17.0 시점 기록으로 보존.
+**철학 (첫 문단):** 우선순위 문서는 지난 백로그 회고장이 아니라, **지금 세션이 고를 수 있는 다음 검증 가능한 한 수**의 SSOT다. “이미 그린 재실행”·“오너 블로커만 기다림”·“문서 동기만”은 next-action 실격이다. 실패하면 **새로 배우는 것**이 있는 일만 위에 둔다.
 
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/PRIORITIES.md` |
-| **기준 시점** | PLAN **v0.17.0** (`pending-review`) · 2026-07-10 |
-| **목적** | “지금 무엇을 할지” Owner·에이전트 공통 SSOT (단기) |
-| **관련** | [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §5 · [`TEST_PLAN.md`](./TEST_PLAN.md) · [`USER_GUIDE.md`](./USER_GUIDE.md) |
+| **제품 핀** | PLAN / CLI **v0.28.1** `approved` (2026-07-22) |
+| **게이트 핀** | `HANDOFF.md` · `bun run status` (항상 이 파일보다 우선) |
+| **관련** | [`CHANGELOG.md`](./CHANGELOG.md) · [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) · [`DOC-REFRESH-PLAN.md`](./DOC-REFRESH-PLAN.md) |
 
 ---
 
-## 1. 현재 진단
+## 1. 한 줄 상태
 
-**기능·보안 필수 백로그는 비어 있다.**  
-Open blocking 없음. L-4 / L-5 닫힘. 코어 루프(room · handoff · offline inbox · sticky · board · pack embed · desktop)는 동작·테스트 존재.
-
-**병목은 “다음 큰 기능”이 아니라 “남이 쓰고 믿을 수 있게 만드는 것”이다.**
-
-| 영역 | 상태 |
-|------|------|
-| 코어 멀티플레이 | 사용 가능 |
-| Desktop / pack embed | 사용 가능 |
-| 설치·PATH (`loom` 단독) | **완화** — `bun run link:loom` / `scripts/loom` (P0) |
-| PLAN 승인 형식 | R14/R15 게이트 후 author-close 잔여 있음 |
-| Relay 재시작 내구성 | **done 0.14.x** — disk snapshot (inbox+roster) |
-| Live board sync | 없음 (스냅샷만) — P3 |
+| 축 | 상태 |
+|----|------|
+| **제품 MVP (room·handoff·bridge·0.28.x)** | **shipped** — 0.28.1 release close complete |
+| **Open blocking** | **없음** |
+| **다음 제품 기능 MAJOR** | 없음 (오너 지시 전 대기) |
+| **다음 실행 게이트 (HANDOFF)** | **Phase D** — session continuity bounded automation (lint/status fail-loud · path equivalence) · **product behavior 무변경** |
+| **문서** | 0.28 as-built 정렬 웨이브 (`DOC-REFRESH-PLAN.md`) |
 
 ---
 
-## 2. 우선순위 표
+## 2. 지금 할 일 (우선순위 표)
 
-| 순위 | 테마 | 목표 | Fable R{n} | 상태 |
-|------|------|------|------------|------|
-| **P0** | **설치·실행 DX** | 클론 후 `loom` 을 헤매지 않게 | 보통 불필요 | **done 0.13.3** |
-| **P1** | **신뢰 게이트** | Owner 사인 또는 R14(최근 diff) | **R14 done** | **done 0.13.4** |
-| **P2** | **내구성** | Relay 재시작 후에도 handoff 유지 | **필수** (보안·데이터) | **done 0.14.1–0.14.2** |
-| **P2.5** | **목적 루프** | Purpose card · handoff contracts · receive claim | **R16** | **done 0.15.1** |
-| **P2.6** | **작업 버스** | board→handoff 전달 · `loom work`/`watch` | **R17** | **done 0.16.1** |
-| **P2.7** | **런처 UX** | `up` multi-host · join auto-host · work-first · run only when work | **R18** | **PLAN 0.17.0 pending-review** |
-| **P3** | **큰 신기능** | live board CRDT, 클라우드 계정 등 | **필수** | 의도적 후순위 |
-| — | Low 백로그 더 파기 | — | — | **하지 않음** (소진) |
-
----
-
-## 3. P0 — 설치·실행 DX (상세)
-
-### 왜 1순위인가
-
-- dogfood에서 `loom: command not found` 반복  
-- Share 문구는 `bun run loom` 으로 고쳤지만 **글로벌/로컬 link 경로**가 문서에 약함  
-- 기능이 있어도 **첫 5분이 막히면 제품 가치가 전달되지 않음**
-
-### 완료 조건 (DoD)
-
-- [x] 레포에서 **한 명령**으로 `loom` 을 PATH에 올리는 방법이 문서화됨 (`bun run link:loom`)  
-- [x] `loom --version` (link 후) 동작  
-- [x] README Quick start 옵션 A/B/C  
-- [x] USER_GUIDE §0  
-- [x] `scripts/loom` 래퍼  
-- [x] `bun test` + `smoke:desktop` green  
-
-### 비목표 (P0에 넣지 않음)
-
-- npm 퍼블리시 / 홈브루  
-- 서명된 desktop .dmg (별도 마일스톤)
-
-### 작업 분해
-
-1. `scripts/loom` 래퍼 (레포 상대, bun 실행)  
-2. `bun run link:loom` / `unlink:loom` (packages/cli `bun link`)  
-3. README + USER_GUIDE 설치 절  
-4. (선택) `loom doctor` 간단 진단 — session/host/profile tip  
+| 순위 | 테마 | 목표 | 검증 | 상태 |
+|------|------|------|------|------|
+| **P0** | **Session continuity Phase D** | shared-heading lint · status fail-loud · SessionStart vs no-hook 동등성 테스트 | `handoff:lint` · `bun run status` · 관련 테스트 green | **HANDOFF current** |
+| **P0b** | **Docs as-built (본 웨이브)** | CHANGELOG·ARCH·USER·HERDR 배너·TEST·index가 0.28.1과 모순 없음 | 문서 DoD (`DOC-REFRESH-PLAN` §6) | **in progress / ship with wave** |
+| **P1** | **UK-5..UK-9 관찰** | 후속 후보만 — 범위 확대 금지 | PLAN 메모 | nonblocking |
+| **P1b** | **Integration-test flake track** | isolation recipe 유지 | owner pending | **owner** — 범위 확장 금지 |
+| **P2** | **HOOKCACHE-D-VERIFY** | deferred | design doc | paused |
+| **P2b** | **RULE-ENFORCEABILITY apply** | 코드 강제 여부 = 제품 결정 | `spikes/RULE-ENFORCEABILITY.md` | document only |
+| **P3** | **멀티노드 단계 3** | Windows relay 복귀 · 노드 복제 · `@node` 등 | 아키텍처 권고 | 의도적 후순위 (MVP 종료 후 트랙) |
 
 ---
 
-## 4. P1 — 신뢰 게이트
+## 3. MVP 종료 (보존 — 2026-07-19 오너 재판정)
 
-| 옵션 | 내용 | Owner 액션 |
-|------|------|------------|
-| **A (빠름)** | 0.13.x author-close 묶음을 **인정** → PLAN Approval 한 줄 | 아래 문구 승인 |
-| **B (엄격)** | **R14**: 0.11–0.13 누적 diff 보안·정합성 (Fable 5) | “R14 돌려” |
+다음 항목은 **완료**로 간주한다. 재착수하지 않는다.
 
-**P1 완료 (B):** R14 **approved** 2026-07-10 — 산출 `docs/plan_review.md` R14.  
-R14 Low: **L-26 / L-27 done 0.13.5**.  
-규칙: [`WORKFLOW.md` §5.0–5.1](./WORKFLOW.md).
+| 과거 순위 | 테마 | 완료 힌트 |
+|-----------|------|-----------|
+| P0 | 설치·실행 DX | 0.13+ `link:loom` / install |
+| P1 | 신뢰 게이트 | R14 계열 |
+| P2 | Relay 내구성 | 0.14 snapshot |
+| P2.5–P2.7 | Purpose · work bus · launcher | 0.15–0.17 |
+| — | Bridge 수직 슬라이스 | 0.22 |
+| — | 운영 품질 · conv · hooks | 0.23–0.26 |
+| — | result issuer · PANE-DEATH · p17 adapter | 0.27–0.28.1 |
 
----
-
-## 5. P2 — 내구성 (**done**)
-
-- Relay 인박스/로스터 **디스크 스냅샷** (`~/.loom/relay-state` / `LOOM_RELAY_STATE_DIR`)  
-- R15 M-21/22/23 locks · 0.14.2 symlink/fail-closed harden  
-- 검증: `packages/relay` persist tests · `bun run smoke:durable`  
-
-→ **다음 우선순위는 P3 또는 제품 마무리(문서·dogfood)** — 필수 백로그 비움.
+상세 사용자 노트: [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
-## 6. P3 — 의도적 후순위
+## 4. Owner pending (진행을 막지 않음)
 
-- Live multi-writer board CRDT  
-- 클라우드 계정 / 멀티테넌시  
-- PTY inject  
-- Low 백로그만 계속 파기
-
----
-
-## 7. 실행 순서 (권장)
-
-```text
-① P0 설치 DX 구현 + 문서     ← done 0.13.3
-② TEST_PLAN P0 수동 1회 기록 (UC-1 + UC-3)  ← done 2026-07-10
-③ P1 Owner 사인 또는 R14     ← done R14 (0.13.4)
-④ P2 durable inbox           ← done 0.14.1–0.14.2
-⑤ 문서 honesty / smoke:durable     ← done
-⑥ Purpose-based sprint 1          ← done 0.15.1
-⑦ Work bus                             ← done 0.16.1
-⑧ Launcher UX (up / host-default)      ← **0.17.0 pending-review R18** (next session)
-⑨ P3 CRDT only if Owner wants
-```
+| Decision | Safe default |
+|----------|----------------|
+| Integration-test flake track | keep isolation recipe; do not expand scope |
+| HOOKCACHE-D-VERIFY resume | remain paused through current harness wave |
+| RULE-ENFORCEABILITY code apply | document only; no silent enforcement |
 
 ---
 
-## 8. 변경 이력
+## 5. Don't redo (제품·게이트)
 
-| 날짜 | 내용 |
-|------|------|
-| 2026-07-10 | 초안 — 0.13.2 시점 진단 및 P0=설치 DX |
-| 2026-07-10 | P0 implemented (link:loom, scripts/loom, docs) — 0.13.3 |
-| 2026-07-10 | TEST_PLAN P0 gate 기록 (UC-0/1/3/11); P1 next |
-| 2026-07-10 | P1-B R14 approved — 0.13.4; next P2 |
-| 2026-07-10 | R14 Low L-26/L-27 implemented — 0.13.5 |
-| 2026-07-10 | P2 PLAN **0.14.0** draft pending-review (R15) |
-| 2026-07-10 | R15 → **0.14.1** implement · **0.14.2** harden · docs honesty wave |
-| 2026-07-10 | **0.15.0** Purpose-based sprint 1 draft (R16) |
-| 2026-07-10 | **0.15.1** purpose implement; **0.16.0** work bus draft (R17) |
-| 2026-07-10 | **0.16.1** work bus; **0.17.0** launcher UX draft (R18) next session |
+- Protocol research / COMPAT 전면 재매핑  
+- herdr 0.7.4 다운그레이드 · dual session · config-only protocol 17  
+- `card.done` / pane exit를 완료 권위로 취급  
+- PANE-DEATH U1–U11 · adapter through `6e2df8a` 재발명  
+- Phase E / ROADMAP **before** Phase D lands  
+- 이미 그린 live 3-kind / dogfood 전면 재실행 (신규 결함 없을 때)
 
 ---
 
-*이 문서가 PLAN 기능 범위와 충돌하면 **PLAN 버전 게이트를 우선**하고, 이 문서는 “무엇을 먼저 할지” 운영 우선순위만 담당한다.*
+## 6. 작업 라인 (기본)
+
+| Choice | Orchestrator → implementation → verification |
+|--------|-----------------------------------------------|
+| **Default** | Codex → Grok → Codex verification |
+| Claude line | Claude → Grok → Claude Advisor |
+| Grok line | Grok → Grok → Claude + Codex verification (fallback: Grok verify) |
+
+오너 override 즉시 적용. 없으면 Default 상속 (`HANDOFF.md`).
+
+---
+
+*이 파일이 HANDOFF와 충돌하면 **HANDOFF + `bun run status`가 이긴다.** 본문은 그 요약 레이어다.*

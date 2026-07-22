@@ -1,15 +1,14 @@
 # Loom 테스트 계획 — 사용 사례별
 
+**철학 (첫 문단):** 테스트 계획은 릴리즈 마케팅 문장이 아니라, **이 버전이 주장하는 행동을 반증할 수 있는 목록**이다. 자동화가 있으면 🤖로 표시하고, 자동화 없는 완료 권한·실기 herdr 경로는 🖐로 남긴다. 버전 핀이 제품보다 뒤처지면 이 문서는 즉시 무효다.
+
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/TEST_PLAN.md` |
 | **대상** | QA·기여자·에이전트 — **시나리오 검증** |
-| **제품 기준** | CLI **v0.13.3** · desktop UI (Send/Board) |
-| **사용 가이드** | [`USER_GUIDE.md`](./USER_GUIDE.md) (같은 시나리오 번호) |
-| **자동화** | `bun test` · `bun run smoke:desktop` |
-
-이 문서는 **무엇을 통과해야 “그 사용 사례가 된다”고 말할 수 있는지**를 체크리스트로 고정한다.  
-시나리오 설명·명령 전체는 USER_GUIDE를 보고, 여기서는 **검증 절차·기대 결과·자동화 여부**만 다룬다.
+| **제품 기준** | CLI **v0.28.1** · desktop UI (Send/Board) · herdr **0.7.5 / p17** (워커 경로) |
+| **사용 가이드** | [`USER_GUIDE.md`](./USER_GUIDE.md) (시나리오 설명) · [`CHANGELOG.md`](./CHANGELOG.md) |
+| **자동화** | `bun test` · `bun run smoke:desktop` · `bun run dogfood:herdr` (환경 의존) |
 
 ---
 
@@ -58,6 +57,13 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 3. 🖐 **UC-1** (두 프로필 핸드오프) 전체  
 4. 🖐 **UC-3** host start/stop (프로필 일치)  
 
+**bridge / herdr / 완료 권한을 건드린 ship** 추가:
+
+5. 🤖 host 계약 테스트 (herdr protocol 17 · lifecycle · pane-death 관련 스위트) green  
+6. 🖐 또는 🤖 **UC-15** (완료 권한 — `card.done` ≠ board done)  
+7. 🤖 **UC-17** (원격 result → board `blocked`) — 단위 테스트로 커버 시 수동 생략 가능  
+8. 환경 있으면 🤖/🖐 **UC-16** (`dogfood:herdr` 0.7.5/17)  
+
 해당 영역 건드렸으면 추가:
 
 | 변경 영역 | 추가 UC |
@@ -66,7 +72,9 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 | board | UC-7, (스냅샷이면) UC-8 |
 | desktop UI | UC-4 |
 | relay 토큰/LAN | UC-10 |
-| MCP / adapters | UC-9 |
+| MCP / interactive adapters | UC-9 |
+| bridge / herdr adapter | UC-15, UC-16, UC-17, UC-18 |
+| session continuity / HANDOFF scripts | handoff lint · status · Phase D tests |
 
 ---
 
@@ -89,6 +97,10 @@ mkdir -p "$LOOM_TEST_HOME/.loom"
 | 12 | Launcher UX (up/down/auto-host) | sticky-host.integration (부분) | **P1 수동** |
 | 13 | Work bus (board add --as / work / watch) | work-bus 단위 + smoke:uc(부분) | **P1 수동** |
 | 14 | Purpose + verify (purpose / verify / intent) | purpose 단위 + handoff-contract | **P1 수동** |
+| **15** | **완료 권한 (0.28.0)** — done 신호 ≠ board done | pane-death / bridge 계약 테스트 | **P0 해당 ship** |
+| **16** | **herdr 0.7.5 / p17 (0.28.1)** dogfood 준비 | `dogfood:herdr` · protocol-17 contract tests | **P0 워커 ship** |
+| **17** | **Tower 원격 result → blocked** | board apply / tower isolation 테스트 | **P0 해당 ship** |
+| **18** | **Collision-free agent name + named prompt target** | identity / inject target 테스트 | **P0 워커 ship** |
 
 ```bash
 # 전체 자동 (CI 로컬 대응)
@@ -96,6 +108,9 @@ bun test && bun run smoke:desktop
 
 # 사용 사례 CLI 스모크 (UC-0/1/3/5/6/7 핵심 — 격리 LOOM_TEST_HOME)
 bun run smoke:uc
+
+# herdr 실기 (0.7.5 설치 머신)
+bun run dogfood:herdr
 ```
 
 ---
@@ -105,7 +120,7 @@ bun run smoke:uc
 | # | 단계 | 기대 | 자동 |
 |---|------|------|------|
 | 0.1 | `bun install` | 에러 없이 완료 | 🖐 |
-| 0.2 | `bun run loom --version` | `loom v0.13.x` 등 버전 출력 | 🖐 |
+| 0.2 | `bun run loom --version` | `loom v0.28.x` (PLAN 핀과 동일 계열) | 🖐 |
 | 0.3 | `bun test` | 전부 pass | 🤖 |
 | 0.4 | `bun run smoke:desktop` | `smoke OK` | 🤖 |
 | 0.5 | `bun run link:loom` + PATH | `loom --version` 동작 | 🖐 |
@@ -698,6 +713,52 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 
 ---
 
+## UC-15 — 완료 권한 (0.28.0) (P0 when bridge/board authority touched)
+
+가이드: USER_GUIDE §12.8 · §13. 설계: PANE-DEATH U1–U11.
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 15.1 | 워커/브릿지가 결과 후보를 발행 | result / `card.done` 류 신호가 존재할 수 있음 | 🤖 계약 테스트 |
+| 15.2 | board가 그 신호만으로 `done`이 되지 않음 | 자동 board `done` **없음** | 🤖 |
+| 15.3 | pane exit / process death만으로 성공 처리 안 함 | 관측 ≠ 완료 | 🤖 |
+| 15.4 | 로컬 검증 후 명시 mutation | 사람/검증 레인만 `done` 가능 (운영 시나리오) | 🖐 |
+
+**실패 조건:** 원격 또는 브릿지 자동 경로가 board를 `done`으로 올린다.
+
+---
+
+## UC-16 — herdr 0.7.5 / protocol 17 준비 (0.28.1) (P0 when adapter/dogfood)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 16.1 | `bun run dogfood:herdr` | live 0.7.5/17 + Loom expected-17 통과 | 🤖/🖐 환경 |
+| 16.2 | protocol-17 픽스처/계약 테스트 | start/prompt 형상 고정 | 🤖 |
+| 16.3 | config-only 17 우회 없음 | 어댑터 없는 bump로 ready 위장 불가 정신 | 🤖 게이트 스크립트 |
+| 16.4 | (실기) named agent prompt | pane-id 타깃 오배송 없음 | 🖐 |
+
+---
+
+## UC-17 — Tower 원격 result → `blocked` (0.28.0) (P0)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 17.1 | 원격 result `status:"done"` 적용 | board → **`blocked`** | 🤖 |
+| 17.2 | notes/reason에 검증 필요 표시 | `legacy_remote_done_requires_verification` 류 | 🤖 |
+| 17.3 | 로컬 명시 set만이 `done` | 원격 경로로 `done` 불가 | 🤖 |
+
+---
+
+## UC-18 — Agent 이름·prompt 타깃 (0.28.1) (P0)
+
+| # | 단계 | 기대 | 자동 |
+|---|------|------|------|
+| 18.1 | 이름 형식 `loom-${cardId}-${seq}` | strict · 길이·문자 제약 | 🤖 |
+| 18.2 | 표현 불가 | `agent_name_unrepresentable` fail-closed (hash 절단 금지) | 🤖 |
+| 18.3 | prompt/send_keys 타깃 | exact name · pane id 금지 정신 | 🤖 |
+
+---
+
 ## 알려진 한계 (실패로 치지 않음)
 
 | 항목 | 설명 |
@@ -705,9 +766,10 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 | Relay 재시작 | **0.14+ durable** (default). `LOOM_RELAY_EPHEMERAL=1` 이면 유실 (의도) |
 | Room disk GC | leave peer 제거; 빈 room 파일 잔존 가능 (L-29) |
 | 보드 multi-machine live | 스냅샷만 (CRDT 없음) — P3 |
-| 전역 `loom` PATH | 기본 미설치 — `bun run loom` 또는 `bun run link:loom` (0.13.3) |
+| 전역 `loom` PATH | 기본 미설치 — `bun run loom` 또는 `bun run link:loom` |
 | PTY inject | 제품 비목표 (스파이크 no-go) |
-| Bun TTY / `loom run claude` | kqueue **0.13.12**; resize **0.13.14** (python pty + winsize poll) — Owner confirmed OK |
+| herdr 미설치 환경 | UC-16 실기 ⏭ 스킵; 단위 계약 테스트는 유지 |
+| 원격 result auto-done | **의도적 비지원** (0.28.0) — UC-17이 회귀 잠금 |
 
 ---
 
@@ -717,8 +779,9 @@ Room: **uc5-demo** · peer: **alice** (online) · **bob** offline.
 |------|------|
 | [USER_GUIDE.md](./USER_GUIDE.md) | **어떻게 쓰는지** (튜토리얼) |
 | **TEST_PLAN.md** (이 문서) | **어떻게 검증하는지** (체크리스트) |
+| [CHANGELOG.md](./CHANGELOG.md) | 버전이 주장하는 변화 |
 | [PLAN.md](./PLAN.md) | 기능 계획 SSOT |
-| `bun test` / `smoke:desktop` | 자동 회귀 |
+| `bun test` / `smoke:desktop` / `dogfood:herdr` | 자동 회귀 |
 
 ---
 

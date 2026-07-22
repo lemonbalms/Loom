@@ -1,12 +1,45 @@
 # HERDR_DESIGN — Loom × Herdr 노드 브릿지 설계서
 
+**철학 (첫 문단):** 이 문서는 **0.22 수직 슬라이스의 baseline 설계**를 보존한다. 제품 as-built 정본은 버전이 올라갈 때마다 **이 본문을 통째로 덮어쓰지 않고**, 아래 **As-built 배너**와 정본 스파이크로 가리킨다. baseline의 가정(특히 herdr **0.7.4 / protocol 16** · `agent.send` 분할 제출)을 2026-07 현재 코드에 그대로 구현하면 **틀린 어댑터**가 된다.
+
 | | |
 |--|--|
-| **Status** | **PLAN 0.22.0 implemented** (2026-07-17, R23 M-1/M-2). 버전·status SSOT = `docs/PLAN.md` |
-| **Date** | 2026-07-17 |
-| **Scope** | 수직 슬라이스(노드 1개, WSL2) 통과에 필요한 최소 설계. 확장은 각 절 "이후"로 분리 |
-| **Related** | [`loom-herdr-architecture.html`](./loom-herdr-architecture.html) (외부 권고 문서 아카이브) · [`PLAN.md`](./PLAN.md) · [`WORKFLOW.md`](./WORKFLOW.md) §3.5 · [`UNKNOWNS.md`](./UNKNOWNS.md) · [`DRY_RUN_RUNBOOK.md`](./DRY_RUN_RUNBOOK.md) |
+| **Status** | **0.22.0 baseline implemented** (2026-07-17, R23 M-1/M-2) · **as-built pin 0.28.1** (아래 배너) |
+| **Baseline date** | 2026-07-17 |
+| **As-built pin** | PLAN / CLI **0.28.1** (2026-07-22) |
+| **Scope** | 수직 슬라이스(노드 1개) 통과에 필요한 최소 설계 + 이후 버전 delta 포인터 |
+| **Related** | [`loom-herdr-architecture.html`](./loom-herdr-architecture.html) · [`PLAN.md`](./PLAN.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · [`CHANGELOG.md`](./CHANGELOG.md) · [`spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md) · [`spikes/PANE-DEATH-UNIFIED-DESIGN.md`](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
 | **작성 방식** | 멀티에이전트 워크플로 — 코드베이스 정찰 4 + 섹션 초안 4 + 적대적 코드 대조 검증 4. 검증에서 발견된 사실 오류 5건 교정 반영 |
+
+---
+
+## ⚠ As-built banner (읽기 전 필수 — 0.28.x)
+
+| 버전 | 무엇이 바뀌었나 | 정본 (이 본문보다 우선) |
+|------|-----------------|------------------------|
+| **0.28.1** | herdr **0.7.5 / protocol 17**. pane 선생성(`env`/`cwd`) → `agent.start{name,kind,pane_id}` → 원자적 **`agent.prompt`**. dual-`agent.send` + `BARE_ENTER` **제거**. prompt 타깃 = **exact agent name**. config-only 17 **금지**. | [`spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md) §1–§6 · PLAN 0.28.1 · `implementation-notes.md` §0.28.1 |
+| **0.28.0** | **완료 권한 컷.** `card.done`/pane exit ≠ board `done`. 원격 result `done` → tower board **`blocked`**. 브릿지 자동 done 폐지. U1–U11. | [`spikes/PANE-DEATH-UNIFIED-DESIGN.md`](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) · PLAN 0.28.0 |
+| **0.27.0** | result 발행 단일 소유권 · strict ACK 경계 (전송 성공 ≠ 적용 ≠ 완료) | PLAN 0.27.0 · PANE-DEATH §6.7 계열 |
+| **0.26** | hooks = **센서 힌트만** (완료 권한 없음) | `spikes/HOOKS-SENSOR-SPIKE.md` |
+| **0.22.0** | 본 문서 본문 — 최초 브릿지 슬라이스 · **p16 가정** | 이 파일 §0 이하 |
+
+### Obsolete in body (do not implement as written)
+
+본문에 남아 있을 수 있는 다음 서술은 **0.28.1 as-built에서 폐기·대체**됐다. 구현·리뷰 시 COMPAT를 따른다.
+
+| Baseline 문구 (0.22 / p16) | As-built (0.28.1 / p17) |
+|----------------------------|-------------------------|
+| `agent.start` + argv/env/cwd/split | pane 선생성 후 `agent.start{name,kind,pane_id}` |
+| `agent.send` + bare Enter 제출 분리 | **`agent.prompt` 원자 제출** |
+| pane id 타깃 암시 | **named agent only** |
+| 완료 ≈ detection/`done` 이벤트 조합으로 board 반영 가능처럼 읽히는 부분 | **0.28.0 U2** — 원격 done은 `blocked`; 로컬 검증 후 명시 mutation |
+| herdr **v0.7.4 / protocol 16** 표 | 런타임 타깃 **0.7.5 / 17** (0.7.4 다운그레이드·병존 비목표) |
+
+R23 **M-1**(dispatcher allowlist) · **M-2**(비신뢰 프롬프트를 셸/pane.run에 보간 금지) 정신은 **유지**된다. M-2의 **집행 지점**만 `agent.prompt`로 옮겼다.
+
+시스템 지도 요약: [`ARCHITECTURE.md`](./ARCHITECTURE.md) 「Node bridge × herdr」.
+
+---
 
 ## 0. 요약
 
