@@ -264,7 +264,7 @@ const TOOLS = [
   {
     name: "apply_card_result",
     description:
-      "Apply a claimed card result (loom-card-result attachment JSON) to the local board: done → done, failed → blocked, summary → notes. Pass fromPeerId/fromNode from the claimed handoff for L-2 forgery checks.",
+      "Apply a claimed card result (loom-card-result attachment JSON) to the local board under remote-result isolation: every accepted remote result maps to blocked (never board done); legacy status \"done\" records reason legacy_remote_done_requires_verification; failed stays blocked with its reason; summary → notes. Board done requires an explicit local mutation after verification. Pass fromPeerId/fromNode from the claimed handoff for L-2 forgery checks.",
     inputSchema: {
       type: "object",
       properties: {

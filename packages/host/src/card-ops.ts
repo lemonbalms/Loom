@@ -164,6 +164,10 @@ function findTasksByHandoffId(handoffId: string): TaskItem[] {
  * Apply loom-card-result JSON to local board.
  * L-2: optional fromPeerId/node must match card assignee when provided.
  * PLAN 0.27.0 §6.7.3: tower currency gate — dispatchHandoffId vs task.handoffId.
+ * PLAN 0.28.0 U2 / PATCH 2: remote result isolation — every accepted remote
+ * result maps board status to `blocked` (never `done`). Legacy payload
+ * `status:"done"` records reason `legacy_remote_done_requires_verification`.
+ * Board `done` is only via explicit local mutation, not this remote path.
  */
 export function applyCardResult(args: {
   resultJson: string;
@@ -314,12 +318,18 @@ export function applyCardResult(args: {
     }
   }
 
-  const status: TaskStatus =
-    payload.status === "done" ? "done" : "blocked";
+  // PLAN 0.28.0 U2 / §2.4 isolation mapping: remote result never writes board
+  // `done`. Both payload statuses land on `blocked`; human/local mutation is
+  // the only path to board done. Rolling upgrade ships this tower fence before
+  // bridge changes so old bridge→new tower (`done→blocked`) and new bridge→old
+  // tower (`failed→blocked`) both fail closed.
+  const status: TaskStatus = "blocked";
   const reason =
-    payload.status === "failed" && payload.reason
-      ? ` failed reason=${payload.reason}`
-      : "";
+    payload.status === "done"
+      ? " failed reason=legacy_remote_done_requires_verification"
+      : payload.status === "failed" && payload.reason
+        ? ` failed reason=${payload.reason}`
+        : "";
   // PLAN 0.23.7 M-2: `last_seq=` must always survive the 1000-char notes cap.
   // Build head (summary + reason + optional note) within residual budget, then
   // append the seq token so the idempotency guard cannot be silently broken.

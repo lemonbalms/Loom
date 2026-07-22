@@ -15,7 +15,7 @@
 | relay 상시화 (Windows) | ✅ `ws://100.65.103.113:7842` (`LoomRelayTeam` Task) |
 | room `demo` + Mac join + 양방향 handoff/board | ✅ `LOOM-4HXU` |
 | Mac bridge + **fake** herdr | ✅ `herdrOk:true` · allow `p_1f01c881dc5598d7` |
-| **dispatch_card 자동실행 (fake herdr)** | ✅ **완료** — dispatch `ho_52388ad0` → 무개입 `[DONE]` `ho_31cd036a` → `applyCardResult` → board `done` |
+| **dispatch_card 자동실행 (fake herdr)** | ✅ **완료** — dispatch `ho_52388ad0` → 무개입 `[DONE]` `ho_31cd036a` → `applyCardResult` → board `blocked` (PLAN 0.28.0 U2 remote isolation; legacy done reason `legacy_remote_done_requires_verification`; board `done` is local-only after verification) |
 | bun.lock 정합성 작업 board 위임 | ✅ `task_5b240cad6cabc37b` @mac (`ho_4c36b0bd`) |
 | **Mac 실물 herdr + bridge 전환** | ✅ **2026-07-17 Mac** — herdr **0.7.4**/protocol **16** · sock `~/.config/herdr/herdr.sock` · `herdrOk:true` · allow 유지 · repo cwd에서 server 기동 · claude **2.1.212** PATH |
 | **실물 herdr dispatch (bun.lock 카드)** | ⬅ **지금: Windows §3-2** `dispatchCard(task_5b240cad…)` |
@@ -49,7 +49,7 @@ LOOM_SESSION="C:\Users\34970\.loom\profiles\win-demo.json" \
 # → {ok:true,status:delivered,...} → Mac bridge 자동 claim → fake done → [DONE] Windows inbox
 ```
 
-**결과 반영(apply):** `[DONE]` handoff의 `loom-card-result` 첨부에서 resultJson을 꺼내 `applyCardResult({resultJson})` → board `doing→done`. (`opsListInbox` + `cardPayloadFromAttachments(atts, CARD_RESULT_LABEL, CardResultPayloadSchema)`)
+**결과 반영(apply):** `[DONE]` handoff의 `loom-card-result` 첨부에서 resultJson을 꺼내 `applyCardResult({resultJson})` → board `doing→blocked` (PLAN 0.28.0 U2 remote-result isolation — payload `done`/`failed` both map to `blocked`; legacy `done` records reason `legacy_remote_done_requires_verification`; tower fence ships before bridge so rolling upgrade fails closed both ways). Board `done` requires an explicit local mutation after verification. (`opsListInbox` + `cardPayloadFromAttachments(atts, CARD_RESULT_LABEL, CardResultPayloadSchema)`)
 
 > fake herdr는 **실제 Claude 실행 없음** — 배관(dispatch→spawn→[DONE]→board)만 무개입 실증. 실제 작업 실행은 §3 실물 herdr 필요.
 
