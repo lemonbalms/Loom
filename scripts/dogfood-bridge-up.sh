@@ -32,6 +32,28 @@ loom() {
 # failing the old agent.start/agent.send requests on the first real card.
 bash scripts/dogfood-herdr-check.sh
 
+# Sync persisted mac-node herdrProtocol to HERDR_PROTOCOL_EXPECTED after the live
+# herdr check and before any "already online" ready exit. Stale config can pin
+# an older protocol while live herdr + source expected already match.
+PROTOCOL_CHANGED=no
+PROTOCOL_CHANGED="$(
+  bun -e '
+    import { loadBridgeConfig, saveBridgeConfig } from "./packages/host/src/bridge-config.ts";
+    import { HERDR_PROTOCOL_EXPECTED } from "./packages/host/src/herdr-client.ts";
+    const cfg = loadBridgeConfig("mac-node");
+    if (cfg.herdrProtocol === HERDR_PROTOCOL_EXPECTED) {
+      process.stdout.write("no");
+    } else {
+      cfg.herdrProtocol = HERDR_PROTOCOL_EXPECTED;
+      saveBridgeConfig("mac-node", cfg);
+      process.stdout.write("yes");
+    }
+  '
+)"
+if [[ "$PROTOCOL_CHANGED" == "yes" ]]; then
+  echo "dogfood bridge: migrated mac-node herdrProtocol to HERDR_PROTOCOL_EXPECTED"
+fi
+
 json_field() {
   bun -e 'const value = JSON.parse(await Bun.file(Bun.argv[1]).text())[Bun.argv[2]]; if (typeof value === "string") process.stdout.write(value);' "$1" "$2"
 }
@@ -53,7 +75,7 @@ if [[ -f "$NODE_CONFIG_FILE" ]]; then
 fi
 
 BRIDGE_STATUS="$(loom --profile mac-node bridge status 2>&1 || true)"
-if [[ "$NODE_ROOM_ID" == "$ARCH_ROOM_ID" && "$META_ROOM_ID" == "$ARCH_ROOM_ID" && "$AUTHORIZED" == "yes" && "$BRIDGE_STATUS" == *"bridge: online"* && "$BRIDGE_STATUS" == *'"inFlight":0'* ]]; then
+if [[ "$NODE_ROOM_ID" == "$ARCH_ROOM_ID" && "$META_ROOM_ID" == "$ARCH_ROOM_ID" && "$AUTHORIZED" == "yes" && "$BRIDGE_STATUS" == *"bridge: online"* && "$BRIDGE_STATUS" == *'"inFlight":0'* && "$PROTOCOL_CHANGED" == "no" ]]; then
   echo "dogfood bridge: ready (mac-node, room matched, codex-arch authorized)"
   exit 0
 fi

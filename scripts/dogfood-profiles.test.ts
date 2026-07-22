@@ -87,9 +87,7 @@ describe("dogfood active profile contract", () => {
     expect(source).toContain('REQUIRED_PROTOCOL="17"');
     expect(source).toContain("LOOM_PROTOCOL");
     expect(source).toContain("first card will fail");
-    expect(up.indexOf("dogfood-herdr-check.sh")).toBeLessThan(
-      up.indexOf("dogfood-room-up.sh"),
-    );
+    expect(up.indexOf("dogfood-herdr-check.sh")).toBeLessThan(up.indexOf("dogfood-room-up.sh"));
   });
 
   test("dogfood bridge syncs mac-node herdrProtocol before ready early-exit", () => {
@@ -127,8 +125,6 @@ describe("dogfood active profile contract", () => {
 
     // No second independent protocol literal in bridge-up — cutover value
     // comes from HERDR_PROTOCOL_EXPECTED / helpers only.
-    expect(source).not.toMatch(
-      /herdrProtocol\s*[:=]\s*1[67]\b|HERDR_PROTOCOL\s*=\s*["']?1[67]/,
-    );
+    expect(source).not.toMatch(/herdrProtocol\s*[:=]\s*1[67]\b|HERDR_PROTOCOL\s*=\s*["']?1[67]/);
   });
 });
