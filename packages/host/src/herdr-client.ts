@@ -1,39 +1,46 @@
 /**
- * Herdr NDJSON Unix-socket client (v0.7.4 / protocol 16 fixtures).
+ * Herdr NDJSON Unix-socket client (v0.7.5 / protocol 17 fixtures).
  * AGPL boundary: socket RPC only — no herdr source vendoring.
  * PLAN 0.22.0 / HERDR_DESIGN §2.3
  * PLAN 0.23.4 — subscription lifecycle (prune, pre-ACK reject, ACK timeout, M-1 rollback).
+ * PLAN 0.28.1 — protocol-17 adapter: named start on existing pane, atomic
+ * `agent.prompt`, env/cwd on `tab.create`/`pane.split` (PATCH 2).
  *
- * Transport note (measured against real herdr v0.7.4): the socket is
- * one-RPC-per-connection — any request gets a response then the server
- * sends FIN and the connection closes. The lone exception is
+ * Transport note (measured against real herdr; still true on 0.7.5): the
+ * socket is one-RPC-per-connection — any request gets a response then the
+ * server sends FIN and the connection closes. The lone exception is
  * `events.subscribe`, whose connection stays open to carry `{event,data}`
  * pushes (but accepts no further requests). `request()` therefore opens a
  * fresh connection per call; `eventsSubscribe()` keeps one dedicated
  * long-lived connection for pushes, reconnecting with backoff if it drops.
+ *
+ * Wire truth: `docs/spikes/fixtures/herdr-v0.7.5/schema.json` (+ schema-focus).
+ * Do not invent fields or logical key-token names beyond that fixture.
  */
-import { createConnection, type Socket } from "node:net";
+
 import { randomBytes } from "node:crypto";
+import { createConnection, type Socket } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const HERDR_PROTOCOL_EXPECTED = 16;
-export const DEFAULT_HERDR_SOCKET = join(
-  homedir(),
-  ".config",
-  "herdr",
-  "herdr.sock",
-);
+export const HERDR_PROTOCOL_EXPECTED = 17;
+export const DEFAULT_HERDR_SOCKET = join(homedir(), ".config", "herdr", "herdr.sock");
 
 /**
- * M-2: bare Enter as fixed constant — never interpolate prompt into submit.
- * CR = terminal Enter key; live-measured against real herdr — LF only
- * inserts a newline into the Claude Code composer without submitting.
+ * Bare carriage return (terminal Enter) for legacy dual-send inject paths.
+ *
+ * @deprecated Temporary compat for PATCH 3 production (`bridge-runtime.ts`)
+ * which still imports this symbol. Not used by any protocol-17 client behavior
+ * (agent.prompt / agent.send_keys). Remove in PATCH 3 or 4 when dual-send is
+ * retired.
  */
 export const BARE_ENTER = "\r";
 
 const EVENT_RECONNECT_BASE_MS = 500;
 const EVENT_RECONNECT_MAX_MS = 5_000;
+
+/** Schema-backed agent status enum (request + response AgentStatus). */
+export type HerdrAgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
 export type HerdrPingResult = {
   version: string;
@@ -48,17 +55,21 @@ export type HerdrAgentStarted = {
   agent_status?: string;
 };
 
+/** Structured RPC error so callers can match codes without message regexes. */
+export class HerdrRpcError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "HerdrRpcError";
+    this.code = code;
+  }
+}
+
 export type HerdrClientOptions = {
   socketPath: string;
   /** Request timeout ms (default 15s) */
   timeoutMs?: number;
-  /**
-   * Grace period (ms) between prompt injection and the bare-Enter submit —
-   * the composer needs time to finish processing the pasted prompt before
-   * CR registers as Enter. Live-measured: an immediate CR is swallowed.
-   * Default 500.
-   */
-  submitDelayMs?: number;
   onEvent?: (event: string, data: unknown) => void;
   onClose?: () => void;
   onError?: (err: Error) => void;
@@ -98,10 +109,7 @@ function projectRect(raw: unknown): HerdrPaneLayoutRect | null {
   return out;
 }
 
-function projectPaneLayout(raw: {
-  panes?: unknown;
-  splits?: unknown;
-}): HerdrPaneLayout {
+function projectPaneLayout(raw: { panes?: unknown; splits?: unknown }): HerdrPaneLayout {
   const panesIn = Array.isArray(raw.panes) ? raw.panes : [];
   const splitsIn = Array.isArray(raw.splits) ? raw.splits : [];
   const panes: HerdrPaneLayout["panes"] = [];
@@ -124,8 +132,7 @@ function projectPaneLayout(raw: {
     if (!s || typeof s !== "object") continue;
     const rec = s as Record<string, unknown>;
     const ratio = typeof rec.ratio === "number" ? rec.ratio : null;
-    const direction =
-      typeof rec.direction === "string" ? rec.direction : "";
+    const direction = typeof rec.direction === "string" ? rec.direction : "";
     if (ratio === null || !direction) continue;
     const rect = projectRect(rec.rect);
     if (!rect) continue;
@@ -165,11 +172,7 @@ function isEventPush(msg: Record<string, unknown>): msg is {
   data: unknown;
 } {
   if (typeof msg.event === "string" && msg.id === undefined) return true;
-  return (
-    typeof msg.type === "string" &&
-    msg.type === "event" &&
-    typeof msg.event === "string"
-  );
+  return typeof msg.type === "string" && msg.type === "event" && typeof msg.event === "string";
 }
 
 function subKey(s: HerdrEventSubscription): string {
@@ -340,9 +343,12 @@ export class HerdrClient {
           if (msgId !== id) return;
           if (msg.error) {
             const err = msg.error as { message?: string; code?: string };
-            finish(() =>
-              reject(new Error(err.message ?? `herdr error ${err.code ?? "unknown"}`)),
-            );
+            const code = typeof err.code === "string" ? err.code : "unknown";
+            const message =
+              typeof err.message === "string" && err.message.length > 0
+                ? err.message
+                : `herdr error ${code}`;
+            finish(() => reject(new HerdrRpcError(code, message)));
           } else {
             finish(() => resolve(msg.result ?? msg));
           }
@@ -369,25 +375,28 @@ export class HerdrClient {
     };
   }
 
+  /**
+   * Protocol 17 named start on an **existing** pane.
+   * Wire: required `name`/`kind`/`pane_id`; optional `args`/`timeout_ms`.
+   * Env/cwd/focus/tab_id/workspace_id/split/argv are not accepted — put
+   * topology + env on `tab.create` / `pane.split` first.
+   * `timeout_ms` is passed through as supplied (including null); herdr
+   * validates (upstream schema description vs minimum are inconsistent).
+   */
   async agentStart(opts: {
     name: string;
-    argv: string[];
-    env?: Record<string, string>;
-    cwd?: string;
-    focus?: boolean;
-    /** PLAN 0.23.9: pool placement — snake_case on wire. */
-    tabId?: string;
-    split?: "right" | "down";
+    kind: string;
+    paneId: string;
+    args?: string[];
+    timeoutMs?: number | null;
   }): Promise<HerdrAgentStarted> {
     const params: Record<string, unknown> = {
       name: opts.name,
-      argv: opts.argv,
-      focus: opts.focus ?? false,
+      kind: opts.kind,
+      pane_id: opts.paneId,
     };
-    if (opts.env) params.env = opts.env;
-    if (opts.cwd) params.cwd = opts.cwd;
-    if (opts.tabId) params.tab_id = opts.tabId;
-    if (opts.split) params.split = opts.split;
+    if (opts.args !== undefined) params.args = opts.args;
+    if (opts.timeoutMs !== undefined) params.timeout_ms = opts.timeoutMs;
     const result = (await this.request("agent.start", params)) as {
       agent?: HerdrAgentStarted;
     };
@@ -399,16 +408,22 @@ export class HerdrClient {
   }
 
   /**
-   * PLAN 0.23.9: create a worker-pool tab (focus:false so global focus is
-   * undisturbed). Returns tab id + root shell pane for subsequent close.
+   * PLAN 0.23.9 / 0.28.1: create a worker-pool tab (focus:false so global
+   * focus is undisturbed). Protocol 17 carries worker `cwd`/`env` here
+   * (and on `pane.split`), not on `agent.start`.
+   * Returns tab id + root shell pane for subsequent close.
    */
   async tabCreate(opts: {
     workspaceId?: string;
     label?: string;
+    cwd?: string | null;
+    env?: Record<string, string>;
   }): Promise<{ tabId: string; rootPaneId: string }> {
     const params: Record<string, unknown> = { focus: false };
-    if (opts.workspaceId) params.workspace_id = opts.workspaceId;
-    if (opts.label) params.label = opts.label;
+    if (opts.workspaceId !== undefined) params.workspace_id = opts.workspaceId;
+    if (opts.label !== undefined) params.label = opts.label;
+    if (opts.cwd !== undefined) params.cwd = opts.cwd;
+    if (opts.env !== undefined) params.env = opts.env;
     const result = (await this.request("tab.create", params)) as {
       tab?: { tab_id?: string };
       root_pane?: { pane_id?: string };
@@ -421,8 +436,7 @@ export class HerdrClient {
       (typeof result.tab_id === "string" && result.tab_id) ||
       "";
     const rootPaneId =
-      (typeof result.root_pane?.pane_id === "string" &&
-        result.root_pane.pane_id) ||
+      (typeof result.root_pane?.pane_id === "string" && result.root_pane.pane_id) ||
       (typeof result.root_pane_id === "string" && result.root_pane_id) ||
       "";
     if (!tabId || !rootPaneId) {
@@ -432,12 +446,108 @@ export class HerdrClient {
   }
 
   /**
+   * Protocol 17 `pane.split` — create a shell pane for named agent start.
+   * Required: `direction` (`right`|`down`). Optionals match fixture schema.
+   * Response is `pane_info`; fails visibly if `pane.pane_id` is absent.
+   */
+  async paneSplit(opts: {
+    direction: "right" | "down";
+    targetPaneId?: string | null;
+    workspaceId?: string | null;
+    ratio?: number | null;
+    cwd?: string | null;
+    env?: Record<string, string>;
+    focus?: boolean;
+  }): Promise<{ paneId: string }> {
+    const params: Record<string, unknown> = {
+      direction: opts.direction,
+    };
+    if (opts.targetPaneId !== undefined) params.target_pane_id = opts.targetPaneId;
+    if (opts.workspaceId !== undefined) params.workspace_id = opts.workspaceId;
+    if (opts.ratio !== undefined) params.ratio = opts.ratio;
+    if (opts.cwd !== undefined) params.cwd = opts.cwd;
+    if (opts.env !== undefined) params.env = opts.env;
+    if (opts.focus !== undefined) params.focus = opts.focus;
+    const result = (await this.request("pane.split", params)) as {
+      pane?: { pane_id?: string };
+      pane_id?: string;
+    };
+    const paneId =
+      (typeof result.pane?.pane_id === "string" && result.pane.pane_id) ||
+      (typeof result.pane_id === "string" && result.pane_id) ||
+      "";
+    if (!paneId) {
+      throw new Error("pane.split: missing pane.pane_id");
+    }
+    return { paneId };
+  }
+
+  /**
+   * Protocol 17 atomic prompt — herdr owns paste+Enter (bracketed-paste).
+   * Prompt body is an opaque `text` parameter only; never shell-interpolated
+   * or converted to key sequences. Optional `wait` is omitted by default.
+   */
+  async agentPrompt(opts: {
+    target: string;
+    text: string;
+    wait?: {
+      until?: HerdrAgentStatus[];
+      timeoutMs?: number | null;
+    } | null;
+  }): Promise<unknown> {
+    const params: Record<string, unknown> = {
+      target: opts.target,
+      text: opts.text,
+    };
+    if (opts.wait !== undefined) {
+      if (opts.wait === null) {
+        params.wait = null;
+      } else {
+        const wait: Record<string, unknown> = {};
+        if (opts.wait.until !== undefined) wait.until = opts.wait.until;
+        if (opts.wait.timeoutMs !== undefined) {
+          wait.timeout_ms = opts.wait.timeoutMs;
+        }
+        params.wait = wait;
+      }
+    }
+    return this.request("agent.prompt", params);
+  }
+
+  /**
+   * Protocol 17 logical key chords. Not the primary prompt path — do not
+   * convert untrusted prompt text into keys. Key token names are caller-
+   * supplied; this client invents none (fixture has no enumerated tokens).
+   */
+  async agentSendKeys(opts: { target: string; keys: string[] }): Promise<unknown> {
+    return this.request("agent.send_keys", {
+      target: opts.target,
+      keys: opts.keys,
+    });
+  }
+
+  /**
+   * Protocol 17 server-owned agent wait. Does not redefine completion
+   * authority (v0.28.0 U1–U11).
+   */
+  async agentWait(opts: {
+    target: string;
+    until?: HerdrAgentStatus[];
+    timeoutMs?: number | null;
+  }): Promise<unknown> {
+    const params: Record<string, unknown> = {
+      target: opts.target,
+    };
+    if (opts.until !== undefined) params.until = opts.until;
+    if (opts.timeoutMs !== undefined) params.timeout_ms = opts.timeoutMs;
+    return this.request("agent.wait", params);
+  }
+
+  /**
    * PLAN 0.23.9: list panes for pool occupancy audit (SSOT before spawn).
    * Only fields the bridge needs are projected.
    */
-  async paneList(): Promise<
-    Array<{ paneId: string; tabId: string; workspaceId: string }>
-  > {
+  async paneList(): Promise<Array<{ paneId: string; tabId: string; workspaceId: string }>> {
     const result = (await this.request("pane.list", {})) as {
       panes?: Array<{
         pane_id?: string;
@@ -457,8 +567,7 @@ export class HerdrClient {
       .map((p) => ({
         paneId: p.pane_id as string,
         tabId: p.tab_id as string,
-        workspaceId:
-          typeof p.workspace_id === "string" ? p.workspace_id : "",
+        workspaceId: typeof p.workspace_id === "string" ? p.workspace_id : "",
       }));
   }
 
@@ -509,25 +618,13 @@ export class HerdrClient {
     return projectPaneLayout(raw as { panes?: unknown; splits?: unknown });
   }
 
-  /** Literal text, no Enter (Step 0.5). */
-  async agentSend(target: string, text: string): Promise<void> {
-    await this.request("agent.send", { target, text });
-  }
-
   /**
-   * M-2 submit separation: send untrusted prompt via agent.send, then bare Enter
-   * as a fixed constant on a separate call (never pane.run with prompt interpolation).
-   * These are two independent per-request connections — correct under the
-   * one-RPC-per-connection transport (see file header).
-   * A grace period separates the two: the composer needs time to finish
-   * processing the pasted prompt before an immediate CR would otherwise be
-   * swallowed (live-measured).
+   * Primary inject path (PLAN 0.28.1): exactly one opaque `agent.prompt`
+   * request. No wait option by default; no second key/send call.
+   * Dual-`agent.send` + bare-Enter is protocol-16 only and is gone.
    */
   async injectPromptAndSubmit(target: string, prompt: string): Promise<void> {
-    await this.agentSend(target, prompt);
-    const delay = this.opts.submitDelayMs ?? 500;
-    await new Promise((r) => setTimeout(r, delay));
-    await this.agentSend(target, BARE_ENTER);
+    await this.agentPrompt({ target, text: prompt });
   }
 
   /**
@@ -545,9 +642,7 @@ export class HerdrClient {
     if (this.closed) throw new Error("herdr client closed");
     const added: HerdrEventSubscription[] = [];
     for (const s of subscriptions) {
-      const exists = this.subscriptions.some(
-        (x) => x.type === s.type && x.pane_id === s.pane_id,
-      );
+      const exists = this.subscriptions.some((x) => x.type === s.type && x.pane_id === s.pane_id);
       if (!exists) {
         this.subscriptions.push(s);
         added.push(s);
@@ -654,9 +749,7 @@ export class HerdrClient {
       } catch {
         /* */
       }
-      finishLocal(
-        new Error(`herdr events.subscribe timed out after ${timeoutMs}ms`),
-      );
+      finishLocal(new Error(`herdr events.subscribe timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
     sock.setEncoding("utf8");
@@ -683,10 +776,7 @@ export class HerdrClient {
                 /* */
               }
               finishLocal(
-                new Error(
-                  err.message ??
-                    `herdr events.subscribe error ${err.code ?? "unknown"}`,
-                ),
+                new Error(err.message ?? `herdr events.subscribe error ${err.code ?? "unknown"}`),
               );
               return;
             }
@@ -720,9 +810,7 @@ export class HerdrClient {
       if (this.closed) return;
       if (!settled) {
         // Pre-ACK close → reject (root cause fix for permanent hang).
-        finishLocal(
-          new Error("herdr events connection closed before subscribe ACK"),
-        );
+        finishLocal(new Error("herdr events connection closed before subscribe ACK"));
         // After reject, if subscriptions remain, keep reconnect backoff.
         if (this.subscriptions.length) this.scheduleEventReconnect();
         return;
@@ -749,10 +837,7 @@ export class HerdrClient {
       // Re-check: M-1 rollback or eventsPrune may have emptied the list
       // between schedule and fire.
       if (this.closed || !this.subscriptions.length) return;
-      this.eventReconnectDelay = Math.min(
-        this.eventReconnectDelay * 2,
-        EVENT_RECONNECT_MAX_MS,
-      );
+      this.eventReconnectDelay = Math.min(this.eventReconnectDelay * 2, EVENT_RECONNECT_MAX_MS);
       this.openEventConnection().catch((e) => {
         this.opts.onError?.(e instanceof Error ? e : new Error(String(e)));
         this.scheduleEventReconnect();
@@ -760,10 +845,7 @@ export class HerdrClient {
     }, delay);
   }
 
-  async paneRead(
-    paneId: string,
-    opts?: { source?: string; lines?: number },
-  ): Promise<string> {
+  async paneRead(paneId: string, opts?: { source?: string; lines?: number }): Promise<string> {
     const result = (await this.request("pane.read", {
       pane_id: paneId,
       source: opts?.source ?? "recent",
@@ -781,11 +863,13 @@ export class HerdrClient {
 /** Strip ANSI / ESC sequences before attach (HERDR_DESIGN §3.7). */
 export function stripAnsi(text: string): string {
   // CSI, OSC, and simple ESC sequences
-  return text
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
-    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
-    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
-    .replace(/\u001b[@-Z\\-_]/g, "");
+  return (
+    text
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
+      .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
+      .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC stripping is intentional
+      .replace(/\u001b[@-Z\\-_]/g, "")
+  );
 }
