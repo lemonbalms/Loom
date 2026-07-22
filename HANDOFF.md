@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> PATCH 2 tower A2 fence shipped locally (`0b335a1`) · dogfood fail-closed on herdr 0.7.5 · next = PANE-DEATH PATCH 3 (bridge authority cut).
+> PATCH 2 tower A2 fence shipped (`0b335a1`) · dogfood fail-closed on herdr 0.7.5 · next = PANE-DEATH PATCH 3 (bridge authority cut).
 
 ## Current loop
 
