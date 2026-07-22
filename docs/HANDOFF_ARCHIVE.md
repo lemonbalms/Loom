@@ -9,6 +9,17 @@
 > 이 구획은 **진행 중** 실행·실패·검증 provenance의 임시 수납처다. 아래의 종결 웨이브
 > append-only 이력과 섞지 않으며, 게이트가 종결되면 해당 결과를 완료 이력으로 이관한다.
 
+### PANE-DEATH PATCH 1 (M1) — shipped tests-only (2026-07-22 · `24ceede`)
+
+- `24ceede` `test(host): lock PANE-DEATH PATCH 1 expected-red` on `origin/main`.
+- Files: `packages/host/src/bridge.test.ts` · `pane-cleanup.test.ts` · `impl-0270.test.ts`
+  only (+333/−23). **Production 0줄** (tests-only red-test 규율).
+- Contract locked for later PATCHes: needs_verification proposals, remote done→blocked
+  mapping, pane preservation positives, at-most-one result green controls, zero
+  `finishCard(..., "done")` construction sites (source lock).
+- Next product gate = **PATCH 2 (M2) tower A2** in `card-ops.ts` (cite this SHA as
+  red baseline). Do not re-author PATCH 1 assertions unless R{n} changes the contract.
+
 ### herdr 0.7.5 release-notes review (2026-07-22) — adapter still blocked
 
 - Official [v0.7.5 notes](https://github.com/ogulcancelik/herdr/releases/tag/v0.7.5) + live
