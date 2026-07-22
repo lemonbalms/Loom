@@ -189,7 +189,7 @@ B2 ADAPTERS · B1 TEST · B3 PRIORITIES · B4 GLOSSARY · B5 DOGFOOD  (A 이후 
 - [x] HERDR_DESIGN 상단이 p17 정본을 가리킴
 - [x] PROTOCOL에 `fable` CLI 예시 없음
 - [x] 철학 첫 문단: 계획서 + CHANGELOG/ARCH/USER/HERDR/PROTOCOL/TEST/ADAPTERS/PRIORITIES/GLOSSARY/DOGFOOD/index
-- [ ] `bun run status` 정상 (docs-only; 코드 무변경) — ship 전 확인
+- [x] `bun run status` 정상 (docs-only; 코드 무변경) · shipped `daec122`
 
 ---
 
