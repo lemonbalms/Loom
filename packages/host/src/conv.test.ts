@@ -241,13 +241,23 @@ describe("conv (multiturn) vertical slice", () => {
           (c.params.target as string | undefined)?.length,
       );
       expect(prompts.length).toBeGreaterThanOrEqual(1);
-      expect(
-        prompts.some(
-          (s) =>
-            typeof s.params.text === "string" &&
-            String(s.params.text).includes("write hello"),
-        ),
-      ).toBe(true);
+      const goalPrompt = prompts.find(
+        (s) =>
+          typeof s.params.text === "string" &&
+          String(s.params.text).includes("write hello"),
+      );
+      expect(goalPrompt).toBeTruthy();
+
+      // Live gate: agent.prompt target = unique name supplied to agent.start
+      // (`loom-conv-${convId.slice(5,21)}`), not pane_id.
+      const expectedName = `loom-conv-${opened.convId.slice(5, 21)}`;
+      const startCall = fake.calls.find(
+        (c) =>
+          c.method === "agent.start" && c.params.name === expectedName,
+      );
+      expect(startCall).toBeTruthy();
+      expect(goalPrompt!.params.target).toBe(expectedName);
+      expect(goalPrompt!.params.target).not.toBe(startCall!.params.pane_id);
 
       // Tower closes with done → board done.
       const closed = await convClose({ convId: opened.convId, reason: "done" });

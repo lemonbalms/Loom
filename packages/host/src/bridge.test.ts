@@ -641,6 +641,20 @@ describe("bridge runtime vertical slice (relay + fake herdr)", () => {
         String(s.params.text).includes("write hello"),
     );
     expect(promptSend).toBeTruthy();
+
+    // Live gate (herdr 0.7.5 / protocol-17): submission ops must target the
+    // unique agent.start name — pane_id is unsafe for Claude agent.prompt.
+    const startCall = fake.calls.find(
+      (c) =>
+        c.method === "agent.start" &&
+        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+    );
+    expect(startCall).toBeTruthy();
+    const startName = String(startCall!.params.name);
+    // Generated form: loom-${cardId.slice(0,20)}-${seq} (seq=1 on first attempt)
+    expect(startName).toBe(`loom-${cardId.slice(0, 20)}-1`);
+    expect(promptSend!.params.target).toBe(startName);
+    expect(promptSend!.params.target).not.toBe(startCall!.params.pane_id);
   });
 
   test("④ green control: completion↔terminal emits exactly one relay receipt", async () => {

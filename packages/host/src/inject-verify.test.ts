@@ -320,6 +320,23 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
       .filter((i) => i >= 0);
     expect(promptIdxs.length).toBeGreaterThanOrEqual(2);
 
+    // Live gate: initial + full reinject agent.prompt must target the unique
+    // agent.start name (not pane_id). Pane IDs remain for pane.read/events/close.
+    const startCall = slice.find(
+      (c) =>
+        c.method === "agent.start" &&
+        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+    );
+    expect(startCall).toBeTruthy();
+    const startName = String(startCall!.params.name);
+    expect(startName).toBe(`loom-${cardId.slice(0, 20)}-1`);
+    const promptSends = promptInjects(slice, expectedPrompt);
+    expect(promptSends.length).toBeGreaterThanOrEqual(2);
+    for (const p of promptSends) {
+      expect(p.params.target).toBe(startName);
+      expect(p.params.target).not.toBe(startCall!.params.pane_id);
+    }
+
     // Recovery: push working → done
     const panes = fake.listPaneIds();
     expect(panes.length).toBeGreaterThan(0);
@@ -364,9 +381,28 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
       timeoutMs: 10_000,
     });
 
-    const promptSends = promptInjects(fake.calls.slice(callsBefore), expectedPrompt);
+    const slice = fake.calls.slice(callsBefore);
+    const promptSends = promptInjects(slice, expectedPrompt);
     // Only the initial inject — no reinject of the full prompt
     expect(promptSends.length).toBe(1);
+
+    // Live gate: prompt + CR nudge targets = unique agent.start name (not pane_id).
+    const startCall = slice.find(
+      (c) =>
+        c.method === "agent.start" &&
+        String(c.params.name ?? "").includes(cardId.slice(0, 20)),
+    );
+    expect(startCall).toBeTruthy();
+    const startName = String(startCall!.params.name);
+    expect(startName).toBe(`loom-${cardId.slice(0, 20)}-1`);
+    expect(promptSends[0]!.params.target).toBe(startName);
+    expect(promptSends[0]!.params.target).not.toBe(startCall!.params.pane_id);
+    const crAfter = slice.filter(isCrSendKeys);
+    expect(crAfter.length).toBeGreaterThanOrEqual(2);
+    for (const cr of crAfter) {
+      expect(cr.params.target).toBe(startName);
+      expect(cr.params.target).not.toBe(startCall!.params.pane_id);
+    }
 
     const result = await awaitCardResult(tower!, cardId);
     expect(result?.status).toBe("failed");
