@@ -18,11 +18,12 @@
 
 ## ⭐ Current action (read first)
 
-> **🎯 SESSION-CONTINUITY — bounded Phase B→C 선행 (Owner 결정 2026-07-22).** PANE-DEATH PLAN
-> v0.28.0·U1~U11은 그대로 두고 **PATCH 1 착수 전 clean boundary에서 일시 정지**한다. 다음 한 게이트는
-> **Phase B fixture + SOFT_CAP stale 테스트 해소 + HANDOFF lint expected-red 고정**이다. Phase C에서 실제
-> HANDOFF를 전환해 lint를 green으로 만든 뒤, 새 세션 복원 스모크 통과 즉시 PATCH 1로 복귀한다.
-> Phase D는 실제 PATCH 전환 2회 뒤로 유예한다.
+> **🎯 SESSION-CONTINUITY — Phase B 완료, 다음은 Phase C 원자 전환 (Owner 결정 2026-07-22).**
+> Phase B는 `e281587`로 `origin/main`에 ship됐다: fixture V1~V6·SOFT_CAP stale 테스트 해소·
+> HANDOFF lint expected-red 고정, 아키텍트 집중 검증 **56/56**, clean HEAD 대비 tree-only 전체-suite
+> 실패 **0**. PANE-DEATH PLAN v0.28.0·U1~U11은 그대로 두고 PATCH 1 전 clean boundary에서 일시
+> 정지한다. **다음 한 게이트는 Phase C 구현 명세 잠금 → `grok-impl` 배정 → 원자 전환 → 독립 검증**이다.
+> 새 세션 복원 스모크 통과 즉시 PATCH 1로 복귀하고, Phase D는 실제 PATCH 전환 2회 뒤로 유예한다.
 
 > **운영 레인 보정 완료 (2026-07-22):** 다음 세션 기본 구조는 `codex-arch`(PLAN/spec·route·독립 verify)
 > → `grok-impl`(claim·구현·테스트·ship). `dogfood:up`/room/status와 부트 프롬프트가 6프로필로 동기화됐고,
@@ -30,16 +31,16 @@
 
 ### 다음 액션 (우선순위 · 유일 섹션)
 
-0. **⭐ SESSION-CONTINUITY — Phase B fixture + 단위 red 해소 + lint expected-red 고정**
-   - 설계·결정 정본: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` §10·§13
-   - session-context D4의 stale `SOFT_CAP=8,500` 기대값을 현행 12,750에 동기화해 단위 테스트 green
-   - `handoff:lint` 용량 초과는 **Phase B expected-red**로 고정(실측값은 명령 출력이 정본); 실제 해소는 Phase C
-   - fixture에서 V1~V6, 전체 8,192B, state `HARD_CAP` 무절단, traps·Owner pending·Don't redo 복원을 검증
-   - **금지:** Loom 제품 production 코드 변경 · PANE-DEATH PATCH 1 test/production diff 착수
+0. **✅ Phase B shipped — 재실행·재구현 금지 (`e281587`)**
+   - 보드 `task_ad6fa8222fa5263a` done, 정확히 4파일: lock·fixture·V1~V6 테스트·SOFT_CAP stale 기대값
+   - 집중 검증 56 pass/0 fail/202 expect, `session-context:lint` green, `handoff:lint`는 Phase B expected-red
+   - 전체 suite의 고정 포트/소켓 환경 실패는 clean HEAD와 이름 집합 동일; 변경 트리 신규 실패 0
 
-1. **Phase B green일 때만 Phase C 원자 전환**
-   - HANDOFF 새 구조 + `HANDOFF_ARCHIVE.md` `In progress evidence` + shared headings + AGENTS/WORKFLOW/session-context 동기화
-   - 실제 `HANDOFF.md` 전환 후 `bun run handoff:lint` green이 Phase C 완료 조건
+1. **⭐ SESSION-CONTINUITY — Phase C 원자 전환 (다음 세션 유일 게이트)**
+   - 아키텍트가 `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` §10·§13 기준 5-part 구현 명세를 먼저 잠근다
+   - Loom canonical board + handoff로 `grok-impl`에 배정하고, 아키텍트는 제품 코드를 직접 구현하지 않는다
+   - 범위: HANDOFF 새 구조 + `HANDOFF_ARCHIVE.md` `In progress evidence` + shared headings + AGENTS/WORKFLOW/session-context 동기화
+   - 완료 조건: 실제 `HANDOFF.md` 전환 후 `bun run handoff:lint` green + 아키텍트 독립 검증
    - 새 세션 복원 스모크 실패 시 기존 구조로 복귀하고 PANE-DEATH를 더 지연하지 않음
 
 2. **복원 스모크 통과 즉시 PANE-DEATH PATCH 1 재개**
@@ -94,7 +95,7 @@
 
 ## One-line resume
 
-> **🎯 SESSION-CONTINUITY bounded wave.** PLAN v0.28.0 PANE-DEATH는 PATCH 1 전 일시 정지. **다음 = Phase B fixture + SOFT_CAP 단위 red 해소 + HANDOFF lint expected-red 고정** → Phase C에서 lint green·복원 스모크 → 즉시 PATCH 1 복귀.
+> **🎯 SESSION-CONTINUITY bounded wave.** Phase B는 `e281587`로 완료. PLAN v0.28.0 PANE-DEATH는 PATCH 1 전 일시 정지. **다음 = Phase C 구현 명세 잠금 → grok-impl 원자 전환 → 독립 검증 → handoff:lint green** → 새 세션 복원 스모크 → 즉시 PATCH 1 복귀.
 
 ---
 
