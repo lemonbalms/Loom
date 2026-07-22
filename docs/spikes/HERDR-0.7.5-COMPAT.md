@@ -123,7 +123,7 @@ Do not silently keep dual-`agent.send` — the method is gone.
 | Protocol constant | `packages/host/src/herdr-client.ts` | `HERDR_PROTOCOL_EXPECTED` **16 → 17** only **with** adapter, never alone |
 | Client API | same | `agentStart` existing-pane+kind; `tabCreate`/`paneSplit` env+cwd; `agentPrompt` / `agentSendKeys` / `agentWait`; rewrite `injectPromptAndSubmit` |
 | Spawn / pool | `packages/host/src/bridge-runtime.ts` | Create shell pane with env → start(kind) → equalize; rewrite legacy unhinted fallback the same way |
-| Inject callers | `bridge-runtime.ts` (dispatch + conv re-inject paths) | Call new inject; revisit `verifySubmitOrRetry` vs `agent_prompt_stalled` |
+| Inject callers | `bridge-runtime.ts` (dispatch + conv re-inject paths) | Call new inject; revisit **`verifyInjectOrRetry`** (actual current helper — `verifySubmitOrRetry` / `verifyConvSubmitOrRetry` were merged into it in 0.23.5; R46 L-2 coordinate correction) vs `agent_prompt_stalled` |
 | Fake + tests | `fake-herdr.ts`, `bridge.test.ts`, `herdr-lifecycle.test.ts`, `conv.test.ts`, `inject-live.test.ts`, … | Drop `agent.send` assumptions; lock new call order |
 | Fixture | `docs/spikes/fixtures/herdr-v0.7.4/` | **Immutable historical** |
 | Fixture (new) | `docs/spikes/fixtures/herdr-v0.7.5/` | Capture live schema/methods/RPC samples at implement time |
