@@ -91,4 +91,44 @@ describe("dogfood active profile contract", () => {
       up.indexOf("dogfood-room-up.sh"),
     );
   });
+
+  test("dogfood bridge syncs mac-node herdrProtocol before ready early-exit", () => {
+    // Stale ~/.loom/bridge/mac-node.json can pin herdrProtocol:16 while
+    // live herdr + HERDR_PROTOCOL_EXPECTED are 17. dogfood-bridge-up must
+    // migrate that stored cutover after the live check and before any
+    // "already online" ready exit — otherwise fail-fast is herdr protocol
+    // 17 != expected 16 even though dogfood:herdr is green.
+    const source = read("scripts/dogfood-bridge-up.sh");
+    const herdrCheckAt = source.indexOf("bash scripts/dogfood-herdr-check.sh");
+    const bridgeStatusAt = source.indexOf("BRIDGE_STATUS=");
+    const readyExitAt = source.indexOf('echo "dogfood bridge: ready');
+    expect(herdrCheckAt).toBeGreaterThanOrEqual(0);
+    expect(bridgeStatusAt).toBeGreaterThan(herdrCheckAt);
+    expect(readyExitAt).toBeGreaterThan(bridgeStatusAt);
+
+    // Migration window: after herdr check, before bridge status / ready exit.
+    const migrateWindow = source.slice(herdrCheckAt, bridgeStatusAt);
+    expect(migrateWindow).toContain("loadBridgeConfig");
+    expect(migrateWindow).toContain("saveBridgeConfig");
+    expect(migrateWindow).toContain("HERDR_PROTOCOL_EXPECTED");
+    expect(migrateWindow).toContain("herdrProtocol");
+    // Must record whether the persisted value actually changed so the
+    // already-online early-exit can be suppressed on cutover.
+    const changedFlag = /PROTOCOL_CHANGED|protocolChanged|protocol_changed/;
+    expect(migrateWindow).toMatch(changedFlag);
+
+    // Room-matched ready early-exit must consult the change flag (forbid
+    // short-circuit restart when herdrProtocol was just rewritten).
+    const earlyExitBlock = source.slice(bridgeStatusAt, readyExitAt + 120);
+    expect(earlyExitBlock).toMatch(changedFlag);
+    expect(earlyExitBlock).toMatch(
+      /bridge: online[\s\S]*PROTOCOL_CHANGED|PROTOCOL_CHANGED[\s\S]*bridge: online|protocolChanged|protocol_changed/,
+    );
+
+    // No second independent protocol literal in bridge-up — cutover value
+    // comes from HERDR_PROTOCOL_EXPECTED / helpers only.
+    expect(source).not.toMatch(
+      /herdrProtocol\s*[:=]\s*1[67]\b|HERDR_PROTOCOL\s*=\s*["']?1[67]/,
+    );
+  });
 });
