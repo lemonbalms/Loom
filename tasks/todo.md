@@ -3,17 +3,18 @@
 ## Current override — PANE-DEATH v0.28.0 implementation wave
 
 > SSOT는 `HANDOFF.md`. SESSION-CONTINUITY Phase B/C는 ship 완료. 다음 제품 게이트는
-> **PATCH 2 (tower A2)**. herdr 0.7.5 adapter는 dogfood fail-closed 정본으로 독립 웨이브.
+> **PATCH 3 (bridge authority cut)**. herdr 0.7.5 adapter는 dogfood fail-closed 정본으로 독립 웨이브.
 
 0. [x] **Phase B:** fixture V1~V6 + SOFT_CAP stale 단위 테스트 해소 + HANDOFF lint expected-red 고정 + state HARD_CAP 검증 (`e281587`)
 1. [x] **Phase C:** archive 수납처·nine-section HANDOFF·shared headings·entry/session-context 동기화 → `handoff:lint` green (lower-tier in-harness fallback)
 2. [x] **새 세션 복원 스모크:** PLAN·next gate·traps·Owner pending·Don't redo 복원 확인 (`[RESTORE-SMOKE] verdict=pass`)
 3. [x] **Phase C ship:** `8a3ddba` on `origin/main` (`feat(handoff): ship session continuity Phase C`)
 4. [x] **PANE-DEATH PATCH 1 (M1) tests-only expected-red:** `24ceede` on `origin/main` (`test(host): lock PANE-DEATH PATCH 1 expected-red`) — production 0줄 · U1·U2·U3·U4·U7 계약
-5. [ ] **⭐ PANE-DEATH PATCH 2 (M2) tower A2 fence:** `card-ops.ts` remote done→blocked + reason · MCP/HERDR_DESIGN/DISPATCH-DEMO 공개 계약 · 선행 red 기준 해시 `24ceede` · 락 U2·U10 · G-2·G-4
-6. [ ] **PANE-DEATH PATCH 3+:** bridge proposal API / auto-done 제거 / auto-close 0 (PATCH 2 이후; PLAN 표)
-7. [ ] **Phase D 유예:** 실제 PATCH 전환 2회 green 뒤 lint/status 자동화 재검토
-8. [ ] **후속 호환 PATCH — herdr 0.7.5/protocol 17 adapter:** 정본 `docs/spikes/HERDR-0.7.5-COMPAT.md`. dogfood fail-closed until ship. PATCH 2/3와 혼합 금지.
+5. [x] **PANE-DEATH PATCH 2 (M2) tower A2 fence:** `0b335a1` — `card-ops.ts` remote done→blocked + reason · MCP/HERDR_DESIGN/DISPATCH-DEMO 공개 계약 · 선행 red `24ceede` · 집중 3/3 · host/MCP typecheck green
+6. [ ] **⭐ PANE-DEATH PATCH 3 (M3):** bridge proposal API / auto-done 제거 / auto-close 0 · 비수락 ACK 단일 흡수 · quarantine fold/ack CLI · `classifyAck` export · map-miss 구조 관측 (PLAN 정확 대상만)
+7. [ ] **PANE-DEATH PATCH 4–5:** tests-only 재기술 → dist/version/config/status 마감 (PATCH 3 이후; PLAN 표)
+8. [ ] **Phase D 유예:** 실제 PATCH 전환 2회 green 뒤 lint/status 자동화 재검토
+9. [ ] **후속 호환 PATCH — herdr 0.7.5/protocol 17 adapter:** 정본 `docs/spikes/HERDR-0.7.5-COMPAT.md`. dogfood fail-closed until ship. PATCH 3와 혼합 금지.
 
 ## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
 

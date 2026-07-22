@@ -9,6 +9,13 @@
 > 이 구획은 **진행 중** 실행·실패·검증 provenance의 임시 수납처다. 아래의 종결 웨이브
 > append-only 이력과 섞지 않으며, 게이트가 종결되면 해당 결과를 완료 이력으로 이관한다.
 
+### PANE-DEATH PATCH 2 (M2) — tower A2 fence (2026-07-22 · `0b335a1`)
+
+- Grok 4.5 headless implementer로 지정 4파일만 구현하고 Codex 아키텍트가 diff·테스트를 독립 검증했다. 호출은 Codex 정본 `grok --prompt-file "$SPEC" -m grok-4.5 --permission-mode acceptEdits --output-format plain --cwd "$(pwd)"`를 사용했으며 구현 lane에는 sandbox/always-approve를 쓰지 않았다.
+- `applyCardResult` fresh 원격 `done|failed`를 모두 board `blocked`로 격리하고 legacy `done` reason을 `legacy_remote_done_requires_verification`로 고정. currency/scan fallback/L-2/terminal/seq 가드 순서는 무변경. MCP·HERDR_DESIGN·DISPATCH_DEMO 공개 계약 동기화.
+- 검증: PATCH 1의 ②+⑤+notes-cap 집중 **3/3 green** · host/MCP typecheck **2/2 green** · diff-check green. 전체 suite **717 pass / 8 skip / 11 fail**은 PATCH 3 expected-red 4, PATCH 4 legacy 기대 3, 선재 checkpoint 드리프트 1, macOS 장경로 socket 1 + 연쇄 flake 2로 분류; 단계 경계를 지켜 테스트를 PATCH 2 production 커밋에 섞지 않았다.
+- 선행 red = `24ceede`; 다음 제품 gate = **PATCH 3 (M3) bridge authority cut**. dist/version은 PATCH 5까지 건드리지 않는다.
+
 ### PANE-DEATH PATCH 1 (M1) — shipped tests-only (2026-07-22 · `24ceede`)
 
 - `24ceede` `test(host): lock PANE-DEATH PATCH 1 expected-red` on `origin/main`.

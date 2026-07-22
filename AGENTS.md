@@ -115,6 +115,27 @@ Full workflow: **`docs/WORKFLOW.md`**.
    - **`codex-impl`** = fallback implementer. Check inbox + board, claim an unclaimed locked task as `doing`, then code/test/docs/ship. Never author an R{n} verdict for its own work.
    - **`codex-rev`** = secondary/adversarial reviewer. Inspect security/races/fail-open/data-loss; do not take a task already claimed by an implementer.
 6. `codex-arch`, `codex-impl`, and `codex-rev` are separate Loom peers. Never assume the MCP identity from the terminal label alone; verify `LOOM_PROFILE` and use the matching `--profile` when launching.
+7. **Codex → Grok headless subagent invocation (canonical):** when `codex-arch` routes a
+   locked implementation to Grok outside the unavailable pane lane, put the complete
+   five-part spec in a file and invoke exactly:
+
+   ```bash
+   grok --prompt-file "$SPEC" -m grok-4.5 --permission-mode acceptEdits \
+     --output-format plain --cwd "$(pwd)" > "$OUT" 2>&1
+   ```
+
+   Implementation uses `acceptEdits` **without `--sandbox`**. Never add
+   `--always-approve`; Codex must inspect the diff and rerun verification independently.
+   For read-only Grok verification, use the separate kernel-enforced form
+   `--permission-mode dontAsk --sandbox read-only`. Prefer an external 600-second
+   `gtimeout` wrapper when available. `grok agent headless` is not the repo workflow;
+   the top-level `--prompt-file` form is the subagent entry point. Canonical upstream
+   detail: `~/.claude/plugins/cache/fable-advisor/fable-advisor/3.1.0/agents/grok-implementer.md`.
+   Do not mistake the first plain-output progress line for completion: wait for process
+   exit, then inspect Grok's saved session/diff. Under `acceptEdits`, an approval-prone
+   `run_terminal_command` can be cancelled headlessly and cancel sibling parallel tool
+   calls; make the spec prefer dedicated read/search/edit tools and simple verification
+   commands, while Codex remains the independent verification authority.
 
 ---
 
