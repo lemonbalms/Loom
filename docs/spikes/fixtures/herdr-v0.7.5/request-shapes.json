@@ -1,0 +1,85 @@
+{
+  "provenance": {
+    "source": "herdr api schema --json",
+    "execution": "schema-derived examples; not sent to the live server",
+    "safety": "No pane, tab, agent, room, or bridge state was mutated."
+  },
+  "requests": [
+    {
+      "id": "fixture-tab-create",
+      "method": "tab.create",
+      "params": {
+        "cwd": "/workspace/project",
+        "env": {
+          "LOOM_CARD": "task_fixture",
+          "LOOM_HOOK_SOCK": "/runtime/loom-hook.sock",
+          "LOOM_ARTIFACTS_DIR": "/workspace/artifacts"
+        },
+        "focus": false
+      }
+    },
+    {
+      "id": "fixture-pane-split",
+      "method": "pane.split",
+      "params": {
+        "target_pane_id": "w1:p_fixture_root",
+        "direction": "right",
+        "cwd": "/workspace/project",
+        "env": {
+          "LOOM_CARD": "task_fixture",
+          "LOOM_HOOK_SOCK": "/runtime/loom-hook.sock",
+          "LOOM_ARTIFACTS_DIR": "/workspace/artifacts"
+        },
+        "focus": false
+      }
+    },
+    {
+      "id": "fixture-agent-start",
+      "method": "agent.start",
+      "params": {
+        "name": "loom-fixture-worker",
+        "kind": "grok",
+        "pane_id": "w1:p_fixture",
+        "args": [
+          "--example"
+        ],
+        "timeout_ms": null
+      }
+    },
+    {
+      "id": "fixture-agent-prompt",
+      "method": "agent.prompt",
+      "params": {
+        "target": "w1:p_fixture",
+        "text": "fixture prompt text",
+        "wait": {
+          "until": [
+            "working"
+          ],
+          "timeout_ms": null
+        }
+      }
+    },
+    {
+      "id": "fixture-agent-send-keys-shape-only",
+      "method": "agent.send_keys",
+      "params": {
+        "target": "w1:p_fixture",
+        "keys": []
+      },
+      "note": "The schema/help does not enumerate logical key token names; this fixture intentionally invents none."
+    },
+    {
+      "id": "fixture-agent-wait",
+      "method": "agent.wait",
+      "params": {
+        "target": "w1:p_fixture",
+        "until": [
+          "idle",
+          "blocked"
+        ],
+        "timeout_ms": null
+      }
+    }
+  ]
+}

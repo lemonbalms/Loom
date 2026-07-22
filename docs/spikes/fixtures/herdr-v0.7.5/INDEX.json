@@ -1,0 +1,86 @@
+{
+  "herdr_version": "0.7.5",
+  "protocol": 17,
+  "schema_version": 1,
+  "date": "2026-07-22",
+  "platform": "macos-aarch64",
+  "provenance": {
+    "binary": "installed local herdr only",
+    "commands": [
+      "herdr --version",
+      "herdr status server --json",
+      "herdr api schema --json",
+      "herdr tab",
+      "herdr pane",
+      "herdr agent"
+    ],
+    "sanitization": [
+      "No credentials, tokens, socket paths, hostnames, usernames, live pane ids, or live agent output are captured.",
+      "Request examples use deterministic placeholders and were derived from schema without being sent."
+    ]
+  },
+  "status_evidence": {
+    "requested_command": "herdr status server --json",
+    "result_in_managed_runner": "blocked before socket access: Operation not permitted",
+    "prior_live_read_only_evidence": "docs/spikes/HERDR-0.7.5-COMPAT.md §7 records server 0.7.5, protocol 17, live_handoff=true on 2026-07-22",
+    "independent_local_contract_evidence": "schema.json protocol=17 and version.txt herdr 0.7.5"
+  },
+  "contract": {
+    "method_count": 89,
+    "agent_methods": [
+      "agent.list",
+      "agent.get",
+      "agent.read",
+      "agent.explain",
+      "agent.send_keys",
+      "agent.rename",
+      "agent.view.set",
+      "agent.view.clear",
+      "agent.focus",
+      "agent.start",
+      "agent.prompt",
+      "agent.wait"
+    ],
+    "agent_send_present": false,
+    "agent_start_required": [
+      "name",
+      "kind",
+      "pane_id"
+    ],
+    "agent_start_properties": [
+      "args",
+      "kind",
+      "name",
+      "pane_id",
+      "timeout_ms"
+    ],
+    "schema_version_unchanged_from_0_7_4": true
+  },
+  "upstream_schema_inconsistency": {
+    "path": "schemas.request.$defs.AgentStartParams.properties.timeout_ms",
+    "description": "Startup timeout in milliseconds. Values must be greater than 3000 and at most 300000.",
+    "minimum": 0,
+    "architect_resolution": "Preserve both raw facts. PATCH 1 asserts optional request shape only, duplicates no numeric bound, and leaves validation to herdr."
+  },
+  "key_token_policy": "Schema/help accepts string keys but enumerates no token vocabulary. No logical key token is invented or locked by this fixture.",
+  "notes": [
+    "agent.start requires name, kind, pane_id and permits only args and timeout_ms as optional request fields.",
+    "cwd/env moved to tab.create and pane.split; fixture examples include LOOM_CARD, optional LOOM_HOOK_SOCK, and existing LOOM_ARTIFACTS_DIR.",
+    "agent.prompt is the primary text submission method; agent.send is absent.",
+    "agent.send_keys is shape-only evidence for explicit logical keys, not primary prompt text.",
+    "agent.wait exists but does not change Loom completion authority.",
+    "pane_agent_detected final_status/released are additive parser inputs, never completion authority."
+  ],
+  "files": [
+    "INDEX.json",
+    "agent-help.txt",
+    "methods.json",
+    "pane-help.txt",
+    "request-shapes.json",
+    "schema-focus.json",
+    "schema.json",
+    "status.txt",
+    "tab-help.txt",
+    "version.txt"
+  ]
+}

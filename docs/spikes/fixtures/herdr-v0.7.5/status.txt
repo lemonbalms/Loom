@@ -1,0 +1,14 @@
+command: herdr status server --json
+capture_result: blocked by managed runner before Unix-socket access
+stderr: Error: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }
+
+sanitized_status_evidence:
+  installed_client_version: 0.7.5
+  schema_protocol: 17
+  schema_version: 1
+  prior_live_server_status_source: docs/spikes/HERDR-0.7.5-COMPAT.md §7
+  prior_live_server_version: 0.7.5
+  prior_live_server_protocol: 17
+  prior_live_server_live_handoff: true
+
+No socket path, token, credential, or live session identifier is retained.
