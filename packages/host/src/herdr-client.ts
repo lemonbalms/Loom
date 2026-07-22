@@ -43,6 +43,10 @@ export type HerdrAgentStarted = {
   terminal_id: string;
   name?: string;
   agent_status?: string;
+  /** True while herdr accepted start but process is not interactive yet. */
+  launch_pending?: boolean;
+  /** True when agent.prompt targets (name/pane) are accepted. */
+  interactive_ready?: boolean;
 };
 
 /** Structured RPC error so callers can match codes without message regexes. */
@@ -394,7 +398,55 @@ export class HerdrClient {
     if (!agent?.pane_id || !agent?.terminal_id) {
       throw new Error("agent.start: missing pane_id/terminal_id");
     }
-    return agent;
+    // Non-pending start: resolve immediately (fast path).
+    if (agent.launch_pending !== true) {
+      return agent;
+    }
+    // Live protocol-17: agent.start may return launch_pending=true before the
+    // process is interactive_ready. agent.wait is NOT a readiness barrier;
+    // poll agent.get{target:pane_id} until ready within the client timeout budget.
+    return this.awaitAgentLaunchReady(agent, opts.name);
+  }
+
+  /**
+   * Poll agent.get until interactive_ready and not launch_pending.
+   * Budget: HerdrClientOptions.timeoutMs (same default as request()).
+   */
+  private async awaitAgentLaunchReady(
+    started: HerdrAgentStarted,
+    expectedName: string,
+  ): Promise<HerdrAgentStarted> {
+    const expectedPaneId = started.pane_id;
+    const expectedTerminalId = started.terminal_id;
+    const budgetMs = this.opts.timeoutMs ?? 15_000;
+    const deadline = Date.now() + budgetMs;
+    // Yield between polls — avoid busy-spin; keep short for unit mocks.
+    const pollYieldMs = 25;
+
+    while (Date.now() < deadline) {
+      const getResult = (await this.request("agent.get", {
+        target: expectedPaneId,
+      })) as { agent?: HerdrAgentStarted };
+      const got = getResult.agent;
+      if (!got?.pane_id || !got?.terminal_id) {
+        throw new Error("agent.start: agent.get missing pane_id/terminal_id");
+      }
+      if (got.pane_id !== expectedPaneId || got.terminal_id !== expectedTerminalId) {
+        throw new Error("agent.start: agent.get identity mismatch");
+      }
+      if (got.name !== undefined && got.name !== expectedName) {
+        throw new Error("agent.start: agent.get name mismatch");
+      }
+      if (got.interactive_ready === true && got.launch_pending !== true) {
+        return got;
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, Math.min(pollYieldMs, remaining));
+      });
+    }
+    throw new Error("agent.start: launch readiness timed out");
   }
 
   /**

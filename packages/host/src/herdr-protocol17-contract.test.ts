@@ -179,13 +179,14 @@ describe("PLAN 0.28.1 protocol-17 adapter", () => {
   });
 
   /**
-   * PATCH5 expected-red (live protocol-17 2026-07-22): agent.start may return
+   * PATCH5 (live protocol-17 2026-07-22): agent.start may return
    * launch_pending=true before the named agent is interactive_ready. The wrapper
    * must not resolve that pending record; it must observe agent.get{target:pane_id}
    * until interactive_ready=true and launch_pending is not true.
    */
   test("agentStart barriers on agent.get until interactive_ready when launch_pending", async () => {
     const calls: CapturedCall[] = [];
+    let getCount = 0;
     const client = new HerdrClient({
       socketPath: "/fixture/not-connected.sock",
     });
@@ -204,8 +205,21 @@ describe("PLAN 0.28.1 protocol-17 adapter", () => {
         };
       }
       if (method === "agent.get") {
-        // First get is ready (deterministic; no sleeps). launch_pending omitted
-        // matches live serialization where false is omitted.
+        getCount += 1;
+        // Two pending gets, then ready (deterministic). launch_pending omitted
+        // on the ready record matches live false-by-omission.
+        if (getCount < 3) {
+          return {
+            type: "agent",
+            agent: {
+              pane_id: "w1:p_launch",
+              terminal_id: "term_launch",
+              name: "loom-launch-worker",
+              launch_pending: true,
+              agent_status: "unknown",
+            },
+          };
+        }
         return {
           type: "agent",
           agent: {
@@ -241,6 +255,14 @@ describe("PLAN 0.28.1 protocol-17 adapter", () => {
         method: "agent.get",
         params: { target: "w1:p_launch" },
       },
+      {
+        method: "agent.get",
+        params: { target: "w1:p_launch" },
+      },
+      {
+        method: "agent.get",
+        params: { target: "w1:p_launch" },
+      },
     ]);
     expect(started).toMatchObject({
       pane_id: "w1:p_launch",
@@ -248,9 +270,48 @@ describe("PLAN 0.28.1 protocol-17 adapter", () => {
       name: "loom-launch-worker",
       interactive_ready: true,
     });
-    expect(
-      (started as { launch_pending?: boolean }).launch_pending,
-    ).not.toBe(true);
+    expect(started.launch_pending).not.toBe(true);
+    client.close();
+  });
+
+  test("agentStart launch readiness rejects agent.get identity mismatch", async () => {
+    const client = new HerdrClient({
+      socketPath: "/fixture/not-connected.sock",
+    });
+    client.request = async (method) => {
+      if (method === "agent.start") {
+        return {
+          type: "agent_started",
+          agent: {
+            pane_id: "w1:p_launch",
+            terminal_id: "term_launch",
+            name: "loom-launch-worker",
+            launch_pending: true,
+            agent_status: "unknown",
+          },
+        };
+      }
+      if (method === "agent.get") {
+        return {
+          type: "agent",
+          agent: {
+            pane_id: "w1:p_other",
+            terminal_id: "term_other",
+            name: "someone-else",
+            interactive_ready: true,
+          },
+        };
+      }
+      return { type: "ok" };
+    };
+
+    await expect(
+      client.agentStart({
+        name: "loom-launch-worker",
+        kind: "grok",
+        paneId: "w1:p_launch",
+      }),
+    ).rejects.toThrow(/identity mismatch/);
     client.close();
   });
 
