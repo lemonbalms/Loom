@@ -635,6 +635,14 @@ export function classifyAck(ack: {
   return "send_unknown";
 }
 
+export function buildCardAgentTarget(cardId: string, seq: number): string | null {
+  if (!/^task_[a-f0-9]+$/.test(cardId)) return null;
+  if (!Number.isSafeInteger(seq) || seq < 0) return null;
+  const name = `loom-${cardId}-${seq}`;
+  if (name.length > 32) return null;
+  return name;
+}
+
 function hasDispatchLabel(h: HandoffPayload): boolean {
   return Boolean(
     h.attachments?.some(
@@ -1384,12 +1392,26 @@ export async function startBridgeRuntime(opts?: {
     }
 
     const startedAt = new Date().toISOString();
-    // Fix 2 (live-measured): compute seq before spawn and fold it into the
-    // agent name so each dispatch ATTEMPT gets a unique herdr agent name —
-    // re-dispatching the same card while a prior pane is still alive
-    // otherwise collides on "agent name loom-task_... is already used".
+    // Fix 2 (live-measured): compute seq before spawn and fold full card
+    // identity + attempt seq into the herdr agent name. Unrepresentable
+    // names fail closed before hook listener or spawn traffic.
+    // Re-dispatch while a prior pane is alive otherwise collides on
+    // "agent name loom-task_... is already used".
     const seq = (cardSeq.get(payload.cardId) ?? 0) + 1;
     cardSeq.set(payload.cardId, seq);
+
+    // Full cardId + seq preserved; unrepresentable names fail closed with
+    // no Herdr topology/submission traffic or hook listener.
+    const agentTarget = buildCardAgentTarget(payload.cardId, seq);
+    if (agentTarget === null) {
+      await sendFailedResult({
+        cardId: payload.cardId,
+        fromPeerId,
+        dispatchHandoffId,
+        reason: "agent_name_unrepresentable",
+      });
+      return;
+    }
 
     // PLAN 0.26.0 D2/D4: opt-in claude hook sensor — attempt-scoped socket
     // listener + --settings inject. Fail-open if bind fails (D5).
@@ -1449,9 +1471,8 @@ export async function startBridgeRuntime(opts?: {
       }
     }
 
-    // Unique agent.start name — generated once, stored on flight, used for
-    // every protocol-17 submission op (not optional response agent.name).
-    const agentTarget = `loom-${payload.cardId.slice(0, 20)}-${seq}`;
+    // agentTarget already built above (full card identity + seq); stored on
+    // flight and used for every protocol-17 submission op.
     let agent: HerdrAgentStarted;
     try {
       agent = await spawnWorkerAgent({
