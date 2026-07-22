@@ -226,7 +226,7 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
   async function awaitCardResult(
     cardId: string,
     timeoutMs = 12_000,
-  ): Promise<{ status?: string } | null> {
+  ): Promise<{ status?: string; reason?: string } | null> {
     if (!tower) return null;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -235,7 +235,11 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
         const att = e.handoff.attachments?.find(
           (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
         );
-        if (att) return JSON.parse(att.content) as { status?: string };
+        if (att)
+          return JSON.parse(att.content) as {
+            status?: string;
+            reason?: string;
+          };
       }
       await Bun.sleep(80);
     }
@@ -263,6 +267,21 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     });
   }
 
+  function hasPaneStatusSubscription(paneId: string): boolean {
+    return fake.calls.some((c) => {
+      if (c.method !== "events.subscribe") return false;
+      const subs = c.params.subscriptions;
+      if (!Array.isArray(subs)) return false;
+      return subs.some(
+        (s) =>
+          typeof s === "object" &&
+          s !== null &&
+          "pane_id" in s &&
+          (s as { pane_id?: string }).pane_id === paneId,
+      );
+    });
+  }
+
   async function spawnCard(cardId: string, prompt: string): Promise<string> {
     const panesBefore = new Set(fake.listPaneIds());
     await dispatchCard(cardId, prompt);
@@ -272,6 +291,11 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
     );
     expect(ready).toBe(true);
     const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(paneId),
+      { timeoutMs: 5_000 },
+    );
+    expect(subscribed).toBe(true);
     // autoStatus:"none" does not broadcast working on BARE_ENTER — push it so
     // inject verify sees sawWorking and does not tear down the pane (needed
     // for pool occupancy tests that keep multiple workers live).
@@ -507,7 +531,8 @@ describe("PLAN 0.23.9 pane placement + done_proposal + conv.open deny", () => {
       agent_status: "idle",
     });
     const result = await awaitCardResult(cardId);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
   }, 20_000);
 
   // ⑧ ⑦

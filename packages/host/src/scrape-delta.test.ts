@@ -525,6 +525,10 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       ].join("\n");
 
       const panesBefore = new Set(fake.listPaneIds());
+      // autoStatus completes 40ms after Enter. Seed the scrape before dispatch
+      // so completion cannot outrun the fixture while this test finds the pane.
+      // (ec99b2c:scrape-delta.test.ts fixture seeding race removal)
+      fake.setPaneReadText("*", body);
       await dispatchCard(cardId, "summary chrome filter");
 
       const paneReady = await waitFor(
@@ -533,15 +537,17 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       );
       expect(paneReady).toBe(true);
       const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
-      fake.setPaneReadText(paneId, body);
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.summary).toBe("worker wrote the answer");
       expect(result!.summary).not.toContain("Shift+Tab");
       // M-1: output body still has the hint line
       expect(result!.output).toContain("Shift+Tab:mode");
+      fake.setPaneReadText("*", null);
+      fake.setPaneReadText(paneId, null);
     },
     20_000,
   );
@@ -793,7 +799,8 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       const cPane = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
       fake.setPaneReadText(cPane, "card body ok\nfinal summary line");
       const result = await awaitCardResult(cardId);
-      expect(result?.status).toBe("done");
+      expect(result?.status).toBe("failed");
+      expect(result?.reason).toBe("needs_verification");
       expect(result?.summary).toBe("final summary line");
       expect(result?.output).toContain("card body ok");
     },
@@ -821,7 +828,8 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       fake.setPaneReadText(paneId, body);
 
       const result = await awaitCardResult(cardId);
-      expect(result?.status).toBe("done");
+      expect(result?.status).toBe("failed");
+      expect(result?.reason).toBe("needs_verification");
       // output body unfiltered — key-hint quotation preserved (M-1)
       expect(result?.output).toContain("Shift+Tab:mode │ Ctrl+.:shortcuts");
       expect(result?.output).toContain("was seen in board notes");

@@ -74,25 +74,52 @@ async function waitForAsync(
   return pred();
 }
 
+function countCardResults(
+  towerInbox: Awaited<ReturnType<RelayClient["listInbox"]>>,
+  cardId: string,
+): CardResult[] {
+  const matches: CardResult[] = [];
+  for (const e of towerInbox) {
+    for (const att of e.handoff.attachments ?? []) {
+      if (
+        att.label === CARD_RESULT_LABEL &&
+        att.content.includes(cardId)
+      ) {
+        matches.push(JSON.parse(att.content) as CardResult);
+      }
+    }
+  }
+  return matches;
+}
+
+/**
+ * Wait for first CARD_RESULT, settle ~280ms, re-read.
+ * Exact-one claims require post-settle count (not first-match-only).
+ */
+async function awaitSettledCardResults(
+  tower: RelayClient,
+  cardId: string,
+  timeoutMs = 12_000,
+): Promise<CardResult[]> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const matches = countCardResults(await tower.listInbox(), cardId);
+    if (matches.length >= 1) {
+      await Bun.sleep(280);
+      return countCardResults(await tower.listInbox(), cardId);
+    }
+    await Bun.sleep(100);
+  }
+  return [];
+}
+
 async function awaitCardResult(
   tower: RelayClient,
   cardId: string,
   timeoutMs = 12_000,
 ): Promise<CardResult | null> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const inbox = await tower.listInbox();
-    for (const e of inbox) {
-      const att = e.handoff.attachments?.find(
-        (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
-      );
-      if (att) {
-        return JSON.parse(att.content) as CardResult;
-      }
-    }
-    await Bun.sleep(100);
-  }
-  return null;
+  const matches = await awaitSettledCardResults(tower, cardId, timeoutMs);
+  return matches[0] ?? null;
 }
 
 describe("PLAN 0.23.5 inject verify 3-way branch", () => {
@@ -298,7 +325,8 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
 
     const result = await awaitCardResult(tower!, cardId);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
     expect(result?.reason).not.toBe("inject_unconfirmed");
 
     fake.setPaneReadText("*", null);
@@ -339,8 +367,12 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     expect(result?.reason ?? result?.summary ?? "").toMatch(/inject_unconfirmed/);
   }, 20_000);
 
-  test("③ card exhaust → inject_unconfirmed + flight clear + prune + pane close", async () => {
+  test("③ card exhaust → inject_unconfirmed + exact-one result + pane preserved", async () => {
+    // v0.28.0 U3: card auto-close removed. Detection power:
+    // settle re-read + exact-one result positive + pane preserved positive.
+    // Recovery of orphan inject-failed panes is follow-up B / operator — not auto-close.
     const cardId = "task_a333000000000003";
+    const panesBefore = new Set(fake.listPaneIds());
     const callsBefore = fake.calls.length;
     // F-5: eventsPrune restores per-pane sub count (client-side; observe via status)
     const subsBefore = (await bridgeStatus()).eventSubscriptions;
@@ -349,24 +381,24 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
 
     await dispatchCard(cardId, "exhaust-card-verify-path");
 
-    const result = await awaitCardResult(tower!, cardId);
-    expect(result?.status).toBe("failed");
-    expect(result?.reason ?? result?.summary ?? "").toMatch(/inject_unconfirmed/);
+    // Settle before counting exact-one (not immediately after first result).
+    const results = await awaitSettledCardResults(tower!, cardId);
+    expect(results).toHaveLength(1);
+    const result = results[0]!;
+    expect(result.status).toBe("failed");
+    expect(result.reason ?? result.summary ?? "").toMatch(/inject_unconfirmed/);
 
-    // pane.close attempted (may race after card-result handoff — wait for it)
-    await waitFor(
-      () =>
-        fake.calls
-          .slice(callsBefore)
-          .filter((c) => c.method === "pane.close").length >= 1,
-    );
+    // Pane preserved positive (not inverted to zero closes alone)
+    const paneId =
+      fake.listPaneIds().find((p) => !panesBefore.has(p)) ??
+      fake.listPaneIds().at(-1);
+    expect(paneId).toBeTruthy();
+    await Bun.sleep(200);
+    expect(fake.listPaneIds()).toContain(paneId!);
     const closes = fake.calls
       .slice(callsBefore)
       .filter((c) => c.method === "pane.close");
-    expect(closes.length).toBeGreaterThanOrEqual(1);
-    const closedPaneId = closes[0]!.params.pane_id as string;
-    expect(typeof closedPaneId).toBe("string");
-    expect(closedPaneId.length).toBeGreaterThan(0);
+    expect(closes.length).toBe(0);
 
     // F-5: eventsPrune(paneId) ran — per-pane sub gone, count back to baseline
     // (prune + flight clear may race after card-result handoff — wait)
@@ -525,7 +557,8 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
 
     const result = await awaitCardResult(tower!, cardId);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
 
     // Verify-loop paneRead uses lines:60; finishCard uses 200 — only check 60
     const verifyReads = verifyPaneReads(fake).length - readsBefore;
@@ -750,7 +783,8 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     });
 
     const result = await awaitCardResult(tower!, cardId);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
   }, 20_000);
 
   test("⑫ placeholder-only composer → CR branch, no reinject (R30 M-1)", async () => {

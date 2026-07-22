@@ -227,6 +227,21 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     });
   }
 
+  function hasPaneStatusSubscription(paneId: string): boolean {
+    return fake.calls.some((c) => {
+      if (c.method !== "events.subscribe") return false;
+      const subs = c.params.subscriptions;
+      if (!Array.isArray(subs)) return false;
+      return subs.some(
+        (s) =>
+          typeof s === "object" &&
+          s !== null &&
+          "pane_id" in s &&
+          (s as { pane_id?: string }).pane_id === paneId,
+      );
+    });
+  }
+
   async function spawnCard(cardId: string, prompt: string): Promise<string> {
     const panesBefore = new Set(fake.listPaneIds());
     await dispatchCard(cardId, prompt);
@@ -236,6 +251,11 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     );
     expect(ready).toBe(true);
     const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(paneId),
+      { timeoutMs: 5_000 },
+    );
+    expect(subscribed).toBe(true);
     fake.pushEvent("pane_agent_status_changed", {
       pane_id: paneId,
       agent_status: "working",
@@ -392,7 +412,8 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     );
     emitDone(pane3);
     const result = await awaitCardResult(id3);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
     expect(result?.summary).toContain("SMOKE-02312-FAIL-OK");
   });
 
@@ -440,7 +461,8 @@ describe("PLAN 0.23.12 ⓑ pool pane equalize + regression", () => {
     fake.setPaneReadText(paneId, body);
     emitDone(paneId);
     const result = await awaitCardResult(id);
-    expect(result?.status).toBe("done");
+    expect(result?.status).toBe("failed");
+    expect(result?.reason).toBe("needs_verification");
     // summary path strips trailing TUI timestamp (and skips timing line)
     expect(result?.summary).toBe("⏺ [SMOKE-02312-TS-OK] name=loom");
     // R31 M-1: output body unfiltered — timestamp residue may remain

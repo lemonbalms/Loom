@@ -162,7 +162,22 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
     });
   }
 
-  /** Spawn card, wait for pane, return paneId. */
+  function hasPaneStatusSubscription(paneId: string): boolean {
+    return fake.calls.some((c) => {
+      if (c.method !== "events.subscribe") return false;
+      const subs = c.params.subscriptions;
+      if (!Array.isArray(subs)) return false;
+      return subs.some(
+        (s) =>
+          typeof s === "object" &&
+          s !== null &&
+          "pane_id" in s &&
+          (s as { pane_id?: string }).pane_id === paneId,
+      );
+    });
+  }
+
+  /** Spawn card, wait for pane + status subscription, return paneId. */
   async function spawnCard(cardId: string, prompt: string): Promise<string> {
     const panesBefore = new Set(fake.listPaneIds());
     await dispatchCard(cardId, prompt);
@@ -171,7 +186,13 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
       { timeoutMs: 8_000 },
     );
     expect(ready).toBe(true);
-    return fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(paneId),
+      { timeoutMs: 5_000 },
+    );
+    expect(subscribed).toBe(true);
+    return paneId;
   }
 
   /** Drive working → idle/done completion event. */
@@ -294,7 +315,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
       expect(result!.output).not.toMatch(/still running/i);
       expect(result!.note).toMatch(
@@ -345,7 +367,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
       // Either no note (immediate) or deferred if indicator briefly seen — both ok
       // but must not be exhaust note.
@@ -369,7 +392,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/still_running deferral exhausted \(\d+s\)/);
       expect(result!.output).toMatch(/still running/i);
       fake.setPaneReadText(paneId, null);
@@ -388,7 +412,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
       expect(result!.note).toBeUndefined();
       fake.setPaneReadText(paneId, null);
@@ -420,7 +445,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toBeUndefined();
       expect(result!.output).toContain("final worker answer unique");
       fake.setPaneReadText(paneId, null);
@@ -509,7 +535,8 @@ describe("PLAN 0.23.7 still-running card completion deferral", () => {
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
 
       await Bun.sleep(POLL_MS + 80);
       const inbox = await tower!.listInbox();

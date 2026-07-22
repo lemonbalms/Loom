@@ -14,7 +14,7 @@ import {
   buildDispatchBody,
   serializeCardAttachment,
 } from "@loom/protocol";
-import { RelayClient } from "./relay-client";
+import { RelayClient, __setHandoffAckInjector } from "./relay-client";
 import { HerdrClient } from "./herdr-client";
 import {
   startFakeHerdr,
@@ -24,8 +24,13 @@ import {
   type FakeHerdr,
   type HandoffAckInjectionPreset,
 } from "./fake-herdr";
-import { startBridgeRuntime, type BridgeRuntime } from "./bridge-runtime";
+import {
+  startBridgeRuntime,
+  classifyAck,
+  type BridgeRuntime,
+} from "./bridge-runtime";
 import type { BridgeConfig } from "./bridge-config";
+import { bridgeQuarantineAck } from "./bridge-spawn";
 import {
   resetStateHomeDirCache,
   setActiveProfile,
@@ -273,6 +278,122 @@ describe("PLAN 0.27.0 durable quarantine", () => {
     const m = foldQuarantineLines(lines);
     expect(m.size).toBe(0);
   });
+
+  test("foldQuarantineLines: process_exit is observation-only (unresolved preserved)", () => {
+    // PLAN 0.28.0 U6 / PATCH 3 ⑤: process_exit must NOT fold-delete open entries.
+    // Restart replay after a clean exit must restore unresolved counts.
+    const lines = [
+      JSON.stringify({
+        kind: "enter",
+        cardId: "task_pe",
+        dispatchHandoffId: "ho_pe",
+        state: "send_unknown",
+        key: { tag: "seq", seq: 1 },
+        at: "t0",
+      }),
+      JSON.stringify({
+        kind: "process_exit",
+        cardId: "task_pe",
+        dispatchHandoffId: "ho_pe",
+        state: "send_unknown",
+        key: { tag: "seq", seq: 1 },
+        at: "t1",
+        reason: "process_exit",
+      }),
+    ];
+    const m = foldQuarantineLines(lines);
+    expect(m.size).toBe(1);
+    const entry = [...m.values()][0]!;
+    expect(entry.cardId).toBe("task_pe");
+    expect(entry.state).toBe("send_unknown");
+  });
+
+  test("offline operator ack via bridgeQuarantineAck closes durable unresolved", async () => {
+    // Offline path: no live bridge meta → local durable store is authoritative.
+    const profile = "node-ack-offline";
+    const store = new QuarantineStore({ profile, reEscalateMs: 60_000 });
+    store.load();
+    expect(
+      store.enter({
+        cardId: "task_off_ack",
+        dispatchHandoffId: "ho_off_ack",
+        state: "send_unknown",
+        key: { tag: "seq", seq: 7 },
+        reason: "test_offline_ack_seed",
+      }),
+    ).toBe(true);
+    expect(store.unresolvedCount()).toBe(1);
+    store.disposeTimers();
+
+    const result = await bridgeQuarantineAck({
+      cardId: "task_off_ack",
+      dispatchHandoffId: "ho_off_ack",
+      key: { tag: "seq", seq: 7 },
+      profile,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.via).toBe("local");
+    if (result.ok) {
+      expect(result.key).toEqual({ tag: "seq", seq: 7 });
+    }
+    expect(result.quarantineUnresolved).toBe(0);
+
+    // Durable fold confirms enter+ack and unresolved empty.
+    const reloaded = new QuarantineStore({ profile, reEscalateMs: 60_000 });
+    expect(reloaded.load()).toBe(0);
+    expect(reloaded.unresolvedCount()).toBe(0);
+    reloaded.disposeTimers();
+    const raw = readFileSync(quarantinePath(profile), "utf8");
+    expect(raw).toContain('"kind":"enter"');
+    expect(raw).toContain('"kind":"ack"');
+    expect(raw).toContain("operator_ack");
+  });
+});
+
+// ─── G-11 classifyAck pure unit (accepted positive lock) ─────────────────────
+
+describe("PLAN 0.28.0 classifyAck pure unit (G-11)", () => {
+  test("queued/1 → accepted", () => {
+    expect(classifyAck({ status: "queued", recipientCount: 1 })).toBe(
+      "accepted",
+    );
+  });
+  test("delivered/1 → accepted", () => {
+    expect(classifyAck({ status: "delivered", recipientCount: 1 })).toBe(
+      "accepted",
+    );
+  });
+  test("peer_unknown/0 → send_unknown", () => {
+    expect(
+      classifyAck({ status: "peer_unknown", recipientCount: 0 }),
+    ).toBe("send_unknown");
+  });
+  test("delivered/2 → send_unknown", () => {
+    expect(classifyAck({ status: "delivered", recipientCount: 2 })).toBe(
+      "send_unknown",
+    );
+  });
+
+  test("presence_unknown is unreachable in v0.28.0 (wiring is follow-up C)", () => {
+    // Active documentation assertion — not a skip block (lessons verification 40).
+    // classifyAck has no presence branch; presence_unknown is a quarantine *state*
+    // entered only by enterPresenceUnknown, which has production callers = 0 in
+    // v0.28.0. Do not hide this in describe.skip / skipIf.
+    expect(typeof classifyAck).toBe("function");
+    // No classifyAck input produces a presence_unknown phase — only accepted|send_unknown.
+    const shapes = [
+      { status: "queued", recipientCount: 1 },
+      { status: "delivered", recipientCount: 1 },
+      { status: "peer_unknown", recipientCount: 0 },
+      { status: "delivered", recipientCount: 2 },
+      { status: "rejected", recipientCount: 0 },
+    ] as const;
+    for (const s of shapes) {
+      const d = classifyAck(s);
+      expect(d === "accepted" || d === "send_unknown").toBe(true);
+      expect(d).not.toBe("presence_unknown" as typeof d);
+    }
+  });
 });
 
 // ─── Tower currency gate unit ────────────────────────────────────────────────
@@ -376,7 +497,8 @@ describe("PLAN 0.27.0 tower currency gate", () => {
       }),
     });
     expect(r1.ok).toBe(true);
-    if (r1.ok) expect(r1.status).toBe("done");
+    // U2: remote result never writes board done — lands on blocked.
+    if (r1.ok) expect(r1.status).toBe("blocked");
     const r2 = applyCardResult({
       resultJson: resultJson({
         cardId: t.id,
@@ -398,7 +520,7 @@ describe("PLAN 0.27.0 tower currency gate", () => {
       resultJson: resultJson({ cardId: t.id, seq: 1 }),
     });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.status).toBe("done");
+    if (r.ok) expect(r.status).toBe("blocked");
   });
 
   test("findTask miss + dispatchHandoffId scan fallback (task_0 style)", () => {
@@ -419,7 +541,7 @@ describe("PLAN 0.27.0 tower currency gate", () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.task.id).toBe(t.id);
-      expect(r.status).toBe("done");
+      expect(r.status).toBe("blocked");
     }
   });
 
@@ -462,11 +584,11 @@ describe("PLAN 0.27.0 tower currency gate", () => {
   });
 });
 
-// ─── Integration: strict ACK 5 combos + pane.close gating ────────────────────
+// ─── Integration: strict ACK 5 combos + pane-preservation (PATCH 4 rewrite) ──
+// In-process RelayServer + FakeHerdr — always active (not LOOM_LIVE_RELAY gated).
+// lessons verification 40: never hide contract assertions inside skip/skipIf.
 
-// Live relay WebSocket round-trips — architect-scope; needs LOOM_LIVE_RELAY=1
-// and a real network surface. Deterministic strict-ACK unit tests above stay active.
-describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integration", () => {
+describe("PLAN 0.28.0 strict ACK integration", () => {
   const port = 27080 + Math.floor(Math.random() * 200);
   const dir = join(tmpdir(), `loom-ack-0270-${Date.now()}`);
   const sessionFile = join(dir, "session.json");
@@ -659,24 +781,50 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
     }
   });
 
+  /**
+   * accepted (a) injection seam — voice control group (design §4.2/§4.3).
+   * Injection early-returns without wire send — do NOT assert tower inbox
+   * reach or flight.resultPhase/relayAcceptedAt (unobservable; UNVERIFIED ⑥).
+   * Accepted judgment logic is locked by classifyAck pure units (G-11).
+   */
   test(
-    "① strict ACK queued/1 → strict accept → pane.close once",
+    "① accepted (a) queued/1 inject seam: injector exactly once + pane preserved",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-queued-1");
-      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
-      // Inject AFTER spawn so only the result handoff is forced.
-      // Injection early-returns without wire send — assert termination branch only
-      // (tower inbox reach is covered by pane-cleanup.test.ts real-relay path).
-      setHandoffAckInjection("queued_1");
+      // Test-owned closure counter for inject seam (production unchanged).
+      let injectCalls = 0;
+      __setHandoffAckInjector(() => {
+        injectCalls += 1;
+        return {
+          kind: "ack",
+          status: "queued",
+          recipientCount: 1,
+          notified: false,
+        };
+      });
       emitDone(paneId);
-      const closed = await waitFor(
-        () => closeCallsFor(fake, paneId) === closesBefore + 1,
-        { timeoutMs: 3_000 },
+      const invoked = await waitFor(() => injectCalls >= 1, {
+        timeoutMs: 4_000,
+      });
+      expect(invoked).toBe(true);
+      expect(injectCalls).toBe(1);
+      // Pane preservation positive (U3) — not inferred from broad absence.
+      await Bun.sleep(400);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
+      // Auxiliary: zero unresolved enter for this card via foldQuarantineLines
+      // (empty lines if file absent — not conditional raw grep).
+      const qPath = quarantinePath("node-ack0270");
+      const lines = existsSync(qPath)
+        ? readFileSync(qPath, "utf8").split("\n").filter((l) => l.trim())
+        : [];
+      const open = foldQuarantineLines(lines);
+      const unresolvedForCard = [...open.values()].filter(
+        (u) => u.cardId === cardId,
       );
-      expect(closed).toBe(true);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
+      expect(unresolvedForCard).toHaveLength(0);
       clearHandoffAckInjection();
       fake.setPaneReadText(paneId, null);
     },
@@ -684,20 +832,39 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   );
 
   test(
-    "①b strict ACK delivered/1 → strict accept → pane.close once",
+    "①b accepted (a) delivered/1 inject seam: injector exactly once + pane preserved",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-delivered-1");
-      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
-      setHandoffAckInjection("delivered_1");
+      let injectCalls = 0;
+      __setHandoffAckInjector(() => {
+        injectCalls += 1;
+        return {
+          kind: "ack",
+          status: "delivered",
+          recipientCount: 1,
+          notified: true,
+        };
+      });
       emitDone(paneId);
-      const closed = await waitFor(
-        () => closeCallsFor(fake, paneId) === closesBefore + 1,
-        { timeoutMs: 3_000 },
+      const invoked = await waitFor(() => injectCalls >= 1, {
+        timeoutMs: 4_000,
+      });
+      expect(invoked).toBe(true);
+      expect(injectCalls).toBe(1);
+      await Bun.sleep(400);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
+      const qPath = quarantinePath("node-ack0270");
+      const lines = existsSync(qPath)
+        ? readFileSync(qPath, "utf8").split("\n").filter((l) => l.trim())
+        : [];
+      const open = foldQuarantineLines(lines);
+      const unresolvedForCard = [...open.values()].filter(
+        (u) => u.cardId === cardId,
       );
-      expect(closed).toBe(true);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
+      expect(unresolvedForCard).toHaveLength(0);
       clearHandoffAckInjection();
       fake.setPaneReadText(paneId, null);
     },
@@ -705,26 +872,37 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   );
 
   test(
-    "② peer_unknown/0 → send_unknown: no pane.close; durable quarantine 1",
+    "② peer_unknown/0 → send_unknown: quarantine enter + pane preserved",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-peer-unknown");
-      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
       setHandoffAckInjection("peer_unknown_0");
       emitDone(paneId);
-      // Result may still be attempted (local issue) but pane.close must not run
       await Bun.sleep(900);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
-      // Quarantine file should exist for profile
+      // Pane preservation positive
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
+      // Durable quarantine enter positive (file fold — not bridge store internals)
       const qPath = quarantinePath("node-ack0270");
-      const qExists = existsSync(qPath);
-      expect(qExists).toBe(true);
-      if (qExists) {
-        const raw = readFileSync(qPath, "utf8");
-        expect(raw).toContain("send_unknown");
-        expect(raw).toContain(cardId);
-      }
+      expect(existsSync(qPath)).toBe(true);
+      const raw = readFileSync(qPath, "utf8");
+      expect(raw).toContain("send_unknown");
+      expect(raw).toContain(cardId);
+      expect(raw).toContain('"kind":"enter"');
+      // Test-owned store fold of the durable file
+      const owned = new QuarantineStore({
+        profile: "node-ack0270-fold-peer",
+        reEscalateMs: 60_000,
+      });
+      // Direct fold of the bridge profile file lines
+      const lines = raw.split("\n").filter((l) => l.trim());
+      const open = foldQuarantineLines(lines);
+      const forCard = [...open.values()].filter((u) => u.cardId === cardId);
+      // Exact-one unresolved entry for this card (not >= 1).
+      expect(forCard).toHaveLength(1);
+      expect(forCard[0]!.state).toBe("send_unknown");
+      owned.disposeTimers();
       clearHandoffAckInjection();
       fake.setPaneReadText(paneId, null);
     },
@@ -732,16 +910,28 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   );
 
   test(
-    "②b delivered/2 → send_unknown: no pane.close",
+    "②b delivered/2 → send_unknown: quarantine enter + pane preserved",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-delivered-2");
-      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
       setHandoffAckInjection("delivered_2");
       emitDone(paneId);
       await Bun.sleep(900);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
+      // Positive quarantine via test-owned store over durable path
+      const qPath = quarantinePath("node-ack0270");
+      expect(existsSync(qPath)).toBe(true);
+      const raw = readFileSync(qPath, "utf8");
+      expect(raw).toContain(cardId);
+      expect(raw).toContain("send_unknown");
+      const open = foldQuarantineLines(
+        raw.split("\n").filter((l) => l.trim()),
+      );
+      const forCard = [...open.values()].filter((u) => u.cardId === cardId);
+      expect(forCard).toHaveLength(1);
+      expect(forCard[0]!.state).toBe("send_unknown");
       clearHandoffAckInjection();
       fake.setPaneReadText(paneId, null);
     },
@@ -749,16 +939,30 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   );
 
   test(
-    "③ transport throw → send_unknown: no pane.close",
+    "③ transport throw → send_unknown: quarantine enter + pane preserved",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-transport-throw");
-      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
       setHandoffAckInjection("transport_throw");
       emitDone(paneId);
       await Bun.sleep(900);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
+      const qPath = quarantinePath("node-ack0270");
+      expect(existsSync(qPath)).toBe(true);
+      const raw = readFileSync(qPath, "utf8");
+      expect(raw).toContain(cardId);
+      expect(raw).toContain("send_unknown");
+      // Test-owned store: load after copying durable lines through fold
+      const open = foldQuarantineLines(
+        raw.split("\n").filter((l) => l.trim()),
+      );
+      const forCard = [...open.values()].filter((u) => u.cardId === cardId);
+      expect(forCard).toHaveLength(1);
+      expect(forCard[0]!.state).toBe("send_unknown");
+      // reason prefix should note transport
+      expect(raw).toMatch(/transport/i);
       clearHandoffAckInjection();
       fake.setPaneReadText(paneId, null);
     },
@@ -766,31 +970,108 @@ describe.skipIf(!process.env.LOOM_LIVE_RELAY)("PLAN 0.27.0 strict ACK integratio
   );
 
   test(
-    "⑤ payload stamps (cardId, dispatchHandoffId, seq) on success path",
+    "⑤ real-relay stamps + pane preserved (no auto close)",
     async () => {
       clearHandoffAckInjection(); // real relay ACK (delivered/1 typically)
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "ack-stamp");
-      const closesBefore = closeCallsFor(fake, paneId);
       fake.setPaneReadText(paneId, DONE_BODY);
       emitDone(paneId);
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
       expect(result!.cardId).toBe(cardId);
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(typeof result!.dispatchHandoffId).toBe("string");
       expect((result!.dispatchHandoffId as string).length).toBeGreaterThan(0);
       expect(typeof result!.seq).toBe("number");
       expect(result!.seq as number).toBeGreaterThanOrEqual(1);
-      // Real-path pre-C termination: pane.close exactly once after successful send
-      const closed = await waitFor(
-        () => closeCallsFor(fake, paneId) === closesBefore + 1,
-        { timeoutMs: 3_000 },
-      );
-      expect(closed).toBe(true);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore + 1);
+      // U3: pane preserved positively (not close-once)
+      await Bun.sleep(300);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
+  );
+
+  test(
+    "live operator ack via control RPC closes daemon-authoritative unresolved",
+    async () => {
+      // Seed unresolved by forcing peer_unknown result path, then ack via RPC.
+      // Live path must hit the daemon's in-memory store (via: "rpc"), not a dual local store.
+      clearHandoffAckInjection();
+      const cardId = nextCardId();
+      const paneId = await spawnCard(cardId, "ack-live-operator");
+      fake.setPaneReadText(paneId, DONE_BODY);
+      setHandoffAckInjection("peer_unknown_0");
+      emitDone(paneId);
+      await Bun.sleep(1_000);
+
+      const qPath = quarantinePath("node-ack0270");
+      expect(existsSync(qPath)).toBe(true);
+      const raw = readFileSync(qPath, "utf8");
+      expect(raw).toContain(cardId);
+      // Parse enter line for this card to get dispatchHandoffId + key
+      const enterLine = raw
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0)
+        .map((l) => {
+          try {
+            return JSON.parse(l) as {
+              kind?: string;
+              cardId?: string;
+              dispatchHandoffId?: string;
+              key?: { tag: string; seq?: number };
+            };
+          } catch {
+            return null;
+          }
+        })
+        .find(
+          (r) =>
+            r &&
+            r.kind === "enter" &&
+            r.cardId === cardId &&
+            typeof r.dispatchHandoffId === "string",
+        );
+      expect(enterLine).toBeTruthy();
+      const dispatchHandoffId = enterLine!.dispatchHandoffId!;
+      const key =
+        enterLine!.key?.tag === "seq" && typeof enterLine!.key.seq === "number"
+          ? ({ tag: "seq" as const, seq: enterLine!.key.seq })
+          : enterLine!.key?.tag === "presence"
+            ? ({ tag: "presence" as const })
+            : ({ tag: "seq" as const, seq: 1 });
+
+      const ack = await bridgeQuarantineAck({
+        cardId,
+        dispatchHandoffId,
+        key,
+        profile: "node-ack0270",
+      });
+      // Live bridge is running → must route via authenticated RPC (not local dual-store).
+      expect(ack.via).toBe("rpc");
+      expect(ack.ok).toBe(true);
+      if (ack.ok) {
+        expect(ack.key).toBeTruthy();
+      }
+
+      // Durable fold after ack: enter remains, ack line present, unresolved empty for card
+      const after = readFileSync(qPath, "utf8");
+      expect(after).toContain('"kind":"ack"');
+      const open = foldQuarantineLines(
+        after.split("\n").filter((l) => l.trim()),
+      );
+      const remaining = [...open.values()].filter((u) => u.cardId === cardId);
+      expect(remaining).toHaveLength(0);
+
+      expect(fake.listPaneIds()).toContain(paneId);
+      clearHandoffAckInjection();
+      fake.setPaneReadText(paneId, null);
+    },
+    30_000,
   );
 });
 

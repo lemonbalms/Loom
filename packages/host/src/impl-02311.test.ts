@@ -277,23 +277,52 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     await Bun.sleep(100);
   }
 
+  function countCardResults(
+    cardId: string,
+    inbox: Awaited<ReturnType<RelayClient["listInbox"]>>,
+  ): CardResult[] {
+    const matches: CardResult[] = [];
+    for (const e of inbox) {
+      for (const att of e.handoff.attachments ?? []) {
+        if (
+          att.label === CARD_RESULT_LABEL &&
+          att.content.includes(cardId)
+        ) {
+          matches.push(JSON.parse(att.content) as CardResult);
+        }
+      }
+    }
+    return matches;
+  }
+
+  /**
+   * Wait for first CARD_RESULT, settle ~280ms, re-read for exact-one detection.
+   * First-match-only helpers must not claim exact-one.
+   */
+  async function awaitSettledCardResults(
+    cardId: string,
+    timeoutMs = 12_000,
+  ): Promise<CardResult[]> {
+    if (!tower) return [];
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const inbox = await tower.listInbox();
+      const matches = countCardResults(cardId, inbox);
+      if (matches.length >= 1) {
+        await Bun.sleep(280);
+        return countCardResults(cardId, await tower.listInbox());
+      }
+      await Bun.sleep(80);
+    }
+    return [];
+  }
+
   async function awaitCardResult(
     cardId: string,
     timeoutMs = 12_000,
   ): Promise<CardResult | null> {
-    if (!tower) return null;
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const inbox = await tower.listInbox();
-      for (const e of inbox) {
-        const att = e.handoff.attachments?.find(
-          (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
-        );
-        if (att) return JSON.parse(att.content) as CardResult;
-      }
-      await Bun.sleep(80);
-    }
-    return null;
+    const matches = await awaitSettledCardResults(cardId, timeoutMs);
+    return matches[0] ?? null;
   }
 
   async function dispatchCard(cardId: string, prompt: string): Promise<void> {
@@ -317,6 +346,21 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     });
   }
 
+  function hasPaneStatusSubscription(paneId: string): boolean {
+    return fake.calls.some((c) => {
+      if (c.method !== "events.subscribe") return false;
+      const subs = c.params.subscriptions;
+      if (!Array.isArray(subs)) return false;
+      return subs.some(
+        (s) =>
+          typeof s === "object" &&
+          s !== null &&
+          "pane_id" in s &&
+          (s as { pane_id?: string }).pane_id === paneId,
+      );
+    });
+  }
+
   async function spawnCard(cardId: string, prompt: string): Promise<string> {
     const panesBefore = new Set(fake.listPaneIds());
     await dispatchCard(cardId, prompt);
@@ -326,6 +370,11 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     );
     expect(ready).toBe(true);
     const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(paneId),
+      { timeoutMs: 5_000 },
+    );
+    expect(subscribed).toBe(true);
     fake.pushEvent("pane_agent_status_changed", {
       pane_id: paneId,
       agent_status: "working",
@@ -536,9 +585,9 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
     30_000,
   );
 
-  // ⑤ probe sequence → immediate done + closePane (no deferral)
+  // ⑤ probe sequence → immediate proposal + pane preserved (no deferral)
   test(
-    "⑤ supersession scrape → immediate done + closePane",
+    "⑤ supersession scrape → immediate proposal + pane preserved",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "super-immediate");
@@ -551,16 +600,19 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       fake.setPaneReadText(paneId, scrape);
       emitWorkingThen(paneId, "idle");
 
-      const result = await awaitCardResult(cardId, 8_000);
-      expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
-      expect(result!.note).toBeUndefined();
-      expect(result!.output).toContain("[PROBE-0511-OK]");
+      // Detection power: settle re-read + exact-one + pane membership + zero close.
+      // Recovery of orphan panes is follow-up B / operator — not auto-close.
+      const results = await awaitSettledCardResults(cardId, 8_000);
+      expect(results).toHaveLength(1);
+      const result = results[0]!;
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe("needs_verification");
+      expect(result.note).toBeUndefined();
+      expect(result.output).toContain("[PROBE-0511-OK]");
       // summary prefers real content over trailing timing
-      expect(result!.summary).not.toMatch(/^Worked for /);
-      // closePane on confident completion
-      await waitFor(() => closeCallsFor(paneId) >= 1, { timeoutMs: 3_000 });
-      expect(closeCallsFor(paneId)).toBeGreaterThanOrEqual(1);
+      expect(result.summary).not.toMatch(/^Worked for /);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
@@ -605,20 +657,23 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(
         /completion deferred \d+s \(still-running indicator\)/,
       );
-      await waitFor(() => closeCallsFor(paneId) >= 1, { timeoutMs: 3_000 });
-      expect(closeCallsFor(paneId)).toBeGreaterThanOrEqual(1);
+      // Pane preserved positive; orphan recovery is follow-up B / operator.
+      await Bun.sleep(250);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
   );
 
-  // ⑤ single-line indicator → deferral (not supersession)
+  // ⑥ single-line indicator → deferral exhaust (not supersession)
   test(
-    "⑤ single-line indicator → deferral (no later timing line)",
+    "⑥ single-line indicator → deferral exhaust + pane preserved",
     async () => {
       const cardId = nextCardId();
       const paneId = await spawnCard(cardId, "single-line-ind");
@@ -642,12 +697,15 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       }
       expect(early).toBeNull();
 
-      // exhaust path
-      const result = await awaitCardResult(cardId, 8_000);
-      expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
-      expect(result!.note).toMatch(/still_running deferral exhausted/);
-      // exhausted → no closePane (0.23.8 M-1)
+      // exhaust path — settle re-read + exact-one + pane membership + zero close.
+      // Recovery responsibility: follow-up B / operator — not auto-close.
+      const results = await awaitSettledCardResults(cardId, 8_000);
+      expect(results).toHaveLength(1);
+      const result = results[0]!;
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe("needs_verification");
+      expect(result.note).toMatch(/still_running deferral exhausted/);
+      expect(fake.listPaneIds()).toContain(paneId);
       expect(closeCallsFor(paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
@@ -694,7 +752,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       );
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/completion deferred/);
       fake.setPaneReadText(paneId, null);
     },
@@ -731,7 +790,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       // Leave as-is → exhaust
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.note).toMatch(/still_running deferral exhausted/);
       fake.setPaneReadText(paneId, null);
     },
@@ -754,7 +814,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
 
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       // R31 M-1: output body unfiltered (statusline still present)
       expect(result!.output).toContain("Fable 5 ⚡high 🧠 │ fable-advisor main");
       expect(result!.output).toContain("Worked for 3s.");
@@ -777,7 +838,8 @@ describe("PLAN 0.23.11 integration ④ spawn serialize + ⑤ deferral + regressi
       emitWorkingThen(paneId, "done");
       const result = await awaitCardResult(cardId, 8_000);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
       expect(result!.output).toContain("[IMPL-02311-DONE]");
       expect(result!.note).toBeUndefined();
       fake.setPaneReadText(paneId, null);

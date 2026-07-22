@@ -1,7 +1,7 @@
 /**
- * PLAN 0.23.8 — worker pane cleanup policy (tests ①–⑧, ⑬–⑭).
- * closePane is explicit (R33 M-1); paneCleanup keep opt-out; order invariant
- * flight teardown → sendResult success → best-effort pane.close.
+ * PLAN 0.23.8 / 0.28.0 — worker pane cleanup + verification proposal contracts.
+ * v0.28.0 U3: card auto pane.close is 0; success path emits failed/needs_verification.
+ * paneCleanup "auto" remains conv-only; card worker panes are preserved.
  */
 import { describe, expect, test, afterAll, beforeAll } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
@@ -29,14 +29,19 @@ import {
   type FableSession,
 } from "./session-store";
 import { convOpen, convClose } from "./conv-ops";
+import { addTask, updateTask, findTask } from "./task-board";
+import { applyCardResult } from "./card-ops";
 
 type CardResult = {
   status?: string;
   reason?: string;
   note?: string;
   output?: string;
+  summary?: string;
   cardId?: string;
   paneId?: string;
+  dispatchHandoffId?: string;
+  seq?: number;
 };
 
 const STILL_LINE = "Worked for 48s. 1 command still running";
@@ -90,27 +95,110 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   const MAX_MS = 350;
   const SETTLE_MS = 15;
 
+  type CollectedCardResult = {
+    result: CardResult;
+    /** Raw attachment content — use for applyCardResult (never reconstruct). */
+    raw: string;
+  };
+
+  function listMatchingCardResults(cardId: string, inbox: Awaited<ReturnType<RelayClient["listInbox"]>>): CollectedCardResult[] {
+    const matches: CollectedCardResult[] = [];
+    for (const e of inbox) {
+      for (const att of e.handoff.attachments ?? []) {
+        if (
+          att.label === CARD_RESULT_LABEL &&
+          att.content.includes(cardId)
+        ) {
+          matches.push({
+            result: JSON.parse(att.content) as CardResult,
+            raw: att.content,
+          });
+        }
+      }
+    }
+    return matches;
+  }
+
+  /**
+   * Collect matching card results with settle-window exact-count observability.
+   * PATCH 4 M4: first-match-only helpers must not claim exact-one — after the
+   * first observation, wait ~280ms and re-read so a late duplicate is visible.
+   */
+  async function collectCardResults(
+    cardId: string,
+    timeoutMs = 12_000,
+  ): Promise<CollectedCardResult[]> {
+    if (!tower) return [];
+    const deadline = Date.now() + timeoutMs;
+    let matches: CollectedCardResult[] = [];
+    while (Date.now() < deadline) {
+      const inbox = await tower.listInbox();
+      matches = listMatchingCardResults(cardId, inbox);
+      if (matches.length >= 1) {
+        // Settle window: late duplicates must be observable before claiming count.
+        await Bun.sleep(280);
+        const settled = await tower.listInbox();
+        return listMatchingCardResults(cardId, settled);
+      }
+      await Bun.sleep(80);
+    }
+    return matches;
+  }
+
   async function awaitCardResult(
     cardId: string,
     timeoutMs = 12_000,
   ): Promise<CardResult | null> {
-    if (!tower) return null;
+    const matches = await collectCardResults(cardId, timeoutMs);
+    return matches[0]?.result ?? null;
+  }
+
+  /**
+   * Wait for at least `exact` matches, settle, re-read, return final list.
+   * Caller asserts final length === exact (detection power for duplicates).
+   */
+  async function awaitExactCardResults(
+    cardId: string,
+    exact: number,
+    timeoutMs = 12_000,
+  ): Promise<CollectedCardResult[]> {
+    if (!tower) return [];
     const deadline = Date.now() + timeoutMs;
+    let matches: CollectedCardResult[] = [];
     while (Date.now() < deadline) {
       const inbox = await tower.listInbox();
-      for (const e of inbox) {
-        const att = e.handoff.attachments?.find(
-          (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
-        );
-        if (att) return JSON.parse(att.content) as CardResult;
+      matches = listMatchingCardResults(cardId, inbox);
+      if (matches.length >= exact) {
+        await Bun.sleep(280);
+        const settled = await tower.listInbox();
+        return listMatchingCardResults(cardId, settled);
       }
       await Bun.sleep(80);
     }
-    return null;
+    return matches;
   }
 
-  async function dispatchCard(cardId: string, prompt: string): Promise<void> {
-    await tower!.handoff({
+  function hasPaneStatusSubscription(paneId: string): boolean {
+    return fake.calls.some((c) => {
+      if (c.method !== "events.subscribe") return false;
+      const subs = c.params.subscriptions;
+      if (!Array.isArray(subs)) return false;
+      return subs.some(
+        (s) =>
+          typeof s === "object" &&
+          s !== null &&
+          "pane_id" in s &&
+          (s as { pane_id?: string }).pane_id === paneId,
+      );
+    });
+  }
+
+  /** Returns the real dispatch handoff ack id (bind board.task.handoffId to this). */
+  async function dispatchCard(
+    cardId: string,
+    prompt: string,
+  ): Promise<string> {
+    const ack = await tower!.handoff({
       to: "@node/wsl-1",
       body: buildDispatchBody({
         title: prompt.slice(0, 40),
@@ -128,17 +216,28 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
         }),
       ],
     });
+    return ack.handoffId;
   }
 
-  async function spawnCard(cardId: string, prompt: string): Promise<string> {
+  async function spawnCard(
+    cardId: string,
+    prompt: string,
+  ): Promise<{ paneId: string; dispatchHandoffId: string }> {
     const panesBefore = new Set(fake.listPaneIds());
-    await dispatchCard(cardId, prompt);
+    const dispatchHandoffId = await dispatchCard(cardId, prompt);
     const ready = await waitFor(
       () => fake.listPaneIds().some((p) => !panesBefore.has(p)),
       { timeoutMs: 8_000 },
     );
     expect(ready).toBe(true);
-    return fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+    // Branch benefit: wait for per-pane status subscription before driving events.
+    const subscribed = await waitFor(
+      () => hasPaneStatusSubscription(paneId),
+      { timeoutMs: 5_000 },
+    );
+    expect(subscribed).toBe(true);
+    return { paneId, dispatchHandoffId };
   }
 
   function emitWorkingThen(
@@ -246,7 +345,7 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
     "③a expected-red: completion card pane remains present after terminal receipt",
     async () => {
       const cardId = "task_a023800000000001";
-      const paneId = await spawnCard(cardId, "pane-cleanup-immediate");
+      const { paneId } = await spawnCard(cardId, "pane-cleanup-immediate");
       fake.setPaneReadText(paneId, DONE_BODY);
       emitWorkingThen(paneId, "idle");
 
@@ -265,11 +364,10 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   );
 
   test(
-    "② deferral clear → close exactly once",
+    "② deferral clear → proposal + pane preserved",
     async () => {
       const cardId = "task_a023800000000002";
-      const paneId = await spawnCard(cardId, "pane-cleanup-defer-clear");
-      const closesBefore = closeCallsFor(fake, paneId);
+      const { paneId } = await spawnCard(cardId, "pane-cleanup-defer-clear");
 
       fake.setPaneReadText(paneId, STILL_LINE);
       emitWorkingThen(paneId, "idle");
@@ -277,49 +375,50 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
       await Bun.sleep(POLL_MS + SETTLE_MS * 3 + 40);
       fake.setPaneReadText(paneId, DONE_BODY);
 
-      const result = await awaitCardResult(cardId);
-      expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
-      expect(result!.note).toMatch(/completion deferred/);
+      const results = await awaitExactCardResults(cardId, 1);
+      expect(results).toHaveLength(1);
+      const result = results[0]!.result;
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe("needs_verification");
+      expect(result.note).toMatch(/completion deferred/);
 
-      const closed = await waitFor(
-        () => closeCallsFor(fake, paneId) === closesBefore + 1,
-        { timeoutMs: 3_000 },
-      );
-      expect(closed).toBe(true);
+      await Bun.sleep(250);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
   );
 
   test(
-    "③ exhausted → no pane.close",
+    "③ exhausted → proposal + pane preserved",
     async () => {
       const cardId = "task_a023800000000003";
-      const paneId = await spawnCard(cardId, "pane-cleanup-exhausted");
-      const closesBefore = closeCallsFor(fake, paneId);
+      const { paneId } = await spawnCard(cardId, "pane-cleanup-exhausted");
 
       fake.setPaneReadText(paneId, STILL_LINE);
       emitWorkingThen(paneId, "idle");
 
-      const result = await awaitCardResult(cardId, 8_000);
-      expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
-      expect(result!.note).toMatch(/still_running deferral exhausted/);
+      const results = await awaitExactCardResults(cardId, 1, 8_000);
+      expect(results).toHaveLength(1);
+      const result = results[0]!.result;
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe("needs_verification");
+      expect(result.note).toMatch(/still_running deferral exhausted/);
 
       await Bun.sleep(200);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
   );
 
   test(
-    "④ agent_blocked failed → no pane.close (failure path keeps pane)",
+    "④ agent_blocked failed → pane preserved (failure path keeps pane)",
     async () => {
       const cardId = "task_a023800000000004";
-      const paneId = await spawnCard(cardId, "pane-cleanup-blocked");
-      const closesBefore = closeCallsFor(fake, paneId);
+      const { paneId } = await spawnCard(cardId, "pane-cleanup-blocked");
 
       emitWorkingThen(paneId, "blocked");
 
@@ -329,9 +428,97 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
       expect(result!.reason).toBe("agent_blocked");
 
       await Bun.sleep(200);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
     },
     20_000,
+  );
+
+  test(
+    "accepted (b) real-relay: exact-one proposal + stamps + board blocked + pane preserved",
+    async () => {
+      // Design §4.2 accepted (b): wire reach is the only place "was it delivered?" is observable.
+      // Seed board task first; dispatch uses task.id as cardId so apply is a direct findTask hit.
+      process.env.LOOM_SESSION = towerSessionFile;
+      resetStateHomeDirCache();
+      const task = addTask({
+        title: "accepted-b",
+        assignee: "node/wsl-1",
+        status: "doing",
+      });
+      const cardId = task.id;
+      process.env.LOOM_SESSION = sessionFile;
+      resetStateHomeDirCache();
+
+      // Dispatch first so we can bind board.handoffId BEFORE completion/result emission.
+      const panesBefore = new Set(fake.listPaneIds());
+      const dispatchHandoffId = await dispatchCard(
+        cardId,
+        "accepted-b-real-relay",
+      );
+      process.env.LOOM_SESSION = towerSessionFile;
+      resetStateHomeDirCache();
+      updateTask(cardId, {
+        assignee: "node/wsl-1",
+        handoffId: dispatchHandoffId,
+        status: "doing",
+      });
+      process.env.LOOM_SESSION = sessionFile;
+      resetStateHomeDirCache();
+
+      const ready = await waitFor(
+        () => fake.listPaneIds().some((p) => !panesBefore.has(p)),
+        { timeoutMs: 8_000 },
+      );
+      expect(ready).toBe(true);
+      const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+      const subscribed = await waitFor(
+        () => hasPaneStatusSubscription(paneId),
+        { timeoutMs: 5_000 },
+      );
+      expect(subscribed).toBe(true);
+
+      fake.setPaneReadText(paneId, DONE_BODY);
+      emitWorkingThen(paneId, "idle");
+
+      const collected = await awaitExactCardResults(cardId, 1, 12_000);
+      // Settle re-read already applied inside helper — exact-one must hold post-settle.
+      expect(collected).toHaveLength(1);
+      const result = collected[0]!.result;
+      const rawPayload = collected[0]!.raw;
+      expect(result.cardId).toBe(cardId);
+      expect(result.status).toBe("failed");
+      expect(result.reason).toBe("needs_verification");
+      // Real summary from DONE_BODY is the last non-timing line: [IMPL-0238-DONE]
+      expect(result.summary).toBe("[IMPL-0238-DONE]");
+      expect(result.output).toContain("[IMPL-0238-DONE]");
+      expect(result.output).toContain("IMPL-MARKER-COMPLETE");
+      expect(result.dispatchHandoffId).toBe(dispatchHandoffId);
+      expect(typeof result.seq).toBe("number");
+      expect(result.seq as number).toBeGreaterThanOrEqual(1);
+
+      process.env.LOOM_SESSION = towerSessionFile;
+      resetStateHomeDirCache();
+      // Apply the *actual received* CARD_RESULT payload — do not reconstruct.
+      const applied = applyCardResult({
+        resultJson: rawPayload,
+      });
+      expect(applied.ok).toBe(true);
+      if (applied.ok) {
+        expect(applied.status).toBe("blocked");
+        expect(applied.task.notes).toContain(`last_seq=${result.seq}`);
+        expect(applied.task.notes).toContain("needs_verification");
+      }
+      expect(findTask(cardId)?.status).toBe("blocked");
+      process.env.LOOM_SESSION = sessionFile;
+      resetStateHomeDirCache();
+
+      await Bun.sleep(250);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
+      fake.setPaneReadText(paneId, null);
+    },
+    25_000,
   );
 
   test(
@@ -455,23 +642,25 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   );
 
   test(
-    "⑧ pane.close reject → result still delivered (no throw propagation)",
+    "⑧ pane.close reject is no-op for cards; proposal still delivered + pane preserved",
     async () => {
+      // U3 removed card auto-close; setPaneCloseFail is no-op for the card path.
+      // Contract: result still delivered, pane remains.
       const cardId = "task_a023800000000008";
-      const paneId = await spawnCard(cardId, "pane-cleanup-close-reject");
+      const { paneId } = await spawnCard(cardId, "pane-cleanup-close-reject");
       fake.setPaneCloseFail(true);
       try {
         fake.setPaneReadText(paneId, DONE_BODY);
         emitWorkingThen(paneId, "idle");
 
-        const result = await awaitCardResult(cardId);
-        expect(result).toBeTruthy();
-        expect(result!.status).toBe("done");
-        expect(result!.output).toContain("IMPL-MARKER-COMPLETE");
-        // close was attempted (recorded) even though it failed
-        await waitFor(() => closeCallsFor(fake, paneId) >= 1, {
-          timeoutMs: 3_000,
-        });
+        const results = await awaitExactCardResults(cardId, 1);
+        expect(results).toHaveLength(1);
+        expect(results[0]!.result.status).toBe("failed");
+        expect(results[0]!.result.reason).toBe("needs_verification");
+        expect(results[0]!.result.output).toContain("IMPL-MARKER-COMPLETE");
+        await Bun.sleep(250);
+        expect(fake.listPaneIds()).toContain(paneId);
+        expect(closeCallsFor(fake, paneId)).toBe(0);
       } finally {
         fake.setPaneCloseFail(false);
         fake.setPaneReadText(paneId, null);
@@ -481,25 +670,25 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   );
 
   test(
-    "⑭ settle-fail fallback (no scrape, no closePane) → no pane.close",
+    "⑭ settle-fail fallback → proposal/failure + pane preserved",
     async () => {
       const cardId = "task_a023800000000014";
-      const paneId = await spawnCard(cardId, "pane-cleanup-settle-fail");
-      const closesBefore = closeCallsFor(fake, paneId);
+      const { paneId } = await spawnCard(cardId, "pane-cleanup-settle-fail");
 
       // Force settlePaneRead (up to 3 reads) to fail entirely → beginCardCompletion
-      // fallthrough finishCard without closePane.
+      // fallthrough propose without close.
       fake.failPaneReads(12);
       try {
         emitWorkingThen(paneId, "idle");
 
         const result = await awaitCardResult(cardId);
         expect(result).toBeTruthy();
-        // pane.read failed inside finishCard flips done→failed
+        // pane.read failure still yields a failed proposal (no done authority)
         expect(result!.status).toBe("failed");
 
         await Bun.sleep(200);
-        expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
+        expect(fake.listPaneIds()).toContain(paneId);
+        expect(closeCallsFor(fake, paneId)).toBe(0);
       } finally {
         // Clear residual fail budget so later tests are not polluted.
         fake.failPaneReads(0);
@@ -509,18 +698,22 @@ describe("PLAN 0.23.8 pane cleanup policy", () => {
   );
 
   test(
-    "⑬ regression: normal done path still delivers result (close additive only)",
+    "⑬ regression: normal completion still delivers proposal (pane preserved)",
     async () => {
       fake.failPaneReads(0);
       const cardId = "task_a023800000000013";
-      const paneId = await spawnCard(cardId, "pane-cleanup-regression");
+      const { paneId } = await spawnCard(cardId, "pane-cleanup-regression");
       fake.setPaneReadText(paneId, "simple done output line");
       emitWorkingThen(paneId, "idle");
 
-      const result = await awaitCardResult(cardId);
-      expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
-      expect(result!.output).toContain("simple done output line");
+      const results = await awaitExactCardResults(cardId, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.result.status).toBe("failed");
+      expect(results[0]!.result.reason).toBe("needs_verification");
+      expect(results[0]!.result.output).toContain("simple done output line");
+      await Bun.sleep(200);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,
@@ -563,17 +756,28 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
   ): Promise<CardResult | null> {
     if (!tower) return null;
     const deadline = Date.now() + timeoutMs;
+    let last: CardResult | null = null;
     while (Date.now() < deadline) {
       const inbox = await tower.listInbox();
+      const matches: CardResult[] = [];
       for (const e of inbox) {
-        const att = e.handoff.attachments?.find(
-          (a) => a.label === CARD_RESULT_LABEL && a.content.includes(cardId),
-        );
-        if (att) return JSON.parse(att.content) as CardResult;
+        for (const att of e.handoff.attachments ?? []) {
+          if (
+            att.label === CARD_RESULT_LABEL &&
+            att.content.includes(cardId)
+          ) {
+            matches.push(JSON.parse(att.content) as CardResult);
+          }
+        }
+      }
+      if (matches.length >= 1) {
+        last = matches[0]!;
+        // exact-count is observable via matches.length for callers that need it
+        return last;
       }
       await Bun.sleep(80);
     }
-    return null;
+    return last;
   }
 
   beforeAll(async () => {
@@ -673,8 +877,9 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
   });
 
   test(
-    "⑥ paneCleanup keep → confident done does not close",
+    "⑥ paneCleanup keep → completion proposal + pane preserved (card path)",
     async () => {
+      // paneCleanup keep is conv-only under U3; card panes are always preserved.
       const cardId = "task_a023800000000006";
       const panesBefore = new Set(fake.listPaneIds());
       await tower!.handoff({
@@ -700,7 +905,6 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
       );
       expect(ready).toBe(true);
       const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
-      const closesBefore = closeCallsFor(fake, paneId);
 
       fake.setPaneReadText(paneId, DONE_BODY);
       fake.pushEvent("pane_agent_status_changed", {
@@ -714,10 +918,12 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
 
       const result = await awaitCardResult(cardId);
       expect(result).toBeTruthy();
-      expect(result!.status).toBe("done");
+      expect(result!.status).toBe("failed");
+      expect(result!.reason).toBe("needs_verification");
 
       await Bun.sleep(300);
-      expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
+      expect(fake.listPaneIds()).toContain(paneId);
+      expect(closeCallsFor(fake, paneId)).toBe(0);
       fake.setPaneReadText(paneId, null);
     },
     20_000,

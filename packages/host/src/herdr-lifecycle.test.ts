@@ -362,6 +362,10 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     expect(result).toBeTruthy();
     expect(result!.status).toBe("failed");
     expect(result!.summary ?? "").toContain("events_subscribe_failed");
+    // v0.28 U3: card pane is preserved. The single close is only the pool-root shell
+    // (ec99b2c:herdr-lifecycle exact close-count branch benefit).
+    const closeCalls = fake.calls.filter((c) => c.method === "pane.close");
+    expect(closeCalls).toHaveLength(1);
 
     // status: inFlight should be 0 after fail-visible cleanup
     const stRes = await fetch(`http://127.0.0.1:${bridge.meta.port}/rpc`, {
@@ -663,7 +667,10 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       expect(health.eventSubscriptions).toBeGreaterThanOrEqual(1);
     }
 
-    async function dispatchAndAwaitDone(cardId: string, prompt: string): Promise<void> {
+    async function dispatchAndAwaitProposal(
+      cardId: string,
+      prompt: string,
+    ): Promise<void> {
       await tower.handoff({
         to: "@node/wsl-1",
         body: buildDispatchBody({ title: prompt, cardId, node: "node/wsl-1" }),
@@ -699,8 +706,14 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
           const content = hit.handoff.attachments!.find(
             (a) => a.label === CARD_RESULT_LABEL,
           )!.content;
-          const result = JSON.parse(content) as { status: string; cardId: string };
-          expect(result.status).toBe("done");
+          const result = JSON.parse(content) as {
+            status: string;
+            cardId: string;
+            reason?: string;
+          };
+          // Proposal semantics (U1): failed/needs_verification, not done authority.
+          expect(result.status).toBe("failed");
+          expect(result.reason).toBe("needs_verification");
           expect(result.cardId).toBe(cardId);
           break;
         }
@@ -708,8 +721,8 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       expect(found).toBe(true);
     }
 
-    // ⑪ single card working→idle→done
-    await dispatchAndAwaitDone("task_511191e0011223344", "single card");
+    // ⑪ single card working→idle→proposal
+    await dispatchAndAwaitProposal("task_511191e0011223344", "single card");
 
     await bridge.stop();
     tower.close();
@@ -784,7 +797,10 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       submitVerify: { waitMs: 300, retries: 1 },
     });
 
-    async function dispatchAndAwaitDone(cardId: string, prompt: string): Promise<void> {
+    async function dispatchAndAwaitProposal(
+      cardId: string,
+      prompt: string,
+    ): Promise<void> {
       await tower.handoff({
         to: "@node/wsl-1",
         body: buildDispatchBody({ title: prompt, cardId, node: "node/wsl-1" }),
@@ -820,8 +836,14 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
           const content = hit.handoff.attachments!.find(
             (a) => a.label === CARD_RESULT_LABEL,
           )!.content;
-          const result = JSON.parse(content) as { status: string; cardId: string };
-          expect(result.status).toBe("done");
+          const result = JSON.parse(content) as {
+            status: string;
+            cardId: string;
+            reason?: string;
+          };
+          // Proposal semantics (U1): failed/needs_verification, not done authority.
+          expect(result.status).toBe("failed");
+          expect(result.reason).toBe("needs_verification");
           expect(result.cardId).toBe(cardId);
           break;
         }
@@ -829,12 +851,12 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       expect(found).toBe(true);
     }
 
-    // Card A complete — PLAN 0.23.8 auto-closes pane on confident done, so
-    // capture pane_id from agent.start (listPaneIds is empty after close).
+    // Card A proposes verification and remains live; capture the live pane, then
+    // perform an explicit manual/operator close before card B (no auto-close fallback).
     const panesBeforeA = new Set(fake.listPaneIds());
     const startsBeforeA = fake.calls.filter((c) => c.method === "agent.start").length;
-    const dispatchA = dispatchAndAwaitDone("task_aaaaaaaa00112233", "card A");
-    // Wait briefly for spawn so we can record paneA before auto-close.
+    const dispatchA = dispatchAndAwaitProposal("task_aaaaaaaa00112233", "card A");
+    // Wait briefly for spawn so we can record paneA while it remains listed.
     let paneA: string | undefined;
     for (let i = 0; i < 40; i++) {
       await Bun.sleep(50);
@@ -848,16 +870,15 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
       if (starts.length > startsBeforeA) break;
     }
     await dispatchA;
-    // Prefer live pane id; else last pane.close (auto-cleanup) target.
+    // Prefer live pane membership; card completion itself must not close it.
     if (!paneA) {
-      const closes = fake.calls.filter((c) => c.method === "pane.close");
-      paneA = closes.length
-        ? String(closes[closes.length - 1]!.params.pane_id ?? "")
-        : undefined;
+      paneA = fake.listPaneIds().find((p) => !panesBeforeA.has(p));
     }
     expect(paneA).toBeTruthy();
+    // Positive: card A pane is still present after proposal.
+    expect(fake.listPaneIds()).toContain(paneA!);
 
-    // Ensure pane A is in the closed set (auto-close may already have done this).
+    // Explicit test/operator cleanup before card B (not auto-close).
     fake.markPaneClosed(paneA!);
     try {
       await herdr.request("pane.close", { pane_id: paneA! });
@@ -869,7 +890,7 @@ describe("bridge subscription fail-visible + prune (0.23.4)", () => {
     const agentSendBeforeB = fake.calls.filter((c) => c.method === "agent.send").length;
 
     // Card B — must ACK subscribe (no A in payload) and reach inject
-    await dispatchAndAwaitDone("task_bbbbbbbb00112233", "card B");
+    await dispatchAndAwaitProposal("task_bbbbbbbb00112233", "card B");
 
     const subCalls = fake.calls.filter((c) => c.method === "events.subscribe");
     expect(subCalls.length).toBeGreaterThan(subBeforeB);
