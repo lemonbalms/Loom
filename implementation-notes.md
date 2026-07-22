@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-22 (0.28.0 PANE-DEATH PATCH 5) |
+| **Last updated** | 2026-07-22 (0.28.1 herdr 0.7.5 / protocol-17 adapter) |
 
 ---
 
@@ -26,6 +26,16 @@ This file is for **during-implementation** plan deviations only.
 ---
 
 ## Deviations
+
+### §0.28.1 — herdr 0.7.5 / protocol-17 adapter
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-07-22 | R46 M-2 / COMPAT §3.2 preferred default · L-1 · L-4 | **원자적 `agent.prompt`를 신뢰 opaque 제출 원시**로 채택. dual-`agent.send` 경로와 `BARE_ENTER`를 **제거**. `submitDelayMs` **제거**(원자적 prompt에는 dual-send 사이 유예가 없다). **중복 제출 방지 4절**(시도당 전문 1회 · stall 시 프로브 선행 · 양성 프로브 미스에서만 재발행 · 프로브 히트/read-fail은 재발행 금지 후 경계 있는 `agent.send_keys` Enter 넛지 · 예산 소진 fail-visible)과 **`reinjectUsed` verify-호출 스코프·재주입 캡**은 유지. | 분할-호출 축이 protocol-17에서 소멸했으므로 침묵 존치는 불가. herdr가 paste+Enter를 소유하는 서버 원자성이 M-2 보호 대상(비신뢰 텍스트의 명령 보간 금지)을 유지하면서 집행 지점만 옮긴다. 죽은 타이밍 노브·미검토 dual-send 상수 잔존을 막는다. | 라이브 3종 스모크로 실증 완료 (`6e2df8a` 경유). |
+| 2026-07-22 | COMPAT §3.1 · live launch | 라이브 `agent.start` ACK가 **`launch_pending`** 일 수 있다. **`agent.get`를 폴링해 `interactive_ready`까지 대기**한다. **`agent.wait` idle은 launch barrier가 아니다.** | idle wait를 기동 완료로 오독하면 준비 전 prompt가 나가거나 기동이 영원히 막힌다. readiness 상태 기계 실측에 맞춘다. | commits `848675f` / `5ac6d31` |
+| 2026-07-22 | inject target identity · live Claude | prompt/`send_keys` 제출 타깃은 **저장된 exact agent name**이다. **pane id를 target으로 쓰지 않는다.** | 라이브 Claude에서 pane-id 타깃 prompt가 **침묵 오배송**됐다. named facade의 정본 식별자는 name. | commits `edf3b59` / `48ecba3` |
+| 2026-07-22 | Fable 5 consulted · agent name uniqueness | 이름 형식 **exact `loom-${cardId}-${seq}`** · **strict lowercase / safe seq / length ≤ 32** · 표현 불가 시 fail-closed **`agent_name_unrepresentable`** · **hash/truncation 금지**. 구 pane·재시작 안전성 보존. | 해시·절단은 충돌·불투명 복구를 만들고, 느슨한 이름은 동시 카드 풀 충돌을 연다. fail-closed가 침묵 오배송보다 안전하다. | commits `1351add` / `6e2df8a` · Advisor: fable-advisor consulted: yes |
+| 2026-07-22 | COMPAT §1 · §5-2 · dogfood gate | persisted dogfood 설정에 `herdrProtocol:16`이 남아 있으면 **ready early-exit 전에 config migration**이 필요하다. **config-only protocol bump는 여전히 어댑터 우회로 금지**다. | ping/subscription만 통과시키는 위장 green을 막으면서, 이미 기록된 16 설정이 어댑터 ship 후 dogfood:up을 막지 않게 한다. | commits `9f13b47` / `8ebfd11` |
 
 ### §0.28.0 — PANE-DEATH implementation wave
 

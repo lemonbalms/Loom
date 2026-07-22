@@ -299,7 +299,7 @@ describe("Phase B fixture presence", () => {
 
 describe("V1 — SSOT no-conflict", () => {
   test("PLAN version/status and fixture gate agree; no second PLAN authority", () => {
-    expect(planHead).toMatch(/\*\*Version\*\*\s*\|\s*\*\*0\.28\.0\*\*/);
+    expect(planHead).toMatch(/\*\*Version\*\*\s*\|\s*\*\*0\.28\.1\*\*/);
     expect(planHead).toMatch(/approved/i);
     const errs = validateCheckpoint(fixture, { planVersion: "0.28.0" });
     expect(errs).toEqual([]);
@@ -415,12 +415,12 @@ describe("V5 — restoration questions", () => {
   });
 });
 
-describe("Phase C live checkpoint", () => {
+describe("live checkpoint (Phase D gate)", () => {
   test("live HANDOFF is the canonical checkpoint with all V2 information", () => {
     const errs = validateCheckpoint(liveHandoff, {
-      planVersion: "0.28.0",
+      planVersion: "0.28.1",
       trapsText: liveTraps,
-      expectedGate: /SESSION-CONTINUITY Phase C ship/i,
+      expectedGate: /SESSION-CONTINUITY Phase D automation/i,
     });
     expect(errs).toEqual([]);
     expect(liveHandoff).toMatch(/Goal:/);
@@ -430,9 +430,13 @@ describe("Phase C live checkpoint", () => {
     expect(extractSection(liveHandoff, "Owner pending")).toMatch(/Safe default/i);
     expect(extractSection(liveHandoff, "Evidence")).toMatch(/HANDOFF_WINDOWS\.md/);
     expect(extractSection(liveHandoff, "Don't redo")).toMatch(/e281587|herdr/i);
-    expect(extractSection(liveHandoff, "Current loop")).toMatch(/PATCH 1 waits for Phase C ship/i);
-    expect(extractSection(liveHandoff, "Current action")).toMatch(/git-writable session/i);
-    expect(extractSection(liveHandoff, "Blockers")).toMatch(/index\.lock|git-writable session/i);
+    expect(extractSection(liveHandoff, "Current loop")).toMatch(
+      /adapter source shipped|Phase D eligible/i,
+    );
+    expect(extractSection(liveHandoff, "Current action")).toMatch(
+      /Phase D automation|bounded automation/i,
+    );
+    expect(extractSection(liveHandoff, "Blockers")).toMatch(/\(none\)/);
   });
 
   test("state injects all canonical sections and traps without truncation", () => {

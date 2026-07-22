@@ -143,7 +143,7 @@ import {
   shouldActivateHandoffInject,
 } from "./inject-handoffs";
 
-const VERSION = "0.28.0";
+const VERSION = "0.28.1";
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.

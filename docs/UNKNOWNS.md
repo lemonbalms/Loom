@@ -42,16 +42,16 @@
 
 ## Gate log
 
-### herdr 0.7.5 / protocol 17 compatibility (follow-up PATCH candidate)
+### herdr 0.7.5 / protocol 17 compatibility (**gate closed** · shipped through `6e2df8a` · Loom 0.28.1 release close)
 
 | 분면 | 내용 |
 |------|------|
-| Known knowns | 로컬 0.7.5 schema와 공식 릴리스 노트에서 breaking agent facade 확인: 구 `agent.start(argv/cwd/env/placement)`·`agent.send(text)`가 existing-pane `agent.start(kind/pane_id/args)`·atomic `agent.prompt`·logical `agent.send_keys`로 변경. protocol 숫자만 17로 바꾸면 ping/subscription은 통과하지만 실제 card spawn 호환 증거가 아니다. 근거 `docs/spikes/HERDR-0.7.5-COMPAT.md`. |
-| Known unknowns | 기존 topology planner를 `workspace/tab/pane` 생성 → env 각인 → named agent start로 어떻게 원자화할지; `agent.prompt`의 자체 Enter·wait와 Loom inject-confirm/hook sensor의 역할 중복; protocol 16/17 동시 지원 기간과 adapter 선택 기준. |
-| Unknown knowns | 0.7.5의 server-owned prompt/wait는 기존 TUI별 Enter 주입과 startup race를 제거할 가능성이 크지만, Loom의 M-1 dispatcher 인가·`LOOM_CARD` 상관·결과 issuer 규율을 대신하지 않는다. |
-| Unknown unknowns | `pane.agent_detected.final_status/released`가 기존 completion/pane-death 관측에 주는 영향; named-agent uniqueness와 동시 card 풀의 충돌; 0.7.5 실제 Grok/Codex/Claude별 ready/prompt/wait 상태 전이. |
+| Known knowns | **호환 게이트 폐쇄.** Loom adapter protocol **17**, `HERDR_PROTOCOL_EXPECTED === 17`, shipped through **`6e2df8a`**. 시퀀스: tests-first `194d901` · client `c0fcc00` · bridge `1284eef` · coverage `e538cad` + 라이브 보정(launch readiness `848675f`/`5ac6d31` · named prompt target `edf3b59`/`48ecba3` · dogfood config migration `9f13b47`/`8ebfd11` · Fable collision-free name `1351add`/`6e2df8a`). 라이브 3종(claude/codex/grok) 스모크 통과. `dogfood:herdr` ok · `dogfood:up` exit 0. host 462/0. 정본 `docs/spikes/HERDR-0.7.5-COMPAT.md` verdict **shipped**. |
+| Known unknowns | **UK-5..UK-9** (PLAN §0.28.1)는 **후속 관측**으로 잔존 — 착수/ dogfood를 막지 않는다: UK-5 `final_status`/`released` 실림 조건 · UK-6 비원자 제출 경로 재측정 · UK-7 `agent.wait`가 still-running 유예를 어디까지 대체할지 · UK-8 다중 노드 플러그인 user-global 영향 · UK-9 `agent_prompt_stalled` = 미제출 여부. |
+| Unknown knowns | 라이브 실측으로 좁혀진 운영 지식: (1) `agent.start` ACK는 **`launch_pending`** 일 수 있고 launch barrier는 **`agent.get`→`interactive_ready`** 이며 `agent.wait` idle이 아님. (2) prompt/`send_keys` 타깃은 **exact agent name**(pane id 오배송 실측). (3) 이름 형식 exact `loom-${cardId}-${seq}` · fail-closed `agent_name_unrepresentable`. (4) persisted `herdrProtocol:16`은 migration 필요 — **config-only 17 bump는 여전히 우회 금지**. |
+| Unknown unknowns | detect additive 필드가 후속 C 관측에 주는 장기 영향; 다중 노드에서 user-global 플러그인 재설치 누락 시의 증상 표면. |
 
-**Current decision:** 오너 표준은 최신 0.7.5/protocol 17이며 downgrade/병행 0.7.4가 목표가 아니다. bounded SESSION-CONTINUITY wave 중 production 변경 금지이므로 현재 `dogfood:herdr`가 dispatch를 fail-closed. 후속 PATCH 착수 전 별도 0.7.5 fixture·live smoke·PLAN 범위 확정.
+**Current decision:** **compatibility gate closed · dogfood unblocked.** 오너 표준은 0.7.5/protocol 17. downgrade/병행 0.7.4 기각. adapter pending / dogfood blocked 서술은 폐기. 제품 공개 card/relay/conv/MCP 표면과 PANE-DEATH U1–U11 무변경. UK-5..UK-9는 후속 관측만.
 
 ### 0.26.0 — hooks 보조 센서 (claude 워커 상태 힌트 · 스파이크 최소 배선 5단계)
 

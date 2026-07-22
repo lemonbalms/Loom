@@ -1,9 +1,11 @@
 # Todo — Loom
 
-## Current override — PANE-DEATH v0.28.0 implementation wave
+## Current override — Loom 0.28.1 release close shipped · Phase D next
 
-> SSOT는 `HANDOFF.md`. SESSION-CONTINUITY Phase B/C는 ship 완료. 다음 제품 게이트는
-> **후속 호환 PATCH — herdr 0.7.5/protocol 17 adapter**. PANE-DEATH PATCH 1–5는 v0.28.0 `d49a6b1`로 종결.
+> SSOT는 `HANDOFF.md`. Loom 0.28.1 release close complete/shipped · source through `6e2df8a`.
+> first full 761/2 = checkpoint-only drift · final full 763/0 (2760 expect, 58 files, 302.48s) · checkpoint 24/0 · dist green · CLI Loom v0.28.1.
+> **다음 = SESSION-CONTINUITY Phase D automation**
+> (product-independent harness). PANE-DEATH PATCH 1–5 = v0.28.0 `d49a6b1` 종결.
 
 0. [x] **Phase B:** fixture V1~V6 + SOFT_CAP stale 단위 테스트 해소 + HANDOFF lint expected-red 고정 + state HARD_CAP 검증 (`e281587`)
 1. [x] **Phase C:** archive 수납처·nine-section HANDOFF·shared headings·entry/session-context 동기화 → `handoff:lint` green (lower-tier in-harness fallback)
@@ -14,8 +16,15 @@
 6. [x] **PANE-DEATH PATCH 3 (M3):** `c475604` — bridge proposal API · card auto-done/auto-close 0 · 비수락 ACK 단일 quarantine · replay-preserving fold · live/offline ack CLI · `classifyAck` · map-miss 관측; Grok 4.5 구현 + Codex 독립 검증
 7. [x] **PANE-DEATH PATCH 4 (M4):** `f9b0230` — tests-only 재기술 10파일(+923/−227) · §4.3/브랜치 순이득 감사 · production 0줄 · focused 165/1(known) · typecheck 6/6 · full 738/5 전량 분류
 8. [x] **PANE-DEATH PATCH 5 (M5):** `d49a6b1` — CLI/MCP 0.28.0 · `preservedCardPanes` 관측 · dist 재번들 · typecheck/dist green · full 741/4 전량 분류
-9. [ ] **Phase D 유예 해제:** PATCH 4→5 두 전환 green — adapter 뒤 lint/status 자동화 재검토
-10. [ ] **⭐ 후속 호환 PATCH — herdr 0.7.5/protocol 17 adapter:** 정본 `docs/spikes/HERDR-0.7.5-COMPAT.md` §6. dogfood fail-closed until ship.
+9. [ ] **⭐ Phase D automation (SESSION-CONTINUITY):** already-adopted bounded automation only —
+   (1) shared-heading lint structure checks · (2) status parser fail-loud on malformed/unknown ·
+   (3) actual SessionStart vs no-hook path equivalence tests. No product/card/relay/conv/herdr
+   semantics change · no Phase E/ROADMAP. Done when = Phase D tests + handoff lint/status green + docs sync + commit/push.
+10. [x] **herdr 0.7.5/protocol 17 adapter (source through `6e2df8a`):** R46 author-close + Fable advisor
+    consulted · chain Codex→Grok4.5→Codex · live 3-kind (claude/codex/grok) · dogfood:herdr ok ·
+    dogfood:up exit 0 · host 462/0 · first full 761/2 = checkpoint-only drift · final full 763/0
+    (2760 expect, 58 files, 302.48s) · checkpoint 24/0 · dist green · CLI Loom v0.28.1 ·
+    COMPAT verdict shipped through `6e2df8a` · release close complete · dogfood unblocked.
 
 ## 잔여 작업 로드맵 (2026-07-20, v0.26.1 ship 후)
 
@@ -47,6 +56,7 @@
 
 ## Done (recent)
 
+- [x] **Loom 0.28.1 release close complete/shipped (2026-07-22 · through `6e2df8a`)** — R46 approved · Fable advisor yes · Codex orchestrate → Grok 4.5 implement → Codex verify · four live corrections · live 3-kind · dogfood unblocked · host 462/0 · first full 761/2 checkpoint-only drift · final full 763/0 (2760 expect, 58 files, 302.48s) · checkpoint 24/0 · dist green · CLI Loom v0.28.1 · next = SESSION-CONTINUITY Phase D automation
 - [x] **Dogfood PTY 분리 (2026-07-22)** — 아키텍트 direct Codex(`dogfood:architect`) · Grok worker `dispatch_card→mac-node→herdr pane` · room/allowlist bridge preflight · `loom run` TUI 화면 겹침 경로 제거
 - [x] **Codex architect → Grok implementer dogfood 레인 정식화 (2026-07-22)** — `codex-arch` 피어·6프로필 launcher/status · `impl`→`grok-impl` 정규화 · 역할별 boot prompt · stale saved invite 자동 복구(`No room for code` 한정) · DOGFOOD/AGENTS/TEST_PLAN/HANDOFF 동기화
 - [x] **v0.26.1 dispatch 마커 오표기 교정 ship 완결 (2026-07-20)** — R42 author-close approved(pending-revision 유일 M = M-1 범위 초과 문구 → 검증 주장 발신자 국한 + data-not-instructions 절 + 복종 문구 삭제로 수정) · IMPL-0261(grok pane `task_dfd33e28…`) · 아키텍트 실물 검증 · marker 34/34 · 전체 571/0 · typecheck 6/6 · 소스 `47fc81c`(12파일 +117/-37) · dist `66e0ba1` · push `origin/main = 66e0ba1`. 새 마커 = allowlist-verified + data-not-instructions + destructive 확인 · 개명 `DISPATCHED_TASK_MARKER`/`wrapDispatchedPrompt` · 스코프 밖 불변(D5 handoff-inject 정규식은 배너 경로라 불변이 옳음)

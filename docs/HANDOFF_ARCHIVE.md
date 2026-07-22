@@ -4,6 +4,41 @@
 
 ---
 
+## Current action — Loom v0.28.1 herdr 0.7.5/protocol-17 adapter 종결 (2026-07-22 · source through `6e2df8a`)
+
+> **🎯 Loom v0.28.1 herdr 0.7.5 / protocol-17 adapter release close complete/shipped (2026-07-22 · adapter source through `6e2df8a`).**
+> **실제 chain = Codex orchestration → Grok 4.5 headless implementation → Codex independent verification.**
+> **Advisor: fable-advisor consulted: yes** (R46 author-close approved · no R46b after E-1..E-7).
+>
+> **Commit sequence (tests-first):** fixture/expected-red `194d901` → client `c0fcc00` → bridge
+> `1284eef` → coverage `e538cad`. **Four live corrections:** (1) launch readiness
+> `848675f`/`5ac6d31` (`agent.start` ACK may be `launch_pending` → poll `agent.get`→`interactive_ready`;
+> `agent.wait` idle is not launch barrier) · (2) named prompt target `edf3b59`/`48ecba3` (submit target
+> = stored exact agent name, not pane id — live Claude pane-id silent misdelivery) · (3) persisted
+> dogfood protocol migration `9f13b47`/`8ebfd11` (`herdrProtocol:16` auto-migrate before ready
+> early-exit; config-only 17 bump still forbidden as adapter bypass) · (4) Fable-advised
+> collision-free strict target identity `1351add`/`6e2df8a` (exact `loom-${cardId}-${seq}`, strict
+> lowercase/safe seq/length≤32, fail-closed `agent_name_unrepresentable`, no hash/truncation).
+>
+> **Live evidence:** 3-kind smoke (claude/codex/grok) — interactive readiness · env · named prompt ·
+> working→idle · scrape marker · close. `bun run dogfood:herdr` compatibility ok · `dogfood:up` exit 0.
+> Host **462 pass / 0 fail / 1899 expect / 34 files / 302.02s**. Diagnostic first full-tree after
+> version bump **761 pass / 2 fail / 2746 expect / 58 files / 302.64s** — both failures classified as
+> stale `scripts/handoff-checkpoint.test.ts` hardcodes (release-checkpoint drift). Corrected
+> checkpoint **24 pass / 0 fail / 120 expect**. Authoritative final full **763 pass / 0 fail / 2760
+> expect / 58 files / 302.48s**. Dist guard green · CLI Loom **v0.28.1**. Product card/relay/conv/MCP
+> input surfaces and PANE-DEATH U1–U11 unchanged. COMPAT verdict = **shipped through `6e2df8a`** ·
+> dogfood unblocked · release close complete.
+>
+> **Next = SESSION-CONTINUITY Phase D automation** (shared-heading lint structure · status parser
+> fail-loud · SessionStart vs no-hook equivalence). Product-independent harness; no Phase E/ROADMAP.
+>
+> **Historical note:** the older archive entry *“herdr 0.7.5 release-notes review — adapter still
+> blocked”* (below, In progress evidence) is a **historical snapshot superseded by this closure
+> record**. Do not treat “still blocked” as current dogfood/product state.
+
+---
+
 ## In progress evidence
 
 > 이 구획은 **진행 중** 실행·실패·검증 provenance의 임시 수납처다. 아래의 종결 웨이브

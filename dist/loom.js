@@ -9471,6 +9471,7 @@ function clampWatchIntervalMs(raw) {
 // packages/host/src/herdr-client.ts
 import { homedir as homedir2 } from "os";
 import { join as join9 } from "path";
+var HERDR_PROTOCOL_EXPECTED = 17;
 var DEFAULT_HERDR_SOCKET = join9(homedir2(), ".config", "herdr", "herdr.sock");
 // packages/host/src/bridge-config.ts
 init_session_store();
@@ -9491,7 +9492,7 @@ function defaultBridgeConfig() {
     authorizedDispatchers: [],
     herdrSocketPath: process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
-    herdrProtocol: 16,
+    herdrProtocol: HERDR_PROTOCOL_EXPECTED,
     paneCleanup: "auto",
     panePlacement: "pool",
     hookSensor: false
@@ -11171,7 +11172,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.28.0";
+var VERSION = "0.28.1";
 function eprint(msg) {
   try {
     writeSync2(2, msg);
