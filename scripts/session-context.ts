@@ -15,7 +15,6 @@ import {
   checkHandoffBudget,
 } from "./session-status.ts";
 import {
-  REQUIRED_HANDOFF_HEADINGS,
   extractHandoffSection,
   extractMarkdownSection,
 } from "./handoff-headings.ts";
@@ -141,11 +140,41 @@ export function buildTrapsBlock(trapsText?: string): string {
   return stripDetailsBlocks(sections.join("\n\n"));
 }
 
+/** Max chars for optional One-line resume clip in slim state inject (dashboard-friendly). */
+export const ONE_LINE_INJECT_MAX = 120;
+
 /**
- * Build state injection block. Optional `handoffText` / `trapsText` are for
- * unit tests (synthetic sources); production path reads from disk.
- * stripDetailsBlocks applies only to extracted HANDOFF/traps sections — not to
- * buildStatus() or checkHandoffBudget() output.
+ * Clip One-line resume body for slim SessionStart inject.
+ * Body = section text after heading, blockquote markers stripped, single line.
+ * Returns null when section missing or empty after strip.
+ */
+export function clipOneLineResume(
+  handoff: string,
+  max = ONE_LINE_INJECT_MAX,
+): string | null {
+  const section = extractHandoffSection(handoff, "One-line resume");
+  if (!section) return null;
+  const body = stripDetailsBlocks(section)
+    .replace(/^## One-line resume\s*/m, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!body) return null;
+  if (body.length <= max) return body;
+  return `${body.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/**
+ * Build state injection block (Dashboard-first slim inject).
+ *
+ * Production inject (hook path):
+ *   sentinel · buildStatus() · optional clipped One-line · Current action · traps · budget
+ *
+ * Does **not** dump all nine HANDOFF sections — no-hook agents still read full
+ * HANDOFF via AGENTS ritual. stripDetailsBlocks applies only to extracted
+ * HANDOFF/traps sections — not to buildStatus() or checkHandoffBudget().
+ *
+ * Optional `handoffText` / `trapsText` are for unit tests (synthetic sources).
  */
 export function buildStateContext(
   handoffText?: string,
@@ -155,24 +184,23 @@ export function buildStateContext(
 
   const handoff = handoffText ?? read("HANDOFF.md");
   if (handoff) {
-    const missing: string[] = [];
-    for (const heading of REQUIRED_HANDOFF_HEADINGS) {
-      const section = extractHandoffSection(handoff, heading);
-      if (section) {
-        parts.push(stripDetailsBlocks(section));
-      } else {
-        missing.push(heading);
-      }
+    const oneLine = clipOneLineResume(handoff);
+    if (oneLine) {
+      parts.push(`## One-line resume\n\n> ${oneLine}`);
     }
-    if (missing.length > 0) {
+
+    const action = extractHandoffSection(handoff, "Current action");
+    if (action) {
+      parts.push(stripDetailsBlocks(action));
+    } else {
       parts.push(
-        `⚠ [LOOM-SESSION-CONTEXT] required HANDOFF sections missing: ${missing.join(", ")}`,
+        "⚠ [LOOM-SESSION-CONTEXT] required HANDOFF sections missing: Current action",
       );
     }
   }
 
   // Traps used to live inside the HANDOFF "Current action" section; keep them
-  // in the same slot so the injected reading order is unchanged.
+  // after the gate so the injected reading order stays gate-then-safety.
   const traps = buildTrapsBlock(trapsText);
   if (traps) parts.push(traps);
 

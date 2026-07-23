@@ -6,11 +6,13 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
   HARD_CAP,
+  ONE_LINE_INJECT_MAX,
   SOFT_CAP,
   buildAllContext,
   buildStateContext,
   buildTrapsBlock,
   checkSoftCap,
+  clipOneLineResume,
   stripDetailsBlocks,
   truncateContext,
 } from "./session-context.ts";
@@ -145,7 +147,7 @@ describe("D2 stripDetailsBlocks", () => {
 });
 
 describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
-  test("① details blocks inside HANDOFF sections are excluded from state", () => {
+  test("① details blocks inside Current action are excluded from state", () => {
     const handoff = [
       "## One-line resume",
       "resume-visible-line",
@@ -174,14 +176,10 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     expect(out.includes("</details>")).toBe(false);
   });
 
-  test("② text outside details blocks is preserved", () => {
+  test("② text outside details in Current action is preserved", () => {
     const handoff = [
       "## One-line resume",
-      "KEEP_RESUME_OUTER",
-      "<details>",
-      "drop-me",
-      "</details>",
-      "KEEP_RESUME_TAIL",
+      "KEEP_RESUME_OUTER short",
       "",
       "## Current action",
       "KEEP_ACTION_OUTER",
@@ -192,30 +190,32 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     ].join("\n");
 
     const out = buildStateContext(handoff);
-    expect(out.includes("KEEP_RESUME_OUTER")).toBe(true);
-    expect(out.includes("KEEP_RESUME_TAIL")).toBe(true);
+    // Slim inject: One-line is clipped body only (not multi-line section dump).
+    expect(out.includes("KEEP_RESUME_OUTER short")).toBe(true);
     expect(out.includes("KEEP_ACTION_OUTER")).toBe(true);
     expect(out.includes("KEEP_ACTION_TAIL")).toBe(true);
-    expect(out.includes("drop-me")).toBe(false);
     expect(out.includes("drop-action")).toBe(false);
   });
 
-  test("③ no-details HANDOFF preserves section text (no regression)", () => {
+  test("③ no-details HANDOFF preserves Current action + clipped One-line", () => {
     const handoff = [
       "## One-line resume",
       "plain-resume-alpha",
-      "plain-resume-beta",
       "",
       "## Current action",
       "plain-action-gamma",
+      "",
+      "## Evidence",
+      "plain-evidence-should-not-inject",
     ].join("\n");
 
     const out = buildStateContext(handoff);
     expect(out.includes("## One-line resume")).toBe(true);
     expect(out.includes("plain-resume-alpha")).toBe(true);
-    expect(out.includes("plain-resume-beta")).toBe(true);
     expect(out.includes("## Current action")).toBe(true);
     expect(out.includes("plain-action-gamma")).toBe(true);
+    expect(out.includes("plain-evidence-should-not-inject")).toBe(false);
+    expect(out.includes("## Evidence")).toBe(false);
     expect(out.startsWith("⚠")).toBe(false);
   });
 
@@ -223,9 +223,6 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     const handoff = [
       "## One-line resume",
       "x",
-      "<details>",
-      "hidden",
-      "</details>",
       "",
       "## Current action",
       "y",
@@ -236,7 +233,7 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     expect(out.indexOf("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(0);
   });
 
-  test("canonical nine-section HANDOFF injects every required section in order", () => {
+  test("slim inject: Dashboard + One-line + Current action only (not full nine)", () => {
     const handoff = [
       "# HANDOFF — Loom",
       "",
@@ -247,18 +244,24 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
       ]),
     ].join("\n");
     const out = buildStateContext(handoff, "");
-    let previous = -1;
+    expect(out.includes("## Loom · session")).toBe(true);
+    expect(out.includes("## Current action")).toBe(true);
+    expect(out.includes("Current action-visible")).toBe(true);
+    expect(out.includes("## One-line resume")).toBe(true);
+    expect(out.includes("One-line resume-visible")).toBe(true);
+    // Non-gate sections must not dump into slim state.
     for (const heading of REQUIRED_HANDOFF_HEADINGS) {
-      const index = out.indexOf(`## ${heading}`);
-      expect(index).toBeGreaterThan(previous);
-      expect(out.includes(`${heading}-visible`)).toBe(true);
-      previous = index;
+      if (heading === "Current action" || heading === "One-line resume") continue;
+      expect(out.includes(`${heading}-visible`)).toBe(false);
+      // Heading may appear inside One-line clip text only if body mentions it —
+      // body is synthetic "Heading-visible" so ## Heading line must be absent.
+      expect(out.includes(`## ${heading}\n`)).toBe(false);
     }
     expect(out.includes("required HANDOFF sections missing")).toBe(false);
     expect(truncateContext(out)).toBe(out);
   });
 
-  test("renamed required heading is visible in the fail-open state payload", () => {
+  test("renamed Current action is visible in the fail-open state payload", () => {
     const handoff = REQUIRED_HANDOFF_HEADINGS.map((heading) =>
       heading === "Current action"
         ? "## Current task\nrenamed"
@@ -267,6 +270,17 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     const out = buildStateContext(handoff, "");
     expect(out).toContain("required HANDOFF sections missing: Current action");
     expect(out).not.toContain("## Current action\n");
+  });
+
+  test("clipOneLineResume enforces ONE_LINE_INJECT_MAX", () => {
+    expect(ONE_LINE_INJECT_MAX).toBe(120);
+    const long = "x".repeat(200);
+    const handoff = `## One-line resume\n\n> ${long}\n\n## Current action\n\ngate\n`;
+    const clipped = clipOneLineResume(handoff)!;
+    expect(clipped.length).toBeLessThanOrEqual(ONE_LINE_INJECT_MAX);
+    expect(clipped.endsWith("…")).toBe(true);
+    const out = buildStateContext(handoff, "");
+    expect(out.includes("x".repeat(200))).toBe(false);
   });
 });
 

@@ -127,6 +127,21 @@ export function validateCheckpoint(
     }
   }
 
+  // Dashboard-friendly One-line: body (blockquote markers stripped) ≤ 120 chars.
+  const oneLineSec = extractHandoffSection(doc, "One-line resume");
+  if (oneLineSec) {
+    const body = oneLineSec
+      .replace(/^## One-line resume\s*/m, "")
+      .replace(/^>\s?/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (body.length > 120) {
+      errors.push(
+        `One-line resume body ${body.length} chars > 120 (dashboard-friendly cap)`,
+      );
+    }
+  }
+
   // Blockers: either literal `(none)` or a form with clear condition.
   const blockers = extractHandoffSection(doc, "Blockers");
   if (blockers) {
