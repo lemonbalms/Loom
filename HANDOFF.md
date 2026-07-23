@@ -13,7 +13,7 @@
 |---|---|---|
 | Product | v0.28.1 release close; adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (protocol 17 · live 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | Dashboard view + nine-axis inject model (corrected) | `SESSION-INJECT-VIEW-DESIGN.md` |
+| Harness | Dashboard view + nine-axis inject model **done** (corrected) | `SESSION-INJECT-VIEW-DESIGN.md` |
 | Reuse | not proven | evidence |
 
 ## Current action
