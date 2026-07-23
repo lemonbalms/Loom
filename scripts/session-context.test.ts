@@ -10,9 +10,12 @@ import {
   SOFT_CAP,
   buildAllContext,
   buildStateContext,
+  buildStateParts,
   buildTrapsBlock,
   checkSoftCap,
   clipOneLineResume,
+  fitPartsToBudget,
+  measureStateBudget,
   stripDetailsBlocks,
   truncateContext,
 } from "./session-context.ts";
@@ -287,6 +290,72 @@ describe("buildStateContext strips HANDOFF <details> (synthetic)", () => {
     // Production inject keeps full section body (lint enforces ≤120 on file).
     const out = buildStateContext(handoff, "");
     expect(out.includes("## One-line resume")).toBe(true);
+  });
+});
+
+describe("section budget: measure + fitPartsToBudget", () => {
+  function nineSectionHandoff(overrides: Partial<Record<string, string>> = {}): string {
+    return [
+      "# HANDOFF",
+      "",
+      ...REQUIRED_HANDOFF_HEADINGS.flatMap((heading) => [
+        `## ${heading}`,
+        overrides[heading] ?? `${heading}-body`,
+        "",
+      ]),
+    ].join("\n");
+  }
+
+  test("measureStateBudget lists each part with chars (step 1 observability)", () => {
+    const handoff = nineSectionHandoff();
+    const report = measureStateBudget(handoff, "");
+    expect(report.parts.some((p) => p.name === "status")).toBe(true);
+    for (const h of REQUIRED_HANDOFF_HEADINGS) {
+      expect(report.parts.some((p) => p.name === h)).toBe(true);
+    }
+    expect(report.rawChars).toBeGreaterThan(0);
+    expect(report.hardCap).toBe(HARD_CAP);
+    expect(report.omitted).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  test("over HARD_CAP drops Don't redo then Evidence by name, keeps action+status", () => {
+    const pad = "Z".repeat(4000);
+    const handoff = nineSectionHandoff({
+      Evidence: `Evidence\n${pad}`,
+      "Don't redo": `Don't\n${pad}`,
+      Invariants: `Inv\n${pad}`,
+    });
+    const parts = buildStateParts(handoff, "");
+    const fitted = fitPartsToBudget(parts, HARD_CAP);
+    expect(fitted.rawChars).toBeGreaterThan(HARD_CAP);
+    expect(fitted.finalChars).toBeLessThanOrEqual(HARD_CAP);
+    expect(fitted.omitted.length).toBeGreaterThan(0);
+    // Highest dropOrder first
+    expect(fitted.omitted[0]).toBe("Don't redo");
+    expect(fitted.text).toContain("inject omitted:");
+    expect(fitted.text).toContain("## Current action");
+    expect(fitted.text).toContain("## Loom · session");
+    expect(fitted.text).toContain("[LOOM-SESSION-CONTEXT v1 · state]");
+    // Dropped section bodies must not appear (heading may appear in warn line only)
+    expect(fitted.text.includes("## Don't redo\n")).toBe(false);
+  });
+
+  test("pinned Current action and traps survive aggressive padding", () => {
+    const pad = "Q".repeat(5000);
+    const handoff = nineSectionHandoff({
+      Evidence: pad,
+      "Don't redo": pad,
+      Invariants: pad,
+      "Active checks": pad,
+      "Current loop": pad,
+    });
+    const traps = "## 활성 함정\n\n- trap-line-keep\n\n## 하지 말 것\n\n- dont-line-keep\n";
+    const out = buildStateContext(handoff, traps);
+    expect(out.length).toBeLessThanOrEqual(HARD_CAP);
+    expect(out).toContain("## Current action");
+    expect(out).toContain("trap-line-keep");
+    expect(out).toContain("inject omitted:");
   });
 });
 

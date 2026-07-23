@@ -378,6 +378,8 @@ if (import.meta.main) {
     if (budgetWarn && !all.some((e) => e.includes("UTF-8 size"))) {
       all.push(budgetWarn);
     }
+    // Section inject budget table lives in `bun run session-context:lint`
+    // (session-context imports this module — do not import back here).
     if (all.length > 0) {
       for (const e of all) {
         console.error(`handoff:lint FAIL — ${e}`);

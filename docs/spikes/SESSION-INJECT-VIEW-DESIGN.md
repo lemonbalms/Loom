@@ -55,3 +55,21 @@ Hook inject core keys **⊇** no-hook partial-read core keys:
 - Phase E  
 - Raising HARD_CAP past platform 10k  
 - Second briefing table schema  
+
+---
+
+## Section budget (fills char-cut opacity gap)
+
+| Concept | Rule |
+|---------|------|
+| Budget **unit** | Characters (`HARD_CAP` 9500) — platform SessionStart cap |
+| Drop **unit** | Whole named part (section), never mid-section tail for state |
+| Observability | `measureStateBudget` / `bun run session-context:lint` prints per-part chars + `omitted:` list |
+| Commit gate | `session-context:lint` **fails** if live state would omit any part |
+| Pinned (never omit) | sentinel · status · Current action · traps |
+| Drop first (high `dropOrder`) | Don't redo → Evidence → Invariants → Active checks → Current loop → … |
+
+State path: `buildStateParts` → `fitPartsToBudget` → warn line  
+`⚠ inject omitted: Evidence, Don't redo (raw N > 9500)` when needed.
+
+Last-resort `truncateContext` remains for lessons / only-pinned overflow only.

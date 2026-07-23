@@ -107,8 +107,9 @@ export function stripDetailsBlocks(text: string): string {
 }
 
 /**
- * Loud truncation: budget overrun marker is placed at the **front** of the block
- * so agents see it even when the tail is cut. Tail notice is retained.
+ * Last-resort loud char truncation (lessons / residual overflow only).
+ * Prefer {@link fitPartsToBudget} for state: drop whole sections, not mid-section tails.
+ * Marker is at the **front** so agents see it when the tail is cut.
  */
 export function truncateContext(text: string): string {
   if (text.length <= HARD_CAP) return text;
@@ -124,6 +125,85 @@ export function truncateContext(text: string): string {
   const head =
     `⚠ [LOOM-SESSION-CONTEXT] 예산 초과 — ${over}자 초과, tasks/lessons.md 정리 필요\n`;
   return `${head}${text.slice(0, keep)}\n…[truncated ${cut} chars — 원문 파일 참조]`;
+}
+
+/**
+ * Named inject part. Budget unit = chars (platform). Drop unit = whole part.
+ * Higher `dropOrder` is removed first when over HARD_CAP. `pinned` never drops.
+ */
+export type StatePart = {
+  name: string;
+  text: string;
+  /** Larger = drop sooner. Ignored when pinned. */
+  dropOrder: number;
+  pinned: boolean;
+};
+
+/** Join inject parts (empty texts skipped). Separator counts toward HARD_CAP. */
+export function joinStateParts(parts: readonly StatePart[]): string {
+  return parts
+    .map((p) => p.text)
+    .filter((t) => t.length > 0)
+    .join("\n\n");
+}
+
+function omittedWarnLine(omitted: string[], rawChars: number, cap: number): string {
+  return `⚠ [LOOM-SESSION-CONTEXT] inject omitted: ${omitted.join(", ")} (raw ${rawChars} > ${cap})`;
+}
+
+/**
+ * Fit state parts under `cap` by dropping whole non-pinned parts (highest dropOrder first).
+ * Char budget stays platform-shaped; observability is section-named.
+ */
+export function fitPartsToBudget(
+  parts: readonly StatePart[],
+  cap: number = HARD_CAP,
+): {
+  text: string;
+  kept: StatePart[];
+  omitted: string[];
+  rawChars: number;
+  finalChars: number;
+} {
+  const kept: StatePart[] = parts.filter((p) => p.text.length > 0).map((p) => ({ ...p }));
+  const rawChars = joinStateParts(kept).length;
+  const omitted: string[] = [];
+
+  const pack = (): string => {
+    const body = joinStateParts(kept);
+    if (omitted.length === 0) return body;
+    return `${omittedWarnLine(omitted, rawChars, cap)}\n\n${body}`;
+  };
+
+  let text = pack();
+  while (text.length > cap) {
+    let bestIdx = -1;
+    let bestOrder = -1;
+    for (let i = 0; i < kept.length; i++) {
+      const p = kept[i]!;
+      if (p.pinned) continue;
+      if (p.dropOrder > bestOrder) {
+        bestOrder = p.dropOrder;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx < 0) {
+      // Only pinned left (or empty) but still over — last-resort char cut.
+      text = truncateContext(text);
+      break;
+    }
+    omitted.push(kept[bestIdx]!.name);
+    kept.splice(bestIdx, 1);
+    text = pack();
+  }
+
+  return {
+    text,
+    kept,
+    omitted,
+    rawChars,
+    finalChars: text.length,
+  };
 }
 
 /**
@@ -173,26 +253,47 @@ export function clipOneLineResume(
 }
 
 /**
- * Build state injection block.
- *
- * **View vs model (owner 2026-07-23):**
- * - `buildStatus()` = compact **table view** for briefing (same facts, denser).
- * - Nine HANDOFF sections = **restore model** — all axes stay; do not drop for “slim”.
- * - Concision = HANDOFF D1 diet + stripDetails + One-line≤120 lint — not axis deletion.
- *
- * Order: sentinel · Dashboard table · nine sections (required order) · traps · budget.
- * stripDetailsBlocks applies only to extracted HANDOFF/traps sections — not to
- * buildStatus() or checkHandoffBudget() output.
- *
- * Optional `handoffText` / `trapsText` are for unit tests (synthetic sources).
- *
- * Design: docs/spikes/SESSION-INJECT-VIEW-DESIGN.md
+ * Drop order for HANDOFF sections when over HARD_CAP (higher = drop first).
+ * Pinned elsewhere: sentinel, status, Current action, traps.
+ * Authority: section-budget design (view compress ≠ silent tail cut).
  */
-export function buildStateContext(
+export const HANDOFF_SECTION_DROP_ORDER: Record<
+  (typeof REQUIRED_HANDOFF_HEADINGS)[number],
+  number
+> = {
+  "Don't redo": 90,
+  Evidence: 80,
+  Invariants: 70,
+  "Active checks": 60,
+  "Current loop": 50,
+  "Owner pending": 40,
+  Blockers: 30,
+  "One-line resume": 20,
+  "Current action": 0, // pinned in buildStateParts
+};
+
+/**
+ * Build ordered named parts for state inject (before budget fit).
+ * Reading order preserved; drop metadata is separate from display order.
+ */
+export function buildStateParts(
   handoffText?: string,
   trapsText?: string,
-): string {
-  const parts: string[] = ["[LOOM-SESSION-CONTEXT v1 · state]", buildStatus()];
+): StatePart[] {
+  const parts: StatePart[] = [
+    {
+      name: "sentinel",
+      text: "[LOOM-SESSION-CONTEXT v1 · state]",
+      dropOrder: 0,
+      pinned: true,
+    },
+    {
+      name: "status",
+      text: buildStatus(),
+      dropOrder: 0,
+      pinned: true,
+    },
+  ];
 
   const handoff = handoffText ?? read("HANDOFF.md");
   if (handoff) {
@@ -200,27 +301,115 @@ export function buildStateContext(
     for (const heading of REQUIRED_HANDOFF_HEADINGS) {
       const section = extractHandoffSection(handoff, heading);
       if (section) {
-        parts.push(stripDetailsBlocks(section));
+        const pinned = heading === "Current action";
+        parts.push({
+          name: heading,
+          text: stripDetailsBlocks(section),
+          dropOrder: HANDOFF_SECTION_DROP_ORDER[heading],
+          pinned,
+        });
       } else {
         missing.push(heading);
       }
     }
     if (missing.length > 0) {
-      parts.push(
-        `⚠ [LOOM-SESSION-CONTEXT] required HANDOFF sections missing: ${missing.join(", ")}`,
-      );
+      parts.push({
+        name: "missing-warn",
+        text: `⚠ [LOOM-SESSION-CONTEXT] required HANDOFF sections missing: ${missing.join(", ")}`,
+        dropOrder: 15,
+        pinned: false,
+      });
     }
   }
 
-  // Traps used to live inside the HANDOFF "Current action" section; keep them
-  // after checkpoint sections so gate-then-safety reading order is unchanged.
   const traps = buildTrapsBlock(trapsText);
-  if (traps) parts.push(traps);
+  if (traps) {
+    parts.push({
+      name: "traps",
+      text: traps,
+      dropOrder: 0,
+      pinned: true,
+    });
+  }
 
   const budget = checkHandoffBudget();
-  if (budget) parts.push(budget);
+  if (budget) {
+    parts.push({
+      name: "handoff-budget",
+      text: budget,
+      dropOrder: 25,
+      pinned: false,
+    });
+  }
 
-  return parts.join("\n\n");
+  return parts;
+}
+
+/** Step-1 observability: per-part char contribution + omit simulation. */
+export type StateBudgetReport = {
+  parts: { name: string; chars: number; pinned: boolean; dropOrder: number }[];
+  rawChars: number;
+  finalChars: number;
+  hardCap: number;
+  omitted: string[];
+  ok: boolean;
+};
+
+export function measureStateBudget(
+  handoffText?: string,
+  trapsText?: string,
+  cap: number = HARD_CAP,
+): StateBudgetReport {
+  const parts = buildStateParts(handoffText, trapsText);
+  const fitted = fitPartsToBudget(parts, cap);
+  return {
+    parts: parts.map((p) => ({
+      name: p.name,
+      chars: p.text.length,
+      pinned: p.pinned,
+      dropOrder: p.dropOrder,
+    })),
+    rawChars: fitted.rawChars,
+    finalChars: fitted.finalChars,
+    hardCap: cap,
+    omitted: fitted.omitted,
+    ok: fitted.omitted.length === 0 && fitted.finalChars <= cap,
+  };
+}
+
+/** Human-readable budget table (stderr for lint). */
+export function formatStateBudgetReport(report: StateBudgetReport): string {
+  const lines = [
+    "session-context state budget (chars; platform unit)",
+    `raw ${report.rawChars} → final ${report.finalChars} / HARD_CAP ${report.hardCap}` +
+      (report.omitted.length
+        ? ` · omitted: ${report.omitted.join(", ")}`
+        : " · omitted: (none)"),
+    "| part | chars | pinned | dropOrder |",
+    "|------|------:|:------:|----------:|",
+    ...report.parts.map(
+      (p) =>
+        `| ${p.name} | ${p.chars} | ${p.pinned ? "yes" : "no"} | ${p.dropOrder} |`,
+    ),
+  ];
+  return lines.join("\n");
+}
+
+/**
+ * Build state injection block.
+ *
+ * **View vs model:** status table = compact view; nine HANDOFF sections = restore
+ * model (all axes when under HARD_CAP). Over cap → whole-section omit by priority
+ * (loud names), not silent mid-section char cut.
+ *
+ * Design: docs/spikes/SESSION-INJECT-VIEW-DESIGN.md
+ */
+export function buildStateContext(
+  handoffText?: string,
+  trapsText?: string,
+): string {
+  const parts = buildStateParts(handoffText, trapsText);
+  return fitPartsToBudget(parts, HARD_CAP).text;
 }
 
 export function buildLessonsContext(): string {
@@ -270,6 +459,17 @@ export function checkSoftCap(length: number): {
 
 function runLint(): never {
   // NOT fail-open: lint must surface errors to the commit gate.
+  // Step 1: always print state section budget (where omit would happen).
+  const stateReport = measureStateBudget();
+  console.error(formatStateBudgetReport(stateReport));
+
+  if (stateReport.omitted.length > 0) {
+    console.error(
+      `session-context:lint FAIL — state inject would omit: ${stateReport.omitted.join(", ")} (raw ${stateReport.rawChars} > HARD_CAP ${HARD_CAP})`,
+    );
+    process.exit(1);
+  }
+
   const raw = buildAllContext();
   // additionalContext path: D2 filter is inside buildLessonsContext; measure
   // post-D2 length (pre-truncate is the true budget signal; under HARD_CAP they match).

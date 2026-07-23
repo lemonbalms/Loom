@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · inject = view+nine model restored · next = Owner track pick (idle default) · single · `bun run status`.
+> Loom v0.28.1 · section inject budget done · next = Owner track pick (idle default) · single · `bun run status`.
 
 ## Current loop
 
@@ -13,7 +13,7 @@
 |---|---|---|
 | Product | v0.28.1 release close; adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (protocol 17 · live 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | Dashboard view + nine-axis inject model **done** (corrected) | `SESSION-INJECT-VIEW-DESIGN.md` |
+| Harness | nine-axis inject + section budget/omit **done** | `SESSION-INJECT-VIEW-DESIGN.md` · `session-context` |
 | Reuse | not proven | evidence |
 
 ## Current action
@@ -33,14 +33,15 @@
 
 **Done when:** Owner track recorded in HANDOFF (or idle default holds).
 
-**Must not:** drop nine inject axes “for slim”; invent product scope; Phase E; WP5 warm-base re-fork; drop fail-loud / Open table; second status schema.
+**Must not:** drop nine inject axes “for slim”; silent mid-section char-cut of state; invent product scope; Phase E; WP5 warm-base re-fork; drop fail-loud / Open table; second status schema.
 
 ## Active checks
 
 | Check | Deadline | Impact | Evidence |
 |---|---|---|---|
 | Owner track (WP5-f / product / idle) | **this gate** | next large track | Owner pending |
-| Inject view≠model fix | **done** | nine sections restored in SessionStart | this ship · design spike |
+| Section inject budget (observe + priority omit) | **done** | named omit under HARD_CAP; lint table | `fitPartsToBudget` · `session-context:lint` |
+| Inject view≠model fix | **done** | nine sections restored in SessionStart | design spike |
 | One-line ≤120 lint | **done** | dashboard-friendly One-line body | `handoff-lint` |
 | Dashboard v1 table | **done** | compact briefing view | `0001a94` |
 | Phase D | **done** | structure lint · fail-loud | `49b6a9d` |
@@ -62,7 +63,8 @@
 
 - HANDOFF owns next gate; nine headings; D1 ≤8192B; no `<details>`.
 - Dashboard table = **view** of SSOT; inject = **nine sections + traps** (model). View must not delete axes.
-- Concision = short HANDOFF + stripDetails + One-line≤120 lint — not omitting required headings from inject.
+- Budget unit = **chars** (HARD_CAP); drop unit = **whole section** with loud `inject omitted:` names. Pinned: status · Current action · traps.
+- Concision = short HANDOFF + stripDetails + One-line≤120 lint — not permanent axis deletion for “slim”.
 - Fail-loud `unknown/malformed`; Open(blocking) stays markdown **table**.
 - Topology **single** default harness; line ≠ lane (`DOGFOOD` §0.5).
 - WP5 spike done/`defer` → residual **WP5-followup** only (no re-fork).
@@ -70,16 +72,18 @@
 
 ## Evidence
 
-- Design: `docs/spikes/SESSION-INJECT-VIEW-DESIGN.md` (owner correction: view compress ≠ model drop)
-- Fix: `scripts/session-context.ts` restore full nine inject · V4 equivalence tests
-- Misread ship (corrected): `74b42e5` axis-drop “slim” — superseded
+- Design: `docs/spikes/SESSION-INJECT-VIEW-DESIGN.md` (view≠model · section budget)
+- Section budget: `buildStateParts` · `fitPartsToBudget` · `measureStateBudget` · `session-context:lint` table
+- Nine inject restore + V4 tests; misread slim `74b42e5` superseded
+- Don't redo: silent tail-cut of state inject
 - v1 table: `0001a94` · Phase D `49b6a9d` · One-line lint in `handoff-lint.ts`
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`
 - `tasks/traps.md` · `AGENTS.md` · `HANDOFF_WINDOWS.md`
 
 ## Don't redo
 
-- Drop nine HANDOFF axes from SessionStart inject for “slim” or HARD_CAP comfort.
+- Drop nine HANDOFF axes permanently for “slim”; prefer diet or named priority omit only when over HARD_CAP.
+- Silent mid-section char-cut of **state** inject (use section omit + loud names).
 - Dashboard v1 redesign from scratch (extend only).
 - Treat status table cells as permission to skip Invariants / Don't redo / Evidence.
 - Phase B/C/D automation rewrite.
