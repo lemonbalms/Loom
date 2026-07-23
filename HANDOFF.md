@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · inject recommendation fully wired · next = Owner track pick (idle) · `bun run status`.
+> Loom v0.28.1 · next = **Handoff 확인·작성 최적화** (propose A→B) · inject ops green · `bun run status`.
 
 ## Current loop
 
@@ -13,40 +13,47 @@
 |---|---|---|
 | Product | v0.28.1 release close; adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (protocol 17 · live 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | inject ops recommendation **fully shipped** | `SESSION-INJECT-VIEW-DESIGN.md` · AGENTS |
+| Harness | inject ops **done**; handoff UX/authoring **next** | `SESSION-INJECT-VIEW-DESIGN.md` · propose below |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### Owner next-track pick (idle default)
+### Handoff 확인·작성 최적화 (propose A→B)
 
-**Goal:** Owner chooses next large track; agents idle until pick.
+**Goal:** 오너 **확인**은 표로 읽고, 에이전트 **작성**은 9축·예산을 지키게 — 문맥 손실 없이.
 
-1. `bun run status` (briefing **view** only — no second table; Health includes `inject:full` when green).
-2. Topology **`single`** (promote **`full`** only on SSOT conflict).
-3. No Owner reply → **idle**. Pick: **WP5-followup** · **product** · **idle**.
-4. After any HANDOFF/traps edit: `bun run handoff:check` before ship.
+**Propose (권고 채택):** `docs/spikes/HANDOFF-AUTHORING-OPT-PROPOSE.md`  
+- **A (S):** “핸드오프 확인해” 응답 템플릿 = `bun run status` + Gate/Done/Must not 짧은 해석. inject 메트릭·해시 나열 금지(요청 시만).  
+- **B (M):** 작성 도우미 — 섹션 예산 요약 커맨드/체크리스트 SSOT (기존 `session-context:lint`·`handoff:check` 위에).  
+- **C:** A/B에 포함. **D** status 스키마 확장 = 1차 비권장.
+
+**Session start:**
+
+1. `bun run status` · `bun run handoff:check` (inject:full · omitted none).
+2. Topology **`single`**. Read propose spike · implement **A then B**.
+3. Verify: 확인 응답 샘플 + lint green · raw ≤ STATE_TARGET preferred.
+4. Docs (AGENTS if template) → HANDOFF update → commit/push.
 
 **Line:** topology **`single`** · full chain when needed = Codex→Grok→Codex.
 
-**Done when:** Owner track recorded in HANDOFF (or idle holds).
+**Done when:** A+B shipped; propose spike status → done/superseded; `handoff:check` green; owner-facing check path is table-first.
 
-**Must not:** permanent slim-delete of nine axes; silent state mid-section cut; invent product scope; Phase E; WP5 warm-base re-fork; drop fail-loud / Open table; second status schema; dump inject into owner chat.
+**Must not:** slim-delete nine axes; second status schema (D); product/herdr/card; Phase E; WP5 warm-base re-fork; dump full inject into owner chat; silent state mid-section cut.
 
 ## Active checks
 
 | Check | Deadline | Impact | Evidence |
 |---|---|---|---|
-| Owner track (WP5-f / product / idle) | **this gate** | next large track | Owner pending |
-| Inject recommendation (AGENTS · handoff:check · inject:full · diet) | **done** | full context · dual channel | this ship · design spike |
-| Section budget + STATE_TARGET + nine axes | **done** | omit-named safety net | `22eb76e` · `240a0df` |
-| Dashboard v1 · One-line≤120 · Phase D | **done** | briefing + structure | `0001a94` · `handoff-lint` |
+| Handoff 확인 템플릿 (A) | **this gate** | owner readability | propose spike · AGENTS |
+| Handoff 작성 도우미 (B) | **this gate** | author budget safety | `handoff:check` · lint table |
+| Inject ops (nine · omit · STATE_TARGET · handoff:check) | **done** | restore model | `b935969` · `240a0df` · `22eb76e` |
+| Owner product track | after this gate | WP5-f / product / idle | Owner pending |
 
 ## Owner pending
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| WP5-followup / product / idle | product direction | **idle** until pick | todo · HOOK-CACHE |
+| After handoff-opt: WP5-followup / product / idle | product direction | **idle** until pick | todo · HOOK-CACHE |
 | Integration-test flake | cost/scope | isolation recipe | todo |
 | HOOKCACHE-D-VERIFY | with WP5-followup | paused | `HOOK-CACHE-FIX-DESIGN.md` |
 | RULE-ENFORCEABILITY | product | document only | spike |
@@ -58,26 +65,26 @@
 ## Invariants
 
 - HANDOFF: nine headings; D1 ≤8192B; no `<details>`; owns next gate.
-- status table = **view**; inject = **nine sections + traps** (model). No permanent axis delete for slim.
-- Budget unit = **chars** (HARD_CAP 9500); drop unit = **whole section** + loud `inject omitted:`. Pinned: status · Current action · traps.
-- Authoring: prefer raw state ≤ **STATE_TARGET 7500**; `bun run handoff:check` before handoff ship.
-- Owner brief ≠ inject dump. On `inject omitted:` → Read that HANDOFF section from disk.
-- Fail-loud `unknown/malformed`; Open(blocking) = markdown **table**.
-- Topology **single** default; line ≠ lane (`DOGFOOD` §0.5).
-- WP5 residual = **WP5-followup** only (no warm-base re-fork). Protocol 17 / PANE-DEATH U1–U11 immutable.
+- status = **view**; inject = **nine + traps** (model). No permanent slim-delete.
+- Budget = **chars** (HARD_CAP 9500); drop = **whole section** + `inject omitted:`. Pinned: status · Current action · traps.
+- Prefer raw ≤ **STATE_TARGET 7500**; ship handoff edits with `bun run handoff:check`.
+- Owner brief ≠ inject dump. On `inject omitted:` → Read that section from disk.
+- Fail-loud `unknown/malformed`; Open(blocking) markdown **table**.
+- Topology **single** default; line ≠ lane. WP5 residual only (no warm-base re-fork). Protocol 17 / PANE-DEATH U1–U11 immutable.
 
 ## Evidence
 
-- Recommendation wired: AGENTS Inject ops · `handoff:check` · CLI `inject:full` · `SESSION-INJECT-VIEW-DESIGN.md` checklist
-- `STATE_TARGET` · `fitPartsToBudget` · `session-context:lint` · denser HANDOFF `240a0df` · budget `22eb76e`
-- v1 `0001a94` · Phase D `49b6a9d` · PLAN 0.28.1 · R46 · adapter `6e2df8a`
-- `tasks/traps.md` · `Claude.md` key paths
+- Propose: `docs/spikes/HANDOFF-AUTHORING-OPT-PROPOSE.md` (A→B)
+- Inject ops: AGENTS · `handoff:check` · `inject:full` · `SESSION-INJECT-VIEW-DESIGN.md` · `359709d` · `b935969`
+- Budget: `STATE_TARGET` · `fitPartsToBudget` · `22eb76e` · `240a0df`
+- Product: PLAN 0.28.1 · R46 · adapter `6e2df8a` · Phase D `49b6a9d` · v1 `0001a94`
+- `tasks/traps.md` · `HANDOFF_WINDOWS.md`
 
 ## Don't redo
 
 - Permanent nine-axis slim-delete; silent **state** mid-section char-cut.
 - Treat status cells as skip for Invariants / Don't redo / Evidence.
-- Rely on omit instead of HANDOFF diet when raw approaches HARD_CAP.
-- Dump full inject into owner chat instead of `bun run status`.
+- Rely on omit instead of diet; dump full inject into owner chat.
+- Expand status into second competing schema (propose D) before A/B.
 - Dashboard v1 redesign from scratch; Phase B/C/D rewrite; warm-base re-spike; Phase E before ROADMAP.
-- Drop fail-loud / Open table; inject full lessons into state; product/herdr/card without Owner track pick.
+- Drop fail-loud / Open table; inject full lessons into state; product/herdr without Owner track pick.
