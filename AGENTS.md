@@ -48,18 +48,23 @@ Optional: `docs/UNKNOWNS.md` if PLAN is **MINOR** / `pending-review` / new surfa
 Use Korean if the user writes Korean. Do **not** skip this briefing — keep it **short**, then **work** (do not wait for “응/해”):
 
 ```markdown
-## 세션 상태
-| 항목 | 값 |
-|------|-----|
-| PLAN | vX.Y.Z (`status`) |
-| Open blocking | … or 없음 |
-| 다음 액션 | … (from HANDOFF / `bun run status`) |
-| 작업 라인 | HANDOFF Default: **topology** (`full`/`single`) + **vendor chain** (Codex/Claude/Grok/Other) |
-| 워크플로 | docs/WORKFLOW.md |
-| 주의 | Loom=제품 · Fable 5=리뷰 에이전트 (혼동 금지) |
+(run `bun run status` — do not invent a second table)
+
+## Loom · session
+| Key | Value |
+|-----|--------|
+| Product | vX.Y.Z · `approved` |
+| Review | R{n} · open **없음** |
+| Gate | … (Current action ### title only) |
+| Line | topology **single|full** · chain … |
+| Loop | P… · D… · H… · R… |
+| Blockers | (none) |
+| Owner | … |
+| Don't | … |
+| Health | handoff:lint ✓ · parse ✓ |
 ```
 
-`작업 라인`(**line**)은 구현자 하나가 아니라 **orchestrator → implementation → verification/advice 전체 연결**이다. **lane**은 그 line 안의 역할 자리(`grok-impl` 등)다. 선택은 **축 A 벤더 체인 × 축 B 토폴로지**(`full` = 역할 분리 교차검증 · `single` = 한 세션 구현+명령검증; 검증 생략 아님). 정의·승격 규칙 SSOT = `docs/DOGFOOD_LOOP.md` §0.5. 사용자가 새로 고르지 않으면 HANDOFF 승계 Default로 즉시 진행하고, 선택지는 작업 시작 전 브리핑 표로 보여준다.
+브리핑 표 **스키마 SSOT = `bun run status` 출력**(Dashboard v1 · `scripts/session-status.ts`). 에이전트는 status를 실행해 그대로 보여 주고, 행을 재작성·장문 붙이지 않는다. **line** = 전체 역할 연결 · **lane** = 그 안의 피어. 정의 = `docs/DOGFOOD_LOOP.md` §0.5. 무선택 시 HANDOFF Default로 즉시 진행.
 
 **Do not** end with “이어서 할까요?” / “진행할까요?” / “커밋할까요?” as a default.  
 Owner wants **stepwise autonomous progress** through the current gate wave.

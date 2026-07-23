@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · Phase D shipped · Open(blocking) table restored · next = owner track pick (**WP5-followup** = prefix·hook-cache · product · idle; Phase E only if ROADMAP) · topology **single** harness · `DOGFOOD_LOOP` §0.5.
+> Loom v0.28.1 · Dashboard v1 on `bun run status` · Phase D shipped · next = owner track pick (WP5-followup / product / idle) · topology **single** · `DOGFOOD_LOOP` §0.5.
 
 ## Current loop
 

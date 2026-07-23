@@ -218,8 +218,8 @@ describe("V4 — state assembly HARD_CAP (status + fixture + traps)", () => {
     expect(truncateContext(state)).toBe(state);
     expect(state.startsWith("⚠")).toBe(false);
     expect(state.includes("…[truncated")).toBe(false);
-    // V4 FIX: live buildStatus() after sentinel.
-    expect(state.includes("## 세션 상태 (Loom)")).toBe(true);
+    // V4 FIX: live buildStatus() dashboard after sentinel.
+    expect(state.includes("## Loom · session")).toBe(true);
     expect(state.includes(buildStatus().split("\n")[0]!)).toBe(true);
     for (const h of REQUIRED_HANDOFF_HEADINGS) {
       expect(state.includes(`## ${h}`)).toBe(true);
@@ -465,58 +465,56 @@ describe("Phase C/D live handoff:lint", () => {
   });
 });
 
-describe("Phase D — status fail-loud", () => {
-  test("healthy PLAN/HANDOFF parse; Open blocking is fail-loud when review is non-table", () => {
+describe("Phase D — status fail-loud + Dashboard v1", () => {
+  test("healthy live dashboard is compact and parse-clean", () => {
     const s = buildStatus();
-    expect(s).toContain("| PLAN | 0.28.1 |");
-    expect(s).toMatch(/\| Status \| approved/i);
-    expect(s).not.toMatch(/\| PLAN \| unknown\/malformed/);
-    expect(s).not.toMatch(/\| 다음 \(HANDOFF\) \| unknown\/malformed/);
-    // Live plan_review Open(blocking) is bullet prose, not the markdown table
-    // contract (V6). Old status treated missing table body as "없음" (false healthy).
-    // Phase D surfaces that as unknown/malformed instead of inventing empty.
-    const review = readRepo("docs/plan_review.md");
-    const openStart = review.indexOf("## Open (blocking)");
-    const openHasTable =
-      openStart >= 0 &&
-      /\|[^\n]+\|\n\|[-| :]+\|/.test(review.slice(openStart, openStart + 800));
-    if (openHasTable) {
-      expect(s).not.toMatch(/\| Open blocking \| unknown\/malformed/);
-    } else {
-      expect(s).toContain(`| Open blocking | ${STATUS_MALFORMED} |`);
-      expect(s).not.toContain("| Open blocking | 없음 |");
+    expect(s.startsWith("## Loom · session")).toBe(true);
+    expect(s).toMatch(/\| Product \| v0\.28\.1 · `approved` \|/i);
+    expect(s).toMatch(/\| Review \| R46 · open \*\*없음\*\* \|/);
+    expect(s).toMatch(/\| Gate \| Post.+Phase D .+ owner next-track pick \|/);
+    expect(s).toMatch(/topology \*\*single\*\*/);
+    expect(s).toMatch(/\| Blockers \| \(none\) \|/);
+    expect(s).toMatch(/\| Health \| handoff:lint ✓ · parse ✓ \|/);
+    expect(s).not.toContain(STATUS_MALFORMED);
+    // Cell budget: no Value cell over DASHBOARD soft cap (+markdown)
+    for (const line of s.split("\n")) {
+      const m = /^\| [^|]+ \| (.+) \|$/.exec(line);
+      if (!m) continue;
+      expect(m[1]!.length).toBeLessThanOrEqual(100);
     }
+    expect(s.length).toBeLessThanOrEqual(1200);
   });
 
-  test("empty PLAN/review/HANDOFF surface unknown/malformed", () => {
+  test("empty PLAN/review/HANDOFF surface unknown/malformed on Product/Review/Gate", () => {
     const s = buildStatus({
       planText: "",
       reviewText: "",
       handoffText: "",
     });
-    expect(s).toContain(`| PLAN | ${STATUS_MALFORMED} |`);
-    expect(s).toContain(`| Status | ${STATUS_MALFORMED} |`);
-    expect(s).toContain(`| plan_review 최신 | ${STATUS_MALFORMED} |`);
-    expect(s).toContain(`| Open blocking | ${STATUS_MALFORMED} |`);
-    expect(s).toContain(`| 다음 (HANDOFF) | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| Product | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| Review | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| Gate | ${STATUS_MALFORMED} |`);
+    expect(s).toMatch(/parse ✗/);
   });
 
-  test("missing One-line resume heading is fail-loud (no whole-file fallback)", () => {
+  test("missing Current action gate is fail-loud", () => {
     const stripped = liveHandoff.replace(
-      "## One-line resume",
-      "## One liner",
+      "## Current action",
+      "## Current task",
     );
     const s = buildStatus({
       planText: readRepo("docs/PLAN.md"),
       reviewText: readRepo("docs/plan_review.md"),
       handoffText: stripped,
     });
-    expect(s).toContain(`| 다음 (HANDOFF) | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| Gate | ${STATUS_MALFORMED} |`);
   });
 
-  test("Open blocking without table is fail-loud", () => {
+  test("Open blocking without table is fail-loud on Review row", () => {
     const review = [
       "# Review",
+      "",
+      "> **최신:** **R99** PLAN",
       "",
       "## Open (blocking)",
       "",
@@ -531,7 +529,7 @@ describe("Phase D — status fail-loud", () => {
       reviewText: review,
       handoffText: liveHandoff,
     });
-    expect(s).toContain(`| Open blocking | ${STATUS_MALFORMED} |`);
+    expect(s).toMatch(new RegExp(`open \\*\\*${STATUS_MALFORMED}\\*\\*|open ${STATUS_MALFORMED}`));
   });
 });
 

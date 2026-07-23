@@ -1,10 +1,10 @@
 /**
- * Print Loom session gate status for humans and coding agents (Codex/Claude).
+ * Print Loom session dashboard for humans and coding agents (Codex/Claude/Grok).
  * Usage: bun run status
  *        bun run handoff:lint  (or: bun run scripts/session-status.ts --lint)
  *
- * Phase D: handoff:lint runs shared-heading structure checks; status parser is
- * fail-loud (`unknown/malformed`) when PLAN/review/HANDOFF shape cannot be read.
+ * Phase D: handoff:lint = structure checks; status parser fail-loud.
+ * Dashboard v1 (step 1): one compact table (≤80 chars/cell) — no long R{n} paste.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import {
 import {
   HANDOFF_UTF8_BUDGET,
   lintLiveHandoff,
+  validateCheckpoint,
 } from "./handoff-lint.ts";
 
 const root = join(import.meta.dir, "..");
@@ -23,6 +24,9 @@ export { HANDOFF_UTF8_BUDGET };
 
 /** Loud marker when a status field cannot be parsed (design §9.3 / Owner D4). */
 export const STATUS_MALFORMED = "unknown/malformed";
+
+/** Soft cap per dashboard cell (proposal Session Dashboard v1). */
+export const DASHBOARD_CELL_MAX = 80;
 
 function read(rel: string): string {
   const p = join(root, rel);
@@ -39,6 +43,14 @@ export function matchRequired(text: string, re: RegExp): string {
   const m = re.exec(text);
   const v = m?.[1]?.trim();
   return v && v.length > 0 ? v : STATUS_MALFORMED;
+}
+
+/** Collapse whitespace and hard-cap length (keeps fail-loud marker intact). */
+export function clipCell(value: string, max = DASHBOARD_CELL_MAX): string {
+  const one = value.replace(/\s+/g, " ").trim();
+  if (one === STATUS_MALFORMED) return STATUS_MALFORMED;
+  if (one.length <= max) return one;
+  return `${one.slice(0, Math.max(0, max - 1))}…`;
 }
 
 /** Parse plan_review Open (blocking) — fail-loud on missing/unparseable shape. */
@@ -62,8 +74,30 @@ export function parseOpenBlocking(review: string): string {
   if (ids.length) return ids.join(", ");
   const plain = [...tableBody.matchAll(/^\|\s*([^|]+?)\s*\|/gm)]
     .map((m) => m[1]!.trim())
-    .filter((c) => c && !c.startsWith("---") && c !== "ID");
-  return plain.length ? plain.slice(0, 5).join(" · ") : STATUS_MALFORMED;
+    .filter((c) => c && !c.startsWith("---") && c !== "ID" && c !== "Item");
+  // Skip separator-like and (none) already handled
+  const meaningful = plain.filter((c) => !/^\(none\)$/i.test(c) && c !== "—");
+  if (meaningful.length && !meaningful.every((c) => c === "—")) {
+    // First column values that look like IDs
+    const firstCol = [...tableBody.matchAll(/^\|\s*([^|]+?)\s*\|/gm)]
+      .map((m) => m[1]!.trim())
+      .filter((c) => c && !c.startsWith("---") && c !== "ID");
+    const openIds = firstCol.filter(
+      (c) => c !== "(none)" && c !== "—" && !/^item$/i.test(c),
+    );
+    if (openIds.length) return openIds.slice(0, 5).join(", ");
+  }
+  return STATUS_MALFORMED;
+}
+
+/** Latest review id only (e.g. R46) — not the full header essay. */
+export function parseReviewId(review: string): string {
+  if (!review || !review.trim()) return STATUS_MALFORMED;
+  const m =
+    />\s*\*\*최신:\*\*\s*\*\*(R\d+)\*\*/.exec(review) ||
+    />\s*\*\*최신:\*\*\s*(R\d+)\b/.exec(review) ||
+    /\*\*최신:\*\*[^*]*\*\*(R\d+)\*\*/.exec(review);
+  return m?.[1]?.trim() ? m[1]!.trim() : STATUS_MALFORMED;
 }
 
 /** One-line resume from canonical heading only — no legacy whole-file fallback. */
@@ -74,12 +108,146 @@ export function parseOneLineResume(handoff: string): string {
   return matchRequired(resumeSection, />\s*(.+)/);
 }
 
-/** Session status table + Files/Run footer (same contract as historical CLI output). */
-export function buildStatus(opts?: {
+/** Unique ### gate title under Current action. */
+export function parseGateTitle(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const action = extractHandoffSection(handoff, "Current action");
+  if (!action) return STATUS_MALFORMED;
+  const titles = [...action.matchAll(/^###\s+(.+)$/gm)].map((m) => m[1]!.trim());
+  if (titles.length !== 1) return STATUS_MALFORMED;
+  return titles[0]!;
+}
+
+/** Topology token from Current action (e.g. single / full). */
+export function parseTopology(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const action = extractHandoffSection(handoff, "Current action") ?? handoff;
+  const m =
+    /\*\*`?(single|full)`?\*\*/i.exec(action) ||
+    /topology[^\n]*\*\*`?(single|full)`?\*\*/i.exec(action) ||
+    /Topology[^\n]*\|\s*\*\*`?(single|full)`?\*\*/i.exec(action);
+  return m?.[1] ? m[1]!.toLowerCase() : STATUS_MALFORMED;
+}
+
+/** Short vendor chain hint for full topology. */
+export function parseVendorChainHint(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const action = extractHandoffSection(handoff, "Current action") ?? handoff;
+  if (/Codex\s*→\s*Grok\s*→\s*Codex/i.test(action)) {
+    return "Codex→Grok→Codex";
+  }
+  if (/Claude\s*→\s*Grok/i.test(action)) return "Claude→Grok→…";
+  if (/Grok\s*→\s*Grok/i.test(action)) return "Grok→Grok→…";
+  return STATUS_MALFORMED;
+}
+
+/** Compress Current loop four axes into one short line. */
+export function parseLoopLine(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const loop = extractHandoffSection(handoff, "Current loop");
+  if (!loop) return STATUS_MALFORMED;
+  const row = (axis: string): string | null => {
+    const re = new RegExp(
+      `\\|\\s*${axis}\\s*\\|\\s*([^|]+?)\\s*\\|`,
+      "i",
+    );
+    const m = re.exec(loop);
+    return m?.[1]?.trim() || null;
+  };
+  const product = row("Product");
+  const dogfood = row("Dogfood");
+  const harness = row("Harness");
+  const reuse = row("Reuse");
+  if (!product && !dogfood && !harness && !reuse) return STATUS_MALFORMED;
+
+  const short = (label: string, raw: string | null): string => {
+    if (!raw) return `${label}?`;
+    const t = raw.toLowerCase();
+    if (/not proven/.test(t)) return `${label}—`;
+    const ver = /\bv?\d+\.\d+\.\d+\b/.exec(raw);
+    if (ver) return `${label} ${ver[0].replace(/^v/i, "")}`;
+    if (/shipped|complete|done|ok|unblocked/.test(t)) return `${label} ok`;
+    if (/eligible|pending|blocked/.test(t)) return `${label}…`;
+    return `${label}·`;
+  };
+
+  return [
+    short("P", product),
+    short("D", dogfood),
+    short("H", harness),
+    short("R", reuse),
+  ].join(" · ");
+}
+
+/** Blockers body: (none) or clipped list. */
+export function parseBlockersLine(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const blockers = extractHandoffSection(handoff, "Blockers");
+  if (!blockers) return STATUS_MALFORMED;
+  const body = blockers.replace(/^## Blockers\s*/i, "").trim();
+  if (!body) return STATUS_MALFORMED;
+  if (/^\(none\)$/im.test(body)) return "(none)";
+  const first = body.split("\n").map((l) => l.trim()).filter(Boolean)[0];
+  return first || STATUS_MALFORMED;
+}
+
+/** Owner pending decision names (first table column), short. */
+export function parseOwnerPendingLine(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const section = extractHandoffSection(handoff, "Owner pending");
+  if (!section) return STATUS_MALFORMED;
+  const rows = [...section.matchAll(/^\|\s*([^|]+?)\s*\|/gm)]
+    .map((m) => m[1]!.trim())
+    .filter(
+      (c) =>
+        c &&
+        !c.startsWith("---") &&
+        !/^decision$/i.test(c) &&
+        c !== "Decision",
+    );
+  if (!rows.length) return STATUS_MALFORMED;
+  // Prefer short labels: strip markdown bold
+  const labels = rows
+    .map((r) => r.replace(/\*\*/g, "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  return labels.length ? labels.join(" · ") : STATUS_MALFORMED;
+}
+
+/** First few Don't redo themes, keyword-style. */
+export function parseDontLine(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const section = extractHandoffSection(handoff, "Don't redo");
+  if (!section) return STATUS_MALFORMED;
+  const bullets = [...section.matchAll(/^[-*]\s+(.+)$/gm)].map((m) =>
+    m[1]!.trim(),
+  );
+  if (!bullets.length) return STATUS_MALFORMED;
+  const keys = bullets.slice(0, 3).map((b) => {
+    // First clause before · or —
+    const head = b.split(/[·—]/)[0]!.trim();
+    return head.length > 28 ? `${head.slice(0, 27)}…` : head;
+  });
+  return keys.join(" · ");
+}
+
+export type DashboardFields = {
+  product: string;
+  review: string;
+  gate: string;
+  line: string;
+  loop: string;
+  blockers: string;
+  owner: string;
+  dont: string;
+  health: string;
+};
+
+export function buildDashboardFields(opts?: {
   planText?: string;
   reviewText?: string;
   handoffText?: string;
-}): string {
+}): DashboardFields {
   const plan = opts?.planText ?? read("docs/PLAN.md");
   const review = opts?.reviewText ?? read("docs/plan_review.md");
   const handoff = opts?.handoffText ?? read("HANDOFF.md");
@@ -92,33 +260,97 @@ export function buildStatus(opts?: {
     plan,
     /\|\s*\*\*Status\*\*\s*\|\s*\*\*`?([^`|*]+)`?/,
   );
-  const latest = matchRequired(review, />\s*\*\*최신:\*\*\s*(.+)/);
+  const product =
+    version === STATUS_MALFORMED || status === STATUS_MALFORMED
+      ? STATUS_MALFORMED
+      : `v${version.replace(/^v/i, "")} · \`${status}\``;
+
+  const reviewId = parseReviewId(review);
   const openBlock = parseOpenBlocking(review);
-  const resumeLine = parseOneLineResume(handoff);
-
-  const latestShown =
-    latest === STATUS_MALFORMED
+  const reviewLine =
+    reviewId === STATUS_MALFORMED && openBlock === STATUS_MALFORMED
       ? STATUS_MALFORMED
-      : `${latest.slice(0, 120)}${latest.length > 120 ? "…" : ""}`;
-  const resumeShown =
-    resumeLine === STATUS_MALFORMED
+      : reviewId === STATUS_MALFORMED
+        ? `? · open ${openBlock}`
+        : openBlock === STATUS_MALFORMED
+          ? `${reviewId} · open ${STATUS_MALFORMED}`
+          : `${reviewId} · open **${openBlock}**`;
+
+  const gate = parseGateTitle(handoff);
+  const topology = parseTopology(handoff);
+  const chain = parseVendorChainHint(handoff);
+  const line =
+    topology === STATUS_MALFORMED
       ? STATUS_MALFORMED
-      : `${resumeLine.slice(0, 160)}${resumeLine.length > 160 ? "…" : ""}`;
+      : chain === STATUS_MALFORMED
+        ? `topology **${topology}**`
+        : `topology **${topology}** · chain ${chain} *(full 시)*`;
 
-  return `## 세션 상태 (Loom)
-| 항목 | 값 |
-|------|-----|
-| PLAN | ${version} |
-| Status | ${status} |
-| plan_review 최신 | ${latestShown} |
-| Open blocking | ${openBlock} |
-| 다음 (HANDOFF) | ${resumeShown} |
-| 워크플로 | docs/WORKFLOW.md |
-| 진입 규칙 | AGENTS.md (Codex/Claude) |
-| 주의 | Loom=제품 · Fable 5=리뷰 에이전트 |
+  const loop = parseLoopLine(handoff);
+  const blockers = parseBlockersLine(handoff);
+  const owner = parseOwnerPendingLine(handoff);
+  const dont = parseDontLine(handoff);
 
-Files: HANDOFF.md · docs/WORKFLOW.md · docs/PLAN.md · docs/plan_review.md
-Run: bun test · bun run loom --version
+  const structure = validateCheckpoint(handoff, {
+    requireEvidenceTargets: true,
+    enforceBudget: true,
+  });
+  const parseOk = ![
+    product,
+    reviewLine,
+    gate,
+    line,
+    loop,
+    blockers,
+  ].some((v) => v === STATUS_MALFORMED || v.includes(STATUS_MALFORMED));
+  const health =
+    structure.length === 0 && parseOk
+      ? "handoff:lint ✓ · parse ✓"
+      : structure.length > 0 && !parseOk
+        ? "handoff:lint ✗ · parse ✗"
+        : structure.length > 0
+          ? "handoff:lint ✗ · parse ✓"
+          : "handoff:lint ✓ · parse ✗";
+
+  return {
+    product: clipCell(product),
+    review: clipCell(reviewLine),
+    gate: clipCell(gate),
+    line: clipCell(line),
+    loop: clipCell(loop),
+    blockers: clipCell(blockers),
+    owner: clipCell(owner),
+    dont: clipCell(dont),
+    health: clipCell(health),
+  };
+}
+
+/**
+ * Session Dashboard v1 — one compact table for session start.
+ * AGENTS briefing should echo this output (no second schema).
+ */
+export function buildStatus(opts?: {
+  planText?: string;
+  reviewText?: string;
+  handoffText?: string;
+}): string {
+  const f = buildDashboardFields(opts);
+
+  return `## Loom · session
+| Key | Value |
+|-----|--------|
+| Product | ${f.product} |
+| Review | ${f.review} |
+| Gate | ${f.gate} |
+| Line | ${f.line} |
+| Loop | ${f.loop} |
+| Blockers | ${f.blockers} |
+| Owner | ${f.owner} |
+| Don't | ${f.dont} |
+| Health | ${f.health} |
+
+SSOT: HANDOFF.md · PLAN · plan_review · DOGFOOD §0.5
+Run: bun run status · handoff:lint · bun test
 `;
 }
 
@@ -143,7 +375,6 @@ if (import.meta.main) {
   if (lintOnly) {
     const structureErrors = lintLiveHandoff();
     const all: string[] = [...structureErrors];
-    // Budget is also inside validateCheckpoint; keep budgetWarn for historical wording.
     if (budgetWarn && !all.some((e) => e.includes("UTF-8 size"))) {
       all.push(budgetWarn);
     }

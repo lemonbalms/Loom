@@ -22,6 +22,8 @@
    No product semantics change · no Phase E.
 9b. [x] **plan_review Open(blocking) table restore:** stale R39 bullet → `(none)` markdown table;
     author-close logs moved under historical section; `bun run status` Open = `없음`.
+9c. [x] **Session Dashboard v1 (step 1):** `bun run status` = one compact table (`## Loom · session`,
+    ≤80 char cells) · AGENTS briefing = status SSOT · fail-loud preserved.
 10. [x] **herdr 0.7.5/protocol 17 adapter (source through `6e2df8a`):** R46 author-close + Fable advisor
     consulted · chain Codex→Grok4.5→Codex · live 3-kind (claude/codex/grok) · dogfood:herdr ok ·
     dogfood:up exit 0 · host 462/0 · first full 761/2 = checkpoint-only drift · final full 763/0
