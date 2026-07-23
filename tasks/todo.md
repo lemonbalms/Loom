@@ -1,17 +1,30 @@
 # Todo — Loom
 
-## Current — RULE-ROUTER propose rev-4 · review pending
+## Current — RULE-ROUTER rev-4 · **review this session**
 
 > SSOT = `HANDOFF.md`. Start: **`bun run status`**.
-> R28 integration flake fix is shipped and green. MAP/product remain closed.
+> Target is frozen: commit `7a47aad` · blob `a4a0b47` · `docs/spikes/RULE-ROUTER-PROPOSE.md` (523 lines).
+> The propose was authored in the previous session — this session reviews it, and must not extend it.
 
-### Do now
+### Do now (review order)
 
-- [ ] Get `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-4 reviewed (§8 seven questions)
-- [ ] Owner picks D1 (Phase 1 start?) and D2 (review path: `R{n}` vs spike REVIEW)
-- [ ] D4/D6/D7 — candidate A/B/C adoption goes through the §6.5 bake-off; pre-register M7 threshold before Phase 2b
+- [ ] Read the frozen propose in full (rev-4). Context it reuses: `RULE-ENFORCEABILITY.md` (H/G/A/J · L0–L5)
+- [ ] Spawn the `fable-advisor` subagent (`model: fable`, read-only) — **mandatory before any verdict**
+- [ ] Answer §8's seven questions without ambiguity:
+      ①P2 grade↔routing-safety correspondence (반례 있나) ②pinned 판정 권한 ③JIT 주입의 타 하네스 범위
+      ④G1이 못-실패 게이트 아닌가 ⑤리뷰 경로 R{n} vs spike ⑥α 해석 ⑦M7 임계 사전등록 주체
+- [ ] Rule on D1–D9 (§10) — 특히 D1(Phase 1 착수) · D2(리뷰 경로) · D9(카테고리 정본)
+- [ ] Write the verdict to `docs/spikes/RULE-ROUTER-REVIEW.md` (default) with frozen coordinates;
+      only use `plan_review.md R{n}` if the Owner picks that path
 - [ ] No Phase 1 work — registry/router/inject stay untouched until the verdict
 - [ ] Keep CONTEXT-MAP/product closed
+
+### Review scope notes (what the propose already settled — do not re-derive)
+
+- rev-2 demoted the 3-layer hybrid to a candidate; A/B/C adoption goes through the §6.5 bake-off
+- rev-3 §6.6 defines reproducibility (R1/R2/R3), the LLM devices B-1–B-5, and D8 add-only authority
+- rev-4 §5.2.1 puts Owner-declared categories under all three candidates; ambiguity = union, not a pick
+- Known-open by design: M7 threshold unset · B-2 cache invalidation unspecified · category coverage unmeasured
 
 ### Open issues (not current gate)
 
