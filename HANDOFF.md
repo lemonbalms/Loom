@@ -18,19 +18,19 @@
 
 ## Current action
 
-### RULE-ROUTER propose rev-1 — review pending
+### RULE-ROUTER propose rev-2 — review pending
 
 **Goal:** Get the Owner-requested rule-router problem/goal statement reviewed before any implementation.
 
 **Authority:** Owner asked for the document and said review comes first; `RULE-ENFORCEABILITY` grades are the reused judgement axis. No code, hook, or inject change is authorized.
 
-**Now:** `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-1 is written (problems P-A–P-D · goals G1–G5 · principles P1–P5 · phases 0–4 · open D1–D5). Awaiting the review verdict.
+**Now:** `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-2 is written (problems P-A–P-D · goals G1–G5 · principles P1–P5 · candidates A/B/C + §6.5 bake-off M1–M7 · phases 0–4/2b · open D1–D7). Awaiting the review verdict.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
 **Done when:** a verdict exists and the Owner picks D1 (Phase 1 start) and D2 (review path).
 
-**Must not:** start Phase 1 before the verdict; copy rule bodies into a registry; treat cost saving as the goal.
+**Must not:** start Phase 1 before the verdict; copy rule bodies into a registry; treat cost saving as the goal; adopt the hybrid without the §6.5 bake-off or tune its thresholds after seeing results.
 
 ## Active checks
 
@@ -38,14 +38,13 @@
 |---|---|---|---|
 | SINGLE routing correction | **done** | prevents wrong N norm | routing design · semantic lint · 814 tests |
 | NORMS Phase 3 | **done/authorized** | deterministic N packs | `norms:check` · Claude enable |
-| R28 stale-marker | **fixed** · 4 consecutive targeted passes | original failure closed | ~8.2s each |
-| Fast working→done | **fixed** · 14/14 inject verify | no false CR/fail-visible | new test ⑭ |
-| Conv + scrape-delta | **30/30** | anchor order stable | sequential combined run |
+| R28 flake (stale-marker + fast working→done) | **fixed** · 4× targeted · 14/14 inject verify | original failure closed | new test ⑭ |
+| Conv + scrape-delta | **30/30** | anchor order stable | sequential run |
 | Full suite | **exit 0** · final run completed | no remaining tests | final summary not captured at handoff boundary |
 | Typecheck | **6/6** | all packages | `bun run typecheck` |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
 | R28 fix ship | **done** · 4-file code fix + docs | gate complete | this change set |
-| RULE-ROUTER propose | **rev-1 written** · review pending | rule delivery 7.8% measured | `RULE-ROUTER-PROPOSE.md` |
+| RULE-ROUTER propose | **rev-2 written** · review pending | 7.8% delivery · A/B/C undecided | propose §6.5 |
 
 ## Owner pending
 
@@ -81,7 +80,7 @@
 - NORMS review: propose §7.3 · §11 #2/#4 · Phase 3 plan §12 · pack sources live.
 - NORMS impl: `core@5d29b979` · `lexicon@ec2b127c` · `traps-norm@a15b45b2` · 3657 chars/4101 bytes · 13 focused tests.
 - Flake roots: fast working→done cleared transient `sawWorking` before verify polling; empty-delta test blind-drained anchors 1s without asserting receipt.
-- Fix evidence: targeted R28 4× pass · inject-verify 14/14 · conv+scrape 30/30 · typecheck 6/6 · final full suite exit 0.
+- Fix evidence: R28 4× · inject 14/14 · conv+scrape 30/30 · typecheck 6/6 · suite exit 0.
 - Routing correction: `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md` · DOGFOOD §0.5 · review Addendum E · 814/814 tests.
 - M-1: `session-context.ts` fit · `.claude/settings.json` · `.codex/hooks.json` · `9b205a6`.
 - Handoff B: `handoff:budget` · `docs/HANDOFF-AUTHORING.md` · `055d73e`.

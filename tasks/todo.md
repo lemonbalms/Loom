@@ -7,8 +7,9 @@
 
 ### Do now
 
-- [ ] Get `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-1 reviewed (§8 five questions)
+- [ ] Get `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-2 reviewed (§8 seven questions)
 - [ ] Owner picks D1 (Phase 1 start?) and D2 (review path: `R{n}` vs spike REVIEW)
+- [ ] D4/D6/D7 — candidate A/B/C adoption goes through the §6.5 bake-off; pre-register M7 threshold before Phase 2b
 - [ ] No Phase 1 work — registry/router/inject stay untouched until the verdict
 - [ ] Keep CONTEXT-MAP/product closed
 
