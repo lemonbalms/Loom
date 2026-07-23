@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · RULE-ROUTER propose rev-4 frozen `a4a0b47` · **next session = review it**.
+> v0.28.1 · RULE-ROUTER **reviewed: approve+조건0** · next = rev-5 fold-in → Owner D1–D9.
 
 ## Current loop
 
@@ -18,19 +18,19 @@
 
 ## Current action
 
-### RULE-ROUTER rev-4 — **review this session** (Owner scheduled)
+### RULE-ROUTER — rev-5 fold-in (리뷰 조건 0) → Owner D1–D9
 
-**Goal:** Write a verdict on `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-4 — frozen target `7a47aad` · blob `a4a0b47` · 523 lines.
+**Goal:** Apply `RULE-ROUTER-REVIEW.md` **§4 delta ①–⑧ verbatim** to the propose as **rev-5 (docs-only)**, then put D1–D9 (review §5 recommendations) to the Owner.
 
-**Authority:** Owner scheduled the review for this session. The propose was authored in the prior session, so **the reviewer must not rubber-stamp the author**: the `fable-advisor` subagent (`model: fable`, read-only) is mandatory before any verdict (CLAUDE.md). No code/hook/inject authorization.
+**Authority:** review verdict = **approve, binding 조건 0** — no Phase 1 before rev-5. Delta text is pre-approved → rev-5 needs **no re-review**. The verdict session did not edit the propose — fold-in is author-lane work.
 
-**Now:** Read the propose in full, answer **§8's seven questions without ambiguity**, and rule on D1–D9 (§10). Default output = spike `docs/spikes/RULE-ROUTER-REVIEW.md`; `plan_review.md R{n}` only if the Owner picks that in D2.
+**Now:** fold §4 ①–⑧ into the propose + changelog/coordinates; brief the Owner on D1–D9 with review §5. No Phase 1/registry/router/inject work until rev-5 **and** Owner D1.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Done when:** a verdict (`approve` / `pending-revision`) exists with the §8 answers, D1–D9 recommendations, and the frozen coordinates recorded.
+**Done when:** rev-5 committed with §4 applied verbatim · D1–D9 presented to Owner.
 
-**Must not:** start Phase 1 during the review; bare-approve without `fable-advisor`; treat the hybrid as pre-selected or re-litigate the demotion; let the author lane write its own verdict.
+**Must not:** deviate from §4 wording (deviation = re-review); start Phase 1 before rev-5 + Owner D1; treat approve as implementation authorization; re-run the rev-4 review.
 
 ## Active checks
 
@@ -41,7 +41,7 @@
 | R28 flake fix (ship) | **done** · 4× targeted · 14/14 inject · conv 30/30 | gate closed | new test ⑭ |
 | Suite + typecheck | **exit 0 · 6/6** | no remaining tests | last run |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
-| RULE-ROUTER propose | **rev-4 frozen** `a4a0b47` · review is the gate | 7.8% delivery · A/B/C undecided | propose §6.5 · §8 |
+| RULE-ROUTER review | **done · approve+조건0** · advisor consulted | Phase 1 blocked until rev-5 + D1 | `RULE-ROUTER-REVIEW.md` §0·§4 |
 
 ## Owner pending
 
@@ -50,7 +50,7 @@
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
-| RULE-ROUTER D1–D9 | D2 sets review path; D9 needs Owner-declared categories | no Phase 1 until verdict | propose §10 |
+| RULE-ROUTER D1–D9 | reviewer recs exist (D1 승인 권고 · D2 spike · D8 add-only 지지) | no Phase 1 until rev-5 + Owner D1 | review §5 |
 | CONTEXT-MAP impl | separate package | not authorized | propose §8 |
 
 ## Blockers
@@ -84,6 +84,7 @@
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
 - Rule delivery 2026-07-23: 13,157 inject chars / 168,772 corpus = 7.8% auto-delivered.
 - RULE-ROUTER revs: `dd785f3` → `530a627` (candidates) → `39269fe` (M2) → `7a47aad` · blob `a4a0b47`.
+- RULE-ROUTER review: approve+조건0 · §8 7답(P2 조건부·G1 재배치) · F1 JIT 미실측(High)·F2 커버리지·F3 replay·F4 G5.
 
 ## Don't redo
 
@@ -95,3 +96,4 @@
 - Bare status as wave; permanent nine-axis slim-delete.
 - Reclassify the fixed R28 timeout as an open NORMS regression; increase polling/test timeouts instead of preserving event/anchor order.
 - Re-derive the router problem statement; re-open the rev-2 demotion; author-lane verdict.
+- Re-run the rev-4 review; reword review §4 delta in fold-in (verbatim only).

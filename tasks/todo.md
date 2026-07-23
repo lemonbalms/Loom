@@ -1,30 +1,26 @@
 # Todo — Loom
 
-## Current — RULE-ROUTER rev-4 · **review this session**
+## Current — RULE-ROUTER · rev-5 fold-in (리뷰 조건 0) → Owner D1–D9
 
 > SSOT = `HANDOFF.md`. Start: **`bun run status`**.
-> Target is frozen: commit `7a47aad` · blob `a4a0b47` · `docs/spikes/RULE-ROUTER-PROPOSE.md` (523 lines).
-> The propose was authored in the previous session — this session reviews it, and must not extend it.
+> Review done 2026-07-23: **approve + binding 조건 0** — `docs/spikes/RULE-ROUTER-REVIEW.md`
+> (advisor consulted · §8 7답 · D1–D9 권고 · findings F1–F4).
 
-### Do now (review order)
+### Do now
 
-- [ ] Read the frozen propose in full (rev-4). Context it reuses: `RULE-ENFORCEABILITY.md` (H/G/A/J · L0–L5)
-- [ ] Spawn the `fable-advisor` subagent (`model: fable`, read-only) — **mandatory before any verdict**
-- [ ] Answer §8's seven questions without ambiguity:
-      ①P2 grade↔routing-safety correspondence (반례 있나) ②pinned 판정 권한 ③JIT 주입의 타 하네스 범위
-      ④G1이 못-실패 게이트 아닌가 ⑤리뷰 경로 R{n} vs spike ⑥α 해석 ⑦M7 임계 사전등록 주체
-- [ ] Rule on D1–D9 (§10) — 특히 D1(Phase 1 착수) · D2(리뷰 경로) · D9(카테고리 정본)
-- [ ] Write the verdict to `docs/spikes/RULE-ROUTER-REVIEW.md` (default) with frozen coordinates;
-      only use `plan_review.md R{n}` if the Owner picks that path
-- [ ] No Phase 1 work — registry/router/inject stay untouched until the verdict
+- [ ] Fold `RULE-ROUTER-REVIEW.md` **§4 delta ①–⑧ verbatim** into the propose → **rev-5 (docs-only)**
+      + changelog entry. Pre-approved text — no re-review; deviation from wording = re-review
+- [ ] Brief the Owner on D1–D9 with review §5 (D1 승인 권고 · D2 spike · D3 3원천 ·
+      D6 Phase 1 스키마 필드 예약만 · D7 3단 사전등록 · D8 add-only 유지 · D9 오너 선포)
+- [ ] No Phase 1 work (registry/router/inject) until rev-5 **and** Owner D1
 - [ ] Keep CONTEXT-MAP/product closed
 
-### Review scope notes (what the propose already settled — do not re-derive)
+### Review outcome notes (do not re-derive)
 
-- rev-2 demoted the 3-layer hybrid to a candidate; A/B/C adoption goes through the §6.5 bake-off
-- rev-3 §6.6 defines reproducibility (R1/R2/R3), the LLM devices B-1–B-5, and D8 add-only authority
-- rev-4 §5.2.1 puts Owner-declared categories under all three candidates; ambiguity = union, not a pick
-- Known-open by design: M7 threshold unset · B-2 cache invalidation unspecified · category coverage unmeasured
+- §8 핵심 답: ①P2는 조건부(무성-deny H는 pin 기본값 · A1 반례 실증) ④G1 J-miss=0은
+  contract test로 재배치, 강한-positive miss = 등급 재감사 트리거 ⑤spike 경로 확정
+- Findings: F1 **JIT 비차단 주입 미실측(High → Phase 3 선결 PoC)** · F2 레지스트리 커버리지
+  사각(파일 digest + triage receipt) · F3 replay 표본추출 사전등록 · F4 G5 모니터링 강등
 
 ### Open issues (not current gate)
 
