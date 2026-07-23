@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · R28 flake fixed · RULE-ROUTER propose rev-1 written, review pending.
+> v0.28.1 · R28 flake fixed · RULE-ROUTER propose rev-3 written, review pending.
 
 ## Current loop
 
@@ -18,13 +18,13 @@
 
 ## Current action
 
-### RULE-ROUTER propose rev-2 — review pending
+### RULE-ROUTER propose rev-3 — review pending
 
 **Goal:** Get the Owner-requested rule-router problem/goal statement reviewed before any implementation.
 
 **Authority:** Owner asked for the document and said review comes first; `RULE-ENFORCEABILITY` grades are the reused judgement axis. No code, hook, or inject change is authorized.
 
-**Now:** `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-2 is written (problems P-A–P-D · goals G1–G5 · principles P1–P5 · candidates A/B/C + §6.5 bake-off M1–M7 · phases 0–4/2b · open D1–D7). Awaiting the review verdict.
+**Now:** `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-3 is written (problems P-A–P-D · goals G1–G5 · principles P1–P5 · candidates A/B/C + §6.5 bake-off M1–M7 · phases 0–4/2b · open D1–D8). Awaiting the review verdict.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
@@ -44,7 +44,7 @@
 | Typecheck | **6/6** | all packages | `bun run typecheck` |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
 | R28 fix ship | **done** · 4-file code fix + docs | gate complete | this change set |
-| RULE-ROUTER propose | **rev-2 written** · review pending | 7.8% delivery · A/B/C undecided | propose §6.5 |
+| RULE-ROUTER propose | **rev-3 written** · review pending | 7.8% delivery · A/B/C undecided | propose §6.5 |
 
 ## Owner pending
 
@@ -53,7 +53,7 @@
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
-| RULE-ROUTER D1–D5 | new surface | no Phase 1 until verdict | propose §10 |
+| RULE-ROUTER D1–D8 | new surface | no Phase 1 until verdict | propose §10 |
 | CONTEXT-MAP impl | separate package | not authorized | propose §8 |
 
 ## Blockers
