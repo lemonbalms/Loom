@@ -5,57 +5,68 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · WP5-followup M-1 cutover shipped · next = product / idle (safe default idle).
+> v0.28.1 · M-1+B shipped · NORMS impl-ready if Owner authorizes · else product/idle.
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | v0.28.1 release close; adapter `6e2df8a` | `docs/PLAN.md` |
-| Dogfood | unblocked (protocol 17 · live 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | DELIVERY + handoff B + **M-1 cutover done** | `HOOK-CACHE-FIX-DESIGN.md` |
+| Product | v0.28.1 · adapter `6e2df8a` | `docs/PLAN.md` |
+| Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
+| Harness | DELIVERY+B+M-1 **done**; NORMS design-ok · **impl not auth** | propose rev-3 · `5b14012` |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### Owner: product track or idle
+### Owner pick: product | idle | NORMS impl-auth
 
-**Goal:** Harness residual M-1 is shipped; pick product direction or stay idle.
+**Goal:** Session closed with review logged; next Owner chooses product, idle, or NORMS-RECEIPT **implementation authorization**.
 
-**Authority:** WP5-followup M-1 cutover (single `--part all` · joint budget fit). NORMS/MAP design-only (`5b14012`). Safe default = **idle**.
+**Authority:** Design freeze `cc03474` · owner design `5b14012` (impl set still **DELIVERY only**). Safe default = **idle**.
 
 **Session start:**
 
 1. `bun run status` · `bun run handoff:check`; L0 = `docs/SESSION-START.md`.
-2. Claude/Codex SessionStart = **one** hook `--part all` (state pinned; lessons fitted if over remainder).
-3. Do **not** re-split SessionStart into dual handlers; do not implement NORMS/MAP without authorization.
+2. S inject = single `--part all` (state pin · lessons line-fit). Guide: `docs/HANDOFF-AUTHORING.md`.
+3. NORMS/MAP code only after explicit impl-auth package ID(s).
 
-**Line:** topology **`single`** · full chain when needed = Codex→Grok→Codex.
+**NORMS review (this session · feedback only):**
 
-**Done when:** Owner picks product work or confirms idle with HANDOFF reflecting it.
+- **Q:** design-approved면 구현 가능한가? **A:** 아니오 — 빠진 건 design 재리뷰가 아니라 **impl-auth for `NORMS-RECEIPT`**.
+- **Entry if authorized:** design pack contract + impl-auth + DELIVERY L0 — **prereqs met** (L0 · pack sources present: `core` AGENTS rows · `lexicon` Triggers · `traps-norm` 하지 말 것).
+- **Not needed:** full rev-3 re-review if pack contract unchanged.
+- **Phase 3 order:** extractor fixture → host budget measure → `norms:check` gate → enable N hook **only** on passing hosts; else ritual `norms:raw`.
+- **Host notes:** Claude N=separate SessionStart ×1 OK (S already ×1 all); Codex ~2500 tok may force ritual; Grok always ritual (no N stdout).
+- **Approve text example:** `Implementation-authorized: DELIVERY · NORMS-RECEIPT` · freeze unchanged · **not** MAP/product.
+- **Still closed without auth:** CONTEXT-MAP · product/herdr · architect hand-code locked NORMS (impl lane).
 
-**Must not:** dual-hook SessionStart race; permanent nine-axis slim-delete; NORMS/MAP without auth; warm-base re-fork.
+**Line:** topology **`single`** · full = Codex→Grok→Codex.
+
+**Done when:** Owner pick recorded (product / idle / NORMS impl-auth) and HANDOFF matches.
+
+**Must not:** dual state/lessons SessionStart; NORMS/MAP without impl-auth; claim cause B closed via B-4; warm-base re-fork.
 
 ## Active checks
 
-| Check | Deadline | Impact | Evidence |
+| Check | Status | Impact | Evidence |
 |---|---|---|---|
-| DELIVERY Phase 0a–2 | **done** | 3-host S wire | `docs/SESSION-START.md` |
-| Handoff authoring B | **done** | author budget | `handoff:budget` · `docs/HANDOFF-AUTHORING.md` |
-| WP5-followup M-1 cutover | **done** | cause A order race | `--part all` · settings · codex hooks |
-| HOOKCACHE-D-VERIFY | optional | detector depth | paused / nonblocking |
-| **ISSUE: cause B header ts** | open | cache ~1min / ~34k write | B-7 upstream; B-4=temp |
-| Owner product track | **open** | product / idle | Owner pending |
+| DELIVERY 0a–2 · handoff B · M-1 cutover | **done** | S harness | L0 · `handoff:budget` · `--part all` |
+| NORMS-RECEIPT design | **approved** | pack contract | propose §7 · `5b14012` |
+| NORMS-RECEIPT impl-auth | **open** | Phase 3 unlock | §11 #4 still DELIVERY only |
+| NORMS entry prereqs (L0+sources) | **met** (review) | can start Phase 3 after auth | AGENTS · SESSION-START · traps |
+| ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
+| Owner product / idle | **open** | direction | safe default idle |
 
 ## Owner pending
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| product / idle | product direction | **idle** until pick | todo |
-| **ISSUE cause B (claude-mem)** | autoUpdate reverts B-4 | **open issue only** — no local “fix” claim | `HOOK-CACHE-FIX-DESIGN` §5 B-7 · `check:mem-header` |
+| product \| idle \| **NORMS impl-auth** | next track | **idle** | this review · todo |
+| ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | Integration-test flake | cost/scope | isolation recipe | todo |
-| HOOKCACHE-D-VERIFY | optional residual | paused | design doc |
+| HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
+| CONTEXT-MAP impl | separate package | not authorized | propose §8 |
 
 ## Blockers
 
@@ -63,29 +74,27 @@
 
 ## Invariants
 
-- HANDOFF: nine headings; D1 ≤8192B; no `<details>`; owns next gate.
-- SessionStart **single** command `--part all` (Claude + Codex); state full under HARD_CAP; lessons whole-line fit into remainder + loud trunc warn.
-- S full requires BEGIN+matching END per part; status = **view**; inject = **nine + traps** (+ lessons index fit).
-- Budget = **chars** (HARD_CAP 9500); drop = whole section/line + loud warn. Prefer raw state ≤ STATE_TARGET 7500.
-- Author: `bun run handoff:budget` · ship: `bun run handoff:check`. Guide: `docs/HANDOFF-AUTHORING.md`.
-- Owner brief ≠ inject dump. Template **S**/`상태` never auto-waves.
-- Topology **single** default. No warm-base re-fork. Protocol 17 / PANE-DEATH U1–U11 immutable.
-- NORMS/MAP implementation still requires new authorization (`5b14012`).
+- Nine HANDOFF headings; D1 ≤8192B; no `<details>`.
+- `design-approved ≠ implementation-authorized`; impl set ⊆ design set (`5b14012`).
+- SessionStart S = **one** `--part all`; N accelerator only if NORMS **and** DELIVERY both impl-auth; N≠S same-hook merge without redesign.
+- LOADED N = outer+all pack BEGIN/END + non-empty body · no channel omission; not receipt/hash-only.
+- Budget chars HARD_CAP 9500; author `handoff:budget` · ship `handoff:check`.
+- Owner brief = status table; bare **상태** no wave.
+- Topology single; no warm-base re-fork; p17 / PANE-DEATH U1–U11 immutable.
 
 ## Evidence
 
-- M-1 cutover: `scripts/session-context.ts` `buildAllContext` fit · `.claude/settings.json` · `.codex/hooks.json` · tests.
-- Handoff B: `handoff:budget` · `docs/HANDOFF-AUTHORING.md`.
-- SESSION-START L0 · inject ops · DELIVERY adapters.
+- NORMS review: propose §7.3 · §11 #2/#4 · Phase 3 plan §12 · pack sources live.
+- M-1: `session-context.ts` fit · `.claude/settings.json` · `.codex/hooks.json` · `9b205a6`.
+- Handoff B: `handoff:budget` · `docs/HANDOFF-AUTHORING.md` · `055d73e`.
+- Cause B issue: todo Open issues · PRIORITIES P2c · `a6111e0`.
+- DELIVERY: `docs/SESSION-START.md` · freeze `cc03474` · approval `5b14012`.
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
-- Design: `HOOK-CACHE-FIX-DESIGN.md` · `SESSION-INJECT-VIEW-DESIGN.md`.
-- `tasks/traps.md` · `HANDOFF_WINDOWS.md`
 
 ## Don't redo
 
-- Re-split SessionStart into dual state/lessons handlers (cause A race).
-- Permanent nine-axis slim-delete; silent state mid-section char-cut.
-- Implement NORMS/MAP without new authorization; warm-base re-fork.
-- Treat Grok SessionStart stdout as S full; bare **상태** as wave trigger.
-- Drop fail-loud / Open table; product/herdr without Owner track pick.
-- Claim cause B **closed** via B-4 re-patch alone (autoUpdate reverts; root fix = upstream B-7).
+- Re-split S into dual state/lessons hooks (cause A).
+- Implement NORMS/MAP without package impl-auth; full rev-3 re-review when only #4 changes.
+- Treat design-approved NORMS as ship license; architect hand-code locked NORMS.
+- Claim cause B closed by B-4 re-patch; warm-base re-fork; Grok stdout = S full.
+- Bare status as wave; permanent nine-axis slim-delete.
