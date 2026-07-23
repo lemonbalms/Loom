@@ -21,6 +21,7 @@
     "loom": "bun run packages/cli/src/index.ts",
     "status": "bun run scripts/session-status.ts",
     "handoff:lint": "bun run scripts/session-status.ts --lint",
+    "handoff:budget": "bun run scripts/handoff-budget.ts",
     "session-context:lint": "bun run scripts/session-context.ts --lint",
     "inject:lint": "bun run scripts/session-context.ts --lint",
     "session:bootstrap": "bun run scripts/session-context.ts --format raw",

@@ -96,16 +96,20 @@ Last-resort `truncateContext` remains for lessons / only-pinned overflow only.
 
 ## Checklist (ship handoff/inject changes)
 
+Author confirm/write SSOT: **[`docs/HANDOFF-AUTHORING.md`](../HANDOFF-AUTHORING.md)** (Template A confirm · B `handoff:budget`).
+
 ```bash
+bun run handoff:budget  # while drafting — per-part chars · D1 · One-line · diet list
 bun run handoff:check   # handoff:lint && session-context:lint
 bun run status          # Health ends with inject:full when under target
 ```
 
 | Gate | Pass means |
 |------|------------|
+| `handoff:budget` | authoring feedback (does not replace ship gate) |
 | `handoff:lint` | nine headings · One-line ≤120 · D1 · structure |
 | `session-context:lint` | per-part table · **omitted: (none)** · STATE_TARGET warn only |
 | Agent on omit warn | Read named `##` section from `HANDOFF.md` |
 | Owner brief | Echo `bun run status` only — never paste full inject |
 
-**Status:** recommendation fully wired in AGENTS · package `handoff:check` · CLI inject:full (2026-07-23).
+**Status:** recommendation fully wired in AGENTS · package `handoff:check` · `handoff:budget` · CLI inject:full (2026-07-23).

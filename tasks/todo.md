@@ -1,16 +1,13 @@
 # Todo — Loom
 
-## Current override — SESSION-START-DELIVERY Phase 0a→2
+## Current — post handoff B · Owner track pick
 
 > SSOT = `HANDOFF.md`. Start: **`bun run status`**.
-> rev-3 design approved · **implementation-authorized = DELIVERY only** (`5b14012`).
-> Locked spec: architect dispatches `grok-impl → codex-impl`; no hand-code.
+> DELIVERY + handoff B **shipped**. NORMS/MAP design-only (`5b14012`).
 
 ### Do now (next session)
 
-- [ ] **Phase 0a:** `docs/SESSION-START.md` L0 · AGENTS trigger split · composite lexicon rule.
-- [ ] **Phase 1:** S END adapter/fixtures · Codex `codex-plain` wiring · Grok ritual docs.
-- [ ] **Phase 2:** Template A/S/R · capability/equivalence tests · `bun test`/`handoff:check` · ship.
+- [ ] Owner: **WP5-followup** | **product** | **idle** (safe default = idle)
 
 ### Shipped (don't redo)
 
@@ -18,8 +15,10 @@
 - [x] Dashboard v1 `0001a94`
 - [x] Product 0.28.1 · adapter `6e2df8a`
 - [x] SESSION-START rev-3 design · Addendum C+D · owner approval `5b14012`
+- [x] SESSION-START DELIVERY 0a–2
+- [x] Handoff authoring B — `handoff:budget` + `docs/HANDOFF-AUTHORING.md`
 
 ### After DELIVERY
 
-- [ ] Handoff authoring B helper (A is absorbed by DELIVERY templates)
+- [x] Handoff authoring B helper — `handoff:budget` + `docs/HANDOFF-AUTHORING.md` (A absorbed by DELIVERY)
 - [ ] Owner: **WP5-followup** | **product** | **idle**

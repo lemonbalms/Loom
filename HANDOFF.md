@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · SESSION-START DELIVERY 0a–2 **shipped** · next = handoff B or Owner track.
+> Loom v0.28.1 · handoff B shipped · next = Owner track (WP5-f / product / idle).
 
 ## Current loop
 
@@ -13,26 +13,26 @@
 |---|---|---|
 | Product | v0.28.1 release close; adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (protocol 17 · live 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | inject ops **done**; SESSION-START DELIVERY **0a–2 done**; handoff B queued | `docs/SESSION-START.md` L0 |
+| Harness | DELIVERY 0a–2 + handoff B **done**; Owner track open | `docs/HANDOFF-AUTHORING.md` |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### Post-DELIVERY: Handoff authoring B or Owner product track
+### Owner track pick: WP5-followup | product | idle
 
-**Goal:** After SESSION-START-DELIVERY 0a–2, pick the next harness/product track without reopening NORMS/MAP.
+**Goal:** After handoff authoring B, choose product/harness residual track or stay idle.
 
-**Authority:** DELIVERY shipped (L0 · adapters · triggers · Codex hooks). Owner approval `5b14012` still limits implementation to DELIVERY only — NORMS/MAP remain design-approved only.
+**Authority:** B shipped (`handoff:budget` · `docs/HANDOFF-AUTHORING.md`). NORMS/MAP remain design-only (`5b14012`). Safe default = **idle** until Owner pick.
 
 **Session start:**
 
 1. `bun run status` · `bun run handoff:check`; L0 = `docs/SESSION-START.md`.
-2. Default next: **Handoff 작성 도우미 (B)** from `HANDOFF-AUTHORING-OPT-PROPOSE.md`, or Owner product track (WP5-f / idle).
-3. Do **not** implement NORMS-RECEIPT or CONTEXT-MAP without a new authorization decision.
+2. Author edits: `bun run handoff:budget` then `handoff:check` — guide `docs/HANDOFF-AUTHORING.md`.
+3. Do **not** implement NORMS/MAP or product/herdr without Owner track pick.
 
 **Line:** topology **`single`** · full chain when needed = Codex→Grok→Codex.
 
-**Done when:** B shipped or Owner picks product/idle with HANDOFF updated.
+**Done when:** Owner picks WP5-followup / product / idle and HANDOFF reflects it.
 
 **Must not:** NORMS/MAP implementation; Grok SessionStart stdout as S full; permanent nine-axis slim-delete; product/herdr without Owner track pick.
 
@@ -40,18 +40,17 @@
 
 | Check | Deadline | Impact | Evidence |
 |---|---|---|---|
-| DELIVERY Phase 0a L0/trigger split | **done** | session SSOT | `docs/SESSION-START.md` · AGENTS trigger table |
-| DELIVERY Phase 1–2 adapters/tests | **done** | 3-host S wire | END markers · `--format` · `.codex/hooks.json` · trigger tests |
-| Handoff 확인 템플릿 (A) | **absorbed** | owner readability | DELIVERY Template A/S/R |
-| Handoff 작성 도우미 (B) | **queued** | author budget safety | `HANDOFF-AUTHORING-OPT-PROPOSE.md` |
-| Inject ops (nine · omit · STATE_TARGET · handoff:check) | **done** | restore model | `b935969` · `240a0df` · `22eb76e` |
-| Owner product track | after B or pick | WP5-f / product / idle | Owner pending |
+| DELIVERY Phase 0a–2 | **done** | 3-host S wire | `docs/SESSION-START.md` · adapters · triggers |
+| Handoff confirm A | **done** | owner readability | DELIVERY Template A/S/R |
+| Handoff authoring B | **done** | author budget safety | `handoff:budget` · `docs/HANDOFF-AUTHORING.md` |
+| Inject ops (nine · omit · STATE_TARGET) | **done** | restore model | `handoff:check` · inject design |
+| Owner product track | **open** | WP5-f / product / idle | Owner pending |
 
 ## Owner pending
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| After handoff-opt: WP5-followup / product / idle | product direction | **idle** until pick | todo · HOOK-CACHE |
+| WP5-followup / product / idle | product direction | **idle** until pick | todo · HOOK-CACHE |
 | Integration-test flake | cost/scope | isolation recipe | todo |
 | HOOKCACHE-D-VERIFY | with WP5-followup | paused | `HOOK-CACHE-FIX-DESIGN.md` |
 | RULE-ENFORCEABILITY | product | document only | spike |
@@ -67,18 +66,20 @@
 - S full requires BEGIN+matching END per part; status = **view**; inject = **nine + traps**.
 - Budget = **chars** (HARD_CAP 9500); drop = **whole section** + `inject omitted:`. Pinned: status · Current action · traps.
 - Prefer raw ≤ **STATE_TARGET 7500**; ship handoff edits with `bun run handoff:check`.
+- Author drafts: `bun run handoff:budget` — guide `docs/HANDOFF-AUTHORING.md`.
 - Owner brief ≠ inject dump. Template **S**/`상태` never auto-waves.
 - Fail-loud `unknown/malformed`; Open(blocking) markdown **table**.
 - Topology **single** default; line ≠ lane. WP5 residual only (no warm-base re-fork). Protocol 17 / PANE-DEATH U1–U11 immutable.
 
 ## Evidence
 
-- SESSION-START L0: `docs/SESSION-START.md` · AGENTS/Claude trigger split · propose header drift closed.
-- Adapters: `session-context` END · `--format raw|claude-json|codex-plain` · `.codex/hooks.json` · `session:bootstrap`.
-- Triggers: `scripts/session-start-triggers.ts` + tests (S no-wave · composite #12).
+- Handoff B: `scripts/handoff-budget.ts` · `docs/HANDOFF-AUTHORING.md` · package `handoff:budget`.
+- SESSION-START L0: `docs/SESSION-START.md` · AGENTS/Claude trigger split.
+- Adapters: `session-context` END · `--format raw|claude-json|codex-plain` · `.codex/hooks.json`.
+- Triggers: `scripts/session-start-triggers.ts` + tests.
 - Approval: freeze `cc03474` · review C+D `3110e29` · owner `5b14012`.
-- Inject ops: `handoff:check` · `inject:full` · `SESSION-INJECT-VIEW-DESIGN.md`.
-- Product: PLAN 0.28.1 · R46 · adapter `6e2df8a` · Phase D `49b6a9d`.
+- Inject ops: `handoff:check` · `SESSION-INJECT-VIEW-DESIGN.md`.
+- Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
 - `tasks/traps.md` · `HANDOFF_WINDOWS.md`
 
 ## Don't redo

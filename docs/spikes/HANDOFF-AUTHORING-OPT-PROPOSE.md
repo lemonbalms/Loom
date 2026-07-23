@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | proposed for next session |
+| **Status** | **shipped** — A absorbed by DELIVERY templates; B = `handoff:budget` + `docs/HANDOFF-AUTHORING.md` (2026-07-23) |
 | **Date** | 2026-07-23 |
 | **Depends on** | inject ops shipped (`b935969` · `SESSION-INJECT-VIEW-DESIGN.md`) |
 | **Does not** | product packages · WP5 warm-base re-fork · Phase E |
@@ -30,10 +30,10 @@
 
 ## Done when
 
-- [ ] “핸드오프 확인해” 시 오너 응답 = status 표 + 게이트 요약 (전문 inject/해시 나열 아님)
-- [ ] 작성 후 `bun run handoff:check` green · inject `omitted:(none)` · raw ≤ STATE_TARGET preferred
-- [ ] 작성 가이드 1곳 SSOT (`SESSION-INJECT-VIEW-DESIGN` 또는 짧은 `HANDOFF-AUTHORING.md`)에 확인/작성 체크리스트
-- [ ] HANDOFF 자체 9축 dense · One-line ≤120 · lint 0
+- [x] “핸드오프 확인해” 시 오너 응답 = status 표 + 게이트 요약 (전문 inject/해시 나열 아님) — DELIVERY Template A
+- [x] 작성 후 `bun run handoff:check` green · inject `omitted:(none)` · raw ≤ STATE_TARGET preferred
+- [x] 작성 가이드 SSOT = `docs/HANDOFF-AUTHORING.md` (+ inject design link)
+- [x] `bun run handoff:budget` · section template `--template` · HANDOFF 9축 dense
 
 ## Must not
 
