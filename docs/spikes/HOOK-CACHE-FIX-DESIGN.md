@@ -2,6 +2,12 @@
 
 작성 2026-07-20 · 레인: 설계 서브에이전트 · **리포 파일 무수정 확인**(원 산출물은 본 문서뿐 — 스크래치패드에서 리포로 이관)
 
+| Field | Value |
+|-------|--------|
+| **Track label** | **`WP5-followup`** (owner track pick) — WP5 warm-base spike is **done/`defer`**; this doc is the residual work |
+| **Scope** | SessionStart **prefix normalize + hook-cache** fix (권고 M-1). **Not** warm-base fork re-bake |
+| **Related** | [`WARM-BASE-FORK-SPIKE.md`](./WARM-BASE-FORK-SPIKE.md) · HANDOFF Owner pending · `tasks/todo.md` WP5-followup |
+
 > **스파이크 문서와의 관계**: 프롬프트 캐시가 매 세션 깨지는 **원인 규명(원인 A 순서 레이스 ·
 > 원인 B claude-mem 분 단위 ts)과 그 실측 근거는 [`WARM-BASE-FORK-SPIKE.md`](./WARM-BASE-FORK-SPIKE.md)에 있다.**
 > 본 문서는 그 규명을 입력으로 받는 **해소 설계**다 — 후보안 비교·권고·검증 계획이 여기 있고, 원인
