@@ -8,12 +8,32 @@
 
 ## Session start ritual (mandatory)
 
-On the **first turn of a new session** (or when the user says “이어서”, “진행해”, “핸드오프”, “상태”, “status”), **before** large implementation:
+**L0 SSOT:** [`docs/SESSION-START.md`](./docs/SESSION-START.md) (triggers · templates · host matrix).  
+This section is the L1 entry; do not diverge on trigger masks.
 
-컨텍스트에 `[LOOM-SESSION-CONTEXT` 센티널이 보이면 아래 표의 ①status·②HANDOFF 9섹션·
-③lessons 인덱스는 **주입으로 대체됨 — 생략**한다(카테고리 lessons 로드·WORKFLOW
-grep은 종전대로). Hook inject = **Dashboard 표(뷰)** + **nine HANDOFF sections(모델)** +
-traps — 표는 요약 뷰일 뿐 축 삭제가 아니다(`docs/spikes/SESSION-INJECT-VIEW-DESIGN.md`).
+### When this ritual runs
+
+| Owner utterance | Template | Wave? | Notes |
+|-----------------|----------|:-----:|-------|
+| **상태** / `status` | **S** | **no** | status table only |
+| **핸드오프 확인해** | **A** | **no** | status + Gate brief + handoff:check line |
+| **이어서** / **진행해** / **자율적으로** / **단계적으로** | **R** | **yes** | brief → Current action |
+| First turn, no explicit trigger | **R** | **yes** | cold start default |
+| “상태 확인하고 이어서 해” | **S then R** | yes after S | composite — not a conflict |
+| **멈춰** / **계획만** / **커밋 금지** | masks | per L0 | higher precedence than continue |
+
+**Must not:** treat bare **상태** / **status** as a wave trigger (F5).
+
+On Template **R** turns (and cold start), **before** large implementation:
+
+컨텍스트에 `[LOOM-SESSION-CONTEXT` 센티널 **BEGIN+matching END** 가 보이면 아래 표의
+①status·②HANDOFF 9섹션·③lessons 인덱스는 **주입으로 대체됨 — 생략**한다(카테고리
+lessons 로드·WORKFLOW grep은 종전대로). Hook inject = **Dashboard 표(뷰)** +
+**nine HANDOFF sections(모델)** + traps — 표는 요약 뷰일 뿐 축 삭제가 아니다
+(`docs/spikes/SESSION-INJECT-VIEW-DESIGN.md`). END 부재·omit/truncation 표식 →
+S ≠ full → ritual 복구.
+
+On Template **S** / **A** turns: run status (and Template A extras) only — **no** auto-wave.
 
 **Inject 채널 vs 오너 보고 (섞지 말 것):**
 
@@ -81,7 +101,9 @@ Use Korean if the user writes Korean. Do **not** skip this briefing — keep it 
 **Do not** end with “이어서 할까요?” / “진행할까요?” / “커밋할까요?” as a default.  
 Owner wants **stepwise autonomous progress** through the current gate wave.
 
-### 3) Then work (autonomous default)
+### 3) Then work (Template **R** only — autonomous default)
+
+**Skip this section** for Template **S** / **A** (read-only). After those templates, stop.
 
 1. After the status table, **immediately execute** the next gate action from HANDOFF/`bun run status`.
 2. Chain within the wave without re-asking: e.g. PLAN PATCH → tests → docs → commit/push when that is the natural end of the wave (see Standing rules).

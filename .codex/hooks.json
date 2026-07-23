@@ -1,0 +1,24 @@
+{
+  "description": "Loom SESSION-START-DELIVERY — Codex SessionStart S accelerator (codex-plain).",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run \"$(git rev-parse --show-toplevel)/scripts/session-context.ts\" --part state --format codex-plain",
+            "timeout": 30,
+            "statusMessage": "Loom session state"
+          },
+          {
+            "type": "command",
+            "command": "bun run \"$(git rev-parse --show-toplevel)/scripts/session-context.ts\" --part lessons --format codex-plain",
+            "timeout": 30,
+            "statusMessage": "Loom lessons index"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -2,10 +2,10 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **revised after Addendum C full review** — still **not approved / not locked** |
+| **Status** | **design-approved** (owner `5b14012`) · freeze `cc03474` · **implementation-authorized: SESSION-START-DELIVERY only** |
 | **Date** | 2026-07-23 (rev-3) |
 | **Prior** | draft 2026-07-23; dual review in [`SESSION-START-UNIFIED-REVIEW.md`](./SESSION-START-UNIFIED-REVIEW.md) (Codex adversarial + Claude architect verify + fable-advisor) |
-| **Review verdict** | Addendum C = rev-2 **full independent review**, PENDING-REVISION (H1 · M1–M4 · L1–L4) → rev-3 minimal delta applied; delta re-review required |
+| **Review verdict** | Addendum C = rev-2 full review PENDING-REVISION → rev-3 delta · Addendum D **APPROVE-DELTA** (`3110e29`) · owner picks §11 |
 | **Audience** | Owner · architect (Claude Code / Codex / Grok) |
 | **Depends on** | `SESSION-INJECT-VIEW-DESIGN.md` · inject ops shipped · `HANDOFF-AUTHORING-OPT-PROPOSE.md` |
 | **Does not** | product packages · herdr/card · WP5 warm-base · Phase E · lifecycle Stop 센서 · R{n} |
@@ -23,14 +23,16 @@
 | Addendum A | 같은 initial draft + 최초 리뷰 | 독립 검증·F2 처방 교정·A1–A3 발견의 provenance · **현재 verdict 아님** |
 | rev-1 | 최초 findings를 반영한 author rewrite | “addressed”는 author claim · 전체 독립 재리뷰/승인 아님 |
 | Addendum B D1–D7 | rev-1 §11 | Decision log blocker · rev-2에서 verified closed (§C.1) |
-| Addendum C | `38202ff:docs/spikes/SESSION-START-UNIFIED-PROPOSE.md` · rev-2 전문 | **현재 유효 전체 리뷰** · PENDING-REVISION · rev-3 delta 재리뷰 대기 |
+| Addendum C | `38202ff:docs/spikes/SESSION-START-UNIFIED-PROPOSE.md` · rev-2 전문 | full independent review · PENDING-REVISION (historical) |
+| Addendum D | rev-3 delta on `cc03474` / blob `6966d57c` | **APPROVE-DELTA** · `3110e29` |
+| Owner approval | §11 Owner pick + record | **`5b14012`** · design-approved DELIVERY·NORMS·MAP · impl-authorized **DELIVERY only** |
 
 **Rules:**
 
 - historical 좌표는 반드시 `commit:path:line`으로 읽는다.
 - `addressed` ≠ `verified` ≠ `design-approved` ≠ `implementation-authorized`.
-- 승인 전 이 rev-3를 **immutable blob/commit으로 freeze**한다. 현재 working-tree 문구 자체는
-  아직 승인 대상 식별자가 아니다.
+- Design freeze target = `cc03474:docs/spikes/SESSION-START-UNIFIED-PROPOSE.md` (blob `6966d57c`).
+  Post-approve §11-only edits and delivery implementation docs do not re-open freeze.
 
 ---
 
@@ -96,9 +98,9 @@ implementation은 DELIVERY L0 생성 후 시작한다.
 
 | Package | Status |
 |---------|--------|
-| SESSION-START-DELIVERY | draft rev-3 · pending delta re-review/owner |
-| NORMS-RECEIPT | draft rev-3 · pending delta re-review/owner; implementation fixture gated |
-| CONTEXT-MAP | draft rev-3 (M0) · pending delta re-review/owner |
+| SESSION-START-DELIVERY | **design-approved** · **implementation-authorized** · Phase 0a→2 delivery |
+| NORMS-RECEIPT | **design-approved** · implementation **not** authorized (fixture gated) |
+| CONTEXT-MAP | **design-approved** (M0) · implementation **not** authorized |
 
 ---
 

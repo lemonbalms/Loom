@@ -16,6 +16,7 @@ import {
   checkSoftCap,
   clipOneLineResume,
   fitPartsToBudget,
+  formatSessionOutput,
   measureStateBudget,
   stripDetailsBlocks,
   truncateContext,
@@ -46,6 +47,19 @@ describe("V-2 sentinel preservation", () => {
     const iLessons = all.indexOf("[LOOM-SESSION-CONTEXT v1 · lessons]");
     expect(iState).toBeGreaterThanOrEqual(0);
     expect(iLessons).toBeGreaterThan(iState);
+  });
+
+  test("matching END markers present (rev-3 §5.2 / §9)", () => {
+    const all = buildAllContext();
+    expect(all.includes("[LOOM-SESSION-CONTEXT-END v1 · state]")).toBe(true);
+    expect(all.includes("[LOOM-SESSION-CONTEXT-END v1 · lessons]")).toBe(true);
+    const iStateBegin = all.indexOf("[LOOM-SESSION-CONTEXT v1 · state]");
+    const iStateEnd = all.indexOf("[LOOM-SESSION-CONTEXT-END v1 · state]");
+    const iLessonsBegin = all.indexOf("[LOOM-SESSION-CONTEXT v1 · lessons]");
+    const iLessonsEnd = all.indexOf("[LOOM-SESSION-CONTEXT-END v1 · lessons]");
+    expect(iStateEnd).toBeGreaterThan(iStateBegin);
+    expect(iLessonsEnd).toBeGreaterThan(iLessonsBegin);
+    expect(iStateEnd).toBeLessThan(iLessonsBegin);
   });
 
   test("delimiter is harness-shaped \\n\\n---\\n", () => {
@@ -616,12 +630,85 @@ describe("CLI behaviours", () => {
       const payload = JSON.parse(stdout.trim()) as {
         hookSpecificOutput: { additionalContext: string };
       };
+      const ctx = payload.hookSpecificOutput.additionalContext;
+      expect(ctx.includes(`[LOOM-SESSION-CONTEXT v1 · ${part}]`)).toBe(true);
       expect(
-        payload.hookSpecificOutput.additionalContext.includes(
-          `[LOOM-SESSION-CONTEXT v1 · ${part}]`,
-        ),
+        ctx.includes(`[LOOM-SESSION-CONTEXT-END v1 · ${part}]`),
       ).toBe(true);
     }
+  });
+
+  test("--format codex-plain emits plain text with END (not JSON)", async () => {
+    const proc = Bun.spawn(
+      [
+        "bun",
+        "run",
+        "scripts/session-context.ts",
+        "--part",
+        "state",
+        "--format",
+        "codex-plain",
+      ],
+      {
+        cwd: joinRoot(),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [code, stdout] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+    ]);
+    expect(code).toBe(0);
+    expect(stdout.trimStart().startsWith("{")).toBe(false);
+    expect(stdout.includes("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(true);
+    expect(stdout.includes("[LOOM-SESSION-CONTEXT-END v1 · state]")).toBe(true);
+    expect(stdout.includes("hookSpecificOutput")).toBe(false);
+  });
+
+  test("--format raw matches codex-plain envelope shape", async () => {
+    const proc = Bun.spawn(
+      [
+        "bun",
+        "run",
+        "scripts/session-context.ts",
+        "--part",
+        "lessons",
+        "--format",
+        "raw",
+      ],
+      {
+        cwd: joinRoot(),
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [code, stdout] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+    ]);
+    expect(code).toBe(0);
+    expect(stdout.includes("[LOOM-SESSION-CONTEXT v1 · lessons]")).toBe(true);
+    expect(stdout.includes("[LOOM-SESSION-CONTEXT-END v1 · lessons]")).toBe(
+      true,
+    );
+  });
+});
+
+describe("formatSessionOutput adapters", () => {
+  test("claude-json wraps once", () => {
+    const raw = "[LOOM-SESSION-CONTEXT v1 · state]\nbody\n[LOOM-SESSION-CONTEXT-END v1 · state]";
+    const out = formatSessionOutput(raw, "claude-json");
+    const payload = JSON.parse(out.trim()) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+    expect(payload.hookSpecificOutput.hookEventName).toBe("SessionStart");
+    expect(payload.hookSpecificOutput.additionalContext).toBe(raw);
+  });
+
+  test("codex-plain is plain text", () => {
+    const raw = "hello";
+    expect(formatSessionOutput(raw, "codex-plain")).toBe("hello\n");
   });
 });
 

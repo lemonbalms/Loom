@@ -44,11 +44,14 @@
 
 ## On session start
 
-Run the session-start ritual in AGENTS (imported above): `bun run status`, restore HANDOFF nine + traps + lessons index if SessionStart inject incomplete, then brief the owner.
+**L0:** [`docs/SESSION-START.md`](./docs/SESSION-START.md). Ritual entry: AGENTS (imported above).
 
-- Explicit **상태** / **핸드오프 확인해** → status or Template A only (**no** auto-wave).
-- Explicit **이어서** / **진행해** / cold start with no read-only trigger → execute Current action (full wave — Autonomy).
-- Inject is an accelerator; **ritual is SSOT** if envelopes/sentinels are missing.
+Run: `bun run status`, restore HANDOFF nine + traps + lessons index if SessionStart inject incomplete (need **BEGIN+matching END** per part), then brief the owner.
+
+- Explicit **상태** / **핸드오프 확인해** → Template **S** / **A** only (**no** auto-wave).
+- Explicit **이어서** / **진행해** / **단계적으로** / cold start with no read-only trigger → Template **R** (full wave — Autonomy).
+- Composite “상태 확인하고 이어서 해” → Template **S** then **R** (ordered).
+- Inject is an accelerator; **ritual is SSOT** if envelopes/sentinels are missing. Grok SessionStart stdout ≠ S full.
 
 **Exception:** if the user opens with an explicit unrelated request, that request takes precedence — give a one-line status and do what was asked.
 

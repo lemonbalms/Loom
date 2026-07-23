@@ -1,12 +1,18 @@
 /**
- * SessionStart hook context injector for Claude Code architect sessions.
- * Emits hookSpecificOutput JSON on stdout (opposite of bridge hook-sensor).
+ * SessionStart hook context injector (SESSION-START-DELIVERY).
+ *
+ * Host-neutral raw builders + format adapters (rev-3 §5.2):
+ *   --format raw          plain complete envelopes (ritual / debug)
+ *   --format claude-json  Claude SessionStart hookSpecificOutput JSON (default)
+ *   --format codex-plain  Codex SessionStart plain stdout (developer context)
  *
  * Usage:
  *   bun run scripts/session-context.ts --part state
- *   bun run scripts/session-context.ts --part lessons
- *   bun run scripts/session-context.ts --part all
+ *   bun run scripts/session-context.ts --part lessons --format codex-plain
+ *   bun run scripts/session-context.ts --part all --format raw
  *   bun run session-context:lint  (or: --lint)
+ *
+ * Opposite of bridge hook-sensor (which empties stdout).
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -50,6 +56,14 @@ export const SOFT_CAP = 12750;
  * (does not fail the gate). Policy: prefer HANDOFF diet over relying on omit.
  */
 export const STATE_TARGET = 7500;
+
+/** S envelope markers (rev-3 §5.2 — matching END required for S full). */
+export const STATE_BEGIN = "[LOOM-SESSION-CONTEXT v1 · state]";
+export const STATE_END = "[LOOM-SESSION-CONTEXT-END v1 · state]";
+export const LESSONS_BEGIN = "[LOOM-SESSION-CONTEXT v1 · lessons]";
+export const LESSONS_END = "[LOOM-SESSION-CONTEXT-END v1 · lessons]";
+
+export type SessionFormat = "raw" | "claude-json" | "codex-plain";
 
 const UNCLOSED_DETAILS_WARN =
   "⚠ [LOOM-SESSION-CONTEXT] 미닫힘 <details> 블록 제외됨";
@@ -289,7 +303,7 @@ export function buildStateParts(
   const parts: StatePart[] = [
     {
       name: "sentinel",
-      text: "[LOOM-SESSION-CONTEXT v1 · state]",
+      text: STATE_BEGIN,
       dropOrder: 0,
       pinned: true,
     },
@@ -367,7 +381,9 @@ export function measureStateBudget(
   cap: number = HARD_CAP,
 ): StateBudgetReport {
   const parts = buildStateParts(handoffText, trapsText);
-  const fitted = fitPartsToBudget(parts, cap);
+  const reserve = STATE_END.length + 1;
+  const fitted = fitPartsToBudget(parts, Math.max(0, cap - reserve));
+  const finalChars = withEndMarker(fitted.text, STATE_END, cap).length;
   return {
     parts: parts.map((p) => ({
       name: p.name,
@@ -375,11 +391,11 @@ export function measureStateBudget(
       pinned: p.pinned,
       dropOrder: p.dropOrder,
     })),
-    rawChars: fitted.rawChars,
-    finalChars: fitted.finalChars,
+    rawChars: fitted.rawChars + reserve,
+    finalChars,
     hardCap: cap,
     omitted: fitted.omitted,
-    ok: fitted.omitted.length === 0 && fitted.finalChars <= cap,
+    ok: fitted.omitted.length === 0 && finalChars <= cap,
   };
 }
 
@@ -402,26 +418,60 @@ export function formatStateBudgetReport(report: StateBudgetReport): string {
 }
 
 /**
- * Build state injection block.
+ * Close a part envelope with matching END (rev-3 §5.2 / §9).
+ * Prefer keeping END under `cap` (clip body first). If still over, last-resort
+ * truncateContext may drop END → S ≠ full (correct fail-loud).
+ */
+export function withEndMarker(
+  body: string,
+  end: string,
+  cap: number = HARD_CAP,
+): string {
+  const sep = body.endsWith("\n") ? "" : "\n";
+  const closed = `${body}${sep}${end}`;
+  if (closed.length <= cap) return closed;
+
+  const budget = Math.max(0, cap - end.length - 1);
+  const marker = "\n…[truncated for END]";
+  let head = body;
+  if (head.length > budget) {
+    const keep = Math.max(0, budget - marker.length);
+    head = `${head.slice(0, keep)}${marker}`;
+  }
+  const out = `${head.endsWith("\n") ? head : `${head}\n`}${end}`;
+  return out.length <= cap ? out : truncateContext(out);
+}
+
+/**
+ * Build state injection block (complete envelope: BEGIN…END).
  *
  * **View vs model:** status table = compact view; nine HANDOFF sections = restore
  * model (all axes when under HARD_CAP). Over cap → whole-section omit by priority
  * (loud names), not silent mid-section char cut.
  *
- * Design: docs/spikes/SESSION-INJECT-VIEW-DESIGN.md
+ * Design: docs/spikes/SESSION-INJECT-VIEW-DESIGN.md · SESSION-START rev-3 §5.2
  */
 export function buildStateContext(
   handoffText?: string,
   trapsText?: string,
 ): string {
   const parts = buildStateParts(handoffText, trapsText);
-  return fitPartsToBudget(parts, HARD_CAP).text;
+  const reserve = STATE_END.length + 1;
+  const fitted = fitPartsToBudget(parts, HARD_CAP - reserve);
+  return withEndMarker(fitted.text, STATE_END, HARD_CAP);
 }
+
+/** Alias — host-neutral builder name from rev-3 §5.2. */
+export const buildStateRaw = buildStateContext;
 
 export function buildLessonsContext(): string {
   const lessons = stripDetailsBlocks(read("tasks/lessons.md"));
-  return ["[LOOM-SESSION-CONTEXT v1 · lessons]", lessons].join("\n\n");
+  const body = [LESSONS_BEGIN, lessons].join("\n\n");
+  return withEndMarker(body, LESSONS_END, HARD_CAP);
 }
+
+/** Alias — host-neutral builder name from rev-3 §5.2. */
+export const buildLessonsRaw = buildLessonsContext;
 
 /** Fixed order: state → lessons. Deterministic join matching harness delimiter. */
 export function buildAllContext(): string {
@@ -434,15 +484,32 @@ function buildRaw(part: string): string {
   return buildStateContext();
 }
 
-function emit(part: string): void {
-  const additionalContext = truncateContext(buildRaw(part));
+/**
+ * Wrap raw envelope(s) for a host wire format.
+ * - raw / codex-plain: plain text (Codex SessionStart treats plain stdout as context)
+ * - claude-json: one hookSpecificOutput JSON object (Claude SessionStart)
+ */
+export function formatSessionOutput(
+  raw: string,
+  format: SessionFormat,
+): string {
+  const body = raw.endsWith("\n") ? raw : `${raw}\n`;
+  if (format === "raw" || format === "codex-plain") {
+    return body;
+  }
+  // claude-json
   const payload = {
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext,
+      additionalContext: raw,
     },
   };
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
+  return `${JSON.stringify(payload)}\n`;
+}
+
+function emit(part: string, format: SessionFormat): void {
+  const additionalContext = truncateContext(buildRaw(part));
+  process.stdout.write(formatSessionOutput(additionalContext, format));
 }
 
 function parsePart(argv: string[]): string | null {
@@ -451,6 +518,17 @@ function parsePart(argv: string[]): string | null {
   const value = argv[idx + 1];
   if (value === "state" || value === "lessons" || value === "all") return value;
   return null;
+}
+
+function parseFormat(argv: string[]): SessionFormat {
+  const idx = argv.indexOf("--format");
+  if (idx < 0 || idx + 1 >= argv.length) return "claude-json";
+  const value = argv[idx + 1];
+  if (value === "raw" || value === "claude-json" || value === "codex-plain") {
+    return value;
+  }
+  // Unknown format → fail-open default (Claude path) so hooks do not die.
+  return "claude-json";
 }
 
 /** Soft-cap check used by --lint (and unit tests). */
@@ -513,7 +591,8 @@ if (import.meta.main) {
       // Unknown/missing part: fail-open (do not block session start).
       process.exit(0);
     }
-    emit(part);
+    const format = parseFormat(process.argv);
+    emit(part, format);
   } catch {
     // fail-open: any error → no stdout, exit 0
     process.exit(0);
