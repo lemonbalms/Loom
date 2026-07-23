@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · Phase D automation **shipped** (structure lint · status fail-loud · SessionStart≡no-hook tests) · topology was **single**/session=Grok · next = owner picks track (WP5 warm-base / product / Phase E only if ROADMAP) · line SSOT `DOGFOOD_LOOP` §0.5.
+> Loom v0.28.1 · Phase D shipped · plan_review Open(blocking) **table restored** (`없음`) · next = owner track pick (WP5 / product / idle; Phase E only if ROADMAP) · topology default **single** harness · `DOGFOOD_LOOP` §0.5.
 
 ## Current loop
 
@@ -24,18 +24,18 @@
 
 | Axis | Choice | Notes |
 |---|---|---|
-| **Topology (B) — inherited Default** | **`single`** for harness/docs-only; promote to **`full`** on complex decisions | Phase D used single + session=Grok |
+| **Topology (B) — inherited Default** | **`single`** for harness/docs-only; promote to **`full`** on complex decisions | Phase D + Open-table hygiene used single + session=Grok |
 | **Vendor chain (A) — full default** | **Codex → Grok → Codex verify** | restore when topology=`full` |
 | Claude / Grok / Other lines | as in `DOGFOOD_LOOP` §0.5.2 | Owner override |
 
 Goal:
-- Hold gate until Owner names next track. Safe default while pending: no Phase E; no product scope expansion; harness-only hygiene ok.
+- Hold product gate until Owner names next track. Safe default: no Phase E; no product scope expansion; harness-only hygiene only.
 
 Expected:
 - Owner choice recorded here; or explicit "idle" acceptance.
 
 Must not change:
-- product/card/relay/conv/herdr locks; PANE-DEATH U1–U11; protocol 17; nine-section HANDOFF; Phase D lint contracts without new defect.
+- product/card/relay/conv/herdr locks; PANE-DEATH U1–U11; protocol 17; nine-section HANDOFF; Phase D lint/fail-loud contracts; Open(blocking) **table** shape.
 
 Done when:
 - Next Current action gate is written after Owner pick (or idle acknowledged in Evidence).
@@ -47,7 +47,7 @@ Done when:
 | Owner next-track pick | open | unblocks product/WP5/Phase E routing | this section |
 | UK-5..UK-9 observations | nonblocking | follow-up only | `docs/PLAN.md` |
 | Integration-test flake track | owner-pending | keep isolation recipe | `tasks/todo.md` |
-| plan_review Open(blocking) table shape | nonblocking | status Open field is `unknown/malformed` until table contract restored | Phase D fail-loud (by design) |
+| plan_review Open(blocking) table | **done** | status Open = `없음` | `docs/plan_review.md` 2026-07-23 |
 
 ## Owner pending
 
@@ -76,6 +76,7 @@ Done when:
 
 - Product: `docs/PLAN.md` · `docs/plan_review.md` · R46 · adapter through `6e2df8a`
 - Phase D: `scripts/handoff-lint.ts` · `scripts/session-status.ts` · `scripts/handoff-checkpoint.test.ts` (structure lint · fail-loud · V4 equivalence)
+- Open(blocking) table restore 2026-07-23: `docs/plan_review.md` (stale R39 bullet cleared; author-close logs under historical section)
 - Continuity design: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` · Phase B `e281587` · Phase C `8a3ddba`
 - Line/lane + `full`/`single`: `docs/DOGFOOD_LOOP.md` §0.5 · `AGENTS.md` briefing
 - Archive/traps/Windows: `docs/HANDOFF_ARCHIVE.md` · `tasks/traps.md` · `HANDOFF_WINDOWS.md`
@@ -86,4 +87,4 @@ Done when:
 - Reopen PANE-DEATH U1–U11 or treat `card.done`/pane exit as completion authority.
 - Phase B/C/D automation already shipped — do not re-implement structure lint/fail-loud/equivalence from scratch.
 - Phase E / ROADMAP authority before Owner adopts ROADMAP.
-- Treat status `unknown/malformed` on Open blocking as a product outage — it flags non-table review shape (fix review table, do not weaken fail-loud).
+- Weaken status fail-loud when Open drifts off table shape — restore the **table**, do not invent `없음`.

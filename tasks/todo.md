@@ -1,11 +1,10 @@
 # Todo — Loom
 
-## Current override — Loom 0.28.1 release close shipped · Phase D next
+## Current override — Phase D shipped · owner next-track pick
 
-> SSOT는 `HANDOFF.md`. Loom 0.28.1 release close complete/shipped · source through `6e2df8a`.
-> first full 761/2 = checkpoint-only drift · final full 763/0 (2760 expect, 58 files, 302.48s) · checkpoint 24/0 · dist green · CLI Loom v0.28.1.
-> **다음 = SESSION-CONTINUITY Phase D automation**
-> (product-independent harness). PANE-DEATH PATCH 1–5 = v0.28.0 `d49a6b1` 종결.
+> SSOT는 `HANDOFF.md`. Loom 0.28.1 · Phase D automation shipped · Open(blocking) table restored.
+> **다음 = Owner track pick** (WP5 warm-base / product / idle). Phase E only if ROADMAP.
+> Safe default: harness-only hygiene; no product expansion.
 
 0. [x] **Phase B:** fixture V1~V6 + SOFT_CAP stale 단위 테스트 해소 + HANDOFF lint expected-red 고정 + state HARD_CAP 검증 (`e281587`)
 1. [x] **Phase C:** archive 수납처·nine-section HANDOFF·shared headings·entry/session-context 동기화 → `handoff:lint` green (lower-tier in-harness fallback)
@@ -20,6 +19,8 @@
    `handoff:lint` structure · status `unknown/malformed` fail-loud · SessionStart≡no-hook
    equivalence tests in `handoff-checkpoint.test.ts`. Topology single/session=Grok.
    No product semantics change · no Phase E.
+9b. [x] **plan_review Open(blocking) table restore:** stale R39 bullet → `(none)` markdown table;
+    author-close logs moved under historical section; `bun run status` Open = `없음`.
 10. [x] **herdr 0.7.5/protocol 17 adapter (source through `6e2df8a`):** R46 author-close + Fable advisor
     consulted · chain Codex→Grok4.5→Codex · live 3-kind (claude/codex/grok) · dogfood:herdr ok ·
     dogfood:up exit 0 · host 462/0 · first full 761/2 = checkpoint-only drift · final full 763/0

@@ -49,8 +49,17 @@
 
 ## Open (blocking)
 
-- **R39 M-1 (v0.24.2, PLAN 문안 lock)** — 테스트 스펙 ①·Security(a)의 부정 테스트를 **containment 어서션**으로 재정의: 적대적 `room.id` 군(`..` 상대 이탈·POSIX/Windows 절대경로·백슬래시 혼입)이 전부 state dir **직하 16-hex `.json` 파일**로 안착함(쓰기 성공 + 산출 경로의 `realState + sep` 프리픽스 어서션)을 고정하고, 가드 거부 분기(`persist.ts:389-391`)는 파생 구조상 도달 불가(가드 = 향후 `roomStatePath` 리팩터 대비 심층 방어 — containment 테스트가 그 회귀 앵커)임을 두 문안에 명기 · 가드 술어 추출·거부-분기 직접 테스트는 요구하지 않음(D7 "재작성 금지" 정합). **반영 후 재리뷰 없이 `approved` 전환 가능 (no R39b — Fable 사전 승인).**
-- (R24–R41은 전부 closed — R38 M-1·R40 M-A~M-D·**R41 M-1·M-2는 author-close 반영 완료**(R41은 위 "R41 lock 반영 로그"). 위 R39 M-1 항목도 실제 반영 완료(PLAN §0.24.2 containment 어서션 lock)이나 잔존 표기.)
+| ID | Item | Severity |
+|----|------|----------|
+| (none) | — | — |
+
+> **Shape contract (Phase D):** this section must stay a **markdown table** so
+> `bun run status` can parse Open blocking fail-loud. Bullet/prose drifts to
+> `unknown/malformed`. Residual R39 M-1 open bullet was **stale** (author-close
+> already reflected in PLAN §0.24.2 / Active review R39 **closed**); cleared
+> 2026-07-23. Author-close narratives live under the next section, not here.
+
+## Author-close logs (historical, non-blocking)
 
 ### R42 author-close 로그 (2026-07-20, 아키텍트/claude-rev)
 
