@@ -473,6 +473,11 @@ describe("Phase D — status fail-loud + Dashboard v1", () => {
     expect(s).toMatch(/\| Product \| v0\.28\.1 · `approved` \|/i);
     expect(s).toMatch(/\| Review \| R46 · open \*\*없음\*\* \|/);
     expect(s).toMatch(/\| Gate \| Owner next-track pick/);
+    // injectHealth only when CLI passes it — default buildStatus has no inject: tag
+    expect(s).not.toMatch(/inject:full/);
+    expect(buildStatus({ injectHealth: "inject:full" })).toMatch(
+      /Health \| .*inject:full/,
+    );
     expect(s).toMatch(/topology \*\*single\*\*/);
     expect(s).toMatch(/\| Blockers \| \(none\) \|/);
     expect(s).toMatch(/\| Health \| handoff:lint ✓ · parse ✓ \|/);

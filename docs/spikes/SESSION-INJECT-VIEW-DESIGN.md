@@ -91,3 +91,21 @@ Last-resort `truncateContext` remains for lessons / only-pinned overflow only.
 **ROI order:** (1) sharp Current action + traps (2) HANDOFF diet so omit never fires (3) short Don't redo/Invariants (4) status view (5) priority omit as insurance.
 
 **Anti-patterns:** permanent slim; raise HARD_CAP into silent platform cut; merge lessons into state; long prose that forces omit of Don't redo first.
+
+---
+
+## Checklist (ship handoff/inject changes)
+
+```bash
+bun run handoff:check   # handoff:lint && session-context:lint
+bun run status          # Health ends with inject:full when under target
+```
+
+| Gate | Pass means |
+|------|------------|
+| `handoff:lint` | nine headings · One-line ≤120 · D1 · structure |
+| `session-context:lint` | per-part table · **omitted: (none)** · STATE_TARGET warn only |
+| Agent on omit warn | Read named `##` section from `HANDOFF.md` |
+| Owner brief | Echo `bun run status` only — never paste full inject |
+
+**Status:** recommendation fully wired in AGENTS · package `handoff:check` · CLI inject:full (2026-07-23).

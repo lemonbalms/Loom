@@ -1,8 +1,8 @@
 # 활성 함정 · 하지 말 것 (Loom)
 
-> 이 파일의 두 섹션은 **세션 시작 시 자동 주입**된다(`scripts/session-context.ts` state 파트).
+> 이 파일의 두 섹션은 **세션 시작 시 자동 주입**된다(`session-context` state · **pinned**).
 > 상세 서사·재현 경위는 `tasks/lessons.md` — 여기에는 재확인용 한 줄 요약만 둔다.
-> 항목 추가 시 주입 예산을 확인하라: `bun run session-context:lint` (SOFT_CAP 초과 시 게이트가 막는다).
+> 항목 추가 시: `bun run session-context:lint` (omit 금지 · 권장 raw ≤ STATE_TARGET 7500 · SOFT_CAP은 all 파트).
 
 ## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)
 

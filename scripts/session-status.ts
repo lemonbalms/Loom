@@ -333,8 +333,18 @@ export function buildStatus(opts?: {
   planText?: string;
   reviewText?: string;
   handoffText?: string;
+  /**
+   * Optional inject budget snippet for CLI `bun run status` only.
+   * Do **not** pass this from session-context (would recurse via measure→buildStatus).
+   * Examples: `inject:full` · `inject:omit` · `inject:>target`
+   */
+  injectHealth?: string;
 }): string {
   const f = buildDashboardFields(opts);
+  const health =
+    opts?.injectHealth && opts.injectHealth.length > 0
+      ? `${f.health} · ${opts.injectHealth}`
+      : f.health;
 
   return `## Loom · session
 | Key | Value |
@@ -347,11 +357,30 @@ export function buildStatus(opts?: {
 | Blockers | ${f.blockers} |
 | Owner | ${f.owner} |
 | Don't | ${f.dont} |
-| Health | ${f.health} |
+| Health | ${health} |
 
 SSOT: HANDOFF.md · PLAN · plan_review · DOGFOOD §0.5
-Run: bun run status · handoff:lint · bun test
+Run: bun run status · handoff:check · bun test
 `;
+}
+
+/**
+ * CLI-only inject health label (lazy import — never call from buildStateParts).
+ */
+export async function measureInjectHealthLabel(): Promise<string> {
+  try {
+    const sc = await import("./session-context.ts");
+    const report = sc.measureStateBudget();
+    if (report.omitted.length > 0) {
+      return `inject:omit(${report.omitted.length})`;
+    }
+    if (report.rawChars > sc.STATE_TARGET) {
+      return `inject:>target`;
+    }
+    return "inject:full";
+  } catch {
+    return "inject:?";
+  }
 }
 
 /**
@@ -389,7 +418,8 @@ if (import.meta.main) {
     process.exit(0);
   }
 
-  console.log(buildStatus());
+  const injectHealth = await measureInjectHealthLabel();
+  console.log(buildStatus({ injectHealth }));
   if (budgetWarn) {
     console.log(budgetWarn);
   }

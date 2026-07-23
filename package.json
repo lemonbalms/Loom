@@ -22,6 +22,8 @@
     "status": "bun run scripts/session-status.ts",
     "handoff:lint": "bun run scripts/session-status.ts --lint",
     "session-context:lint": "bun run scripts/session-context.ts --lint",
+    "inject:lint": "bun run scripts/session-context.ts --lint",
+    "handoff:check": "bun run handoff:lint && bun run session-context:lint",
     "check:mem-header": "bun run scripts/check-mem-header.ts",
     "watch:card": "bun run scripts/watch-card.ts",
     "link:loom": "bash scripts/link-loom.sh",
