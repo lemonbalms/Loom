@@ -1,11 +1,11 @@
 # HANDOFF — Loom
 
-**Updated:** 2026-07-22
+**Updated:** 2026-07-23
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`
 
 ## One-line resume
 
-> Loom v0.28.1 release close complete/shipped; source through `6e2df8a` · docs as-built 0.28 wave landed · next = Phase D automation · topology **single** (harness; session=Grok) · line glossary `DOGFOOD_LOOP` §0.5.
+> Loom v0.28.1 · Phase D automation **shipped** (structure lint · status fail-loud · SessionStart≡no-hook tests) · topology was **single**/session=Grok · next = owner picks track (WP5 warm-base / product / Phase E only if ROADMAP) · line SSOT `DOGFOOD_LOOP` §0.5.
 
 ## Current loop
 
@@ -13,54 +13,50 @@
 |---|---|---|
 | Product | v0.28.1 release close completed; adapter source through `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (protocol 17 + live 3-kind + `dogfood:herdr` ok) | `docs/spikes/HERDR-0.7.5-COMPAT.md` |
-| Harness | Phase C shipped; Phase D eligible after two real PATCH transitions | `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` |
+| Harness | Phase D automation shipped; Phase E blocked until ROADMAP | `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` |
 | Reuse | not proven | evidence below |
 
 ## Current action
 
-### SESSION-CONTINUITY Phase D automation
+### Post–Phase D — owner next-track pick
 
-**Orchestration line handoff** — SSOT: `docs/DOGFOOD_LOOP.md` §0.5 (**line** = 전체 역할 연결 · **lane** = line 안 역할/피어 · 축 A 벤더 체인 × 축 B 토폴로지 `full`/`single`).
+**Orchestration line handoff** — SSOT: `docs/DOGFOOD_LOOP.md` §0.5 (**line** = full role chain · **lane** = role/peer · axis A vendor × axis B topology `full`/`single`).
 
 | Axis | Choice | Notes |
 |---|---|---|
-| **Topology (B) — this wave Default** | **`single`** | harness Phase D · 분량 소 · 결정 적음. 세션=Grok이면 디스패치 없이 구현+명령 검증+ship. 검증 생략 아님. 복잡 결정 시 **`full` 승격** |
-| **Vendor chain (A) — inherited full default** | **Codex → Grok → Codex verify** | adapter wave actual; `full` 복귀 시 사용 |
-| Claude line | Claude → Grok → Claude Advisor | Owner override |
-| Grok line | Grok → Grok → Claude+Codex verify (else Grok verify fallback) | ≠ `single` |
-| Other CLI | 세 역할+fallback 명시 후 | Owner override |
-
-Model tier: orchestrator는 복잡·모호·설계/보안에 최상위, 그 외 승인·락 작업에 차상위. Owner line/topology override wins; else HANDOFF inheritance.
-
-**실행 옵션 (2026-07-23):** Phase D·하네스 = **topology `single` + session Grok**. Product/락 인접·복잡 결정 = **`full`** + 위 벤더 체인. `full`에서 Grok headless 불완주 시 `codex-impl` → Grok read-only verify, 둘 다 불가 시 lower-tier in-harness.
+| **Topology (B) — inherited Default** | **`single`** for harness/docs-only; promote to **`full`** on complex decisions | Phase D used single + session=Grok |
+| **Vendor chain (A) — full default** | **Codex → Grok → Codex verify** | restore when topology=`full` |
+| Claude / Grok / Other lines | as in `DOGFOOD_LOOP` §0.5.2 | Owner override |
 
 Goal:
-- Implement the already-adopted Phase D **bounded automation** only: (1) shared-heading lint structure checks, (2) status parser fail-loud on malformed/unknown, (3) actual SessionStart vs no-hook path equivalence tests.
+- Hold gate until Owner names next track. Safe default while pending: no Phase E; no product scope expansion; harness-only hygiene ok.
 
 Expected:
-- tests / `handoff:lint` / `bun run status` green with **no product behavior change**.
+- Owner choice recorded here; or explicit "idle" acceptance.
 
 Must not change:
-- product/card/relay/conv/herdr semantics; PANE-DEATH U1–U11; protocol caps; nine-section HANDOFF shape; ROADMAP / Phase E.
+- product/card/relay/conv/herdr locks; PANE-DEATH U1–U11; protocol 17; nine-section HANDOFF; Phase D lint contracts without new defect.
 
 Done when:
-- Phase D tests and handoff lint/status green, docs synced, commit/push.
+- Next Current action gate is written after Owner pick (or idle acknowledged in Evidence).
 
 ## Active checks
 
 | Check | Deadline | Impact | Evidence |
 |---|---|---|---|
-| Phase D automation | next harness gate (product-independent) | lint/status fail-loud + SessionStart equivalence | `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` §10 |
+| Owner next-track pick | open | unblocks product/WP5/Phase E routing | this section |
 | UK-5..UK-9 observations | nonblocking | follow-up only | `docs/PLAN.md` |
 | Integration-test flake track | owner-pending | keep isolation recipe | `tasks/todo.md` |
+| plan_review Open(blocking) table shape | nonblocking | status Open field is `unknown/malformed` until table contract restored | Phase D fail-loud (by design) |
 
 ## Owner pending
 
 | Decision | Why owner input is needed | Safe default while pending | Evidence |
 |---|---|---|---|
-| Integration-test flake track | diagnosis changes cost/scope | keep isolation recipe; do not expand scope | `tasks/todo.md` |
-| HOOKCACHE-D-VERIFY resume | deferred cache verification | remain paused through this wave | `docs/spikes/HOOK-CACHE-FIX-DESIGN.md` |
-| RULE-ENFORCEABILITY apply | code-enforcement layer is a product decision | document only; add no silent enforcement | `docs/spikes/RULE-ENFORCEABILITY.md` |
+| Next product / WP5 / idle | no ROADMAP; Phase D closed | stay idle; harness-only only | `tasks/todo.md` |
+| Integration-test flake track | diagnosis changes cost/scope | keep isolation recipe | `tasks/todo.md` |
+| HOOKCACHE-D-VERIFY resume | deferred cache verification | remain paused | `docs/spikes/HOOK-CACHE-FIX-DESIGN.md` |
+| RULE-ENFORCEABILITY apply | product decision | document only; no silent enforcement | `docs/spikes/RULE-ENFORCEABILITY.md` |
 
 ## Blockers
 
@@ -70,31 +66,24 @@ Done when:
 
 - HANDOFF alone owns the next session gate; PLAN and review remain linked SSOTs.
 - All nine checkpoint headings occur once; completed narrative stays outside this file.
-- `HARD_CAP=9500` is platform-pinned and `SOFT_CAP=12750` is policy-only.
-- Adapter locks immutable: 0.7.5/protocol **17 only**; no config-only bypass; exact named agent target; fail-closed identity (`agent_name_unrepresentable`).
-- PANE-DEATH U1–U11 / R44–R45 locks immutable; nine headings/caps; full chain inheritance.
-- Do not downgrade herdr or run a parallel 0.7.4 session.
-- PATCH 1–5 `24ceede`→`d49a6b1`; adapter `194d901`→`6e2df8a` immutable unless a new reproduced defect or R{n} changes the contract.
-- Every gate handoff records actual **vendor chain + topology** (`full`/`single`) as next-session default. Owner override wins; else prior session inheritance (`DOGFOOD_LOOP` §0.5).
+- `HARD_CAP=9500` platform-pinned; `SOFT_CAP=12750` policy-only; D1 whole-file ≤8192B.
+- Adapter locks: 0.7.5/protocol **17 only**; fail-closed identity; no herdr downgrade.
+- PANE-DEATH U1–U11 / R44–R45 immutable; nine headings; vendor chain + topology inheritance.
+- Phase D: `handoff:lint` = structure+budget; status uses `unknown/malformed` on unreadable shape; SessionStart core set ≡ no-hook partial read.
+- Every gate records actual **vendor chain + topology** as next Default. Owner override wins.
 
 ## Evidence
 
-- Product: `docs/PLAN.md` · `docs/plan_review.md` · R46 / Fable advisor consulted: yes
-- Adapter commits: fixture `194d901` → client `c0fcc00` → bridge `1284eef` → coverage `e538cad` · live fixes launch `848675f`/`5ac6d31` · named `edf3b59`/`48ecba3` · migrate `9f13b47`/`8ebfd11` · identity `1351add`/`6e2df8a`
-- Live 3-kind (claude/codex/grok) + dogfood:herdr ok + dogfood:up exit 0
-- Host **462/0**; first full **761/2** classified as checkpoint hardcode drift only; authoritative final full **763/0** (2760 expect, 58 files, 302.48s); checkpoint **24/0**
-- Version/dist: release close complete, dist green, CLI Loom v0.28.1; COMPAT/PLAN/archive/DOGFOOD/Windows/traps
-- Continuity: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` · Phase C `8a3ddba`
-- Docs as-built (0.28.1): `docs/CHANGELOG.md` · `docs/ARCHITECTURE.md` · `docs/USER_GUIDE.md` · `docs/HERDR_DESIGN.md` banner · `docs/TEST_PLAN.md` UC-15–18 · `index.md` · `docs/DOC-REFRESH-PLAN.md` (philosophy-first)
-- Provenance: `docs/HANDOFF_ARCHIVE.md` · traps `tasks/traps.md` · Windows `HANDOFF_WINDOWS.md`
-- Line/lane + topology `full`/`single`: `docs/DOGFOOD_LOOP.md` §0.5 (2026-07-23)
+- Product: `docs/PLAN.md` · `docs/plan_review.md` · R46 · adapter through `6e2df8a`
+- Phase D: `scripts/handoff-lint.ts` · `scripts/session-status.ts` · `scripts/handoff-checkpoint.test.ts` (structure lint · fail-loud · V4 equivalence)
+- Continuity design: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` · Phase B `e281587` · Phase C `8a3ddba`
+- Line/lane + `full`/`single`: `docs/DOGFOOD_LOOP.md` §0.5 · `AGENTS.md` briefing
+- Archive/traps/Windows: `docs/HANDOFF_ARCHIVE.md` · `tasks/traps.md` · `HANDOFF_WINDOWS.md`
 
 ## Don't redo
 
-- Protocol research · COMPAT §2–§3 re-map from scratch.
-- Launch readiness / named target / config migration / collision-free identity fixes already shipped.
-- herdr downgrade · dual 0.7.4 · config-only `herdrProtocol=17` greenwash.
+- Protocol/COMPAT re-map · herdr downgrade · config-only protocol greenwash.
 - Reopen PANE-DEATH U1–U11 or treat `card.done`/pane exit as completion authority.
-- Phase B `e281587` · Phase C `8a3ddba` · PANE-DEATH PATCH 1–5 · adapter source through `6e2df8a`.
-- Rerun already-green live 3-kind / dogfood smokes absent a new defect.
-- Phase E / ROADMAP before Phase D bounded automation lands.
+- Phase B/C/D automation already shipped — do not re-implement structure lint/fail-loud/equivalence from scratch.
+- Phase E / ROADMAP authority before Owner adopts ROADMAP.
+- Treat status `unknown/malformed` on Open blocking as a product outage — it flags non-table review shape (fix review table, do not weaken fail-loud).

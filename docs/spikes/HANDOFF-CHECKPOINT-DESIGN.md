@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **adopted / bounded Phase B→C rollout · Phase D deferred** |
+| **Status** | **adopted · Phase B/C/D complete · Phase E deferred (ROADMAP)** |
 | **Date** | 2026-07-22 |
 | **Target** | Loom 아키텍트·구현·검증 세션의 세션 간 상태 복원 |
 | **Related proposal** | [`LOOM-DEVELOPMENT-FLYWHEEL.md`](./LOOM-DEVELOPMENT-FLYWHEEL.md) |
@@ -466,11 +466,11 @@ lint는 이 목록을 함께 소비하며, 문서 템플릿·추출기·lint에 
 - 필수 heading 목록을 단일 공유 상수로 만들고 `HANDOFF.md`·session-context 추출·향후 lint가 같은
   상수를 사용하도록 계약한 뒤, `AGENTS.md` 부분 읽기 규칙과 함께 원자적으로 전환
 
-### Phase D — 자동화 (`deferred until two real PATCH transitions`)
+### Phase D — 자동화 (`shipped 2026-07-23`)
 
-- Phase C의 공유 heading 상수를 사용하는 lint 구조 검사
-- status 파서 fail-loud 전환
-- 실제 SessionStart와 무훅 경로 동등성 테스트
+- Phase C의 공유 heading 상수를 사용하는 lint 구조 검사 → `scripts/handoff-lint.ts` + `bun run handoff:lint`
+- status 파서 fail-loud 전환 → `unknown/malformed` (`scripts/session-status.ts`)
+- 실제 SessionStart와 무훅 경로 동등성 테스트 → `scripts/handoff-checkpoint.test.ts` Phase D V4
 
 ### Phase E — flywheel 연동
 

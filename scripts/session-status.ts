@@ -2,6 +2,9 @@
  * Print Loom session gate status for humans and coding agents (Codex/Claude).
  * Usage: bun run status
  *        bun run handoff:lint  (or: bun run scripts/session-status.ts --lint)
+ *
+ * Phase D: handoff:lint runs shared-heading structure checks; status parser is
+ * fail-loud (`unknown/malformed`) when PLAN/review/HANDOFF shape cannot be read.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -9,10 +12,17 @@ import {
   ONE_LINE_RESUME_HEADING,
   extractHandoffSection,
 } from "./handoff-headings.ts";
+import {
+  HANDOFF_UTF8_BUDGET,
+  lintLiveHandoff,
+} from "./handoff-lint.ts";
 
 const root = join(import.meta.dir, "..");
 
-export const HANDOFF_UTF8_BUDGET = 8192;
+export { HANDOFF_UTF8_BUDGET };
+
+/** Loud marker when a status field cannot be parsed (design §9.3 / Owner D4). */
+export const STATUS_MALFORMED = "unknown/malformed";
 
 function read(rel: string): string {
   const p = join(root, rel);
@@ -20,63 +30,89 @@ function read(rel: string): string {
   return readFileSync(p, "utf8");
 }
 
-function match1(text: string, re: RegExp): string {
+/**
+ * Extract first capture group, or STATUS_MALFORMED when text empty / no match.
+ * Never returns a silent placeholder that looks like a healthy empty state.
+ */
+export function matchRequired(text: string, re: RegExp): string {
+  if (!text || !text.trim()) return STATUS_MALFORMED;
   const m = re.exec(text);
-  return m?.[1]?.trim() ?? "—";
+  const v = m?.[1]?.trim();
+  return v && v.length > 0 ? v : STATUS_MALFORMED;
+}
+
+/** Parse plan_review Open (blocking) — fail-loud on missing/unparseable shape. */
+export function parseOpenBlocking(review: string): string {
+  if (!review || !review.trim()) return STATUS_MALFORMED;
+  const start = review.indexOf("## Open (blocking)");
+  if (start < 0) return STATUS_MALFORMED;
+  const end = review.indexOf("\n## ", start + 10);
+  const section = review.slice(start, end > start ? end : start + 1200);
+  const tableMatch = section.match(
+    /\|[^\n]+\|\n\|[-| :]+\|\n([\s\S]*?)(?:\n\n|\n### |\n## |$)/,
+  );
+  if (!tableMatch) return STATUS_MALFORMED;
+  const tableBody = tableMatch[1] ?? "";
+  if (/\(none\)/i.test(tableBody) || tableBody.trim() === "") {
+    return "없음";
+  }
+  const ids = [...tableBody.matchAll(/^\|\s*\*\*([^*|]+)\*\*/gm)].map((m) =>
+    m[1]!.trim(),
+  );
+  if (ids.length) return ids.join(", ");
+  const plain = [...tableBody.matchAll(/^\|\s*([^|]+?)\s*\|/gm)]
+    .map((m) => m[1]!.trim())
+    .filter((c) => c && !c.startsWith("---") && c !== "ID");
+  return plain.length ? plain.slice(0, 5).join(" · ") : STATUS_MALFORMED;
+}
+
+/** One-line resume from canonical heading only — no legacy whole-file fallback. */
+export function parseOneLineResume(handoff: string): string {
+  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
+  const resumeSection = extractHandoffSection(handoff, ONE_LINE_RESUME_HEADING);
+  if (!resumeSection) return STATUS_MALFORMED;
+  return matchRequired(resumeSection, />\s*(.+)/);
 }
 
 /** Session status table + Files/Run footer (same contract as historical CLI output). */
-export function buildStatus(): string {
-  const plan = read("docs/PLAN.md");
-  const review = read("docs/plan_review.md");
-  const handoff = read("HANDOFF.md");
+export function buildStatus(opts?: {
+  planText?: string;
+  reviewText?: string;
+  handoffText?: string;
+}): string {
+  const plan = opts?.planText ?? read("docs/PLAN.md");
+  const review = opts?.reviewText ?? read("docs/plan_review.md");
+  const handoff = opts?.handoffText ?? read("HANDOFF.md");
 
-  const version = match1(plan, /\|\s*\*\*Version\*\*\s*\|\s*\*\*([^*]+)\*\*/);
-  const status = match1(plan, /\|\s*\*\*Status\*\*\s*\|\s*\*\*`?([^`|*]+)`?/);
-  const latest = match1(review, />\s*\*\*최신:\*\*\s*(.+)/);
-  const openBlock = (() => {
-    const start = review.indexOf("## Open (blocking)");
-    if (start < 0) return "—";
-    const end = review.indexOf("\n## ", start + 10);
-    const section = review.slice(start, end > start ? end : start + 1200);
-    // only the first markdown table in Open (blocking)
-    const tableMatch = section.match(
-      /\|[^\n]+\|\n\|[-| :]+\|\n([\s\S]*?)(?:\n\n|\n### |\n## |$)/,
-    );
-    const tableBody = tableMatch?.[1] ?? "";
-    if (/\(none\)/i.test(tableBody) || tableBody.trim() === "") {
-      return "없음";
-    }
-    const ids = [...tableBody.matchAll(/^\|\s*\*\*([^*|]+)\*\*/gm)].map((m) =>
-      m[1]!.trim(),
-    );
-    if (ids.length) return ids.join(", ");
-    const plain = [...tableBody.matchAll(/^\|\s*([^|]+?)\s*\|/gm)]
-      .map((m) => m[1]!.trim())
-      .filter((c) => c && !c.startsWith("---") && c !== "ID");
-    return plain.length
-      ? plain.slice(0, 5).join(" · ")
-      : "있음 (plan_review Open 표 확인)";
-  })();
+  const version = matchRequired(
+    plan,
+    /\|\s*\*\*Version\*\*\s*\|\s*\*\*([^*]+)\*\*/,
+  );
+  const status = matchRequired(
+    plan,
+    /\|\s*\*\*Status\*\*\s*\|\s*\*\*`?([^`|*]+)`?/,
+  );
+  const latest = matchRequired(review, />\s*\*\*최신:\*\*\s*(.+)/);
+  const openBlock = parseOpenBlocking(review);
+  const resumeLine = parseOneLineResume(handoff);
 
-  // The shared extractor keeps status and SessionStart aligned on the same
-  // canonical heading. Fallback preserves a useful status line for malformed
-  // legacy handoffs without making that fallback an authority.
-  const resumeSection = extractHandoffSection(handoff, ONE_LINE_RESUME_HEADING);
-  const resume = match1(resumeSection ?? "", />\s*(.+)/);
-  const resumeLine =
-    resume !== "—"
-      ? resume
-      : match1(handoff, />\s*`?([^`<\n]{20,200})`?/);
+  const latestShown =
+    latest === STATUS_MALFORMED
+      ? STATUS_MALFORMED
+      : `${latest.slice(0, 120)}${latest.length > 120 ? "…" : ""}`;
+  const resumeShown =
+    resumeLine === STATUS_MALFORMED
+      ? STATUS_MALFORMED
+      : `${resumeLine.slice(0, 160)}${resumeLine.length > 160 ? "…" : ""}`;
 
   return `## 세션 상태 (Loom)
 | 항목 | 값 |
 |------|-----|
 | PLAN | ${version} |
 | Status | ${status} |
-| plan_review 최신 | ${latest.slice(0, 120)}${latest.length > 120 ? "…" : ""} |
+| plan_review 최신 | ${latestShown} |
 | Open blocking | ${openBlock} |
-| 다음 (HANDOFF) | ${resumeLine.slice(0, 160)}${resumeLine.length > 160 ? "…" : ""} |
+| 다음 (HANDOFF) | ${resumeShown} |
 | 워크플로 | docs/WORKFLOW.md |
 | 진입 규칙 | AGENTS.md (Codex/Claude) |
 | 주의 | Loom=제품 · Fable 5=리뷰 에이전트 |
@@ -105,8 +141,16 @@ if (import.meta.main) {
   const budgetWarn = checkHandoffBudget();
 
   if (lintOnly) {
-    if (budgetWarn) {
-      console.log(budgetWarn);
+    const structureErrors = lintLiveHandoff();
+    const all: string[] = [...structureErrors];
+    // Budget is also inside validateCheckpoint; keep budgetWarn for historical wording.
+    if (budgetWarn && !all.some((e) => e.includes("UTF-8 size"))) {
+      all.push(budgetWarn);
+    }
+    if (all.length > 0) {
+      for (const e of all) {
+        console.error(`handoff:lint FAIL — ${e}`);
+      }
       process.exit(1);
     }
     process.exit(0);

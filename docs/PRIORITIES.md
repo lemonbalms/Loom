@@ -27,7 +27,7 @@
 
 | 순위 | 테마 | 목표 | 검증 | 상태 |
 |------|------|------|------|------|
-| **P0** | **Session continuity Phase D** | shared-heading lint · status fail-loud · SessionStart vs no-hook 동등성 테스트 | `handoff:lint` · `bun run status` · 관련 테스트 green | **HANDOFF current** |
+| **P0** | **Session continuity Phase D** | ~~shared-heading lint · status fail-loud · SessionStart vs no-hook~~ **shipped 2026-07-23** | `handoff:lint` · checkpoint tests | **done** — next = owner track pick |
 | **P0b** | **Docs as-built (본 웨이브)** | CHANGELOG·ARCH·USER·HERDR 배너·TEST·index가 0.28.1과 모순 없음 | 문서 DoD (`DOC-REFRESH-PLAN` §6) | **in progress / ship with wave** |
 | **P1** | **UK-5..UK-9 관찰** | 후속 후보만 — 범위 확대 금지 | PLAN 메모 | nonblocking |
 | **P1b** | **Integration-test flake track** | isolation recipe 유지 | owner pending | **owner** — 범위 확장 금지 |

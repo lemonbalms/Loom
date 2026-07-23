@@ -16,10 +16,10 @@
 6. [x] **PANE-DEATH PATCH 3 (M3):** `c475604` — bridge proposal API · card auto-done/auto-close 0 · 비수락 ACK 단일 quarantine · replay-preserving fold · live/offline ack CLI · `classifyAck` · map-miss 관측; Grok 4.5 구현 + Codex 독립 검증
 7. [x] **PANE-DEATH PATCH 4 (M4):** `f9b0230` — tests-only 재기술 10파일(+923/−227) · §4.3/브랜치 순이득 감사 · production 0줄 · focused 165/1(known) · typecheck 6/6 · full 738/5 전량 분류
 8. [x] **PANE-DEATH PATCH 5 (M5):** `d49a6b1` — CLI/MCP 0.28.0 · `preservedCardPanes` 관측 · dist 재번들 · typecheck/dist green · full 741/4 전량 분류
-9. [ ] **⭐ Phase D automation (SESSION-CONTINUITY):** already-adopted bounded automation only —
-   (1) shared-heading lint structure checks · (2) status parser fail-loud on malformed/unknown ·
-   (3) actual SessionStart vs no-hook path equivalence tests. No product/card/relay/conv/herdr
-   semantics change · no Phase E/ROADMAP. Done when = Phase D tests + handoff lint/status green + docs sync + commit/push.
+9. [x] **⭐ Phase D automation (SESSION-CONTINUITY):** shipped — `scripts/handoff-lint.ts` +
+   `handoff:lint` structure · status `unknown/malformed` fail-loud · SessionStart≡no-hook
+   equivalence tests in `handoff-checkpoint.test.ts`. Topology single/session=Grok.
+   No product semantics change · no Phase E.
 10. [x] **herdr 0.7.5/protocol 17 adapter (source through `6e2df8a`):** R46 author-close + Fable advisor
     consulted · chain Codex→Grok4.5→Codex · live 3-kind (claude/codex/grok) · dogfood:herdr ok ·
     dogfood:up exit 0 · host 462/0 · first full 761/2 = checkpoint-only drift · final full 763/0

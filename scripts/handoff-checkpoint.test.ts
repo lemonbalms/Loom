@@ -1,8 +1,8 @@
 /**
- * SESSION-CONTINUITY Phase B fixture preservation + Phase C live checkpoint lock.
+ * SESSION-CONTINUITY Phase B fixture + Phase C live lock + Phase D automation tests.
  *
- * Test-only validator. Does NOT wire into production/session-start path.
- * Authority: docs/spikes/SESSION-CONTINUITY-PHASE-B-LOCK.md · HANDOFF-CHECKPOINT-DESIGN §11.
+ * Structural validator lives in production `handoff-lint.ts` (wired to handoff:lint).
+ * Authority: HANDOFF-CHECKPOINT-DESIGN §9.2 · §11 · Phase D bounded automation.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -14,7 +14,18 @@ import {
   buildTrapsBlock,
   truncateContext,
 } from "./session-context.ts";
-import { HANDOFF_UTF8_BUDGET, buildStatus } from "./session-status.ts";
+import {
+  HANDOFF_UTF8_BUDGET,
+  STATUS_MALFORMED,
+  buildStatus,
+} from "./session-status.ts";
+import {
+  FORBIDDEN_HISTORY_HEADINGS,
+  countHandoffHeading,
+  lintLiveHandoff,
+  validateCheckpoint,
+  validateReviewSourceShape,
+} from "./handoff-lint.ts";
 import {
   REQUIRED_HANDOFF_HEADINGS,
   extractHandoffSection as extractSection,
@@ -25,16 +36,8 @@ const ROOT = join(import.meta.dir, "..");
 const FIXTURE_REL = "scripts/fixtures/handoff-checkpoint-phase-b.md";
 const FIXTURE_PATH = join(ROOT, FIXTURE_REL);
 
-const FORBIDDEN_HISTORY_HEADINGS = [
-  "Completed waves",
-  "종결 웨이브",
-  "In progress evidence",
-  "Archive",
-  "WORKLOG",
-] as const;
-
 // ---------------------------------------------------------------------------
-// Pure helpers (test-only — not imported by production)
+// Pure helpers (test assembly only)
 // ---------------------------------------------------------------------------
 
 function readRepo(rel: string): string {
@@ -47,176 +50,12 @@ function utf8Bytes(s: string): number {
   return Buffer.byteLength(s, "utf8");
 }
 
-/** Count top-level `## ` headings matching exact title (no ###). */
 function countHeading(text: string, title: string): number {
-  const re = new RegExp(`^## ${escapeRegExp(title)}\\s*$`, "gm");
-  return (text.match(re) ?? []).length;
+  return countHandoffHeading(text, title);
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Loud structural validation of a Phase-B-shaped checkpoint document.
- * Returns [] when valid; otherwise human-readable failure reasons (never silent ok).
- */
-export function validateCheckpoint(doc: string, opts?: {
-  planVersion?: string;
-  trapsText?: string;
-  requireEvidenceTargets?: boolean;
-  root?: string;
-  expectedGate?: RegExp;
-}): string[] {
-  const errors: string[] = [];
-  const root = opts?.root ?? ROOT;
-  const planVersion = opts?.planVersion ?? "0.28.0";
-
-  // Real HTML details open tags only (prose mentioning the prohibition is fine).
-  if (/(^|\n)\s*<details[\s>]/m.test(doc) || /<\/details>/i.test(doc)) {
-    errors.push("forbidden <details> present");
-  }
-
-  for (const h of REQUIRED_HANDOFF_HEADINGS) {
-    const n = countHeading(doc, h);
-    if (n === 0) errors.push(`missing required heading: ${h}`);
-    if (n > 1) errors.push(`duplicate heading: ${h} (count=${n})`);
-  }
-
-  for (const h of FORBIDDEN_HISTORY_HEADINGS) {
-    if (countHeading(doc, h) > 0) {
-      errors.push(`forbidden history heading present: ${h}`);
-    }
-  }
-
-  // Renamed Current action (star emoji live form) is not the Phase B contract.
-  if (countHeading(doc, "⭐ Current action (read first)") > 0) {
-    errors.push("legacy starred Current action heading present (Phase B uses ## Current action)");
-  }
-
-  const bytes = utf8Bytes(doc);
-  if (bytes > HANDOFF_UTF8_BUDGET) {
-    errors.push(`UTF-8 size ${bytes}B > ${HANDOFF_UTF8_BUDGET}`);
-  }
-
-  // V1: PLAN version must appear; do not invent a second review authority table.
-  if (!doc.includes(planVersion)) {
-    errors.push(`PLAN version ${planVersion} not referenced`);
-  }
-  if (/##\s*Plan status/i.test(doc) || /##\s*Review verdict/i.test(doc)) {
-    errors.push("second PLAN/review authority section present");
-  }
-
-  // Unique next gate is configurable so the historical Phase B fixture remains
-  // immutable while the live Phase C checkpoint gets its own assertion.
-  const action = extractSection(doc, "Current action");
-  if (action) {
-    const gateTitles = [...action.matchAll(/^###\s+(.+)$/gm)].map((m) => m[1]!.trim());
-    if (gateTitles.length !== 1) {
-      errors.push(`Current action gate titles must be exactly 1, got ${gateTitles.length}`);
-    } else if (opts?.expectedGate && !opts.expectedGate.test(gateTitles[0]!)) {
-      errors.push(`unique next gate does not match expected contract: ${gateTitles[0]}`);
-    }
-  }
-
-  // Blockers contract: either literal `(none)` or a table/form with clear condition.
-  const blockers = extractSection(doc, "Blockers");
-  if (blockers) {
-    const body = blockers.replace(/^## Blockers\s*/, "").trim();
-    if (body === "") {
-      errors.push("malformed Blockers: empty body");
-    } else if (!/^\(none\)$/m.test(body) && !/clear condition|해제 조건|Clear condition/i.test(body)) {
-      errors.push("malformed Blockers: missing (none) or clear-condition form");
-    }
-  }
-
-  // Evidence targets must resolve inside the repo (Phase B lock V6 + V2).
-  if (opts?.requireEvidenceTargets !== false) {
-    const evidence = extractSection(doc, "Evidence");
-    if (evidence) {
-      const paths = [...evidence.matchAll(/`([^`]+)`/g)].map((m) => m[1]!);
-      for (const p of paths) {
-        if (
-          p.startsWith("docs/") ||
-          p.startsWith("tasks/") ||
-          p.startsWith("scripts/") ||
-          p === "HANDOFF.md" ||
-          p === "HANDOFF_WINDOWS.md" ||
-          p === "AGENTS.md"
-        ) {
-          if (!existsSync(join(root, p))) {
-            errors.push(`missing Evidence target: ${p}`);
-          }
-        }
-      }
-    }
-  }
-
-  // ROADMAP authority without adopted ROADMAP is loud-fail (V6).
-  if (!existsSync(join(root, "docs/ROADMAP.md"))) {
-    const claimsRoadmapAuthority =
-      /taken from ROADMAP|from ROADMAP\.md|authoritative.*ROADMAP|ROADMAP\s+SSOT|current loop.*ROADMAP\.md/i.test(
-        doc,
-      );
-    if (claimsRoadmapAuthority) {
-      errors.push("ROADMAP authority referenced without adopted docs/ROADMAP.md");
-    }
-  }
-
-  // Traps: require BOTH exact sections (partial rename is also loud failure — V6).
-  if (opts?.trapsText !== undefined) {
-    const trapsText = opts.trapsText;
-    if (trapsText.length > 0) {
-      const active = extractMarkdownSection(trapsText, "활성 함정");
-      const dont = extractMarkdownSection(trapsText, "하지 말 것");
-      if (!active) errors.push("traps missing exact section: 활성 함정");
-      if (!dont) errors.push("traps missing exact section: 하지 말 것");
-      const block = buildTrapsBlock(trapsText);
-      if (block === "") {
-        errors.push("traps headings renamed or missing — injection empty");
-      } else {
-        // Partial loss: one heading renamed still yields non-empty block — still fail.
-        if (!block.includes("## 활성 함정") || !block.includes("## 하지 말 것")) {
-          errors.push("traps partial loss — both 활성 함정 and 하지 말 것 required");
-        }
-      }
-    }
-  }
-
-  return errors;
-}
-
-/**
- * Test-only review-source shape check (design §11 V6: table→bullet must not pass).
- * Does not call production buildStatus; operates on synthetic review text only.
- */
-export function validateReviewSourceShape(reviewText: string): string[] {
-  const errors: string[] = [];
-  const start = reviewText.indexOf("## Open (blocking)");
-  if (start < 0) {
-    errors.push("review missing ## Open (blocking) section");
-    return errors;
-  }
-  const end = reviewText.indexOf("\n## ", start + 10);
-  const section = reviewText.slice(start, end > start ? end : start + 2000);
-  // Expected: markdown table with header separator. Bullet-only is a shape failure.
-  const hasTable =
-    /\|[^\n]+\|\n\|[-| :]+\|/.test(section) ||
-    /\|[-| :]+\|/.test(section);
-  const hasBulletsOnly =
-    /^\s*[-*]\s+/m.test(section) && !hasTable && !/\|\s*[-:]+\s*\|/.test(section);
-  if (!hasTable) {
-    errors.push("review Open(blocking) shape invalid: expected markdown table");
-  }
-  if (hasBulletsOnly) {
-    errors.push("review Open(blocking) shape drifted table→bullet");
-  }
-  // Explicit bullet rewrite of what used to be a table row also fails when no table.
-  if (/\*\*Open blocking\*\*/i.test(section) && !hasTable) {
-    errors.push("review Open(blocking) uses prose/bullet instead of table");
-  }
-  return errors;
-}
+/** Re-export production validator for any external importers of this test module. */
+export { validateCheckpoint, validateReviewSourceShape };
 
 /**
  * Assemble Phase-B execution-path state: sentinel + live buildStatus() + fixture
@@ -420,7 +259,7 @@ describe("live checkpoint (Phase D gate)", () => {
     const errs = validateCheckpoint(liveHandoff, {
       planVersion: "0.28.1",
       trapsText: liveTraps,
-      expectedGate: /SESSION-CONTINUITY Phase D automation/i,
+      expectedGate: /Post.–Phase D|owner next-track|Phase D automation/i,
     });
     expect(errs).toEqual([]);
     expect(liveHandoff).toMatch(/Goal:/);
@@ -429,12 +268,12 @@ describe("live checkpoint (Phase D gate)", () => {
     expect(liveHandoff).toMatch(/Done when:/);
     expect(extractSection(liveHandoff, "Owner pending")).toMatch(/Safe default/i);
     expect(extractSection(liveHandoff, "Evidence")).toMatch(/HANDOFF_WINDOWS\.md/);
-    expect(extractSection(liveHandoff, "Don't redo")).toMatch(/e281587|herdr/i);
+    expect(extractSection(liveHandoff, "Don't redo")).toMatch(/e281587|herdr|Phase D/i);
     expect(extractSection(liveHandoff, "Current loop")).toMatch(
-      /adapter source shipped|Phase D eligible/i,
+      /Phase D automation shipped|adapter source|v0\.28\.1/i,
     );
     expect(extractSection(liveHandoff, "Current action")).toMatch(
-      /Phase D automation|bounded automation/i,
+      /Post.–Phase D|owner next-track|Phase D/i,
     );
     expect(extractSection(liveHandoff, "Blockers")).toMatch(/\(none\)/);
   });
@@ -604,8 +443,8 @@ describe("V6 — drift/failure injection (loud reject, no live mutation)", () =>
   });
 });
 
-describe("Phase C live handoff:lint", () => {
-  test("bun run handoff:lint exits 0 for the whole-file D1 budget", async () => {
+describe("Phase C/D live handoff:lint", () => {
+  test("bun run handoff:lint exits 0 for budget + shared-heading structure", async () => {
     const proc = Bun.spawn(["bun", "run", "handoff:lint"], {
       cwd: ROOT,
       stdout: "pipe",
@@ -618,8 +457,159 @@ describe("Phase C live handoff:lint", () => {
     ]);
     const out = `${stdout}\n${stderr}`;
     expect(code).toBe(0);
-    expect(out).not.toMatch(/HANDOFF full\s*=|HANDOFF top-80|⚠/);
+    expect(out).not.toMatch(/HANDOFF full\s*=|HANDOFF top-80|handoff:lint FAIL/);
     expect(utf8Bytes(liveHandoff)).toBeLessThanOrEqual(HANDOFF_UTF8_BUDGET);
+    expect(lintLiveHandoff({ handoffText: liveHandoff, trapsText: liveTraps })).toEqual(
+      [],
+    );
+  });
+});
+
+describe("Phase D — status fail-loud", () => {
+  test("healthy PLAN/HANDOFF parse; Open blocking is fail-loud when review is non-table", () => {
+    const s = buildStatus();
+    expect(s).toContain("| PLAN | 0.28.1 |");
+    expect(s).toMatch(/\| Status \| approved/i);
+    expect(s).not.toMatch(/\| PLAN \| unknown\/malformed/);
+    expect(s).not.toMatch(/\| 다음 \(HANDOFF\) \| unknown\/malformed/);
+    // Live plan_review Open(blocking) is bullet prose, not the markdown table
+    // contract (V6). Old status treated missing table body as "없음" (false healthy).
+    // Phase D surfaces that as unknown/malformed instead of inventing empty.
+    const review = readRepo("docs/plan_review.md");
+    const openStart = review.indexOf("## Open (blocking)");
+    const openHasTable =
+      openStart >= 0 &&
+      /\|[^\n]+\|\n\|[-| :]+\|/.test(review.slice(openStart, openStart + 800));
+    if (openHasTable) {
+      expect(s).not.toMatch(/\| Open blocking \| unknown\/malformed/);
+    } else {
+      expect(s).toContain(`| Open blocking | ${STATUS_MALFORMED} |`);
+      expect(s).not.toContain("| Open blocking | 없음 |");
+    }
+  });
+
+  test("empty PLAN/review/HANDOFF surface unknown/malformed", () => {
+    const s = buildStatus({
+      planText: "",
+      reviewText: "",
+      handoffText: "",
+    });
+    expect(s).toContain(`| PLAN | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| Status | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| plan_review 최신 | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| Open blocking | ${STATUS_MALFORMED} |`);
+    expect(s).toContain(`| 다음 (HANDOFF) | ${STATUS_MALFORMED} |`);
+  });
+
+  test("missing One-line resume heading is fail-loud (no whole-file fallback)", () => {
+    const stripped = liveHandoff.replace(
+      "## One-line resume",
+      "## One liner",
+    );
+    const s = buildStatus({
+      planText: readRepo("docs/PLAN.md"),
+      reviewText: readRepo("docs/plan_review.md"),
+      handoffText: stripped,
+    });
+    expect(s).toContain(`| 다음 (HANDOFF) | ${STATUS_MALFORMED} |`);
+  });
+
+  test("Open blocking without table is fail-loud", () => {
+    const review = [
+      "# Review",
+      "",
+      "## Open (blocking)",
+      "",
+      "- none left",
+      "",
+      "## Closed",
+      "",
+      "x",
+    ].join("\n");
+    const s = buildStatus({
+      planText: readRepo("docs/PLAN.md"),
+      reviewText: review,
+      handoffText: liveHandoff,
+    });
+    expect(s).toContain(`| Open blocking | ${STATUS_MALFORMED} |`);
+  });
+});
+
+describe("Phase D — SessionStart vs no-hook equivalence (V4)", () => {
+  /** Manual no-hook ritual core set: 9 HANDOFF sections + traps pair. */
+  function manualCoreKeys(handoff: string, traps: string): string[] {
+    const keys: string[] = [];
+    for (const h of REQUIRED_HANDOFF_HEADINGS) {
+      if (extractSection(handoff, h)) keys.push(`handoff:${h}`);
+    }
+    if (extractMarkdownSection(traps, "활성 함정")) keys.push("traps:활성 함정");
+    if (extractMarkdownSection(traps, "하지 말 것")) keys.push("traps:하지 말 것");
+    return keys.sort();
+  }
+
+  function injectedCoreKeys(state: string): string[] {
+    const keys: string[] = [];
+    for (const h of REQUIRED_HANDOFF_HEADINGS) {
+      if (state.includes(`## ${h}`)) keys.push(`handoff:${h}`);
+    }
+    if (state.includes("## 활성 함정")) keys.push("traps:활성 함정");
+    if (state.includes("## 하지 말 것")) keys.push("traps:하지 말 것");
+    return keys.sort();
+  }
+
+  test("buildStateContext core set equals manual partial-read set", () => {
+    const state = buildStateContext(liveHandoff, liveTraps);
+    expect(injectedCoreKeys(state)).toEqual(manualCoreKeys(liveHandoff, liveTraps));
+    expect(injectedCoreKeys(state)).toEqual([
+      "handoff:Active checks",
+      "handoff:Blockers",
+      "handoff:Current action",
+      "handoff:Current loop",
+      "handoff:Don't redo",
+      "handoff:Evidence",
+      "handoff:Invariants",
+      "handoff:One-line resume",
+      "handoff:Owner pending",
+      "traps:하지 말 것",
+      "traps:활성 함정",
+    ]);
+    expect(state.length).toBeLessThanOrEqual(HARD_CAP);
+    expect(truncateContext(state)).toBe(state);
+    expect(state.includes("…[truncated")).toBe(false);
+  });
+
+  test("details in a section body do not change core key set after strip", () => {
+    const withDetails = liveHandoff.replace(
+      "## Evidence\n",
+      "## Evidence\n\n<details>\n\nhidden history\n\n</details>\n\n",
+    );
+    // Live lint must reject details; equivalence still compares strip path vs manual.
+    expect(
+      validateCheckpoint(withDetails, { planVersion: "0.28.1" }).some((e) =>
+        e.includes("<details>"),
+      ),
+    ).toBe(true);
+    const state = buildStateContext(withDetails, liveTraps);
+    // Injected path strips details but keeps the Evidence heading.
+    expect(state.includes("## Evidence")).toBe(true);
+    expect(state.includes("hidden history")).toBe(false);
+    expect(injectedCoreKeys(state)).toEqual(manualCoreKeys(liveHandoff, liveTraps));
+  });
+
+  test("heading rename breaks both injection and manual core sets equally loud", () => {
+    const renamed = liveHandoff.replace("## Don't redo", "## Do not repeat");
+    const state = buildStateContext(renamed, liveTraps);
+    const manual = manualCoreKeys(renamed, liveTraps);
+    const injected = injectedCoreKeys(state);
+    expect(manual).not.toContain("handoff:Don't redo");
+    expect(injected).not.toContain("handoff:Don't redo");
+    expect(manual).toEqual(injected);
+    expect(state).toMatch(/required HANDOFF sections missing: Don't redo/);
+    expect(
+      validateCheckpoint(renamed, { planVersion: "0.28.1" }).some((e) =>
+        e.includes("missing required heading: Don't redo"),
+      ),
+    ).toBe(true);
   });
 });
 
