@@ -8,6 +8,7 @@ import {
   HARD_CAP,
   ONE_LINE_INJECT_MAX,
   SOFT_CAP,
+  STATE_TARGET,
   buildAllContext,
   buildStateContext,
   buildStateParts,
@@ -356,6 +357,11 @@ describe("section budget: measure + fitPartsToBudget", () => {
     expect(out).toContain("## Current action");
     expect(out).toContain("trap-line-keep");
     expect(out).toContain("inject omitted:");
+  });
+
+  test("STATE_TARGET is below HARD_CAP (authoring headroom policy)", () => {
+    expect(STATE_TARGET).toBe(7500);
+    expect(STATE_TARGET).toBeLessThan(HARD_CAP);
   });
 });
 

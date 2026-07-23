@@ -73,3 +73,21 @@ State path: `buildStateParts` → `fitPartsToBudget` → warn line
 `⚠ inject omitted: Evidence, Don't redo (raw N > 9500)` when needed.
 
 Last-resort `truncateContext` remains for lessons / only-pinned overflow only.
+
+---
+
+## Operating best practice (max effect, no context loss)
+
+**Default strategy:** keep **all nine axes + traps** in inject. Maximize effect by **short dense HANDOFF**, not by deleting axes.
+
+| Layer | Best practice |
+|-------|----------------|
+| Author | Table/bullet sections; Current action sharp (Goal/Done/Must not); Don't redo / Invariants = prohibition lines only; Evidence = paths/SHAs |
+| Budget | `raw ≤ STATE_TARGET (7500)` preferred; `omitted: (none)` required for commit via `session-context:lint` |
+| Runtime | Under HARD_CAP → full model; over → named section omit (safety net only) |
+| Owner report | `bun run status` table — do not dump inject into chat |
+| Agent | On `inject omitted:` warning, Read the named HANDOFF section from disk |
+
+**ROI order:** (1) sharp Current action + traps (2) HANDOFF diet so omit never fires (3) short Don't redo/Invariants (4) status view (5) priority omit as insurance.
+
+**Anti-patterns:** permanent slim; raise HARD_CAP into silent platform cut; merge lessons into state; long prose that forces omit of Don't redo first.

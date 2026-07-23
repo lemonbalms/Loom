@@ -44,6 +44,12 @@ export const HARD_CAP = 9500;
  * "커밋을 막지 않는다"는 뜻이지 "내용이 다 주입된다"는 뜻이 아니다. 근본 해법은 hook 분할.
  */
 export const SOFT_CAP = 12750;
+/**
+ * Authoring target for **state** inject raw size — keep headroom under HARD_CAP so
+ * nine axes + traps never hit priority-omit. Warn-only in session-context:lint
+ * (does not fail the gate). Policy: prefer HANDOFF diet over relying on omit.
+ */
+export const STATE_TARGET = 7500;
 
 const UNCLOSED_DETAILS_WARN =
   "⚠ [LOOM-SESSION-CONTEXT] 미닫힘 <details> 블록 제외됨";
@@ -462,6 +468,12 @@ function runLint(): never {
   // Step 1: always print state section budget (where omit would happen).
   const stateReport = measureStateBudget();
   console.error(formatStateBudgetReport(stateReport));
+  console.error(
+    `state target ${STATE_TARGET} · margin to HARD_CAP ${HARD_CAP - stateReport.rawChars}` +
+      (stateReport.rawChars > STATE_TARGET
+        ? ` · WARN over target by ${stateReport.rawChars - STATE_TARGET} (diet HANDOFF; do not slim-delete axes)`
+        : " · on target"),
+  );
 
   if (stateReport.omitted.length > 0) {
     console.error(
