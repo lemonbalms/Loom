@@ -28,7 +28,31 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 
 ## 0.5 Session orchestration line selector
 
-“작업 line”은 단일 구현자 profile이 아니라 **최상위 orchestrator → implementation → verification/advice 전체 연결**이다. 새 세션은 Owner가 별도 선택하지 않으면 HANDOFF에 기록된 **직전 세션의 실제 전체 chain을 Default로 승계**한다. 세션 시작 briefing에서 Default와 아래 선택지를 먼저 보여주고, 선택이 없으면 Default로 즉시 진행한다.
+### 0.5.0 line vs lane (용어)
+
+| 용어 | 뜻 | 예 | 비고 |
+|------|----|----|------|
+| **line** (작업 라인) | 세션이 고르는 **전체 역할 연결** — orchestrator → implementation → verification/advice | `Codex → Grok → Codex verify`, 또는 single 시나리오 | HANDOFF·세션 브리핑의 “작업 라인” |
+| **lane** (레인) | 그 line **안의 한 역할 자리**(또는 그 자리를 도는 피어/profile) | `grok-impl`, `codex-rev`, architect 세션 | §1 roster · claim · dispatch 대상 |
+
+- **line ≠ 구현자 한 명.** “Grok line”은 Grok만 쓴다는 뜻이 아니라, Grok이 오케스트레이트(또는 그 line 정의의 벤더 배치)하는 **전체 경로**다.
+- **lane ≠ line.** `grok-impl` profile은 subordinate **lane**이지 세션 “작업 line”이 아니다.
+- 한글 구어로 “라인/레인”이 섞여도, 문서·HANDOFF·브리핑에서는 영어 **line / lane**을 구분한다.
+
+### 0.5.1 두 축 — 벤더 체인 × 토폴로지
+
+작업 line 선택은 **직교 두 축**이다. 한 표에 벤더 이름만 두고 토폴로지를 숨기지 않는다.
+
+| 축 | 고르는 것 | 등록 위치 |
+|----|-----------|-----------|
+| **A. 벤더 체인** | 누가 orchestrate / implement / verify 하는가 | §0.5.2 표 · HANDOFF |
+| **B. 토폴로지** | 역할이 **몇 겹**인가 (`full` vs `single`) | §0.5.3 · HANDOFF |
+
+`Grok line`(축 A) ≠ `single`(축 B). Grok line은 검증 lane을 둘 수 있고, single은 **교차 검증 피어를 안 띄운다**.
+
+### 0.5.2 벤더 체인 (축 A)
+
+“작업 line”의 벤더 배치는 단일 구현자 profile이 아니라 **최상위 orchestrator → implementation → verification/advice 전체 연결**이다. 새 세션은 Owner가 별도 선택하지 않으면 HANDOFF에 기록된 **직전 세션의 실제 전체 chain + 토폴로지**를 Default로 승계한다. 세션 시작 briefing에서 Default와 선택지를 먼저 보여주고, 선택이 없으면 Default로 즉시 진행한다.
 
 | Choice | Orchestrator → implementation → verification/advice |
 |---|---|
@@ -37,7 +61,60 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 | Grok line | **Grok → Grok → Claude + Codex verification**; 둘 다 불가하면 **Grok verification fallback** |
 | Other CLI | 설치·인증된 CLI를 선택할 수 있으나, 시작 전에 세 역할과 fallback을 명시 |
 
-선택된 orchestrator 안에서는 **복잡·모호·설계/보안 판단 = 해당 CLI의 최상위 모델**, 그 외 승인·락된 일반 작업 = 차상위 모델을 쓴다. 아래 `*-impl`/`*-rev` profile은 이 전체 line 안에서 orchestrator가 배치하는 subordinate lane이며, 그 자체를 세션 “작업 line”으로 부르지 않는다.
+선택된 orchestrator 안에서는 **복잡·모호·설계/보안 판단 = 해당 CLI의 최상위 모델**, 그 외 승인·락된 일반 작업 = 차상위 모델을 쓴다. 아래 `*-impl`/`*-rev` profile은 이 전체 line 안에서 orchestrator가 배치하는 subordinate **lane**이며, 그 자체를 세션 “작업 line”으로 부르지 않는다.
+
+### 0.5.3 토폴로지 시나리오 (축 B) — `full` / `single`
+
+사용자가 세션마다 고를 수 있는 **토폴로지** 등록표. SSOT는 본 절 · 이번 세션 선택은 HANDOFF `Current action`에 기록·승계한다.
+
+| ID | 토폴로지 | 역할 배치 | 언제 쓰나 |
+|----|----------|-----------|-----------|
+| **`full`** | 풀 레인 (기본 교차 검증) | orchestrator → implementer → verifier(/advisor) **분리** — 가능하면 발견자≠수정자·벤더 다양성 | 복잡·모호·설계/보안·락 인접·제품 의미·R{n}·교차 검증이 이득인 게이트 |
+| **`single`** | 단일 레인 | **한 세션(한 벤더)**이 구현 + 검증(명령 객관화) + ship. 별도 verify 피어 디스패치 없음 | 범위 고정·분량 작음·결정 거의 없음(예: 하네스 Phase D 자동화, 문서-only, 순수 타이핑) |
+
+**`single` ≠ 검증 생략.** 검증 주체만 세션으로 접힌다. 완료 주장은 회신이 아니라 `bun test` / `handoff:lint` / `bun run status` 등 **명령 exit·출력**으로만 한다 (`card.done` 불신과 동일 정신).
+
+#### 세션 벤더 = 구현 벤더일 때 (접힘)
+
+현재 대화 세션이 이미 구현에 쓸 벤더(예: Grok CLI 세션)이면:
+
+| 토폴로지 | 동작 |
+|----------|------|
+| `full` | 이 세션 = orchestrator(또는 line 정의상 한 역할). **구현·검증 lane을 다른 피어/CLI에 위임**할 수 있음 |
+| `single` | **추가 Grok/워커 디스패치 없이** 이 세션이 구현 → 직접 검증 명령 → docs → commit/push |
+
+#### 승격 / 강등
+
+| 방향 | 트리거 | 누가 |
+|------|--------|------|
+| **`single` → `full`** | 계약 해석 분쟁 · SSOT 충돌 · fail-open/fail-closed 경계 변경 · 제품/`packages/*` 의미 침범 · 동일 결함 반복 red · 보안/권한 · Owner가 full 지시 | 세션이 즉시 전환하고 HANDOFF에 기록 |
+| **`full` → `single`** | Owner 명시 override, 또는 “하네스·Low·락 비인접·분량 소”로 Owner가 허용한 경우 | **에이전트가 임의 강등 금지** — Owner/기록된 정책만 |
+
+하네스 쪽을 `single`로 가는 관례(오너 2026-07-23): **작업이 단순할 때만.** 복잡한 결정을 내려야 하면 그 결정부터 `full` line을 탄다.
+
+#### 선택·승계 절차
+
+```text
+세션 시작 briefing
+  → Default = HANDOFF에 기록된 (벤더 체인 + 토폴로지)
+  → 선택지 예: full+Codex default · single+current session · full+Claude/Grok line
+  → 무선택 → Default로 즉시 진행
+게이트 종료 시
+  → HANDOFF에 「실제 쓴 line(벤더 체인) + topology」 기록 → 다음 세션 Default
+```
+
+### 0.5.4 `single` 워크플로 (요약)
+
+```text
+[세션]
+  범위·Done 고정
+  → 구현 (같은 세션이 구현 벤더면 직접; 아니면 한 implementer lane만)
+  → 세션이 검증 명령 직접 실행
+  → green → docs/HANDOFF → commit/push
+  → red/모호/계약 충돌 → 재시도 또는 topology=full 승격
+```
+
+`full` 워크플로는 §1–§2 (claim · dispatch · 독립 검증 · R{n} advisor) 를 따른다.
 
 ---
 

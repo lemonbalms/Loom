@@ -54,12 +54,12 @@ Use Korean if the user writes Korean. Do **not** skip this briefing — keep it 
 | PLAN | vX.Y.Z (`status`) |
 | Open blocking | … or 없음 |
 | 다음 액션 | … (from HANDOFF / `bun run status`) |
-| 작업 라인 | Default 전체 체인 + 선택 가능한 Claude/Grok/기타 CLI 체인 (HANDOFF 그대로) |
+| 작업 라인 | HANDOFF Default: **topology** (`full`/`single`) + **vendor chain** (Codex/Claude/Grok/Other) |
 | 워크플로 | docs/WORKFLOW.md |
 | 주의 | Loom=제품 · Fable 5=리뷰 에이전트 (혼동 금지) |
 ```
 
-`작업 라인`은 구현자 하나가 아니라 **orchestrator → implementation → verification/advice 전체 연결**이다. 사용자가 새 line을 고르지 않으면 HANDOFF의 직전 세션 승계 Default를 사용하고, 선택지는 작업 시작 전에 위 표로 보여준다.
+`작업 라인`(**line**)은 구현자 하나가 아니라 **orchestrator → implementation → verification/advice 전체 연결**이다. **lane**은 그 line 안의 역할 자리(`grok-impl` 등)다. 선택은 **축 A 벤더 체인 × 축 B 토폴로지**(`full` = 역할 분리 교차검증 · `single` = 한 세션 구현+명령검증; 검증 생략 아님). 정의·승격 규칙 SSOT = `docs/DOGFOOD_LOOP.md` §0.5. 사용자가 새로 고르지 않으면 HANDOFF 승계 Default로 즉시 진행하고, 선택지는 작업 시작 전 브리핑 표로 보여준다.
 
 **Do not** end with “이어서 할까요?” / “진행할까요?” / “커밋할까요?” as a default.  
 Owner wants **stepwise autonomous progress** through the current gate wave.

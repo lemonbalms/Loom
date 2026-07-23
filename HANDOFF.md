@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 release close complete/shipped; source through `6e2df8a` · docs as-built 0.28 wave landed (`docs/DOC-REFRESH-PLAN.md`) · next = Phase D automation · default chain = Codex orchestrate → Grok implement → Codex verify.
+> Loom v0.28.1 release close complete/shipped; source through `6e2df8a` · docs as-built 0.28 wave landed · next = Phase D automation · topology **single** (harness; session=Grok) · line glossary `DOGFOOD_LOOP` §0.5.
 
 ## Current loop
 
@@ -20,18 +20,19 @@
 
 ### SESSION-CONTINUITY Phase D automation
 
-**Orchestration line handoff — 세션 전체 역할 연결:**
+**Orchestration line handoff** — SSOT: `docs/DOGFOOD_LOOP.md` §0.5 (**line** = 전체 역할 연결 · **lane** = line 안 역할/피어 · 축 A 벤더 체인 × 축 B 토폴로지 `full`/`single`).
 
-| Choice | Orchestrator → implementation → verification/advice |
-|---|---|
-| **Default (previous-session inheritance)** | **Codex → Grok → Codex verification** — adapter wave actual chain |
-| Claude line | **Claude → Grok → Claude Advisor** |
-| Grok line | **Grok → Grok → Claude + Codex verification**; 두 검증 레인이 불가하면 **Grok verification fallback** |
-| Other CLI | 설치·인증된 다른 CLI를 선택할 수 있으며, 시작 전에 전체 역할 연결을 명시 |
+| Axis | Choice | Notes |
+|---|---|---|
+| **Topology (B) — this wave Default** | **`single`** | harness Phase D · 분량 소 · 결정 적음. 세션=Grok이면 디스패치 없이 구현+명령 검증+ship. 검증 생략 아님. 복잡 결정 시 **`full` 승격** |
+| **Vendor chain (A) — inherited full default** | **Codex → Grok → Codex verify** | adapter wave actual; `full` 복귀 시 사용 |
+| Claude line | Claude → Grok → Claude Advisor | Owner override |
+| Grok line | Grok → Grok → Claude+Codex verify (else Grok verify fallback) | ≠ `single` |
+| Other CLI | 세 역할+fallback 명시 후 | Owner override |
 
-Model tier: 선택된 orchestrator는 복잡·모호·설계/보안 판단에 최상위 모델을, 그 외 승인·락된 일반 작업에 차상위 모델을 사용한다. Owner가 다른 line을 고르면 즉시 override하고, 별도 선택이 없으면 Default로 바로 진행한다.
+Model tier: orchestrator는 복잡·모호·설계/보안에 최상위, 그 외 승인·락 작업에 차상위. Owner line/topology override wins; else HANDOFF inheritance.
 
-**실행 옵션 기록 (2026-07-22):** Default = Codex orchestration → Grok 4.5 headless implementation → Codex verification. Grok headless가 반복 불완주하면 `codex-impl` 구현 → Grok read-only 검증으로 하강하고, 두 외부 CLI가 모두 불가할 때만 lower-tier in-harness 구현으로 내린다.
+**실행 옵션 (2026-07-23):** Phase D·하네스 = **topology `single` + session Grok**. Product/락 인접·복잡 결정 = **`full`** + 위 벤더 체인. `full`에서 Grok headless 불완주 시 `codex-impl` → Grok read-only verify, 둘 다 불가 시 lower-tier in-harness.
 
 Goal:
 - Implement the already-adopted Phase D **bounded automation** only: (1) shared-heading lint structure checks, (2) status parser fail-loud on malformed/unknown, (3) actual SessionStart vs no-hook path equivalence tests.
@@ -74,7 +75,7 @@ Done when:
 - PANE-DEATH U1–U11 / R44–R45 locks immutable; nine headings/caps; full chain inheritance.
 - Do not downgrade herdr or run a parallel 0.7.4 session.
 - PATCH 1–5 `24ceede`→`d49a6b1`; adapter `194d901`→`6e2df8a` immutable unless a new reproduced defect or R{n} changes the contract.
-- Every gate handoff records the full actual chain and inherited next-session default. Owner override wins; otherwise prior session full chain is inherited.
+- Every gate handoff records actual **vendor chain + topology** (`full`/`single`) as next-session default. Owner override wins; else prior session inheritance (`DOGFOOD_LOOP` §0.5).
 
 ## Evidence
 
@@ -86,6 +87,7 @@ Done when:
 - Continuity: `docs/spikes/HANDOFF-CHECKPOINT-DESIGN.md` · Phase C `8a3ddba`
 - Docs as-built (0.28.1): `docs/CHANGELOG.md` · `docs/ARCHITECTURE.md` · `docs/USER_GUIDE.md` · `docs/HERDR_DESIGN.md` banner · `docs/TEST_PLAN.md` UC-15–18 · `index.md` · `docs/DOC-REFRESH-PLAN.md` (philosophy-first)
 - Provenance: `docs/HANDOFF_ARCHIVE.md` · traps `tasks/traps.md` · Windows `HANDOFF_WINDOWS.md`
+- Line/lane + topology `full`/`single`: `docs/DOGFOOD_LOOP.md` §0.5 (2026-07-23)
 
 ## Don't redo
 
