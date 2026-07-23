@@ -133,7 +133,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
 | Claude R{n} | **Must** consult the **`fable-advisor`** subagent before writing R{n} |
-| **Impl delegation** | Session model (architect) **does not hand-code an approved/locked spec.** Check lane availability, escalate down: **`grok-impl` → `codex-impl` → (both down) a lower-tier model subagent** (`Agent`, `model: sonnet`/`haiku`). "Default lane down" ⇒ move down the chain, **never** hand-code by the session model. Session model = spec author + reviewer + verifier only. Detail: `docs/DOGFOOD_LOOP.md §1.2`. |
+| **Impl delegation** | Execution routing SSOT = `docs/DOGFOOD_LOOP.md §0.5`. **`single`** = bounded current session implements + objective-command verifies + ships; lockedness alone does not force delegation. **`full`** = architect routes approved/locked product implementation down **`grok-impl` → `codex-impl` → lower-tier** and independently verifies (§1.2). New unresolved product/security/trust decisions promote `single` → `full`. |
 
 ### Pause only when (true blockers)
 
@@ -155,7 +155,7 @@ Full workflow: **`docs/WORKFLOW.md`**.
 3. If Loom MCP is configured (`loom run codex` / `mcp_servers.loom`), still run the ritual — MCP tools do not replace HANDOFF.
 4. Do not confuse **product** Loom MCP with this **repo process** guidance.
 5. Route work by Loom profile (full rules: **`docs/DOGFOOD_LOOP.md`**):
-   - **`codex-arch`** = architect. PLAN/spec, route locked work to `grok-impl`, review and independently verify. Never claim or hand-code locked-spec product implementation.
+   - **`codex-arch`** = architect under topology `full`: PLAN/spec, route locked product work to an impl lane, review and independently verify. Under `single`, the current Codex session folds bounded implementation + objective-command verification per DOGFOOD §0.5 without worker dispatch.
    - **`codex-impl`** = fallback implementer. Check inbox + board, claim an unclaimed locked task as `doing`, then code/test/docs/ship. Never author an R{n} verdict for its own work.
    - **`codex-rev`** = secondary/adversarial reviewer. Inspect security/races/fail-open/data-loss; do not take a task already claimed by an implementer.
 6. `codex-arch`, `codex-impl`, and `codex-rev` are separate Loom peers. Never assume the MCP identity from the terminal label alone; verify `LOOM_PROFILE` and use the matching `--profile` when launching.

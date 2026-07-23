@@ -74,6 +74,10 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 
 **`single` ≠ 검증 생략.** 검증 주체만 세션으로 접힌다. 완료 주장은 회신이 아니라 `bun test` / `handoff:lint` / `bun run status` 등 **명령 exit·출력**으로만 한다 (`card.done` 불신과 동일 정신).
 
+**Lockedness alone is not a delegation trigger.** 범위가 고정되고 새 판단이 없는 하네스/문서
+계약은 locked이기 때문에 오히려 `single`에 적합할 수 있다. 위임 여부는 스펙 승인 여부가
+아니라 topology가 정한다. 정본 보강 = `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`.
+
 #### 세션 벤더 = 구현 벤더일 때 (접힘)
 
 현재 대화 세션이 이미 구현에 쓸 벤더(예: Grok CLI 세션)이면:
@@ -87,7 +91,7 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 
 | 방향 | 트리거 | 누가 |
 |------|--------|------|
-| **`single` → `full`** | 계약 해석 분쟁 · SSOT 충돌 · fail-open/fail-closed 경계 변경 · 제품/`packages/*` 의미 침범 · 동일 결함 반복 red · 보안/권한 · Owner가 full 지시 | 세션이 즉시 전환하고 HANDOFF에 기록 |
+| **`single` → `full`** | 계약 해석 분쟁 · SSOT 충돌 · **새/미해결** fail-open/fail-closed 판단 · 제품/`packages/*` 의미 침범 · 동일 결함 반복 red · 새 보안/권한 판단 · Owner가 full 지시 | 세션이 즉시 전환하고 HANDOFF에 기록 |
 | **`full` → `single`** | Owner 명시 override, 또는 “하네스·Low·락 비인접·분량 소”로 Owner가 허용한 경우 | **에이전트가 임의 강등 금지** — Owner/기록된 정책만 |
 
 하네스 쪽을 `single`로 가는 관례(오너 2026-07-23): **작업이 단순할 때만.** 복잡한 결정을 내려야 하면 그 결정부터 `full` line을 탄다.
@@ -270,11 +274,13 @@ Outside the sandbox, commands **fail** instead of asking — safer than `--dange
 **Reviewer boot prompt (paste as first message):**  
 `scripts/dogfood-reviewer-boot.txt` — forces `check_handoffs` → claim `[R-REQUEST]`.
 
-### 1.2 Impl lane escalation — the session model does NOT hand-code a locked spec
+### 1.2 Full-topology impl lane escalation — architect and implementer stay split
 
-The architect (session model, e.g. Opus/Fable) authors specs, reviews, and
-verifies. It **does not write product code from an approved/locked spec** —
-implementation is delegated. When work is ready to implement, pick a lane by
+**This section applies to topology `full`.** Under `single`, §0.5 folds bounded
+implementation + objective-command verification into the current session; no worker
+dispatch or board claim is required. Under `full`, the architect (session model)
+authors specs, reviews, and verifies. It **does not write product code from an
+approved/locked spec** — implementation is delegated. Pick a lane by
 **availability**, escalating down this chain (check first, don't assume from a
 stale HANDOFF note):
 
@@ -288,7 +294,7 @@ stale HANDOFF note):
 
 **The criterion is spec-lockedness, not raw difficulty.** Intelligence is spent at plan time (approved PLAN + R{n} locks), so a locked spec tolerates a mid-tier implementer. **Corollary:** if a task seems to need the **Opus/Fable tier** *to implement* (not merely `xhigh` — `xhigh` is the normal locked-spec effort above), the spec is not actually locked — send it back to the architect as **spec work** (PLAN/R{n}), do not raise the implementer tier to compensate. (Adversarial verify/judge tiers are governed by §2 / Standing rules, not this step.)
 
-Rule of thumb: **check available lanes → delegate to the highest available →
+Full-topology rule of thumb: **check available lanes → delegate to the highest available →
 only escalate to a lower-tier model, never to hand-coding by the session
 model.** "The default lane is down" is a reason to move down the chain, *not* a
 license for the architect to implement directly. (Lesson: 2026-07-11 —

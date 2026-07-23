@@ -129,7 +129,7 @@ Budgets: Claude ~10k chars (our HARD_CAP 9500); Codex ~2500 tokens model-visible
 | Trigger masks / Template S no-wave | prose + unit tests (`session-start-triggers`) |
 | S BEGIN/END completeness | lint-gate fixtures on adapters |
 | nine/traps inject completeness | `handoff:check` |
-| Architect locked-spec hand-code | prose (DOGFOOD / AGENTS) |
+| Topology/execution/verify tuple | `handoff:lint` + `session-routing` fixtures; meaning SSOT = DOGFOOD §0.5 |
 
 ---
 

@@ -32,6 +32,8 @@
 
 </details>
 
+- [orchestration] 2026-07-23 Topology scope loss: 제품/full 위임 규칙을 요약하며 범위를 잃고, single 도입 때 중복 규칙을 원자적으로 교정하지 않아 false review→freeze→HANDOFF로 증폭. topology SSOT 우선 + 구조화 Line lint.
+
 - [orchestration] 2026-07-12 Next-action test: "실패하면 새로 뭘 배우나?" — 못-실패 액션(문서작업·그린 재실행)은 실격.
 <details><summary>경위·좌표</summary>
 

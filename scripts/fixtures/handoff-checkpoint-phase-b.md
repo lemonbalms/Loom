@@ -20,6 +20,8 @@
 
 ### SESSION-CONTINUITY Phase B — fixture V1–V6 + SOFT_CAP + lint expected-red
 
+**Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
+
 Goal:
 - 새 HANDOFF 체크포인트 템플릿을 **fixture**로 검증하고, stale D4 `SOFT_CAP` 기대를 12,750에 맞추며, live `handoff:lint` 용량 실패를 Phase B **expected-red**로 고정한다.
 

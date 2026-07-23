@@ -6,17 +6,21 @@
  * Phase D: handoff:lint = structure checks; status parser fail-loud.
  * Dashboard v1 (step 1): one compact table (≤80 chars/cell) — no long R{n} paste.
  */
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  ONE_LINE_RESUME_HEADING,
   extractHandoffSection,
+  ONE_LINE_RESUME_HEADING,
 } from "./handoff-headings.ts";
 import {
   HANDOFF_UTF8_BUDGET,
   lintLiveHandoff,
   validateCheckpoint,
 } from "./handoff-lint.ts";
+import {
+  formatSessionRoutingStatus,
+  parseSessionRouting,
+} from "./session-routing.ts";
 
 const root = join(import.meta.dir, "..");
 
@@ -116,29 +120,6 @@ export function parseGateTitle(handoff: string): string {
   const titles = [...action.matchAll(/^###\s+(.+)$/gm)].map((m) => m[1]!.trim());
   if (titles.length !== 1) return STATUS_MALFORMED;
   return titles[0]!;
-}
-
-/** Topology token from Current action (e.g. single / full). */
-export function parseTopology(handoff: string): string {
-  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
-  const action = extractHandoffSection(handoff, "Current action") ?? handoff;
-  const m =
-    /\*\*`?(single|full)`?\*\*/i.exec(action) ||
-    /topology[^\n]*\*\*`?(single|full)`?\*\*/i.exec(action) ||
-    /Topology[^\n]*\|\s*\*\*`?(single|full)`?\*\*/i.exec(action);
-  return m?.[1] ? m[1]!.toLowerCase() : STATUS_MALFORMED;
-}
-
-/** Short vendor chain hint for full topology. */
-export function parseVendorChainHint(handoff: string): string {
-  if (!handoff || !handoff.trim()) return STATUS_MALFORMED;
-  const action = extractHandoffSection(handoff, "Current action") ?? handoff;
-  if (/Codex\s*→\s*Grok\s*→\s*Codex/i.test(action)) {
-    return "Codex→Grok→Codex";
-  }
-  if (/Claude\s*→\s*Grok/i.test(action)) return "Claude→Grok→…";
-  if (/Grok\s*→\s*Grok/i.test(action)) return "Grok→Grok→…";
-  return STATUS_MALFORMED;
 }
 
 /** Compress Current loop four axes into one short line. */
@@ -277,14 +258,10 @@ export function buildDashboardFields(opts?: {
           : `${reviewId} · open **${openBlock}**`;
 
   const gate = parseGateTitle(handoff);
-  const topology = parseTopology(handoff);
-  const chain = parseVendorChainHint(handoff);
-  const line =
-    topology === STATUS_MALFORMED
-      ? STATUS_MALFORMED
-      : chain === STATUS_MALFORMED
-        ? `topology **${topology}**`
-        : `topology **${topology}** · chain ${chain} *(full 시)*`;
+  const routing = parseSessionRouting(handoff);
+  const line = routing.ok
+    ? formatSessionRoutingStatus(routing.routing)
+    : STATUS_MALFORMED;
 
   const loop = parseLoopLine(handoff);
   const blockers = parseBlockersLine(handoff);

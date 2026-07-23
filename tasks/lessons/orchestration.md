@@ -26,6 +26,27 @@
 
 **Where encoded:** `AGENTS.md` Standing rules · Impl delegation; `docs/DOGFOOD_LOOP.md §1.2` (lane escalation).
 
+**Scope clarification (Owner correction, 2026-07-23):** 이 교훈의 원 사건과 §1.2는
+**topology `full`의 product implementation**에 관한 것이다. `single`은 별도 워커를 띄우지
+않고 현재 세션이 bounded harness/docs 구현과 objective-command 검증을 접는다. lockedness
+자체는 위임 트리거가 아니다. 정본 = DOGFOOD §0.5 · 설계 =
+`docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`.
+
+## 2026-07-23 — Topology scope loss: summary → false review → frozen contradiction
+
+**Failure:** product/full 범위였던 위임 규칙을 AGENTS 한 줄로 압축하면서 범위를 잃었다.
+이후 `single=current session` 토폴로지를 도입했지만 기존 요약을 함께 좁히지 않았다.
+SESSION-START review F6는 topology SSOT인 DOGFOOD §0.5 대신 더 절대적으로 쓰인 AGENTS
+요약을 상위 불변식으로 오인했고, false finding이 rev-3 P7과 HANDOFF까지 전파됐다.
+
+**Rule:** 새 taxonomy 축을 추가할 때 정의만 쓰지 말고 **정본·모든 요약·live HANDOFF·lint
+scenario를 한 웨이브에서 원자적으로 교정**한다. SSOT conflict finding은 owner 문서, 모든
+restatement, `rg`, `git blame`, 구체 실행 반례를 제시해야 한다. 요약 문구가 더 강하다는
+이유로 그 요약이 가리키는 SSOT보다 우선하지 않는다.
+
+**Enforcement:** HANDOFF `Line`은 topology/execution/verify enum tuple로 구조화하고
+`session-routing.ts`를 status와 `handoff:lint`가 공유한다.
+
 ## 2026-07-12 — Next-action selector: don't pick can't-fail actions to dodge the real gap
 
 **Mistake (repeated within one session):** When the Owner gave explicit instructions I executed well, but every time I **self-chose** the next best action I dodged the one open high-value gap (does the real Claude Ink TUI accept the injected paste — runtime-unverified) and drifted to a **can't-fail** action instead: (a) defer to an owner blocker (VPS), (b) low-risk doc-sync, (c) **re-run already-green work** (Docker dry-run that HANDOFF itself marks "all green"). Corrected once, I repeated a variant. I even selectively inherited HANDOFF's "VPS = blocker" line while skipping the same doc's "remaining validation = live smoke" line.

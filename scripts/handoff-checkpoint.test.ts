@@ -259,21 +259,21 @@ describe("live checkpoint (current gate)", () => {
     const errs = validateCheckpoint(liveHandoff, {
       planVersion: "0.28.1",
       trapsText: liveTraps,
-      expectedGate:
-        /Owner next-track|Dashboard steps 2\+3|SessionStart slim|SESSION-START-DELIVERY Phase 0a→2/i,
     });
     expect(errs).toEqual([]);
     expect(liveHandoff).toMatch(/Goal:/);
     expect(liveHandoff).toMatch(/Must not/);
     expect(liveHandoff).toMatch(/Done when/);
     expect(extractSection(liveHandoff, "Owner pending")).toMatch(/Safe default|idle/i);
-    expect(extractSection(liveHandoff, "Evidence")).toMatch(/HANDOFF_WINDOWS\.md|0001a94/);
+    expect(extractSection(liveHandoff, "Evidence")).toMatch(
+      /SINGLE-TOPOLOGY-EXECUTION-DESIGN|SESSION-START/,
+    );
     expect(extractSection(liveHandoff, "Don't redo")).toMatch(/Phase D|Dashboard|warm-base/i);
     expect(extractSection(liveHandoff, "Current loop")).toMatch(
       /Dashboard|v0\.28\.1|Harness/i,
     );
     expect(extractSection(liveHandoff, "Current action")).toMatch(
-      /Owner next-track|Dashboard steps 2\+3|SessionStart slim|SESSION-START-DELIVERY Phase 0a→2/i,
+      /SINGLE topology|current-session|NORMS/i,
     );
     expect(extractSection(liveHandoff, "Blockers")).toMatch(/\(none\)/);
   });
@@ -473,13 +473,14 @@ describe("Phase D — status fail-loud + Dashboard v1", () => {
     expect(s.startsWith("## Loom · session")).toBe(true);
     expect(s).toMatch(/\| Product \| v0\.28\.1 · `approved` \|/i);
     expect(s).toMatch(/\| Review \| R46 · open \*\*없음\*\* \|/);
-    expect(s).toMatch(/\| Gate \| SESSION-START-DELIVERY Phase 0a→2 \(owner-approved\) \|/);
+    expect(s).toMatch(/\| Gate \| [^|]+ \|/);
     // injectHealth only when CLI passes it — default buildStatus has no inject: tag
     expect(s).not.toMatch(/inject:full/);
     expect(buildStatus({ injectHealth: "inject:full" })).toMatch(
       /Health \| .*inject:full/,
     );
     expect(s).toMatch(/topology \*\*single\*\*/);
+    expect(s).toContain("current-session→objective-commands→ship");
     expect(s).toMatch(/\| Blockers \| \(none\) \|/);
     expect(s).toMatch(/\| Health \| handoff:lint ✓ · parse ✓ \|/);
     expect(s).not.toContain(STATUS_MALFORMED);

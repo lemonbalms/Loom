@@ -13,6 +13,7 @@ import {
   extractHandoffSection,
   extractMarkdownSection,
 } from "./handoff-headings.ts";
+import { parseSessionRouting } from "./session-routing.ts";
 
 const ROOT = join(import.meta.dir, "..");
 
@@ -126,6 +127,9 @@ export function validateCheckpoint(
       );
     }
   }
+
+  const routing = parseSessionRouting(doc);
+  if (!routing.ok) errors.push(...routing.errors);
 
   // Dashboard-friendly One-line: body (blockquote markers stripped) ≤ 120 chars.
   const oneLineSec = extractHandoffSection(doc, "One-line resume");
