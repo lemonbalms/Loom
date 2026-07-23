@@ -259,21 +259,20 @@ describe("live checkpoint (Phase D gate)", () => {
     const errs = validateCheckpoint(liveHandoff, {
       planVersion: "0.28.1",
       trapsText: liveTraps,
-      expectedGate: /Post.–Phase D|owner next-track|Phase D automation/i,
+      expectedGate: /Dashboard steps 2\+3|SessionStart slim|owner next-track/i,
     });
     expect(errs).toEqual([]);
     expect(liveHandoff).toMatch(/Goal:/);
-    expect(liveHandoff).toMatch(/Expected:/);
-    expect(liveHandoff).toMatch(/Must not change:/);
-    expect(liveHandoff).toMatch(/Done when:/);
-    expect(extractSection(liveHandoff, "Owner pending")).toMatch(/Safe default/i);
-    expect(extractSection(liveHandoff, "Evidence")).toMatch(/HANDOFF_WINDOWS\.md/);
-    expect(extractSection(liveHandoff, "Don't redo")).toMatch(/e281587|herdr|Phase D/i);
+    expect(liveHandoff).toMatch(/Must not/);
+    expect(liveHandoff).toMatch(/Done when/);
+    expect(extractSection(liveHandoff, "Owner pending")).toMatch(/Safe default|idle/i);
+    expect(extractSection(liveHandoff, "Evidence")).toMatch(/HANDOFF_WINDOWS\.md|0001a94/);
+    expect(extractSection(liveHandoff, "Don't redo")).toMatch(/Phase D|Dashboard|warm-base/i);
     expect(extractSection(liveHandoff, "Current loop")).toMatch(
-      /Phase D automation shipped|adapter source|v0\.28\.1/i,
+      /Dashboard|v0\.28\.1|Harness/i,
     );
     expect(extractSection(liveHandoff, "Current action")).toMatch(
-      /Post.–Phase D|owner next-track|Phase D/i,
+      /Dashboard steps 2\+3|SessionStart slim/i,
     );
     expect(extractSection(liveHandoff, "Blockers")).toMatch(/\(none\)/);
   });
@@ -471,7 +470,7 @@ describe("Phase D — status fail-loud + Dashboard v1", () => {
     expect(s.startsWith("## Loom · session")).toBe(true);
     expect(s).toMatch(/\| Product \| v0\.28\.1 · `approved` \|/i);
     expect(s).toMatch(/\| Review \| R46 · open \*\*없음\*\* \|/);
-    expect(s).toMatch(/\| Gate \| Post.+Phase D .+ owner next-track pick \|/);
+    expect(s).toMatch(/\| Gate \| Dashboard steps 2\+3/);
     expect(s).toMatch(/topology \*\*single\*\*/);
     expect(s).toMatch(/\| Blockers \| \(none\) \|/);
     expect(s).toMatch(/\| Health \| handoff:lint ✓ · parse ✓ \|/);

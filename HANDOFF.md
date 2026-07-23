@@ -5,72 +5,88 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · Dashboard v1 + Phase D shipped (`0001a94`·`49b6a9d`) · next = **owner track pick** (WP5-followup / product / idle) · topology **single** harness · start with `bun run status`.
+> Loom v0.28.1 · Dashboard **v1 done** (`0001a94`) · next = **Dashboard steps 2+3** (SessionStart slim + HANDOFF sync) · topology **single** · start `bun run status` then implement — no owner wait.
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | v0.28.1 release close; adapter through `6e2df8a` | `docs/PLAN.md` |
-| Dogfood | unblocked (protocol 17 · live 3-kind · dogfood:herdr ok) | `docs/spikes/HERDR-0.7.5-COMPAT.md` |
-| Harness | Phase D + Dashboard v1 shipped; Phase E until ROADMAP | `HANDOFF-CHECKPOINT-DESIGN` · `session-status.ts` |
+| Product | v0.28.1 release close; adapter `6e2df8a` | `docs/PLAN.md` |
+| Dogfood | unblocked (protocol 17 · live 3-kind) | `HERDR-0.7.5-COMPAT.md` |
+| Harness | Dashboard v1 shipped; **v2/v3 in progress** | `session-status.ts` · this gate |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### Post–Phase D — owner next-track pick
+### Dashboard steps 2+3 — SessionStart slim + HANDOFF sync
 
-**Session start (next agent):**
+**Session start (next agent) — no Owner track pick required:**
 
-1. `bun run status` → **Dashboard only** (do not invent a second briefing table).
-2. `bun run handoff:lint` if editing HANDOFF.
-3. Read this file’s nine sections if no SessionStart inject / sentinel.
-4. Execute Owner’s track choice; if none → **safe default = idle** (no product expand, no Phase E).
+1. `bun run status` (Dashboard v1 SSOT).
+2. Topology **`single`** (session may implement directly). Promote **`full`** only if contract/SSOT conflict.
+3. Implement **step 2 then step 3** below; tests → docs → commit/push.
+4. Owner product / WP5-followup remains **after** this gate (Owner pending).
 
-**Line inheritance** — SSOT `docs/DOGFOOD_LOOP.md` §0.5:
+**Line:** topology **`single`** · full chain when needed = Codex→Grok→Codex.
 
-| Axis | Default | Notes |
-|---|---|---|
-| Topology (B) | **`single`** harness/docs | promote **`full`** on complex/lock decisions |
-| Vendor (A) full | **Codex → Grok → Codex verify** | when topology=`full` |
-| This wave actual | single · session=Grok | Dashboard·Phase D·docs |
+---
 
-**Track choices (Owner):**
+#### Step 2 — SessionStart state = dashboard-first (slim inject)
 
-| Pick | Means | First step |
-|---|---|---|
-| **WP5-followup** | prefix normalize + SessionStart hook-cache (not warm-base re-fork) | read `HOOK-CACHE-FIX-DESIGN.md` M-1; claim; implement; HOOKCACHE-D-VERIFY |
-| **product** | next product PATCH/MINOR | Owner scope → PLAN/R{n} per WORKFLOW §5 |
-| **idle** | no large track | hygiene only; leave Gate as idle-ack in Evidence |
-| ~~Phase E~~ | ROADMAP flywheel | **blocked** until ROADMAP adopted |
+**Goal:** Hook `--part state` feels like “one table + minimum restore”, not nine full HANDOFF sections.
 
-Goal: record Owner pick and replace this Gate with a concrete next action.
+| Change | Detail |
+|---|---|
+| Keep | sentinel · `buildStatus()` Dashboard · `buildTrapsBlock` (활성 함정·하지 말 것) · budget warn · fail-open emit |
+| Slim | Do **not** inject all 9 HANDOFF section bodies by default |
+| Still inject (short) | `Current action` section only (or Gate title + Goal/Done when ≤N lines) so gate is recoverable without full file |
+| Optional | One-line resume **clipped** (≤120 chars) if needed for quiz; not full Evidence/Don't redo prose |
+| HARD_CAP | state must stay ≤9500 with **no** truncate warning on live tree |
+| Tests | Update `session-context.test.ts` + checkpoint V4: inject core keys = Dashboard headings + traps + Current action (not all 9 `##` sections unless present in action) |
+| Equivalence | Document: **no-hook** still reads full HANDOFF nine sections via AGENTS ritual; **hook** path = slim. V4 “same 9 sections in inject” **retired** for production inject — replace with “Dashboard + traps + Current action sufficient for gate quiz” |
 
-Expected: new `###` gate title + Done when; or Evidence line `idle accepted YYYY-MM-DD`.
+**Files:** `scripts/session-context.ts` · related tests. **Not** product packages.
 
-Must not change: product/card/relay/conv/herdr locks; PANE-DEATH U1–U11; protocol 17; nine-section HANDOFF; Phase D lint/fail-loud; Open(blocking) **table**; Dashboard cell contracts without defect.
+#### Step 3 — HANDOFF / lint sync with Dashboard
 
-Done when: next session has a **non-owner-wait** Gate (implementation or explicit idle).
+| Change | Detail |
+|---|---|
+| One-line resume | Prefer ≤120 chars (dashboard-friendly); lint **warn or fail** if One-line body >120 (pick fail if easy) |
+| Gate single source | Dashboard Gate = `###` under Current action only (already v1) — keep |
+| AGENTS | Confirm briefing = status only; note hook inject is slim after step 2 |
+| handoff:lint | Optional: cell-budget unrelated; optional One-line length check in `handoff-lint.ts` |
+| Docs | HANDOFF Evidence + short note in design spike or PRIORITIES; no Phase E |
+
+**Done when (both steps):**
+
+- `bun run status` still Dashboard v1 green.
+- `session-context --part state` length ≤ HARD_CAP, no truncate marker on live.
+- Inject contains Dashboard + traps + Current action; **not** full nine section dump.
+- Tests green (`handoff-checkpoint` · `session-context`).
+- `handoff:lint` 0 · HANDOFF updated · commit/push.
+
+**Must not:** product/card/relay/herdr; Phase D fail-loud weaken; drop traps inject; silent HARD_CAP cut; WP5 warm-base re-fork; Phase E; invent second status schema.
+
+**After ship:** Gate → Owner track pick (WP5-followup / product / idle) or idle default.
 
 ## Active checks
 
 | Check | Deadline | Impact | Evidence |
 |---|---|---|---|
-| Owner next-track pick | **open** | unblocks WP5-followup / product | this section |
-| Dashboard v1 usable | **done** | session start = one table | `bun run status` · `0001a94` |
-| Phase D automation | **done** | lint structure · fail-loud · V4 tests | `49b6a9d` |
-| plan_review Open table | **done** | Review open **없음** | `e00367e` |
-| UK-5..UK-9 | nonblocking | observe only | `docs/PLAN.md` |
-| Integration-test flake | owner-pending | isolation recipe | `tasks/todo.md` |
+| Dashboard step 2 slim inject | **this gate** | SessionStart size + cache-friendly | `session-context.ts` |
+| Dashboard step 3 sync | **this gate** | One-line/lint/AGENTS | `handoff-lint` · AGENTS |
+| Dashboard v1 | **done** | `bun run status` table | `0001a94` |
+| Phase D | **done** | structure lint · fail-loud | `49b6a9d` |
+| Owner track (WP5-f / product / idle) | after 2+3 | next large track | Owner pending |
 
 ## Owner pending
 
-| Decision | Why needed | Safe default | Evidence |
+| Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| **WP5-followup / product / idle** | no auto product track | **idle** | todo · HOOK-CACHE design |
-| Integration-test flake | scope/cost | keep isolation | todo |
-| HOOKCACHE-D-VERIFY | with WP5-followup only | paused | `HOOK-CACHE-FIX-DESIGN.md` |
-| RULE-ENFORCEABILITY apply | product decision | document only | `RULE-ENFORCEABILITY.md` |
+| After Dashboard 2+3: WP5-followup / product / idle | product direction | idle until pick | todo · HOOK-CACHE design |
+| Integration-test flake | cost/scope | isolation recipe | todo |
+| HOOKCACHE-D-VERIFY | with WP5-followup | paused | `HOOK-CACHE-FIX-DESIGN.md` |
+| RULE-ENFORCEABILITY | product | document only | spike |
 
 ## Blockers
 
@@ -78,33 +94,29 @@ Done when: next session has a **non-owner-wait** Gate (implementation or explici
 
 ## Invariants
 
-- Next session gate SSOT = this HANDOFF; PLAN/review linked only.
-- Nine headings once; no `<details>`; D1 whole-file ≤8192B.
-- `bun run status` = Dashboard v1 (`## Loom · session`); AGENTS briefing = status output SSOT.
-- Fail-loud: unreadable shape → `unknown/malformed` (do not invent `없음`).
-- `handoff:lint` = structure + budget (`handoff-lint.ts`).
-- Topology **single** default for harness; **full** on complexity. line ≠ lane (`DOGFOOD` §0.5).
-- WP5 warm-base spike **done/`defer`** — residual label **WP5-followup** only (no re-fork bake).
-- Adapter protocol **17** / herdr 0.7.5 locks; PANE-DEATH U1–U11 immutable.
-- Record actual vendor chain + topology each gate for inheritance.
+- HANDOFF owns next gate; nine headings; D1 ≤8192B; no `<details>`.
+- Dashboard v1 = status SSOT; no second briefing table.
+- Fail-loud `unknown/malformed`; Open(blocking) stays markdown **table**.
+- Step 2: hook path may be **slimmer** than no-hook full HANDOFF read (documented); traps still injected.
+- Topology **single** default harness; line ≠ lane (`DOGFOOD` §0.5).
+- WP5 spike done/`defer` → residual **WP5-followup** only (no re-fork).
+- Protocol 17 / PANE-DEATH U1–U11 immutable.
 
 ## Evidence
 
-- Dashboard v1: `0001a94` · `scripts/session-status.ts` · AGENTS briefing
-- Phase D: `49b6a9d` · `handoff-lint.ts` · checkpoint tests
-- Open table: `e00367e` · `docs/plan_review.md`
-- line/lane + full/single: `5fafcd1` · `DOGFOOD_LOOP.md` §0.5
-- WP5 → follow-up: `6eb132f` · `WARM-BASE-FORK-SPIKE.md` · `HOOK-CACHE-FIX-DESIGN.md`
-- Product 0.28.1: adapter `6e2df8a` · R46 · PLAN approved
-- Continuity: Phase B `e281587` · Phase C `8a3ddba` · design spike
-- Archive/traps/Windows: `docs/HANDOFF_ARCHIVE.md` · `tasks/traps.md` · `HANDOFF_WINDOWS.md`
+- v1: `0001a94` · `scripts/session-status.ts`
+- Phase D: `49b6a9d` · Open table `e00367e` · WP5 reframe `6eb132f` · line/lane `5fafcd1`
+- Handoff prep: `8712aef` (superseded by this gate rewrite)
+- Design notes: conversation Dashboard proposal steps 1–3
+- Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`
+- `tasks/traps.md` · `HANDOFF_ARCHIVE.md` · `HANDOFF_WINDOWS.md`
 
 ## Don't redo
 
-- Phase B/C/D automation · Dashboard v1 from scratch (extend, don’t re-spec).
-- Warm-base fork bake / re-spike WP5 (use **WP5-followup** only).
-- Phase E / ROADMAP authority before Owner adopts ROADMAP.
-- Weaken fail-loud or Open(blocking) table contract.
-- Reopen PANE-DEATH U1–U11 · `card.done` as completion authority.
-- herdr downgrade · protocol greenwash · dual 0.7.4.
-- Invent a second status table alongside Dashboard (AGENTS = status SSOT).
+- Dashboard v1 redesign from scratch (extend only).
+- Phase B/C/D automation rewrite.
+- Warm-base fork re-spike.
+- Phase E before ROADMAP.
+- Drop fail-loud or Open table contract.
+- Inject full lessons into state part.
+- product/herdr/card changes in this gate.
