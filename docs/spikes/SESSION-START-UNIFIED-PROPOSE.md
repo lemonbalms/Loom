@@ -450,22 +450,22 @@ verdict가 `APPROVE`여야 `approve` 선택지가 유효하다. 그 전에는 `c
 
 | # | Decision | Options | Owner pick |
 |---|----------|---------|------------|
-| 1 | SESSION-START-DELIVERY design | approve rev-3 / changes / defer | _TBD_ |
-| 2 | NORMS-RECEIPT design | approve rev-3 pack contract / changes / defer | _TBD_ |
-| 3 | CONTEXT-MAP M0 design | approve / defer | _TBD_ |
-| 4 | Implementation authorization | none / **design-approved package IDs only** | _TBD_ |
-| 5 | Pre-applied A3/F7 (`CLAUDE.md` import · matcher expansion) | accept / revise / revert | _TBD_ |
+| 1 | SESSION-START-DELIVERY design | approve rev-3 / changes / defer | **approve rev-3** |
+| 2 | NORMS-RECEIPT design | approve rev-3 pack contract / changes / defer | **approve rev-3 pack contract** |
+| 3 | CONTEXT-MAP M0 design | approve / defer | **approve** |
+| 4 | Implementation authorization | none / **design-approved package IDs only** | **SESSION-START-DELIVERY only** |
+| 5 | Pre-applied A3/F7 (`CLAUDE.md` import · matcher expansion) | accept / revise / revert | **accept** |
 
 ```text
 Target revision: rev-3
-Target git blob/commit: <sha>
-Independent re-review: <APPROVE review ref>
-Design-approved: <package IDs | none>
-Implementation-authorized: <subset of design-approved | none>
-Deferred/changes: <package IDs + reason>
-Pre-applied A3/F7: <accepted | revise | reverted>
-Owner: <name>
-Date: YYYY-MM-DD
+Target git blob/commit: cc03474:docs/spikes/SESSION-START-UNIFIED-PROPOSE.md · blob 6966d57c
+Independent re-review: SESSION-START-UNIFIED-REVIEW.md Addendum C + Addendum D (APPROVE-DELTA) · 3110e29
+Design-approved: SESSION-START-DELIVERY · NORMS-RECEIPT · CONTEXT-MAP
+Implementation-authorized: SESSION-START-DELIVERY
+Deferred/changes: none
+Pre-applied A3/F7: accepted
+Owner: lemonbalms
+Date: 2026-07-23
 ```
 
 **Freeze/record rule:** Owner pick이 비어 있는 rev-3를 먼저 commit/blob으로 고정하고, 위 기록은
