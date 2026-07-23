@@ -1,13 +1,13 @@
 # Todo — Loom
 
-## Current — RULE-ROUTER propose rev-3 · review pending
+## Current — RULE-ROUTER propose rev-4 · review pending
 
 > SSOT = `HANDOFF.md`. Start: **`bun run status`**.
 > R28 integration flake fix is shipped and green. MAP/product remain closed.
 
 ### Do now
 
-- [ ] Get `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-3 reviewed (§8 seven questions)
+- [ ] Get `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-4 reviewed (§8 seven questions)
 - [ ] Owner picks D1 (Phase 1 start?) and D2 (review path: `R{n}` vs spike REVIEW)
 - [ ] D4/D6/D7 — candidate A/B/C adoption goes through the §6.5 bake-off; pre-register M7 threshold before Phase 2b
 - [ ] No Phase 1 work — registry/router/inject stay untouched until the verdict
