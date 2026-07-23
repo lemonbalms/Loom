@@ -254,12 +254,13 @@ describe("V5 — restoration questions", () => {
   });
 });
 
-describe("live checkpoint (Phase D gate)", () => {
+describe("live checkpoint (current gate)", () => {
   test("live HANDOFF is the canonical checkpoint with all V2 information", () => {
     const errs = validateCheckpoint(liveHandoff, {
       planVersion: "0.28.1",
       trapsText: liveTraps,
-      expectedGate: /Owner next-track|Dashboard steps 2\+3|SessionStart slim/i,
+      expectedGate:
+        /Owner next-track|Dashboard steps 2\+3|SessionStart slim|SESSION-START-DELIVERY Phase 0a→2/i,
     });
     expect(errs).toEqual([]);
     expect(liveHandoff).toMatch(/Goal:/);
@@ -272,7 +273,7 @@ describe("live checkpoint (Phase D gate)", () => {
       /Dashboard|v0\.28\.1|Harness/i,
     );
     expect(extractSection(liveHandoff, "Current action")).toMatch(
-      /Owner next-track|Dashboard steps 2\+3|SessionStart slim/i,
+      /Owner next-track|Dashboard steps 2\+3|SessionStart slim|SESSION-START-DELIVERY Phase 0a→2/i,
     );
     expect(extractSection(liveHandoff, "Blockers")).toMatch(/\(none\)/);
   });
@@ -472,7 +473,7 @@ describe("Phase D — status fail-loud + Dashboard v1", () => {
     expect(s.startsWith("## Loom · session")).toBe(true);
     expect(s).toMatch(/\| Product \| v0\.28\.1 · `approved` \|/i);
     expect(s).toMatch(/\| Review \| R46 · open \*\*없음\*\* \|/);
-    expect(s).toMatch(/\| Gate \| Owner next-track pick/);
+    expect(s).toMatch(/\| Gate \| SESSION-START-DELIVERY Phase 0a→2 \(owner-approved\) \|/);
     // injectHealth only when CLI passes it — default buildStatus has no inject: tag
     expect(s).not.toMatch(/inject:full/);
     expect(buildStatus({ injectHealth: "inject:full" })).toMatch(
