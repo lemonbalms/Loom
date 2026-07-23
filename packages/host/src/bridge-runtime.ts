@@ -531,6 +531,12 @@ type ConvFlight = {
   agentTarget: string;
   terminalId: string;
   sawWorking: boolean;
+  /**
+   * Per-inject confirmation latch. Unlike sawWorking, terminal status events
+   * do not clear this before the verifier can observe a fast working→done
+   * transition. Reset immediately before each new agent.prompt.
+   */
+  injectWorkingObserved: boolean;
   /** R28 L-1: filename → sha256 of already-emitted worker file artifacts (stale-marker dedup). */
   emittedArtifacts?: Map<string, string>;
   /**
@@ -1728,6 +1734,7 @@ export async function startBridgeRuntime(opts?: {
       const prompt = wrapDispatchedPrompt(payload.text);
       try {
         flight.sawWorking = false;
+        flight.injectWorkingObserved = false;
         // Protocol-17 submission target = unique agent.start name (not pane_id)
         await herdr.injectPromptAndSubmit(flight.agentTarget, prompt);
       } catch (e) {
@@ -1826,6 +1833,7 @@ export async function startBridgeRuntime(opts?: {
       agentTarget,
       terminalId: agent.terminal_id,
       sawWorking: false,
+      injectWorkingObserved: false,
     };
     convFlights.set(agent.pane_id, flight);
     convPaneByConvId.set(payload.convId, agent.pane_id);
@@ -2144,7 +2152,7 @@ export async function startBridgeRuntime(opts?: {
 
     function sawWorking(): boolean {
       if (kind === "card") return flights.get(paneId)?.sawWorking === true;
-      return convFlights.get(paneId)?.sawWorking === true;
+      return convFlights.get(paneId)?.injectWorkingObserved === true;
     }
 
     async function waitForWorkingOrGone(): Promise<"working" | "gone" | "timeout"> {
@@ -2787,6 +2795,7 @@ export async function startBridgeRuntime(opts?: {
 
     if (status === "working") {
       flight.sawWorking = true;
+      flight.injectWorkingObserved = true;
       return;
     }
 

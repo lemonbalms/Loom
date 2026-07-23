@@ -542,21 +542,22 @@ export async function startFakeHerdr(
     const auto = opts.autoStatus ?? "done";
     if (auto === "none") return;
     const delay = opts.autoStatusDelayMs ?? 30;
+    const event = "pane_agent_status_changed";
+    // Match the state transition above: subscribers must observe `working`
+    // for the configured delay before the terminal status. Delaying both
+    // events and separating them by only 10ms made submit verification miss
+    // the working phase between polls and spuriously nudge/fail the inject.
+    broadcast(event, {
+      pane_id: paneId,
+      agent_status: "working",
+    });
     setTimeout(() => {
       p.status = auto === "idle" ? "idle" : auto;
-      const event = "pane_agent_status_changed";
       const finalStatus = auto === "idle" ? "idle" : auto;
-      // Always emit working first so M-2 / 0.23.5 verify sees sawWorking.
       broadcast(event, {
         pane_id: paneId,
-        agent_status: "working",
+        agent_status: finalStatus,
       });
-      setTimeout(() => {
-        broadcast(event, {
-          pane_id: paneId,
-          agent_status: finalStatus,
-        });
-      }, 10);
     }, delay);
   }
 

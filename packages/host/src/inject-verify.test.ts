@@ -1,5 +1,5 @@
 /**
- * PLAN 0.23.5 — inject verify loop 3-way branch (tests ①–⑬).
+ * PLAN 0.23.5 — inject verify loop 3-way branch (tests ①–⑭).
  * Fake herdr composer hooks + short real timers (no Bun fake-timer — R29 F-4).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -906,4 +906,59 @@ describe("PLAN 0.23.5 inject verify 3-way branch", () => {
     await convClose({ convId: opened.convId, reason: "abort" });
     useWorkerSession();
   }, 45_000);
+
+  test("⑭ conv fast working→done stays submit-confirmed (no CR/fail-visible)", async () => {
+    useTowerSession();
+    fake.setDiscardInjects(false);
+    fake.setPaneReadText("*", null);
+
+    const callsBefore = fake.calls.length;
+    const crBefore = crSends(fake).length;
+    const readsBefore = verifyPaneReads(fake).length;
+    const goal = "conv-fast-working-done-submit-confirmed";
+    const opened = await convOpen({
+      node: "node/wsl-1",
+      goal,
+    });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+
+    const injected = await waitFor(
+      () =>
+        fake.calls.slice(callsBefore).some(
+          (c) =>
+            c.method === "agent.prompt" &&
+            typeof c.params.text === "string" &&
+            (c.params.text as string).includes(goal),
+        ),
+      { timeoutMs: 8_000, stepMs: 10 },
+    );
+    expect(injected).toBe(true);
+    const paneId = fake.paneIdForConv(opened.convId);
+    expect(paneId).toBeTruthy();
+
+    // Both events may be consumed in one socket-data turn before the verifier
+    // timer polls. Completion may clear sawWorking, but must not erase proof
+    // that this inject reached working.
+    fake.pushEvent("pane_agent_status_changed", {
+      pane_id: paneId!,
+      agent_status: "working",
+    });
+    fake.pushEvent("pane_agent_status_changed", {
+      pane_id: paneId!,
+      agent_status: "done",
+    });
+
+    const accept = await convAwait({ convId: opened.convId, timeoutSec: 5 });
+    expect(accept.status).toBe("accept");
+    const turn = await convAwait({ convId: opened.convId, timeoutSec: 5 });
+    expect(turn.status).toBe("turn");
+    await Bun.sleep(350);
+
+    expect(crSends(fake).length - crBefore).toBe(0);
+    expect(verifyPaneReads(fake).length - readsBefore).toBe(0);
+
+    await convClose({ convId: opened.convId, reason: "abort" });
+    useWorkerSession();
+  }, 20_000);
 });

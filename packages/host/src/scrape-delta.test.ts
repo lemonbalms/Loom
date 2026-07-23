@@ -969,24 +969,23 @@ describe("PLAN 0.23.6 scrape delta + chrome filter (integration)", () => {
       expect(
         (await convSendTurn({ convId: opened.convId, text: "a" })).ok,
       ).toBe(true);
-      await drainTurns(opened.convId, 3);
+      // The next send depends on this turn committing deltaAnchor. A blind
+      // 1s drain can time out under full-suite load and race turn "b" ahead
+      // of the anchor-producing completion.
+      const seed = await awaitTurn(opened.convId, (text) =>
+        text.includes("SAME_LINE_A"),
+      );
+      expect(seed?.status).toBe("turn");
+      if (seed?.status !== "turn") return;
 
       // Identical scrape → empty delta
       fake.setPaneReadText(paneId, same);
       expect(
         (await convSendTurn({ convId: opened.convId, text: "b" })).ok,
       ).toBe(true);
-      let t: Awaited<ReturnType<typeof convAwait>> | null = null;
-      for (let i = 0; i < 4; i++) {
-        const r = await convAwait({ convId: opened.convId, timeoutSec: 10 });
-        if (
-          r.status === "turn" &&
-          r.text.includes("delta empty (no new output)")
-        ) {
-          t = r;
-          break;
-        }
-      }
+      const t = await awaitTurn(opened.convId, (text) =>
+        text.includes("delta empty (no new output)"),
+      );
       expect(t?.status).toBe("turn");
       if (t?.status !== "turn") return;
       expect(t.text).toContain("delta empty (no new output)");
