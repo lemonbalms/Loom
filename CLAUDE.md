@@ -75,6 +75,8 @@ both run Claude Code — do not mix them in one terminal.
 - Unknowns: `docs/UNKNOWNS.md` (template; not PLAN SSOT)
 - Deviations: `implementation-notes.md`
 - Status script: `bun run status`
+- Inject budget: `bun run session-context:lint` · ship both: `bun run handoff:check`
+- Inject design: `docs/spikes/SESSION-INJECT-VIEW-DESIGN.md`
 
 ## Health Stack
 
