@@ -277,27 +277,17 @@ describe("live checkpoint (Phase D gate)", () => {
     expect(extractSection(liveHandoff, "Blockers")).toMatch(/\(none\)/);
   });
 
-  test("state slim-injects Dashboard + Current action + traps without truncation", () => {
+  test("state injects all canonical sections + Dashboard view + traps without truncation", () => {
     const state = buildStateContext(liveHandoff, liveTraps);
     expect(state.length).toBeLessThanOrEqual(HARD_CAP);
     expect(utf8Bytes(state)).toBeGreaterThan(0);
     expect(truncateContext(state)).toBe(state);
     expect(state.includes("⚠ [LOOM-SESSION-CONTEXT]")).toBe(false);
     expect(state.includes("…[truncated")).toBe(false);
+    // View layer (table) does not replace model layer (nine sections).
     expect(state.includes("## Loom · session")).toBe(true);
-    expect(state.includes("## Current action")).toBe(true);
-    expect(state.includes("## One-line resume")).toBe(true);
-    // Full nine-section dump retired for production inject.
-    for (const heading of [
-      "Current loop",
-      "Active checks",
-      "Owner pending",
-      "Blockers",
-      "Invariants",
-      "Evidence",
-      "Don't redo",
-    ] as const) {
-      expect(state.includes(`## ${heading}`)).toBe(false);
+    for (const heading of REQUIRED_HANDOFF_HEADINGS) {
+      expect(state.includes(`## ${heading}`)).toBe(true);
     }
     expect(state.includes("## 활성 함정")).toBe(true);
     expect(state.includes("## 하지 말 것")).toBe(true);
@@ -544,39 +534,52 @@ describe("Phase D — status fail-loud + Dashboard v1", () => {
   });
 });
 
-describe("Phase D — SessionStart slim inject vs no-hook (V4 retired full-nine)", () => {
-  /**
-   * Hook path core keys (slim): Dashboard headings + traps + Current action
-   * (+ optional One-line). No-hook still reads full nine via AGENTS ritual —
-   * that is *not* required equality with inject after Dashboard steps 2+3.
-   */
+describe("Phase D — SessionStart vs no-hook equivalence (V4; view ≠ model drop)", () => {
+  /** Manual no-hook ritual core set: 9 HANDOFF sections + traps pair. */
+  function manualCoreKeys(handoff: string, traps: string): string[] {
+    const keys: string[] = [];
+    for (const h of REQUIRED_HANDOFF_HEADINGS) {
+      if (extractSection(handoff, h)) keys.push(`handoff:${h}`);
+    }
+    if (extractMarkdownSection(traps, "활성 함정")) keys.push("traps:활성 함정");
+    if (extractMarkdownSection(traps, "하지 말 것")) keys.push("traps:하지 말 것");
+    return keys.sort();
+  }
+
   function injectedCoreKeys(state: string): string[] {
     const keys: string[] = [];
-    if (state.includes("## Loom · session")) keys.push("dashboard");
-    if (state.includes("## One-line resume")) keys.push("handoff:One-line resume");
-    if (state.includes("## Current action")) keys.push("handoff:Current action");
+    for (const h of REQUIRED_HANDOFF_HEADINGS) {
+      if (state.includes(`## ${h}`)) keys.push(`handoff:${h}`);
+    }
     if (state.includes("## 활성 함정")) keys.push("traps:활성 함정");
     if (state.includes("## 하지 말 것")) keys.push("traps:하지 말 것");
     return keys.sort();
   }
 
-  test("buildStateContext inject core = Dashboard + traps + Current action (gate quiz)", () => {
+  test("buildStateContext core set equals manual partial-read set", () => {
     const state = buildStateContext(liveHandoff, liveTraps);
+    expect(injectedCoreKeys(state)).toEqual(manualCoreKeys(liveHandoff, liveTraps));
     expect(injectedCoreKeys(state)).toEqual([
-      "dashboard",
+      "handoff:Active checks",
+      "handoff:Blockers",
       "handoff:Current action",
+      "handoff:Current loop",
+      "handoff:Don't redo",
+      "handoff:Evidence",
+      "handoff:Invariants",
       "handoff:One-line resume",
+      "handoff:Owner pending",
       "traps:하지 말 것",
       "traps:활성 함정",
     ]);
-    // Sufficient for gate quiz: Gate title lives under Current action ###.
-    expect(state).toMatch(/###\s+Owner next-track|###\s+Dashboard steps 2\+3/i);
+    // Dashboard is extra *view*, not a substitute for dropped axes.
+    expect(state.includes("## Loom · session")).toBe(true);
     expect(state.length).toBeLessThanOrEqual(HARD_CAP);
     expect(truncateContext(state)).toBe(state);
     expect(state.includes("…[truncated")).toBe(false);
   });
 
-  test("details in non-injected section body never appear in slim state", () => {
+  test("details in a section body do not change core key set after strip", () => {
     const withDetails = liveHandoff.replace(
       "## Evidence\n",
       "## Evidence\n\n<details>\n\nhidden history\n\n</details>\n\n",
@@ -587,26 +590,22 @@ describe("Phase D — SessionStart slim inject vs no-hook (V4 retired full-nine)
       ),
     ).toBe(true);
     const state = buildStateContext(withDetails, liveTraps);
-    expect(state.includes("## Evidence")).toBe(false);
+    expect(state.includes("## Evidence")).toBe(true);
     expect(state.includes("hidden history")).toBe(false);
-    expect(injectedCoreKeys(state)).toEqual(injectedCoreKeys(
-      buildStateContext(liveHandoff, liveTraps),
-    ));
+    expect(injectedCoreKeys(state)).toEqual(manualCoreKeys(liveHandoff, liveTraps));
   });
 
-  test("Current action rename is loud in inject; other renames stay file-lint only", () => {
-    const renamedAction = liveHandoff.replace("## Current action", "## Current task");
-    const stateAction = buildStateContext(renamedAction, liveTraps);
-    expect(stateAction).toMatch(/required HANDOFF sections missing: Current action/);
-    expect(injectedCoreKeys(stateAction)).not.toContain("handoff:Current action");
-
-    const renamedDont = liveHandoff.replace("## Don't redo", "## Do not repeat");
-    const stateDont = buildStateContext(renamedDont, liveTraps);
-    // Slim inject does not require Don't redo — no missing-section warn for it.
-    expect(stateDont).not.toMatch(/required HANDOFF sections missing: Don't redo/);
-    expect(injectedCoreKeys(stateDont)).toContain("handoff:Current action");
+  test("heading rename breaks both injection and manual core sets equally loud", () => {
+    const renamed = liveHandoff.replace("## Don't redo", "## Do not repeat");
+    const state = buildStateContext(renamed, liveTraps);
+    const manual = manualCoreKeys(renamed, liveTraps);
+    const injected = injectedCoreKeys(state);
+    expect(manual).not.toContain("handoff:Don't redo");
+    expect(injected).not.toContain("handoff:Don't redo");
+    expect(manual).toEqual(injected);
+    expect(state).toMatch(/required HANDOFF sections missing: Don't redo/);
     expect(
-      validateCheckpoint(renamedDont, { planVersion: "0.28.1" }).some((e) =>
+      validateCheckpoint(renamed, { planVersion: "0.28.1" }).some((e) =>
         e.includes("missing required heading: Don't redo"),
       ),
     ).toBe(true);

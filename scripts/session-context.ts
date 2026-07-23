@@ -15,6 +15,7 @@ import {
   checkHandoffBudget,
 } from "./session-status.ts";
 import {
+  REQUIRED_HANDOFF_HEADINGS,
   extractHandoffSection,
   extractMarkdownSection,
 } from "./handoff-headings.ts";
@@ -140,13 +141,20 @@ export function buildTrapsBlock(trapsText?: string): string {
   return stripDetailsBlocks(sections.join("\n\n"));
 }
 
-/** Max chars for optional One-line resume clip in slim state inject (dashboard-friendly). */
+/**
+ * One-line body length cap (dashboard-friendly **view** discipline on the
+ * HANDOFF file). Enforced by handoff:lint. Inject still includes the full
+ * One-line section — this constant documents the shared cap; clipping is not
+ * used to replace or drop other checkpoint axes.
+ *
+ * Authority: docs/spikes/SESSION-INJECT-VIEW-DESIGN.md
+ */
 export const ONE_LINE_INJECT_MAX = 120;
 
 /**
- * Clip One-line resume body for slim SessionStart inject.
- * Body = section text after heading, blockquote markers stripped, single line.
- * Returns null when section missing or empty after strip.
+ * Normalize One-line resume body (blockquote strip, whitespace collapse).
+ * Used by tests/helpers; production inject uses the full section via
+ * extractHandoffSection (file already ≤ ONE_LINE_INJECT_MAX by lint).
  */
 export function clipOneLineResume(
   handoff: string,
@@ -165,16 +173,20 @@ export function clipOneLineResume(
 }
 
 /**
- * Build state injection block (Dashboard-first slim inject).
+ * Build state injection block.
  *
- * Production inject (hook path):
- *   sentinel · buildStatus() · optional clipped One-line · Current action · traps · budget
+ * **View vs model (owner 2026-07-23):**
+ * - `buildStatus()` = compact **table view** for briefing (same facts, denser).
+ * - Nine HANDOFF sections = **restore model** — all axes stay; do not drop for “slim”.
+ * - Concision = HANDOFF D1 diet + stripDetails + One-line≤120 lint — not axis deletion.
  *
- * Does **not** dump all nine HANDOFF sections — no-hook agents still read full
- * HANDOFF via AGENTS ritual. stripDetailsBlocks applies only to extracted
- * HANDOFF/traps sections — not to buildStatus() or checkHandoffBudget().
+ * Order: sentinel · Dashboard table · nine sections (required order) · traps · budget.
+ * stripDetailsBlocks applies only to extracted HANDOFF/traps sections — not to
+ * buildStatus() or checkHandoffBudget() output.
  *
  * Optional `handoffText` / `trapsText` are for unit tests (synthetic sources).
+ *
+ * Design: docs/spikes/SESSION-INJECT-VIEW-DESIGN.md
  */
 export function buildStateContext(
   handoffText?: string,
@@ -184,23 +196,24 @@ export function buildStateContext(
 
   const handoff = handoffText ?? read("HANDOFF.md");
   if (handoff) {
-    const oneLine = clipOneLineResume(handoff);
-    if (oneLine) {
-      parts.push(`## One-line resume\n\n> ${oneLine}`);
+    const missing: string[] = [];
+    for (const heading of REQUIRED_HANDOFF_HEADINGS) {
+      const section = extractHandoffSection(handoff, heading);
+      if (section) {
+        parts.push(stripDetailsBlocks(section));
+      } else {
+        missing.push(heading);
+      }
     }
-
-    const action = extractHandoffSection(handoff, "Current action");
-    if (action) {
-      parts.push(stripDetailsBlocks(action));
-    } else {
+    if (missing.length > 0) {
       parts.push(
-        "⚠ [LOOM-SESSION-CONTEXT] required HANDOFF sections missing: Current action",
+        `⚠ [LOOM-SESSION-CONTEXT] required HANDOFF sections missing: ${missing.join(", ")}`,
       );
     }
   }
 
   // Traps used to live inside the HANDOFF "Current action" section; keep them
-  // after the gate so the injected reading order stays gate-then-safety.
+  // after checkpoint sections so gate-then-safety reading order is unchanged.
   const traps = buildTrapsBlock(trapsText);
   if (traps) parts.push(traps);
 

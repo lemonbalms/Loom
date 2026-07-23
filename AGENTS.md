@@ -10,11 +10,11 @@
 
 On the **first turn of a new session** (or when the user says “이어서”, “진행해”, “핸드오프”, “상태”, “status”), **before** large implementation:
 
-컨텍스트에 `[LOOM-SESSION-CONTEXT` 센티널이 보이면 아래 표의 ①status·②HANDOFF 게이트
-복구(Current action)·③lessons 인덱스는 **주입으로 대체됨 — 생략**한다(카테고리 lessons
-로드·WORKFLOW grep은 종전대로). Hook path inject는 **slim**(Dashboard + traps +
-Current action [+ clipped One-line]) — 9섹션 전문 dump 아님. 센티널이 없으면(훅 실패·
-Codex CLI 등 무훅 환경) 아래 v2 표 전체가 정본(HANDOFF nine sections 부분 읽기).
+컨텍스트에 `[LOOM-SESSION-CONTEXT` 센티널이 보이면 아래 표의 ①status·②HANDOFF 9섹션·
+③lessons 인덱스는 **주입으로 대체됨 — 생략**한다(카테고리 lessons 로드·WORKFLOW
+grep은 종전대로). Hook inject = **Dashboard 표(뷰)** + **nine HANDOFF sections(모델)** +
+traps — 표는 요약 뷰일 뿐 축 삭제가 아니다(`SESSION-INJECT-VIEW-DESIGN.md`). 센티널이
+없으면(훅 실패·Codex CLI 등 무훅 환경) 아래 v2 표 전체가 정본(HANDOFF nine 부분 읽기).
 
 아키텍트 세션 bootstrap 주입(SessionStart stdout 주입)과 브릿지 워커 hook-sensor
 (stdout 비움·소켓 송신)는 **반대 규약** — 혼동 금지.
@@ -66,7 +66,7 @@ Use Korean if the user writes Korean. Do **not** skip this briefing — keep it 
 | Health | handoff:lint ✓ · parse ✓ |
 ```
 
-브리핑 표 **스키마 SSOT = `bun run status` 출력**(Dashboard v1 · `scripts/session-status.ts`). 에이전트는 status를 실행해 그대로 보여 주고, 행을 재작성·장문 붙이지 않는다. **두 번째 status 표를 만들지 말 것.** Hook inject slim 이후에도 브리핑 스키마는 status만. **line** = 전체 역할 연결 · **lane** = 그 안의 피어. 정의 = `docs/DOGFOOD_LOOP.md` §0.5. 무선택 시 HANDOFF Default로 즉시 진행.
+브리핑 표 **스키마 SSOT = `bun run status` 출력**(Dashboard v1 · `scripts/session-status.ts`). 에이전트는 status를 실행해 그대로 보여 주고, 행을 재작성·장문 붙이지 않는다. **두 번째 status 표를 만들지 말 것** — 표는 정보 집합을 줄이는 것이 아니라 **같은 사실의 간결 뷰**. **line** = 전체 역할 연결 · **lane** = 그 안의 피어. 정의 = `docs/DOGFOOD_LOOP.md` §0.5. 무선택 시 HANDOFF Default로 즉시 진행.
 
 **Do not** end with “이어서 할까요?” / “진행할까요?” / “커밋할까요?” as a default.  
 Owner wants **stepwise autonomous progress** through the current gate wave.
