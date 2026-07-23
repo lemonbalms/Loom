@@ -1,5 +1,9 @@
 # Claude / coding-agent entry (Loom)
 
+@AGENTS.md
+
+> Claude Code loads `CLAUDE.md`, not `AGENTS.md` by default. The import above pulls project agent norms into every session (SESSION-START-UNIFIED rev-1 · vendor A3). Claude-specific orchestration continues below.
+
 ## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)
 
 1. **본세션(아키텍트) = 판단·게이트·디스패치·verdict만.** 코드 정독·조사·증거 팩 수집·
@@ -40,7 +44,11 @@
 
 ## On session start
 
-Run the session-start ritual in [`AGENTS.md`](./AGENTS.md): read the handoff, surface a short status table, then execute the next gate autonomously (full wave — see `AGENTS.md` Standing rules · Autonomy).
+Run the session-start ritual in AGENTS (imported above): `bun run status`, restore HANDOFF nine + traps + lessons index if SessionStart inject incomplete, then brief the owner.
+
+- Explicit **상태** / **핸드오프 확인해** → status or Template A only (**no** auto-wave).
+- Explicit **이어서** / **진행해** / cold start with no read-only trigger → execute Current action (full wave — Autonomy).
+- Inject is an accelerator; **ritual is SSOT** if envelopes/sentinels are missing.
 
 **Exception:** if the user opens with an explicit unrelated request, that request takes precedence — give a one-line status and do what was asked.
 
