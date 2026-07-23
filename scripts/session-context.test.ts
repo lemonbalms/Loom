@@ -9,13 +9,16 @@ import {
   ONE_LINE_INJECT_MAX,
   SOFT_CAP,
   STATE_TARGET,
+  ALL_DELIMITER,
   buildAllContext,
+  buildLessonsContext,
   buildStateContext,
   buildStateParts,
   buildTrapsBlock,
   checkSoftCap,
   clipOneLineResume,
   fitPartsToBudget,
+  fitTextToCharBudget,
   formatSessionOutput,
   measureStateBudget,
   stripDetailsBlocks,
@@ -70,10 +73,64 @@ describe("V-2 sentinel preservation", () => {
 
 describe("cap reporting (not a soft-cap fail assert)", () => {
   test("emitted --part all length under hard command cap 10000", () => {
-    // Pre-C raw may exceed 10k; runtime truncateContext is the emit path.
-    const emitted = truncateContext(buildAllContext());
+    // M-1: buildAllContext itself fits HARD_CAP (lessons fitted into remainder).
+    const all = buildAllContext();
+    expect(all.length).toBeLessThanOrEqual(HARD_CAP);
+    const emitted = truncateContext(all);
     expect(emitted.length).toBeLessThan(10_000);
     expect(emitted.length).toBeLessThanOrEqual(HARD_CAP);
+  });
+});
+
+describe("M-1 joint budget fit (state pin + lessons remainder)", () => {
+  test("fitTextToCharBudget drops trailing whole lines and warns", () => {
+    const text = ["line-a", "line-b", "line-c-very-long-padding-xxxxx"].join("\n");
+    const out = fitTextToCharBudget(text, 40, "WARN-TRUNC");
+    expect(out.startsWith("WARN-TRUNC\n")).toBe(true);
+    expect(out.includes("line-a")).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(40);
+  });
+
+  test("buildAllContext ≤ HARD_CAP and keeps full state + lessons BEGIN", () => {
+    const pad = "L".repeat(5000);
+    const lessons = [
+      "# Index",
+      "- [cat] first trigger keep",
+      `<details><summary>x</summary>\n${pad}\n</details>`,
+      "- [cat] second trigger maybe drop",
+      `- [cat] ${pad}`,
+    ].join("\n");
+    const handoff = [
+      "# H",
+      ...REQUIRED_HANDOFF_HEADINGS.flatMap((h) =>
+        h === "Current action"
+          ? [`## ${h}`, "### Gate", "goal"]
+          : h === "Blockers"
+            ? [`## ${h}`, "(none)"]
+            : h === "One-line resume"
+              ? [`## ${h}`, "> short"]
+              : [`## ${h}`, `${h}-body`],
+      ),
+    ].join("\n");
+    const all = buildAllContext(handoff, "", lessons);
+    expect(all.length).toBeLessThanOrEqual(HARD_CAP);
+    expect(all.includes("[LOOM-SESSION-CONTEXT v1 · state]")).toBe(true);
+    expect(all.includes("[LOOM-SESSION-CONTEXT-END v1 · state]")).toBe(true);
+    expect(all.includes("[LOOM-SESSION-CONTEXT v1 · lessons]")).toBe(true);
+    expect(all.includes("### Gate")).toBe(true);
+    expect(all.includes(ALL_DELIMITER)).toBe(true);
+    // State comes before lessons
+    expect(all.indexOf("## Current action")).toBeLessThan(
+      all.indexOf("[LOOM-SESSION-CONTEXT v1 · lessons]"),
+    );
+  });
+
+  test("--part lessons alone still allows larger lessons envelope under HARD_CAP", () => {
+    const lines = Array.from({ length: 80 }, (_, i) => `- [cat] lesson line ${i} short`);
+    const lessons = ["# Index", ...lines].join("\n");
+    const alone = buildLessonsContext(lessons);
+    expect(alone.length).toBeLessThanOrEqual(HARD_CAP);
+    expect(alone.includes("[LOOM-SESSION-CONTEXT v1 · lessons]")).toBe(true);
   });
 });
 

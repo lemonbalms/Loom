@@ -18,8 +18,8 @@
 | **제품 MVP (room·handoff·bridge·0.28.x)** | **shipped** — 0.28.1 release close complete |
 | **Open blocking** | **없음** |
 | **다음 제품 기능 MAJOR** | 없음 (오너 지시 전 대기) |
-| **다음 실행 게이트 (HANDOFF)** | **Phase D** — session continuity bounded automation (lint/status fail-loud · path equivalence) · **product behavior 무변경** |
-| **문서** | 0.28 as-built 정렬 웨이브 (`DOC-REFRESH-PLAN.md`) |
+| **다음 실행 게이트 (HANDOFF)** | **Owner track** after WP5-followup M-1 cutover — product / idle (safe default idle) |
+| **문서** | 0.28 as-built 정렬 (`DOC-REFRESH-PLAN.md` **executed**) |
 
 ---
 
@@ -28,8 +28,8 @@
 | 순위 | 테마 | 목표 | 검증 | 상태 |
 |------|------|------|------|------|
 | **P0** | **Session continuity Phase D** | ~~shared-heading lint · status fail-loud · SessionStart vs no-hook~~ **shipped 2026-07-23** | `handoff:lint` · checkpoint tests | **done** |
-| **P0c** | **WP5-followup (defer)** | prefix normalize + SessionStart **hook-cache** fix (not warm-base re-fork) | `HOOK-CACHE-FIX-DESIGN.md` · HOOKCACHE-D-VERIFY | **owner track pick** — spike done/`defer` in `WARM-BASE-FORK-SPIKE.md` |
-| **P0b** | **Docs as-built (본 웨이브)** | CHANGELOG·ARCH·USER·HERDR 배너·TEST·index가 0.28.1과 모순 없음 | 문서 DoD (`DOC-REFRESH-PLAN` §6) | **in progress / ship with wave** |
+| **P0c** | **WP5-followup M-1 cutover** | single SessionStart `--part all` + joint budget fit (state pin · lessons remainder) | `HOOK-CACHE-FIX-DESIGN.md` · settings · session-context | **done** (2026-07-23) — warm-base still defer; HOOKCACHE-D-VERIFY optional |
+| **P0b** | **Docs as-built** | CHANGELOG·ARCH·USER·HERDR 배너·TEST·index가 0.28.1과 모순 없음 | 문서 DoD (`DOC-REFRESH-PLAN` §6) | **executed** |
 | **P1** | **UK-5..UK-9 관찰** | 후속 후보만 — 범위 확대 금지 | PLAN 메모 | nonblocking |
 | **P1b** | **Integration-test flake track** | isolation recipe 유지 | owner pending | **owner** — 범위 확장 금지 |
 | **P2** | **HOOKCACHE-D-VERIFY** | deferred | design doc | paused |

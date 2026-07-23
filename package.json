@@ -24,7 +24,7 @@
     "handoff:budget": "bun run scripts/handoff-budget.ts",
     "session-context:lint": "bun run scripts/session-context.ts --lint",
     "inject:lint": "bun run scripts/session-context.ts --lint",
-    "session:bootstrap": "bun run scripts/session-context.ts --format raw",
+    "session:bootstrap": "bun run scripts/session-context.ts --part all --format raw",
     "handoff:check": "bun run handoff:lint && bun run session-context:lint",
     "check:mem-header": "bun run scripts/check-mem-header.ts",
     "watch:card": "bun run scripts/watch-card.ts",

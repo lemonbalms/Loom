@@ -31,8 +31,9 @@ bun run status
 Optional raw dump (when adapters exist):
 
 ```bash
-bun run session:bootstrap -- --part state --format raw
-bun run scripts/session-context.ts --part lessons --format raw
+bun run scripts/session-context.ts --part all --format raw
+# diagnostic splits still work:
+#   --part state | --part lessons
 ```
 
 Owner brief = **status table only** — never dump inject envelopes to the owner.
@@ -95,8 +96,8 @@ Higher wins.
 
 | Host | S primary | S accelerator | S fallback | Must not |
 |------|-----------|---------------|------------|----------|
-| **Claude** | SessionStart hooks ×2 (`claude-json` state + lessons), matcher `startup\|resume\|clear\|compact` | same | ritual | merge raw blocks into one fake JSON |
-| **Codex** | SessionStart hooks (`codex-plain` plain stdout), matcher same | same | ritual on fail/disabled | reopen JSON as default wire |
+| **Claude** | SessionStart **×1** `--part all` (`claude-json`), matcher `startup\|resume\|clear\|compact` | same | ritual | dual-hook race; treat partial END as S full |
+| **Codex** | SessionStart **×1** `--part all` (`codex-plain` plain stdout), matcher same | same | ritual on fail/disabled | reopen JSON as default wire |
 | **Grok** | **Ritual only** | SessionStart = env/setup only (stdout **ignored**) | ritual always | treat hook stdout as S full |
 
 Wire formats (builder vs adapter): `scripts/session-context.ts`  

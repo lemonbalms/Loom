@@ -464,18 +464,78 @@ export function buildStateContext(
 /** Alias — host-neutral builder name from rev-3 §5.2. */
 export const buildStateRaw = buildStateContext;
 
-export function buildLessonsContext(): string {
-  const lessons = stripDetailsBlocks(read("tasks/lessons.md"));
-  const body = [LESSONS_BEGIN, lessons].join("\n\n");
-  return withEndMarker(body, LESSONS_END, HARD_CAP);
+/**
+ * Lessons envelope under `cap` (diagnostic `--part lessons` uses HARD_CAP alone).
+ * When body is too large, drop whole trailing lines and prefix a loud warn —
+ * never silent mid-line char cut of the index.
+ */
+export function buildLessonsContext(
+  lessonsText?: string,
+  cap: number = HARD_CAP,
+): string {
+  const lessons = stripDetailsBlocks(lessonsText ?? read("tasks/lessons.md"));
+  const overhead = LESSONS_BEGIN.length + 2 + 1 + LESSONS_END.length; // \n\n body \n END
+  const bodyBudget = Math.max(0, cap - overhead);
+  const fitted = fitTextToCharBudget(
+    lessons,
+    bodyBudget,
+    "⚠ [LOOM-SESSION-CONTEXT] lessons truncated for inject budget — full index/categories on disk (tasks/lessons.md)",
+  );
+  const body = [LESSONS_BEGIN, fitted].join("\n\n");
+  return withEndMarker(body, LESSONS_END, cap);
 }
 
 /** Alias — host-neutral builder name from rev-3 §5.2. */
 export const buildLessonsRaw = buildLessonsContext;
 
-/** Fixed order: state → lessons. Deterministic join matching harness delimiter. */
-export function buildAllContext(): string {
-  return [buildStateContext(), buildLessonsContext()].join("\n\n---\n");
+/** Harness join delimiter between state and lessons envelopes (deterministic). */
+export const ALL_DELIMITER = "\n\n---\n";
+
+/**
+ * Drop whole trailing lines until `text` fits `budget` (chars). If already over
+ * even empty body room, returns warn-only. Prefixes `warnLine` when any drop.
+ */
+export function fitTextToCharBudget(
+  text: string,
+  budget: number,
+  warnLine: string,
+): string {
+  if (budget <= 0) return "";
+  if (text.length <= budget) return text;
+
+  const warn = `${warnLine}\n`;
+  if (warn.length >= budget) {
+    return warnLine.slice(0, budget);
+  }
+  const bodyBudget = budget - warn.length;
+  const lines = text.split("\n");
+  let out = "";
+  for (const line of lines) {
+    const candidate = out.length === 0 ? line : `${out}\n${line}`;
+    if (candidate.length > bodyBudget) break;
+    out = candidate;
+  }
+  return `${warn}${out}`;
+}
+
+/**
+ * Fixed order: state → lessons. Deterministic join matching harness delimiter.
+ *
+ * **Shared HARD_CAP** (single SessionStart command / M-1 cutover): pin full state
+ * envelope, then fit lessons into the remainder. Prefer whole-line lessons drops +
+ * loud warn over dual-hook order races or silent mid-payload char cuts.
+ *
+ * Authority: docs/spikes/HOOK-CACHE-FIX-DESIGN.md M-1 · nine-axis inject ops.
+ */
+export function buildAllContext(
+  handoffText?: string,
+  trapsText?: string,
+  lessonsText?: string,
+): string {
+  const state = buildStateContext(handoffText, trapsText);
+  const lessonsCap = Math.max(0, HARD_CAP - state.length - ALL_DELIMITER.length);
+  const lessons = buildLessonsContext(lessonsText, lessonsCap);
+  return `${state}${ALL_DELIMITER}${lessons}`;
 }
 
 function buildRaw(part: string): string {
@@ -560,7 +620,21 @@ function runLint(): never {
     process.exit(1);
   }
 
+  // Step 2: M-1 single-command envelope must fit HARD_CAP without last-resort char cut.
   const raw = buildAllContext();
+  console.error(
+    `all (state+lessons) ${raw.length} / HARD_CAP ${HARD_CAP}` +
+      (raw.includes("lessons truncated for inject budget")
+        ? " · lessons fitted (trailing index lines dropped)"
+        : " · lessons full"),
+  );
+  if (raw.length > HARD_CAP) {
+    console.error(
+      `session-context:lint FAIL — --part all ${raw.length} chars > HARD_CAP ${HARD_CAP} (M-1 cutover unsafe)`,
+    );
+    process.exit(1);
+  }
+
   // additionalContext path: D2 filter is inside buildLessonsContext; measure
   // post-D2 length (pre-truncate is the true budget signal; under HARD_CAP they match).
   const additionalContext = truncateContext(raw);

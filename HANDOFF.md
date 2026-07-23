@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> Loom v0.28.1 · handoff B shipped · next = Owner track (WP5-f / product / idle).
+> Loom v0.28.1 · WP5-followup M-1 cutover shipped · next = product / idle (safe default idle).
 
 ## Current loop
 
@@ -13,46 +13,46 @@
 |---|---|---|
 | Product | v0.28.1 release close; adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (protocol 17 · live 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | DELIVERY 0a–2 + handoff B **done**; Owner track open | `docs/HANDOFF-AUTHORING.md` |
+| Harness | DELIVERY + handoff B + **M-1 cutover done** | `HOOK-CACHE-FIX-DESIGN.md` |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### Owner track pick: WP5-followup | product | idle
+### Owner: product track or idle
 
-**Goal:** After handoff authoring B, choose product/harness residual track or stay idle.
+**Goal:** Harness residual M-1 is shipped; pick product direction or stay idle.
 
-**Authority:** B shipped (`handoff:budget` · `docs/HANDOFF-AUTHORING.md`). NORMS/MAP remain design-only (`5b14012`). Safe default = **idle** until Owner pick.
+**Authority:** WP5-followup M-1 cutover (single `--part all` · joint budget fit). NORMS/MAP design-only (`5b14012`). Safe default = **idle**.
 
 **Session start:**
 
 1. `bun run status` · `bun run handoff:check`; L0 = `docs/SESSION-START.md`.
-2. Author edits: `bun run handoff:budget` then `handoff:check` — guide `docs/HANDOFF-AUTHORING.md`.
-3. Do **not** implement NORMS/MAP or product/herdr without Owner track pick.
+2. Claude/Codex SessionStart = **one** hook `--part all` (state pinned; lessons fitted if over remainder).
+3. Do **not** re-split SessionStart into dual handlers; do not implement NORMS/MAP without authorization.
 
 **Line:** topology **`single`** · full chain when needed = Codex→Grok→Codex.
 
-**Done when:** Owner picks WP5-followup / product / idle and HANDOFF reflects it.
+**Done when:** Owner picks product work or confirms idle with HANDOFF reflecting it.
 
-**Must not:** NORMS/MAP implementation; Grok SessionStart stdout as S full; permanent nine-axis slim-delete; product/herdr without Owner track pick.
+**Must not:** dual-hook SessionStart race; permanent nine-axis slim-delete; NORMS/MAP without auth; warm-base re-fork.
 
 ## Active checks
 
 | Check | Deadline | Impact | Evidence |
 |---|---|---|---|
-| DELIVERY Phase 0a–2 | **done** | 3-host S wire | `docs/SESSION-START.md` · adapters · triggers |
-| Handoff confirm A | **done** | owner readability | DELIVERY Template A/S/R |
-| Handoff authoring B | **done** | author budget safety | `handoff:budget` · `docs/HANDOFF-AUTHORING.md` |
-| Inject ops (nine · omit · STATE_TARGET) | **done** | restore model | `handoff:check` · inject design |
-| Owner product track | **open** | WP5-f / product / idle | Owner pending |
+| DELIVERY Phase 0a–2 | **done** | 3-host S wire | `docs/SESSION-START.md` |
+| Handoff authoring B | **done** | author budget | `handoff:budget` · `docs/HANDOFF-AUTHORING.md` |
+| WP5-followup M-1 cutover | **done** | cause A order race | `--part all` · settings · codex hooks |
+| HOOKCACHE-D-VERIFY | optional | detector depth | paused / nonblocking |
+| Owner product track | **open** | product / idle | Owner pending |
 
 ## Owner pending
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| WP5-followup / product / idle | product direction | **idle** until pick | todo · HOOK-CACHE |
+| product / idle | product direction | **idle** until pick | todo |
 | Integration-test flake | cost/scope | isolation recipe | todo |
-| HOOKCACHE-D-VERIFY | with WP5-followup | paused | `HOOK-CACHE-FIX-DESIGN.md` |
+| HOOKCACHE-D-VERIFY | optional residual | paused | `HOOK-CACHE-FIX-DESIGN.md` |
 | RULE-ENFORCEABILITY | product | document only | spike |
 
 ## Blockers
@@ -62,32 +62,27 @@
 ## Invariants
 
 - HANDOFF: nine headings; D1 ≤8192B; no `<details>`; owns next gate.
-- rev-3: design-approved DELIVERY/NORMS/MAP; implementation subset = **DELIVERY only** (`5b14012`).
-- S full requires BEGIN+matching END per part; status = **view**; inject = **nine + traps**.
-- Budget = **chars** (HARD_CAP 9500); drop = **whole section** + `inject omitted:`. Pinned: status · Current action · traps.
-- Prefer raw ≤ **STATE_TARGET 7500**; ship handoff edits with `bun run handoff:check`.
-- Author drafts: `bun run handoff:budget` — guide `docs/HANDOFF-AUTHORING.md`.
+- SessionStart **single** command `--part all` (Claude + Codex); state full under HARD_CAP; lessons whole-line fit into remainder + loud trunc warn.
+- S full requires BEGIN+matching END per part; status = **view**; inject = **nine + traps** (+ lessons index fit).
+- Budget = **chars** (HARD_CAP 9500); drop = whole section/line + loud warn. Prefer raw state ≤ STATE_TARGET 7500.
+- Author: `bun run handoff:budget` · ship: `bun run handoff:check`. Guide: `docs/HANDOFF-AUTHORING.md`.
 - Owner brief ≠ inject dump. Template **S**/`상태` never auto-waves.
-- Fail-loud `unknown/malformed`; Open(blocking) markdown **table**.
-- Topology **single** default; line ≠ lane. WP5 residual only (no warm-base re-fork). Protocol 17 / PANE-DEATH U1–U11 immutable.
+- Topology **single** default. No warm-base re-fork. Protocol 17 / PANE-DEATH U1–U11 immutable.
+- NORMS/MAP implementation still requires new authorization (`5b14012`).
 
 ## Evidence
 
-- Handoff B: `scripts/handoff-budget.ts` · `docs/HANDOFF-AUTHORING.md` · package `handoff:budget`.
-- SESSION-START L0: `docs/SESSION-START.md` · AGENTS/Claude trigger split.
-- Adapters: `session-context` END · `--format raw|claude-json|codex-plain` · `.codex/hooks.json`.
-- Triggers: `scripts/session-start-triggers.ts` + tests.
-- Approval: freeze `cc03474` · review C+D `3110e29` · owner `5b14012`.
-- Inject ops: `handoff:check` · `SESSION-INJECT-VIEW-DESIGN.md`.
+- M-1 cutover: `scripts/session-context.ts` `buildAllContext` fit · `.claude/settings.json` · `.codex/hooks.json` · tests.
+- Handoff B: `handoff:budget` · `docs/HANDOFF-AUTHORING.md`.
+- SESSION-START L0 · inject ops · DELIVERY adapters.
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
+- Design: `HOOK-CACHE-FIX-DESIGN.md` · `SESSION-INJECT-VIEW-DESIGN.md`.
 - `tasks/traps.md` · `HANDOFF_WINDOWS.md`
 
 ## Don't redo
 
-- Permanent nine-axis slim-delete; silent **state** mid-section char-cut.
-- Re-review rev-3 from scratch; implement NORMS/MAP without a new authorization decision.
-- Treat Grok SessionStart stdout as S full; reopen codex-plain as JSON default.
-- Treat bare **상태**/status as wave trigger.
-- Expand status into second competing schema before A/B.
-- Dashboard v1 redesign from scratch; Phase B/C/D rewrite; warm-base re-spike; Phase E before ROADMAP.
-- Drop fail-loud / Open table; inject full lessons into state; product/herdr without Owner track pick.
+- Re-split SessionStart into dual state/lessons handlers (cause A race).
+- Permanent nine-axis slim-delete; silent state mid-section char-cut.
+- Implement NORMS/MAP without new authorization; warm-base re-fork.
+- Treat Grok SessionStart stdout as S full; bare **상태** as wave trigger.
+- Drop fail-loud / Open table; product/herdr without Owner track pick.

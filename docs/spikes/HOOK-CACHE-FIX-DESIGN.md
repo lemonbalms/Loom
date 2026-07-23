@@ -4,9 +4,10 @@
 
 | Field | Value |
 |-------|--------|
-| **Track label** | **`WP5-followup`** (owner track pick) — WP5 warm-base spike is **done/`defer`**; this doc is the residual work |
-| **Scope** | SessionStart **prefix normalize + hook-cache** fix (권고 M-1). **Not** warm-base fork re-bake |
-| **Related** | [`WARM-BASE-FORK-SPIKE.md`](./WARM-BASE-FORK-SPIKE.md) · HANDOFF Owner pending · `tasks/todo.md` WP5-followup |
+| **Track label** | **`WP5-followup`** — WP5 warm-base spike **done/`defer`**; M-1 residual |
+| **Status** | **M-1 cutover shipped 2026-07-23** — single `--part all` · joint HARD_CAP fit (state pin + lessons line-fit) · Claude/Codex hooks ×1. Cause B detector remains non-persistent (plugin updates). HOOKCACHE-D-VERIFY still optional. |
+| **Scope** | SessionStart **hook-cache** fix (권고 M-1). **Not** warm-base fork re-bake |
+| **Related** | [`WARM-BASE-FORK-SPIKE.md`](./WARM-BASE-FORK-SPIKE.md) · HANDOFF · `scripts/session-context.ts` |
 
 > **스파이크 문서와의 관계**: 프롬프트 캐시가 매 세션 깨지는 **원인 규명(원인 A 순서 레이스 ·
 > 원인 B claude-mem 분 단위 ts)과 그 실측 근거는 [`WARM-BASE-FORK-SPIKE.md`](./WARM-BASE-FORK-SPIKE.md)에 있다.**
