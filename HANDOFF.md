@@ -44,6 +44,7 @@
 | Handoff authoring B | **done** | author budget | `handoff:budget` · `docs/HANDOFF-AUTHORING.md` |
 | WP5-followup M-1 cutover | **done** | cause A order race | `--part all` · settings · codex hooks |
 | HOOKCACHE-D-VERIFY | optional | detector depth | paused / nonblocking |
+| **ISSUE: cause B header ts** | open | cache ~1min / ~34k write | B-7 upstream; B-4=temp |
 | Owner product track | **open** | product / idle | Owner pending |
 
 ## Owner pending
@@ -51,8 +52,9 @@
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
 | product / idle | product direction | **idle** until pick | todo |
+| **ISSUE cause B (claude-mem)** | autoUpdate reverts B-4 | **open issue only** — no local “fix” claim | `HOOK-CACHE-FIX-DESIGN` §5 B-7 · `check:mem-header` |
 | Integration-test flake | cost/scope | isolation recipe | todo |
-| HOOKCACHE-D-VERIFY | optional residual | paused | `HOOK-CACHE-FIX-DESIGN.md` |
+| HOOKCACHE-D-VERIFY | optional residual | paused | design doc |
 | RULE-ENFORCEABILITY | product | document only | spike |
 
 ## Blockers
@@ -86,3 +88,4 @@
 - Implement NORMS/MAP without new authorization; warm-base re-fork.
 - Treat Grok SessionStart stdout as S full; bare **상태** as wave trigger.
 - Drop fail-loud / Open table; product/herdr without Owner track pick.
+- Claim cause B **closed** via B-4 re-patch alone (autoUpdate reverts; root fix = upstream B-7).

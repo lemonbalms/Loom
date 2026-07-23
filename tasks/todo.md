@@ -9,6 +9,14 @@
 
 - [ ] Owner: **product** | **idle** (safe default = idle)
 
+### Open issues (solve later — not current gate)
+
+- [ ] **ISSUE · cause B (claude-mem header minute ts)**  
+  - Symptom: SessionStart memory header includes minute-level timestamp → prompt-cache reuse ≤ ~1 min (~34k cache-write miss).  
+  - Temp: B-4 patch `worker-service.cjs` date-only + `bun run check:mem-header` (autoUpdate reverts).  
+  - **Root fix:** upstream B-7 — header time granularity option/default date-only (`HOOK-CACHE-FIX-DESIGN.md` §5).  
+  - Do **not** mark closed by re-patch alone.
+
 ### Shipped (don't redo)
 
 - [x] Phase D · Dashboard v1 · Product 0.28.1 · adapter `6e2df8a`
