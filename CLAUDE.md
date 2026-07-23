@@ -6,10 +6,11 @@
 
 ## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)
 
-1. **본세션(아키텍트) = 판단·게이트·디스패치·verdict만.** 코드 정독·조사·증거 팩 수집·
+1. **Topology `full`에서 본세션(아키텍트) = 판단·게이트·디스패치·verdict만.** 코드 정독·조사·증거 팩 수집·
    독립 검증·문서 초안과 적용·스크립트 작성은 전부 서브에이전트로 위임. 본세션 직접
    수행 예외는 복잡한 판단(락 경계·아키텍처·게이트 결정)과 왕복-판단이 얽힌 라이브
-   프로브뿐. **PLAN 등 장문 문서도 4단 분업**: 본세션 압축 결정 목록(판단) → opus
+   프로브뿐. **Topology `single`은 예외가 아니라 별도 실행형**으로, 현재 세션이 bounded 구현 +
+   objective-command 검증 + ship을 접는다(DOGFOOD §0.5). **Full에서 PLAN 등 장문 문서도 4단 분업**: 본세션 압축 결정 목록(판단) → opus
    서브에이전트가 선례 형식으로 문안 확장·파일 작성(볼륨) → 본세션 1회 검수(락-인접
    문구는 직접 교정 필수 — R35 M-1이 문안 오류발 M이었음) → R{n} 게이트.
 2. **서브에이전트 model 명시 필수, 기본 = `opus`.** 미지정 = 본세션 모델(Fable) 조용한
@@ -19,7 +20,7 @@
 4. **세션 시작 리추얼에 `tasks/lessons.md`(인덱스) 정독 + 작업 유형 매칭 카테고리는
    착수 전 로드 의무**(`tasks/lessons/<category>.md` — handoff만으로 부족, 기록 교훈
    재범 2회 실증). 위임 시작 전 `fable-advisor:orchestration` 스킬 로드.
-5. **레인 배치 고정 (오너 지시 2026-07-20 — 구두 반복 4회발, 이제 규칙).**
+5. **Topology `full` 레인 배치 고정 (오너 지시 2026-07-20 — 구두 반복 4회발, 이제 규칙).**
    **구현 = `grok`** · **검증 = `codex`** · **자문 = `fable-advisor`**(read-only).
    검증을 구현자와 같은 레인에 주지 않는다 — 발견자와 수정자를 분리해야 교차 검증이 성립한다.
    **실작업 표면 = herdr pane 카드가 기본**이고 in-harness `Agent`는 pane 불가 시 폴백이다.
@@ -52,6 +53,7 @@ Run: `bun run status`, restore HANDOFF nine + traps + lessons index if SessionSt
 - Explicit **이어서** / **진행해** / **단계적으로** / cold start with no read-only trigger → Template **R** (full wave — Autonomy).
 - Composite “상태 확인하고 이어서 해” → Template **S** then **R** (ordered).
 - Inject is an accelerator; **ritual is SSOT** if envelopes/sentinels are missing. Grok SessionStart stdout ≠ S full.
+- N outer/pack envelopes are missing or incomplete → run `bun run norms:raw`; omission/head-tail marker means UNVERIFIED. Claude alone has the measured N accelerator; Codex/Grok use this ritual.
 
 **Exception:** if the user opens with an explicit unrelated request, that request takes precedence — give a one-line status and do what was asked.
 

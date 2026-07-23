@@ -5,7 +5,7 @@
 | **Status** | DELIVERY Phase 0a+ (implementation-authorized) |
 | **Authority** | `docs/spikes/SESSION-START-UNIFIED-PROPOSE.md` rev-3 · freeze `cc03474` · owner approval `5b14012` |
 | **Scope** | ritual · triggers · templates · host matrix summary · wire pointers |
-| **Does not** | NORMS pack extractor · CONTEXT-MAP Template M · product/herdr |
+| **Does not** | CONTEXT-MAP Template M · product/herdr |
 
 > **Ritual is SSOT on every host. Inject/hooks are accelerators only.**  
 > Full design: spike rev-3 §§0–14. This file is the short L0 agents load.
@@ -15,7 +15,7 @@
 ## Binding invariant
 
 1. **S (state + lessons):** model-visible BEGIN+matching END for each part, or ritual recovery. Hook exit 0 alone ≠ S full.
-2. **N (norms):** LOADED only with outer+pack BEGIN/END + non-empty bodies (NORMS package; not wired until separately implementation-authorized).
+2. **N (norms):** LOADED only with outer+pack BEGIN/END + non-empty bodies and no omission marker. Claude accelerator is enabled; Codex/Grok use ritual.
 3. **No evidence → no forbidden action:** S absent/partial → recover before gate guess; N unverified → no autonomous commit/push wave without recovery or owner explicit.
 
 ---
@@ -34,6 +34,12 @@ Optional raw dump (when adapters exist):
 bun run scripts/session-context.ts --part all --format raw
 # diagnostic splits still work:
 #   --part state | --part lessons
+```
+
+N recovery (model-visible, all hosts):
+
+```bash
+bun run norms:raw
 ```
 
 Owner brief = **status table only** — never dump inject envelopes to the owner.
@@ -112,6 +118,16 @@ Each S part is one complete envelope:
 
 Budgets: Claude ~10k chars (our HARD_CAP 9500); Codex ~2500 tokens model-visible (overflow → head/tail + file — fail-loud partial, not silent full); Grok rules uncapped for N files.
 
+### NORMS-RECEIPT delivery
+
+| Host | N path | Status |
+|------|--------|--------|
+| **Claude** | SessionStart `norms-receipt.ts --format claude-json` | **enabled** — `norms:check` enforces exact pack + 9500-char budget |
+| **Codex** | `bun run norms:raw` ritual | accelerator **disabled** — exact model-visible token measurement unavailable; estimates cannot enable it |
+| **Grok** | `bun run norms:raw` ritual | accelerator **disabled** — SessionStart stdout ignored |
+
+N envelope = `core → lexicon → traps-norm`, each with exact BEGIN/body/END and body SHA-256 `sha8` metadata. `core` comes from five AGENTS Standing-rule rows plus all Pause bullets; `lexicon` is the complete L0 `Triggers + precedence` section; `traps-norm` is the complete `하지 말 것` section. Missing/duplicate/empty anchors, stale body/digest, or channel omission make N **UNVERIFIED**, never LOADED. The script owns STALE comparison; the model must not infer it from disk hashes alone.
+
 ---
 
 ## Templates A/S/R host notes
@@ -129,6 +145,7 @@ Budgets: Claude ~10k chars (our HARD_CAP 9500); Codex ~2500 tokens model-visible
 | Trigger masks / Template S no-wave | prose + unit tests (`session-start-triggers`) |
 | S BEGIN/END completeness | lint-gate fixtures on adapters |
 | nine/traps inject completeness | `handoff:check` |
+| exact N packs/digest/Claude budget | `norms:check` (included in `handoff:check`) |
 | Topology/execution/verify tuple | `handoff:lint` + `session-routing` fixtures; meaning SSOT = DOGFOOD §0.5 |
 
 ---

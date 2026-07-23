@@ -57,6 +57,12 @@ On Template **S** / **A** turns: run status (and Template A extras) only — **n
 bun run status
 ```
 
+컨텍스트에 `[LOOM-NORMS-BEGIN v1]`부터 outer END와 세 pack의 BEGIN/body/END가 모두
+보이지 않으면 `bun run norms:raw`를 모델 가시 경로에서 실행해 N을 복구한다. omission/head-tail
+표식이 있으면 marker가 모두 보여도 UNVERIFIED다. Template S/A의 read-only 보고는 가능하지만,
+Template R의 자율 commit/push 전에는 N을 복구한다. Claude만 예산 검증된 SessionStart N
+accelerator를 사용하며 Codex/Grok은 ritual이 정본이다.
+
 그 다음 읽기는 **부분만**:
 
 | # | What | How (v2) | Why |
