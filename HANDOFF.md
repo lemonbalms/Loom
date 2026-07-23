@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · R28 conv/inject flake fixed + full suite green · next-track default idle.
+> v0.28.1 · R28 flake fixed · RULE-ROUTER propose rev-1 written, review pending.
 
 ## Current loop
 
@@ -18,19 +18,19 @@
 
 ## Current action
 
-### Session end — Owner next-track
+### RULE-ROUTER propose rev-1 — review pending
 
-**Goal:** Preserve the completed R28 fix and wait for the Owner's next selected gate.
+**Goal:** Get the Owner-requested rule-router problem/goal statement reviewed before any implementation.
 
-**Authority:** The Owner-selected Integration-test flake is complete; MAP/product remain outside the implementation set.
+**Authority:** Owner asked for the document and said review comes first; `RULE-ENFORCEABILITY` grades are the reused judgement axis. No code, hook, or inject change is authorized.
 
-**Now:** No active implementation. Safe default is idle until the Owner selects the next track.
+**Now:** `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-1 is written (problems P-A–P-D · goals G1–G5 · principles P1–P5 · phases 0–4 · open D1–D5). Awaiting the review verdict.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Done when:** the Owner selects the next gate.
+**Done when:** a verdict exists and the Owner picks D1 (Phase 1 start) and D2 (review path).
 
-**Must not:** replace the new event latch with a larger timeout; restore blind 1s anchor draining; infer MAP/product authorization.
+**Must not:** start Phase 1 before the verdict; copy rule bodies into a registry; treat cost saving as the goal.
 
 ## Active checks
 
@@ -45,6 +45,7 @@
 | Typecheck | **6/6** | all packages | `bun run typecheck` |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
 | R28 fix ship | **done** · 4-file code fix + docs | gate complete | this change set |
+| RULE-ROUTER propose | **rev-1 written** · review pending | rule delivery 7.8% measured | `RULE-ROUTER-PROPOSE.md` |
 
 ## Owner pending
 
@@ -53,6 +54,7 @@
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
+| RULE-ROUTER D1–D5 | new surface | no Phase 1 until verdict | propose §10 |
 | CONTEXT-MAP impl | separate package | not authorized | propose §8 |
 
 ## Blockers
@@ -78,8 +80,7 @@
 
 - NORMS review: propose §7.3 · §11 #2/#4 · Phase 3 plan §12 · pack sources live.
 - NORMS impl: `core@5d29b979` · `lexicon@ec2b127c` · `traps-norm@a15b45b2` · 3657 chars/4101 bytes · 13 focused tests.
-- Flake root 1: fast working→done cleared transient `sawWorking` before verify polling → false CR/fail turns and inbox backlog.
-- Flake root 2: empty-delta test blind-drained anchor turns for 1s without asserting receipt → second send could race ahead under full-suite load.
+- Flake roots: fast working→done cleared transient `sawWorking` before verify polling; empty-delta test blind-drained anchors 1s without asserting receipt.
 - Fix evidence: targeted R28 4× pass · inject-verify 14/14 · conv+scrape 30/30 · typecheck 6/6 · final full suite exit 0.
 - Routing correction: `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md` · DOGFOOD §0.5 · review Addendum E · 814/814 tests.
 - M-1: `session-context.ts` fit · `.claude/settings.json` · `.codex/hooks.json` · `9b205a6`.
@@ -87,6 +88,7 @@
 - Cause B issue: todo Open issues · PRIORITIES P2c · `a6111e0`.
 - DELIVERY: `docs/SESSION-START.md` · freeze `cc03474` · approval `5b14012`.
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
+- Rule delivery 2026-07-23: 13,157 inject chars / 168,772 corpus = 7.8% auto-delivered.
 
 ## Don't redo
 

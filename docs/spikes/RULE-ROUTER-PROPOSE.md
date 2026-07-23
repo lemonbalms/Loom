@@ -1,0 +1,300 @@
+# Propose (rev-1) — 룰 분리기(Rule Router)
+
+작성 2026-07-23 · 레인: 본세션(topology `single`) 설계 · **제품 코드·hook·주입 변경 없음**
+상태: **pending-review** — 이 문서는 문제와 목적의 명문화가 본체이고, 설계는 리뷰 가능한 수준까지만 고정한다.
+
+> 착안: Cursor Router(2026-07-22) — 모델을 실행하기 **전에** 요청을 분류해 작업에 맞는 모델로
+> 보내는 분류기. 우리가 이식하는 것은 *모델 선택*이 아니라 **규범 선택**이다.
+> 같은 자리(실행 전 분류)에 같은 제약(캐시·예산·보상 신호)을 놓되, 손실 구조가 다르므로
+> 최적화 목표를 바꾼다(§3-P1).
+
+관련 정본: [`RULE-ENFORCEABILITY.md`](./RULE-ENFORCEABILITY.md) (등급 H/G/A/J · 층 L0–L5) ·
+[`SESSION-START-UNIFIED-PROPOSE.md`](./SESSION-START-UNIFIED-PROPOSE.md) rev-3 (주입 계약·NORMS 팩) ·
+[`SESSION-INJECT-VIEW-DESIGN.md`](./SESSION-INJECT-VIEW-DESIGN.md) (뷰≠모델).
+
+---
+
+## 0. Binding invariant (단 하나)
+
+**규범을 컨텍스트에서 내리는 결정은, 그 규범의 위반을 다른 층이 잡는다는 증거가 있을 때만
+성립한다.** 증거가 없거나 분류가 실패하면 축소가 아니라 전량 주입이다. 절감은 목표가 아니라
+이 불변식이 지켜진 뒤 남는 잔여물이다.
+
+---
+
+## 1. Problem — 측정된 사실
+
+### 1.1 규범 자산 대비 자동 전달률 (2026-07-23 실측)
+
+| 축 | 값 |
+|---|---|
+| 규범 소스 총량 (13개 파일) | **168,772 chars / 249,690 bytes** |
+| SessionStart 자동 주입 — state+lessons | 9,500 chars / 11,632 bytes (HARD_CAP 도달) |
+| SessionStart 자동 주입 — NORMS 3팩 | 3,657 chars / 4,101 bytes |
+| **자동 전달 합계** | **13,157 chars ≈ 규범 자산의 7.8%** |
+| 나머지 **92.2%** | “작업 유형이 매칭되면 착수 전 로드” — **사람의 기억에 의존** |
+
+내역: `CLAUDE.md` 7.2KB · `AGENTS.md` 13.5KB · `HANDOFF.md` 5.4KB · `tasks/traps.md` 2.2KB ·
+`tasks/lessons.md` 35.3KB · `tasks/lessons/*.md` 5개 129.4KB · `docs/WORKFLOW.md` 20.5KB ·
+`docs/DOGFOOD_LOOP.md` 29.2KB · `docs/SESSION-START.md` 7.0KB (bytes 기준).
+
+### 1.2 이 92.2%가 실제로 실패한다는 증거
+
+`RULE-ENFORCEABILITY.md` §5는 2026-07-20 한 세션의 전수 분류다.
+
+| 부류 | 결과 |
+|---|---|
+| A — 실행 경로를 코드가 중개한 규칙 3건 | **3/3 위반 차단** |
+| B — 문서에만 있던 규칙 4건 | **4/4 위반** (일부는 기록된 교훈의 재범) |
+| C — 코드화했으나 증거 없는 경로를 PASS로 축약한 2건 | 가짜 안전 |
+
+B 4건(B1 스킬 로드 · B2 dispatch 전 claim · B3 pane 우선 · B4 marker 오탐)의 공통점은
+**규칙의 내용이 틀린 것이 아니라, 그 규칙이 필요한 순간에 모델의 컨텍스트에 없었다는 것**이다.
+`tasks/lessons.md` 인덱스에도 같은 계열이 남아 있다 — *“기록해도 재범”*, *“재범 3회”*.
+
+### 1.3 문제의 분해 — 4개
+
+| # | 문제 | 현재 상태 | 왜 지금 구조로는 못 고치나 |
+|---|---|---|---|
+| **P-A** | **전달 실패** — 필요한 규범이 필요한 턴에 컨텍스트에 없다 | 92.2%가 사람 재량 로드 | 로드 의무를 문장으로 더 강하게 써도 그 문장 자체가 로드되어야 한다(순환) |
+| **P-B** | **무차별 주입** — 모든 턴이 같은 고정 팩을 받는다 | NORMS 3팩 + state 9,500자 고정 | 예산이 이미 HARD_CAP에 닿아, 규범이 늘면 축을 **삭제**하는 압력이 생긴다(=P-A 악화) |
+| **P-C** | **판정 근거 부재** — 무엇을 빼도 안전한지 판단할 기준이 없다 | 등급 체계는 §RULE-ENFORCEABILITY에 있으나 **규칙 단위에 부착되어 있지 않다** | 문서 산문에 등급이 있으면 기계가 못 읽는다 |
+| **P-D** | **조용한 축소** — 예산 초과 시 축이 사라지고 경고 한 줄만 남는다 | `fitParts…` 의 `inject omitted:` | 축소가 곧 P-A. 미판정과 정상 축소가 같은 경로를 탄다 |
+
+### 1.4 비-문제 (오해 방지)
+
+- 이것은 **비용 절감 과제가 아니다.** 절감은 §0의 부산물이다. 토큰이 남아돌아도 P-A는 남는다.
+- 이것은 **규범을 줄이자는 제안이 아니다.** `SESSION-INJECT-VIEW-DESIGN`의 “뷰≠모델, 영구 slim-delete 금지”와 같은 편에 선다. 오히려 **규범을 늘려도 안전해지는 구조**를 만드는 것이 목적이다.
+- 이것은 **규칙 문장을 다시 쓰는 과제가 아니다.** 소스는 그대로 두고 좌표만 붙인다(§3-P5).
+
+---
+
+## 2. Goal — 무엇을 달성하면 성공인가
+
+### 2.1 목적문 (한 문장)
+
+**턴을 실행하기 전에 그 턴에 적용되는 규범을 기계가 분류해, 필요한 규범은 반드시 도달시키고
+불필요한 규범은 예산에서 비켜 두되, 분류가 실패하면 전량으로 되돌아가는 관문을 만든다.**
+
+### 2.2 성공 조건 (G1–G5)
+
+| # | 목표 | 측정 방법 | 합격선 |
+|---|---|---|---|
+| **G1** | P-A 해소 — 필요한 규범의 도달률 | 과거 트랜스크립트 replay에서 risk-weighted recall | **J등급 miss = 0** (필수), 가중 recall은 Phase 2에서 임계 고정 |
+| **G2** | P-C 해소 — 모든 규칙 유닛이 등급·층·surface를 가진다 | `rules:check` 결정론 게이트 | 미분류 유닛 **0건** |
+| **G3** | P-D 해소 — 축소와 미판정이 구별된다 | 라우터 4상태(PASS/ROUTED/UNKNOWN/NOT_APPLICABLE) contract test | UNKNOWN → 전량 주입 경로가 테스트로 고정 |
+| **G4** | P-B 해소 — 규범이 늘어도 축이 삭제되지 않는다 | 규범 소스 +20% 주입 시 축 삭제 0 | 예산 초과가 **삭제**가 아니라 **라우팅**으로 흡수 |
+| **G5** | 회귀 없음 | 세션당 규칙 위반 건수 (shadow 기간 대비) | 증가 없음. 절감폭은 **부수 지표**로만 보고 |
+
+### 2.3 Non-goal (이번 범위 밖 — 명시적으로 하지 않는다)
+
+- 모델 라우팅(어떤 모델/레인에 보낼지). 그건 `DOGFOOD_LOOP §0.5`의 소관이며 이 문서는 건드리지 않는다.
+- 규범 문장의 재작성·통폐합·삭제.
+- 제품(Loom) 런타임 변경. 이 제안은 **리포 하네스**에 한정된다.
+- “학습된 신경망 분류기”. §7 참조 — 우리 데이터 규모에서는 **가중치·임계값 보정**까지만 주장한다.
+
+---
+
+## 3. Principles — 설계 원칙 5
+
+**P1 · 손실은 비대칭이다.** 모델 라우터는 잘못 골라도 결과가 조금 나쁘다. 룰 라우터는 잘못 빼면
+락 위반·데이터 오염이 난다. 따라서 최적화 목표는 정확도가 아니라 **위험가중 recall**이며,
+등급별 miss 비용을 다르게 매긴다.
+
+**P2 · 무엇을 뺄 수 있는지는 등급이 답한다.** `RULE-ENFORCEABILITY` H/G/A/J를 그대로 쓴다.
+
+| 등급 | 위반을 잡는 주체 | 라우팅 가능성 |
+|---|---|---|
+| **H** | 코드 가드가 효과 전 차단 | **컨텍스트에서 내려도 위반이 차단된다** → 라우팅 1순위 |
+| **G** | 부분 중개 | 해당 surface 접근 시 조건부 주입 |
+| **A** | 사후 탐지 | 조건부 주입 + 탐지 유지 |
+| **J** | 사람 판단뿐 — **프롬프트가 유일한 전달 경로** | **pinned** (라우팅 금지) |
+
+즉 “프롬프트에서 뺄 안전성 = 그 규칙을 잡는 코드 가드의 강도”다. 이 대응이 이 제안의 핵심이며,
+등급이 없는 규칙은 정의상 뺄 수 없다(G2).
+
+**P3 · 라우팅 시점은 캐시가 결정한다.** Cursor가 캐시 미스 비용을 평가에 포함시킨 것과 같은
+이유로, 세션 도중 프롬프트 prefix를 바꾸면 절감이 상쇄된다. 따라서:
+
+| 시점 | 무엇을 결정 | 캐시 영향 |
+|---|---|---|
+| SessionStart 1회 | prefix 규범 집합 | 없음(세션 시작) |
+| 턴 중(도구 호출 직전) | **추가만**(append-only) | prefix 불변 → 유지 |
+| 게이트/트랙 전환 | 재결정 허용 | 1회 미스 감수 |
+
+턴마다 prefix를 재작성하는 설계는 이 문서에서 **금지**한다(§10).
+
+**P4 · 미판정은 전량이다.** 4상태 프로토콜(`RULE-ENFORCEABILITY` §3.1)을 그대로 따른다.
+분류 실패·앵커 소실·hook 미기동은 “축소해도 되는 상태”가 아니라 UNKNOWN이며 전량 주입 + 표기다.
+C1/C2가 남긴 교훈 — **증거 없는 경로를 PASS로 축약하지 않는다** — 가 그대로 적용된다.
+
+**P5 · SSOT를 쪼개지 않는다.** 규칙 본문을 새 파일로 복사하지 않는다. `norms-receipt.ts`가 이미
+증명한 **결정론 추출기 + sha8 digest** 방식을 확장하고, 레지스트리는 *좌표와 메타데이터만* 갖는다.
+소스가 바뀌면 digest가 깨져 게이트가 잡는다.
+
+---
+
+## 4. 선행 자산 — 새로 만드는 것보다 이미 있는 것이 많다
+
+| 자산 | 현재 역할 | 라우터에서의 역할 |
+|---|---|---|
+| `scripts/session-start-triggers.ts` (199줄) | 발화 → Template/capability mask | **분류기 L1의 기존 구현체** — 확장 대상이지 신규 작성 아님 |
+| `scripts/session-routing.ts` (125줄) | HANDOFF Line → topology 튜플 | 세션 컨텍스트 축(어떤 실행형인가) |
+| `scripts/norms-receipt.ts` (311줄) | 3팩 결정론 추출·digest·예산·호스트 배선 검증 | **레지스트리 추출기의 선례이자 재사용 기반** |
+| `scripts/session-context.ts` (674줄) | 주입 조립·예산·축 드롭 순서 | 라우팅 정책을 꽂을 지점(`fitPartsToBudget` 자리) |
+| `.claude/settings.json` PreToolUse `Agent\|Task` | `model` 필수 강제 (A3, 등급 H) | **JIT 주입 경로가 이미 실증됐다는 증거** |
+
+→ 이 제안은 **새 표면 하나(레지스트리)와 새 스크립트 두 개(라우터·평가)** 로 수렴한다.
+
+---
+
+## 5. 설계 개요 (리뷰 가능한 최소 수준)
+
+### 5.1 규칙 유닛 레지스트리
+
+```yaml
+# rules/registry.yaml — 본문 없음. 좌표 + 메타 + digest.
+- id: orch.lane-placement
+  source: { file: CLAUDE.md, anchor: "Orchestration standing rules/5", sha8: "…" }
+  grade: G            # RULE-ENFORCEABILITY 등급
+  layer: [L1, L2]
+  surface: [dispatch, delegation]
+  triggers: [디스패치, 위임, grok, codex, pane, subagent]
+  pin: false
+  cost_chars: 412
+- id: traps.card-done-not-complete
+  source: { file: tasks/traps.md, anchor: "활성 함정/card.done", sha8: "…" }
+  grade: A
+  pin: true           # 완료 오판정은 치명 → 라우팅 금지
+```
+
+### 5.2 분류기 3층
+
+| 층 | 입력 | 수단 | 실패 시 |
+|---|---|---|---|
+| **L1 결정론** | 오너 발화, HANDOFF Line, 게이트 제목 | 기존 `classifyOwnerUtterance` 확장 | 다음 층 |
+| **L2 렉시컬/상태** | 최근 편집 경로, 호출 예정 도구, surface 키워드 | 스코어링 | 다음 층 |
+| **L3 LLM(선택)** | 애매 구간만 | 소형 모델 분류 | **UNKNOWN → 전량** |
+
+출력: `{ pinned[], routed[], mode, budget, unknown, receipt }`.
+receipt 필드는 `RULE-ENFORCEABILITY` §3.2-6 그대로:
+`router_version · policy_version · input_hash · selected[] · dropped[] · reason · mode · checked_at`.
+
+### 5.3 주입 경로 두 개
+
+1. **prefix(SessionStart)** — `session-context.ts`가 라우터 결정으로 파트를 고른다. 축 삭제 대신 라우팅.
+2. **JIT(PreToolUse, append-only)** — `Agent|Task` 호출 직전에 orchestration 유닛을, ship 계열 명령
+   직전에 commit/verify 유닛을 주입. **B1(스킬 로드)·B3(pane 우선)이 요구하던 “기억해서 로드”를
+   라우터가 대신 수행**하는 지점이며, 이것이 P-A에 대한 직접 처방이다.
+
+### 5.4 모드 노브 (오너 소관)
+
+`strict`(전량 — 락 웨이브·R{n}·보안 표면) / `balanced`(기본) / `lean`(읽기전용 보고 턴).
+Cursor의 Intelligence/Balance/Cost에 대응하되 축은 비용이 아니라 **위험 허용도**다.
+
+---
+
+## 6. 학습과 평가 — 60만 건 없이 무엇을 주장할 수 있나
+
+### 6.1 가용 데이터 (실측)
+
+`~/.claude/projects/-Users-…-fable-advisor` = **257 세션 · 236 MB · 58,399 메시지 레코드**.
+
+### 6.2 라벨을 사후 관측으로 만든다
+
+| 라벨 | 추출 신호 |
+|---|---|
+| positive (그 턴에 필요했음) | 이후 실제로 Read한 `tasks/lessons/<cat>.md`·`docs/*`, 인용된 traps 문구, 호출된 스킬 |
+| **강한 positive** | 그 규칙의 위반이 실제로 난 턴 — 오너 정정 발화, `handoff:check`/`norms:check` FAIL, revert, lessons 신규 항목 |
+| negative | 세션 전체에서 그 surface 미접촉 |
+
+강한 positive가 Cursor의 AFC 부정 신호에 대응한다. 다만 **우리 라벨은 counterfactual이 아니다**
+— 과거 턴은 “규범이 다 주입된 상태”의 행동이므로, replay recall은 상한 추정치다(§9).
+
+### 6.3 지표
+
+- **risk-weighted recall** — miss 비용을 등급으로 가중(H 낮음 · J 최대). **J-miss는 0이 합격선**.
+- **violation rate** — 세션당 규칙 위반 건수. 진짜 목표 지표.
+- budget saving — 캐시 미스 포함 계산. **부수 지표**로만 보고한다.
+
+### 6.4 평가 방식
+
+**shadow 모드가 정본**: 라우터는 결정만 로깅하고 실제 주입은 종전대로 전량 → recall을 무위험 측정.
+표본 규모상 온라인 A/B의 통계적 유의성은 주장하지 않는다(Cursor와 다른 점, 명시).
+
+---
+
+## 7. Phased plan (post-approve)
+
+| Phase | 산출물 | 주입 변경 | 게이트 |
+|---|---|---|---|
+| **0** | 이 문서 + 리뷰 verdict | 없음 | 오너 승인 (§8) |
+| **1** | `rules/registry.yaml` + 추출기 + `bun run rules:check` | **없음** | 추출 결정론 · digest 일치 · 미분류 0 (G2) |
+| **2** | `scripts/rule-router.ts` (L1+L2) + `rule-router-eval.ts`, **shadow only** | 없음(로깅만) | 257세션 replay · **J-miss 0** (G1) |
+| **3** | JIT append-only 주입 (저위험 surface부터: 위임·ship) | 추가만 | 위반 fixture 카나리아 — “가드가 켜져 있고 잡는다” |
+| **4** | prefix 라우팅 + 모드 노브 | prefix 축소 | G4·G5 회귀 없음 |
+
+Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 실제 위험은 Phase 3에서 시작한다.
+
+---
+
+## 8. 리뷰어가 답해야 할 질문 (모호함 없이)
+
+1. **P2의 대응이 성립하는가** — “H등급은 컨텍스트에서 내려도 안전”이 참인가? 반례(코드 가드가
+   잡지만 모델이 그 규칙을 모르면 애초에 다른 경로로 새는 경우)가 있는가?
+2. **pinned 집합의 초기 판정 권한**은 누구인가 — 설계자(본세션)인가, 리뷰어인가, 오너인가?
+3. **Phase 3의 JIT 주입이 A3(PreToolUse `model` 강제)의 주장 범위를 넘지 않는가** — 다른 하네스
+   (Codex/Grok/직접 CLI)에서는 라우터가 동작하지 않는다. 그 세션들의 P-A는 어떻게 처리하는가?
+4. **§6.2 라벨의 counterfactual 부재**를 감안할 때 G1 합격선(J-miss 0)이 의미 있는 게이트인가,
+   아니면 정의상 항상 통과하는 못-실패 지표인가?
+5. 이 표면은 **R{n}(plan_review) 대상인가, spike REVIEW 대상인가?** 선례는
+   `SESSION-START-UNIFIED-*`(하네스 규범 → spike REVIEW)이고, 제품 코드 변경은 없다.
+
+---
+
+## 9. Must not
+
+- 규칙 본문을 레지스트리에 복사(P5 위반 · SSOT 분열).
+- J등급/pinned 유닛을 라우팅 대상으로 승격.
+- UNKNOWN을 축소 경로로 처리(P4 위반 — C1/C2 재범).
+- 턴마다 prefix 재작성(P3 위반 — 캐시 미스로 절감 상쇄).
+- 절감률을 성과 지표의 머리에 두기(§0 — 절감은 잔여물).
+- 라우터 자신의 규칙을 라우팅 대상으로 두기(자기참조 — pinned 고정).
+- Cursor의 30–60% 수치를 우리 기대치로 인용(다른 도메인·다른 손실 구조).
+
+---
+
+## 10. Open decisions (오너 결정 필요)
+
+| # | 결정 | 안전 default |
+|---|---|---|
+| D1 | Phase 1까지 착수 승인 여부(주입 무변경) | 승인 대기 — 착수 없음 |
+| D2 | 리뷰 경로: plan_review `R{n}` vs spike `RULE-ROUTER-REVIEW.md` | 선례대로 spike REVIEW |
+| D3 | pinned 초기 집합의 판정 권한 | 리뷰어 승인 필수 |
+| D4 | L3(LLM 분류기) 사용 여부 | 사용 안 함 — L1+L2로 시작 |
+| D5 | 모드 노브 기본값 | `strict` (라우팅 최소) |
+
+---
+
+## 11. 사실 범위와 미확정
+
+- §1.1·§6.1의 수치는 2026-07-23 실측이다. 주입 봉투는 `session-context.ts --part all`과
+  `norms-receipt.ts --format raw`의 실제 출력을 측정했다. 규범 총량은 13개 파일 concat 실측이다.
+- §1.2의 3/3·4/4는 `RULE-ENFORCEABILITY.md`가 명시한 대로 **한 세션의 표본**이며, 일반 위반률로
+  외삽하지 않는다.
+- **절감폭은 미확정**이다. Phase 2 replay 전에는 어떤 수치도 주장하지 않는다.
+- 라벨 counterfactual 부재(§6.2)는 이 설계의 **알려진 구조적 한계**이며 해소책이 없다. 그래서
+  J등급을 pinned로 고정해 상쇄한다.
+- `rules/registry.yaml`의 앵커 문법(파일 내 위치 지정 방식)은 Phase 1에서 확정한다. 현재
+  `norms-receipt.ts`는 정확한 H2 제목·표 행 라벨로 앵커를 잡으며, 그 방식이 일반화 가능한지는
+  **미확정**이다.
+- 다른 하네스(Codex/Grok)의 PreToolUse 등가물 존재 여부는 확인하지 않았다(§8-3).
+
+---
+
+## 12. Changelog
+
+- **rev-1 (2026-07-23)** — 최초 작성. 문제(P-A~P-D)·목적(G1–G5)·원칙(P1–P5) 명문화, Phase 0–4,
+  Open decisions D1–D5. 착안: Cursor Router. 설계는 리뷰 가능한 최소 수준까지만 고정.
+
+[RULE-ROUTER-PROPOSE rev-1] problems=4 goals=5 principles=5 phases=5 open=5

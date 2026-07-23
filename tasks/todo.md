@@ -1,13 +1,15 @@
 # Todo — Loom
 
-## Current — Session end · Owner next-track
+## Current — RULE-ROUTER propose rev-1 · review pending
 
 > SSOT = `HANDOFF.md`. Start: **`bun run status`**.
 > R28 integration flake fix is shipped and green. MAP/product remain closed.
 
 ### Do now
 
-- [ ] Wait for the Owner's next selected gate
+- [ ] Get `docs/spikes/RULE-ROUTER-PROPOSE.md` rev-1 reviewed (§8 five questions)
+- [ ] Owner picks D1 (Phase 1 start?) and D2 (review path: `R{n}` vs spike REVIEW)
+- [ ] No Phase 1 work — registry/router/inject stay untouched until the verdict
 - [ ] Keep CONTEXT-MAP/product closed
 
 ### Open issues (not current gate)
