@@ -63,7 +63,7 @@
 ## Invariants
 
 - Nine HANDOFF headings; D1 ≤8192B; no `<details>`.
-- Trap authority stays in `tasks/traps.md`; HANDOFF does not duplicate its sections.
+- Trap authority stays in `tasks/traps.md`; HANDOFF does not duplicate its sections. **Don't redo = gate-local only** — permanent norms belong to NORMS/CLAUDE/AGENTS, not here.
 - `design-approved ≠ implementation-authorized`; Owner added NORMS to impl set; MAP/product remain closed.
 - Topology tuple: `single/current-session/objective-commands`; lockedness alone does not delegate.
 - SessionStart S = **one** `--part all`; N is a separate same-event hook only on measured Claude.
@@ -91,14 +91,12 @@
 ## Don't redo
 
 - Re-split S into dual state/lessons hooks (cause A).
-- Reapply retracted F6/P7 over DOGFOOD §0.5; interpret `single` as a Grok dispatch.
+- Reapply retracted F6/P7 over DOGFOOD §0.5.
 - Reopen the corrected single/full contradiction; implement MAP/product under NORMS authorization.
 - Enable Codex N from chars/token estimates; treat Grok SessionStart stdout as N delivery.
-- Claim cause B closed by B-4 re-patch; warm-base re-fork; Grok stdout = S full.
-- Bare status as wave; permanent nine-axis slim-delete.
+- Claim cause B closed by B-4 re-patch; warm-base re-fork.
 - Reclassify fixed R28 timeout as open regression; raise timeouts instead of preserving event/anchor order.
 - Re-derive the router problem statement; re-open the rev-2 demotion; author-lane verdict; re-run the rev-4 review; re-put D1–D9 to the Owner (선포 완료).
-- Pre-claim before dispatch (§1.1 forbids; rule 5 fixed `1a22a9c`; commands stay valid).
 - Re-derive PREREG numbers by hand; adjust a sealed S1–S4 value; swap samples; read the live corpus; quote `M7b = 0` past E1; open the holdout early.
 - Re-open the B/C bake-off (S1-2 is AND; `M7b = 0` closed it); read recall 0.451 as an A-vs-B/C verdict; fit triggers to the observed miss list.
 - Re-measure F1 delivery (6 probes); read F1 YES as Phase 3 authorization; keep §5.3's "호출 직전 = 직접 처방"; treat delivery as compliance.
