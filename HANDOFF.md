@@ -24,7 +24,7 @@
 
 **Done (1단):** PREREG rev-2 봉인 제안 4건 — **S1** M7 분해(M7a 15% 표 개정 신호 · **M7b 산술적 0** → A 확정·B/C 미구현) · **S2** M6 30점 만점 · 1점=recall 0.5%p · **S3** miss 가중 A3/G2/H1 · recall ≥0.85 · 재측정 2회+holdout 15 · **S4** 60세션 층화(sha256 결정론). **B_rules = 9,500 chars** = 전용 슬롯 1개 캡.
 
-**Next:** 리뷰어가 §8 5문(핵심 = **B_rules 채널 선택** — state 채널이면 M7b 100%로 결론 반전)에 답하고 verdict를 낸다.
+**Next (다음 세션 = 리뷰어 레인):** §8 5문(핵심 = **B_rules 채널 선택** — state 채널이면 M7b 100%로 결론 반전)에 답하고 verdict. `single`이므로 **검증 피어를 띄우지 않는다**(§0.5.1) — 레인 분리는 세션 승계로 성립.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
@@ -48,7 +48,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| **D7 승인 주체** | codex 레인 2회 무응답(판정 없이 idle) · 설계자 자기 승인 불가 | 제안 상태로 보류 — replay 미착수 | PREREG rev-2 §8 5문 |
+| **D7 리뷰어 승인** | 설계자 자기 승인 불가 · `single`은 **검증 피어를 안 띄운다**(§0.5.1) → 리뷰어 = **다음 세션**(선례 = REVIEW 헤더 "저자 = 직전 세션") 또는 오너 | 제안 상태 보류 — replay 미착수 | PREREG rev-3 §8 5문 |
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
