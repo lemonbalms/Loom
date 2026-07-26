@@ -24,7 +24,7 @@
 
 **Authority:** propose **rev-11** §7 Phase 3(**임의 토큰 금지 · 행동 위치 판정**) · 정본 `F1B-RESULT.md` §3–§4. Phase 3 선결은 그대로 **§5.3 문안 개정**(리뷰 게이트).
 
-**Now:** 새 사전등록 후 측정 — 요구 행동은 ⓐ 기본값과 구분되고 ⓑ **규범으로서 그럴듯**해야 한다. 반례 축 = 현행 SessionStart 규범은 실제로 준수된다.
+**Now:** **봉인 먼저, 측정 나중.** 요건 R1–R6 = `F1B-RESULT.md` **§7**. 하네스는 재사용(`~/.loom/f1-poc-2026-07-26`) — 새로 짜지 말 것.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
