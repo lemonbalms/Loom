@@ -1,7 +1,9 @@
-# Propose (rev-5) — 룰 분리기(Rule Router)
+# Propose (rev-6) — 룰 분리기(Rule Router)
 
-작성 2026-07-23 · rev-5 2026-07-26 · 레인: 본세션(topology `single`) 설계 · **제품 코드·hook·주입 변경 없음**
-상태: **reviewed — approve (binding 조건 0 = 이 rev-5 fold-in)** · 착수 대기: 오너 D1.
+작성 2026-07-23 · rev-5 fold-in 2026-07-26 · rev-6 오너 확정 2026-07-26 · 레인: 본세션(topology `single`)
+상태: **approved — Phase 1 착수 승인 (오너 D1, 2026-07-26)** · D2–D9 전건 확정(§10).
+Phase 1 범위 = 레지스트리·추출기·`rules:check`·카테고리 표 초안 · **주입·hook·제품 코드 변경 없음**.
+Phase 2 이후는 별도 게이트(§7) — 이 승인에 포함되지 않는다.
 리뷰 정본: [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md) (rev-4 대상 · §4 delta ①–⑧ 반영분이 이 rev-5).
 rev-5는 리뷰 §4의 사전 승인 문안을 그대로 반영한 **docs-only** 개정이므로 **재리뷰 불요**.
 
@@ -489,11 +491,15 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
 
 ---
 
-## 10. Open decisions (오너 결정 필요)
+## 10. Open decisions — **2026-07-26 오너 확정 (D1–D9 전건 종결)**
 
-| # | 결정 | 안전 default |
+> **오너 판정 (2026-07-26).** **D1 = 승인 — Phase 1 착수.** D2–D9는 **리뷰 §5 권고를 전건 그대로
+> 채택**한다. 아래 표의 “default” 열은 이제 대기 상태가 아니라 **확정된 결정**이다. 변경은 새 결정을
+> 요구한다. 단 Phase 1의 **카테고리 표 초안은 완성 후 다시 오너 승인**을 받는다(D9 · §5.2.1).
+
+| # | 결정 | **확정 (2026-07-26)** |
 |---|---|---|
-| D1 | Phase 1까지 착수 승인 여부(주입 무변경) | 승인 대기 — 착수 없음 |
+| D1 | Phase 1까지 착수 승인 여부(주입 무변경) | **승인 — 착수** (Phase 2 이후는 별도 게이트) |
 | D2 | 리뷰 경로: plan_review `R{n}` vs spike `RULE-ROUTER-REVIEW.md` | 선례대로 spike REVIEW |
 | D3 | pinned 초기 집합의 판정 권한 | **3원천 분해**(리뷰 §2-2): J등급 자동 pin · 무성-deny H 자동 pin(`guard.deny_visible=false`) · 그 밖의 재량 pin은 **오너 선포 + 리뷰어 감사** |
 | D4 | ~~L3 사용 여부~~ → **선택 메커니즘 채택안(A/B/C)** | **bake-off(§6.5) 결과로 결정** · 그 전 default = A |
@@ -563,4 +569,8 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   ⑧ §10 D3(3원천 분해) · D6(Phase 1은 스키마 필드 예약만) · D7(3단 절차) 갱신.
   **설계 변경 없음 — 게이트·측정 규정·범위 선언만 강화.** 미해결: 오너 D1–D9.
 
-[RULE-ROUTER-PROPOSE rev-5] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 open=9 delta=8
+- **rev-6 (2026-07-26 · 오너 판정 · docs-only)** — **D1 승인(Phase 1 착수)** · D2–D9는 리뷰 §5 권고
+  전건 채택으로 확정. §10을 “결정 필요”에서 **확정표**로 전환, 헤더 상태를 `approved`로 갱신.
+  설계·게이트 변경 없음. 잔여 오너 승인 = **Phase 1 카테고리 표 초안**(D9 · §5.2.1) 1건.
+
+[RULE-ROUTER-PROPOSE rev-6] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8
