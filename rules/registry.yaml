@@ -1,0 +1,308 @@
+# rules/registry.yaml — RULE-ROUTER Phase 1 registry.
+#
+# 본문 없음. 좌표 + 메타 + digest만 (propose §5.1 · P5 SSOT 불분할).
+# 생성·검증: bun run rules:check  ·  앵커 문법: scripts/rules-registry.ts
+#
+# sha8    = 앵커가 가리키는 본문의 digest — 소스가 바뀌면 게이트가 깨진다.
+# sources = 파일 단위 digest + triage receipt (리뷰 F2 — 유닛 sha8은 '변경'만 잡고 '추가'를 못 잡는다).
+# pin     = D3 3원천 분해의 파생값이지 편집 대상이 아니다 (grade-J · silent-deny-H · owner).
+version: 1
+policy_version: "2026-07-26.p1"
+
+sources:
+  - file: "AGENTS.md"
+    sha8: "e72e4681"
+    triage:
+      for_sha8: "e72e4681"
+      note: "Phase 1 최초 등록 — 신규 유닛 13건 등록"
+      at: "2026-07-26"
+  - file: "CLAUDE.md"
+    sha8: "7079ac9d"
+    triage:
+      for_sha8: "7079ac9d"
+      note: "Phase 1 최초 등록 — 신규 유닛 7건 등록"
+      at: "2026-07-26"
+  - file: "docs/SESSION-START.md"
+    sha8: "5ef7c5f4"
+    triage:
+      for_sha8: "5ef7c5f4"
+      note: "Phase 1 최초 등록 — 신규 유닛 1건 등록"
+      at: "2026-07-26"
+  - file: "tasks/traps.md"
+    sha8: "939c9475"
+    triage:
+      for_sha8: "939c9475"
+      note: "Phase 1 최초 등록 — 신규 유닛 11건 등록"
+      at: "2026-07-26"
+
+units:
+  - id: "orch.session-role"
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|Topology full에서 본세션", sha8: "d15825f1" }
+    grade: "J"   # 역할 경계는 사람/모델 판단 — 중개 지점 없음
+    layer: ["L5"]
+    surface: ["delegation", "planning"]
+    triggers: ["위임", "서브에이전트", "topology", "full", "single", "아키텍트"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 457
+  - id: "orch.model-explicit"
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|서브에이전트 model 명시 필수", sha8: "de04b1fa" }
+    grade: "H"   # A3 PreToolUse가 Agent/Task 호출 직전 차단 + 안내 (ENFORCEABILITY §5.1)
+    layer: ["L2"]
+    surface: ["delegation"]
+    triggers: ["Agent", "Task", "서브에이전트", "subagent", "model"]
+    guard: { deny_visible: true }
+    pin: false
+    cost_chars: 133
+  - id: "orch.parallel"
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|병렬화 기본", sha8: "f85f0432" }
+    grade: "J"   # 독립성 판단은 의미 판단
+    layer: ["L5"]
+    surface: ["delegation"]
+    triggers: ["병렬", "parallel", "Workflow", "다중 스폰"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 118
+  - id: "orch.session-ritual"
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|세션 시작 리추얼에", sha8: "e0bd1150" }
+    grade: "G"   # B1 — 순서는 코드화 가능, 효과는 미확정 (ENFORCEABILITY §5.2)
+    layer: ["L1", "L2"]
+    surface: ["session-start", "delegation"]
+    triggers: ["세션 시작", "lessons", "리추얼", "위임"]
+    pin: false
+    cost_chars: 187
+  - id: "orch.lane-placement"
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|Topology full 레인 배치 고정", sha8: "ad17bdbd" }
+    grade: "G"   # B2/B3 — claim·pane 선행조건은 코드화 가능, 예외는 판단
+    layer: ["L1", "L2"]
+    surface: ["dispatch", "delegation"]
+    triggers: ["디스패치", "dispatch", "grok", "codex", "pane", "claim", "레인"]
+    pin: false
+    cost_chars: 734
+  - id: "orch.watch-card"
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|워커 감시는", sha8: "b55b3df6" }
+    grade: "A"   # C2 — 관측기는 후보 신호까지만, 사후 탐지
+    layer: ["L3", "L4"]
+    surface: ["dispatch", "verification"]
+    triggers: ["감시", "watch-card", "pane", "워커", "exit code"]
+    pin: false
+    cost_chars: 318
+  - id: "orch.card-done"
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|card.done 수신 ≠ 완료", sha8: "f76f6eb4" }
+    grade: "A"   # B4 — 완료 확정은 구조화 신호 + 독립 검증 (사후)
+    layer: ["L3", "L4"]
+    surface: ["dispatch", "verification"]
+    triggers: ["card.done", "완료", "done", "독립 검증", "pane"]
+    pin: false
+    cost_chars: 594
+  - id: "agents.autonomy"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Autonomy (default)", sha8: "c7f0f1c1" }
+    grade: "J"   # 웨이브 진행 판단
+    layer: ["L5"]
+    surface: ["gate", "session-start"]
+    triggers: ["이어서", "진행해", "자율", "단계적"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 189
+  - id: "agents.next-action"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Next-action test", sha8: "5588b050" }
+    grade: "J"   # 실패 가능성 판단은 의미 판단
+    layer: ["L5"]
+    surface: ["gate"]
+    triggers: ["다음 액션", "next action", "게이트"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 484
+  - id: "agents.verify"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Verify", sha8: "6fd841fa" }
+    grade: "A"   # 테스트 결과는 사후 탐지 가능
+    layer: ["L3"]
+    surface: ["ship", "verification"]
+    triggers: ["bun test", "검증", "verify", "green", "스모크"]
+    pin: false
+    cost_chars: 100
+  - id: "agents.commit-push"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Commit/push", sha8: "b93b1cf6" }
+    grade: "J"   # 웨이브 종료 판단
+    layer: ["L5"]
+    surface: ["ship"]
+    triggers: ["커밋", "commit", "푸시", "push", "ship"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 162
+  - id: "agents.impl-delegation"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Impl delegation", sha8: "b40cec78" }
+    grade: "G"   # 라우팅 SSOT는 부분 중개
+    layer: ["L1"]
+    surface: ["delegation", "dispatch"]
+    triggers: ["위임", "topology", "single", "full", "구현", "레인"]
+    pin: false
+    cost_chars: 439
+  - id: "agents.plan-ssot"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Plan SSOT", sha8: "b26caa62" }
+    grade: "J"   # 정본 인식은 사람 판단
+    layer: ["L5"]
+    surface: ["planning"]
+    triggers: ["PLAN", "계획", "스펙"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 30
+  - id: "agents.reviews"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Reviews", sha8: "792a5389" }
+    grade: "J"   # 리뷰 경로 선택 판단
+    layer: ["L5"]
+    surface: ["review"]
+    triggers: ["리뷰", "review", "R{n}", "plan_review"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 97
+  - id: "agents.deviations"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Deviations", sha8: "8201d913" }
+    grade: "J"   # 보수적 선택 판단
+    layer: ["L5"]
+    surface: ["implementation"]
+    triggers: ["deviation", "일탈", "implementation-notes", "보수적"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 86
+  - id: "agents.unknowns"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Unknowns", sha8: "b97af515" }
+    grade: "J"   # 미확정 식별은 판단
+    layer: ["L5"]
+    surface: ["planning", "review"]
+    triggers: ["unknown", "미확정", "MINOR", "새 표면"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 108
+  - id: "agents.claude-rn"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Claude R{n}", sha8: "aca66b5c" }
+    grade: "J"   # 자문 수행 여부는 receipt 없음 (B1 계열)
+    layer: ["L5"]
+    surface: ["review"]
+    triggers: ["R{n}", "리뷰", "fable-advisor", "자문", "verdict"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 87
+  - id: "agents.author-close"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Author-close", sha8: "0189e023" }
+    grade: "J"   # 등급 판단
+    layer: ["L5"]
+    surface: ["review"]
+    triggers: ["author-close", "Low", "backlog", "종결"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 88
+  - id: "agents.env"
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Env (0.10+)", sha8: "06e68593" }
+    grade: "A"   # env 사용은 grep/테스트로 사후 탐지
+    layer: ["L3"]
+    surface: ["implementation"]
+    triggers: ["env", "LOOM_", "FABLE_", "환경변수"]
+    pin: false
+    cost_chars: 75
+  - id: "agents.pause-blockers"
+    source: { file: "AGENTS.md", anchor: "heading:### Pause only when (true blockers)", sha8: "6bed2a84" }
+    grade: "J"   # 정지 조건은 사람 판단
+    layer: ["L5"]
+    surface: ["gate", "delegation"]
+    triggers: ["멈춰", "계획만", "커밋 금지", "블로커", "blocker"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 515
+  - id: "traps.dispatch-marker"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|dispatch wrap 마커", sha8: "c6e9f2df" }
+    grade: "A"   # 마커 오탐은 사후 탐지
+    layer: ["L4"]
+    surface: ["dispatch"]
+    triggers: ["마커", "marker", "dispatch", "R42", "allowlist"]
+    pin: false
+    cost_chars: 139
+  - id: "traps.bun-test-env"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|bun test는", sha8: "1172cf30" }
+    grade: "A"   # 위양성 실패로 사후 관측
+    layer: ["L3"]
+    surface: ["verification", "ship"]
+    triggers: ["bun test", "LOOM_RELAY", "스위트", "테스트"]
+    pin: false
+    cost_chars: 99
+  - id: "traps.card-done"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|card.done ≠ 완료", sha8: "7e4d2cd7" }
+    grade: "A"   # 완료 오판정은 사후 탐지 (C2)
+    layer: ["L4"]
+    surface: ["dispatch", "verification"]
+    triggers: ["card.done", "완료", "claim", "종료 코드", "PaneDied"]
+    pin: false
+    cost_chars: 122
+  - id: "traps.watch-card"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|워커 감시 = watch-card.ts", sha8: "57eb65d6" }
+    grade: "A"   # 감시 도구 오용은 사후 탐지
+    layer: ["L3", "L4"]
+    surface: ["dispatch", "verification"]
+    triggers: ["watch-card", "감시", "pane", "exit"]
+    pin: false
+    cost_chars: 93
+  - id: "traps.terminal-replay"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|terminal 이벤트는 신규 구독자에 재전달", sha8: "a58e5bf4" }
+    grade: "A"   # replay/live 혼동은 사후 관측
+    layer: ["L4"]
+    surface: ["dispatch", "bridge"]
+    triggers: ["terminal", "이벤트", "replay", "백로그", "구독"]
+    pin: false
+    cost_chars: 85
+  - id: "traps.claude-mem-patch"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|claude-mem 패치 비영속", sha8: "5dc579d1" }
+    grade: "A"   # check:mem-header가 사후 탐지
+    layer: ["L3"]
+    surface: ["platform"]
+    triggers: ["claude-mem", "autoUpdate", "패치", "mem-header"]
+    pin: false
+    cost_chars: 88
+  - id: "traps.pane-lane-death"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|pane 레인 4개 중 3개 사망", sha8: "c8082cfe" }
+    grade: "A"   # 레인 건강은 관측 신호
+    layer: ["L4"]
+    surface: ["dispatch"]
+    triggers: ["pane", "레인", "폴백", "fallback", "장기 카드"]
+    pin: false
+    cost_chars: 76
+  - id: "traps.fake-herdr-status"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|fake-herdr.ts:565 status는 underscore만", sha8: "0561677c" }
+    grade: "A"   # 픽스처 갭은 테스트로 사후 탐지
+    layer: ["L3"]
+    surface: ["implementation", "verification"]
+    triggers: ["fake-herdr", "픽스처", "status", "dotted"]
+    pin: false
+    cost_chars: 78
+  - id: "traps.coordinate-tree"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|좌표는 트리를 명시한다", sha8: "a33e5472" }
+    grade: "A"   # 좌표 오독은 사후 발견 (R45 실증)
+    layer: ["L4"]
+    surface: ["review", "verification"]
+    triggers: ["좌표", "브랜치", "sha", "대조", "R45"]
+    pin: false
+    cost_chars: 105
+  - id: "traps.grok-readonly"
+    source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|grok 헤드리스 read-only", sha8: "1bc3dbe0" }
+    grade: "A"   # 권한 모드 오처방은 사후 정정 (R44→R45)
+    layer: ["L4"]
+    surface: ["dispatch", "delegation"]
+    triggers: ["grok", "headless", "read-only", "sandbox", "권한"]
+    pin: false
+    cost_chars: 114
+  - id: "traps.donts"
+    source: { file: "tasks/traps.md", anchor: "heading:## 하지 말 것", sha8: "a15b45b2" }
+    grade: "J"   # 재론 금지는 사람 판단
+    layer: ["L5"]
+    surface: ["gate", "review"]
+    triggers: ["재론", "R25", "R41", "R42", "M-lock", "PATCH"]
+    pin: true
+    pin_source: "grade-J"
+    cost_chars: 165
+  - id: "sessionstart.triggers"
+    source: { file: "docs/SESSION-START.md", anchor: "heading:## Triggers + precedence", sha8: "ec2b127c" }
+    grade: "G"   # classifyOwnerUtterance가 부분 중개 (session-start-triggers.ts)
+    layer: ["L1"]
+    surface: ["session-start", "gate"]
+    triggers: ["상태", "핸드오프", "이어서", "진행해", "멈춰", "계획만", "커밋 금지"]
+    pin: false
+    cost_chars: 1463

@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · RULE-ROUTER **rev-5 folded (조건 0 closed)** · next = Owner D1–D9 판정 대기.
+> v0.28.1 · RULE-ROUTER **Phase 1 코드 done** (D1 승인) · next = 카테고리 표 오너 승인(D9).
 
 ## Current loop
 
@@ -18,19 +18,19 @@
 
 ## Current action
 
-### RULE-ROUTER — Owner D1–D9 판정 대기 (조건 0 closed)
+### RULE-ROUTER Phase 1 — 카테고리 표 오너 승인 (D9) → D7 임계 3단 절차
 
-**Goal:** Owner decides D1–D9 (review §5 recommendations). D1 = whether Phase 1 (registry + extractor + `rules:check`, **주입 무변경·가역**) may start.
+**Goal:** Close Phase 1. Code+registry **done**; 남은 것 = 카테고리 표 **오너 승인(D9)** → M7 임계 **D7 3단 절차**(설계자 제안 → 리뷰어 승인 → 커밋 봉인) → 그 후 Phase 2.
 
-**Authority:** review verdict = **approve, binding 조건 0 = rev-5 fold-in** — **조건 0 done** (`955d2a5`, §4 ①–⑦ verbatim PASS · ⑧ manual). approve ≠ implementation authorization; Phase 1 still needs **Owner D1**.
+**Authority:** Owner 2026-07-26 — **D1 승인** · D2–D9 리뷰 §5 전건 채택 (rev-6 §10 확정표). Phase 2 이후는 미포함.
 
-**Now:** present D1–D9 with review §5 defaults; wait. No registry/router/inject work before D1. If D1 approves: Phase 1 = registry.yaml + 추출기 + `rules:check` + 파일 digest/triage receipt + 카테고리 표 초안.
+**Now:** `RULE-CATEGORIES-DRAFT.md` §3(10개 확정 · 재량 pin 0건 · 예외 없음)을 오너에게. 레지스트리 확대(lessons/WORKFLOW/DOGFOOD 미등록)는 후속 — 주입 무변경.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Done when:** Owner records D1–D9 (or explicitly defers) — then HANDOFF flips to Phase 1 or to the next gate.
+**Done when:** Owner approves/edits the category table · then M7 임계 사전등록이 커밋으로 봉인된다.
 
-**Must not:** start Phase 1 before Owner D1; treat approve as implementation authorization; re-run the rev-4 review; re-word the folded §4 delta.
+**Must not:** start Phase 2 replay before the D7 임계 봉인; start Phase 3 before the PreToolUse 비차단 주입 **PoC 실측**(F1 · fail-closed); 재량 pin을 오너 선포 없이 늘리기(D3); 라우팅에 미승인 카테고리 표 사용.
 
 ## Active checks
 
@@ -41,7 +41,8 @@
 | R28 flake fix (ship) | **done** · 4× targeted · 14/14 inject · conv 30/30 | gate closed | new test ⑭ |
 | Suite + typecheck | **exit 0 · 6/6** | no remaining tests | last run |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
-| RULE-ROUTER review + rev-5 | **done** · approve+조건0 · advisor yes · ①–⑦ verbatim PASS | 조건 0 closed · Phase 1 blocked until D1 | REVIEW §0·§4 · `955d2a5` |
+| RULE-ROUTER review + rev-5/6 | **done** · ①–⑦ verbatim PASS · 오너 D1–D9 확정 | 조건 0 closed · Phase 1 승인 | `955d2a5` · rev-6 `b0a6cd4` |
+| RULE-ROUTER Phase 1 | **done** · 32유닛 · 미분류 0 · pinned 13 · 드리프트 실증(**F2 사각 = 미등록 신규 규칙도 잡힘**) | 주입 무변경 | `rules:check` · 26 tests |
 
 ## Owner pending
 
@@ -50,7 +51,7 @@
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
-| RULE-ROUTER D1–D9 | reviewer recs exist (D1 승인 권고 · D2 spike · D8 add-only 지지) | **유일 게이트** — no Phase 1 until D1 | review §5 |
+| RULE-ROUTER 카테고리 표 | Phase 1 산출물 · D9 = 오너 선포 | 10개 그대로 · 재량 pin 0건 · 예외 없음 | `RULE-CATEGORIES-DRAFT.md` §3 |
 | CONTEXT-MAP impl | separate package | not authorized | propose §8 |
 
 ## Blockers
@@ -82,7 +83,8 @@
 - DELIVERY: `SESSION-START.md` · freeze `cc03474` · approval `5b14012`.
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
 - Rule delivery 07-23: 13,157/168,772 chars = 7.8% auto-delivered.
-- RULE-ROUTER revs: `dd785f3` → `530a627` → `39269fe` → `7a47aad` (rev-4) → **`955d2a5` rev-5 (§4 fold-in)**.
+- RULE-ROUTER revs: `7a47aad`(rev-4) → `955d2a5`(rev-5 fold-in) → `b0a6cd4`(rev-6 오너 확정).
+- Phase 1: `rules/registry.yaml`(생성기 산출) · `scripts/rules-registry.ts` · 앵커 3종 유일매치 강제 · pin = D3 파생값(코드 강제).
 - RULE-ROUTER review: §8 7답(P2 조건부·G1 재배치) · F1 JIT 미실측(High)·F2·F3·F4 → 전건 rev-5 fold-in.
 
 ## Don't redo
