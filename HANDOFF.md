@@ -73,16 +73,15 @@
 
 ## Evidence
 
-- NORMS review: propose §7.3 · §11 #2/#4 · Phase 3 plan §12 · pack sources live.
-- NORMS impl: `core@5d29b979` · `lexicon@ec2b127c` · `traps-norm@a15b45b2` · 3657 chars/4101 bytes · 13 focused tests.
-- Flake roots (fixed): transient `sawWorking` cleared before verify polling; empty-delta test blind-drained anchors without asserting receipt.
-- Routing correction: `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md` · DOGFOOD §0.5 · review Addendum E · 814/814 tests.
+- NORMS: propose §7.3 · §11 #2/#4 · Phase 3 §12 · `core@5d29b979` · `lexicon@ec2b127c` · `traps-norm@a15b45b2` · 3657 chars · 13 tests.
+- OMX prior-art `e1f0aea`: gaps = claim from-state guard (`card-ops.ts:40`) · state-first. C1–C5 unauthorized.
+- Flake roots (fixed): transient `sawWorking` cleared pre-verify; empty-delta drained anchors without asserting receipt.
+- Routing fix: `SINGLE-TOPOLOGY-EXECUTION-DESIGN.md` · DOGFOOD §0.5 · Addendum E · 814/814.
 - M-1: `session-context.ts` fit · `.claude/settings.json` · `.codex/hooks.json` · `9b205a6`.
-- Handoff B: `handoff:budget` · `docs/HANDOFF-AUTHORING.md` · `055d73e`.
-- Cause B issue: todo Open issues · PRIORITIES P2c · `a6111e0`.
-- DELIVERY: `docs/SESSION-START.md` · freeze `cc03474` · approval `5b14012`.
+- Handoff B `055d73e` (`handoff:budget` · HANDOFF-AUTHORING) · cause B issue `a6111e0` (todo · PRIORITIES P2c).
+- DELIVERY: `SESSION-START.md` · freeze `cc03474` · approval `5b14012`.
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
-- Rule delivery 2026-07-23: 13,157 inject chars / 168,772 corpus = 7.8% auto-delivered.
+- Rule delivery 07-23: 13,157/168,772 chars = 7.8% auto-delivered.
 - RULE-ROUTER revs: `dd785f3` → `530a627` (candidates) → `39269fe` (M2) → `7a47aad` · blob `a4a0b47`.
 - RULE-ROUTER review: approve+조건0 · §8 7답(P2 조건부·G1 재배치) · F1 JIT 미실측(High)·F2 커버리지·F3 replay·F4 G5.
 
@@ -94,6 +93,7 @@
 - Enable Codex N from chars/token estimates; treat Grok SessionStart stdout as N delivery.
 - Claim cause B closed by B-4 re-patch; warm-base re-fork; Grok stdout = S full.
 - Bare status as wave; permanent nine-axis slim-delete.
-- Reclassify the fixed R28 timeout as an open NORMS regression; increase polling/test timeouts instead of preserving event/anchor order.
+- Reclassify fixed R28 timeout as open regression; raise timeouts instead of preserving event/anchor order.
 - Re-derive the router problem statement; re-open the rev-2 demotion; author-lane verdict.
 - Re-run the rev-4 review; reword review §4 delta in fold-in (verbatim only).
+- Pre-claim before dispatch (§1.1 forbids; rule 5 fixed `1a22a9c`; commands stay valid).
