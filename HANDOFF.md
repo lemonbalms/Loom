@@ -1,11 +1,11 @@
 # HANDOFF — Loom
 
-**Updated:** 2026-07-23
+**Updated:** 2026-07-26
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`
 
 ## One-line resume
 
-> v0.28.1 · RULE-ROUTER **reviewed: approve+조건0** · next = rev-5 fold-in → Owner D1–D9.
+> v0.28.1 · RULE-ROUTER **rev-5 folded (조건 0 closed)** · next = Owner D1–D9 판정 대기.
 
 ## Current loop
 
@@ -18,19 +18,19 @@
 
 ## Current action
 
-### RULE-ROUTER — rev-5 fold-in (리뷰 조건 0) → Owner D1–D9
+### RULE-ROUTER — Owner D1–D9 판정 대기 (조건 0 closed)
 
-**Goal:** Apply `RULE-ROUTER-REVIEW.md` **§4 delta ①–⑧ verbatim** to the propose as **rev-5 (docs-only)**, then put D1–D9 (review §5 recommendations) to the Owner.
+**Goal:** Owner decides D1–D9 (review §5 recommendations). D1 = whether Phase 1 (registry + extractor + `rules:check`, **주입 무변경·가역**) may start.
 
-**Authority:** review verdict = **approve, binding 조건 0** — no Phase 1 before rev-5. Delta text is pre-approved → rev-5 needs **no re-review**. The verdict session did not edit the propose — fold-in is author-lane work.
+**Authority:** review verdict = **approve, binding 조건 0 = rev-5 fold-in** — **조건 0 done** (`955d2a5`, §4 ①–⑦ verbatim PASS · ⑧ manual). approve ≠ implementation authorization; Phase 1 still needs **Owner D1**.
 
-**Now:** fold §4 ①–⑧ into the propose + changelog/coordinates; brief the Owner on D1–D9 with review §5. No Phase 1/registry/router/inject work until rev-5 **and** Owner D1.
+**Now:** present D1–D9 with review §5 defaults; wait. No registry/router/inject work before D1. If D1 approves: Phase 1 = registry.yaml + 추출기 + `rules:check` + 파일 digest/triage receipt + 카테고리 표 초안.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Done when:** rev-5 committed with §4 applied verbatim · D1–D9 presented to Owner.
+**Done when:** Owner records D1–D9 (or explicitly defers) — then HANDOFF flips to Phase 1 or to the next gate.
 
-**Must not:** deviate from §4 wording (deviation = re-review); start Phase 1 before rev-5 + Owner D1; treat approve as implementation authorization; re-run the rev-4 review.
+**Must not:** start Phase 1 before Owner D1; treat approve as implementation authorization; re-run the rev-4 review; re-word the folded §4 delta.
 
 ## Active checks
 
@@ -41,7 +41,7 @@
 | R28 flake fix (ship) | **done** · 4× targeted · 14/14 inject · conv 30/30 | gate closed | new test ⑭ |
 | Suite + typecheck | **exit 0 · 6/6** | no remaining tests | last run |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
-| RULE-ROUTER review | **done · approve+조건0** · advisor consulted | Phase 1 blocked until rev-5 + D1 | `RULE-ROUTER-REVIEW.md` §0·§4 |
+| RULE-ROUTER review + rev-5 | **done** · approve+조건0 · advisor yes · ①–⑦ verbatim PASS | 조건 0 closed · Phase 1 blocked until D1 | REVIEW §0·§4 · `955d2a5` |
 
 ## Owner pending
 
@@ -50,7 +50,7 @@
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
-| RULE-ROUTER D1–D9 | reviewer recs exist (D1 승인 권고 · D2 spike · D8 add-only 지지) | no Phase 1 until rev-5 + Owner D1 | review §5 |
+| RULE-ROUTER D1–D9 | reviewer recs exist (D1 승인 권고 · D2 spike · D8 add-only 지지) | **유일 게이트** — no Phase 1 until D1 | review §5 |
 | CONTEXT-MAP impl | separate package | not authorized | propose §8 |
 
 ## Blockers
@@ -82,8 +82,8 @@
 - DELIVERY: `SESSION-START.md` · freeze `cc03474` · approval `5b14012`.
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
 - Rule delivery 07-23: 13,157/168,772 chars = 7.8% auto-delivered.
-- RULE-ROUTER revs: `dd785f3` → `530a627` (candidates) → `39269fe` (M2) → `7a47aad` · blob `a4a0b47`.
-- RULE-ROUTER review: approve+조건0 · §8 7답(P2 조건부·G1 재배치) · F1 JIT 미실측(High)·F2 커버리지·F3 replay·F4 G5.
+- RULE-ROUTER revs: `dd785f3` → `530a627` → `39269fe` → `7a47aad` (rev-4) → **`955d2a5` rev-5 (§4 fold-in)**.
+- RULE-ROUTER review: §8 7답(P2 조건부·G1 재배치) · F1 JIT 미실측(High)·F2·F3·F4 → 전건 rev-5 fold-in.
 
 ## Don't redo
 
