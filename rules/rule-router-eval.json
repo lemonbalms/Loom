@@ -1,0 +1,225 @@
+{
+  "prereg": "RULE-ROUTER-PREREG rev-4 · S1/S3 · Phase 2 shadow replay",
+  "router_version": "A-1",
+  "policy_version": "2026-07-26.p1",
+  "candidate": "A · deterministic (lexicon triggers + registry triggers → surface join)",
+  "set": "eval",
+  "sessions": 45,
+  "archive": "~/.loom/prereg/rule-router-2026-07-26",
+  "archive_drift": [],
+  "input_hash": "3806625a",
+  "sealed": {
+    "b_rules_chars": 9500,
+    "recall_gate": 0.85,
+    "m7a_review_signal": 0.15,
+    "miss_weight": {
+      "A": 3,
+      "G": 2,
+      "H": 1
+    }
+  },
+  "measured": {
+    "turns": 557,
+    "active_turns": 371,
+    "m7a": 0.24236983842010773,
+    "m7a_active_turns": 0.19137466307277629,
+    "m7b": 0,
+    "m7": 0.24236983842010773,
+    "risk_weighted_recall": 0.45132743362831856,
+    "weight_hit": 51,
+    "weight_total": 113,
+    "positive_turns": 12,
+    "j_miss": 0,
+    "per_grade": {
+      "A": {
+        "hit": 30,
+        "total": 78
+      },
+      "G": {
+        "hit": 18,
+        "total": 32
+      },
+      "H": {
+        "hit": 3,
+        "total": 3
+      }
+    },
+    "category_turns": {
+      "UNKNOWN": 135,
+      "session-start": 251,
+      "gate": 161,
+      "planning": 124,
+      "delegation": 231,
+      "dispatch": 235,
+      "implementation": 161,
+      "verification": 240,
+      "review": 206,
+      "ship": 169,
+      "platform": 114
+    },
+    "m7a_by_turn_kind": {
+      "interrupt": {
+        "turns": 14,
+        "unknown": 14
+      },
+      "peer-message": {
+        "turns": 222,
+        "unknown": 50
+      },
+      "owner-utterance": {
+        "turns": 321,
+        "unknown": 71
+      }
+    }
+  },
+  "secondary": {
+    "mean_selected_units": 26.104129263913823,
+    "mean_cost_chars": 6167.357271095153,
+    "registry_total_chars": 7628,
+    "unmeasured_routable_units": [
+      "traps.dispatch-marker",
+      "traps.bun-test-env",
+      "traps.card-done",
+      "traps.watch-card",
+      "traps.terminal-replay",
+      "traps.claude-mem-patch",
+      "traps.pane-lane-death",
+      "traps.fake-herdr-status",
+      "traps.coordinate-tree",
+      "traps.grok-readonly",
+      "sessionstart.triggers"
+    ],
+    "unmeasured_weight": 32,
+    "routable_weight": 51
+  },
+  "per_unit": {
+    "orch.session-role": {
+      "positives": 3,
+      "hits": 3
+    },
+    "orch.model-explicit": {
+      "positives": 3,
+      "hits": 3
+    },
+    "orch.parallel": {
+      "positives": 3,
+      "hits": 3
+    },
+    "orch.session-ritual": {
+      "positives": 3,
+      "hits": 3
+    },
+    "orch.lane-placement": {
+      "positives": 3,
+      "hits": 3
+    },
+    "orch.watch-card": {
+      "positives": 3,
+      "hits": 3
+    },
+    "orch.card-done": {
+      "positives": 3,
+      "hits": 3
+    },
+    "agents.autonomy": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.next-action": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.verify": {
+      "positives": 10,
+      "hits": 2
+    },
+    "agents.commit-push": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.impl-delegation": {
+      "positives": 10,
+      "hits": 3
+    },
+    "agents.plan-ssot": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.reviews": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.deviations": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.unknowns": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.claude-rn": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.author-close": {
+      "positives": 10,
+      "hits": 10
+    },
+    "agents.env": {
+      "positives": 10,
+      "hits": 2
+    },
+    "agents.pause-blockers": {
+      "positives": 10,
+      "hits": 10
+    },
+    "traps.dispatch-marker": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.bun-test-env": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.card-done": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.watch-card": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.terminal-replay": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.claude-mem-patch": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.pane-lane-death": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.fake-herdr-status": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.coordinate-tree": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.grok-readonly": {
+      "positives": 0,
+      "hits": 0
+    },
+    "traps.donts": {
+      "positives": 0,
+      "hits": 0
+    },
+    "sessionstart.triggers": {
+      "positives": 0,
+      "hits": 0
+    }
+  }
+}

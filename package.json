@@ -28,6 +28,7 @@
     "norms:raw": "bun run scripts/norms-receipt.ts --format raw",
     "norms:check": "bun run scripts/norms-receipt.ts --check",
     "rules:check": "bun run scripts/rules-registry.ts",
+    "rules:eval": "bun run scripts/rule-router-eval.ts",
     "handoff:check": "bun run handoff:lint && bun run session-context:lint && bun run norms:check",
     "check:mem-header": "bun run scripts/check-mem-header.ts",
     "watch:card": "bun run scripts/watch-card.ts",

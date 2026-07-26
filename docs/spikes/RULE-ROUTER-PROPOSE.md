@@ -1,8 +1,11 @@
-# Propose (rev-8) — 룰 분리기(Rule Router)
+# Propose (rev-9) — 룰 분리기(Rule Router)
 
-작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · **rev-8 D7 봉인 2026-07-26** · 레인: 본세션(topology `single`)
-상태: **approved** — Phase 1 **완료** · D1–D9 전건 확정(§10) · **D7 봉인 완료 2026-07-26** ·
-**Phase 2 replay 착수 허용**(사전등록 정본 = [`RULE-ROUTER-PREREG.md`](./RULE-ROUTER-PREREG.md) rev-4 sealed).
+작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · **rev-9 Phase 2 라운드 1 실측 2026-07-26** · 레인: 본세션(topology `single`)
+상태: **approved** — Phase 1 **완료** · D1–D9 전건 확정(§10) · D7 봉인 완료 2026-07-26 ·
+**Phase 2 라운드 1 완료 → `M7b = 0` 실측으로 §6.5.5 중단 규칙 발동 = A 채택 확정 · B/C 미구현**
+(결과 정본 = [`RULE-ROUTER-PHASE2-RESULT.md`](./RULE-ROUTER-PHASE2-RESULT.md) rev-1 ·
+사전등록 정본 = [`RULE-ROUTER-PREREG.md`](./RULE-ROUTER-PREREG.md) rev-4 sealed).
+잔여 = 오너 결정 2건(카테고리 표 개정 · 라벨 검정력 — 결과 §6). **Phase 2b bake-off는 열리지 않는다.**
 Phase 3 이후는 여전히 별도 게이트 — 선결 = **F1 PreToolUse 비차단 주입 PoC 실측**(§7 · fail-closed).
 리뷰 정본: [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md) (rev-4 대상 · §4 delta ①–⑧ 반영분이 이 rev-5).
 rev-5는 리뷰 §4의 사전 승인 문안을 그대로 반영한 **docs-only** 개정이므로 **재리뷰 불요**.
@@ -439,8 +442,8 @@ G가 원리적 주장인 이유이며, 실측 일치율이 높게 나와도 바�
 |---|---|---|---|
 | **0** | 이 문서 + 리뷰 verdict | 없음 | 오너 승인 (§8) |
 | **1** | `rules/registry.yaml` + 추출기 + `bun run rules:check` · **카테고리 표 초안(§5.2.1) → 오너 승인** | **없음** | 추출 결정론 · digest 일치 · 미분류 0 (G2) · **파일 digest + registry triage receipt**(§5.1) · 카테고리 정본 확정 |
-| **2** | `rule-router-eval.ts` + **후보 A 먼저** shadow replay | 없음(로깅만) | 257세션 replay · **J-miss 0** (G1 ① pin 배선) · 사전등록 recall 임계 · M7 측정 · **표본추출 규칙 사전등록**(아래) |
-| **2b** | **bake-off** — A vs B vs C를 §6.5 축으로 비교. §6.5.5 중단 규칙 적용 | 없음 | 사전등록 합격선 충족 · **채택 verdict 기록** |
+| **2** | `rule-router-eval.ts` + **후보 A 먼저** shadow replay — **완료 2026-07-26**(라운드 1 · eval 45세션 557턴) | 없음(로깅만) | **J-miss 0 ✓ · M7b 0% ✓ · M7a 24.2%(S1-3 발동) · recall 0.451(S3-2 미달 · 검정력 부족 명기)** — [결과](./RULE-ROUTER-PHASE2-RESULT.md) |
+| **2b** | **bake-off** — A vs B vs C를 §6.5 축으로 비교. §6.5.5 중단 규칙 적용 | 없음 | **열리지 않음** — S1-2는 `M7b > 5%` AND recall 미달인데 `M7b = 0`이라 AND 불성립 |
 | **3** | 채택안으로 JIT append-only 주입 (저위험 surface부터: 위임·ship) | 추가만 | 위반 fixture 카나리아 — “가드가 켜져 있고 잡는다” |
 | **4** | prefix 라우팅 + 모드 노브 | prefix 축소 | G4·G5 회귀 없음 |
 
@@ -594,4 +597,11 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   §11의 "M7 임계 미정" 항목을 해소로 전환했다. **Phase 2 replay 착수 허용** — 남은 선결은
   Phase 3의 F1(PreToolUse 비차단 주입 PoC 실측)뿐이다. 설계 변경 없음.
 
-[RULE-ROUTER-PROPOSE rev-8] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8
+- **rev-9 (2026-07-26 · Phase 2 라운드 1 실측 반영 · docs-only)** — 후보 A shadow replay가 돌았고
+  결과 정본은 [`RULE-ROUTER-PHASE2-RESULT.md`](./RULE-ROUTER-PHASE2-RESULT.md) rev-1이다
+  (하네스 `scripts/rule-router-eval.ts` · receipt `rules/rule-router-eval.json` · eval 45세션 557턴).
+  §7 Phase 2 행에 실측값을, Phase 2b 행에 **미개시 사유**를 박았다: `M7b = 0` 실측 → §6.5.5 중단
+  규칙 발동 → **A 채택 확정 · B/C 미구현**이며, S1-2가 AND라 recall 미달이 bake-off를 열지 않는다.
+  남은 것은 오너 결정 2건(S1-3 카테고리 표 개정 · 라벨 검정력)이며 **설계·게이트 변경은 없다.**
+
+[RULE-ROUTER-PROPOSE rev-9] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted
