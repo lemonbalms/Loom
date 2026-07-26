@@ -48,11 +48,11 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
+| **D7 승인 주체** | codex 레인 2회 무응답(판정 없이 idle) · 설계자 자기 승인 불가 | 제안 상태로 보류 — replay 미착수 | PREREG rev-2 §8 5문 |
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
 | CONTEXT-MAP impl | separate package | not authorized | propose §8 |
-| **D7 승인 주체** | codex 레인 2회 무응답(판정 없이 idle) · 설계자 자기 승인 불가 | 제안 상태로 보류 — replay 미착수 | PREREG rev-2 §8 5문 |
 
 ## Blockers
 
