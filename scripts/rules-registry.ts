@@ -192,6 +192,80 @@ function validateUnitSchema(unit: RuleUnit, index: number): string[] {
   return errors;
 }
 
+/**
+ * Routing payload budget — one hook slot's cap, in chars (PREREG §2).
+ *
+ * Same derivation as `session-context.ts` HARD_CAP and `norms-receipt.ts`
+ * CLAUDE_NORMS_CHAR_BUDGET: a conservative margin under the platform's per-hook
+ * 10,000-char silent truncation. Changing it is an E4 expiry, not a tuning knob.
+ */
+export const RULES_BUDGET_CHARS = 9500;
+
+/**
+ * Category → surface join (`RULE-CATEGORIES.md` §1 — owner-declared canon, 10 categories).
+ *
+ * The table is owner canon, so this constant mirrors it rather than deriving it; the
+ * coverage assert below fails if the registry grows a surface no category claims.
+ */
+export const CATEGORY_SURFACES: Readonly<Record<string, readonly string[]>> = {
+  "session-start": ["session-start"],
+  gate: ["gate"],
+  planning: ["planning"],
+  delegation: ["delegation"],
+  dispatch: ["dispatch"],
+  implementation: ["implementation"],
+  verification: ["verification"],
+  review: ["review"],
+  ship: ["ship"],
+  platform: ["platform", "bridge"],
+};
+
+/**
+ * PREREG §7 E1/E2 expiry asserts — the sealed `M7b = 0` conclusion (PREREG §3.2) holds
+ * only while every category union, and the full registry, fit inside RULES_BUDGET_CHARS.
+ *
+ * This is the machine guard for a document rule: expiry monitoring left to memory would
+ * reproduce P-A (the very failure the router exists to fix). Strengthening the gate is
+ * not a pre-registration violation — the sealed numbers are unchanged.
+ */
+export function checkPreregExpiry(units: RuleUnit[]): string[] {
+  const errors: string[] = [];
+  const cost = (list: RuleUnit[]) => list.reduce((sum, u) => sum + (u.cost_chars || 0), 0);
+  const total = cost(units);
+  if (total > RULES_BUDGET_CHARS) {
+    errors.push(
+      `PREREG §7 E1 만료 — registry total ${total} chars > B_rules ${RULES_BUDGET_CHARS}; ` +
+        `"M7b = 0" 인용 금지 (재측정 전 A 확정 결론 무효)`,
+    );
+  }
+
+  const claimed = new Set(Object.values(CATEGORY_SURFACES).flat());
+  const present = new Set(units.flatMap((unit) => unit.surface ?? []));
+  for (const surface of [...present].sort()) {
+    if (!claimed.has(surface)) {
+      errors.push(
+        `PREREG §7 E3 — surface "${surface}" is claimed by no category ` +
+          `(RULE-CATEGORIES.md §1); category canon needs an owner revision`,
+      );
+    }
+  }
+
+  const pinnedCost = cost(units.filter((unit) => unit.pin));
+  for (const [category, surfaces] of Object.entries(CATEGORY_SURFACES)) {
+    const routed = units.filter(
+      (unit) => !unit.pin && (unit.surface ?? []).some((s) => surfaces.includes(s)),
+    );
+    const union = pinnedCost + cost(routed);
+    if (union > RULES_BUDGET_CHARS) {
+      errors.push(
+        `PREREG §7 E2 만료 — category "${category}" union ${union} chars > B_rules ` +
+          `${RULES_BUDGET_CHARS}; "M7b = 0" 인용 금지`,
+      );
+    }
+  }
+  return errors;
+}
+
 export function validateRegistry(
   registry: Registry,
   readSource: (file: string) => string,
@@ -280,12 +354,26 @@ export function validateRegistry(
   const pinnedBySource = (["grade-J", "silent-deny-H", "owner"] as const).map(
     (src) => `${src}=${pinned.filter((unit) => unit.pin_source === src).length}`,
   );
+  errors.push(...checkPreregExpiry(units));
+
+  const totalCost = units.reduce((sum, u) => sum + (u.cost_chars || 0), 0);
+  const pinnedCost = pinned.reduce((sum, u) => sum + (u.cost_chars || 0), 0);
+  const worstUnion = Math.max(
+    ...Object.values(CATEGORY_SURFACES).map(
+      (surfaces) =>
+        pinnedCost +
+        units
+          .filter((unit) => !unit.pin && (unit.surface ?? []).some((s) => surfaces.includes(s)))
+          .reduce((sum, u) => sum + (u.cost_chars || 0), 0),
+    ),
+  );
   report.push(
     `rules registry: v${registry.version} · policy ${registry.policy_version}`,
     `sources: ${registry.sources?.length ?? 0} files (file digest + triage receipt)`,
     `units: ${units.length} · grades ${byGrade.join(" ")} · unclassified 0 required (G2)`,
     `pinned: ${pinned.length} · ${pinnedBySource.join(" ")} (D3 3원천)`,
-    `routable: ${units.length - pinned.length} · budget ${units.reduce((sum, u) => sum + (u.cost_chars || 0), 0)} chars`,
+    `routable: ${units.length - pinned.length} · budget ${totalCost} chars`,
+    `PREREG E1/E2: total ${totalCost} · worst category union ${worstUnion} / B_rules ${RULES_BUDGET_CHARS} chars`,
   );
   return { errors, report };
 }

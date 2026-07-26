@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CATEGORY_SURFACES,
+  checkPreregExpiry,
   derivePin,
   extractUnitBody,
+  RULES_BUDGET_CHARS,
   parseAnchor,
   parseRegistry,
   type Registry,
@@ -244,6 +247,87 @@ describe("live registry", () => {
         .map((line) => line.replaceAll("**", "").replaceAll("`", "").trim())
         .filter((line) => line.length >= 30 && !unit.source.anchor.includes(line.slice(0, 30)));
       for (const line of payload) expect(text).not.toContain(line.slice(0, 30));
+    }
+  });
+
+  test("PREREG §7 E1/E2 hold on the live registry — 'M7b = 0' is still quotable", () => {
+    expect(checkPreregExpiry(readLiveRegistry(ROOT).units)).toEqual([]);
+  });
+
+  test("PREREG §7 E1 fires when the registry outgrows B_rules", () => {
+    const unit = (id: string, cost: number, pin: boolean): RuleUnit =>
+      ({
+        id,
+        source: { file: "CLAUDE.md", anchor: "heading:# x", sha8: "00000000" },
+        grade: pin ? "J" : "A",
+        layer: ["L5"],
+        surface: ["ship"],
+        triggers: ["x"],
+        pin,
+        pin_source: pin ? "grade-J" : undefined,
+        cost_chars: cost,
+      }) as RuleUnit;
+
+    const errors = checkPreregExpiry([unit("a", RULES_BUDGET_CHARS + 1, false)]);
+    expect(errors.some((e) => e.includes("E1 만료"))).toBe(true);
+    expect(errors.some((e) => e.includes("M7b = 0"))).toBe(true);
+  });
+
+  test("PREREG §7 E2 fires when one category union outgrows B_rules", () => {
+    const units = [
+      {
+        id: "pin.big",
+        source: { file: "CLAUDE.md", anchor: "heading:# x", sha8: "00000000" },
+        grade: "J",
+        layer: ["L5"],
+        surface: ["review"],
+        triggers: ["x"],
+        pin: true,
+        pin_source: "grade-J",
+        cost_chars: 5000,
+      },
+      {
+        id: "routed.big",
+        source: { file: "CLAUDE.md", anchor: "heading:# y", sha8: "00000000" },
+        grade: "A",
+        layer: ["L5"],
+        surface: ["dispatch"],
+        triggers: ["y"],
+        pin: false,
+        cost_chars: 4600,
+      },
+    ] as unknown as RuleUnit[];
+    // total 9,600 also trips E1; the point is that the per-category union is checked too.
+    const errors = checkPreregExpiry(units);
+    expect(errors.some((e) => e.includes('E2 만료 — category "dispatch"'))).toBe(true);
+    expect(errors.some((e) => e.includes('category "review"'))).toBe(false);
+  });
+
+  test("PREREG §7 E3 fires when a surface belongs to no owner-declared category", () => {
+    const units = [
+      {
+        id: "orphan",
+        source: { file: "CLAUDE.md", anchor: "heading:# z", sha8: "00000000" },
+        grade: "A",
+        layer: ["L5"],
+        surface: ["telemetry"],
+        triggers: ["z"],
+        pin: false,
+        cost_chars: 10,
+      },
+    ] as unknown as RuleUnit[];
+    expect(checkPreregExpiry(units).some((e) => e.includes('surface "telemetry"'))).toBe(true);
+  });
+
+  test("category canon mirrors RULE-CATEGORIES.md §1 — 10 categories, surfaces covered", () => {
+    const doc = readFileSync(join(ROOT, "docs/spikes/RULE-CATEGORIES.md"), "utf8");
+    expect(Object.keys(CATEGORY_SURFACES)).toHaveLength(10);
+    for (const category of Object.keys(CATEGORY_SURFACES)) {
+      expect(doc).toContain(`\`${category}\``);
+    }
+    const claimed = new Set(Object.values(CATEGORY_SURFACES).flat());
+    for (const unit of readLiveRegistry(ROOT).units) {
+      for (const surface of unit.surface) expect(claimed.has(surface)).toBe(true);
     }
   });
 
