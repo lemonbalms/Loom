@@ -1,6 +1,6 @@
-# Propose (rev-11) — 룰 분리기(Rule Router)
+# Propose (rev-12) — 룰 분리기(Rule Router)
 
-작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · rev-9 Phase 2 라운드 1 실측 · rev-10 F1 실측 · **rev-11 F1b·F1c 실측 2026-07-26** · 레인: 본세션(topology `single`)
+작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · rev-9 Phase 2 라운드 1 실측 · rev-10 F1 실측 · rev-11 F1b·F1c 실측 · **rev-12 P-B 압력원 갭 기록 2026-07-26** · 레인: 본세션(topology `single`)
 상태: **approved** — Phase 1 **완료** · D1–D9 전건 확정(§10) · D7 봉인 완료 2026-07-26 ·
 **Phase 2 라운드 1 완료 → `M7b = 0` 실측으로 §6.5.5 중단 규칙 발동 = A 채택 확정 · B/C 미구현**
 (결과 정본 = [`RULE-ROUTER-PHASE2-RESULT.md`](./RULE-ROUTER-PHASE2-RESULT.md) rev-1 ·
@@ -578,6 +578,32 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   그 감시는 `rules:check`가 결정론 assert로 수행한다.
 - rev-1은 3층 하이브리드를 확정 기술했다. rev-2가 후보로 강등했으므로 **rev-1을 근거로 한 어떤
   구현 판단도 유효하지 않다.**
+- **P-B의 실제 압력원이 레지스트리 사정거리 밖이다 (2026-07-26 실측 · 미해결).** §1.3 P-B는
+  “예산이 HARD_CAP에 닿아 규범이 늘면 축을 **삭제**하는 압력”을 문제로 걸고 G4가 그 해소를
+  요구한다. 그런데 그 압력이 실제로 어디서 오는지를 재 보니 **라우터가 덮지 않는 곳**이었다:
+
+  | 축 | 오늘(07-26) 증가 | 레지스트리 유닛 |
+  |---|--:|---|
+  | HANDOFF `Don't redo` | +457 B | **0** |
+  | HANDOFF `Active checks` | +404 B | **0** |
+  | HANDOFF `Owner pending` | +375 B | **0** |
+  | HANDOFF `Current action` | **−112 B** | 0 |
+
+  하루 순증 **+1,378 B**의 **84%가 위 세 섹션**이고, 레지스트리 32유닛의 출처는
+  `AGENTS.md`(13) · `tasks/traps.md`(11) · `CLAUDE.md`(7) · `docs/SESSION-START.md`(1) 뿐이라
+  **HANDOFF는 한 유닛도 없다.** 설계상 의도된 것이다 — HANDOFF는 규범이 아니라 **세션 상태**다.
+  따라서 **Phase 4가 prefix 라우팅을 완성해도 이 압력은 남는다.**
+
+  구조 원인: `Current action`은 게이트마다 **교체**돼 크기가 일정한 반면(오늘 −112 B), 나머지
+  셋은 **누적 원장**이라 게이트를 닫을 때마다 붙기만 한다. 상한(D1 8,192 B)은 고정이므로 압력이
+  차면 **살아 있는 문장을 깎아 닫힌 항목의 자리를 지키게 된다** — 오늘 실제로 그렇게 6회 깎았고
+  은퇴시킨 항목은 0건이다. 이것은 P-B가 서술한 손실 구조 그대로이며, 다만 대상이 규범 축이
+  아니라 상태 축이다.
+
+  **이 항목은 기록일 뿐 설계 변경이 아니다.** Phase 4 설계 시 판단할 것: 라우터 사정거리를
+  상태 축으로 넓힐지, 아니면 HANDOFF는 별도 규율(닫힌 게이트 행 압축 · 순증량 보고)로 두고
+  라우터는 규범 축에 한정할지. **후자를 기본값으로 본다** — 상태 축을 라우팅하면 “지금 무엇을
+  하는가”가 조건부로 사라질 수 있어 P-A를 상태 축에 새로 만드는 셈이 된다.
 
 ---
 
@@ -650,4 +676,12 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   박았다(임의성이 곧 인젝션 방어를 발화시키고, 포함 정의는 거부를 준수로 세는 위양성 14/14).
   **설계 변경 없음 — 처방 철회와 게이트 요건 강화뿐. Phase 3 선결은 그대로 §5.3 문안 개정.**
 
-[RULE-ROUTER-PROPOSE rev-11] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved-with-3-constraints f1b=comply-0-of-21-instrument-invalidated
+- **rev-12 (2026-07-26 · §11 갭 기록 · docs-only)** — §11에 **P-B의 실제 압력원이 레지스트리
+  사정거리 밖**이라는 실측을 미해결 항목으로 등록했다. 하루 순증 +1,378 B의 **84%가 HANDOFF의
+  누적 3섹션**(Don't redo · Active checks · Owner pending)인데 레지스트리 32유닛에 **HANDOFF는
+  0유닛**이다(출처 4파일 = AGENTS/traps/CLAUDE/SESSION-START). 즉 **Phase 4가 끝나도 이 압력은
+  남는다.** 기본값 판단은 **라우터를 규범 축에 한정**하고 상태 축은 별도 규율로 두는 쪽 —
+  상태 축을 라우팅하면 "지금 무엇을 하는가"가 조건부로 사라져 P-A를 새로 만든다.
+  **설계·게이트 변경 없음 — 미해결 항목 1건 추가뿐.**
+
+[RULE-ROUTER-PROPOSE rev-12] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved-with-3-constraints f1b=comply-0-of-21-instrument-invalidated open=pb-pressure-outside-registry
