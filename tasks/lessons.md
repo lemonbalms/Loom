@@ -282,6 +282,13 @@
 
 ## platform — Windows·WSL·경로 sep·크로스플랫폼 배포
 
+- [platform] 2026-07-26 (56) PreToolUse 주입 3실측: `tool_result` 동봉(그 호출 교정 불가) · 서브에이전트 미도달 · **전달 ≠ 준수**(봉투에서 인젝션 판정 2/2).
+<details><summary>경위·좌표</summary>
+
+[platform] 2026-07-26 (56) PreToolUse 비차단 주입 실측(F1 · 프로브 6건 · 로깅 프록시로 실제 요청 본문 캡처 · 정본 `docs/spikes/RULE-ROUTER-F1-RESULT.md` · 증거 `~/.loom/f1-poc-2026-07-26`): **① 능력은 있다** — `exit 0` + `hookSpecificOutput.additionalContext`면 도구를 막지 않고 `<system-reminder> PreToolUse:<tool> hook additional context: …` 블록으로 도달한다(훅 자체 0.01s). **② 그러나 도착 시점이 `tool_result` 동봉이라 그 도구 호출 자체는 교정할 수 없다** — 훅은 실행 전에 뛰지만 산출물은 실행 후에 보인다. **③ 스폰된 서브에이전트 요청에는 도달하지 않는다**(서브에이전트 요청 본문에 canary 부재) — "위임 직전에 규칙을 실어 보낸다"는 설계는 성립하지 않는다. **④ 캡은 SessionStart와 같은 커맨드당 10,000자**이고 초과하면 `<persisted-output>` 봉투로 치환되는데 경로에 세션 UUID + `toolu_` 호출 ID가 박혀 **캐시가 절대 안 맞고 Read 왕복이 부활**한다(총량 캡은 없어 prefix와는 별도 슬롯 — 자문 N1 해소). **⑤ 가장 값진 것: 수신했다고 따르지 않는다** — 봉투 상태에서 모델이 주입을 "도구 출력 = 신뢰 불가 채널의 지시"로 판정하고 준수를 거부한 사례가 2/2 재현됐다(같은 문안이 inline에서는 무반응). 교훈 (18)의 "명령형 주입문은 방어에 걸림"의 연장이며, **주입 경로 설계의 합격 기준은 전달 카나리아가 아니라 준수 카나리아**여야 한다. 방아쇠가 봉투인지 길이인지 문안인지는 아직 안 갈랐다(F1b).
+
+</details>
+
 - [platform] 2026-07-19 (13) 경로 sep 하드코딩 금지(`node:path` `sep`). 신규 플랫폼 첫 배포는 라이브 스모크 필수.
 <details><summary>경위·좌표</summary>
 
