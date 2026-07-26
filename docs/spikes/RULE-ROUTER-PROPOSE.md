@@ -1,9 +1,9 @@
-# Propose (rev-7) — 룰 분리기(Rule Router)
+# Propose (rev-8) — 룰 분리기(Rule Router)
 
-작성 2026-07-23 · rev-5 fold-in 2026-07-26 · rev-6 오너 확정 · rev-7 D9 선포 2026-07-26 · 레인: 본세션(topology `single`)
-상태: **approved — Phase 1 착수 승인 (오너 D1, 2026-07-26)** · D2–D9 전건 확정(§10) · **잔여 오너 승인 0건**.
-Phase 1 범위 = 레지스트리·추출기·`rules:check`·카테고리 표 초안 · **주입·hook·제품 코드 변경 없음**.
-Phase 2 이후는 별도 게이트(§7) — 이 승인에 포함되지 않는다.
+작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · **rev-8 D7 봉인 2026-07-26** · 레인: 본세션(topology `single`)
+상태: **approved** — Phase 1 **완료** · D1–D9 전건 확정(§10) · **D7 봉인 완료 2026-07-26** ·
+**Phase 2 replay 착수 허용**(사전등록 정본 = [`RULE-ROUTER-PREREG.md`](./RULE-ROUTER-PREREG.md) rev-4 sealed).
+Phase 3 이후는 여전히 별도 게이트 — 선결 = **F1 PreToolUse 비차단 주입 PoC 실측**(§7 · fail-closed).
 리뷰 정본: [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md) (rev-4 대상 · §4 delta ①–⑧ 반영분이 이 rev-5).
 rev-5는 리뷰 §4의 사전 승인 문안을 그대로 반영한 **docs-only** 개정이므로 **재리뷰 불요**.
 
@@ -510,7 +510,7 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
 | D4 | ~~L3 사용 여부~~ → **선택 메커니즘 채택안(A/B/C)** | **bake-off(§6.5) 결과로 결정** · 그 전 default = A |
 | D5 | 모드 노브 기본값 | `strict` (라우팅 최소) |
 | D6 | 축2(그래프 표현) 채택 여부 | 세 후보 공통 적용 — 후보 간 교란변수로 두지 않음. **비고(리뷰): Phase 1은 스키마 필드 예약만, 그래프 실체 구축은 M7 측정 후** |
-| D7 | M6 복잡도 페널티 가중치 · M7 임계값 사전등록 권한 | **3단 절차**(리뷰 §2-7): Phase 1 종료 시 설계자가 레지스트리 통계 기반 근거와 함께 임계 제안 → 리뷰어 승인 → **커밋으로 봉인** → 그 후에만 Phase 2 replay |
+| D7 | M6 복잡도 페널티 가중치 · M7 임계값 사전등록 권한 | **3단 절차 완료 2026-07-26** → [`RULE-ROUTER-PREREG.md`](./RULE-ROUTER-PREREG.md) **rev-4 sealed**(오너 직접 승인 · `single`은 검증 피어 없음). 봉인 내용 = S1 M7(**M7b 산술적 0** → A 확정·B/C 미구현) · S2 M6 30점·1점=recall 0.5%p · S3 recall ≥0.85(가중 A3/G2/H1) · S4 표본 60 동결(`rules/prereg-sample.json`). **Phase 2 replay 착수 허용** |
 | D8 | LLM 경로의 권한 범위 | **add만 · remove 금지**(§6.6.3 단조성) |
 | D9 | 카테고리 정본 — 목록·매핑·pinned 예외의 승인 주체 | **오너 선포**(§5.2.1) · **선포 완료 2026-07-26 → [`RULE-CATEGORIES.md`](./RULE-CATEGORIES.md)** (10개 · 재량 pin 0 · 예외 0) |
 
@@ -539,8 +539,10 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   낮다는 뜻이지, 실제 턴의 몇 %를 덮는다는 증거가 아니다. M7 초기값은 Phase 1 이후에만 알 수 있다.
 - **합집합 정책의 예산 압력**도 미측정이다. 다중 라벨 합집합이 자주 예산을 넘으면 §5.2.1 원칙 3의
   “순위” 문제가 예외가 아니라 상시가 되고, 그때 B/C의 가치 평가가 달라진다.
-- **M7 임계값은 현재 미정**이다(§8-7). 사전등록 없이 bake-off를 시작하면 결과가 사후 정당화가
-  되므로, 임계 고정 전에는 Phase 2b를 시작하지 않는다.
+- ~~**M7 임계값은 현재 미정**이다(§8-7)~~ → **봉인 완료 (2026-07-26 · `RULE-ROUTER-PREREG.md` rev-4).**
+  M7은 M7a(미분류)·M7b(예산초과)로 분해됐고, B_rules = 9,500 chars(전용 슬롯) 아래에서 **M7b는
+  산술적으로 0**이라 A 채택이 확정된다 — 단 레지스트리 전량이 9,500을 넘으면 만료되며(PREREG §7 E1)
+  그 감시는 `rules:check`가 결정론 assert로 수행한다.
 - rev-1은 3층 하이브리드를 확정 기술했다. rev-2가 후보로 강등했으므로 **rev-1을 근거로 한 어떤
   구현 판단도 유효하지 않다.**
 
@@ -587,4 +589,9 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   명시했다. 다음 관문은 오너가 아니라 **D7 3단 절차**(M7 임계 사전등록 → 리뷰어 승인 → 커밋 봉인)이며
   그 전에는 Phase 2 replay를 시작하지 않는다.
 
-[RULE-ROUTER-PROPOSE rev-7] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8
+- **rev-8 (2026-07-26 · D7 봉인 반영 · docs-only)** — D7 3단 절차가 전건 완료되어 §10 D7에
+  좌표를 박았다: [`RULE-ROUTER-PREREG.md`](./RULE-ROUTER-PREREG.md) rev-4 sealed(오너 직접 승인).
+  §11의 "M7 임계 미정" 항목을 해소로 전환했다. **Phase 2 replay 착수 허용** — 남은 선결은
+  Phase 3의 F1(PreToolUse 비차단 주입 PoC 실측)뿐이다. 설계 변경 없음.
+
+[RULE-ROUTER-PROPOSE rev-8] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8

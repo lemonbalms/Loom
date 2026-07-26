@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · RULE-ROUTER **D7 1단 done**(PREREG rev-2 제안·자문 fold-in) · next = **2단 리뷰어 승인**.
+> v0.28.1 · RULE-ROUTER **D7 봉인 완료**(오너 직접 승인 · 표본 60 동결) · next = **Phase 2 replay**.
 
 ## Current loop
 
@@ -13,24 +13,24 @@
 |---|---|---|
 | Product | v0.28.1 · adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | NORMS P3 · **RULE-ROUTER Phase 1** done | runtime/tests · rev-7 |
+| Harness | NORMS P3 · RULE-ROUTER **D7 sealed** | runtime/tests · rev-8 |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### RULE-ROUTER — D7 2단: 리뷰어 승인 (설계자 제안은 완료)
+### RULE-ROUTER — Phase 2: shadow replay (후보 A 먼저)
 
-**Goal:** `RULE-ROUTER-PREREG.md` rev-2를 **리뷰어가 승인**하면 봉인 커밋 → 그때만 Phase 2 replay (rev-7 §10 D7). **설계자(본세션)는 자기 제안을 승인할 수 없다** — 그것이 D7이 막는 자기평가다.
+**Goal:** 봉인된 사전등록대로 A(결정론)를 replay에 태워 **위험가중 recall**과 **M7a**를 측정한다. 주입은 바꾸지 않는다(로깅만).
 
-**Done (1단):** PREREG rev-2 봉인 제안 4건 — **S1** M7 분해(M7a 15% 표 개정 신호 · **M7b 산술적 0** → A 확정·B/C 미구현) · **S2** M6 30점 만점 · 1점=recall 0.5%p · **S3** miss 가중 A3/G2/H1 · recall ≥0.85 · 재측정 2회+holdout 15 · **S4** 60세션 층화(sha256 결정론). **B_rules = 9,500 chars** = 전용 슬롯 1개 캡.
+**Authority:** D7 3단 **전건 완료** — 오너 직접 승인 2026-07-26 · `PREREG.md` **rev-4 sealed** · propose **rev-8**. 봉인값 = **M7b 산술적 0**(→ A 확정·B/C 미구현) · recall **≥0.85**(가중 A3/G2/H1) · M6 30점·1점=0.5%p · 표본 **60 동결**.
 
-**Next (다음 세션 = 리뷰어 레인):** §8 5문(핵심 = **B_rules 채널 선택** — state 채널이면 M7b 100%로 결론 반전)에 답하고 verdict. `single`이므로 **검증 피어를 띄우지 않는다**(§0.5.1) — 레인 분리는 세션 승계로 성립.
+**Now:** `scripts/rule-router-eval.ts` 작성 — 아카이브(`~/.loom/prereg/rule-router-2026-07-26`, 60세션)를 읽어 ① 턴 분해 ② 카테고리 조인(`CATEGORY_SURFACES`) ③ positive 라벨(메인 트랜스크립트 Read/Edit 한정) ④ 위험가중 recall·M7a 산출 ⑤ receipt.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Done when:** 리뷰어 verdict → (조건부면 그 조건만) → **봉인 커밋**. 대기 중 후속 = 레지스트리 확대(주입 무변경 · **E1 넘기면 `M7b=0` 만료 + `rules:check` FAIL**).
+**Done when:** recall·M7a 측정 + receipt 커밋. 임계 충족 시 §6.5.5 중단 규칙으로 **A 확정, B/C 미구현** 기록.
 
-**Must not:** 결과를 본 뒤 임계·가중치 조정(사전등록 위반); 승인·봉인 전 Phase 2 replay; 설계자 자기 승인; **F1 PoC 실측 전 Phase 3**(fail-closed); 재량 pin을 오너 선포 없이 늘리기(D3 — 코드가 거부).
+**Must not:** 봉인값 사후 조정(그 측정은 무효) · 표본 교체 · 원본 코퍼스 사용(**아카이브 사본만**) · 재측정 3회 이상(상한 2 + holdout 1회) · **F1 PoC 실측 전 Phase 3**.
 
 ## Active checks
 
@@ -40,15 +40,14 @@
 | NORMS Phase 3 | **done/authorized** | deterministic N packs | `norms:check` · Claude enable |
 | Suite + typecheck | **859 pass / 0 fail · tc 6/6 exit 0** · smoke durable/desktop OK | no remaining tests | 2026-07-26 |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
-| RULE-ROUTER rev-7 · Phase 1 | **done** · D1–D9 확정 · D9 선포 · 32유닛 미분류 0 · pinned 13 자동 | 잔여 오너 승인 0 | `b0a6cd4`·`26923c2` |
-| D7 PREREG rev-2 | **제안 완료 · 승인 대기** · 자문 N1 High(슬롯 공유 전제) 반영 · E1/E2/E3 **코드 assert 배선** | 봉인 전 replay 금지 | `checkPreregExpiry` · 31 tests |
+| RULE-ROUTER rev-8 · Phase 1 | **done** · D1–D9 확정 · 32유닛 미분류 0 · pinned 13 자동 | 오너 승인 0 대기 | `b0a6cd4`·`26923c2` |
+| D7 PREREG rev-4 | **sealed** (오너 승인) · 표본 60 동결(모집단 171 · digest `ad74f06d` · 적격 103) · E1/E2/E3 코드 assert | replay 착수 허용 | `prereg-sample.json` · 39 tests |
 | `smoke:uc` UC-3 | **상시 fail 2건**(host `already running` · handoff `peer_unknown`→alice) · HEAD 동일 = 회귀 아님 | 미진단 | 차집합 0 |
 
 ## Owner pending
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| **D7 리뷰어 승인** | 설계자 자기 승인 불가 · `single`은 **검증 피어를 안 띄운다**(§0.5.1) → 리뷰어 = **다음 세션**(선례 = REVIEW 헤더 "저자 = 직전 세션") 또는 오너 | 제안 상태 보류 — replay 미착수 | PREREG rev-3 §8 5문 |
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
@@ -82,7 +81,8 @@
 - Rule delivery 07-23: 13,157/168,772 chars = 7.8% auto-delivered. RULE-ROUTER rev-4 `7a47aad` → rev-5 `955d2a5` → rev-6 `b0a6cd4` → rev-7.
 - Phase 1 `26923c2`: `rules/registry.yaml`(생성기 산출) · `scripts/rules-registry.ts` · 앵커 3종 유일매치 · pin = D3 파생(코드 강제) · 카테고리 정본 `RULE-CATEGORIES.md`.
 - RULE-ROUTER review: §8 7답(P2 조건부·G1 재배치) · F1 JIT 미실측(High)·F2·F3·F4 → 전건 rev-5 fold-in.
-- PREREG 계산값: pinned 2,586 · routable 5,042 · 전량 **7,628** · 최악 합집합 5,300(`dispatch`) — 전부 B_rules 9,500 이하 → M7b=0 · 만료선 E1 여유 1,872. 자문 N1 High = 슬롯 공유 전제(공존 배선이면 5,843 → 결론 반전).
+- PREREG rev-4 sealed · receipt `rules/prereg-sample.json` · 아카이브 `~/.loom/prereg/rule-router-2026-07-26`(72MB·60세션).
+- PREREG 계산값: pinned 2,586 · routable 5,042 · 전량 **7,628** · 최악 합집합 5,300 — 전부 9,500 이하 → M7b=0 · E1 여유 1,872. 자문 N1 = 슬롯 공유 전제(공존이면 5,843 → 반전).
 
 ## Don't redo
 
@@ -95,4 +95,4 @@
 - Reclassify fixed R28 timeout as open regression; raise timeouts instead of preserving event/anchor order.
 - Re-derive the router problem statement; re-open the rev-2 demotion; author-lane verdict; re-run the rev-4 review; re-put D1–D9 or the category table to the Owner (선포 완료).
 - Pre-claim before dispatch (§1.1 forbids; rule 5 fixed `1a22a9c`; commands stay valid).
-- Re-derive the PREREG numbers by hand; self-approve the designer proposal; quote `M7b = 0` past E1.
+- Re-derive the PREREG numbers by hand; adjust any sealed S1–S4 value; swap sample sessions; read the live corpus instead of the frozen archive; quote `M7b = 0` past E1.

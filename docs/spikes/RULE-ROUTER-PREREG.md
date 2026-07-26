@@ -1,15 +1,21 @@
 # 사전등록 (D7) — M7 임계 · M6 가중치 · recall 임계 · 표본추출 규칙
 
-작성 2026-07-26 · **rev-3 (자문 N1–N6 fold-in + 코퍼스 실측)** · 레인: **설계자**(본세션 · topology `single`) ·
-상태: **제안 — 리뷰어 승인 대기**
+작성 2026-07-26 · **rev-4 — 봉인(SEALED)** · 레인: **설계자**(본세션 · topology `single`)
+상태: **sealed — 오너 직접 승인 2026-07-26.** S1–S4는 이 시점부터 **고정**이며, 결과 관측 후
+조정은 사전등록 위반이다(§9). **Phase 2 replay 착수 허용.**
+승인 기록: 오너가 §8의 5문에 대해 **제안값 전건 채택**으로 판정 — 핵심인 **B_rules = 9,500 chars
+(전용 슬롯)** 채널 선택 confirm. `single`은 검증 피어를 띄우지 않으므로(DOGFOOD §0.5.1)
+리뷰어 권한은 오너가 직접 행사했다.
+표본 동결 receipt: [`rules/prereg-sample.json`](../../rules/prereg-sample.json) ·
+생성기 `scripts/prereg-sample.ts` (`bun run scripts/prereg-sample.ts --check`로 재현 검증)
 Advisor: **fable-advisor consulted: yes** (model fable · read-only · 전제 공격 지시 · 전 수치 독립 재계산)
 근거 정본: [`RULE-ROUTER-PROPOSE.md`](./RULE-ROUTER-PROPOSE.md) rev-7 §6.5.3 · §10 **D7** ·
 [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md) §2-7 · F3 · [`RULE-CATEGORIES.md`](./RULE-CATEGORIES.md)
 입력 좌표(동결): `rules/registry.yaml` `version: 1` · `policy_version: 2026-07-26.p1` · 커밋 `3c4554b`
 
-> **D7 3단 절차에서 이 문서의 자리.** ① **설계자 제안 = 이 문서** → ② 리뷰어 승인 → ③ **커밋으로 봉인**
-> → 그 후에만 Phase 2 replay. 봉인 전에는 replay를 시작하지 않는다. 설계자는 자기 제안을 스스로
-> 승인할 수 없다 — 그것이 D7이 막으려는 자기평가다.
+> **D7 3단 절차 — 전건 완료.** ① 설계자 제안(이 문서 rev-1) → ② **리뷰어 승인 = 오너 직접
+> 2026-07-26** → ③ **커밋으로 봉인**(이 rev-4). 설계자는 자기 제안을 승인하지 않았다 — 그것이
+> D7이 막으려는 자기평가다. 봉인 이후의 관문은 사람이 아니라 **§7 만료 조건과 `rules:check`**다.
 
 > **"결과 관측 전"의 정의 (리뷰 §2-7 확정).** 레지스트리 통계는 **결과가 아니라 입력**이다.
 > 이 문서의 모든 수치는 **replay 실행 전** 시점에서 고정되며, replay 산출을 본 뒤의 조정은
@@ -375,4 +381,14 @@ A의 기준선은 정의상 **0점**이다(순수 함수 · 추가 실패 모드
   보장되지 않는다. 부수 실측: 배제 술어 적용 후 **적격 138세션**(자기참조 6 · 소형 27 배제)으로
   표본 60의 2.3배 여유 — **표본추출은 실행 가능**. 봉인 수치 S1–S3은 불변.
 
-[RULE-ROUTER-PREREG rev-3] sealed=4 units=32 routable=19 pinned=13 registry_chars=7628 budget=9500 m7b=0 recall_gate=0.85 m6_max=30 sample=60 status=proposed
+- **rev-4 (2026-07-26 · 오너 직접 승인 → 봉인)** — D7 2단·3단 완료. `single`은 검증 피어를
+  띄우지 않으므로(DOGFOOD §0.5.1) 리뷰어 권한을 **오너가 직접 행사**했고, §8 5문에 대해
+  **제안값 전건 채택**(B_rules 채널 선택 confirm). 같은 커밋에 **S4 이행 산출물**을 넣어
+  봉인을 검증 가능하게 만들었다: `scripts/prereg-sample.ts`(PRNG 없는 결정론 추출) ·
+  `rules/prereg-sample.json`(모집단 **171 · digest `ad74f06d`** · 배제 **68** · 적격 **103** ·
+  표본 **60** = 최근 30 + 무작위 30 · holdout **15** · 60건 파일 sha8) · 표본 사본 동결
+  `~/.loom/prereg/rule-router-2026-07-26`(72 MB). 테스트 8건이 배제 술어·추출 결정론·
+  holdout 예약·receipt 무본문을 잠근다. **작성 중 자체 결함 1건 교정**: `population.digest`가
+  디렉터리 읽기 순서에 의존했다(§6.6.1 R2 위반) — 정렬 후 digest로 수정, 테스트가 잡았다.
+
+[RULE-ROUTER-PREREG rev-4] sealed=4 units=32 routable=19 pinned=13 registry_chars=7628 budget=9500 m7b=0 recall_gate=0.85 m6_max=30 sample=60 status=proposed
