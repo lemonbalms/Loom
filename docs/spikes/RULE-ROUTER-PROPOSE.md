@@ -1,6 +1,6 @@
-# Propose (rev-10) — 룰 분리기(Rule Router)
+# Propose (rev-11) — 룰 분리기(Rule Router)
 
-작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · rev-9 Phase 2 라운드 1 실측 · **rev-10 F1 실측 2026-07-26** · 레인: 본세션(topology `single`)
+작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · rev-9 Phase 2 라운드 1 실측 · rev-10 F1 실측 · **rev-11 F1b·F1c 실측 2026-07-26** · 레인: 본세션(topology `single`)
 상태: **approved** — Phase 1 **완료** · D1–D9 전건 확정(§10) · D7 봉인 완료 2026-07-26 ·
 **Phase 2 라운드 1 완료 → `M7b = 0` 실측으로 §6.5.5 중단 규칙 발동 = A 채택 확정 · B/C 미구현**
 (결과 정본 = [`RULE-ROUTER-PHASE2-RESULT.md`](./RULE-ROUTER-PHASE2-RESULT.md) rev-1 ·
@@ -291,11 +291,22 @@ receipt 필드는 `RULE-ENFORCEABILITY` §3.2-6 그대로:
 > 모델에게 보이고(C1), **스폰된 서브에이전트 요청에는 도달하지 않는다**(C2 — 서브에이전트 요청
 > 본문에 canary 부재). 따라서 JIT은 *그 호출을 교정하는* 처방이 아니라 **부모 세션의 다음 턴부터
 > 적용되는 규범을 싸게 얹는 경로**다. 주입 1건은 **10,000자 미만**이어야 한다(C3 · 초과 시
-> `<persisted-output>` 봉투 → 캐시 불가 + Read 왕복 부활). 또한 **전달 ≠ 준수**: 봉투 상태에서
-> 모델이 주입을 신뢰 불가 채널로 판정하고 지시 준수를 거부한 사례가 2/2 재현됐다 → 주입 문안은
-> 명령형이 아니라 규범 진술이어야 하고, Phase 3 게이트는 전달이 아니라 **준수** 카나리아여야 한다.
+> `<persisted-output>` 봉투 → 캐시 불가 + Read 왕복 부활). 또한 **전달 ≠ 준수**: 모델이 주입을
+> 신뢰 불가 채널로 판정하고 준수를 거부한 사례가 재현됐다 → Phase 3 게이트는 전달이 아니라
+> **준수** 카나리아여야 한다.
 > 정본 = [`RULE-ROUTER-F1-RESULT.md`](./RULE-ROUTER-F1-RESULT.md) §3–§4. **이 정정은 용도 서술을
 > 좁힐 뿐 후보 A 채택·Phase 1–2 결과를 건드리지 않는다.**
+
+> **철회·보강 (F1b·F1c 실측 · rev-11).** rev-10이 위 블록에 적었던 **“주입 문안은 명령형이 아니라
+> 규범 진술이어야 한다”는 처방을 철회한다** — F1b 21런에서 규범 진술 0/9 · 명령형 0/9로 **부호조차
+> 없었다**(단일 관측에서 처방을 뽑은 것이 성급했다). 함께 확정된 것 셋: ① **채널은 신뢰도를 가르지
+> 않는다** — SessionStart prefix도 0/3 거부(F1c에서 채널 가설 기각)이므로 prefix와 JIT의 차이는
+> C1–C3이지 준수가 아니다. ② **준수 카나리아는 임의 토큰이면 안 된다** — 준수를 관측 가능하게
+> 만든 임의성이 곧 인젝션 방어를 발화시켜, 요구 행동은 기본값과 구분되면서 **프로젝트 규범으로서
+> 그럴듯**해야 한다. ③ 준수 지표는 문자열 포함이 아니라 **행동의 위치**로 정의한다(포함 정의는
+> 거부를 준수로 센다 — 위양성 14/14 실증). **“JIT은 규칙을 실을 수 없다”는 결론은 이 데이터가
+> 지탱하지 않는다**(현행 SessionStart 규범이 실제로 준수되는 반례). 정본 =
+> [`RULE-ROUTER-F1B-RESULT.md`](./RULE-ROUTER-F1B-RESULT.md) rev-1.
 
 > **주장 범위 (리뷰 §2-3 확정 · rev-5).** 라우터의 주장 범위는 Claude Code 하네스 한정. 타 하네스는
 > `NOT_APPLICABLE` → 전량(리추얼). 타 하네스의 P-A는 이 제안이 해소하지 않는다(§2-3, 리뷰 확정).
@@ -457,7 +468,7 @@ G가 원리적 주장인 이유이며, 실측 일치율이 높게 나와도 바�
 | **1** | `rules/registry.yaml` + 추출기 + `bun run rules:check` · **카테고리 표 초안(§5.2.1) → 오너 승인** | **없음** | 추출 결정론 · digest 일치 · 미분류 0 (G2) · **파일 digest + registry triage receipt**(§5.1) · 카테고리 정본 확정 |
 | **2** | `rule-router-eval.ts` + **후보 A 먼저** shadow replay — **완료 2026-07-26**(라운드 1 · eval 45세션 557턴) | 없음(로깅만) | **J-miss 0 ✓ · M7b 0% ✓ · M7a 24.2%(S1-3 발동) · recall 0.451(S3-2 미달 · 검정력 부족 명기)** — [결과](./RULE-ROUTER-PHASE2-RESULT.md) |
 | **2b** | **bake-off** — A vs B vs C를 §6.5 축으로 비교. §6.5.5 중단 규칙 적용 | 없음 | **열리지 않음** — S1-2는 `M7b > 5%` AND recall 미달인데 `M7b = 0`이라 AND 불성립 |
-| **3** | 채택안으로 JIT append-only 주입 (저위험 surface부터: 위임·ship) | 추가만 · **1건 <10,000자**(F1 C3) | 위반 fixture **준수 카나리아** — 전달이 아니라 “모델이 실제로 따랐는가”(F1 §4.2) |
+| **3** | 채택안으로 JIT append-only 주입 (저위험 surface부터: 위임·ship) | 추가만 · **1건 <10,000자**(F1 C3) | **준수 카나리아** — 전달이 아니라 “따랐는가”. **임의 토큰 금지 · 행동 위치로 판정**(F1b §4) |
 | **4** | prefix 라우팅 + 모드 노브 | prefix 축소 | G4·G5 회귀 없음 |
 
 > **Phase 3 선결 (리뷰 F1 · rev-5) — 해소 2026-07-26 (rev-10).** PreToolUse 비차단 컨텍스트 주입은
@@ -631,4 +642,12 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   “F1 미실측”에서 **“§5.3 문안 개정”**으로 교체했다(같은 fail-closed).
   **설계 변경 없음 — 용도 서술 축소와 게이트 교체뿐이며 후보 A 채택·Phase 1–2 결과는 불변.**
 
-[RULE-ROUTER-PROPOSE rev-10] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved-with-3-constraints
+- **rev-11 (2026-07-26 · F1b·F1c 실측 반영 · docs-only)** — 준수 카나리아 21런(JIT 18 + prefix 3)
+  결과 정본 = [`RULE-ROUTER-F1B-RESULT.md`](./RULE-ROUTER-F1B-RESULT.md) rev-1(사전등록 `49cc5e9`·`171e063`).
+  **전달 21/21 · 준수 0/21 · 거부 21/21.** ① rev-10의 **문안 처방(규범 진술 > 명령형)을 철회**했다
+  — 0/9 대 0/9로 부호가 없다. ② **채널 가설 기각** — prefix도 0/3이므로 prefix와 JIT의 차이는
+  C1–C3이지 준수가 아니다. ③ Phase 3 행의 준수 카나리아에 **임의 토큰 금지 · 행동 위치 판정**을
+  박았다(임의성이 곧 인젝션 방어를 발화시키고, 포함 정의는 거부를 준수로 세는 위양성 14/14).
+  **설계 변경 없음 — 처방 철회와 게이트 요건 강화뿐. Phase 3 선결은 그대로 §5.3 문안 개정.**
+
+[RULE-ROUTER-PROPOSE rev-11] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved-with-3-constraints f1b=comply-0-of-21-instrument-invalidated
