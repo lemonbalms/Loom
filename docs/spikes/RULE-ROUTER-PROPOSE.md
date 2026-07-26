@@ -1,7 +1,7 @@
-# Propose (rev-6) — 룰 분리기(Rule Router)
+# Propose (rev-7) — 룰 분리기(Rule Router)
 
-작성 2026-07-23 · rev-5 fold-in 2026-07-26 · rev-6 오너 확정 2026-07-26 · 레인: 본세션(topology `single`)
-상태: **approved — Phase 1 착수 승인 (오너 D1, 2026-07-26)** · D2–D9 전건 확정(§10).
+작성 2026-07-23 · rev-5 fold-in 2026-07-26 · rev-6 오너 확정 · rev-7 D9 선포 2026-07-26 · 레인: 본세션(topology `single`)
+상태: **approved — Phase 1 착수 승인 (오너 D1, 2026-07-26)** · D2–D9 전건 확정(§10) · **잔여 오너 승인 0건**.
 Phase 1 범위 = 레지스트리·추출기·`rules:check`·카테고리 표 초안 · **주입·hook·제품 코드 변경 없음**.
 Phase 2 이후는 별도 게이트(§7) — 이 승인에 포함되지 않는다.
 리뷰 정본: [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md) (rev-4 대상 · §4 delta ①–⑧ 반영분이 이 rev-5).
@@ -173,18 +173,23 @@ C1/C2가 남긴 교훈 — **증거 없는 경로를 PASS로 축약하지 않는
 ```yaml
 # rules/registry.yaml — 본문 없음. 좌표 + 메타 + digest.
 - id: orch.lane-placement
-  source: { file: CLAUDE.md, anchor: "Orchestration standing rules/5", sha8: "…" }
+  source: { file: CLAUDE.md, anchor: "bullet:## Orchestration standing rules …|Topology full 레인 배치 고정", sha8: "…" }
   grade: G            # RULE-ENFORCEABILITY 등급
   layer: [L1, L2]
   surface: [dispatch, delegation]
   triggers: [디스패치, 위임, grok, codex, pane, subagent]
   pin: false
-  cost_chars: 412
-- id: traps.card-done-not-complete
-  source: { file: tasks/traps.md, anchor: "활성 함정/card.done", sha8: "…" }
+  cost_chars: 734
+- id: traps.card-done
+  source: { file: tasks/traps.md, anchor: "bullet:## 활성 함정 …|card.done ≠ 완료", sha8: "…" }
   grade: A
-  pin: true           # 완료 오판정은 치명 → 라우팅 금지
+  pin: false          # 재량 pin은 오너 선포가 있어야 한다 (D3) — 현재 선포 0건
 ```
+
+> **구현 (Phase 1, 2026-07-26).** `rules/registry.yaml` 32유닛 · `scripts/rules-registry.ts` ·
+> `bun run rules:check`. **앵커 문법 확정**(§11의 미확정 해소): `heading:<헤딩 라인>` ·
+> `row:<헤딩>|<행 라벨>` · `bullet:<헤딩>|<본문 접두>` — 셋 다 **유일 매치 강제**(0건·2건은 추측하지
+> 않고 에러)이며, 이것이 결정론 추출의 근거다. `pin`은 D3 파생값이라 수기 편집이 게이트에서 거부된다.
 
 > **파일 단위 digest (리뷰 F2 · rev-5).** 소스 13파일의 파일 단위 digest를 레지스트리에 병기한다.
 > 파일 digest 변경 시 `rules:check`는 registry triage receipt("신규 유닛 N건 등록" 또는 "신규 유닛
@@ -507,7 +512,7 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
 | D6 | 축2(그래프 표현) 채택 여부 | 세 후보 공통 적용 — 후보 간 교란변수로 두지 않음. **비고(리뷰): Phase 1은 스키마 필드 예약만, 그래프 실체 구축은 M7 측정 후** |
 | D7 | M6 복잡도 페널티 가중치 · M7 임계값 사전등록 권한 | **3단 절차**(리뷰 §2-7): Phase 1 종료 시 설계자가 레지스트리 통계 기반 근거와 함께 임계 제안 → 리뷰어 승인 → **커밋으로 봉인** → 그 후에만 Phase 2 replay |
 | D8 | LLM 경로의 권한 범위 | **add만 · remove 금지**(§6.6.3 단조성) |
-| D9 | 카테고리 정본 — 목록·매핑·pinned 예외의 승인 주체 | **오너 선포**(§5.2.1) · 초안은 기존 축에서 도출 |
+| D9 | 카테고리 정본 — 목록·매핑·pinned 예외의 승인 주체 | **오너 선포**(§5.2.1) · **선포 완료 2026-07-26 → [`RULE-CATEGORIES.md`](./RULE-CATEGORIES.md)** (10개 · 재량 pin 0 · 예외 0) |
 
 ---
 
@@ -520,9 +525,10 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
 - **절감폭은 미확정**이다. Phase 2 replay 전에는 어떤 수치도 주장하지 않는다.
 - 라벨 counterfactual 부재(§6.2)는 이 설계의 **알려진 구조적 한계**이며 해소책이 없다. 그래서
   J등급을 pinned로 고정해 상쇄한다.
-- `rules/registry.yaml`의 앵커 문법(파일 내 위치 지정 방식)은 Phase 1에서 확정한다. 현재
-  `norms-receipt.ts`는 정확한 H2 제목·표 행 라벨로 앵커를 잡으며, 그 방식이 일반화 가능한지는
-  **미확정**이다.
+- ~~`rules/registry.yaml`의 앵커 문법은 Phase 1에서 확정한다~~ → **확정됨 (2026-07-26 · Phase 1).**
+  `heading:` / `row:` / `bullet:` 3종 · 유일 매치 강제(§5.1 구현 주석). `norms-receipt.ts`의 방식은
+  일반화 가능했다 — 32유닛 전건이 이 문법으로 해석됐다. **남는 한계**: 등록된 4파일 밖
+  (`tasks/lessons/*` · `WORKFLOW` · `DOGFOOD`)은 아직 유닛도 파일 digest도 없어 **변경이 잡히지 않는다**.
 - 다른 하네스(Codex/Grok)의 PreToolUse 등가물 존재 여부는 확인하지 않았다(§8-3).
 - **후보 B/C의 M2(재현성) 분산은 미측정**이다. 실측 일치율은 Phase 2b 전에는 알 수 없다.
   다만 §6.6.5대로, 일치율이 높게 나와도 R3(상류 모델 갱신)는 통제 밖이므로 등급 상한 판단은
@@ -573,4 +579,12 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   전건 채택으로 확정. §10을 “결정 필요”에서 **확정표**로 전환, 헤더 상태를 `approved`로 갱신.
   설계·게이트 변경 없음. 잔여 오너 승인 = **Phase 1 카테고리 표 초안**(D9 · §5.2.1) 1건.
 
-[RULE-ROUTER-PROPOSE rev-6] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8
+- **rev-7 (2026-07-26 · Phase 1 구현 반영 + D9 선포 완료 · docs-only)** — ① 카테고리 정본이 오너
+  선포로 확정되어 §10 D9에 좌표를 박았다: [`RULE-CATEGORIES.md`](./RULE-CATEGORIES.md) (카테고리 10 ·
+  재량 pin 0 · 예외 0, 권고안 그대로) → **잔여 오너 승인 0건.** ② §5.1 예시를 실제 구현 문법으로
+  교체하고 구현 좌표를 주석으로 달았다. ③ §11의 **앵커 문법 미확정 항목을 해소로 표기**하고,
+  대신 **미등록 파일(`tasks/lessons/*`·WORKFLOW·DOGFOOD)의 변경은 잡히지 않는다**는 남은 한계를
+  명시했다. 다음 관문은 오너가 아니라 **D7 3단 절차**(M7 임계 사전등록 → 리뷰어 승인 → 커밋 봉인)이며
+  그 전에는 Phase 2 replay를 시작하지 않는다.
+
+[RULE-ROUTER-PROPOSE rev-7] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8

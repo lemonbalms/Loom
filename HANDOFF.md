@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · RULE-ROUTER **Phase 1 코드 done** (D1 승인) · next = 카테고리 표 오너 승인(D9).
+> v0.28.1 · RULE-ROUTER **Phase 1 done** (카테고리 정본 선포 완료) · next = D7 M7 임계 봉인.
 
 ## Current loop
 
@@ -13,36 +13,35 @@
 |---|---|---|
 | Product | v0.28.1 · adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | NORMS Phase 3 done · R28 conv flake fix shipped | runtime/tests · rev-3 |
+| Harness | NORMS P3 · **RULE-ROUTER Phase 1** done | runtime/tests · rev-7 |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### RULE-ROUTER Phase 1 — 카테고리 표 오너 승인 (D9) → D7 임계 3단 절차
+### RULE-ROUTER — D7 3단 절차: M7 임계 사전등록 (다음 세션 착수)
 
-**Goal:** Close Phase 1. Code+registry **done**; 남은 것 = 카테고리 표 **오너 승인(D9)** → M7 임계 **D7 3단 절차**(설계자 제안 → 리뷰어 승인 → 커밋 봉인) → 그 후 Phase 2.
+**Goal:** M7 임계값을 **결과 관측 전에** 고정해 Phase 2 replay의 문을 연다. 절차 = 설계자 제안 → **리뷰어 승인** → **커밋으로 봉인** → 그 후에만 replay (rev-7 §10 D7).
 
-**Authority:** Owner 2026-07-26 — **D1 승인** · D2–D9 리뷰 §5 전건 채택 (rev-6 §10 확정표). Phase 2 이후는 미포함.
+**Authority:** Owner 2026-07-26 — D1 승인 · D2–D9 전건 확정 · **카테고리 정본 선포 완료**(`RULE-CATEGORIES.md` 10개 · 재량 pin 0 · 예외 0). **잔여 오너 승인 0건.** Phase 2 착수 자체는 D7 봉인이 선결.
 
-**Now:** `RULE-CATEGORIES-DRAFT.md` §3(10개 확정 · 재량 pin 0건 · 예외 없음)을 오너에게. 레지스트리 확대(lessons/WORKFLOW/DOGFOOD 미등록)는 후속 — 주입 무변경.
+**Now (다음 세션 1번 작업):** 레지스트리 통계(32유닛 · 10카테고리 · pinned 13 · routable 19 · 7,628 chars)를 근거로 **M7 임계 제안서**를 쓴다. M7 = 카테고리 미분류 + 합집합 예산초과 턴의 비율 — 이 값이 임계 미만이면 **A 채택 확정, B/C 미구현**(§6.5.3).
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Done when:** Owner approves/edits the category table · then M7 임계 사전등록이 커밋으로 봉인된다.
+**Done when:** 임계 제안 → 리뷰어 승인 → 봉인 커밋. (선택 후속: 레지스트리 확대 — lessons/WORKFLOW/DOGFOOD는 아직 유닛·파일 digest 둘 다 없어 **변경이 안 잡힌다**. 주입 무변경이라 언제든 가능.)
 
-**Must not:** start Phase 2 replay before the D7 임계 봉인; start Phase 3 before the PreToolUse 비차단 주입 **PoC 실측**(F1 · fail-closed); 재량 pin을 오너 선포 없이 늘리기(D3); 라우팅에 미승인 카테고리 표 사용.
+**Must not:** 결과를 본 뒤 임계·가중치 조정(사전등록 위반 = 그 bake-off 무효); D7 봉인 전 Phase 2 replay; **F1 PoC 실측 전 Phase 3**(fail-closed); 재량 pin을 오너 선포 없이 늘리기(D3 — 코드가 거부).
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| SINGLE routing correction | **done** | prevents wrong N norm | routing design · semantic lint · 814 tests |
+| SINGLE routing · R28 flake fix | **done** | gates closed | routing design · new test ⑭ |
 | NORMS Phase 3 | **done/authorized** | deterministic N packs | `norms:check` · Claude enable |
-| R28 flake fix (ship) | **done** · 4× targeted · 14/14 inject · conv 30/30 | gate closed | new test ⑭ |
-| Suite + typecheck | **exit 0 · 6/6** | no remaining tests | last run |
+| Suite + typecheck | **854 pass / 0 fail · tc 5/5 exit 0** | no remaining tests | 2026-07-26 |
 | ISSUE cause B (claude-mem ts) | **open issue** | cache ≤1min | B-7 upstream; B-4 temp |
-| RULE-ROUTER review + rev-5/6 | **done** · ①–⑦ verbatim PASS · 오너 D1–D9 확정 | 조건 0 closed · Phase 1 승인 | `955d2a5` · rev-6 `b0a6cd4` |
-| RULE-ROUTER Phase 1 | **done** · 32유닛 · 미분류 0 · pinned 13 · 드리프트 실증(**F2 사각 = 미등록 신규 규칙도 잡힘**) | 주입 무변경 | `rules:check` · 26 tests |
+| RULE-ROUTER rev-5/6/7 | **done** · ①–⑦ verbatim PASS · D1–D9 확정 · D9 선포 | 잔여 오너 승인 0 | `955d2a5`·`b0a6cd4`·rev-7 |
+| RULE-ROUTER Phase 1 | **done** · 32유닛 · 미분류 0 · pinned 13(전건 자동) · 드리프트 실증(**F2 사각 = 미등록 신규 규칙도 잡힘**) | 주입 무변경 | `rules:check` · 26 tests · `26923c2` |
 
 ## Owner pending
 
@@ -51,7 +50,6 @@
 | ISSUE cause B | autoUpdate reverts B-4 | open issue only (≠ closed) | `HOOK-CACHE-FIX-DESIGN` §5 |
 | HOOKCACHE-D-VERIFY | optional | paused | design |
 | RULE-ENFORCEABILITY | product | document only | spike |
-| RULE-ROUTER 카테고리 표 | Phase 1 산출물 · D9 = 오너 선포 | 10개 그대로 · 재량 pin 0건 · 예외 없음 | `RULE-CATEGORIES-DRAFT.md` §3 |
 | CONTEXT-MAP impl | separate package | not authorized | propose §8 |
 
 ## Blockers
@@ -83,8 +81,8 @@
 - DELIVERY: `SESSION-START.md` · freeze `cc03474` · approval `5b14012`.
 - Product: PLAN 0.28.1 · R46 · adapter `6e2df8a`.
 - Rule delivery 07-23: 13,157/168,772 chars = 7.8% auto-delivered.
-- RULE-ROUTER revs: `7a47aad`(rev-4) → `955d2a5`(rev-5 fold-in) → `b0a6cd4`(rev-6 오너 확정).
-- Phase 1: `rules/registry.yaml`(생성기 산출) · `scripts/rules-registry.ts` · 앵커 3종 유일매치 강제 · pin = D3 파생값(코드 강제).
+- RULE-ROUTER: `7a47aad`(rev-4) → `955d2a5`(rev-5) → `b0a6cd4`(rev-6) → rev-7(D9 선포·앵커 확정).
+- Phase 1 `26923c2`: `rules/registry.yaml`(생성기 산출) · `scripts/rules-registry.ts` · 앵커 3종 유일매치 · pin = D3 파생(코드 강제) · 카테고리 정본 `RULE-CATEGORIES.md`.
 - RULE-ROUTER review: §8 7답(P2 조건부·G1 재배치) · F1 JIT 미실측(High)·F2·F3·F4 → 전건 rev-5 fold-in.
 
 ## Don't redo
@@ -97,5 +95,5 @@
 - Bare status as wave; permanent nine-axis slim-delete.
 - Reclassify fixed R28 timeout as open regression; raise timeouts instead of preserving event/anchor order.
 - Re-derive the router problem statement; re-open the rev-2 demotion; author-lane verdict.
-- Re-run the rev-4 review; reword review §4 delta in fold-in (verbatim only).
+- Re-run the rev-4 review; reword the folded §4 delta; re-put D1–D9 or the category table to the Owner (선포 완료).
 - Pre-claim before dispatch (§1.1 forbids; rule 5 fixed `1a22a9c`; commands stay valid).
