@@ -239,7 +239,20 @@ OMX는 **봉투를 고치지 않고 우회한다.** 이벤트/키스트로크를
    걸리는지**였다. 갭을 §4.1로 좁혔다.
 3. **“Loom의 claim은 `board set doing` + `board assign`이라는 문서 규칙이다”** — 두 번 틀렸다.
    ① 실제 §1.1 표현은 `dispatch_card` 단일 전이이며 `board set doing`이라는 문자열은
-   `docs/DOGFOOD_LOOP.md`에 **존재하지 않는다**(CLAUDE.md 규칙 5의 문구가 실제 문서와 어긋난다 —
-   **오너에게 문구 갱신 제안**). ② claim 전이는 문서 규칙이 아니라 **코드**다. 문서 규칙인 것은
-   전이가 아니라 **중복 사전 점검**(§1.1 규칙 1)이다. 갭의 성격을 “문서 규칙이라 안 지켜진다”에서
-   **“코드 전이에 from-state 가드가 없다”**로 교정했다.
+   `docs/DOGFOOD_LOOP.md`에 **존재한 적이 없다**(`git log -S` 0건). ② claim 전이는 문서 규칙이 아니라
+   **코드**다. 문서 규칙인 것은 전이가 아니라 **중복 사전 점검**(§1.1 규칙 1)이다. 갭의 성격을
+   “문서 규칙이라 안 지켜진다”에서 **“코드 전이에 from-state 가드가 없다”**로 교정했다.
+
+   이 정정이 드러낸 **문서 간 모순은 오너 승인으로 해소됐다**(2026-07-26). CLAUDE.md 규칙 5는
+   *“디스패치 전 §1.1 claim(`board set doing` + `board assign`) 선행 의무”*라고 지시했는데,
+   실제 §1.1(`DOGFOOD_LOOP.md:259-260`)은 *“`dispatch_card` is the claim transition … **Do not
+   pre-claim it under a peer profile**”*로 **정반대**를 규정했다. 시간 순서는 CLAUDE.md 문구
+   `12523d8`(2026-07-20) → DOGFOOD §1.1 `059cd37`(2026-07-22)이다.
+
+   사전 claim의 실측 부작용 3건: ① `dispatchCard`가 status 검사 없이 곧바로 덮어써 **무의미**
+   ② `board assign`은 기본 notify on(`cli/src/index.ts:1245`)이라 **불필요한 handoff 알림 발송**
+   ③ `assignee`에 피어 프로필이 먼저 박혀 §1.1의 *“node owns execution; peer profile remains a
+   room identity”* 경계를 **위반**. 규칙 5의 의도(3 구현자 중복 착수 방지)는 유효하므로 수단만
+   §1.1 규칙 1(`check_handoffs` + `list_tasks` 사전 점검)로 교체했다. `board set`/`board assign`
+   명령 자체는 실재하며 UC-7 스모크(`scripts/smoke-uc.ts:530`)가 검증한다 — 폐기 대상이 아니고,
+   **디스패치 전 claim 수단으로 쓰지 않는다**는 것이 정정의 범위다.

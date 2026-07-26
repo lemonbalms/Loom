@@ -25,9 +25,12 @@
    검증을 구현자와 같은 레인에 주지 않는다 — 발견자와 수정자를 분리해야 교차 검증이 성립한다.
    **실작업 표면 = herdr pane 카드가 기본**이고 in-harness `Agent`는 pane 불가 시 폴백이다.
    조사·브리프 작성도 예외가 아니다(2026-07-20 오라우팅 실증). 디스패치 전
-   **`docs/DOGFOOD_LOOP.md` §1.1 claim**(`board set doing` + `board assign`) 선행 의무 —
-   생략 시 3 구현자 중복 착수 위험. 디스패처 신원은 로스터의 `claude-impl`(M-1 allowlist
-   등록분), `mac-node`로 쏘면 브릿지가 M-1 deny한다.
+   **`docs/DOGFOOD_LOOP.md` §1.1 중복 점검**(`check_handoffs` + `list_tasks`로 겹치는
+   `doing` 카드 확인) 선행 의무 — 생략 시 3 구현자 중복 착수 위험. **claim 전이는
+   `dispatch_card`가 수행하며 사전 claim은 금지**(§1.1 "Do not pre-claim it under a peer
+   profile" — 2026-07-26 정정: 종전 문구의 `board set doing` + `board assign`은 §1.1에
+   존재하지 않았고 사전 claim 금지와 상충했다). 디스패처 신원은 로스터의 `claude-impl`(M-1
+   allowlist 등록분), `mac-node`로 쏘면 브릿지가 M-1 deny한다.
 6. **워커 감시는 `scripts/watch-card.ts`를 쓴다 — 임시 셸 스크립트 금지.**
    손으로 짠 감시는 2026-07-20에 **3연속 서로 다른 구멍**을 냈다(마커만 봄 → pane 소멸 뺌 →
    bash 3.2 연관배열 미지원으로 즉사하며 "35분 경과" **거짓 성공** 보고). `watch-card`는
