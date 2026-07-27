@@ -31,7 +31,7 @@ This file is for **during-implementation** plan deviations only.
 
 | Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
 |------|-------------------|-------------------------|------------------|-----------|
-| 2026-07-28 | PHASE3-SPEC §6 dry-run “기본” | `LOOM_RULE_ROUTER_JIT` **unset = off (no-op)** 로 구현. dry-run은 명시 `dry-run`일 때만. | 훅이 settings에 상시 등록되므로 unset=dry-run이면 모든 Agent 스폰에 receipt I/O·레지스트리 읽기가 붙는다. canary 통과 전 세션 부작용을 피한다. | 모델 10런 통과 후 dry-run 기본 재검토 가능 |
+| 2026-07-28 | PHASE3-SPEC §6 dry-run “기본” | `LOOM_RULE_ROUTER_JIT` **unset = off (no-op)** 로 구현. dry-run은 명시 `dry-run`일 때만. | 훅이 settings에 상시 등록되므로 unset=dry-run이면 모든 Agent 스폰에 receipt I/O·레지스트리 읽기가 붙는다. canary 통과 전 세션 부작용을 피한다. | **P3.0 T1(b) PASS (2026-07-28)** 후에도 unset=off 유지. live=`1`은 opt-in만 · default-on 금지(RESULT rev-2). dry-run-as-default 재검토는 오너 선포 전 불요. |
 
 ### §0.28.1 — herdr 0.7.5 / protocol-17 adapter
 
