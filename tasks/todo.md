@@ -1,37 +1,33 @@
 # Todo — Loom
 
-## Current — RULE-ROUTER · Phase 3.1 모델 canary n=10
+## Current — RULE-ROUTER · Phase 3.1 T1 FAIL · SPEC 개정
 
-> **SSOT = `HANDOFF.md`.** Cold start: `bun run status` → Current action playbook.
+> **SSOT = `HANDOFF.md`.** Evidence: `~/.loom/phase3-1-canary-2026-07-28/` · RESULT **rev-2**.
 
 ### Do now (next session)
 
-- [ ] `bun test scripts/rule-router-jit.test.ts` green (17)
-- [ ] 채점·캡처 스크립트 **관측 전** + digest 고정
-- [ ] 증거 `~/.loom/phase3-1-canary-YYYY-MM-DD/`
-- [ ] **base×5** / **jit×5** — PREREG §4 2-step 프롬프트 축자
-- [ ] 채점 G0 · T1/T1(b) → `PHASE3.1-RESULT` **rev-2**
-- [ ] 통과 시에만 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 검토 · HANDOFF · ship
+- [ ] SPEC 개정 게이트: 준수 0 원인 가설 고정 (가시 시점 / 문안 / F1 표지 / 비경쟁 설계)
+- [ ] 필요 시 소 n 스파이크 → **새 PREREG** seal (3.1 rev-1 셀 불변)
+- [ ] ship live 상수 **false 유지** until T1/T1(b)
+- [ ] 대안 결정: ship surface 보류 vs 재설계
 
 ### 절대 금지
 
-- [ ] `RULE-ROUTER-PHASE3.1-PREREG.md` 사후 편집
-- [ ] ship live before T1 · default-on · pin JIT · 본문 하드코딩
-- [ ] 3.0/F1* 봉인값 변경 · C1 “그 호출 교정” 주장
+- [ ] COMPLY 사후 완화 · DELIVERED만으로 ship live
+- [ ] PHASE3.1-PREREG rev-1 셀 편집 후 재측정으로 “통과 만들기”
+- [ ] default-on · pin JIT · 본문 하드코딩
 
 ### Key coordinates
 
 | What | Where |
 |------|--------|
-| PREREG | `docs/spikes/RULE-ROUTER-PHASE3.1-PREREG.md` |
-| SPEC | `docs/spikes/RULE-ROUTER-PHASE3.1-SPEC.md` |
-| RESULT | `docs/spikes/RULE-ROUTER-PHASE3.1-RESULT.md` rev-1 |
-| Hook | `scripts/rule-router-jit.ts` |
-| Fixture | `traps.bun-test-env` · sha8 `1172cf30` |
-| 3.0 evidence | `~/.loom/phase3-0-canary-2026-07-28` |
+| RESULT | `docs/spikes/RULE-ROUTER-PHASE3.1-RESULT.md` **rev-2** |
+| PREREG (sealed) | `docs/spikes/RULE-ROUTER-PHASE3.1-PREREG.md` |
+| Evidence | `~/.loom/phase3-1-canary-2026-07-28/` |
+| Live gate | `PHASE3_1_SHIP_LIVE_AUTHORIZED=false` |
 
 ### Shipped (don't redo)
 
-- [x] P3.0 T1(b) PASS · RESULT rev-2 · `97dca86`
-- [x] P3.1 SPEC + PREREG + ship lane impl + 17 tests + stdin DELIVERED
-- [x] F1e · F1d · F1 · Phase 2 A · NORMS P3 · Product 0.28.1
+- [x] P3.0 T1(b) PASS
+- [x] P3.1 SPEC+PREREG+impl+17 tests
+- [x] **P3.1 model n=10 · G0 PASS · T1 FAIL · RESULT rev-2** (2026-07-28)
