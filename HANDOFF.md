@@ -24,7 +24,7 @@
 
 **Authority:** `F1D-RESULT` **§8**(열린 것/안 열린 것) · propose rev-11 §5.3·§7. 개정본은 **R{n} 게이트**(여부 WORKFLOW §5.1).
 
-**Now:** F1d 거부 3사유는 **다음 사전등록 입력**이지 §5.3 처방이 **아니다** — rev-10 철회 재범 금지.
+**Now:** 거부 3사유(Active checks)는 **다음 사전등록 입력**이지 §5.3 처방이 **아니다** — rev-10 철회 재범 금지.
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
@@ -43,7 +43,7 @@
 | **Phase 2 R1** (45세션 557턴) | **M7b 0 ✓ · J-miss 0 ✓ · M7a 24.2%(S1-3) · recall 0.451 미달** · drift 0 · 확장 0/2 · holdout 미개봉 | **A 확정 · B/C 미구현** | `PHASE2-RESULT.md` |
 | recall 검정력 | **부족** — positive 12턴 · 대상 **11/19 무관측**(가중 32/51); traps·SESSION-START는 주입이라 Read 0 | S3-2 불가 | 결과 §5 |
 | **F1 계열** (27런) | 비차단 주입 **YES**(C1/C2/C3 = 동봉·서브에이전트 미도달·10,000자 캡) · 전달 21/21 · **준수 0/21** · 채널 **기각** | **도구 무효**(임의 토큰=인젝션) | `F1-RESULT`·`F1B-RESULT` |
-| **F1d** (15런 · 봉인 `c997d42`) | **준수 4/12 · 대조군 0/3 · T1 성립** · 교차오염 0 · 확장 0 · T2 음 · T3 0 · 거부 8 사유 = 지시충돌 6/출처검증 2/패딩 1 | **규칙은 실린다** · 4/12는 **하한** | `F1D-RESULT` |
+| **F1d** (15런 · 봉인 `c997d42`) | **준수 4/12 · 대조군 0/3 · T1 성립** · 교차오염 0 · 확장 0 · T2 음 · T3 0 · 거부 8 사유 = 지시충돌 6/출처검증 2/패딩 1 | **규칙은 실린다** · 4/12는 **하한** | `F1D-RESULT` §3 |
 | `smoke:uc` UC-3 | **상시 fail 2건**(host `already running` · handoff `peer_unknown`→alice) · HEAD 동일 = 회귀 아님 | 미진단 | 차집합 0 |
 
 ## Owner pending
