@@ -82,7 +82,9 @@
 - [x] Changelog rev-13
 - [x] 헤더 `pending-review`
 - [x] F1E §8 들어갈 것 / 안 될 것 교차
-- [ ] `bun run handoff:check` (HANDOFF 갱신 후)
-- [ ] ship 커밋 (이 요청 + rev-13)
+- [x] `bun run handoff:check` (요청 웨이브에서 완료 · `15fa73f`)
+- [x] ship 커밋 (요청 + rev-13 · `15fa73f`)
+- [x] **REVIEW 완료** — [`RULE-ROUTER-REVIEW-rev-13.md`](./RULE-ROUTER-REVIEW-rev-13.md)
+      · approve-conditional · M-1 fold-in · 재리뷰 불요 (2026-07-28)
 
-[RULE-ROUTER-REVIEW-REQUEST rev-13] target=PROPOSE-rev-13 focus=§5.3 path=spike-REVIEW phase3=blocked-until-approve
+[RULE-ROUTER-REVIEW-REQUEST rev-13] target=PROPOSE-rev-13 focus=§5.3 path=spike-REVIEW status=closed-approved-with-m1-foldin phase3=separate-gate

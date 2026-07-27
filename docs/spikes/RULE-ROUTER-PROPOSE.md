@@ -1,14 +1,16 @@
 # Propose (rev-13) — 룰 분리기(Rule Router)
 
 작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · rev-9 Phase 2 라운드 1 실측 · rev-10 F1 실측 · rev-11 F1b·F1c 실측 · rev-12 P-B 압력원 갭 기록 · **rev-13 §5.3 문안 개정 2026-07-28** · 레인: 본세션(topology `single`)
-상태: **pending-review** (§5.3 개정분 · spike REVIEW 대기) — Phase 1 **완료** · D1–D9 전건 확정(§10) · D7 봉인 완료 2026-07-26 ·
+상태: **approved** (§5.3 개정분 · spike REVIEW rev-13 **approve-conditional → M-1 fold-in 완료 · 재리뷰 불요**) — Phase 1 **완료** · D1–D9 전건 확정(§10) · D7 봉인 완료 2026-07-26 ·
 **Phase 2 라운드 1 완료 → `M7b = 0` 실측으로 §6.5.5 중단 규칙 발동 = A 채택 확정 · B/C 미구현**
 (결과 정본 = [`RULE-ROUTER-PHASE2-RESULT.md`](./RULE-ROUTER-PHASE2-RESULT.md) rev-1 ·
 사전등록 정본 = [`RULE-ROUTER-PREREG.md`](./RULE-ROUTER-PREREG.md) rev-4 sealed).
 잔여 = 오너 결정 2건(카테고리 표 개정 · 라벨 검정력 — 결과 §6). **Phase 2b bake-off는 열리지 않는다.**
-**F1 계열 실측은 닫혔다**(전달 · 준수 가능 · 충돌 변수). **Phase 3 선결 = 이 rev-13 §5.3에 대한 spike REVIEW 승인**(D2 · 자기 종결 금지).
+**F1 계열 실측은 닫혔다.** **§5.3 문안 선결 해소** — 정본 =
+[`RULE-ROUTER-REVIEW-rev-13.md`](./RULE-ROUTER-REVIEW-rev-13.md). **Phase 3 착수는 별도 게이트**(이 승인 ≠ 구현 권한).
 리뷰 정본(rev-4 본문): [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md).
-rev-13 리뷰 요청: [`RULE-ROUTER-REVIEW-REQUEST.md`](./RULE-ROUTER-REVIEW-REQUEST.md).
+rev-13 요청/결과: [`RULE-ROUTER-REVIEW-REQUEST.md`](./RULE-ROUTER-REVIEW-REQUEST.md) ·
+[`RULE-ROUTER-REVIEW-rev-13.md`](./RULE-ROUTER-REVIEW-rev-13.md).
 
 > 착안: Cursor Router(2026-07-22) — 모델을 실행하기 **전에** 요청을 분류해 작업에 맞는 모델로
 > 보내는 분류기. 우리가 이식하는 것은 *모델 선택*이 아니라 **규범 선택**이다.
@@ -315,7 +317,8 @@ prefix와 JIT의 차이는 **C1–C3(시점·범위·예산)** 이지 준수 신
 | F1d | 맥락 도출 보고 형식 | **있음** | **4/12** (하한) |
 | F1e | 동일 계열 · 충돌·패딩 제거 | **없음** | **10/10** (대조군 0/5 · 거부 0) |
 
-- **전달 ≠ 준수.** Phase 3 게이트는 전달이 아니라 **준수 카나리아**다.
+- **전달 ≠ 준수.** Phase 3 게이트는 전달이 아니라 **준수 카나리아**다
+  (착수 권한 아님 · 선결 = spike REVIEW — L-1 author-close).
 - 준수 카나리아 요건(F1b): 임의 토큰 금지 · 요구 행동은 기본값과 구분되면서 **프로젝트 규범으로서
   그럴듯** · 지표는 문자열 포함이 아니라 **행동의 위치**(포함 정의 = 거부 위양성 14/14).
 - **문안 형식(규범 진술 vs 명령형) 처방 없음** — F1b에서 부호 0(0/9 vs 0/9). rev-10 처방은 철회 유지.
@@ -328,6 +331,9 @@ prefix와 JIT의 차이는 **C1–C3(시점·범위·예산)** 이지 준수 신
 - **관측:** 모델은 **사용자를 택한다**(F1d 거부 축자 6/8이 사용자 지시 충돌을 사유로 듦).
 - **라우터 의무:** 그 우선순위를 **바꾸려 하지 않는다.** 충돌을 **탐지·회피**하도록 설계한다
   (같은 턴에 사용자 명시 지시와 경쟁하는 유닛을 주입하지 않음 · 충돌 가능 surface는 pin/전량 또는 미주입).
+  **pin/전량은 충돌 회피가 아니라 라우터 재량 제거다** — 충돌 유닛도 함께 주입되며, 그 경우
+  우선순위는 관측된 대로 사용자에게 있고 라우터는 해당 surface의 준수를 주장하지 않는다.
+  (rev-13 REVIEW M-1 fold-in · 재리뷰 불요)
 - **열리지 않은 것:** 충돌 *시* 강제 우선순위 뒤집기 · 사용자 지시 재작성 · “주입이 항상 이긴다” 주장.
 
 #### 5.3.5 자유 변수 · 금지 인용
@@ -506,10 +512,10 @@ G가 원리적 주장인 이유이며, 실측 일치율이 높게 나와도 바�
 
 > **Phase 3 선결 이력.**
 > 1. PreToolUse 비차단 주입 능력 — **해소** (rev-10 · F1 YES · C1–C3).
-> 2. §5.3 용도 서술 개정 — **초안 완료** (rev-13 · 본 문서 §5.3). **자기 종결 금지.**
-> 3. **현재 선결 (fail-closed):** rev-13 §5.3에 대한 **spike REVIEW 승인**
->    ([`RULE-ROUTER-REVIEW-REQUEST.md`](./RULE-ROUTER-REVIEW-REQUEST.md) · D2).
->    승인 전 Phase 3 미착수. 이 rev-13 자체는 Phase 3 착수 권한이 **아니다**(F1E-RESULT §8).
+> 2. §5.3 용도 서술 개정 — **초안** (rev-13) → **spike REVIEW 승인 + M-1 fold-in**
+>    ([`RULE-ROUTER-REVIEW-rev-13.md`](./RULE-ROUTER-REVIEW-rev-13.md) · 2026-07-28) — **문안 선결 해소.**
+> 3. **현재 선결 (fail-closed):** **Phase 3 착수 게이트**(범위·surface 순서·충돌 탐지 구현 명세).
+>    §5.3 승인 ≠ JIT 실주입 착수 권한.
 
 > **Phase 2 표본추출 (리뷰 F3 · rev-5).** replay는 사전등록된 표본추출 규칙에 따라 표본으로
 > 축소할 수 있다(규칙·규모는 결과 관측 전 고정 — 사전등록 위반 시 그 측정은 무효).
@@ -717,12 +723,12 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   상태 축을 라우팅하면 "지금 무엇을 하는가"가 조건부로 사라져 P-A를 새로 만든다.
   **설계·게이트 변경 없음 — 미해결 항목 1건 추가뿐.**
 
-- **rev-13 (2026-07-28 · §5.3 문안 개정 · docs-only · pending-review)** — F1e(10/10 · 충돌 제거)와
-  F1d §3·F1E §8을 반영해 §5.3을 **정본 문안**으로 재작성했다. ① 경로·전달 계약(C1–C3)·준수 한 줄
-  (“경쟁하지 않는 한 따라진다”)·**충돌 탐지·회피** 설계 문제·자유 변수(출처 U2 미판정)·금지 인용을
-  한 절로 고정. ② rev-10 “직접 처방”·rev-10 문안 처방(이미 철회)·정정 블록 스택을 흡수·폐기.
-  ③ Phase 3 선결을 “§5.3 초안 작성”에서 **“rev-13 spike REVIEW 승인”**으로 전진(자기 종결 금지).
-  **구현·Phase 3 착수 권한 없음.** 요청 =
-  [`RULE-ROUTER-REVIEW-REQUEST.md`](./RULE-ROUTER-REVIEW-REQUEST.md).
+- **rev-13 (2026-07-28 · §5.3 문안 개정 · docs-only · pending-review → approved)** — F1e(10/10 · 충돌
+  제거)와 F1d §3·F1E §8을 반영해 §5.3을 **정본 문안**으로 재작성했다. ① 경로·전달 계약(C1–C3)·준수
+  한 줄·**충돌 탐지·회피**·출처 비처방·금지 인용 고정. ② rev-10 직접 처방·정정 블록 스택 흡수·폐기.
+  ③ spike REVIEW
+  [`RULE-ROUTER-REVIEW-rev-13.md`](./RULE-ROUTER-REVIEW-rev-13.md): **approve-conditional** ·
+  **M-1 fold-in**(pin/전량 ≠ 충돌 회피 · 재량 제거) · L-1 author-close · **재리뷰 불요.**
+  **§5.3 문안 선결 해소. Phase 3 착수는 별도 게이트.**
 
-[RULE-ROUTER-PROPOSE rev-13] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved f1d=comply-possible f1e=conflict-is-the-variable s53=rewritten-pending-review open=pb-pressure-outside-registry
+[RULE-ROUTER-PROPOSE rev-13] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved f1d=comply-possible f1e=conflict-is-the-variable s53=approved-m1-foldin open=pb-pressure-outside-registry phase3=separate-gate
