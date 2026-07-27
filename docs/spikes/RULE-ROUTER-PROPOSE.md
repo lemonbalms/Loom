@@ -507,15 +507,16 @@ G가 원리적 주장인 이유이며, 실측 일치율이 높게 나와도 바�
 | **1** | `rules/registry.yaml` + 추출기 + `bun run rules:check` · **카테고리 표 초안(§5.2.1) → 오너 승인** | **없음** | 추출 결정론 · digest 일치 · 미분류 0 (G2) · **파일 digest + registry triage receipt**(§5.1) · 카테고리 정본 확정 |
 | **2** | `rule-router-eval.ts` + **후보 A 먼저** shadow replay — **완료 2026-07-26**(라운드 1 · eval 45세션 557턴) | 없음(로깅만) | **J-miss 0 ✓ · M7b 0% ✓ · M7a 24.2%(S1-3 발동) · recall 0.451(S3-2 미달 · 검정력 부족 명기)** — [결과](./RULE-ROUTER-PHASE2-RESULT.md) |
 | **2b** | **bake-off** — A vs B vs C를 §6.5 축으로 비교. §6.5.5 중단 규칙 적용 | 없음 | **열리지 않음** — S1-2는 `M7b > 5%` AND recall 미달인데 `M7b = 0`이라 AND 불성립 |
-| **3** | 채택안으로 JIT append-only 주입 (저위험 surface부터: 위임·ship) | 추가만 · **1건 <10,000자**(F1 C3) · **충돌 회피**(§5.3.4) | **준수 카나리아** — 전달이 아니라 “따랐는가”. **임의 토큰 금지 · 행동 위치로 판정**(F1b) · **사용자 지시와 경쟁하는 카나리아 금지**(F1e) |
+| **3** | 채택안으로 JIT append-only 주입 (저위험 surface부터: 위임·ship) — **착수 명세 2026-07-28** | 추가만 · **1건 <10,000자**(F1 C3) · **충돌 회피**(§5.3.4) · **opt-in** | **준수 카나리아** — [PHASE3-SPEC](./RULE-ROUTER-PHASE3-SPEC.md) · [PHASE3-PREREG](./RULE-ROUTER-PHASE3-PREREG.md) **sealed** · 3.0=`delegation` · 구현/측정 = 다음 게이트 |
 | **4** | prefix 라우팅 + 모드 노브 | prefix 축소 | G4·G5 회귀 없음 |
 
 > **Phase 3 선결 이력.**
 > 1. PreToolUse 비차단 주입 능력 — **해소** (rev-10 · F1 YES · C1–C3).
 > 2. §5.3 용도 서술 개정 — **초안** (rev-13) → **spike REVIEW 승인 + M-1 fold-in**
 >    ([`RULE-ROUTER-REVIEW-rev-13.md`](./RULE-ROUTER-REVIEW-rev-13.md) · 2026-07-28) — **문안 선결 해소.**
-> 3. **현재 선결 (fail-closed):** **Phase 3 착수 게이트**(범위·surface 순서·충돌 탐지 구현 명세).
->    §5.3 승인 ≠ JIT 실주입 착수 권한.
+> 3. Phase 3 착수 명세 — **해소** ([`RULE-ROUTER-PHASE3-SPEC.md`](./RULE-ROUTER-PHASE3-SPEC.md) rev-1 ·
+>    [`RULE-ROUTER-PHASE3-PREREG.md`](./RULE-ROUTER-PHASE3-PREREG.md) rev-1 sealed).
+> 4. **현재 선결 (fail-closed):** **3.0 구현 + 준수 카나리아 측정**(PREREG 불변). live default-on 금지.
 
 > **Phase 2 표본추출 (리뷰 F3 · rev-5).** replay는 사전등록된 표본추출 규칙에 따라 표본으로
 > 축소할 수 있다(규칙·규모는 결과 관측 전 고정 — 사전등록 위반 시 그 측정은 무효).
@@ -731,4 +732,10 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   **M-1 fold-in**(pin/전량 ≠ 충돌 회피 · 재량 제거) · L-1 author-close · **재리뷰 불요.**
   **§5.3 문안 선결 해소. Phase 3 착수는 별도 게이트.**
 
-[RULE-ROUTER-PROPOSE rev-13] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved f1d=comply-possible f1e=conflict-is-the-variable s53=approved-m1-foldin open=pb-pressure-outside-registry phase3=separate-gate
+- **Phase 3 kickoff (2026-07-28 · docs-only · 착수 명세)** — §7 Phase 3 행·선결 이력을
+  SPEC/PREREG 좌표로 갱신. 정본 =
+  [`RULE-ROUTER-PHASE3-SPEC.md`](./RULE-ROUTER-PHASE3-SPEC.md) rev-1 ·
+  [`RULE-ROUTER-PHASE3-PREREG.md`](./RULE-ROUTER-PHASE3-PREREG.md) rev-1 (`orch.model-explicit`
+  body `de04b1fa`). **구현·canary 측정은 다음 게이트.** default-on 금지.
+
+[RULE-ROUTER-PROPOSE rev-13] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved s53=approved phase3=spec-prereg-sealed-impl-next open=pb-pressure-outside-registry
