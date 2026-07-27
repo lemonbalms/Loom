@@ -4,15 +4,22 @@ import { join } from "node:path";
 import {
   CANARY_BODY_SHA8,
   CANARY_FIXTURE_UNIT,
+  CANARY_SHIP_BODY_SHA8,
+  CANARY_SHIP_FIXTURE_UNIT,
   JIT_CHAR_CAP,
+  PHASE3_1_SHIP_LIVE_AUTHORIZED,
   decideJit,
   fitBudget,
   hasFormatCompetition,
   hookOutput,
   isDelegationTool,
+  isShipCommand,
+  isShipTool,
   parseJitMode,
   renderContext,
+  resolveSurface,
   selectDelegationUnits,
+  selectShipUnits,
 } from "./rule-router-jit.ts";
 import { type RuleUnit, extractUnitBody, readLiveRegistry, sha8 } from "./rules-registry.ts";
 
@@ -28,20 +35,36 @@ describe("rule-router-jit modes", () => {
     expect(parseJitMode("nope")).toBe("off");
   });
 
-  test("delegation tools only", () => {
+  test("delegation and ship tools", () => {
     expect(isDelegationTool("Agent")).toBe(true);
     expect(isDelegationTool("Task")).toBe(true);
     expect(isDelegationTool("Bash")).toBe(false);
+    expect(isShipTool("Bash")).toBe(true);
+    expect(isShipTool("Edit")).toBe(true);
+    expect(isShipTool("Agent")).toBe(false);
+  });
+
+  test("ship command keywords", () => {
+    expect(isShipCommand("env -u X bun test")).toBe(true);
+    expect(isShipCommand("git commit -m x")).toBe(true);
+    expect(isShipCommand("echo P31_READY")).toBe(false);
   });
 });
 
 describe("rule-router-jit selection", () => {
   const { units } = readLiveRegistry(ROOT);
 
-  test("pin units never selected for JIT payload", () => {
+  test("pin units never selected for JIT payload (delegation)", () => {
     const selected = selectDelegationUnits(units, "위임 topology full 서브에이전트");
     expect(selected.every((u) => !u.pin)).toBe(true);
     expect(selected.every((u) => u.surface.includes("delegation"))).toBe(true);
+  });
+
+  test("pin units never selected for ship; commit-push excluded", () => {
+    const selected = selectShipUnits(units, "bun test 검증 커밋");
+    expect(selected.every((u) => !u.pin)).toBe(true);
+    expect(selected.every((u) => u.surface.includes("ship"))).toBe(true);
+    expect(selected.some((u) => u.id === "agents.commit-push")).toBe(false);
   });
 
   test("fitBudget drops whole units, never exceeds cap", () => {
@@ -54,6 +77,13 @@ describe("rule-router-jit selection", () => {
   test("format competition detector", () => {
     expect(hasFormatCompetition("one short sentence please")).toBe(true);
     expect(hasFormatCompetition("위임해서 구현해")).toBe(false);
+  });
+
+  test("resolveSurface canary Bash → ship; Agent → delegation", () => {
+    expect(resolveSurface("Agent", "canary", {}, "", units)).toBe("delegation");
+    expect(resolveSurface("Bash", "canary", { command: "echo x" }, "", units)).toBe("ship");
+    expect(resolveSurface("Bash", "live", { command: "echo x" }, "", units)).toBeNull();
+    expect(resolveSurface("Bash", "live", { command: "bun test" }, "", units)).toBe("ship");
   });
 });
 
@@ -69,32 +99,43 @@ describe("rule-router-jit decide", () => {
     expect(d.skipped_reason).toBe("mode_off");
   });
 
-  test("non-delegation tool skips", () => {
+  test("non-routable tool skips", () => {
     const d = decideJit(
-      { tool_name: "Bash" },
+      { tool_name: "Read" },
       { mode: "live", units, readSource, utterance: "위임" },
     );
     expect(d.context).toBeNull();
     expect(d.skipped_reason).toBe("tool_not_delegation");
   });
 
-  test("dry-run selects but does not inject", () => {
+  test("Bash without ship signal is lane_none", () => {
+    const d = decideJit(
+      { tool_name: "Bash", tool_input: { command: "echo hi" } },
+      { mode: "live", units, readSource, utterance: "hello" },
+    );
+    expect(d.context).toBeNull();
+    expect(d.skipped_reason).toBe("lane_none");
+    expect(d.surface).toBe("ship");
+  });
+
+  test("dry-run selects but does not inject (delegation)", () => {
     const d = decideJit(
       { tool_name: "Agent" },
       { mode: "dry-run", units, readSource, utterance: "위임 서브에이전트 topology" },
     );
     expect(d.skipped_reason).toBe("dry_run");
     expect(d.context).toBeNull();
-    // may or may not find units depending on triggers; unitIds can be empty
     expect(Array.isArray(d.unitIds)).toBe(true);
   });
 
-  test("canary injects sealed fixture only", () => {
+  test("canary injects sealed delegation fixture only", () => {
     const d = decideJit(
       { tool_name: "Agent" },
       { mode: "canary", units, readSource },
     );
     expect(d.unitIds).toEqual([CANARY_FIXTURE_UNIT]);
+    expect(d.surface).toBe("delegation");
+    expect(d.slice).toBe("3.0");
     expect(d.context).toContain(`unit:${CANARY_FIXTURE_UNIT}`);
     expect(d.context).toContain(`sha8:${CANARY_BODY_SHA8}`);
     expect(d.chars).toBeLessThan(JIT_CHAR_CAP);
@@ -103,6 +144,34 @@ describe("rule-router-jit decide", () => {
       units.find((u) => u.id === CANARY_FIXTURE_UNIT)!.source.anchor,
     );
     expect(sha8(body)).toBe(CANARY_BODY_SHA8);
+  });
+
+  test("canary Bash injects sealed ship fixture (even on echo)", () => {
+    const d = decideJit(
+      { tool_name: "Bash", tool_input: { command: "echo P31_READY" } },
+      { mode: "canary", units, readSource },
+    );
+    expect(d.unitIds).toEqual([CANARY_SHIP_FIXTURE_UNIT]);
+    expect(d.surface).toBe("ship");
+    expect(d.slice).toBe("3.1");
+    expect(d.context).toContain(`unit:${CANARY_SHIP_FIXTURE_UNIT}`);
+    expect(d.context).toContain(`sha8:${CANARY_SHIP_BODY_SHA8}`);
+    const unit = units.find((u) => u.id === CANARY_SHIP_FIXTURE_UNIT)!;
+    const body = extractUnitBody(readSource(unit.source.file), unit.source.anchor);
+    expect(sha8(body)).toBe(CANARY_SHIP_BODY_SHA8);
+  });
+
+  test("live ship inject blocked until 3.1 authorized", () => {
+    expect(PHASE3_1_SHIP_LIVE_AUTHORIZED).toBe(false);
+    const d = decideJit(
+      { tool_name: "Bash", tool_input: { command: "bun test" } },
+      { mode: "live", units, readSource, utterance: "bun test 검증" },
+    );
+    expect(d.surface).toBe("ship");
+    expect(d.context).toBeNull();
+    expect(d.skipped_reason).toBe("ship_gate_blocked");
+    // still reports which units would have been chosen
+    expect(d.unitIds.every((id) => id !== "agents.commit-push")).toBe(true);
   });
 
   test("hookOutput wraps additionalContext", () => {
@@ -119,6 +188,6 @@ describe("rule-router-jit decide", () => {
     const body = extractUnitBody(readSource(unit.source.file), unit.source.anchor);
     const ctx = renderContext([{ unit, body, bodySha8: sha8(body) }]);
     expect(ctx).toContain(body.trim());
-    expect(ctx.startsWith("[LOOM-RULE unit:")).toBe(true);
+    expect(ctx).toContain(`sha8:${sha8(body)}`);
   });
 });

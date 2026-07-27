@@ -1,14 +1,15 @@
 /**
- * Phase 3.0 PreToolUse JIT inject — candidate A, append-only additionalContext.
+ * Phase 3.x PreToolUse JIT inject — candidate A, append-only additionalContext.
  *
- * Authority: docs/spikes/RULE-ROUTER-PHASE3-SPEC.md rev-1 ·
- * docs/spikes/RULE-ROUTER-PHASE3-PREREG.md rev-1 (canary fixture).
+ * Authority:
+ *   docs/spikes/RULE-ROUTER-PHASE3-SPEC.md rev-1 · PHASE3-PREREG (3.0 delegation)
+ *   docs/spikes/RULE-ROUTER-PHASE3.1-SPEC.md rev-1 · PHASE3.1-PREREG (3.1 ship)
  *
  * Modes (LOOM_RULE_ROUTER_JIT):
  *   unset/0/off  → no-op (conservative default; avoid receipt spam pre-canary)
  *   dry-run      → decide + optional receipt; no additionalContext
- *   canary       → inject sealed fixture only (orch.model-explicit)
- *   1|live       → inject A-selected non-pin units on surface `delegation`
+ *   canary       → sealed fixtures only (delegation→orch.model-explicit · ship→traps.bun-test-env)
+ *   1|live       → A-selected non-pin units; ship inject gated until 3.1 canary PASS
  *
  * Never exit non-zero for routing failures (fail-open). Model-guard stays separate.
  */
@@ -27,14 +28,34 @@ import {
   route,
 } from "./rule-router-eval.ts";
 
+/** @deprecated use SURFACE_DELEGATION / slice on decision — kept for 3.0 test imports */
 export const PHASE3_SLICE = "3.0";
+/** @deprecated use SURFACE_DELEGATION */
 export const PHASE3_SURFACE = "delegation";
+
+export const SURFACE_DELEGATION = "delegation";
+export const SURFACE_SHIP = "ship";
+export const SLICE_3_0 = "3.0";
+export const SLICE_3_1 = "3.1";
+
+/** 3.0 canary fixture (PREREG sealed). */
 export const CANARY_FIXTURE_UNIT = "orch.model-explicit";
 export const CANARY_BODY_SHA8 = "de04b1fa";
+
+/** 3.1 canary fixture (PHASE3.1-PREREG sealed). */
+export const CANARY_SHIP_FIXTURE_UNIT = "traps.bun-test-env";
+export const CANARY_SHIP_BODY_SHA8 = "1172cf30";
+
+/**
+ * Ship live inject authorization. Stays false until PHASE3.1-RESULT T1/T1(b) PASS
+ * is documented and this constant is flipped in a deliberate commit.
+ */
+export const PHASE3_1_SHIP_LIVE_AUTHORIZED = false;
+
 export const JIT_CHAR_CAP = 10_000;
 export const GRADE_RANK: Record<string, number> = { H: 0, G: 1, A: 2, J: 3 };
 
-/** Format-competition signals (SPEC §4.2) — skip format-ish units if present (3.0 mostly N/A). */
+/** Format-competition signals (SPEC §4.2). */
 export const FORMAT_COMPETE_TRIGGERS = [
   "한 문장",
   "one sentence",
@@ -44,7 +65,19 @@ export const FORMAT_COMPETE_TRIGGERS = [
   "JSON only",
 ] as const;
 
+/** Live Bash command keyword gate (PHASE3.1-SPEC §3.2) — case-insensitive substring. */
+export const SHIP_COMMAND_KEYWORDS = [
+  "bun test",
+  "commit",
+  "push",
+  "git ",
+  "LOOM_RELAY",
+  "npm test",
+  "verify",
+] as const;
+
 export type JitMode = "off" | "dry-run" | "canary" | "live";
+export type JitSurface = typeof SURFACE_DELEGATION | typeof SURFACE_SHIP;
 
 export type JitInput = {
   tool_name?: string;
@@ -77,10 +110,29 @@ export function isDelegationTool(toolName: string): boolean {
   return toolName === "Agent" || toolName === "Task";
 }
 
+export function isShipTool(toolName: string): boolean {
+  return toolName === "Bash" || toolName === "Edit";
+}
+
+export function isShipCommand(command: string): boolean {
+  const c = command.toLowerCase();
+  return SHIP_COMMAND_KEYWORDS.some((k) => c.includes(k.toLowerCase()));
+}
+
 export function hasFormatCompetition(utterance: string): boolean {
   return FORMAT_COMPETE_TRIGGERS.some((t) =>
     utterance.toLowerCase().includes(t.toLowerCase()),
   );
+}
+
+export function utteranceHasShipCategory(
+  utterance: string,
+  units: RuleUnit[],
+  isFirstTurn = false,
+): boolean {
+  if (!utterance.trim()) return false;
+  const { categories } = classifyTurn(utterance, units, isFirstTurn);
+  return categories.includes("ship") || categories.includes("verification");
 }
 
 const rank = (unit: RuleUnit) => GRADE_RANK[unit.grade] ?? 9;
@@ -113,8 +165,56 @@ export function selectDelegationUnits(
     (unit) =>
       decision.selected.has(unit.id) &&
       !unit.pin &&
-      (unit.surface ?? []).includes(PHASE3_SURFACE),
+      (unit.surface ?? []).includes(SURFACE_DELEGATION),
   );
+}
+
+export function selectShipUnits(
+  units: RuleUnit[],
+  utterance: string,
+  isFirstTurn = false,
+): RuleUnit[] {
+  const { categories, unknown } = classifyTurn(utterance, units, isFirstTurn);
+  const decision = route(units, categories, unknown);
+  return units.filter(
+    (unit) =>
+      decision.selected.has(unit.id) &&
+      !unit.pin &&
+      (unit.surface ?? []).includes(SURFACE_SHIP),
+  );
+}
+
+/**
+ * Resolve which surface lane applies. null = no JIT for this tool event.
+ *
+ * canary: Agent|Task → delegation; Bash → ship (always — C1 two-step needs inject on echo).
+ * live/dry-run: Bash/Edit only when command keywords or utterance ship/verification.
+ */
+export function resolveSurface(
+  tool: string,
+  mode: JitMode,
+  toolInput: Record<string, unknown> | undefined,
+  utterance: string,
+  units: RuleUnit[],
+): JitSurface | null {
+  if (isDelegationTool(tool)) return SURFACE_DELEGATION;
+  if (!isShipTool(tool)) return null;
+
+  if (mode === "canary") {
+    // 3.1 canary is Bash-only; Edit not used in sealed probe
+    return tool === "Bash" ? SURFACE_SHIP : null;
+  }
+
+  if (tool === "Bash") {
+    const command = typeof toolInput?.command === "string" ? toolInput.command : "";
+    if (isShipCommand(command)) return SURFACE_SHIP;
+    if (utteranceHasShipCategory(utterance, units)) return SURFACE_SHIP;
+    return null;
+  }
+
+  // Edit: utterance ship/verification only (live/dry-run)
+  if (tool === "Edit" && utteranceHasShipCategory(utterance, units)) return SURFACE_SHIP;
+  return null;
 }
 
 export function loadUnitBodies(
@@ -138,6 +238,10 @@ export function renderContext(
     .join("\n\n");
 }
 
+function sliceFor(surface: JitSurface): string {
+  return surface === SURFACE_SHIP ? SLICE_3_1 : SLICE_3_0;
+}
+
 export function decideJit(
   input: JitInput,
   opts: {
@@ -148,41 +252,69 @@ export function decideJit(
   },
 ): JitDecision {
   const tool = input.tool_name ?? "";
-  const base = {
+  const utterance = opts.utterance ?? input.utterance ?? "";
+  const empty = (surface: string, slice: string, reason: string): JitDecision => ({
+    mode: opts.mode,
+    tool,
+    unitIds: [],
+    chars: 0,
+    context: null,
+    skipped_reason: reason,
+    router_version: ROUTER_VERSION,
+    surface,
+    slice,
+  });
+
+  if (opts.mode === "off") {
+    return empty(SURFACE_DELEGATION, SLICE_3_0, "mode_off");
+  }
+
+  const surface = resolveSurface(tool, opts.mode, input.tool_input, utterance, opts.units);
+  if (!surface) {
+    // Preserve 3.0 reason string when non-delegation tool cannot take ship lane
+    if (!isDelegationTool(tool) && !isShipTool(tool)) {
+      return empty(SURFACE_DELEGATION, SLICE_3_0, "tool_not_delegation");
+    }
+    if (isShipTool(tool)) {
+      return empty(SURFACE_SHIP, SLICE_3_1, "lane_none");
+    }
+    return empty(SURFACE_DELEGATION, SLICE_3_0, "tool_not_delegation");
+  }
+
+  const slice = sliceFor(surface);
+  const baseMeta = {
     mode: opts.mode,
     tool,
     router_version: ROUTER_VERSION,
-    surface: PHASE3_SURFACE,
-    slice: PHASE3_SLICE,
+    surface,
+    slice,
   };
 
-  if (opts.mode === "off") {
-    return { ...base, unitIds: [], chars: 0, context: null, skipped_reason: "mode_off" };
-  }
-  if (!isDelegationTool(tool)) {
-    return { ...base, unitIds: [], chars: 0, context: null, skipped_reason: "tool_not_delegation" };
-  }
-
-  const utterance = opts.utterance ?? input.utterance ?? "";
   let candidates: RuleUnit[];
+  let canaryUnit: string | undefined;
+  let canarySha: string | undefined;
 
   if (opts.mode === "canary") {
-    const fixture = opts.units.find((u) => u.id === CANARY_FIXTURE_UNIT);
+    if (surface === SURFACE_DELEGATION) {
+      canaryUnit = CANARY_FIXTURE_UNIT;
+      canarySha = CANARY_BODY_SHA8;
+    } else {
+      canaryUnit = CANARY_SHIP_FIXTURE_UNIT;
+      canarySha = CANARY_SHIP_BODY_SHA8;
+    }
+    const fixture = opts.units.find((u) => u.id === canaryUnit);
     if (!fixture) {
-      return {
-        ...base,
-        unitIds: [],
-        chars: 0,
-        context: null,
-        skipped_reason: "canary_fixture_missing",
-      };
+      return { ...baseMeta, unitIds: [], chars: 0, context: null, skipped_reason: "canary_fixture_missing" };
     }
     candidates = [fixture];
-  } else {
-    // dry-run + live: candidate A selection, pin excluded, delegation surface only
+  } else if (surface === SURFACE_DELEGATION) {
     candidates = selectDelegationUnits(opts.units, utterance);
     if (hasFormatCompetition(utterance)) {
-      // 3.0 units are process norms; still honor the skip list if expanded later
+      candidates = candidates.filter((u) => u.grade === "H" || u.grade === "G" || u.grade === "A");
+    }
+  } else {
+    candidates = selectShipUnits(opts.units, utterance);
+    if (hasFormatCompetition(utterance)) {
       candidates = candidates.filter((u) => u.grade === "H" || u.grade === "G" || u.grade === "A");
     }
   }
@@ -190,7 +322,7 @@ export function decideJit(
   const fitted = fitBudget(candidates);
   if (fitted.length === 0) {
     return {
-      ...base,
+      ...baseMeta,
       unitIds: [],
       chars: 0,
       context: null,
@@ -203,7 +335,7 @@ export function decideJit(
     loaded = loadUnitBodies(fitted, opts.readSource);
   } catch (error) {
     return {
-      ...base,
+      ...baseMeta,
       unitIds: fitted.map((u) => u.id),
       chars: 0,
       context: null,
@@ -211,12 +343,12 @@ export function decideJit(
     };
   }
 
-  if (opts.mode === "canary") {
+  if (opts.mode === "canary" && canaryUnit && canarySha) {
     const bodySha = loaded[0]?.bodySha8;
-    if (bodySha !== CANARY_BODY_SHA8) {
+    if (bodySha !== canarySha) {
       return {
-        ...base,
-        unitIds: [CANARY_FIXTURE_UNIT],
+        ...baseMeta,
+        unitIds: [canaryUnit],
         chars: 0,
         context: null,
         skipped_reason: `canary_sha_mismatch:${bodySha}`,
@@ -228,7 +360,7 @@ export function decideJit(
   const chars = context.length;
   if (chars >= JIT_CHAR_CAP) {
     return {
-      ...base,
+      ...baseMeta,
       unitIds: loaded.map((l) => l.unit.id),
       chars,
       context: null,
@@ -236,9 +368,20 @@ export function decideJit(
     };
   }
 
+  // Ship live inject blocked until 3.1 canary PASS (PHASE3.1-SPEC §4)
+  if (opts.mode === "live" && surface === SURFACE_SHIP && !PHASE3_1_SHIP_LIVE_AUTHORIZED) {
+    return {
+      ...baseMeta,
+      unitIds: loaded.map((l) => l.unit.id),
+      chars,
+      context: null,
+      skipped_reason: "ship_gate_blocked",
+    };
+  }
+
   const inject = opts.mode === "canary" || opts.mode === "live";
   return {
-    ...base,
+    ...baseMeta,
     unitIds: loaded.map((l) => l.unit.id),
     chars,
     context: inject ? context : null,

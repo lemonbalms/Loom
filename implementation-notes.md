@@ -33,6 +33,12 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3-SPEC §6 dry-run “기본” | `LOOM_RULE_ROUTER_JIT` **unset = off (no-op)** 로 구현. dry-run은 명시 `dry-run`일 때만. | 훅이 settings에 상시 등록되므로 unset=dry-run이면 모든 Agent 스폰에 receipt I/O·레지스트리 읽기가 붙는다. canary 통과 전 세션 부작용을 피한다. | **P3.0 T1(b) PASS (2026-07-28)** 후에도 unset=off 유지. live=`1`은 opt-in만 · default-on 금지(RESULT rev-2). dry-run-as-default 재검토는 오너 선포 전 불요. |
 
+### RULE-ROUTER Phase 3.1 — ship live surface gate
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 상수 false면 inject 스킵** (`ship_gate_blocked`). 3.0 delegation live와 플래그를 공유하되 surface 게이트를 분리. | 3.0 통과만으로 ship 규범이 본 리포 Bash에 실리지 않게 한다. 단일 env로 전 surface를 여는 fail-open을 피한다. | 3.1 모델 canary T1/T1(b) 후 상수 flip은 **별 커밋** · default-on 여전히 금지. |
+
 ### §0.28.1 — herdr 0.7.5 / protocol-17 adapter
 
 | Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
