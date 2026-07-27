@@ -1,16 +1,14 @@
-# Propose (rev-12) — 룰 분리기(Rule Router)
+# Propose (rev-13) — 룰 분리기(Rule Router)
 
-작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · rev-9 Phase 2 라운드 1 실측 · rev-10 F1 실측 · rev-11 F1b·F1c 실측 · **rev-12 P-B 압력원 갭 기록 2026-07-26** · 레인: 본세션(topology `single`)
-상태: **approved** — Phase 1 **완료** · D1–D9 전건 확정(§10) · D7 봉인 완료 2026-07-26 ·
+작성 2026-07-23 · rev-5 fold-in · rev-6 오너 확정 · rev-7 D9 선포 · rev-8 D7 봉인 · rev-9 Phase 2 라운드 1 실측 · rev-10 F1 실측 · rev-11 F1b·F1c 실측 · rev-12 P-B 압력원 갭 기록 · **rev-13 §5.3 문안 개정 2026-07-28** · 레인: 본세션(topology `single`)
+상태: **pending-review** (§5.3 개정분 · spike REVIEW 대기) — Phase 1 **완료** · D1–D9 전건 확정(§10) · D7 봉인 완료 2026-07-26 ·
 **Phase 2 라운드 1 완료 → `M7b = 0` 실측으로 §6.5.5 중단 규칙 발동 = A 채택 확정 · B/C 미구현**
 (결과 정본 = [`RULE-ROUTER-PHASE2-RESULT.md`](./RULE-ROUTER-PHASE2-RESULT.md) rev-1 ·
 사전등록 정본 = [`RULE-ROUTER-PREREG.md`](./RULE-ROUTER-PREREG.md) rev-4 sealed).
 잔여 = 오너 결정 2건(카테고리 표 개정 · 라벨 검정력 — 결과 §6). **Phase 2b bake-off는 열리지 않는다.**
-Phase 3 이후는 여전히 별도 게이트. **F1 선결은 해소됐다** — 비차단 주입 능력 실측 완료
-(정본 = [`RULE-ROUTER-F1-RESULT.md`](./RULE-ROUTER-F1-RESULT.md) rev-1). **다만 그 실측이
-§5.3-2의 용도 서술을 지탱하지 않아, Phase 3 착수 전 §5.3 문안 개정이 새 선결이다.**
-리뷰 정본: [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md) (rev-4 대상 · §4 delta ①–⑧ 반영분이 이 rev-5).
-rev-5는 리뷰 §4의 사전 승인 문안을 그대로 반영한 **docs-only** 개정이므로 **재리뷰 불요**.
+**F1 계열 실측은 닫혔다**(전달 · 준수 가능 · 충돌 변수). **Phase 3 선결 = 이 rev-13 §5.3에 대한 spike REVIEW 승인**(D2 · 자기 종결 금지).
+리뷰 정본(rev-4 본문): [`RULE-ROUTER-REVIEW.md`](./RULE-ROUTER-REVIEW.md).
+rev-13 리뷰 요청: [`RULE-ROUTER-REVIEW-REQUEST.md`](./RULE-ROUTER-REVIEW-REQUEST.md).
 
 > 착안: Cursor Router(2026-07-22) — 모델을 실행하기 **전에** 요청을 분류해 작업에 맞는 모델로
 > 보내는 분류기. 우리가 이식하는 것은 *모델 선택*이 아니라 **규범 선택**이다.
@@ -281,35 +279,70 @@ receipt 필드는 `RULE-ENFORCEABILITY` §3.2-6 그대로:
 
 ### 5.3 주입 경로 두 개
 
+> **정본 문안 (rev-13).** 아래가 §5.3의 유효 서술이다. rev-10/11의 정정·철회 블록과 원문의
+> “호출 직전 = 직접 처방”은 **전부 이 문안에 흡수·폐기**됐다. 후보 A 채택·Phase 1–2 결과는 불변.
+> 근거 체인: F1(전달) · F1b/F1c(준수 도구·채널) · F1d(준수 가능 하한) · F1e(충돌 변수) —
+> 각각 [`RULE-ROUTER-F1-RESULT.md`](./RULE-ROUTER-F1-RESULT.md) ·
+> [`RULE-ROUTER-F1B-RESULT.md`](./RULE-ROUTER-F1B-RESULT.md) ·
+> [`RULE-ROUTER-F1D-RESULT.md`](./RULE-ROUTER-F1D-RESULT.md) ·
+> [`RULE-ROUTER-F1E-RESULT.md`](./RULE-ROUTER-F1E-RESULT.md) §8.
+
+#### 5.3.1 경로
+
 1. **prefix(SessionStart)** — `session-context.ts`가 라우터 결정으로 파트를 고른다. 축 삭제 대신 라우팅.
-2. **JIT(PreToolUse, append-only)** — `Agent|Task` 호출 직전에 orchestration 유닛을, ship 계열 명령
-   직전에 commit/verify 유닛을 주입. **B1(스킬 로드)·B3(pane 우선)이 요구하던 “기억해서 로드”를
-   라우터가 대신 수행**하는 지점이며, 이것이 P-A에 대한 직접 처방이다.
+2. **JIT(PreToolUse, append-only)** — `Agent|Task`·ship 계열 등 저위험 surface에 라우터가 고른
+   유닛을 얹는다. **B1(스킬 로드)·B3(pane 우선)이 요구하던 “기억해서 로드”를 라우터가 대신
+   수행하는 자리**이며 P-A를 *완화*하는 경로다. **그 호출을 교정하는 직접 처방이 아니다.**
 
-> **정정 (F1 실측 · rev-10).** 위 문단의 **“호출 직전”과 “직접 처방”은 실측이 지탱하지 않는다.**
-> 훅은 도구 실행 전에 발화하지만 그 `additionalContext`는 **`tool_result`와 동봉되어 실행 후에**
-> 모델에게 보이고(C1), **스폰된 서브에이전트 요청에는 도달하지 않는다**(C2 — 서브에이전트 요청
-> 본문에 canary 부재). 따라서 JIT은 *그 호출을 교정하는* 처방이 아니라 **부모 세션의 다음 턴부터
-> 적용되는 규범을 싸게 얹는 경로**다. 주입 1건은 **10,000자 미만**이어야 한다(C3 · 초과 시
-> `<persisted-output>` 봉투 → 캐시 불가 + Read 왕복 부활). 또한 **전달 ≠ 준수**: 모델이 주입을
-> 신뢰 불가 채널로 판정하고 준수를 거부한 사례가 재현됐다 → Phase 3 게이트는 전달이 아니라
-> **준수** 카나리아여야 한다.
-> 정본 = [`RULE-ROUTER-F1-RESULT.md`](./RULE-ROUTER-F1-RESULT.md) §3–§4. **이 정정은 용도 서술을
-> 좁힐 뿐 후보 A 채택·Phase 1–2 결과를 건드리지 않는다.**
+#### 5.3.2 전달 계약 (닫힘 · F1)
 
-> **철회·보강 (F1b·F1c 실측 · rev-11).** rev-10이 위 블록에 적었던 **“주입 문안은 명령형이 아니라
-> 규범 진술이어야 한다”는 처방을 철회한다** — F1b 21런에서 규범 진술 0/9 · 명령형 0/9로 **부호조차
-> 없었다**(단일 관측에서 처방을 뽑은 것이 성급했다). 함께 확정된 것 셋: ① **채널은 신뢰도를 가르지
-> 않는다** — SessionStart prefix도 0/3 거부(F1c에서 채널 가설 기각)이므로 prefix와 JIT의 차이는
-> C1–C3이지 준수가 아니다. ② **준수 카나리아는 임의 토큰이면 안 된다** — 준수를 관측 가능하게
-> 만든 임의성이 곧 인젝션 방어를 발화시켜, 요구 행동은 기본값과 구분되면서 **프로젝트 규범으로서
-> 그럴듯**해야 한다. ③ 준수 지표는 문자열 포함이 아니라 **행동의 위치**로 정의한다(포함 정의는
-> 거부를 준수로 센다 — 위양성 14/14 실증). **“JIT은 규칙을 실을 수 없다”는 결론은 이 데이터가
-> 지탱하지 않는다**(현행 SessionStart 규범이 실제로 준수되는 반례). 정본 =
-> [`RULE-ROUTER-F1B-RESULT.md`](./RULE-ROUTER-F1B-RESULT.md) rev-1.
+| 제약 | 내용 |
+|---|---|
+| **C1 시점** | 훅은 도구 실행 전에 발화하지만 `additionalContext`는 **`tool_result`와 동봉되어 실행 후** 모델에 보인다. |
+| **C2 범위** | **스폰된 서브에이전트 요청 본문에는 도달하지 않는다.** 부모 세션 채널이다. |
+| **C3 예산** | 주입 1건 **10,000자 미만**. 초과 시 `<persisted-output>` 봉투 → 캐시 불가 + Read 왕복 부활. |
 
-> **주장 범위 (리뷰 §2-3 확정 · rev-5).** 라우터의 주장 범위는 Claude Code 하네스 한정. 타 하네스는
-> `NOT_APPLICABLE` → 전량(리추얼). 타 하네스의 P-A는 이 제안이 해소하지 않는다(§2-3, 리뷰 확정).
+JIT의 정확한 용도: **부모 세션의 다음 턴부터 적용되는 규범을 싸게 얹는 경로.**
+prefix와 JIT의 차이는 **C1–C3(시점·범위·예산)** 이지 준수 신뢰도가 아니다(F1c: 채널 가설 기각).
+
+#### 5.3.3 준수 (측정된 한 줄)
+
+**주입된 규칙은 따라진다 — 사용자 지시와 경쟁하지 않는 한.**
+
+| 게이트 | 카나리아 | 사용자 지시와 충돌 | 준수 |
+|---|---|:--:|--:|
+| F1b/F1c | 임의 16자리 토큰 | 있음 | **0/21** |
+| F1d | 맥락 도출 보고 형식 | **있음** | **4/12** (하한) |
+| F1e | 동일 계열 · 충돌·패딩 제거 | **없음** | **10/10** (대조군 0/5 · 거부 0) |
+
+- **전달 ≠ 준수.** Phase 3 게이트는 전달이 아니라 **준수 카나리아**다.
+- 준수 카나리아 요건(F1b): 임의 토큰 금지 · 요구 행동은 기본값과 구분되면서 **프로젝트 규범으로서
+  그럴듯** · 지표는 문자열 포함이 아니라 **행동의 위치**(포함 정의 = 거부 위양성 14/14).
+- **문안 형식(규범 진술 vs 명령형) 처방 없음** — F1b에서 부호 0(0/9 vs 0/9). rev-10 처방은 철회 유지.
+
+#### 5.3.4 설계 문제 (이 절이 답하는 것)
+
+§5.3의 문제는 *"어떻게 배달할까"*(F1이 닫음)도 *"어떻게 신뢰를 얻을까"*도 아니다.
+**“주입한 규칙이 사용자 요구와 충돌할 때 무엇이 이겨야 하는가”** 이다.
+
+- **관측:** 모델은 **사용자를 택한다**(F1d 거부 축자 6/8이 사용자 지시 충돌을 사유로 듦).
+- **라우터 의무:** 그 우선순위를 **바꾸려 하지 않는다.** 충돌을 **탐지·회피**하도록 설계한다
+  (같은 턴에 사용자 명시 지시와 경쟁하는 유닛을 주입하지 않음 · 충돌 가능 surface는 pin/전량 또는 미주입).
+- **열리지 않은 것:** 충돌 *시* 강제 우선순위 뒤집기 · 사용자 지시 재작성 · “주입이 항상 이긴다” 주장.
+
+#### 5.3.5 자유 변수 · 금지 인용
+
+| 항목 | 상태 | §5.3에서의 취급 |
+|---|---|---|
+| **출처·근거 표기** | U2 **미판정**(F1e 천장 효과 · F1d T2 음부호도 처방 근거 아님) | **자유 변수** — 처방하지 않는다 |
+| F1e 10/10 | 저비용·무충돌·단일 규범 조건 | **무조건 준수율로 인용 금지** |
+| 다중 규범 경쟁 | 미측정(`probe-repo` 규범 1개) | 주장 범위 밖 |
+| 사용자 수준 전역 유입 | 전 셀 공통 누수 | 셀 간 비교만 유효 · “청정 환경” 주장 금지 |
+
+#### 5.3.6 주장 범위
+
+라우터의 주장 범위는 **Claude Code 하네스 한정**(리뷰 §2-3 · rev-5). 타 하네스는
+`NOT_APPLICABLE` → 전량(리추얼). 타 하네스의 P-A는 이 제안이 해소하지 않는다.
 
 ### 5.4 모드 노브 (오너 소관)
 
@@ -468,17 +501,15 @@ G가 원리적 주장인 이유이며, 실측 일치율이 높게 나와도 바�
 | **1** | `rules/registry.yaml` + 추출기 + `bun run rules:check` · **카테고리 표 초안(§5.2.1) → 오너 승인** | **없음** | 추출 결정론 · digest 일치 · 미분류 0 (G2) · **파일 digest + registry triage receipt**(§5.1) · 카테고리 정본 확정 |
 | **2** | `rule-router-eval.ts` + **후보 A 먼저** shadow replay — **완료 2026-07-26**(라운드 1 · eval 45세션 557턴) | 없음(로깅만) | **J-miss 0 ✓ · M7b 0% ✓ · M7a 24.2%(S1-3 발동) · recall 0.451(S3-2 미달 · 검정력 부족 명기)** — [결과](./RULE-ROUTER-PHASE2-RESULT.md) |
 | **2b** | **bake-off** — A vs B vs C를 §6.5 축으로 비교. §6.5.5 중단 규칙 적용 | 없음 | **열리지 않음** — S1-2는 `M7b > 5%` AND recall 미달인데 `M7b = 0`이라 AND 불성립 |
-| **3** | 채택안으로 JIT append-only 주입 (저위험 surface부터: 위임·ship) | 추가만 · **1건 <10,000자**(F1 C3) | **준수 카나리아** — 전달이 아니라 “따랐는가”. **임의 토큰 금지 · 행동 위치로 판정**(F1b §4) |
+| **3** | 채택안으로 JIT append-only 주입 (저위험 surface부터: 위임·ship) | 추가만 · **1건 <10,000자**(F1 C3) · **충돌 회피**(§5.3.4) | **준수 카나리아** — 전달이 아니라 “따랐는가”. **임의 토큰 금지 · 행동 위치로 판정**(F1b) · **사용자 지시와 경쟁하는 카나리아 금지**(F1e) |
 | **4** | prefix 라우팅 + 모드 노브 | prefix 축소 | G4·G5 회귀 없음 |
 
-> **Phase 3 선결 (리뷰 F1 · rev-5) — 해소 2026-07-26 (rev-10).** PreToolUse 비차단 컨텍스트 주입은
-> **성립한다**: `exit 0` + `hookSpecificOutput.additionalContext` 로 도구를 막지 않고 모델 가시
-> 채널에 도달한다(요청 본문 실측 · canary 6프로브). 정본 =
-> [`RULE-ROUTER-F1-RESULT.md`](./RULE-ROUTER-F1-RESULT.md) rev-1 · 증거 `~/.loom/f1-poc-2026-07-26`.
->
-> **새 선결 (F1 C1·C2발).** 실측이 §5.3-2의 “호출 직전 주입 = 직접 처방”을 지탱하지 않으므로,
-> Phase 3 착수 전 **§5.3 용도 서술 개정**이 선행한다(주입은 `tool_result` 동봉·서브에이전트
-> 미도달). 같은 fail-closed: 개정 전 Phase 3 미착수.
+> **Phase 3 선결 이력.**
+> 1. PreToolUse 비차단 주입 능력 — **해소** (rev-10 · F1 YES · C1–C3).
+> 2. §5.3 용도 서술 개정 — **초안 완료** (rev-13 · 본 문서 §5.3). **자기 종결 금지.**
+> 3. **현재 선결 (fail-closed):** rev-13 §5.3에 대한 **spike REVIEW 승인**
+>    ([`RULE-ROUTER-REVIEW-REQUEST.md`](./RULE-ROUTER-REVIEW-REQUEST.md) · D2).
+>    승인 전 Phase 3 미착수. 이 rev-13 자체는 Phase 3 착수 권한이 **아니다**(F1E-RESULT §8).
 
 > **Phase 2 표본추출 (리뷰 F3 · rev-5).** replay는 사전등록된 표본추출 규칙에 따라 표본으로
 > 축소할 수 있다(규칙·규모는 결과 관측 전 고정 — 사전등록 위반 시 그 측정은 무효).
@@ -686,4 +717,12 @@ Phase 1–2는 주입을 바꾸지 않으므로 **되돌릴 위험이 없다**. 
   상태 축을 라우팅하면 "지금 무엇을 하는가"가 조건부로 사라져 P-A를 새로 만든다.
   **설계·게이트 변경 없음 — 미해결 항목 1건 추가뿐.**
 
-[RULE-ROUTER-PROPOSE rev-12] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved-with-3-constraints f1b=comply-0-of-21-instrument-invalidated open=pb-pressure-outside-registry
+- **rev-13 (2026-07-28 · §5.3 문안 개정 · docs-only · pending-review)** — F1e(10/10 · 충돌 제거)와
+  F1d §3·F1E §8을 반영해 §5.3을 **정본 문안**으로 재작성했다. ① 경로·전달 계약(C1–C3)·준수 한 줄
+  (“경쟁하지 않는 한 따라진다”)·**충돌 탐지·회피** 설계 문제·자유 변수(출처 U2 미판정)·금지 인용을
+  한 절로 고정. ② rev-10 “직접 처방”·rev-10 문안 처방(이미 철회)·정정 블록 스택을 흡수·폐기.
+  ③ Phase 3 선결을 “§5.3 초안 작성”에서 **“rev-13 spike REVIEW 승인”**으로 전진(자기 종결 금지).
+  **구현·Phase 3 착수 권한 없음.** 요청 =
+  [`RULE-ROUTER-REVIEW-REQUEST.md`](./RULE-ROUTER-REVIEW-REQUEST.md).
+
+[RULE-ROUTER-PROPOSE rev-13] problems=4 goals=5 principles=5 axes=3 candidates=3 metrics=7 repro=3 phases=6 decided=9 delta=8 phase2=round1-A-adopted f1=resolved f1d=comply-possible f1e=conflict-is-the-variable s53=rewritten-pending-review open=pb-pressure-outside-registry
