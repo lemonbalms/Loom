@@ -7,16 +7,16 @@
 ### Done (2026-07-28)
 
 - [x] Phase 3.2 dispatch soft live (G0+T1a)
-- [x] UC-3 listen/sticky · `smoke:uc OK`
-- [x] cause B local B-4 on 13.12.4 · autoUpdate false · `check:mem-header OK`
-- [x] Phase 3.3 SPEC+PREREG · hook · n=10 canary — **G0 PASS · T1 FAIL** · live blocked
+- [x] UC-3 · cause B local B-4
+- [x] Phase 3.3 canary — G0 PASS · T1 FAIL · live blocked
+- [x] Phase 3.4 platform SPEC/hook/canary — G0 PASS · T1 FAIL (3/5) · live blocked
 
 ### Next (owner names one)
 
-- [ ] 3.3b/3.4 new SPEC (non-secret COMPLY or platform) **or** product MINOR **or** defer
+- [ ] 3.4b new SPEC (stricter COMPLY + repo cwd) **or** product MINOR **or** Phase 3 soft close **or** defer
 - [ ] (optional) B-7 upstream issue
 
 ### 절대 금지
 
-- [ ] 3.3 PREREG remeasure · COMPLY soften · live impl without new T1
+- [ ] 3.3/3.4 PREREG remeasure · COMPLY soften · live without new T1
 - [ ] default-on JIT · mem upgrade without re-patch + check:mem-header

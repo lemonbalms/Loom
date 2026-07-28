@@ -8,12 +8,15 @@ import {
   CANARY_FIXTURE_UNIT,
   CANARY_IMPLEMENTATION_BODY_SHA8,
   CANARY_IMPLEMENTATION_FIXTURE_UNIT,
+  CANARY_PLATFORM_BODY_SHA8,
+  CANARY_PLATFORM_FIXTURE_UNIT,
   CANARY_SHIP_BODY_SHA8,
   CANARY_SHIP_FIXTURE_UNIT,
   JIT_CHAR_CAP,
   PHASE3_1_SHIP_LIVE_AUTHORIZED,
   PHASE3_2_DISPATCH_LIVE_AUTHORIZED,
   PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED,
+  PHASE3_4_PLATFORM_LIVE_AUTHORIZED,
   decideJit,
   fitBudget,
   hasFormatCompetition,
@@ -21,6 +24,7 @@ import {
   isDelegationTool,
   isDispatchCommand,
   isImplementationCommand,
+  isPlatformCommand,
   isShipCommand,
   isShipTool,
   parseCanarySurface,
@@ -30,6 +34,7 @@ import {
   selectDelegationUnits,
   selectDispatchUnits,
   selectImplementationUnits,
+  selectPlatformUnits,
   selectShipUnits,
 } from "./rule-router-jit.ts";
 import { type RuleUnit, extractUnitBody, readLiveRegistry, sha8 } from "./rules-registry.ts";
@@ -77,10 +82,19 @@ describe("rule-router-jit modes", () => {
     expect(isImplementationCommand("bun test")).toBe(false);
   });
 
+  test("platform command keywords", () => {
+    expect(isPlatformCommand("bun run check:mem-header")).toBe(true);
+    expect(isPlatformCommand("bun run scripts/check-mem-header.ts")).toBe(true);
+    expect(isPlatformCommand("claude-mem patch")).toBe(true);
+    expect(isPlatformCommand("echo P34_READY")).toBe(false);
+    expect(isPlatformCommand("bun test")).toBe(false);
+  });
+
   test("parseCanarySurface defaults to ship", () => {
     expect(parseCanarySurface(undefined)).toBe("ship");
     expect(parseCanarySurface("dispatch")).toBe("dispatch");
     expect(parseCanarySurface("implementation")).toBe("implementation");
+    expect(parseCanarySurface("platform")).toBe("platform");
     expect(parseCanarySurface("ship")).toBe("ship");
     expect(parseCanarySurface("nope")).toBe("ship");
   });
@@ -115,6 +129,13 @@ describe("rule-router-jit selection", () => {
     expect(selected.every((u) => u.surface.includes("implementation"))).toBe(true);
     expect(selected.some((u) => u.id === "agents.env")).toBe(true);
     expect(selected.some((u) => u.id === "agents.deviations")).toBe(false);
+  });
+
+  test("pin units never selected for platform; claude-mem-patch when routed", () => {
+    const selected = selectPlatformUnits(units, "claude-mem 헤더 check:mem-header 훅");
+    expect(selected.every((u) => !u.pin)).toBe(true);
+    expect(selected.every((u) => u.surface.includes("platform"))).toBe(true);
+    expect(selected.some((u) => u.id === "traps.claude-mem-patch")).toBe(true);
   });
 
   test("fitBudget drops whole units, never exceeds cap", () => {
@@ -371,6 +392,37 @@ describe("rule-router-jit decide", () => {
     expect(d.skipped_reason).toBe("dry_run");
     expect(d.context).toBeNull();
     expect(d.unitIds.length).toBeGreaterThan(0);
+  });
+
+  test("canary Bash with canarySurface=platform injects claude-mem-patch fixture", () => {
+    const d = decideJit(
+      { tool_name: "Bash", tool_input: { command: "echo P34_READY" } },
+      { mode: "canary", units, readSource, canarySurface: "platform" },
+    );
+    expect(d.unitIds).toEqual([CANARY_PLATFORM_FIXTURE_UNIT]);
+    expect(d.surface).toBe("platform");
+    expect(d.slice).toBe("3.4");
+    expect(d.context).toContain(`unit:${CANARY_PLATFORM_FIXTURE_UNIT}`);
+    expect(d.context).toContain(`sha8:${CANARY_PLATFORM_BODY_SHA8}`);
+    const unit = units.find((u) => u.id === CANARY_PLATFORM_FIXTURE_UNIT)!;
+    const body = extractUnitBody(readSource(unit.source.file), unit.source.anchor);
+    expect(sha8(body)).toBe(CANARY_PLATFORM_BODY_SHA8);
+  });
+
+  test("live platform inject blocked until 3.4 canary PASS", () => {
+    expect(PHASE3_4_PLATFORM_LIVE_AUTHORIZED).toBe(false);
+    const d = decideJit(
+      {
+        tool_name: "Bash",
+        tool_input: { command: "bun run check:mem-header" },
+      },
+      { mode: "live", units, readSource, utterance: "claude-mem 헤더 검사" },
+    );
+    expect(d.surface).toBe("platform");
+    expect(d.slice).toBe("3.4");
+    expect(d.context).toBeNull();
+    expect(d.skipped_reason).toBe("platform_gate_blocked");
+    expect(d.unitIds).toContain("traps.claude-mem-patch");
   });
 
   test("hookOutput wraps additionalContext", () => {
