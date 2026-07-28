@@ -35,6 +35,7 @@
 | **P2** | **HOOKCACHE-D-VERIFY** | deferred | design doc | paused |
 | **P2c** | **ISSUE · cause B (claude-mem)** | 분 단위 헤더 ts → 캐시 ≤1분; **근본 = 업스트림 B-7** (B-4 재패치 ≠ close) | `HOOK-CACHE-FIX-DESIGN.md` §5 · `check:mem-header` | **open issue** |
 | **P2b** | **RULE-ENFORCEABILITY apply** | 코드 강제 여부 = 제품 결정 | `spikes/RULE-ENFORCEABILITY.md` | document only |
+| **P2d** | **RULE-ROUTER Phase 3 soft** | 3.0–3.2 opt-in live · 3.3–3.4b blocked | `RULE-ROUTER-PHASE3-SOFT-CLOSE.md` | **closed 2026-07-28** (remeasure no · default-on no) |
 | **P3** | **멀티노드 단계 3** | Windows relay 복귀 · 노드 복제 · `@node` 등 | 아키텍처 권고 | 의도적 후순위 (MVP 종료 후 트랙) |
 
 ---
@@ -65,6 +66,7 @@
 | HOOKCACHE-D-VERIFY resume | remain paused through current harness wave |
 | cause B / claude-mem header ts (B-7) | keep as open issue; B-4+detector only until upstream |
 | RULE-ENFORCEABILITY code apply | document only; no silent enforcement |
+| RULE-ROUTER Phase 3 reopen / default-on | keep soft-close; 3.0–3.2 opt-in only until owner + new SPEC |
 
 ---
 

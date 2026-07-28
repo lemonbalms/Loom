@@ -8,14 +8,14 @@
 
 - [x] Phase 3.2 dispatch soft live (G0+T1a)
 - [x] UC-3 · cause B local B-4
-- [x] 3.3 · 3.4 · **3.4b** canaries — all T1 FAIL · impl/platform live blocked
+- [x] 3.3 · 3.4 · 3.4b canaries — T1 FAIL · live blocked
+- [x] **Phase 3 soft close** — live 3.0–3.2 opt-in only (`PHASE3-SOFT-CLOSE.md`)
 
 ### Next (owner names one)
 
-- [ ] product MINOR **or** Phase 3 soft close **or** other surface **or** defer
-- [ ] (optional) B-7 upstream issue
+- [ ] product MINOR **or** dogfood **or** optional B-7 issue **or** P3 reopen (new SPEC)
 
 ### 절대 금지
 
-- [ ] 3.3/3.4/3.4b PREREG remeasure · COMPLY soften · live without T1(a)
-- [ ] default-on JIT · mem upgrade without re-patch + check:mem-header
+- [ ] 3.3–3.4b remeasure · default-on JIT · live without T1(a) · silent product MINOR
+- [ ] mem upgrade without re-patch + check:mem-header
