@@ -1,33 +1,34 @@
 # Todo — Loom
 
-## Current — next session: Phase 3.2 dispatch (owner-selected)
+## Current — Phase 3.2 dispatch **closed** · owner pick next
 
-> **SSOT = `HANDOFF.md`.** Cold start: `bun run status` → Current action playbook.  
-> Do **not** start product MINOR or cause-B unless 3.2 blocked.
+> **SSOT = `HANDOFF.md`.** Cold start: `bun run status`.  
+> Do **not** silent product MINOR.
 
-### Do now (next session)
+### Done (3.2 wave)
 
-- [ ] `bun test` jit + `check-bun-test-env` green
-- [ ] Inventory `surface`∋`dispatch` units · pick **1 canary fixture** + observable COMPLY
-- [ ] Write `RULE-ROUTER-PHASE3.2-SPEC.md` + **`…-PREREG.md` and seal (commit) before measure**
-- [ ] Define real matcher (no invented wire) · soft canary first
-- [ ] Impl + tests · model canary → RESULT · dispatch live gate only if T1
-- [ ] HANDOFF update · `handoff:check` · ship
+- [x] SPEC + PREREG seal (`a586eb8`) before measure
+- [x] Fixture `traps.watch-card` · Bash matcher · canary surface env
+- [x] Model n=10 G0+T1a · RESULT · `PHASE3_2_DISPATCH_LIVE_AUTHORIZED=true`
+- [x] HANDOFF · handoff:check
+
+### Owner pick (next)
+
+- [ ] 3.3+ surface (needs SPEC) **or** ISSUE cause B **or** `smoke:uc` UC-3 **or** product
 
 ### 절대 금지
 
-- [ ] dispatch live pre-PREREG · default-on · reopen 3.0/3.1/3.1b PREREG
-- [ ] probe “no standing rules” negation · JIT exit-2 · pin as 충돌 회피
+- [ ] default-on JIT · reopen sealed 3.2/3.1/3.0 PREREG · soften COMPLY
+- [ ] MCP/herdr hard-lock claim without path map · JIT exit-2
 
 ### Key coordinates
 
 | What | Where |
 |------|--------|
-| Order SSOT | `docs/spikes/RULE-ROUTER-PHASE3-SPEC.md` §2 |
-| Lessons | PHASE3.1-SPEC-REV (H1) · BUN-TEST-ENV-HARD |
-| Hook | `scripts/rule-router-jit.ts` · hard `scripts/hooks/check-bun-test-env.ts` |
-| HEAD | hard guard `446bbe6` (may move) |
+| 3.2 RESULT | `docs/spikes/RULE-ROUTER-PHASE3.2-RESULT.md` |
+| Evidence | `~/.loom/phase3-2-canary-2026-07-28/` |
+| Hook | `scripts/rule-router-jit.ts` · hard `check-bun-test-env.ts` |
 
 ### Shipped (don't redo)
 
-- [x] P3.0 T1(b) · P3.1b T1(a) · bun-test hard guard · soft live opt-in gated
+- [x] P3.0 T1(b) · P3.1b T1(a) · P3.2 T1(a) · bun-test hard · soft live opt-in gated

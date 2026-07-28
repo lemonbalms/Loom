@@ -241,8 +241,8 @@ describe("rule-router-jit decide", () => {
     expect(sha8(body)).toBe(CANARY_DISPATCH_BODY_SHA8);
   });
 
-  test("live dispatch inject blocked until 3.2 canary PASS", () => {
-    expect(PHASE3_2_DISPATCH_LIVE_AUTHORIZED).toBe(false);
+  test("live dispatch inject authorized after 3.2 T1 (opt-in only)", () => {
+    expect(PHASE3_2_DISPATCH_LIVE_AUTHORIZED).toBe(true);
     const d = decideJit(
       {
         tool_name: "Bash",
@@ -252,8 +252,8 @@ describe("rule-router-jit decide", () => {
     );
     expect(d.surface).toBe("dispatch");
     expect(d.slice).toBe("3.2");
-    expect(d.context).toBeNull();
-    expect(d.skipped_reason).toBe("dispatch_gate_blocked");
+    expect(d.skipped_reason).toBeUndefined();
+    expect(d.context).toContain("traps.watch-card");
     expect(d.unitIds.length).toBeGreaterThan(0);
     expect(d.unitIds.every((id) => id !== "agents.commit-push")).toBe(true);
   });

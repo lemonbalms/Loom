@@ -179,7 +179,7 @@ probe isolation = **absence not negation** (H1).
 - [x] 본 SPEC rev-1  
 - [x] PHASE3.2-PREREG 커밋 봉인  
 - [x] 훅 dispatch 레인 + 유닛 테스트  
-- [ ] 모델 n=10 canary → RESULT (측정 · PREREG 봉인 후)  
-- [ ] HANDOFF 갱신 · ship  
+- [x] 모델 n=10 canary → RESULT (측정 · PREREG 봉인 후)  
+- [x] HANDOFF 갱신 · ship  
 
 [RULE-ROUTER-PHASE3.2-SPEC rev-1] slice=3.2-dispatch fixture=traps.watch-card wire=Bash c1=two-step dispatch_live=gated soft_first=yes

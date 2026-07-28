@@ -64,9 +64,10 @@ export const PHASE3_1_SHIP_LIVE_AUTHORIZED = true;
 
 /**
  * Dispatch live inject authorization.
- * false until PHASE3.2-RESULT canary PASS — soft opt-in only; default-on forbidden.
+ * true after PHASE3.2-RESULT T1(a) PASS (2026-07-28) — soft opt-in only when
+ * LOOM_RULE_ROUTER_JIT=1; default unset remains off. default-on forbidden.
  */
-export const PHASE3_2_DISPATCH_LIVE_AUTHORIZED = false;
+export const PHASE3_2_DISPATCH_LIVE_AUTHORIZED = true;
 
 export const JIT_CHAR_CAP = 10_000;
 export const GRADE_RANK: Record<string, number> = { H: 0, G: 1, A: 2, J: 3 };
