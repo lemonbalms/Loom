@@ -13,7 +13,7 @@
 
 ### Next
 
-- [ ] 3.3 hook: `rule-router-jit` implementation 레인 + tests
+- [x] 3.3 hook: `rule-router-jit` implementation 레인 + tests (30/0)
 - [ ] 3.3 n=10 canary → RESULT · live gate only if T1 pass
 - [ ] (later) 3.4 platform / product MINOR / optional B-7 issue
 

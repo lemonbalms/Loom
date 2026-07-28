@@ -5,13 +5,15 @@
  *   docs/spikes/RULE-ROUTER-PHASE3-SPEC.md rev-1 · PHASE3-PREREG (3.0 delegation)
  *   docs/spikes/RULE-ROUTER-PHASE3.1-SPEC.md rev-1 · PHASE3.1-PREREG (3.1 ship)
  *   docs/spikes/RULE-ROUTER-PHASE3.2-SPEC.md rev-1 · PHASE3.2-PREREG (3.2 dispatch)
+ *   docs/spikes/RULE-ROUTER-PHASE3.3-SPEC.md rev-1 · PHASE3.3-PREREG (3.3 implementation)
  *
  * Modes (LOOM_RULE_ROUTER_JIT):
  *   unset/0/off  → no-op (conservative default; avoid receipt spam pre-canary)
  *   dry-run      → decide + optional receipt; no additionalContext
  *   canary       → sealed fixtures only
  *                  (delegation→orch.model-explicit · ship→traps.bun-test-env ·
- *                   dispatch→traps.watch-card when CANARY_SURFACE=dispatch)
+ *                   dispatch→traps.watch-card when CANARY_SURFACE=dispatch ·
+ *                   implementation→agents.env when CANARY_SURFACE=implementation)
  *   1|live       → A-selected non-pin units; per-surface live gates
  *
  * Never exit non-zero for routing failures (fail-open). Model-guard stays separate.
@@ -39,9 +41,11 @@ export const PHASE3_SURFACE = "delegation";
 export const SURFACE_DELEGATION = "delegation";
 export const SURFACE_SHIP = "ship";
 export const SURFACE_DISPATCH = "dispatch";
+export const SURFACE_IMPLEMENTATION = "implementation";
 export const SLICE_3_0 = "3.0";
 export const SLICE_3_1 = "3.1";
 export const SLICE_3_2 = "3.2";
+export const SLICE_3_3 = "3.3";
 
 /** 3.0 canary fixture (PREREG sealed). */
 export const CANARY_FIXTURE_UNIT = "orch.model-explicit";
@@ -54,6 +58,10 @@ export const CANARY_SHIP_BODY_SHA8 = "1172cf30";
 /** 3.2 canary fixture (PHASE3.2-PREREG sealed). */
 export const CANARY_DISPATCH_FIXTURE_UNIT = "traps.watch-card";
 export const CANARY_DISPATCH_BODY_SHA8 = "57eb65d6";
+
+/** 3.3 canary fixture (PHASE3.3-PREREG sealed). */
+export const CANARY_IMPLEMENTATION_FIXTURE_UNIT = "agents.env";
+export const CANARY_IMPLEMENTATION_BODY_SHA8 = "06e68593";
 
 /**
  * Ship live inject authorization.
@@ -68,6 +76,13 @@ export const PHASE3_1_SHIP_LIVE_AUTHORIZED = true;
  * LOOM_RULE_ROUTER_JIT=1; default unset remains off. default-on forbidden.
  */
 export const PHASE3_2_DISPATCH_LIVE_AUTHORIZED = true;
+
+/**
+ * Implementation live inject authorization.
+ * false until PHASE3.3-RESULT T1 PASS — soft opt-in only when LOOM_RULE_ROUTER_JIT=1.
+ * default-on forbidden.
+ */
+export const PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED = false;
 
 export const JIT_CHAR_CAP = 10_000;
 export const GRADE_RANK: Record<string, number> = { H: 0, G: 1, A: 2, J: 3 };
@@ -103,14 +118,27 @@ export const DISPATCH_COMMAND_KEYWORDS = [
   "loom dispatch",
 ] as const;
 
+/** Live Bash command keyword gate (PHASE3.3-SPEC §4.2) — case-insensitive substring. */
+export const IMPLEMENTATION_COMMAND_KEYWORDS = [
+  "process.env",
+  "LOOM_",
+  "FABLE_",
+  "Deno.env",
+  "import.meta.env",
+] as const;
+
 export type JitMode = "off" | "dry-run" | "canary" | "live";
 export type JitSurface =
   | typeof SURFACE_DELEGATION
   | typeof SURFACE_SHIP
-  | typeof SURFACE_DISPATCH;
+  | typeof SURFACE_DISPATCH
+  | typeof SURFACE_IMPLEMENTATION;
 
 /** Optional canary Bash surface override (default ship preserves 3.1). */
-export type CanarySurface = typeof SURFACE_SHIP | typeof SURFACE_DISPATCH;
+export type CanarySurface =
+  | typeof SURFACE_SHIP
+  | typeof SURFACE_DISPATCH
+  | typeof SURFACE_IMPLEMENTATION;
 
 export type JitInput = {
   tool_name?: string;
@@ -157,6 +185,11 @@ export function isDispatchCommand(command: string): boolean {
   return DISPATCH_COMMAND_KEYWORDS.some((k) => c.includes(k.toLowerCase()));
 }
 
+export function isImplementationCommand(command: string): boolean {
+  const c = command.toLowerCase();
+  return IMPLEMENTATION_COMMAND_KEYWORDS.some((k) => c.includes(k.toLowerCase()));
+}
+
 export function hasFormatCompetition(utterance: string): boolean {
   return FORMAT_COMPETE_TRIGGERS.some((t) =>
     utterance.toLowerCase().includes(t.toLowerCase()),
@@ -183,8 +216,19 @@ export function utteranceHasDispatchCategory(
   return categories.includes("dispatch");
 }
 
+export function utteranceHasImplementationCategory(
+  utterance: string,
+  units: RuleUnit[],
+  isFirstTurn = false,
+): boolean {
+  if (!utterance.trim()) return false;
+  const { categories } = classifyTurn(utterance, units, isFirstTurn);
+  return categories.includes("implementation");
+}
+
 export function parseCanarySurface(raw: string | undefined): CanarySurface {
   if (raw === SURFACE_DISPATCH) return SURFACE_DISPATCH;
+  if (raw === SURFACE_IMPLEMENTATION) return SURFACE_IMPLEMENTATION;
   return SURFACE_SHIP;
 }
 
@@ -252,13 +296,28 @@ export function selectDispatchUnits(
   );
 }
 
+export function selectImplementationUnits(
+  units: RuleUnit[],
+  utterance: string,
+  isFirstTurn = false,
+): RuleUnit[] {
+  const { categories, unknown } = classifyTurn(utterance, units, isFirstTurn);
+  const decision = route(units, categories, unknown);
+  return units.filter(
+    (unit) =>
+      decision.selected.has(unit.id) &&
+      !unit.pin &&
+      (unit.surface ?? []).includes(SURFACE_IMPLEMENTATION),
+  );
+}
+
 /**
  * Resolve which surface lane applies. null = no JIT for this tool event.
  *
- * canary: Agent|Task → delegation; Bash → ship by default, or dispatch when
- *   canarySurface=dispatch (C1 two-step needs inject on echo).
- * live/dry-run: Bash when dispatch/ship keywords or matching utterance categories.
- * Dispatch keywords take priority over ship on the same command.
+ * canary: Agent|Task → delegation; Bash → ship by default, or override via
+ *   canarySurface (dispatch|implementation) for C1 two-step inject on echo.
+ * live/dry-run: Bash when dispatch/ship/implementation keywords or matching
+ *   utterance categories. Priority: dispatch > ship > implementation.
  */
 export function resolveSurface(
   tool: string,
@@ -274,20 +333,31 @@ export function resolveSurface(
   if (mode === "canary") {
     // canary is Bash-only; Edit not used in sealed probes
     if (tool !== "Bash") return null;
-    return canarySurface === SURFACE_DISPATCH ? SURFACE_DISPATCH : SURFACE_SHIP;
+    if (canarySurface === SURFACE_DISPATCH) return SURFACE_DISPATCH;
+    if (canarySurface === SURFACE_IMPLEMENTATION) return SURFACE_IMPLEMENTATION;
+    return SURFACE_SHIP;
   }
 
   if (tool === "Bash") {
     const command = typeof toolInput?.command === "string" ? toolInput.command : "";
     if (isDispatchCommand(command)) return SURFACE_DISPATCH;
     if (isShipCommand(command)) return SURFACE_SHIP;
+    if (isImplementationCommand(command)) return SURFACE_IMPLEMENTATION;
     if (utteranceHasDispatchCategory(utterance, units)) return SURFACE_DISPATCH;
     if (utteranceHasShipCategory(utterance, units)) return SURFACE_SHIP;
+    if (utteranceHasImplementationCategory(utterance, units)) {
+      return SURFACE_IMPLEMENTATION;
+    }
     return null;
   }
 
-  // Edit: utterance ship/verification only (live/dry-run) — dispatch Out for 3.2
-  if (tool === "Edit" && utteranceHasShipCategory(utterance, units)) return SURFACE_SHIP;
+  // Edit: utterance ship/verification or implementation (live/dry-run)
+  if (tool === "Edit") {
+    if (utteranceHasShipCategory(utterance, units)) return SURFACE_SHIP;
+    if (utteranceHasImplementationCategory(utterance, units)) {
+      return SURFACE_IMPLEMENTATION;
+    }
+  }
   return null;
 }
 
@@ -313,6 +383,7 @@ export function renderContext(
 }
 
 function sliceFor(surface: JitSurface): string {
+  if (surface === SURFACE_IMPLEMENTATION) return SLICE_3_3;
   if (surface === SURFACE_DISPATCH) return SLICE_3_2;
   if (surface === SURFACE_SHIP) return SLICE_3_1;
   return SLICE_3_0;
@@ -387,6 +458,9 @@ export function decideJit(
     } else if (surface === SURFACE_DISPATCH) {
       canaryUnit = CANARY_DISPATCH_FIXTURE_UNIT;
       canarySha = CANARY_DISPATCH_BODY_SHA8;
+    } else if (surface === SURFACE_IMPLEMENTATION) {
+      canaryUnit = CANARY_IMPLEMENTATION_FIXTURE_UNIT;
+      canarySha = CANARY_IMPLEMENTATION_BODY_SHA8;
     } else {
       canaryUnit = CANARY_SHIP_FIXTURE_UNIT;
       canarySha = CANARY_SHIP_BODY_SHA8;
@@ -403,6 +477,11 @@ export function decideJit(
     }
   } else if (surface === SURFACE_DISPATCH) {
     candidates = selectDispatchUnits(opts.units, utterance);
+    if (hasFormatCompetition(utterance)) {
+      candidates = candidates.filter((u) => u.grade === "H" || u.grade === "G" || u.grade === "A");
+    }
+  } else if (surface === SURFACE_IMPLEMENTATION) {
+    candidates = selectImplementationUnits(opts.units, utterance);
     if (hasFormatCompetition(utterance)) {
       candidates = candidates.filter((u) => u.grade === "H" || u.grade === "G" || u.grade === "A");
     }
@@ -481,6 +560,21 @@ export function decideJit(
       chars,
       context: null,
       skipped_reason: "dispatch_gate_blocked",
+    };
+  }
+
+  // Implementation live inject blocked until 3.3 canary PASS (PHASE3.3-SPEC §5)
+  if (
+    opts.mode === "live" &&
+    surface === SURFACE_IMPLEMENTATION &&
+    !PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED
+  ) {
+    return {
+      ...baseMeta,
+      unitIds: loaded.map((l) => l.unit.id),
+      chars,
+      context: null,
+      skipped_reason: "implementation_gate_blocked",
     };
   }
 

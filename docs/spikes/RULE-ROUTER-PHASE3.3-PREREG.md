@@ -149,7 +149,7 @@ delegation/ship/dispatch 게이트 **불변**.
 ## 9. Done-when (PREREG 문서)
 
 - [x] 본 PREREG rev-1 문안  
-- [ ] 커밋 봉인 (SPEC과 동 웨이브)  
+- [x] 커밋 봉인 (SPEC과 동 웨이브)  
 - [ ] 실측·RESULT = **다음 게이트** (봉인 커밋 이후)
 
 [RULE-ROUTER-PHASE3.3-PREREG rev-1] fixture=agents.env sha8=06e68593 n=5+5 surface=implementation H1=absence G0+T1a sealed_pre_observation

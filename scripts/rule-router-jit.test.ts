@@ -6,17 +6,21 @@ import {
   CANARY_DISPATCH_BODY_SHA8,
   CANARY_DISPATCH_FIXTURE_UNIT,
   CANARY_FIXTURE_UNIT,
+  CANARY_IMPLEMENTATION_BODY_SHA8,
+  CANARY_IMPLEMENTATION_FIXTURE_UNIT,
   CANARY_SHIP_BODY_SHA8,
   CANARY_SHIP_FIXTURE_UNIT,
   JIT_CHAR_CAP,
   PHASE3_1_SHIP_LIVE_AUTHORIZED,
   PHASE3_2_DISPATCH_LIVE_AUTHORIZED,
+  PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED,
   decideJit,
   fitBudget,
   hasFormatCompetition,
   hookOutput,
   isDelegationTool,
   isDispatchCommand,
+  isImplementationCommand,
   isShipCommand,
   isShipTool,
   parseCanarySurface,
@@ -25,6 +29,7 @@ import {
   resolveSurface,
   selectDelegationUnits,
   selectDispatchUnits,
+  selectImplementationUnits,
   selectShipUnits,
 } from "./rule-router-jit.ts";
 import { type RuleUnit, extractUnitBody, readLiveRegistry, sha8 } from "./rules-registry.ts";
@@ -64,9 +69,18 @@ describe("rule-router-jit modes", () => {
     expect(isDispatchCommand("bun test")).toBe(false);
   });
 
+  test("implementation command keywords", () => {
+    expect(isImplementationCommand("export LOOM_RELAY_TOKEN=x")).toBe(true);
+    expect(isImplementationCommand("process.env.LOOM_X")).toBe(true);
+    expect(isImplementationCommand("export FABLE_TOKEN=x")).toBe(true);
+    expect(isImplementationCommand("echo P33_READY")).toBe(false);
+    expect(isImplementationCommand("bun test")).toBe(false);
+  });
+
   test("parseCanarySurface defaults to ship", () => {
     expect(parseCanarySurface(undefined)).toBe("ship");
     expect(parseCanarySurface("dispatch")).toBe("dispatch");
+    expect(parseCanarySurface("implementation")).toBe("implementation");
     expect(parseCanarySurface("ship")).toBe("ship");
     expect(parseCanarySurface("nope")).toBe("ship");
   });
@@ -93,6 +107,14 @@ describe("rule-router-jit selection", () => {
     expect(selected.every((u) => !u.pin)).toBe(true);
     expect(selected.every((u) => u.surface.includes("dispatch"))).toBe(true);
     expect(selected.some((u) => u.id === "traps.watch-card")).toBe(true);
+  });
+
+  test("pin units never selected for implementation; agents.env when routed", () => {
+    const selected = selectImplementationUnits(units, "구현 process.env LOOM 패치");
+    expect(selected.every((u) => !u.pin)).toBe(true);
+    expect(selected.every((u) => u.surface.includes("implementation"))).toBe(true);
+    expect(selected.some((u) => u.id === "agents.env")).toBe(true);
+    expect(selected.some((u) => u.id === "agents.deviations")).toBe(false);
   });
 
   test("fitBudget drops whole units, never exceeds cap", () => {
@@ -137,6 +159,39 @@ describe("rule-router-jit selection", () => {
         units,
       ),
     ).toBe("dispatch");
+  });
+
+  test("resolveSurface canary Bash + implementation override; priority dispatch>ship>impl", () => {
+    expect(
+      resolveSurface("Bash", "canary", { command: "echo x" }, "", units, "implementation"),
+    ).toBe("implementation");
+    expect(
+      resolveSurface(
+        "Bash",
+        "live",
+        { command: "export LOOM_RELAY_TOKEN=x" },
+        "",
+        units,
+      ),
+    ).toBe("ship"); // LOOM_RELAY is ship keyword before LOOM_ impl
+    expect(
+      resolveSurface(
+        "Bash",
+        "live",
+        { command: "console.log(process.env.FOO)" },
+        "",
+        units,
+      ),
+    ).toBe("implementation");
+    expect(
+      resolveSurface(
+        "Bash",
+        "live",
+        { command: "export LOOM_CUSTOM=1 && bun test" },
+        "",
+        units,
+      ),
+    ).toBe("ship"); // ship wins over impl when both match
   });
 });
 
@@ -267,6 +322,52 @@ describe("rule-router-jit decide", () => {
       { mode: "dry-run", units, readSource, utterance: "워커 pane 감시" },
     );
     expect(d.surface).toBe("dispatch");
+    expect(d.skipped_reason).toBe("dry_run");
+    expect(d.context).toBeNull();
+    expect(d.unitIds.length).toBeGreaterThan(0);
+  });
+
+  test("canary Bash with canarySurface=implementation injects agents.env fixture", () => {
+    const d = decideJit(
+      { tool_name: "Bash", tool_input: { command: "echo P33_READY" } },
+      { mode: "canary", units, readSource, canarySurface: "implementation" },
+    );
+    expect(d.unitIds).toEqual([CANARY_IMPLEMENTATION_FIXTURE_UNIT]);
+    expect(d.surface).toBe("implementation");
+    expect(d.slice).toBe("3.3");
+    expect(d.context).toContain(`unit:${CANARY_IMPLEMENTATION_FIXTURE_UNIT}`);
+    expect(d.context).toContain(`sha8:${CANARY_IMPLEMENTATION_BODY_SHA8}`);
+    const unit = units.find((u) => u.id === CANARY_IMPLEMENTATION_FIXTURE_UNIT)!;
+    const body = extractUnitBody(readSource(unit.source.file), unit.source.anchor);
+    expect(sha8(body)).toBe(CANARY_IMPLEMENTATION_BODY_SHA8);
+  });
+
+  test("live implementation inject blocked until 3.3 canary PASS", () => {
+    expect(PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED).toBe(false);
+    const d = decideJit(
+      {
+        tool_name: "Bash",
+        tool_input: { command: "console.log(process.env.FOO)" },
+      },
+      { mode: "live", units, readSource, utterance: "구현 process.env 패치" },
+    );
+    expect(d.surface).toBe("implementation");
+    expect(d.slice).toBe("3.3");
+    expect(d.context).toBeNull();
+    expect(d.skipped_reason).toBe("implementation_gate_blocked");
+    expect(d.unitIds.length).toBeGreaterThan(0);
+    expect(d.unitIds.every((id) => id !== "agents.deviations")).toBe(true);
+  });
+
+  test("dry-run implementation selects but does not inject", () => {
+    const d = decideJit(
+      {
+        tool_name: "Bash",
+        tool_input: { command: "console.log(process.env.FOO)" },
+      },
+      { mode: "dry-run", units, readSource, utterance: "구현 env 수정" },
+    );
+    expect(d.surface).toBe("implementation");
     expect(d.skipped_reason).toBe("dry_run");
     expect(d.context).toBeNull();
     expect(d.unitIds.length).toBeGreaterThan(0);
