@@ -42,7 +42,8 @@ Phase 3는 **한 surface씩** 연다. 다음 surface는 이전 surface의 준수
 | **3.0** | `delegation` | `Agent\|Task` | `orch.model-explicit`(H·guard) · `orch.session-ritual`(G) · `orch.lane-placement`(G) · `agents.impl-delegation`(G) · `traps.grok-readonly`(A) | B1/B3 “기억해서 로드”의 직접 자리. **pin J 유닛은 JIT 대상 아님**(이미 pin 정책). |
 | **3.1** | `ship` | Bash/Edit 계열 중 **커밋·테스트 키워드 게이트** 또는 명시 ship 훅 | `agents.verify`(A) · `traps.bun-test-env`(A) | `agents.commit-push`는 **pin J** → JIT 불필요. |
 | **3.2** | `dispatch` | 디스패치 도구/스크립트 표면 (정의는 3.1 통과 후) | traps + orch watch/card-done 계열 | pane/브릿지 인접 — 3.0보다 위험. |
-| **3.3+** | 기타 | 미개방 | — | verification/review/gate는 prefix·리추얼이 1차. |
+| **3.3** | `implementation` | Bash(·Edit) · env/구현 키워드 (정의: PHASE3.3-SPEC) | `agents.env`(canary) · `traps.fake-herdr-status` | **SPEC+PREREG 봉인** · live canary 전 금지. |
+| **3.4+** | 기타 | 미개방 | platform 등 | verification/review/gate는 prefix·리추얼이 1차. |
 
 **3.0 예산:** 한 주입 이벤트 합 **10,000자 미만**(C3). 초과 시 **자르지 않고 전체 스킵**(fail-closed to no-JIT) + 로그.  
 `orch.lane-placement` 단독 734자라 여유 있음; 합집합이 넘으면 **등급 가중 낮은 것부터 탈락**(H 유지 우선 · A 먼저 탈락).
