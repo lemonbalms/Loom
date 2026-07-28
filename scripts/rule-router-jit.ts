@@ -47,10 +47,11 @@ export const CANARY_SHIP_FIXTURE_UNIT = "traps.bun-test-env";
 export const CANARY_SHIP_BODY_SHA8 = "1172cf30";
 
 /**
- * Ship live inject authorization. Stays false until PHASE3.1-RESULT T1/T1(b) PASS
- * is documented and this constant is flipped in a deliberate commit.
+ * Ship live inject authorization.
+ * true after PHASE3.1b-RESULT T1(a) PASS (2026-07-28) — soft opt-in only when
+ * LOOM_RULE_ROUTER_JIT=1; default unset remains off. Hard bun-test-env guard still recommended.
  */
-export const PHASE3_1_SHIP_LIVE_AUTHORIZED = false;
+export const PHASE3_1_SHIP_LIVE_AUTHORIZED = true;
 
 export const JIT_CHAR_CAP = 10_000;
 export const GRADE_RANK: Record<string, number> = { H: 0, G: 1, A: 2, J: 3 };

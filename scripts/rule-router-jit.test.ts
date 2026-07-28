@@ -161,16 +161,15 @@ describe("rule-router-jit decide", () => {
     expect(sha8(body)).toBe(CANARY_SHIP_BODY_SHA8);
   });
 
-  test("live ship inject blocked until 3.1 authorized", () => {
-    expect(PHASE3_1_SHIP_LIVE_AUTHORIZED).toBe(false);
+  test("live ship inject authorized after 3.1b T1 (opt-in only)", () => {
+    expect(PHASE3_1_SHIP_LIVE_AUTHORIZED).toBe(true);
     const d = decideJit(
       { tool_name: "Bash", tool_input: { command: "bun test" } },
       { mode: "live", units, readSource, utterance: "bun test 검증" },
     );
     expect(d.surface).toBe("ship");
-    expect(d.context).toBeNull();
-    expect(d.skipped_reason).toBe("ship_gate_blocked");
-    // still reports which units would have been chosen
+    expect(d.skipped_reason).toBeUndefined();
+    expect(d.context).toContain("traps.bun-test-env");
     expect(d.unitIds.every((id) => id !== "agents.commit-push")).toBe(true);
   });
 

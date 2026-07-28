@@ -37,7 +37,7 @@ This file is for **during-implementation** plan deviations only.
 
 | Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
 |------|-------------------|-------------------------|------------------|-----------|
-| 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 상수 false면 inject 스킵** (`ship_gate_blocked`). 3.0 delegation live와 플래그를 공유하되 surface 게이트를 분리. | 3.0 통과만으로 ship 규범이 본 리포 Bash에 실리지 않게 한다. 단일 env로 전 surface를 여는 fail-open을 피한다. | 3.1 모델 canary T1/T1(b) 후 상수 flip은 **별 커밋** · default-on 여전히 금지. |
+| 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. hard bun-test-env 가드는 실세션 경쟁 대비 권고. |
 
 ### §0.28.1 — herdr 0.7.5 / protocol-17 adapter
 
