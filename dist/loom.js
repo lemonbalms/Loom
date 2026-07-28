@@ -12870,10 +12870,21 @@ Pending inbox:`);
     if (stopping)
       return;
     stopping = true;
+    const stickyOwnsPresence = Boolean(resolveLiveHostMeta());
     try {
-      await client.leave();
+      if (stickyOwnsPresence) {
+        client.close();
+        try {
+          await stopStickyHostProcess();
+          await startStickyHostProcess();
+        } catch {}
+      } else {
+        try {
+          await client.leave();
+        } catch {}
+        client.close();
+      }
     } catch {}
-    client.close();
     process.exit(0);
   };
   process.on("SIGINT", () => {
