@@ -1,18 +1,20 @@
 # Todo — Loom
 
-## Current — smoke:uc green · owner pick next
+## Current — owner pick next
 
-> **SSOT = `HANDOFF.md`.** Cold start: `bun run status`.
+> **SSOT = `HANDOFF.md`.** `bun run status` · `check:mem-header` (expect OK).
 
-### Done
+### Done (2026-07-28)
 
 - [x] Phase 3.2 dispatch soft live (G0+T1a)
-- [x] UC-3: listen leave vs sticky presence · `smoke:uc OK`
+- [x] UC-3 listen/sticky · `smoke:uc OK`
+- [x] cause B local B-4 on 13.12.4 · autoUpdate false · `check:mem-header OK`
 
-### Owner pick (next)
+### Next (owner names one)
 
-- [ ] ISSUE cause B (claude-mem upstream) **or** 3.3+ SPEC **or** product
+- [ ] 3.3+ SPEC **or** product MINOR **or** optional B-7 upstream issue
 
 ### 절대 금지
 
-- [ ] default-on JIT · reopen sealed PREREG · listen leave while sticky live
+- [ ] default-on JIT · reopen sealed PREREG · listen leave if sticky live
+- [ ] mem upgrade without re-patch + check:mem-header
