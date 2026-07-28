@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · P3.0–3.2 soft · **3.3 hook ready** (`agents.env`) · next = n=10 canary → RESULT.
+> v0.28.1 · P3.0–3.2 soft · **3.3 T1 FAIL** (impl live blocked) · next = owner pick.
 
 ## Current loop
 
@@ -13,48 +13,51 @@
 |---|---|---|
 | Product | v0.28.1 · adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | RULE-ROUTER 3.0–3.2 soft · **3.3 canary pending** | PHASE3.3-SPEC/PREREG · jit.ts |
-| Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` · platform lessons |
+| Harness | 3.0–3.2 soft · **3.3 measured FAIL** | PHASE3.3-RESULT |
+| Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### 3.3 implementation JIT — n=10 canary → RESULT
+### Idle · owner pick next (no silent product MINOR)
 
-**Shipped (do not redo):**
-1. **Phase 3.2** · UC-3 · cause B local B-4
-2. **Phase 3.3 SPEC+PREREG** — surface=`implementation` · fixture **`agents.env`** sha8 **`06e68593`**
-3. **Phase 3.3 hook** — `CANARY_SURFACE=implementation` · live gate **false** · priority dispatch>ship>impl · `rule-router-jit.test` **30/0**
+**Shipped this wave:**
+1. 3.3 SPEC+PREREG seal · hook lane · tests 30/0  
+2. **n=10 canary** — G0 **PASS** · T1(a) **FAIL** · COMPLY base/jit **0/5** · DELIVERED jit **3/5**  
+3. live **`PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED=false`** · RESULT rev-1
 
-**Next (this gate):**
-1. n=10 canary (PREREG 축자 · H1 absence) → RESULT  
-2. T1(a) only → `PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED=true`  
-3. HANDOFF + ship
+**Why T1 failed (do not remeasure):** model treated “relay-token export” as secret-name fishing;  
+partial inject was read as **injection** (r3/r4). Soft JIT ≠ force. Sealed PREREG immutable.
+
+**Playbook (next):**
+1. `bun run status` · `handoff:check` · `check:mem-header`  
+2. Owner pick: **new** 3.3b/3.4 SPEC (non-secret COMPLY or platform) · product MINOR · defer  
+3. Do **not** re-run sealed 3.3 PREREG or soften COMPLY
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Done when:** RESULT + gates · no COMPLY soften · live flip only on T1 pass.
+**Done when (this handoff):** RESULT + live false + checks green — **met**.
 
-**Must not:** live impl inject pre-canary · default-on · reopen 3.0–3.3 PREREG · soften COMPLY · smuggle verification/review/gate into 3.3 · claim B-7 closed by local pin.
+**Must not:** 3.3 remeasure / COMPLY soften · live impl without new T1 · default-on · reopen 3.0–3.3 PREREG · B-7=local pin · silent product MINOR.
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| P3.0–3.2 soft live | **opt-in** | JIT | RESULT · consts true |
-| 3.3 SPEC+PREREG | **sealed** | impl JIT | PHASE3.3-SPEC · PREREG |
-| 3.3 hook + tests | **ready** | canary wire | `rule-router-jit.ts` · 30/0 |
-| 3.3 live | **blocked** | gate | `PHASE3_3_…=false` until RESULT |
+| P3.0–3.2 soft live | **opt-in** | JIT | RESULT consts true |
+| 3.3 canary | **G0 PASS · T1 FAIL** | impl live blocked | `PHASE3.3-RESULT` · `p33-gates.json` |
+| 3.3 live | **false** | gate | `PHASE3_3_…=false` |
 | `smoke:uc` | **OK** | UC-3 | `05f21cf` |
 | cause B local B-4 | **OK + pinned** | cache | `check:mem-header` |
-| B-7 upstream | deferred optional | ecosystem | PRIORITIES P2c · local pin holds |
+| B-7 upstream | deferred optional | ecosystem | PRIORITIES P2c |
 
 ## Owner pending
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
+| **next gate** | 3.3 closed FAIL | wait owner · no silent MINOR | this HANDOFF · RESULT |
+| 3.3b/3.4 redesign | non-secret COMPLY or platform | defer | RESULT §5 |
 | default-on JIT | product risk | **off** | standing |
-| B-7 issue/PR | optional | defer; local pin holds | platform lessons |
-| 3.4+ / product MINOR | after 3.3 RESULT | wait | PHASE3-SPEC §2 |
+| B-7 issue/PR | optional | defer | platform lessons |
 
 ## Blockers
 
@@ -65,21 +68,21 @@
 - Nine headings; D1 ≤8192B; no `<details>`; traps only in `tasks/traps.md`.
 - Topology `single` / current-session / objective-commands.
 - HARD_CAP 9500; owner brief = `bun run status` only.
-- PREREG seal before canary; sealed F1*/3.0–3.3 PREREG **immutable**.
+- PREREG seal before canary; sealed F1*/3.0–3.3 PREREG **immutable** (remeasure no).
 - Isolation = absence not negation; pin ≠ conflict avoidance.
 - Bash deny **before** JIT; JIT never exit 2; JIT unset=**off** · default-on **no**.
 - Sticky owns presence → listen must not `leave` if host live.
-- claude-mem header: active install date-only; **autoUpdate off** or re-run B-4 after upgrade.
+- claude-mem header: date-only; **autoUpdate off** or re-run B-4 after upgrade.
 
 ## Evidence
 
-- 3.3: `docs/spikes/RULE-ROUTER-PHASE3.3-SPEC.md` · PREREG · `scripts/rule-router-jit.ts` · tests 30/0  
-- 3.2: `docs/spikes/RULE-ROUTER-PHASE3.2-RESULT.md`  
-- UC-3 / Cause B: prior commits · `check:mem-header`
+- 3.3: `docs/spikes/RULE-ROUTER-PHASE3.3-RESULT.md` · `~/.loom/phase3-3-canary-2026-07-28/`  
+- hook: `scripts/rule-router-jit.ts` · tests 30/0  
+- 3.2: `docs/spikes/RULE-ROUTER-PHASE3.2-RESULT.md`
 
 ## Don't redo
 
-- 3.2 canary remeasure / soften COMPLY / default-on JIT.  
-- 3.3 PREREG cell/prompt/COMPLY after observation.  
-- UC-3 leave while sticky live; B-4 as B-7 closed.  
-- verification/review/gate as 3.3 scope; silent product MINOR.
+- 3.3 PREREG remeasure / soften COMPLY / live flip without new T1.  
+- 3.2 canary remeasure / default-on JIT.  
+- UC-3 leave while sticky; B-4 as B-7 closed.  
+- Silent product MINOR.

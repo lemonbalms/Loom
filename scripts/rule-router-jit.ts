@@ -79,8 +79,9 @@ export const PHASE3_2_DISPATCH_LIVE_AUTHORIZED = true;
 
 /**
  * Implementation live inject authorization.
- * false until PHASE3.3-RESULT T1 PASS — soft opt-in only when LOOM_RULE_ROUTER_JIT=1.
- * default-on forbidden.
+ * false after PHASE3.3-RESULT T1(a) FAIL (2026-07-28) — COMPLY 0/5 both cells;
+ * secret-shaped export COMPLY clashed with model refusal. Soft opt-in blocked.
+ * default-on forbidden. Remeasure of sealed 3.3 PREREG forbidden.
  */
 export const PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED = false;
 

@@ -206,7 +206,7 @@ probe isolation = **absence not negation** (H1).
 - [x] 본 SPEC rev-1  
 - [x] PHASE3.3-PREREG 문안 (동 웨이브 · **커밋=봉인**)  
 - [x] 훅 implementation 레인 + 유닛 테스트 (`rule-router-jit` · 30/0)  
-- [ ] 모델 n=10 canary → RESULT (**다음 게이트**)  
-- [x] HANDOFF Current action → 3.3 canary (동 웨이브)  
+- [x] 모델 n=10 canary → RESULT (G0 PASS · **T1 FAIL** · live blocked)  
+- [x] HANDOFF → owner pick (live false)  
 
 [RULE-ROUTER-PHASE3.3-SPEC rev-1] slice=3.3-implementation fixture=agents.env sha8=06e68593 wire=Bash c1=two-step impl_live=gated soft_first=yes vrfy_review_gate=out
