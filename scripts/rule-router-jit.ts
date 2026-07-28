@@ -95,9 +95,9 @@ export const PHASE3_3_IMPLEMENTATION_LIVE_AUTHORIZED = false;
 
 /**
  * Platform live inject authorization.
- * false after PHASE3.4-RESULT T1(a) FAIL (2026-07-28) — jit COMPLY 3/5 < 4;
- * DELIVERED 5/5 but soft lift insufficient. Soft opt-in blocked. default-on forbidden.
- * Remeasure of sealed 3.4 PREREG forbidden.
+ * false after PHASE3.4 T1 FAIL (COMPLY 3/5) and PHASE3.4b T1 FAIL (base ceiling
+ * COMPLY 5/5 = jit 5/5, no lift; 2026-07-28). Soft opt-in blocked. default-on forbidden.
+ * Remeasure of sealed 3.4 / 3.4b PREREG forbidden.
  */
 export const PHASE3_4_PLATFORM_LIVE_AUTHORIZED = false;
 
