@@ -2336,15 +2336,39 @@ async function cmdListen() {
   }
 
   let stopping = false;
+  /**
+   * Sticky host (0.17 host-default) already holds room presence for this peer.
+   * listen dual-joins the same peerId and must **not** send `leave` on exit —
+   * leave is removePeer and drops the peer from the roster while sticky still
+   * thinks it is connected (smoke UC-3 peer_unknown after UC-5 listen kill).
+   * When sticky is live: close the listen socket only, then bounce sticky so it
+   * re-attaches as the current online socket (listen stole current on join).
+   */
   const shutdownListen = async () => {
     if (stopping) return;
     stopping = true;
+    const stickyOwnsPresence = Boolean(resolveLiveHostMeta());
     try {
-      await client.leave();
+      if (stickyOwnsPresence) {
+        // intentionalClose path — do not leave roster
+        client.close();
+        try {
+          await stopStickyHostProcess();
+          await startStickyHostProcess();
+        } catch {
+          /* best-effort re-presence */
+        }
+      } else {
+        try {
+          await client.leave();
+        } catch {
+          /* */
+        }
+        client.close();
+      }
     } catch {
       /* */
     }
-    client.close();
     process.exit(0);
   };
   process.on("SIGINT", () => {

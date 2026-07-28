@@ -370,8 +370,17 @@ async function main() {
   void listenReader;
 
   // --- UC-3 sticky host (subset; full matrix also in smoke:desktop) ---
+  // 0.17 host-default: create/join already auto-starts sticky host (UC-3.7 = already running ok).
+  // After UC-5 listen shutdown, sticky may bounce to re-attach presence — wait briefly.
+  await Bun.sleep(400);
   r = await run("--profile", "alice", "host", "start");
-  check("UC-3", "host start", r.code === 0 && /Sticky host started/i.test(r.text), r.text);
+  check(
+    "UC-3",
+    "host start",
+    r.code === 0 &&
+      /Sticky host (started|already running)/i.test(r.text),
+    r.text,
+  );
   await Bun.sleep(300);
 
   r = await run("--profile", "alice", "host", "status");

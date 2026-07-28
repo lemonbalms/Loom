@@ -774,3 +774,13 @@ cross-ref: verification (50)·(28) 부정 결과의 게이트/대조군.
 
 좌표: `docs/spikes/RULE-ROUTER-F1D-RESULT.md` §3.2 · 사전등록 §2.3(피한 함정)·§7(미측정 조건).
 cross-ref: verification (28) 대조군 · (55) 도달 범위 · (33) 서술은 존재의 증거가 아니다.
+
+## 2026-07-28 — listen leave vs sticky presence (UC-3 peer_unknown)
+
+**실증:** `smoke:uc` UC-3 2-fail 장기 베이스라인 = (1) host start `already running` 단언 과다 엄격(0.17 host-default) · (2) UC-5 `listen` kill 후 bob `handoff @alice` → `peer_unknown` 인데 alice `host status` 는 still running.
+
+**인과:** listen이 sticky와 **같은 peerId로 dual-join**한 뒤 SIGTERM 시 `client.leave()` → relay `removePeer`로 로스터 삭제. sticky 소켓은 stale인데 프로세스는 살아 “connected”로 보임.
+
+**규칙:** sticky host가 presence를 소유하면 listen 종료는 **leave 금지** (close + sticky bounce). smoke host start는 `started|already running` 모두 성공(UC-3.7). “host running” ≠ roster online.
+
+cross-ref: `packages/cli/src/index.ts` shutdownListen · `scripts/smoke-uc.ts` · TEST_PLAN UC-3.7.
