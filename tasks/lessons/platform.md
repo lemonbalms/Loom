@@ -278,3 +278,10 @@ WP5 웜베이스 포크 스파이크(`docs/spikes/WARM-BASE-FORK-SPIKE.md`)를 �
 autoUpdate는 끄지 않는다(보안·버그수정 수신 지연 회피).
 
 **항구 해법**: 업스트림 B-7 — thedotmack/claude-mem에 헤더 granularity 옵션화(날짜까지만) 요청.
+
+**재적용 2026-07-28 (13.12.4 · 원복 실증 후):** autoUpdate로 13.12.4가 활성이 되며 13.11.0 패치가
+무효화됐다(`check:mem-header FAIL` · 함수 `nee`/`hee` 분 ts). 조치: 활성 `13.12.4` `worker-service.cjs`
+의 `nee`/`hee`를 날짜만 반환으로 재패치 · 백업
+`worker-service.cjs.pre-hookcache-b4-20260728` · **`known_marketplaces.json`의
+`thedotmack.autoUpdate=false`로 버전 고정** · worker restart · `check:mem-header OK` · 라이브 훅
+헤더 `# […] recent context, 2026-07-28`(분 없음). 고정이 풀리거나 수동 업 시 이 절 절차 반복.
