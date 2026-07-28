@@ -4,12 +4,15 @@
  * Authority:
  *   docs/spikes/RULE-ROUTER-PHASE3-SPEC.md rev-1 · PHASE3-PREREG (3.0 delegation)
  *   docs/spikes/RULE-ROUTER-PHASE3.1-SPEC.md rev-1 · PHASE3.1-PREREG (3.1 ship)
+ *   docs/spikes/RULE-ROUTER-PHASE3.2-SPEC.md rev-1 · PHASE3.2-PREREG (3.2 dispatch)
  *
  * Modes (LOOM_RULE_ROUTER_JIT):
  *   unset/0/off  → no-op (conservative default; avoid receipt spam pre-canary)
  *   dry-run      → decide + optional receipt; no additionalContext
- *   canary       → sealed fixtures only (delegation→orch.model-explicit · ship→traps.bun-test-env)
- *   1|live       → A-selected non-pin units; ship inject gated until 3.1 canary PASS
+ *   canary       → sealed fixtures only
+ *                  (delegation→orch.model-explicit · ship→traps.bun-test-env ·
+ *                   dispatch→traps.watch-card when CANARY_SURFACE=dispatch)
+ *   1|live       → A-selected non-pin units; per-surface live gates
  *
  * Never exit non-zero for routing failures (fail-open). Model-guard stays separate.
  */
@@ -35,8 +38,10 @@ export const PHASE3_SURFACE = "delegation";
 
 export const SURFACE_DELEGATION = "delegation";
 export const SURFACE_SHIP = "ship";
+export const SURFACE_DISPATCH = "dispatch";
 export const SLICE_3_0 = "3.0";
 export const SLICE_3_1 = "3.1";
+export const SLICE_3_2 = "3.2";
 
 /** 3.0 canary fixture (PREREG sealed). */
 export const CANARY_FIXTURE_UNIT = "orch.model-explicit";
@@ -46,12 +51,22 @@ export const CANARY_BODY_SHA8 = "de04b1fa";
 export const CANARY_SHIP_FIXTURE_UNIT = "traps.bun-test-env";
 export const CANARY_SHIP_BODY_SHA8 = "1172cf30";
 
+/** 3.2 canary fixture (PHASE3.2-PREREG sealed). */
+export const CANARY_DISPATCH_FIXTURE_UNIT = "traps.watch-card";
+export const CANARY_DISPATCH_BODY_SHA8 = "57eb65d6";
+
 /**
  * Ship live inject authorization.
  * true after PHASE3.1b-RESULT T1(a) PASS (2026-07-28) — soft opt-in only when
  * LOOM_RULE_ROUTER_JIT=1; default unset remains off. Hard bun-test-env guard still recommended.
  */
 export const PHASE3_1_SHIP_LIVE_AUTHORIZED = true;
+
+/**
+ * Dispatch live inject authorization.
+ * false until PHASE3.2-RESULT canary PASS — soft opt-in only; default-on forbidden.
+ */
+export const PHASE3_2_DISPATCH_LIVE_AUTHORIZED = false;
 
 export const JIT_CHAR_CAP = 10_000;
 export const GRADE_RANK: Record<string, number> = { H: 0, G: 1, A: 2, J: 3 };
@@ -77,8 +92,24 @@ export const SHIP_COMMAND_KEYWORDS = [
   "verify",
 ] as const;
 
+/** Live Bash command keyword gate (PHASE3.2-SPEC §4.2) — case-insensitive substring. */
+export const DISPATCH_COMMAND_KEYWORDS = [
+  "watch-card",
+  "watch:card",
+  "dispatch_card",
+  "dispatch-card",
+  "herdr ",
+  "loom dispatch",
+] as const;
+
 export type JitMode = "off" | "dry-run" | "canary" | "live";
-export type JitSurface = typeof SURFACE_DELEGATION | typeof SURFACE_SHIP;
+export type JitSurface =
+  | typeof SURFACE_DELEGATION
+  | typeof SURFACE_SHIP
+  | typeof SURFACE_DISPATCH;
+
+/** Optional canary Bash surface override (default ship preserves 3.1). */
+export type CanarySurface = typeof SURFACE_SHIP | typeof SURFACE_DISPATCH;
 
 export type JitInput = {
   tool_name?: string;
@@ -120,6 +151,11 @@ export function isShipCommand(command: string): boolean {
   return SHIP_COMMAND_KEYWORDS.some((k) => c.includes(k.toLowerCase()));
 }
 
+export function isDispatchCommand(command: string): boolean {
+  const c = command.toLowerCase();
+  return DISPATCH_COMMAND_KEYWORDS.some((k) => c.includes(k.toLowerCase()));
+}
+
 export function hasFormatCompetition(utterance: string): boolean {
   return FORMAT_COMPETE_TRIGGERS.some((t) =>
     utterance.toLowerCase().includes(t.toLowerCase()),
@@ -134,6 +170,21 @@ export function utteranceHasShipCategory(
   if (!utterance.trim()) return false;
   const { categories } = classifyTurn(utterance, units, isFirstTurn);
   return categories.includes("ship") || categories.includes("verification");
+}
+
+export function utteranceHasDispatchCategory(
+  utterance: string,
+  units: RuleUnit[],
+  isFirstTurn = false,
+): boolean {
+  if (!utterance.trim()) return false;
+  const { categories } = classifyTurn(utterance, units, isFirstTurn);
+  return categories.includes("dispatch");
+}
+
+export function parseCanarySurface(raw: string | undefined): CanarySurface {
+  if (raw === SURFACE_DISPATCH) return SURFACE_DISPATCH;
+  return SURFACE_SHIP;
 }
 
 const rank = (unit: RuleUnit) => GRADE_RANK[unit.grade] ?? 9;
@@ -185,11 +236,28 @@ export function selectShipUnits(
   );
 }
 
+export function selectDispatchUnits(
+  units: RuleUnit[],
+  utterance: string,
+  isFirstTurn = false,
+): RuleUnit[] {
+  const { categories, unknown } = classifyTurn(utterance, units, isFirstTurn);
+  const decision = route(units, categories, unknown);
+  return units.filter(
+    (unit) =>
+      decision.selected.has(unit.id) &&
+      !unit.pin &&
+      (unit.surface ?? []).includes(SURFACE_DISPATCH),
+  );
+}
+
 /**
  * Resolve which surface lane applies. null = no JIT for this tool event.
  *
- * canary: Agent|Task → delegation; Bash → ship (always — C1 two-step needs inject on echo).
- * live/dry-run: Bash/Edit only when command keywords or utterance ship/verification.
+ * canary: Agent|Task → delegation; Bash → ship by default, or dispatch when
+ *   canarySurface=dispatch (C1 two-step needs inject on echo).
+ * live/dry-run: Bash when dispatch/ship keywords or matching utterance categories.
+ * Dispatch keywords take priority over ship on the same command.
  */
 export function resolveSurface(
   tool: string,
@@ -197,23 +265,27 @@ export function resolveSurface(
   toolInput: Record<string, unknown> | undefined,
   utterance: string,
   units: RuleUnit[],
+  canarySurface: CanarySurface = SURFACE_SHIP,
 ): JitSurface | null {
   if (isDelegationTool(tool)) return SURFACE_DELEGATION;
   if (!isShipTool(tool)) return null;
 
   if (mode === "canary") {
-    // 3.1 canary is Bash-only; Edit not used in sealed probe
-    return tool === "Bash" ? SURFACE_SHIP : null;
+    // canary is Bash-only; Edit not used in sealed probes
+    if (tool !== "Bash") return null;
+    return canarySurface === SURFACE_DISPATCH ? SURFACE_DISPATCH : SURFACE_SHIP;
   }
 
   if (tool === "Bash") {
     const command = typeof toolInput?.command === "string" ? toolInput.command : "";
+    if (isDispatchCommand(command)) return SURFACE_DISPATCH;
     if (isShipCommand(command)) return SURFACE_SHIP;
+    if (utteranceHasDispatchCategory(utterance, units)) return SURFACE_DISPATCH;
     if (utteranceHasShipCategory(utterance, units)) return SURFACE_SHIP;
     return null;
   }
 
-  // Edit: utterance ship/verification only (live/dry-run)
+  // Edit: utterance ship/verification only (live/dry-run) — dispatch Out for 3.2
   if (tool === "Edit" && utteranceHasShipCategory(utterance, units)) return SURFACE_SHIP;
   return null;
 }
@@ -240,7 +312,9 @@ export function renderContext(
 }
 
 function sliceFor(surface: JitSurface): string {
-  return surface === SURFACE_SHIP ? SLICE_3_1 : SLICE_3_0;
+  if (surface === SURFACE_DISPATCH) return SLICE_3_2;
+  if (surface === SURFACE_SHIP) return SLICE_3_1;
+  return SLICE_3_0;
 }
 
 export function decideJit(
@@ -250,10 +324,13 @@ export function decideJit(
     units: RuleUnit[];
     readSource: (file: string) => string;
     utterance?: string;
+    /** Bash canary surface; default ship (3.1). Set dispatch for 3.2 probes. */
+    canarySurface?: CanarySurface;
   },
 ): JitDecision {
   const tool = input.tool_name ?? "";
   const utterance = opts.utterance ?? input.utterance ?? "";
+  const canarySurface = opts.canarySurface ?? SURFACE_SHIP;
   const empty = (surface: string, slice: string, reason: string): JitDecision => ({
     mode: opts.mode,
     tool,
@@ -270,9 +347,16 @@ export function decideJit(
     return empty(SURFACE_DELEGATION, SLICE_3_0, "mode_off");
   }
 
-  const surface = resolveSurface(tool, opts.mode, input.tool_input, utterance, opts.units);
+  const surface = resolveSurface(
+    tool,
+    opts.mode,
+    input.tool_input,
+    utterance,
+    opts.units,
+    canarySurface,
+  );
   if (!surface) {
-    // Preserve 3.0 reason string when non-delegation tool cannot take ship lane
+    // Preserve 3.0 reason string when non-delegation tool cannot take ship/dispatch lane
     if (!isDelegationTool(tool) && !isShipTool(tool)) {
       return empty(SURFACE_DELEGATION, SLICE_3_0, "tool_not_delegation");
     }
@@ -299,6 +383,9 @@ export function decideJit(
     if (surface === SURFACE_DELEGATION) {
       canaryUnit = CANARY_FIXTURE_UNIT;
       canarySha = CANARY_BODY_SHA8;
+    } else if (surface === SURFACE_DISPATCH) {
+      canaryUnit = CANARY_DISPATCH_FIXTURE_UNIT;
+      canarySha = CANARY_DISPATCH_BODY_SHA8;
     } else {
       canaryUnit = CANARY_SHIP_FIXTURE_UNIT;
       canarySha = CANARY_SHIP_BODY_SHA8;
@@ -310,6 +397,11 @@ export function decideJit(
     candidates = [fixture];
   } else if (surface === SURFACE_DELEGATION) {
     candidates = selectDelegationUnits(opts.units, utterance);
+    if (hasFormatCompetition(utterance)) {
+      candidates = candidates.filter((u) => u.grade === "H" || u.grade === "G" || u.grade === "A");
+    }
+  } else if (surface === SURFACE_DISPATCH) {
+    candidates = selectDispatchUnits(opts.units, utterance);
     if (hasFormatCompetition(utterance)) {
       candidates = candidates.filter((u) => u.grade === "H" || u.grade === "G" || u.grade === "A");
     }
@@ -380,6 +472,17 @@ export function decideJit(
     };
   }
 
+  // Dispatch live inject blocked until 3.2 canary PASS (PHASE3.2-SPEC §5)
+  if (opts.mode === "live" && surface === SURFACE_DISPATCH && !PHASE3_2_DISPATCH_LIVE_AUTHORIZED) {
+    return {
+      ...baseMeta,
+      unitIds: loaded.map((l) => l.unit.id),
+      chars,
+      context: null,
+      skipped_reason: "dispatch_gate_blocked",
+    };
+  }
+
   const inject = opts.mode === "canary" || opts.mode === "live";
   return {
     ...baseMeta,
@@ -433,12 +536,14 @@ async function main(): Promise<void> {
     const { readFileSync } = await import("node:fs");
     const registry = readLiveRegistry();
     const readSrc = (file: string) => readFileSync(join(import.meta.dir, "..", file), "utf8");
+    const canarySurface = parseCanarySurface(process.env.LOOM_RULE_ROUTER_CANARY_SURFACE);
 
     const decision = decideJit(input, {
       mode,
       units: registry.units,
       readSource: readSrc,
       utterance: typeof input.utterance === "string" ? input.utterance : "",
+      canarySurface,
     });
 
     if (mode !== "off") writeReceipt(decision);

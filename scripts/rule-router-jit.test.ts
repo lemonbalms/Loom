@@ -3,22 +3,28 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CANARY_BODY_SHA8,
+  CANARY_DISPATCH_BODY_SHA8,
+  CANARY_DISPATCH_FIXTURE_UNIT,
   CANARY_FIXTURE_UNIT,
   CANARY_SHIP_BODY_SHA8,
   CANARY_SHIP_FIXTURE_UNIT,
   JIT_CHAR_CAP,
   PHASE3_1_SHIP_LIVE_AUTHORIZED,
+  PHASE3_2_DISPATCH_LIVE_AUTHORIZED,
   decideJit,
   fitBudget,
   hasFormatCompetition,
   hookOutput,
   isDelegationTool,
+  isDispatchCommand,
   isShipCommand,
   isShipTool,
+  parseCanarySurface,
   parseJitMode,
   renderContext,
   resolveSurface,
   selectDelegationUnits,
+  selectDispatchUnits,
   selectShipUnits,
 } from "./rule-router-jit.ts";
 import { type RuleUnit, extractUnitBody, readLiveRegistry, sha8 } from "./rules-registry.ts";
@@ -49,6 +55,21 @@ describe("rule-router-jit modes", () => {
     expect(isShipCommand("git commit -m x")).toBe(true);
     expect(isShipCommand("echo P31_READY")).toBe(false);
   });
+
+  test("dispatch command keywords", () => {
+    expect(isDispatchCommand("bun run scripts/watch-card.ts --pane w3:p99")).toBe(true);
+    expect(isDispatchCommand("bun run watch:card --pane x")).toBe(true);
+    expect(isDispatchCommand("herdr pane list")).toBe(true);
+    expect(isDispatchCommand("echo P32_READY")).toBe(false);
+    expect(isDispatchCommand("bun test")).toBe(false);
+  });
+
+  test("parseCanarySurface defaults to ship", () => {
+    expect(parseCanarySurface(undefined)).toBe("ship");
+    expect(parseCanarySurface("dispatch")).toBe("dispatch");
+    expect(parseCanarySurface("ship")).toBe("ship");
+    expect(parseCanarySurface("nope")).toBe("ship");
+  });
 });
 
 describe("rule-router-jit selection", () => {
@@ -65,6 +86,13 @@ describe("rule-router-jit selection", () => {
     expect(selected.every((u) => !u.pin)).toBe(true);
     expect(selected.every((u) => u.surface.includes("ship"))).toBe(true);
     expect(selected.some((u) => u.id === "agents.commit-push")).toBe(false);
+  });
+
+  test("pin units never selected for dispatch; watch-card included when routed", () => {
+    const selected = selectDispatchUnits(units, "디스패치 워커 pane watch-card 감시");
+    expect(selected.every((u) => !u.pin)).toBe(true);
+    expect(selected.every((u) => u.surface.includes("dispatch"))).toBe(true);
+    expect(selected.some((u) => u.id === "traps.watch-card")).toBe(true);
   });
 
   test("fitBudget drops whole units, never exceeds cap", () => {
@@ -84,6 +112,31 @@ describe("rule-router-jit selection", () => {
     expect(resolveSurface("Bash", "canary", { command: "echo x" }, "", units)).toBe("ship");
     expect(resolveSurface("Bash", "live", { command: "echo x" }, "", units)).toBeNull();
     expect(resolveSurface("Bash", "live", { command: "bun test" }, "", units)).toBe("ship");
+  });
+
+  test("resolveSurface canary Bash + dispatch override; live dispatch keywords win", () => {
+    expect(
+      resolveSurface("Bash", "canary", { command: "echo x" }, "", units, "dispatch"),
+    ).toBe("dispatch");
+    expect(
+      resolveSurface(
+        "Bash",
+        "live",
+        { command: "bun run scripts/watch-card.ts --pane w3:p1" },
+        "",
+        units,
+      ),
+    ).toBe("dispatch");
+    // dispatch keyword beats ship keyword if both present
+    expect(
+      resolveSurface(
+        "Bash",
+        "live",
+        { command: "bun run scripts/watch-card.ts --pane x && bun test" },
+        "",
+        units,
+      ),
+    ).toBe("dispatch");
   });
 });
 
@@ -171,6 +224,52 @@ describe("rule-router-jit decide", () => {
     expect(d.skipped_reason).toBeUndefined();
     expect(d.context).toContain("traps.bun-test-env");
     expect(d.unitIds.every((id) => id !== "agents.commit-push")).toBe(true);
+  });
+
+  test("canary Bash with canarySurface=dispatch injects watch-card fixture", () => {
+    const d = decideJit(
+      { tool_name: "Bash", tool_input: { command: "echo P32_READY" } },
+      { mode: "canary", units, readSource, canarySurface: "dispatch" },
+    );
+    expect(d.unitIds).toEqual([CANARY_DISPATCH_FIXTURE_UNIT]);
+    expect(d.surface).toBe("dispatch");
+    expect(d.slice).toBe("3.2");
+    expect(d.context).toContain(`unit:${CANARY_DISPATCH_FIXTURE_UNIT}`);
+    expect(d.context).toContain(`sha8:${CANARY_DISPATCH_BODY_SHA8}`);
+    const unit = units.find((u) => u.id === CANARY_DISPATCH_FIXTURE_UNIT)!;
+    const body = extractUnitBody(readSource(unit.source.file), unit.source.anchor);
+    expect(sha8(body)).toBe(CANARY_DISPATCH_BODY_SHA8);
+  });
+
+  test("live dispatch inject blocked until 3.2 canary PASS", () => {
+    expect(PHASE3_2_DISPATCH_LIVE_AUTHORIZED).toBe(false);
+    const d = decideJit(
+      {
+        tool_name: "Bash",
+        tool_input: { command: "bun run scripts/watch-card.ts --pane w3:p99" },
+      },
+      { mode: "live", units, readSource, utterance: "디스패치 워커 감시" },
+    );
+    expect(d.surface).toBe("dispatch");
+    expect(d.slice).toBe("3.2");
+    expect(d.context).toBeNull();
+    expect(d.skipped_reason).toBe("dispatch_gate_blocked");
+    expect(d.unitIds.length).toBeGreaterThan(0);
+    expect(d.unitIds.every((id) => id !== "agents.commit-push")).toBe(true);
+  });
+
+  test("dry-run dispatch selects but does not inject", () => {
+    const d = decideJit(
+      {
+        tool_name: "Bash",
+        tool_input: { command: "bun run scripts/watch-card.ts --pane w3:p1" },
+      },
+      { mode: "dry-run", units, readSource, utterance: "워커 pane 감시" },
+    );
+    expect(d.surface).toBe("dispatch");
+    expect(d.skipped_reason).toBe("dry_run");
+    expect(d.context).toBeNull();
+    expect(d.unitIds.length).toBeGreaterThan(0);
   });
 
   test("hookOutput wraps additionalContext", () => {
