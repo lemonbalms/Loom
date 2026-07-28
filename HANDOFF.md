@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.28.1 · P3.1b **T1(a) PASS** · ship soft live opt-in · default-on no · next=hard-guard or product.
+> v0.28.1 · P3.1b soft live + **bun-test hard guard** shipped · default-on no · next=product pick.
 
 ## Current loop
 
@@ -13,46 +13,42 @@
 |---|---|---|
 | Product | v0.28.1 · adapter `6e2df8a` | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
-| Harness | RULE-ROUTER **P3.0+P3.1b soft live ok** | PHASE3.1b-RESULT |
+| Harness | RULE-ROUTER **soft+hard ship** | BUN-TEST-ENV-HARD · 3.1b |
 | Reuse | not proven | evidence |
 
 ## Current action
 
-### RULE-ROUTER — Phase 3.1b closed · optional hard-guard / product pick
+### RULE-ROUTER — hard guard shipped · product / next surface pick
 
-**Done:** 3.1b n=10 · G0 PASS · T1(a) PASS (base COMPLY 0/5 · jit **5/5**).  
-`PHASE3_1_SHIP_LIVE_AUTHORIZED=true` · unset still **off** · default-on **no**.  
-Evidence: `~/.loom/phase3-1b-canary-2026-07-28/`.
-
-**Claims:** soft JIT **can** lift bun-test-env command form when docs do not negate it.  
-3.1 fail was **H1 harness competition** (not “inject never works”).
+**Done:** Path B hard guard `check-bun-test-env.ts` · Bash deny-before-jit · 8 unit tests.  
+Scope: Claude Code Bash + `bun test` without relay unset → **exit 2**.  
+Soft JIT still opt-in (`=1`); **unset=off**; **default-on no**.
 
 **Next (pick):**
-1. **hard `check-bun-test-env`** (권고 — 실세션 CLAUDE 경쟁 대비)  
-2. Owner product / PLAN MINOR  
-3. 3.2 dispatch — **not open** without new PREREG  
-4. Backlog: cause B · smoke:uc  
+1. Owner product / PLAN MINOR  
+2. 3.2 dispatch — new PREREG only  
+3. Backlog: cause B · smoke:uc · category table  
 
 **Line:** topology **`single`** · execution **`current-session`** · verify **`objective-commands`** · full fallback Codex→Grok→Codex
 
-**Must not:** default-on · reopen 3.1/3.1b PREREG · claim hard enforcement from soft only · 3.1 re-run.
+**Must not:** default-on JIT · claim global-shell hard lock · JIT exit-2 · reopen sealed PREREGs.
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| P3.0 T1(b) | **PASS** | delegation live | RESULT rev-2 |
-| P3.1 T1 | **FAIL** (H1) | history | RESULT rev-2 |
-| P3.1b T1(a) | **PASS** | ship soft live | RESULT rev-1 · 5/5 vs 0/5 |
-| ship live constant | **true** | opt-in `=1` only | `rule-router-jit.ts` |
-| hard bun-test-env | **recommended** | real-session race | SPEC-REV Path B |
+| P3.0 T1(b) | PASS | delegation soft | RESULT rev-2 |
+| P3.1b T1(a) | PASS | ship soft | RESULT rev-1 |
+| bun-test hard guard | **shipped** | Bash deny | `check-bun-test-env.ts` |
+| unit tests | **25** jit+guard | green | bun test hooks+jit |
+| default-on | forbidden | — | — |
 | ISSUE cause B | open | — | — |
 
 ## Owner pending
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| hard 가드 B | 실세션 경쟁 | 구현 권고 | SPEC-REV |
+| next product | gate clear | backlog ok | HANDOFF |
 | default-on JIT | risk | **off** | — |
 | 카테고리 / cause B | backlog | 현행 | — |
 
@@ -65,20 +61,20 @@ Evidence: `~/.loom/phase3-1b-canary-2026-07-28/`.
 - Nine headings; D1 ≤8192B; traps in `tasks/traps.md`.
 - Topology single/current-session/objective-commands.
 - HARD_CAP 9500; status-only owner brief.
-- Isolation = absence not negation (3.1b lesson).
-- JIT unset = **off** · live=`1` opt-in · **default-on no**.
-- Soft pass ≠ hard enforcement claim.
-- Sealed PREREGs immutable.
+- Bash: **deny hooks before JIT**; JIT never exit 2.
+- Hard guard scope = Claude Code Bash only (not all shells).
+- JIT unset=off · live opt-in · default-on no.
+- Isolation = absence not negation; sealed PREREGs immutable.
 
 ## Evidence
 
-- 3.1b: `~/.loom/phase3-1b-canary-2026-07-28/` · G0+T1a.  
-- H1 spike 3/3 · 3.1 fail 0/5 (contrast).  
-- Docs: PHASE3.1b-PREREG · RESULT · SPEC-REV.  
-- Unit tests 17 · fixture `1172cf30`.
+- Guard: `scripts/hooks/check-bun-test-env.ts` · settings Bash chain.  
+- Doc: `docs/spikes/RULE-ROUTER-BUN-TEST-ENV-HARD.md`.  
+- 3.1b canary `~/.loom/phase3-1b-canary-2026-07-28/`.  
+- Soft+hard layers independent.
 
 ## Don't redo
 
-- 3.1 PREREG remeasure; probe “no standing rules”; default-on.
-- Soften COMPLY; claim ship hard-locked without deny hook.
-- Reopen F1*/3.0/3.1/3.1b cells without new sealed PREREG.
+- default-on; global H claim; soft-only as hard enforcement.  
+- Put exit 2 in rule-router-jit; reopen 3.1/3.1b PREREG.  
+- Probe “no standing rules” negation isolation.

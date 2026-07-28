@@ -20,6 +20,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-bun-test-env.ts\""
+          },
+          {
+            "type": "command",
             "command": "bun run \"$CLAUDE_PROJECT_DIR/scripts/rule-router-jit.ts\"",
             "timeout": 15
           }
