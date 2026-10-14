@@ -151,12 +151,14 @@ export async function opsHandoff(args: {
     }
   }
 
+  const clientEventId = crypto.randomUUID();
   const host = await tryStickyRpc({
     op: "handoff",
     to: args.to,
     body,
     mode: args.mode,
     attachments,
+    clientEventId,
   });
   if (host?.ok && host.op === "handoff") {
     return {
@@ -179,6 +181,7 @@ export async function opsHandoff(args: {
       body,
       mode: args.mode ?? "message",
       attachments,
+      clientEventId,
     });
     return {
       status: ack.status,
@@ -199,13 +202,14 @@ export async function opsHandoff(args: {
 
 export async function opsChat(text: string): Promise<{ source: RoomOpsSource }> {
   const t = sanitizePeerText(text);
-  const host = await tryStickyRpc({ op: "chat", text: t });
+  const clientEventId = crypto.randomUUID();
+  const host = await tryStickyRpc({ op: "chat", text: t, clientEventId });
   if (host?.ok && host.op === "chat") {
     return { source: "host" };
   }
   const { client } = await withOneShotClient();
   try {
-    await client.chat(t);
+    await client.chat(t, clientEventId);
     await Bun.sleep(80);
     return { source: "oneshot" };
   } finally {

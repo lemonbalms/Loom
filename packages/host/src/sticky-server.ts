@@ -29,6 +29,11 @@ import {
   type TaskStatus,
 } from "./task-board";
 
+function clientEventIdOrDrop(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 64) return undefined;
+  return value;
+}
+
 export type StickyServer = {
   meta: StickyHostMeta;
   stop: () => Promise<void>;
@@ -141,11 +146,13 @@ export async function startStickyServer(opts?: {
           };
         }
         case "handoff": {
+          const clientEventId = clientEventIdOrDrop(req.clientEventId);
           const ack = await client.handoff({
             to: req.to,
             body: sanitizePeerText(req.body),
             mode: req.mode ?? "message",
             attachments: req.attachments,
+            ...(clientEventId !== undefined ? { clientEventId } : {}),
           });
           return {
             ok: true,
@@ -159,7 +166,8 @@ export async function startStickyServer(opts?: {
           };
         }
         case "chat": {
-          await client.chat(sanitizePeerText(req.text));
+          const clientEventId = clientEventIdOrDrop(req.clientEventId);
+          await client.chat(sanitizePeerText(req.text), clientEventId);
           return { ok: true, op: "chat" };
         }
         case "claim": {

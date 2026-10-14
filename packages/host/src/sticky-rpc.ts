@@ -22,8 +22,9 @@ export type StickyRpcRequest =
       body: string;
       mode?: "message" | "task";
       attachments?: HandoffAttachment[];
+      clientEventId?: string;
     }
-  | { op: "chat"; text: string }
+  | { op: "chat"; text: string; clientEventId?: string }
   | { op: "claim"; id: string; via?: "claim" | "accept" }
   /** 0.12: local room board via sticky (same file as CLI/MCP) */
   | { op: "list_tasks" }

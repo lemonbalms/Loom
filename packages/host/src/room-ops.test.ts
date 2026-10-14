@@ -130,12 +130,12 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
             return Response.json({ ok: false, error: "unsupported", code: "http_error" });
           }
           stickyHits += 1;
-          // PATCH 5 seam: no production field carries clientEventId yet.
+          // PATCH 5 seam: forward clientEventId like sticky-server.ts does.
           // The hang forces tryStickyRpc's 8s timeout after this route.
-          void body.clientEventId;
           await stickyClient.handoff({
             to: body.to ?? "@bob",
             body: body.body ?? "",
+            ...(body.clientEventId ? { clientEventId: body.clientEventId } : {}),
           });
           await new Promise<void>((resolve) => {
             const timer = setTimeout(resolve, 30_000);

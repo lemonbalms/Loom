@@ -409,6 +409,7 @@ export class RelayClient {
     body: string;
     mode?: "message" | "task";
     attachments?: HandoffPayload["attachments"];
+    clientEventId?: string;
   }): Promise<Extract<Envelope, { type: "handoff.ack" }>> {
     // PLAN 0.27.0 D2: test-only ACK injection via production seam.
     // When __ackInjector is null (default), production wire path runs unchanged.
@@ -439,11 +440,13 @@ export class RelayClient {
 
     await this.connect();
     this.lastHandoffAck = null;
+    const { clientEventId, ...handoff } = partial;
     const env = await this.requestOnce(
       {
         type: "handoff",
         v: PROTOCOL_VERSION,
-        handoff: partial,
+        handoff,
+        ...(typeof clientEventId === "string" ? { clientEventId } : {}),
       },
       (e) => e.type === "handoff.ack" || e.type === "error",
     );
@@ -456,9 +459,13 @@ export class RelayClient {
     return env;
   }
 
-  async chat(text: string): Promise<void> {
+  async chat(text: string, clientEventId?: string): Promise<void> {
     await this.connect();
-    this.send({ type: "chat", v: PROTOCOL_VERSION, text });
+    this.send(
+      typeof clientEventId === "string"
+        ? { type: "chat", v: PROTOCOL_VERSION, text, clientEventId }
+        : { type: "chat", v: PROTOCOL_VERSION, text },
+    );
   }
 
   async listPeers(): Promise<Envelope> {
