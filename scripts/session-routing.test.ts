@@ -122,15 +122,15 @@ describe("session routing Line grammar", () => {
     ).toBe(false);
   });
 
-  test("V9 live HANDOFF is single/current-session/objective-commands", () => {
+  test("V9 live HANDOFF is full/delegated/independent (promoted 0.29.0)", () => {
     const live = readFileSync(join(import.meta.dir, "..", "HANDOFF.md"), "utf8");
     const result = parseSessionRouting(live);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.routing).toMatchObject({
-      topology: "single",
-      execution: "current-session",
-      verify: "objective-commands",
+      topology: "full",
+      execution: "delegated",
+      verify: "independent",
     });
   });
 });

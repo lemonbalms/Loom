@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { MAX_INBOX_ENTRIES_PER_PEER } from "@loom/protocol";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { MAX_INBOX_ENTRIES_PER_PEER, PROTOCOL_VERSION } from "@loom/protocol";
 import { Room, RoomRegistry, type SocketLike } from "./room";
+import {
+  loadAllSnapshots,
+  releaseStateDirLock,
+  saveRoomSnapshot,
+  type RoomSnapshotV1,
+} from "./persist";
 
 function mockSocket() {
   const sent: string[] = [];
@@ -215,5 +224,242 @@ describe("RoomRegistry", () => {
     expect(reg.getByCode("fable-7k2m")).toBe(room);
     // must NOT resolve via LOOM- rewrite of same body
     expect(reg.getByCode("LOOM-7K2M")).toBeUndefined();
+  });
+});
+
+describe("v0.29.0 PATCH 1 expected-red", () => {
+  function pair() {
+    const room = new Room("demo");
+    const a = mockSocket();
+    const b = mockSocket();
+    const c = mockSocket();
+    const pa = mustAdd(
+      room,
+      { id: "p1", displayName: "alice", agentKind: "claude" },
+      a.socket,
+    );
+    const pb = mustAdd(
+      room,
+      { id: "p2", displayName: "bob", agentKind: "codex" },
+      b.socket,
+    );
+    mustAdd(room, { id: "p3", displayName: "carol", agentKind: "grok" }, c.socket);
+    return { room, a, b, c, pa, pb };
+  }
+
+  function sent(sock: { sent: string[] }, index = 0): {
+    type?: string;
+    eventId?: string;
+    seq?: number;
+  } {
+    return JSON.parse(sock.sent[index]!) as {
+      type?: string;
+      eventId?: string;
+      seq?: number;
+    };
+  }
+
+  test("(a) stampRoomEvent assigns ev_ ids and a strictly increasing per-room seq", () => {
+    const { room } = pair();
+    const stamp = (room as unknown as {
+      stampRoomEvent?: (env: unknown) => { eventId?: string; seq?: number } | void;
+    }).stampRoomEvent;
+    expect(typeof stamp).toBe("function");
+
+    const peer = room.getPeer("p2")!;
+    const ho = room.resolveHandoff("p1", { to: "@bob", body: "n" });
+    const events = [
+      room.chatEnvelope("p1", "hi"),
+      room.peerJoinEnvelope(peer),
+      room.peerLeaveEnvelope("p2"),
+      room.peerPresenceEnvelope("p2", false),
+      {
+        v: PROTOCOL_VERSION,
+        roomId: room.id,
+        ts: new Date().toISOString(),
+        type: "handoff" as const,
+        handoff: ho,
+      },
+    ];
+    const ids = new Set<string>();
+    let prev = 0;
+    for (const env of events) {
+      const ret = stamp!.call(room, env);
+      const out = (ret ?? env) as { eventId?: string; seq?: number };
+      expect(out.eventId).toMatch(/^ev_.+/);
+      expect(out.seq).toBe(prev + 1);
+      prev = out.seq!;
+      ids.add(out.eventId!);
+    }
+    expect(ids.size).toBe(events.length);
+
+    const other = new Room("other");
+    const otherRaw = other.chatEnvelope("p1", "a");
+    const again = stamp!.call(other, otherRaw);
+    const otherOut = (again ?? otherRaw) as { seq?: number };
+    expect(otherOut.seq).toBe(1);
+    const later = room.chatEnvelope("p1", "later");
+    const next = stamp!.call(room, later);
+    expect(((next ?? later) as { seq?: number }).seq).toBe(events.length + 1);
+  });
+
+  test("(a) broadcast and routeHandoff share one stamp; client eventId/seq are overwritten; RPC replies are not stamped", () => {
+    const { room, b, c } = pair();
+    room.broadcast(
+      {
+        ...room.chatEnvelope("p1", "injected"),
+        eventId: "ev_bogus",
+        seq: 999,
+      } as never,
+      "p1",
+    );
+    expect(b.sent.length).toBeGreaterThan(0);
+    const bob = sent(b);
+    const carol = sent(c);
+    expect(bob.eventId).not.toBe("ev_bogus");
+    expect(bob.seq).not.toBe(999);
+    expect(bob.eventId).toMatch(/^ev_.+/);
+    expect(bob.seq).toBe(1);
+    expect(carol.eventId).toBe(bob.eventId);
+    expect(carol.seq).toBe(bob.seq);
+
+    const before = b.sent.length;
+    room.broadcast(room.peerJoinEnvelope(room.getPeer("p3")!), "p3");
+    room.broadcast(room.peerLeaveEnvelope("p3"));
+    room.broadcast(room.peerPresenceEnvelope("p2", false), "p2");
+    const join = sent(b, before);
+    const leave = sent(b, before + 1);
+    const presence = sent(c, c.sent.length - 1);
+    expect(join.type).toBe("peer.join");
+    expect(leave.type).toBe("peer.leave");
+    expect(presence.type).toBe("peer.presence");
+    for (const msg of [join, leave, presence]) {
+      expect(msg.eventId).toMatch(/^ev_.+/);
+    }
+    expect(join.seq).toBe(2);
+    expect(leave.seq).toBe(3);
+    expect(presence.seq).toBe(4);
+    expect(new Set([bob.eventId, join.eventId, leave.eventId, presence.eventId]).size).toBe(4);
+
+    const ho = room.resolveHandoff("p1", { to: "*", body: "all-hands" });
+    room.routeHandoff(ho);
+    const h2 = sent(b, b.sent.length - 1);
+    const h3 = sent(c, c.sent.length - 1);
+    expect(h2.type).toBe("handoff");
+    expect(h3.type).toBe("handoff");
+    expect(h2.eventId).toMatch(/^ev_.+/);
+    expect(h2.eventId).toBe(h3.eventId);
+    expect(h2.seq).toBe(h3.seq);
+    expect(h2.seq).toBe(5);
+
+    const ack = room.handoffAckEnvelope(
+      room.routeHandoff(room.resolveHandoff("p1", { to: "@bob", body: "z" })),
+    ) as { eventId?: string; seq?: number };
+    const state = room.roomStateEnvelope() as { eventId?: string; seq?: number };
+    const inbox = room.inboxStateEnvelope("p2") as { eventId?: string; seq?: number };
+    for (const rpc of [ack, state, inbox]) {
+      expect(rpc.eventId).toBeUndefined();
+      expect(rpc.seq).toBeUndefined();
+    }
+  });
+
+  test("(a) SEQ_RESERVE_BLOCK is a positive integer exported from room.ts", async () => {
+    const mod = await import("./room");
+    const k = (mod as { SEQ_RESERVE_BLOCK?: number }).SEQ_RESERVE_BLOCK;
+    expect(typeof k).toBe("number");
+    expect(Number.isInteger(k)).toBe(true);
+    expect(k!).toBeGreaterThan(0);
+  });
+
+  test("(a) fromSnapshot without seqHigh starts at 1; seqHigh resumes at or above the reservation", () => {
+    const bare = new Room("bare", "LOOM-BARE", "room_bare");
+    const withHigh = bare.toSnapshot() as RoomSnapshotV1 & { seqHigh?: number };
+    withHigh.seqHigh = 40;
+    const resumed = Room.fromSnapshot(withHigh);
+    const rb = mockSocket();
+    mustAdd(resumed, { id: "p1", displayName: "alice", agentKind: "claude" }, mockSocket().socket);
+    mustAdd(resumed, { id: "p2", displayName: "bob", agentKind: "codex" }, rb.socket);
+    resumed.broadcast(resumed.chatEnvelope("p1", "after-high"), "p1");
+    const highMsg = sent(rb);
+    expect(highMsg.eventId).toMatch(/^ev_.+/);
+    expect(highMsg.seq).toBeGreaterThanOrEqual(40);
+
+    const fresh = Room.fromSnapshot(bare.toSnapshot());
+    const fb = mockSocket();
+    mustAdd(fresh, { id: "p1", displayName: "alice", agentKind: "claude" }, mockSocket().socket);
+    mustAdd(fresh, { id: "p2", displayName: "bob", agentKind: "codex" }, fb.socket);
+    fresh.broadcast(fresh.chatEnvelope("p1", "from-one"), "p1");
+    const first = sent(fb);
+    expect(first.seq).toBe(1);
+    expect(first.eventId).toMatch(/^ev_.+/);
+  });
+
+  test("(a) durable reload issues a seq greater than the last seq before reload", () => {
+    const dir = mkdtempSync(join(tmpdir(), "loom-seq-"));
+    const reg = new RoomRegistry({ stateDir: dir });
+    let reg2: RoomRegistry | null = null;
+    try {
+      const room = reg.create("seq");
+      const b = mockSocket();
+      const pa = mustAdd(
+        room,
+        { id: "p1", displayName: "alice", agentKind: "claude" },
+        mockSocket().socket,
+      );
+      const pb = mustAdd(
+        room,
+        { id: "p2", displayName: "bob", agentKind: "codex" },
+        b.socket,
+      );
+      room.broadcast(room.chatEnvelope("p1", "before"), "p1");
+      const first = sent(b);
+      expect(typeof first.seq).toBe("number");
+      expect(first.seq!).toBeGreaterThan(0);
+      const last = first.seq!;
+      const code = room.inviteCode;
+      const roomId = room.id;
+      reg.close();
+
+      reg2 = new RoomRegistry({ stateDir: dir });
+      const room2 = reg2.getByCode(code);
+      expect(room2).toBeTruthy();
+      const b2 = mockSocket();
+      mustAdd(
+        room2!,
+        { id: "p1", displayName: "alice", agentKind: "claude", secret: pa.secret },
+        mockSocket().socket,
+      );
+      mustAdd(
+        room2!,
+        { id: "p2", displayName: "bob", agentKind: "codex", secret: pb.secret },
+        b2.socket,
+      );
+      room2!.broadcast(room2!.chatEnvelope("p1", "after"), "p1");
+      const next = sent(b2);
+      expect(next.seq!).toBeGreaterThan(last);
+      const loaded = loadAllSnapshots(dir).snapshots.find((s) => s.room.id === roomId) as
+        | (RoomSnapshotV1 & { seqHigh?: number })
+        | undefined;
+      expect(typeof loaded?.seqHigh).toBe("number");
+      expect(loaded!.seqHigh!).toBeGreaterThan(last);
+      expect(next.seq!).toBeGreaterThanOrEqual(loaded!.seqHigh!);
+    } finally {
+      try {
+        reg2?.close();
+      } catch {
+        /* */
+      }
+      try {
+        if (reg2 == null) reg.close();
+      } catch {
+        /* */
+      }
+      try {
+        releaseStateDirLock(dir);
+      } catch {
+        /* */
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -138,7 +138,7 @@ describe("Phase B fixture presence", () => {
 
 describe("V1 — SSOT no-conflict", () => {
   test("PLAN version/status and fixture gate agree; no second PLAN authority", () => {
-    expect(planHead).toMatch(/\*\*Version\*\*\s*\|\s*\*\*0\.28\.1\*\*/);
+    expect(planHead).toMatch(/\*\*Version\*\*\s*\|\s*\*\*0\.29\.0\*\*/);
     expect(planHead).toMatch(/approved/i);
     const errs = validateCheckpoint(fixture, { planVersion: "0.28.0" });
     expect(errs).toEqual([]);
@@ -471,16 +471,16 @@ describe("Phase D — status fail-loud + Dashboard v1", () => {
   test("healthy live dashboard is compact and parse-clean", () => {
     const s = buildStatus();
     expect(s.startsWith("## Loom · session")).toBe(true);
-    expect(s).toMatch(/\| Product \| v0\.28\.1 · `approved` \|/i);
-    expect(s).toMatch(/\| Review \| R46 · open \*\*없음\*\* \|/);
+    expect(s).toMatch(/\| Product \| v0\.29\.0 · `approved` \|/i);
+    expect(s).toMatch(/\| Review \| R47 · open \*\*없음\*\* \|/);
     expect(s).toMatch(/\| Gate \| [^|]+ \|/);
     // injectHealth only when CLI passes it — default buildStatus has no inject: tag
     expect(s).not.toMatch(/inject:full/);
     expect(buildStatus({ injectHealth: "inject:full" })).toMatch(
       /Health \| .*inject:full/,
     );
-    expect(s).toMatch(/topology \*\*single\*\*/);
-    expect(s).toContain("current-session→objective-commands→ship");
+    expect(s).toMatch(/topology \*\*full\*\*/);
+    expect(s).toContain("delegated→independent→ship");
     expect(s).toMatch(/\| Blockers \| \(none\) \|/);
     expect(s).toMatch(/\| Health \| handoff:lint ✓ · parse ✓ \|/);
     expect(s).not.toContain(STATUS_MALFORMED);

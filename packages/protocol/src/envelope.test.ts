@@ -178,3 +178,214 @@ describe("format", () => {
     expect(formatRoomBadge({ roomName: "x", peerCount: 1 })).toContain("1 peer");
   });
 });
+
+describe("v0.29.0 PATCH 1 expected-red", () => {
+  const ts = () => nowIso();
+  const uuid = "550e8400-e29b-41d4-a716-446655440000";
+
+  function chatRaw(extra: Record<string, unknown> = {}) {
+    return {
+      v: PROTOCOL_VERSION,
+      type: "chat" as const,
+      roomId: "room_abc",
+      ts: ts(),
+      from: "p1",
+      text: "hi",
+      ...extra,
+    };
+  }
+
+  test("(a) BaseEnvelope keeps optional ev_ eventId and positive seq; old envelopes still parse", () => {
+    const plain = parseEnvelope(chatRaw());
+    expect(plain.type).toBe("chat");
+    expect((plain as { eventId?: string }).eventId).toBeUndefined();
+    expect((plain as { seq?: number }).seq).toBeUndefined();
+
+    const peer = {
+      id: "p1",
+      displayName: "alice",
+      color: "#fff",
+      agentKind: "claude" as const,
+      joinedAt: ts(),
+      online: true,
+    };
+    const handoff = {
+      id: "ho_1",
+      fromPeerId: "p1",
+      to: "*",
+      body: "body",
+      mode: "message" as const,
+      createdAt: ts(),
+    };
+    const stampedAt = ts();
+    const cases: unknown[] = [
+      chatRaw({ eventId: "ev_abc", seq: 3, ts: stampedAt }),
+      {
+        v: PROTOCOL_VERSION,
+        type: "peer.join",
+        roomId: "room_abc",
+        ts: stampedAt,
+        peer,
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "peer.leave",
+        roomId: "room_abc",
+        ts: stampedAt,
+        peerId: "p1",
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "peer.presence",
+        roomId: "room_abc",
+        ts: stampedAt,
+        peerId: "p1",
+        online: false,
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "handoff",
+        roomId: "room_abc",
+        ts: stampedAt,
+        handoff,
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "handoff.ack",
+        roomId: "room_abc",
+        ts: stampedAt,
+        handoffId: "ho_1",
+        to: "*",
+        status: "delivered",
+        notified: true,
+        recipientCount: 1,
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "room.state",
+        roomId: "room_abc",
+        ts: stampedAt,
+        peers: [],
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "inbox.state",
+        roomId: "room_abc",
+        ts: stampedAt,
+        entries: [],
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "inbox.claim_result",
+        roomId: "room_abc",
+        ts: stampedAt,
+        ok: false,
+        error: "missing",
+        eventId: "ev_abc",
+        seq: 3,
+      },
+      {
+        v: PROTOCOL_VERSION,
+        type: "error",
+        roomId: "room_abc",
+        ts: stampedAt,
+        code: "x",
+        message: "m",
+        eventId: "ev_abc",
+        seq: 3,
+      },
+    ];
+    for (const raw of cases) {
+      const env = parseEnvelope(raw) as { type: string; eventId?: string; seq?: number };
+      expect(env.eventId).toBe("ev_abc");
+      expect(env.seq).toBe(3);
+    }
+    expect(PROTOCOL_VERSION).toBe(1);
+  });
+
+  test("(a) eventId must use the ev_ prefix and seq must be a positive integer", () => {
+    const bad: unknown[] = [
+      chatRaw({ eventId: "nope", seq: 1 }),
+      chatRaw({ eventId: "ev_", seq: 1 }),
+      chatRaw({ eventId: "", seq: 1 }),
+      chatRaw({ eventId: "ev_ok", seq: 0 }),
+      chatRaw({ eventId: "ev_ok", seq: -2 }),
+      chatRaw({ eventId: "ev_ok", seq: 1.5 }),
+      chatRaw({ eventId: "ev_ok", seq: "1" }),
+    ];
+    for (const raw of bad) {
+      expect(safeParseEnvelope(raw).success).toBe(false);
+    }
+    const ok = safeParseEnvelope(chatRaw({ eventId: "ev_ok", seq: 1 }));
+    expect(ok.success).toBe(true);
+    if (ok.success) {
+      expect((ok.data as { eventId?: string }).eventId).toBe("ev_ok");
+      expect((ok.data as { seq?: number }).seq).toBe(1);
+    }
+  });
+
+  test("(c) chat and handoff requests keep a UUID clientEventId and reject non-UUID or >64 chars", () => {
+    const plain = parseClientMessage({
+      type: "chat",
+      v: PROTOCOL_VERSION,
+      text: "hi",
+    });
+    expect(plain.type).toBe("chat");
+    expect((plain as { clientEventId?: string }).clientEventId).toBeUndefined();
+
+    const chat = parseClientMessage({
+      type: "chat",
+      v: PROTOCOL_VERSION,
+      text: "hi",
+      clientEventId: uuid,
+    }) as { clientEventId?: string };
+    expect(chat.clientEventId).toBe(uuid);
+
+    const handoff = parseClientMessage({
+      type: "handoff",
+      v: PROTOCOL_VERSION,
+      handoff: { to: "@bob", body: "x" },
+      clientEventId: uuid,
+    }) as { clientEventId?: string };
+    expect(handoff.clientEventId).toBe(uuid);
+
+    const rejected = [
+      "not-a-uuid",
+      "x".repeat(65),
+      "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
+      "",
+    ];
+    for (const clientEventId of rejected) {
+      expect(
+        safeParseClientMessage({
+          type: "chat",
+          v: PROTOCOL_VERSION,
+          text: "t",
+          clientEventId,
+        }).success,
+      ).toBe(false);
+      expect(
+        safeParseClientMessage({
+          type: "handoff",
+          v: PROTOCOL_VERSION,
+          handoff: { to: "*", body: "b" },
+          clientEventId,
+        }).success,
+      ).toBe(false);
+    }
+  });
+});

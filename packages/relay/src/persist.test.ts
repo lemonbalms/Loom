@@ -324,3 +324,59 @@ describe("P2 durable relay persist (0.14.1)", () => {
     }
   });
 });
+
+describe("v0.29.0 PATCH 1 expected-red", () => {
+  test("(a) optional seqHigh round-trips; ROOM_SNAPSHOT_VERSION stays 1; a snapshot without it still loads", () => {
+    const dir = join(
+      tmpdir(),
+      `loom-seqhigh-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    mkdirSync(dir, { recursive: true });
+    try {
+      const now = new Date().toISOString();
+      const reserved = {
+        v: ROOM_SNAPSHOT_VERSION,
+        room: {
+          id: "room_seq_high",
+          name: "seq",
+          inviteCode: "LOOM-SEQ1",
+          createdAt: now,
+        },
+        members: [],
+        inboxes: {},
+        colorIndex: 0,
+        updatedAt: now,
+        seqHigh: 48,
+      } as RoomSnapshotV1;
+      const legacy: RoomSnapshotV1 = {
+        v: ROOM_SNAPSHOT_VERSION,
+        room: {
+          id: "room_seq_legacy",
+          name: "legacy",
+          inviteCode: "LOOM-LEG1",
+          createdAt: now,
+        },
+        members: [],
+        inboxes: {},
+        colorIndex: 0,
+        updatedAt: now,
+      };
+      saveRoomSnapshot(dir, reserved);
+      saveRoomSnapshot(dir, legacy);
+      const snaps = loadAllSnapshots(dir).snapshots;
+      const high = snaps.find((s) => s.room.id === "room_seq_high") as
+        | (RoomSnapshotV1 & { seqHigh?: number })
+        | undefined;
+      const old = snaps.find((s) => s.room.id === "room_seq_legacy") as
+        | (RoomSnapshotV1 & { seqHigh?: number })
+        | undefined;
+      expect(high?.seqHigh).toBe(48);
+      expect(old?.seqHigh).toBeUndefined();
+      expect(high?.v).toBe(1);
+      expect(old?.v).toBe(1);
+      expect(ROOM_SNAPSHOT_VERSION).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
