@@ -70,7 +70,7 @@ import {
   type FableSession,
 } from "./session-store";
 import { RelayClient } from "./relay-client";
-import { RoomEventStore } from "./room-event-log";
+import { RoomEventStore, bridgeEventConsumer } from "./room-event-log";
 import {
   HerdrClient,
   HerdrRpcError,
@@ -805,7 +805,10 @@ export async function startBridgeRuntime(opts?: {
       color: session.color,
       peerSecret: session.peerSecret,
     },
-    eventStore: new RoomEventStore({ dir: loomDir(), consumer: "bridge" }),
+    eventStore: new RoomEventStore({
+      dir: loomDir(),
+      consumer: bridgeEventConsumer(session.peerId),
+    }),
     onEnvelope: (env) => {
       void handleEnvelope(env);
     },

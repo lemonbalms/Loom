@@ -69,6 +69,9 @@ PLAN §0.29.0 (R47 `approved-with-fixes` → `approved`) · 커밋 `ae60cdb`(PAT
 - **스냅샷 쓰기에 fsync 없음**(기존 write+rename) — 호스트/전원 크래시는 예약을 잃을 수 있다(seq 재발급 가능). relay **프로세스** 크래시는 커버된다. (codex Med, 기존 결함)
 - **보장은 at-most-once다.** 로그 ≤1줄 · 소비자당 전달 ≤1회. 내구 B층 기록과 `onEnvelope` 사이 크래시는 그 전달을 **잃는다**. seen 창은 상한이 있어 축출된 `eventId`는 **재전달될 수 있다**.
 - **UK-4 상한값(seen 1024 / clientEventId LRU 256)은 여전히 추정값**이다 — 측정 근거 없음, 상수 한 곳 + 경계 테스트로 고정.
+- **룸 이벤트 로그 회전·보존 없음** — `events/YYYY-MM.jsonl`은 월별로 계속 쌓이고 handoff 첨부도 원문 그대로 기록된다(presence는 전이 시에만 발생하므로 양은 handoff가 좌우). 후속: 회전/보존 정책.
+- **손상된 `seen.json` → 영구 fail-open**(이벤트마다 stderr 1줄). 후속: `persist.ts`처럼 백업 후 초기화.
+- **최종 리뷰(fable-advisor) fix-first 1건 반영**: 브릿지 B층 소비자 키를 `bridge` → `bridge:<peerId>`로 — 한 PC 다중 프로필 브릿지가 같은 룸에서 서로의 전달을 억제하던 결함(PATCH 5, 교차 검증 없이 들어간 PATCH에서 발견).
 - **기존 red 테스트** `handoff-checkpoint` "live HANDOFF ... V2 information"의 Evidence 핀은 `08ae0c9` 이후 무변경(이 버전 범위 밖).
 
 ### §0.28.1 — herdr 0.7.5 / protocol-17 adapter

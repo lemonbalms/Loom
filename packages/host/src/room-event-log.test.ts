@@ -400,6 +400,33 @@ function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<void> {
   });
 }
 
+describe("v0.29.0 final review: per-peer bridge consumer", () => {
+  test("two bridges (two profiles, same loomDir) in one room each deliver once; log stays 1 line", async () => {
+    const { RoomEventStore, readRoomEventLog, bridgeEventConsumer } =
+      (await loadRoomEventLog()) as Awaited<ReturnType<typeof loadRoomEventLog>> & {
+        bridgeEventConsumer: (peerId: string) => string;
+      };
+    const dir = tempDir("two-bridges");
+    try {
+      const roomId = "room_two_profiles";
+      const ts = "2026-05-01T00:00:00.000Z";
+      const env = stamped({ roomId, eventId: "ev_fanout", seq: 7, ts });
+      expect(bridgeEventConsumer("p_alice")).not.toBe(bridgeEventConsumer("p_bob"));
+      const alice = new RoomEventStore({ dir, consumer: bridgeEventConsumer("p_alice") });
+      const bob = new RoomEventStore({ dir, consumer: bridgeEventConsumer("p_bob") });
+      const [a, b] = await Promise.all([alice.ingest(env), bob.ingest(env)]);
+      expect(a.deliver).toBe(true);
+      expect(b.deliver).toBe(true);
+      expect((await alice.ingest(env)).deliver).toBe(false);
+      expect((await bob.ingest(env)).deliver).toBe(false);
+      const read = await readRoomEventLog(dir, roomId, utcMonth(ts));
+      expect(read.records).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("v0.29.0 PATCH 4 review fixes", () => {
   test("reclaim does not delete a live replacement lock", async () => {
     const { roomKey, roomEventLogTestHooks } = await import(ROOM_EVENT_LOG_SPECIFIER);

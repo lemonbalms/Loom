@@ -113,6 +113,15 @@ function errno(e: unknown): string | undefined {
     : undefined;
 }
 
+/**
+ * Delivery-layer (B) consumer key for a bridge. Scoped by peerId because
+ * several profiles on one machine share `loomDir()` and may join the same
+ * room — a shared "bridge" key would let one peer's ingest suppress the other.
+ */
+export function bridgeEventConsumer(peerId: string): string {
+  return `bridge:${peerId}`;
+}
+
 export function roomKey(roomId: string): string {
   return createHash("sha256").update(roomId).digest("hex").slice(0, 16);
 }
