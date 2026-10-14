@@ -22,6 +22,7 @@ import {
   MAX_ATTACHMENTS_PER_HANDOFF,
   MAX_HANDOFF_BODY_CHARS,
 } from "@loom/protocol";
+import { randomUUID } from "node:crypto";
 import {
   type RoomSnapshotV1,
   acquireStateDirLock,
@@ -31,6 +32,9 @@ import {
   peerForSnapshot,
   defaultRelayStateDir,
 } from "./persist";
+
+/** v0.29.0: seq block reserved ahead of the persisted high-water. */
+export const SEQ_RESERVE_BLOCK = 1000;
 
 export type SocketLike = {
   send(data: string): void;
@@ -67,6 +71,10 @@ export class Room {
   /** peerId → handoff id → entry */
   private inboxes = new Map<string, Map<string, InboxEntry>>();
   private colorIndex = 0;
+  /** Last issued room-event seq. 0 means none yet (next stamp is 1). */
+  private seq = 0;
+  /** Persisted exclusive high-water (issued seq < seqHigh). 0 = none reserved. */
+  private seqHigh = 0;
   /** Called after durable-relevant mutations (registry sets this). */
   private persistHook: (() => void) | null = null;
 
@@ -132,6 +140,16 @@ export class Room {
         room.inboxes.set(peer.id, new Map());
       }
     }
+    if (
+      typeof snap.seqHigh === "number" &&
+      Number.isInteger(snap.seqHigh) &&
+      snap.seqHigh > 0
+    ) {
+      room.seqHigh = snap.seqHigh;
+      // `seqHigh` is an exclusive bound (issued seq < seqHigh), so the next
+      // stamp is `seqHigh` itself — strictly above anything issued before.
+      room.seq = snap.seqHigh - 1;
+    }
     for (const [peerId, entries] of Object.entries(snap.inboxes ?? {})) {
       let box = room.inboxes.get(peerId);
       if (!box) {
@@ -183,6 +201,7 @@ export class Room {
       inboxes,
       colorIndex: this.colorIndex,
       updatedAt: nowIso(),
+      ...(this.seqHigh > 0 ? { seqHigh: this.seqHigh } : {}),
     };
   }
 
@@ -355,9 +374,24 @@ export class Room {
     }
   }
 
+  /**
+   * v0.29.0: one stamp per logical room event. Overwrites client eventId/seq.
+   * Call only from `broadcast` and `routeHandoff` (once, before fan-out).
+   */
+  stampRoomEvent(envelope: Envelope): Envelope {
+    this.seq += 1;
+    if (this.seq >= this.seqHigh) {
+      this.seqHigh = this.seq + SEQ_RESERVE_BLOCK;
+      this.touchPersist();
+    }
+    envelope.eventId = `ev_${randomUUID()}`;
+    envelope.seq = this.seq;
+    return envelope;
+  }
+
   /** Broadcast only to online sockets. */
   broadcast(envelope: Envelope, exceptPeerId?: string): void {
-    const raw = JSON.stringify(envelope);
+    const raw = JSON.stringify(this.stampRoomEvent(envelope));
     for (const [id, m] of this.members) {
       if (exceptPeerId && id === exceptPeerId) continue;
       if (!m.socket) continue;
@@ -520,11 +554,11 @@ export class Room {
       };
     }
 
-    const notifyEnv: Envelope = {
+    const notifyEnv = this.stampRoomEvent({
       ...makeEnvelopeBase(this.id),
       type: "handoff",
       handoff,
-    };
+    });
 
     let anyNotified = false;
     const enqueuedTo: string[] = [];

@@ -515,8 +515,8 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
       const id = String(m.eventId);
       const prev = byId.get(id);
       if (prev) {
-        expect(prev.seq).toBe(m.seq);
-        expect(prev.type).toBe(m.type);
+        expect(prev.seq).toBe(m.seq as number);
+        expect(prev.type).toBe(String(m.type));
       } else {
         byId.set(id, { seq: m.seq as number, type: String(m.type) });
       }

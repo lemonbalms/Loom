@@ -91,11 +91,22 @@ const BaseEnvelope = z.object({
    * Client may set on request; relay echoes on the matching reply envelope.
    */
   requestId: z.string().min(1).max(80).optional(),
+  /**
+   * v0.29.0: relay-issued room-event identity. Optional so older envelopes still parse.
+   * `eventId` is `ev_` plus a non-empty suffix. `seq` is a positive integer.
+   */
+  eventId: z.string().regex(/^ev_.+/).optional(),
+  seq: z.number().int().positive().optional(),
 });
 
 /** Shared optional field on client → relay requests (L-4). */
 const ClientRequestIdFields = {
   requestId: z.string().min(1).max(80).optional(),
+};
+
+/** v0.29.0: client idempotency key on chat/handoff requests only (UUID, ≤64 chars). */
+const ClientEventIdField = {
+  clientEventId: z.string().uuid().max(64).optional(),
 };
 
 export const PeerJoinEnvelopeSchema = BaseEnvelope.extend({
@@ -216,6 +227,7 @@ export const ClientHandoffRequestSchema = z.object({
     createdAt: z.string().optional(),
   }),
   ...ClientRequestIdFields,
+  ...ClientEventIdField,
 });
 
 export const ClientChatRequestSchema = z.object({
@@ -223,6 +235,7 @@ export const ClientChatRequestSchema = z.object({
   v: z.literal(PROTOCOL_VERSION),
   text: z.string(),
   ...ClientRequestIdFields,
+  ...ClientEventIdField,
 });
 
 export const ClientListPeersRequestSchema = z.object({

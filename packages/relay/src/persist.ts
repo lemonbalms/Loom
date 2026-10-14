@@ -55,6 +55,11 @@ export type RoomSnapshotV1 = {
   >;
   colorIndex: number;
   updatedAt: string;
+  /**
+   * v0.29.0: reserved per-room seq high-water. Absent on older snapshots
+   * (next seq starts at 1). `ROOM_SNAPSHOT_VERSION` stays 1.
+   */
+  seqHigh?: number;
 };
 
 const LOCK_STALE_MS = 5000;
@@ -313,6 +318,12 @@ function parseRoomSnapshot(raw: unknown): RoomSnapshotV1 | null {
       inboxes[peerId] = list;
     }
   }
+  const seqHigh =
+    typeof o.seqHigh === "number" &&
+    Number.isInteger(o.seqHigh) &&
+    o.seqHigh > 0
+      ? o.seqHigh
+      : undefined;
   return {
     v: 1,
     room: {
@@ -326,6 +337,7 @@ function parseRoomSnapshot(raw: unknown): RoomSnapshotV1 | null {
     colorIndex: typeof o.colorIndex === "number" ? o.colorIndex : 0,
     updatedAt:
       typeof o.updatedAt === "string" ? o.updatedAt : new Date().toISOString(),
+    ...(seqHigh !== undefined ? { seqHigh } : {}),
   };
 }
 

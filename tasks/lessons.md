@@ -370,3 +370,5 @@
 - [workers] 2026-07-21 (35) idle 통지 ≠ 실패 — nudge 1회 표준, 회신 전 워킹트리·`git diff --stat`으로 산출물 먼저 확인.
 
 - [workers] 2026-07-21 (48) **grok 헤드리스 read-only = 샌드박스** — `--permission-mode dontAsk --sandbox read-only`. allowlist는 분류기 레이어를 못 넘는다. 원장의 재현 절차도 검증 대상.
+
+- [gate] 2026-10-15 (58) **PLAN 버전·리뷰 번호·토폴로지를 올리는 게이트 커밋은 라이브 핀 테스트도 같이 올린다** — `scripts/handoff-checkpoint.test.ts`(:141 Version · :474-483 Dashboard Product/Review/topology) · `scripts/session-routing.test.ts` V9가 현재 HANDOFF/PLAN 값을 축자 고정한다. 안 올리면 다음 PATCH의 red/green 판독에 무관한 실패 3~4건이 섞인다(0.29.0 `30be330`에서 발생, `ae60cdb`에서 정렬).

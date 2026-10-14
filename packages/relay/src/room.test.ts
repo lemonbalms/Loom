@@ -7,7 +7,6 @@ import { Room, RoomRegistry, type SocketLike } from "./room";
 import {
   loadAllSnapshots,
   releaseStateDirLock,
-  saveRoomSnapshot,
   type RoomSnapshotV1,
 } from "./persist";
 
@@ -419,6 +418,11 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
       const code = room.inviteCode;
       const roomId = room.id;
       reg.close();
+      // Read the reservation persisted before reload (the first post-reload
+      // stamp may reserve a fresh block and overwrite it).
+      const loaded = loadAllSnapshots(dir).snapshots.find((s) => s.room.id === roomId) as
+        | (RoomSnapshotV1 & { seqHigh?: number })
+        | undefined;
 
       reg2 = new RoomRegistry({ stateDir: dir });
       const room2 = reg2.getByCode(code);
@@ -437,9 +441,6 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
       room2!.broadcast(room2!.chatEnvelope("p1", "after"), "p1");
       const next = sent(b2);
       expect(next.seq!).toBeGreaterThan(last);
-      const loaded = loadAllSnapshots(dir).snapshots.find((s) => s.room.id === roomId) as
-        | (RoomSnapshotV1 & { seqHigh?: number })
-        | undefined;
       expect(typeof loaded?.seqHigh).toBe("number");
       expect(loaded!.seqHigh!).toBeGreaterThan(last);
       expect(next.seq!).toBeGreaterThanOrEqual(loaded!.seqHigh!);

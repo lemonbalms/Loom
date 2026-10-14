@@ -3,6 +3,7 @@ import {
   PROTOCOL_VERSION,
   parseEnvelope,
   parseClientMessage,
+  safeParseClientMessage,
   safeParseEnvelope,
   HandoffPayloadSchema,
   HandoffAttachmentSchema,
