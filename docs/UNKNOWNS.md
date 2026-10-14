@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-07-22 |
+| **Last updated** | 2026-10-15 |
 
 ---
 
@@ -41,6 +41,34 @@
 ---
 
 ## Gate log
+
+### 0.29.0 — 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신 (`approved` — R47 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.29.0 (`approved` — R47 approved-with-fixes, 반영 완료 · no R47b) |
+| **Date** | 2026-10-15 |
+| **Review** | R47 **done 2026-10-15** (새 MINOR + 와이어 의미 확장(optional additive) + 신뢰 경계 인접 — `clientEventId` 억제 범위 · 원문 로그) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 코드 대조 실측(2026-10-15): (1) 봉투에 id/seq 없음 — BaseEnvelope `v`·`roomId`·`ts`·`requestId?`(`envelope.ts:85-94`). (2) relay 발급 안정 id는 `handoff.id`뿐(`room.ts:441-442`, M-9). (3) relay per-room seq·이력 없음, `broadcast`/`sendTo` fire-and-forget(`room.ts:347-370`). (4) 수신 단일 관문 `relay-client.ts:167-181` · 합성 reconnect chat `:225-232`. (5) 브릿지 dedupe = 인메모리 `processedHandoffs`(`bridge-runtime.ts:705`) — 재시작 소실. (6) sticky 8s 타임아웃 → one-shot 재송신 → 새 handoff id → 이중 디스패치(`sticky-client.ts:79-121` · `room-ops.ts:100`). (7) 중복 `conv.accept` 재적용(`conv-ops.ts:411-421`). (8) 재사용 기반: JSONL append·torn 말행 replay(`result-quarantine.ts:115-225`) · `loomDir()`(`session-store.ts:230`) · `withFileLock`(`atomic-json.ts:179`, 동기). (9) `roomId` 제약 `min(1)`뿐(`envelope.ts:87`) → 경로 세그먼트 사용 불가(PLAN R1). |
+| Known unknowns | **UK-1~UK-6**(아래 표, 정본 = PLAN §0.29.0). 요지: 스냅샷 스키마 하위호환·seq 영속 시점 · 다중 relay `roomId` 유일성 · sticky host 로그 담당 여부 · 상한 크기 · 로그 실패 시 전달 정책 · 같은 `clientEventId`·다른 본문. |
+| Unknown knowns | "중복 drop"과 "로그 1줄"은 **다른 집합**이다 — 같은 룸에 로컬 프로세스가 둘(브릿지 + `loom listen`)이면 공유 seen 하나로는 두 번째가 이벤트를 못 받는다 → 로그 층(룸 공유) / 전달 층(소비자별) 2층 dedupe(PLAN R2). `seq`는 역행할 수 있으므로(ephemeral relay · 다중 relay) **drop 키가 아니다**(R3). torn 잔편 뒤 무보정 append는 새 레코드까지 삼킨다(R4). |
+| Unknown unknowns | 이벤트당 동기 룸 락 + fsync가 chat 체감 지연·브릿지 이벤트 루프에 주는 영향(미측정); 원문 로그 누적 크기와 회전 부재의 장기 영향; 업그레이드 계획 후속 단계(검색·인덱스)가 이 로그 줄 형상에 요구할 필드(지금 `{v:1,…}` 버전 필드로만 대비). |
+
+**Unknowns 요약 (정본 = PLAN §0.29.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R47 판정 |
+|---|------|-------------|----------|
+| UK-1 | relay 스냅샷 스키마 변경 하위호환(`ROOM_SNAPSHOT_VERSION` 유지 + optional 필드?) · seq 영속 시점(송신 전 매회 vs 블록 예약) | 구 스냅샷 = seq 1부터 · **재시작 후 seq 비감소** 고정 · 방식은 PATCH 2 택일 — 착수 비차단 | **resolved** — `ROOM_SNAPSHOT_VERSION` 1 + optional 필드(로더 `persist.ts:275-289` 미지 필드 무시) · seq 영속 = 블록 예약(`seqHigh = seq+K`, 재로드는 `seqHigh`부터 · R47-M3) |
+| UK-2 | profile당 다중 relay(`local`/`win`) — seq는 relay별·룸별, 로그는 `roomId` 키 → relay 간 `roomId` 유일성 미확인 | 유일하지 않으면 `roomKey`에 relay 식별자 포함 — **R47 전 확인 권장** | **resolved** — `roomId` = 64 random bits(`codes.ts:13-21`) → relay 간 유일 · `roomKey`에 relay 식별자 불포함 |
+| UK-3 | sticky host에 `onEnvelope` 없음 → 실제 접속 프로세스만 로그 | 공백 수용 vs sticky 상시 구독(책임 증가) — R47 판정 | **resolved** — 저장소는 `RelayClient` 옵션 opt-in · sticky host는 이 버전 opt-in 안 함 |
+| UK-4 | seen 집합 N · clientEventId LRU N | **1024 / 256 (추정)** — 상수 한 곳 · 경계 테스트 고정 | **open, 비차단** — 출발값 유지 · 구현 중 조정 |
+| UK-5 | 로그 append/fsync 실패·락 타임아웃 시 전달 정책 | fail-open + fail-visible(로그가 아직 판정 입력 아님) — R47 판정 | **resolved** — fail-open + fail-visible(카운터 + stderr) + 인메모리 B층 섀도 집합(R47-L2) · 프로세스 간 락 ≤250ms(R47-H1) |
+| UK-6 | 같은 `clientEventId`·다른 본문 | 원래 결과 반환(본문 무시) vs 해시 불일치 `error`(신규 와이어 코드) — R47 판정 | **resolved** — 원래 결과 반환 · 신규 와이어 코드 없음 · relay가 본문 해시 불일치 카운터를 stderr에 기록 |
+
+**Current decision:** D1~D5 아키텍트 락 · **R47 `approved-with-fixes` → H1·M1·M2·M3·L1·L2 PLAN 반영 → PLAN `approved`(2026-10-15, no R47b)** · R1~R4 수용 · UK-1·UK-2·UK-3·UK-5·UK-6 resolved · **UK-4 open(비차단)**. 구현 착수 = PATCH 1(tests-first red).
 
 ### herdr 0.7.5 / protocol 17 compatibility (**gate closed** · shipped through `6e2df8a` · Loom 0.28.1 release close)
 
@@ -295,3 +323,5 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-18 | 0.23.0 conv 멀티턴 수직 슬라이스 unknowns (CONV_SPEC R24 approved 반영) |
 | 2026-07-19 | 0.24.1 relay 룸 영속화 배선 갭 unknowns (`loom relay` 포그라운드 durable) |
 | 2026-07-20 | 0.26.0 hooks 보조 센서 unknowns (U1~U6 요약 + 스파이크 실측 Known knowns · `pending-review` R41) |
+| 2026-10-15 | 0.29.0 룸 이벤트 seq + 안정 id unknowns (UK-1~UK-6 요약 + 코드 실측 Known knowns · `pending-review` R47) |
+| 2026-10-15 | 0.29.0 R47 판정 반영 (UK-1/2/3/5/6 resolved · UK-4 open 비차단 · PLAN `approved`) |
