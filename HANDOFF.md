@@ -5,33 +5,33 @@
 
 ## One-line resume
 
-> v0.29.0 **shipped** · event seq + stable id (step 1) · **next = owner pick step 2** · topology full
+> v0.30.0 **approved** (R48 w/ fixes) · P1 next (result-core refactor) · headless workers · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.29.0 `approved`** · shipped through PATCH 6 | `docs/PLAN.md` |
+| Product | **v0.30.0 `approved`** (R48 w/ fixes) · P1 next · headless workers | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.29.0 shipped · next = upgrade step 2 (owner pick)
+### v0.30.0 approved (R48 w/ fixes) · P1 next (result-core refactor) · headless workers
 
-**Goal:** step 1 done — relay `eventId`/`seq` (D1) · durable 2-layer ingest dedupe (D2) · per-room JSONL log (D3) · `clientEventId` idempotent send (D4). Each of PATCH 2–4 passed codex `fix-first` → fixed. Authority `docs/PLAN.md` §0.29.0 · `implementation-notes.md` §0.29.0 (deviations · known limits).
+**Goal:** step 2 part 1 — headless card workers (D1–D15). R48 approved-with-fixes: H1 env scrub (`LOOM_*`/`FABLE_*` out, `LOOM_CARD` only) · M1 `composeAndSend` core · M2 serialize-budget tail cut · M3 `card_already_running`; UK-5 measured → D10 deny list. Authority `docs/PLAN.md` §0.30.0 · `HEADLESS-WORKER-PROBE.md` §7.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check`
-2. Owner picks step 2 (headless worker · session per card · prompt injection · policy · skill materialize) → new PLAN MINOR + review before code
-3. Known limits to carry: no fsync on relay snapshot · at-most-once semantics · UK-4 caps estimate
+2. P1 result-core refactor (no behavior change, existing tests unmodified green) → P2 tests-first red (incl. R48 M2/M3/H1/L1)
+3. Known limits to carry: deny-prefix bypass (`/bin/rm`, `find -delete`) · UK-2 60k stdin unmeasured · 0.29.0 UK-4 caps estimate
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `packages/*` product meaning, `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** step-2 PLAN drafted and reviewed (no code before approval).
+**Done when (this handoff):** P1 landed with independent verify; P2 red committed (red/green labelled).
 
-**Must not:** start step 2 code without owner pick + PLAN review · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** touch pane path in P1 · inherit bridge env into headless workers (R48-H1) · inject `loomSystemHint` (R48 R3) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 

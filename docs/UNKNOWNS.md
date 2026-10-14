@@ -42,6 +42,38 @@
 
 ## Gate log
 
+### 0.30.0 — 헤드리스 카드 워커 · 카드별 세션 키 · 재개/입양 · 에이전트별 동시성 · 정적 권한 프로필 (`approved` — R48 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.30.0 (`approved` — R48 approved-with-fixes, 반영 완료 · UK-5 실측 기재 · no R48b) · 업그레이드 2단계 1부 |
+| **Date** | 2026-10-15 |
+| **Review** | R48 **done 2026-10-15** (새 MINOR + 보안·신뢰 경계 변경 — 원격 프롬프트로 로컬 CLI를 권한 프로필과 함께 무인 실행 · cwd 경계 · 프로세스 그룹 kill · 평문 transcript) |
+| **Evidence** | [`docs/spikes/HEADLESS-WORKER-PROBE.md`](spikes/HEADLESS-WORKER-PROBE.md) (2026-10-15 실측 · claude 2.1.300 · codex-cli 0.162.1 · grok 1.0.54 alpha · Bun 1.3.11 · §7 = R48 후속 실측 UK-5·UK-9·stdin) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 프로브 실측: (1) 세 CLI 비대화형 구조화 출력 — claude `.session_id`/`.result`/`.is_error`/`.permission_denials[]` · codex `thread.started.thread_id`/`item.completed`/`turn.completed` · grok `end`에만 `sessionId`. (2) 세 CLI 재개 성립(codeword 회상) · 재개 조회 cwd 귀속 · codex id 캡처 필요. (3) 거부 도구 **no-hang** · exit 0 · claude만 구조화 거부 · claude `acceptEdits`는 `ls`·`touch`를 `allowedTools` 밖에서 자동 허용. (4) Bun 1.3.11: detached 자식은 부모 pid/그룹 SIGTERM에서 생존 · SIGTERM 미전달. (5) codex `exec resume`에 `-C`·`-s` 없음 · grok `--session-id`는 새 대화 전용. 코드 실측(`ac08670`): 워커 로직 `bridge-runtime.ts:662-3154` 클로저 · herdr 호출 48곳 · Flight paneId 키 · 카드 타임아웃 없음 · flight 무제한 · 카드 cwd 미충전·무검증(`:1501`) · `loomSystemHint` 미전달 · `cardSeq`/issuer 인메모리 · 결과 `output` ≤200,000 · 첨부 ≤256,000 · 프롬프트 ≤60,000 · 타워 seq 멱등(`card-ops.ts:313-318`) · 원격 결과 `blocked` 착지. |
+| Known unknowns | **UK-1~UK-9**(아래 표, 정본 = PLAN §0.30.0). 요지: 200k 출력의 JSON 이스케이프 후 첨부 상한 여유 · claude stdin 장문 프롬프트 · 전역 훅 상속/격리 · 입양 pid 재사용 · claude `acceptEdits` 자동 허용 집합(차단 → R48 후 실측 resolved) · grok alpha 드리프트 · herdr 기동 의존 · 힌트의 헤드리스 적합성 · codex `developer_instructions` 반영. |
+| Unknown knowns | "재개 가능"과 "재개 안전"은 다르다 — 같은 세션 id라도 **cwd·fingerprint가 바뀌었으면** 이어붙이면 안 된다(D6). cwd를 키 해시에 넣으면 "cwd 불일치"는 **조회 불가 = 새 세션**으로 바뀐다(PLAN R2). "브릿지가 죽으면 워커도 죽는다"는 직관과 달리 detached 워커는 **남는다** → 입양이 필수이고, 입양은 pid 재사용 위험을 낳는다(UK-4). pane 워커는 오늘 힌트를 받지 않으므로 힌트 주입은 **신규 동작**이다(PLAN R3). |
+| Unknown unknowns | 수 시간짜리 실카드에서의 transcript 크기·디스크 누적(회전 없음); 오너 전역 훅이 무인 워커에서 대화형 전제로 오동작할 가능성; CLI 업데이트(특히 grok alpha · claude 권한 의미)가 정적 프로필 의미를 조용히 바꿀 가능성; 동시성 1에서 큐 적체가 디스패처 체감(원격 tower의 대기)에 주는 영향. |
+
+**Unknowns 요약 (정본 = PLAN §0.30.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R48 판정 |
+|---|------|-------------|----------|
+| UK-1 | `CardResultPayload` 와이어 상한 — 실측 `output` ≤200,000 · 첨부 ≤256,000. 남은 미지 = 200k 출력의 JSON 이스케이프 후 256k 첨부 상한 여유 | 꼬리 보존 절단 + `truncated` + `note`에 transcript 경로·바이트 수(PLAN R5) · P2 최악 문자 경계 테스트 | **resolved(설계)** — 코어가 직렬화 예산 기준 꼬리 보존 절단 루프(R48-M2) · P2 red = 전부 `\r\n`/`"`인 200k 출력 |
+| UK-2 | claude `-p` + stdin으로 60,000자급 프롬프트 전달 | P3 라이브 프로브 · 실패 시 `--input-format stream-json`/파일 경로 Deviation | **open, 비차단** — 짧은 프롬프트 stdin 경로는 실측 성립(`PROBE` §7.3), 60k 장문은 P3 |
+| UK-3 | 오너 전역 훅이 헤드리스 claude 워커 안에서 실행(실측 5건) — 상속 vs 격리 | 기본 **상속**. `--setting-sources` 2.1.300 `--help`에 없음 · `--bare`는 OAuth 미사용 · `--restricted`는 Bash 제거 | **resolved** — 기본 사용자 훅 상속 · 0.30.0 격리 옵션 없음 · `USER_GUIDE.md` 명기 · P3 숨김 `--setting-sources` 1회 프로브(비차단) |
+| UK-4 | 입양 시 비자식 pid 재사용 | 시작 시각 기록(PLAN R1) + `ps -o lstart` 대조, 불일치 = 죽음(kill 금지) — P5 고정 | **open, 비차단** |
+| UK-5 | claude `acceptEdits` 자동 허용 명령의 정확한 집합(`rm`?) | D10 deny 목록 적정성의 전제 — **P3 전 실측**, 결과로 deny 목록 확정 | **resolved(실측 `PROBE` §7.1)** — cwd 안 `mkdir`·`cp`·`mv`·`rm`·`rm -rf <하위>`·리다이렉트·`git status` 자동 허용 · `chmod`·`sed -i`·`curl`·cwd 밖 `rm -rf` 거부 → deny `Bash(rm *)`·`Bash(rmdir *)`·`Bash(git push*)`·`Bash(git reset --hard*)`·`Bash(git clean*)`·`Bash(sudo *)`·`Bash(curl *)`·`Bash(wget *)` 확정 · 우회(`/bin/rm`·`find -delete`·인터프리터) 잔여 위험 문서화 |
+| UK-6 | grok alpha 플래그 드리프트 | 1.0.54 기준 argv 테스트 + 버전 기록(D14) | **open, 비차단** |
+| UK-7 | 헤드리스에도 herdr 기동 필수 | 수용(D2) · 후속 정리 | **open, 비차단** |
+| UK-8 *(작성자)* | `loomSystemHint`가 MCP 없는 헤드리스 워커에 MCP 도구·세션 시작 의식을 지시 | 문면대로 주입(D12) · (h) 스모크에서 낭비 턴 관측 | **resolved** — `loomSystemHint` 미주입(범위 확장 벡터) · 단일 상수 `HEADLESS_WORKER_HINT`(D12 수정 · fingerprint 입력) |
+| UK-9 *(작성자)* | codex `-c developer_instructions=…` 반영 여부 | P3 라이브 프로브(codeword) · 미반영이면 Deviation | **resolved(실측 `PROBE` §7.2)** — 반영됨("ZEBRA42") · `exec resume`에서 재전달 없이 유지 · 재전달 무해 |
+
+**Current decision:** D1~D15 아키텍트 락(fable-advisor 자문 2026-10-15) · **R48 `approved-with-fixes` → H1·M1·M2·M3·L1·L2 PLAN 반영 + UK-5 실측 기재 → PLAN `approved`(2026-10-15, no R48b)** · R1·R4·R5·R6 수용 · R2·R3 수정 수용 · UK-1·UK-3·UK-5·UK-8·UK-9 resolved · **UK-2·UK-4·UK-6·UK-7 open(비차단)**. 2단계 분할: 0.30.0 = 완료 기준 충족 · 0.31.0 = 스킬 materialize + `policy.json` 번역 + MCP 사전 점검 · 계층형 프롬프트 조립 = 5단계. 구현 착수 = **P1**(결과 코어 리팩터).
+
 ### 0.29.0 — 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신 (`approved` — R47 approved-with-fixes)
 
 | Field | Value |
@@ -325,3 +357,5 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-07-20 | 0.26.0 hooks 보조 센서 unknowns (U1~U6 요약 + 스파이크 실측 Known knowns · `pending-review` R41) |
 | 2026-10-15 | 0.29.0 룸 이벤트 seq + 안정 id unknowns (UK-1~UK-6 요약 + 코드 실측 Known knowns · `pending-review` R47) |
 | 2026-10-15 | 0.29.0 R47 판정 반영 (UK-1/2/3/5/6 resolved · UK-4 open 비차단 · PLAN `approved`) |
+| 2026-10-15 | 0.30.0 헤드리스 카드 워커 unknowns (UK-1~UK-9 요약 · UK-5 차단 · 프로브 실측 Known knowns · `pending-review` R48) |
+| 2026-10-15 | 0.30.0 R48 판정 + 후속 실측 반영 (UK-1/3/5/8/9 resolved · UK-2/4/6/7 open 비차단 · PLAN `approved`) |
