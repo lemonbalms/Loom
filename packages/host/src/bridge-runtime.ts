@@ -5,15 +5,10 @@
 import type { Envelope, HandoffPayload, InboxEntry } from "@loom/protocol";
 import {
   CARD_DISPATCH_LABEL,
-  CARD_RESULT_LABEL,
-  CARD_CONTRACT_VERSION,
   CardDispatchPayloadSchema,
-  buildResultBody,
-  serializeCardAttachment,
   wrapDispatchedPrompt,
   truncateTail,
   type CardDispatchPayload,
-  type CardResultPayload,
 } from "@loom/protocol";
 import {
   CONV_CONTRACT_VERSION,
@@ -84,6 +79,12 @@ import {
   type QuarantineKey,
 } from "./result-quarantine";
 import {
+  createCardResultCore,
+  type CardResultContent,
+  type ResultTarget,
+  type SendResultOutcome,
+} from "./card-result-core";
+import {
   loadBridgeConfig,
   isAuthorizedDispatcher,
   resolveAgentArgv,
@@ -109,6 +110,7 @@ import {
   type HookHint,
   type HookListener,
 } from "./hook-sensor";
+export { classifyAck } from "./card-result-core";
 
 export type BridgeRuntime = {
   meta: BridgeMeta;
@@ -435,7 +437,7 @@ type Flight = {
   hookFallbackRecorded?: boolean;
   /**
    * PLAN 0.27.0 lock 5: lifecycle CAS for Flight-backed completion side-effects.
-   * Winner alone may call sendResult (together with issuer.acquire).
+   * Winner alone may call sendResultForFlight (together with issuer.acquire).
    * Not a phase — boolean ownership, same shape as stillRunningDeferral.
    */
   flightSideEffectOwner?: boolean;
@@ -625,24 +627,6 @@ function recordFlightMapMiss(d: {
   );
 }
 
-/**
- * PLAN 0.27.0 / 0.28.0 strict ACK classifier (pure, module-scope for G-11).
- * status ∈ {queued, delivered} ∧ recipientCount === 1 → accepted;
- * every other shape → send_unknown. No message-regex behavioral split.
- */
-export function classifyAck(ack: {
-  status: string;
-  recipientCount: number;
-}): "accepted" | "send_unknown" {
-  if (
-    (ack.status === "queued" || ack.status === "delivered") &&
-    ack.recipientCount === 1
-  ) {
-    return "accepted";
-  }
-  return "send_unknown";
-}
-
 export function buildCardAgentTarget(cardId: string, seq: number): string | null {
   if (!/^task_[a-f0-9]+$/.test(cardId)) return null;
   if (!Number.isSafeInteger(seq) || seq < 0) return null;
@@ -815,6 +799,14 @@ export async function startBridgeRuntime(opts?: {
     onError(err) {
       log(`relay: ${err.message}`);
     },
+  });
+
+  const composeAndSend = createCardResultCore({
+    handoff: (partial) => client.handoff(partial),
+    issuers,
+    quarantine,
+    log,
+    now: () => new Date().toISOString(),
   });
 
   const joinEnv = await client.joinRoom({
@@ -2389,29 +2381,6 @@ export async function startBridgeRuntime(opts?: {
     return true;
   }
 
-  function enterSendUnknown(args: {
-    cardId: string;
-    dispatchHandoffId: string;
-    seq: number;
-    reason: string;
-    flight?: Flight;
-  }): void {
-    if (args.flight) {
-      args.flight.resultPhase = "send_unknown";
-    }
-    const key: QuarantineKey = { tag: "seq", seq: args.seq };
-    quarantine.enter({
-      cardId: args.cardId,
-      dispatchHandoffId: args.dispatchHandoffId,
-      state: "send_unknown",
-      key,
-      reason: args.reason,
-    });
-    log(
-      `card ${args.cardId}: send_unknown seq=${args.seq} reason=${args.reason}`,
-    );
-  }
-
   function enterPresenceUnknown(args: {
     cardId: string;
     dispatchHandoffId: string;
@@ -2816,27 +2785,52 @@ export async function startBridgeRuntime(opts?: {
   }
 
   /**
+   * PLAN 0.30.0 D1 / R48-M1: pane wrapper. ResultTarget from the flight (or
+   * `routed`), then composeAndSend, then flight.resultPhase / relayAcceptedAt
+   * and notePreservedCardPane in that existing order. acquire_denied writes
+   * neither — the caller still owns the denied log line.
+   */
+  function applyCardResultOutcome(
+    flight: Flight | undefined,
+    outcome: SendResultOutcome,
+  ): SendResultOutcome {
+    if (!flight || outcome.branch === "acquire_denied") return outcome;
+    flight.resultPhase = outcome.resultPhase;
+    if (outcome.branch === "accepted") {
+      flight.relayAcceptedAt = outcome.relayAcceptedAt;
+    }
+    notePreservedCardPane(flight.paneId);
+    return outcome;
+  }
+
+  async function sendResultForFlight(
+    flight: Flight | undefined,
+    content: CardResultContent,
+    routed?: ResultTarget,
+  ): Promise<SendResultOutcome> {
+    const target: ResultTarget = routed ?? {
+      cardId: flight!.cardId,
+      fromPeerId: flight!.fromPeerId,
+      dispatchHandoffId: flight!.dispatchHandoffId,
+      startedAt: flight!.startedAt,
+      paneId: flight!.paneId,
+    };
+    const outcome = await composeAndSend(target, content, {
+      node: session!.displayName,
+    });
+    return applyCardResultOutcome(flight, outcome);
+  }
+
+  /**
    * PLAN 0.28.0 A1: success-candidate proposal (U1).
    * Emits status:"failed" + reason:"needs_verification" while preserving the
-   * real output summary. Issuer acquire → seq → supersede → payload stamp →
-   * strict ACK. Never constructs status:"done". Never pane.close (U3).
+   * real output summary. Scrape stays here; issuer/payload/ACK is the core.
+   * Never constructs status:"done". Never pane.close (U3).
    */
   async function proposeCardVerification(
     flight: Flight,
     opts?: { scrape?: string; note?: string },
   ): Promise<void> {
-    const issuer = issuers.getOrCreate(
-      flight.cardId,
-      flight.dispatchHandoffId,
-    );
-    // Flight-backed: lifecycle CAS already held by caller; issuer acquire too.
-    if (!issuer.acquire("initial")) {
-      log(
-        `card ${flight.cardId}: proposeCardVerification issuer.acquire(initial) denied`,
-      );
-      return;
-    }
-
     let output = "";
     let truncated = false;
     try {
@@ -2860,31 +2854,19 @@ export async function startBridgeRuntime(opts?: {
     // Preserve real output summary even though status is failed (U1/A1).
     const summary = selectCardSummaryLine(stripTuiChrome(output));
 
-    const seq = issuer.nextSeq();
-    quarantine.supersedePresence({
-      cardId: flight.cardId,
-      dispatchHandoffId: flight.dispatchHandoffId,
-    });
-
-    const payload: CardResultPayload = {
-      v: CARD_CONTRACT_VERSION,
-      cardId: flight.cardId,
+    const outcome = await sendResultForFlight(flight, {
       status: "failed",
-      node: session!.displayName,
-      seq,
-      paneId: flight.paneId,
-      dispatchHandoffId: flight.dispatchHandoffId,
+      reason: "needs_verification",
       output,
       truncated,
       summary,
-      startedAt: flight.startedAt,
-      finishedAt: new Date().toISOString(),
-      reason: "needs_verification",
-      ...(opts?.note ? { note: opts.note.slice(0, 500) } : {}),
-    };
-
-    // U3: no card auto pane.close after accepted ACK.
-    await sendResult(flight.fromPeerId, payload, flight);
+      ...(opts?.note ? { note: opts.note } : {}),
+    });
+    if (outcome.branch === "acquire_denied") {
+      log(
+        `card ${flight.cardId}: proposeCardVerification issuer.acquire(initial) denied`,
+      );
+    }
   }
 
   /**
@@ -2897,17 +2879,6 @@ export async function startBridgeRuntime(opts?: {
     reason: string,
     opts?: { scrape?: string; note?: string },
   ): Promise<void> {
-    const issuer = issuers.getOrCreate(
-      flight.cardId,
-      flight.dispatchHandoffId,
-    );
-    if (!issuer.acquire("initial")) {
-      log(
-        `card ${flight.cardId}: finishCardFailure issuer.acquire(initial) denied reason=${reason}`,
-      );
-      return;
-    }
-
     let output = "";
     let truncated = false;
     try {
@@ -2924,30 +2895,19 @@ export async function startBridgeRuntime(opts?: {
     }
 
     const summary = `failed reason=${reason}`.slice(0, 900);
-    const seq = issuer.nextSeq();
-    quarantine.supersedePresence({
-      cardId: flight.cardId,
-      dispatchHandoffId: flight.dispatchHandoffId,
-    });
-
-    const payload: CardResultPayload = {
-      v: CARD_CONTRACT_VERSION,
-      cardId: flight.cardId,
+    const outcome = await sendResultForFlight(flight, {
       status: "failed",
-      node: session!.displayName,
-      seq,
-      paneId: flight.paneId,
-      dispatchHandoffId: flight.dispatchHandoffId,
+      reason,
       output,
       truncated,
       summary,
-      startedAt: flight.startedAt,
-      finishedAt: new Date().toISOString(),
-      reason,
-      ...(opts?.note ? { note: opts.note.slice(0, 500) } : {}),
-    };
-
-    await sendResult(flight.fromPeerId, payload, flight);
+      ...(opts?.note ? { note: opts.note } : {}),
+    });
+    if (outcome.branch === "acquire_denied") {
+      log(
+        `card ${flight.cardId}: finishCardFailure issuer.acquire(initial) denied reason=${reason}`,
+      );
+    }
   }
 
   async function sendFailedResult(opts: {
@@ -2960,155 +2920,45 @@ export async function startBridgeRuntime(opts?: {
     /** When set, Flight-backed path — CAS must already be held. */
     flight?: Flight;
   }): Promise<void> {
-    const issuer = issuers.getOrCreate(opts.cardId, opts.dispatchHandoffId);
-    // Flight-less 3 paths: issuer.acquire alone. Flight-backed: CAS + acquire.
-    if (!issuer.acquire("initial")) {
-      log(
-        `card ${opts.cardId}: sendFailedResult issuer.acquire(initial) denied reason=${opts.reason}`,
-      );
-      return;
-    }
-    const seq = issuer.nextSeq();
-    quarantine.supersedePresence({
-      cardId: opts.cardId,
-      dispatchHandoffId: opts.dispatchHandoffId,
-    });
     const summary = `failed reason=${opts.reason}${
       opts.detail ? ` ${opts.detail}` : ""
     }`.slice(0, 900);
-    const payload: CardResultPayload = {
-      v: CARD_CONTRACT_VERSION,
-      cardId: opts.cardId,
+    const content: CardResultContent = {
       status: "failed",
-      node: session!.displayName,
-      seq,
-      paneId: opts.paneId,
-      dispatchHandoffId: opts.dispatchHandoffId,
+      reason: opts.reason,
       output: summary,
       truncated: false,
       summary,
-      finishedAt: new Date().toISOString(),
-      reason: opts.reason,
     };
-    if (opts.fromPeerId) {
-      await sendResult(opts.fromPeerId, payload, opts.flight);
-    }
-  }
-
-  /**
-   * PLAN 0.28.0 strict ACK 2-branch outcome (U5).
-   * accepted | send_unknown only — rejected variant removed; non-accepted
-   * always absorbs via enterSendUnknown (reason prefixes only).
-   */
-  type SendResultOutcome =
-    | {
-        branch: "accepted";
-        relayAcceptedAt: string;
-        status: string;
-        recipientCount: number;
+    // Empty toPeerId never reached sendResult: acquire + seq + supersede only.
+    if (!opts.fromPeerId) {
+      const issuer = issuers.getOrCreate(opts.cardId, opts.dispatchHandoffId);
+      // Flight-less 3 paths: issuer.acquire alone. Flight-backed: CAS + acquire.
+      if (!issuer.acquire("initial")) {
+        log(
+          `card ${opts.cardId}: sendFailedResult issuer.acquire(initial) denied reason=${opts.reason}`,
+        );
+        return;
       }
-    | { branch: "send_unknown"; reason: string };
-
-  /**
-   * Returns strict-ACK 2-branch outcome. Consumes full ACK envelope (no boolean squash).
-   * Non-accepted → single send_unknown + one durable quarantine enter (U5/U6).
-   */
-  async function sendResult(
-    toPeerId: string,
-    payload: CardResultPayload,
-    flight?: Flight,
-  ): Promise<SendResultOutcome> {
-    // M5: after any Flight-backed result path the card pane is preserved (U3).
-    // Observation only — no close, no authority change. Skip if already terminal.
-    const notePreservedIfFlight = (): void => {
-      if (flight) notePreservedCardPane(flight.paneId);
-    };
-    if (!toPeerId) {
-      log("sendResult: missing toPeerId");
-      enterSendUnknown({
-        cardId: payload.cardId,
-        dispatchHandoffId: payload.dispatchHandoffId ?? "",
-        seq: payload.seq,
-        reason: "missing_toPeerId",
-        flight,
+      issuer.nextSeq();
+      quarantine.supersedePresence({
+        cardId: opts.cardId,
+        dispatchHandoffId: opts.dispatchHandoffId,
       });
-      notePreservedIfFlight();
-      return { branch: "send_unknown", reason: "missing_toPeerId" };
+      return;
     }
-    try {
-      const attachment = serializeCardAttachment(CARD_RESULT_LABEL, payload);
-      const body = buildResultBody({
-        cardId: payload.cardId,
-        seq: payload.seq,
-        summary: payload.summary,
-      });
-      const ack = await client.handoff({
-        to: toPeerId,
-        body,
-        mode: "task",
-        attachments: [attachment],
-      });
-      const decision = classifyAck(ack);
-      if (decision === "accepted") {
-        const relayAcceptedAt = new Date().toISOString();
-        if (flight) {
-          flight.resultPhase = "result_relay_accepted";
-          flight.relayAcceptedAt = relayAcceptedAt;
-        }
-        // presence_unknown auto-resolve (c) if a seq record was from late presence issue
-        if (payload.dispatchHandoffId) {
-          quarantine.autoResolve({
-            cardId: payload.cardId,
-            dispatchHandoffId: payload.dispatchHandoffId,
-            key: { tag: "seq", seq: payload.seq },
-            reason: "relay_accepted",
-          });
-        }
-        notePreservedIfFlight();
-        return {
-          branch: "accepted",
-          relayAcceptedAt,
-          status: ack.status,
-          recipientCount: ack.recipientCount,
-        };
-      }
-      // Unexpected ACK shape (peer_unknown/0, delivered/2, …) → send_unknown
-      enterSendUnknown({
-        cardId: payload.cardId,
-        dispatchHandoffId: payload.dispatchHandoffId ?? "",
-        seq: payload.seq,
-        reason: `ack_${ack.status}_rc${ack.recipientCount}`,
-        flight,
-      });
-      notePreservedIfFlight();
-      return {
-        branch: "send_unknown",
-        reason: `ack_${ack.status}_rc${ack.recipientCount}`,
-      };
-    } catch (e) {
-      // PLAN 0.28.0 U5: non-accepted is always send_unknown + quarantine enter.
-      // Rejection vs transport is reason-prefix only (reject: / transport:), not
-      // a behavioral branch — no message-regex split, no rejected variant.
-      const msg = e instanceof Error ? e.message : String(e);
-      const looksTransport =
-        /injected transport|ECONN|socket|closed|timeout|WebSocket|fetch failed|network/i.test(
-          msg,
-        ) || msg === "injected transport error";
-      const reasonPrefix = looksTransport
-        ? `transport:${msg.slice(0, 120)}`
-        : /reject|denied|forbidden|invalid/i.test(msg)
-          ? `reject:${msg.slice(0, 120)}`
-          : `transport:${msg.slice(0, 120)}`;
-      log("sendResult non-accepted (send_unknown):", msg);
-      enterSendUnknown({
-        cardId: payload.cardId,
-        dispatchHandoffId: payload.dispatchHandoffId ?? "",
-        seq: payload.seq,
-        reason: reasonPrefix,
-        flight,
-      });
-      notePreservedIfFlight();
-      return { branch: "send_unknown", reason: reasonPrefix };
+    const outcome = await sendResultForFlight(opts.flight, content, {
+      cardId: opts.cardId,
+      fromPeerId: opts.fromPeerId,
+      dispatchHandoffId: opts.dispatchHandoffId,
+      // Historical payload has no startedAt key.
+      startedAt: "",
+      paneId: opts.paneId,
+    });
+    if (outcome.branch === "acquire_denied") {
+      log(
+        `card ${opts.cardId}: sendFailedResult issuer.acquire(initial) denied reason=${opts.reason}`,
+      );
     }
   }
 
