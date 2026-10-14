@@ -33,33 +33,110 @@ function objectHasIsError(value: unknown): boolean {
   return Object.values(value).some(objectHasIsError);
 }
 
-/** Escape raw control chars so JSON.parse accepts claude's lenient output. */
-function relaxControls(line: string): string {
-  return line.replace(/[\u0000-\u001F]/g, (ch) => {
-    const hex = ch.charCodeAt(0).toString(16).padStart(4, "0");
-    return `\\u${hex}`;
-  });
+/** Escape raw C0 controls inside JSON strings. Structural whitespace stays. */
+function repairControlsInsideStrings(input: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    const code = input.charCodeAt(i);
+    if (inString && !escaped && code <= 0x1f) {
+      out += `\\u${code.toString(16).padStart(4, "0")}`;
+      continue;
+    }
+    out += ch;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (!inString) {
+      if (ch === '"') inString = true;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') inString = false;
+  }
+  return out;
 }
 
-function parseJsonLine(line: string): unknown | undefined {
-  const trimmed = line.trim();
+function parseJsonValue(slice: string): unknown | undefined {
+  const trimmed = slice.trim();
   if (!trimmed) return undefined;
   try {
     return JSON.parse(trimmed) as unknown;
   } catch {
     try {
-      return JSON.parse(relaxControls(trimmed)) as unknown;
+      return JSON.parse(repairControlsInsideStrings(trimmed)) as unknown;
     } catch {
       return undefined;
     }
   }
 }
 
+/** Index after a `{`/`[` value, or null when the value never closes. */
+function jsonValueEnd(input: string, start: number): number | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < input.length; i++) {
+    const ch = input[i]!;
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      depth++;
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return null;
+}
+
 function eventsOf(jsonl: string): unknown[] {
   const events: unknown[] = [];
-  for (const line of jsonl.split("\n")) {
-    const event = parseJsonLine(line);
-    if (event !== undefined) events.push(event);
+  let i = 0;
+  while (i < jsonl.length) {
+    const ch = jsonl[i]!;
+    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") {
+      i++;
+      continue;
+    }
+    if (ch !== "{" && ch !== "[") {
+      while (i < jsonl.length && jsonl[i] !== "\n") i++;
+      if (i < jsonl.length) i++;
+      continue;
+    }
+    const end = jsonValueEnd(jsonl, i);
+    if (end === null) break;
+    const event = parseJsonValue(jsonl.slice(i, end));
+    if (event !== undefined) {
+      events.push(event);
+      i = end;
+      continue;
+    }
+    const newline = jsonl.indexOf("\n", i);
+    if (newline === -1 || newline + 1 >= end) i = end;
+    else i = newline + 1;
   }
   return events;
 }
@@ -74,10 +151,40 @@ function emptyParse(): ParsedAgentStream {
   };
 }
 
+function textBlocks(event: Record<string, unknown>): string {
+  const message = event.message;
+  if (!isRecord(message) || !Array.isArray(message.content)) return "";
+  let out = "";
+  for (const block of message.content) {
+    if (!isRecord(block)) continue;
+    if (block.type === "text" && typeof block.text === "string") out += block.text;
+  }
+  return out;
+}
+
 function parseClaude(events: unknown[]): ParsedAgentStream {
   const parsed = emptyParse();
+  let sawResult = false;
+  let initSession: string | null = null;
+  let assistantSession: string | null = null;
+  let assistantText = "";
   for (const event of events) {
-    if (!isRecord(event) || event.type !== "result") continue;
+    if (!isRecord(event)) continue;
+    if (
+      event.type === "system" &&
+      event.subtype === "init" &&
+      typeof event.session_id === "string"
+    ) {
+      initSession = event.session_id;
+    }
+    if (event.type === "assistant") {
+      assistantText += textBlocks(event);
+      if (assistantSession === null && typeof event.session_id === "string") {
+        assistantSession = event.session_id;
+      }
+    }
+    if (event.type !== "result") continue;
+    sawResult = true;
     parsed.sessionId =
       typeof event.session_id === "string" ? event.session_id : null;
     parsed.finalText = typeof event.result === "string" ? event.result : "";
@@ -92,6 +199,10 @@ function parseClaude(events: unknown[]): ParsedAgentStream {
         toolInput: denial.tool_input,
       });
     }
+  }
+  if (!sawResult) {
+    parsed.finalText = assistantText;
+    parsed.sessionId = initSession ?? assistantSession;
   }
   return parsed;
 }
@@ -124,14 +235,51 @@ function parseCodex(events: unknown[]): ParsedAgentStream {
   return parsed;
 }
 
+function lineAt(text: string, index: number): string {
+  const start = index === 0 ? -1 : text.lastIndexOf("\n", index - 1);
+  const lineStart = start === -1 ? 0 : start + 1;
+  const end = text.indexOf("\n", index);
+  return text.slice(lineStart, end === -1 ? text.length : end);
+}
+
+function denialEntries(
+  text: string,
+  spans: { start: number; end: number; data: string }[],
+): AgentDenial[] {
+  const denials: AgentDenial[] = [];
+  const pushedSpan = new Set<number>();
+  const needle = "denied:";
+  let from = 0;
+  while (from <= text.length) {
+    const idx = text.indexOf(needle, from);
+    if (idx === -1) break;
+    const end = idx + needle.length;
+    const spanIndex = spans.findIndex(
+      (span) => idx >= span.start && end <= span.end,
+    );
+    if (spanIndex >= 0) {
+      if (!pushedSpan.has(spanIndex)) {
+        pushedSpan.add(spanIndex);
+        denials.push({ text: spans[spanIndex]!.data });
+      }
+    } else {
+      denials.push({ text: lineAt(text, idx) });
+    }
+    from = end;
+  }
+  return denials;
+}
+
 function parseGrok(events: unknown[]): ParsedAgentStream {
   const parsed = emptyParse();
   let text = "";
+  const spans: { start: number; end: number; data: string }[] = [];
   for (const event of events) {
     if (!isRecord(event)) continue;
     if (event.type === "text" && typeof event.data === "string") {
+      const start = text.length;
       text += event.data;
-      if (event.data.includes("denied:")) parsed.denials.push({ text: event.data });
+      spans.push({ start, end: text.length, data: event.data });
     }
     if (event.type !== "end") continue;
     parsed.sessionId =
@@ -140,6 +288,7 @@ function parseGrok(events: unknown[]): ParsedAgentStream {
     parsed.isError = event.stopReason === "error";
   }
   parsed.finalText = text;
+  parsed.denials = denialEntries(text, spans);
   return parsed;
 }
 

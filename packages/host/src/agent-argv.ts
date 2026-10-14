@@ -112,6 +112,16 @@ const EXACT_DANGEROUS = [
   "--always-approve",
 ] as const;
 
+/** Exact allow-lists. Case and whitespace variants are rejected. */
+const PERMISSION_MODES = new Set(["acceptEdits", "default", "plan"]);
+const CODEX_SANDBOXES = new Set(["read-only", "workspace-write"]);
+const CODEX_APPROVALS = new Set([
+  "never",
+  "untrusted",
+  "on-request",
+  "on-failure",
+]);
+
 function rejectDangerousString(value: string): void {
   for (const token of EXACT_DANGEROUS) {
     if (value.includes(token)) {
@@ -137,9 +147,46 @@ function rejectDangerous(value: unknown): void {
   }
 }
 
+function assertExact(
+  field: string,
+  value: unknown,
+  allowed: ReadonlySet<string>,
+): void {
+  if (typeof value !== "string" || !allowed.has(value)) {
+    const shown = typeof value === "string" ? JSON.stringify(value) : String(value);
+    throw new Error(`worker.permissions.${field} rejected: ${shown}`);
+  }
+}
+
+function validatePermissions(permissions: WorkerPermissions): void {
+  rejectDangerous(permissions);
+  if (permissions.claude) {
+    assertExact(
+      "claude.permissionMode",
+      permissions.claude.permissionMode,
+      PERMISSION_MODES,
+    );
+  }
+  if (permissions.grok) {
+    assertExact(
+      "grok.permissionMode",
+      permissions.grok.permissionMode,
+      PERMISSION_MODES,
+    );
+  }
+  if (permissions.codex) {
+    assertExact("codex.sandbox", permissions.codex.sandbox, CODEX_SANDBOXES);
+    assertExact(
+      "codex.approvalPolicy",
+      permissions.codex.approvalPolicy,
+      CODEX_APPROVALS,
+    );
+  }
+}
+
 /** Fail-closed. Dangerous modes never reach spawn. */
 export function validateWorkerConfig(config: WorkerConfig): void {
-  rejectDangerous(config.permissions);
+  validatePermissions(config.permissions);
 }
 
 /** Arrays keep order. Object keys are sorted. Leaves use JSON.stringify. */
@@ -206,6 +253,49 @@ function claudeArgv(opts: BuildAgentArgvInput): string[] {
   return argv;
 }
 
+/** TOML basic string. Named escapes first; other C0 controls and DEL are \\uXXXX. */
+function tomlBasicString(value: string): string {
+  let out = '"';
+  for (const ch of value) {
+    const code = ch.codePointAt(0)!;
+    if (ch === "\\") out += "\\\\";
+    else if (ch === '"') out += '\\"';
+    else if (ch === "\b") out += "\\b";
+    else if (ch === "\t") out += "\\t";
+    else if (ch === "\n") out += "\\n";
+    else if (ch === "\f") out += "\\f";
+    else if (ch === "\r") out += "\\r";
+    else if (code <= 0x1f || code === 0x7f) {
+      out += `\\u${code.toString(16).padStart(4, "0")}`;
+    } else out += ch;
+  }
+  out += '"';
+  return out;
+}
+
+/**
+ * LF-only text stays bare. headless-argv.test.ts pins `approval_policy=never`
+ * and the raw worker hint (the hint contains LF). A quote, backslash, or any
+ * other control is wrapped as a TOML basic string so it cannot break out.
+ */
+function codexValueNeedsBasicString(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 0x0a) continue;
+    if (value[i] === '"' || value[i] === "\\" || code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function codexAssign(key: string, value: string, alwaysBasic: boolean): string {
+  if (alwaysBasic || codexValueNeedsBasicString(value)) {
+    return `${key}=${tomlBasicString(value)}`;
+  }
+  return `${key}=${value}`;
+}
+
 function codexArgv(opts: BuildAgentArgvInput): string[] {
   const profile = requireProfile(opts.permissions.codex, "codex");
   if (opts.resumeSessionId) {
@@ -217,11 +307,11 @@ function codexArgv(opts: BuildAgentArgvInput): string[] {
       opts.resumeSessionId,
       "--json",
       "-c",
-      `sandbox_mode="${profile.sandbox}"`,
+      codexAssign("sandbox_mode", profile.sandbox, true),
       "-c",
-      `approval_policy=${profile.approvalPolicy}`,
+      codexAssign("approval_policy", profile.approvalPolicy, false),
       "-c",
-      `developer_instructions=${opts.hint}`,
+      codexAssign("developer_instructions", opts.hint, false),
       "--skip-git-repo-check",
       RESUME_CONTINUATION_MESSAGE,
     ];
@@ -234,9 +324,9 @@ function codexArgv(opts: BuildAgentArgvInput): string[] {
     "--sandbox",
     profile.sandbox,
     "-c",
-    `approval_policy=${profile.approvalPolicy}`,
+    codexAssign("approval_policy", profile.approvalPolicy, false),
     "-c",
-    `developer_instructions=${opts.hint}`,
+    codexAssign("developer_instructions", opts.hint, false),
     "--skip-git-repo-check",
     "-",
   ];
@@ -271,6 +361,7 @@ function grokArgv(opts: BuildAgentArgvInput): string[] {
 }
 
 export function buildAgentArgv(opts: BuildAgentArgvInput): BuiltAgentArgv {
+  validatePermissions(opts.permissions);
   const argv =
     opts.agent === "claude"
       ? claudeArgv(opts)
