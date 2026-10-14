@@ -122,7 +122,7 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
     const relay = startFakeRelay();
     const seen: string[] = [];
     let ingestCalls = 0;
-    let releaseFirst: (() => void) | null = null;
+    let releaseFirst = null as (() => void) | null;
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });

@@ -115,7 +115,7 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
       }
 
       let stickyHits = 0;
-      let releaseHang: (() => void) | null = null;
+      let releaseHang = null as (() => void) | null;
       const stickyHttp = Bun.serve({
         hostname: "127.0.0.1",
         port: 0,

@@ -9,6 +9,7 @@ import {
   generateId,
   envTokenInQuery,
 } from "@loom/protocol";
+import type { RoomEventStore } from "./room-event-log";
 
 /**
  * PLAN 0.27.0 D2: test-only handoff.ack injection result.
@@ -63,6 +64,12 @@ export type RelayClientOptions = {
   /** Used when autoReconnect re-joins */
   reconnectJoin?: JoinCredentials;
   maxReconnectAttempts?: number;
+  /**
+   * v0.29.0 PATCH 4: opt-in receive store. Absent keeps onmessage synchronous.
+   * When set, each envelope is queued per client, then ingest, then the
+   * existing apply/dispatch/onEnvelope path only if deliver is not false.
+   */
+  eventStore?: RoomEventStore;
 };
 
 type PendingRequest = {
@@ -85,6 +92,8 @@ export class RelayClient {
    * when the relay does not echo requestId (older servers).
    */
   private pendingRequests: PendingRequest[] = [];
+  /** Preserves socket arrival order while ingest is async. */
+  private receiveQueue: Promise<void> = Promise.resolve();
 
   peerId: string | null = null;
   peerSecret: string | null = null;
@@ -175,12 +184,58 @@ export class RelayClient {
         const parsed = safeParseEnvelope(data);
         if (!parsed.success) return;
         const env = parsed.data;
-        this.applyEnvelope(env);
-        this.dispatchPending(env);
-        this.opts.onEnvelope?.(env);
+        if (this.opts.eventStore) {
+          this.enqueueReceived(env);
+          return;
+        }
+        this.publishReceived(env);
       };
     });
     return this.openPromise;
+  }
+
+  /**
+   * Serial per RelayClient. A thrown ingest still delivers (fail-open) and
+   * the next envelope runs — the chain catches so one failure cannot stall it.
+   */
+  private enqueueReceived(env: Envelope): void {
+    this.receiveQueue = this.receiveQueue
+      .catch(() => undefined)
+      .then(() => this.drainReceived(env));
+  }
+
+  private async drainReceived(env: Envelope): Promise<void> {
+    const store = this.opts.eventStore;
+    if (!store) {
+      this.publishReceived(env);
+      return;
+    }
+    let deliver = true;
+    try {
+      const result = await store.ingest(env);
+      deliver = result.deliver !== false;
+    } catch (e) {
+      deliver = true;
+      console.error(
+        "[loom] room-event receive queue fail-open",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    if (!deliver) return;
+    try {
+      this.publishReceived(env);
+    } catch (e) {
+      console.error(
+        "[loom] room-event receive downstream failed",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+
+  private publishReceived(env: Envelope): void {
+    this.applyEnvelope(env);
+    this.dispatchPending(env);
+    this.opts.onEnvelope?.(env);
   }
 
   /** Resolve at most one FIFO waiter that matches this envelope. */
