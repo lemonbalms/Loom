@@ -1,0 +1,368 @@
+/**
+ * assumed API (v0.30.0 P2 — modules are not implemented; this file is expected-red)
+ *
+ * from "./agent-argv":
+ *   HEADLESS_WORKER_HINT: string                         // includes "Loom card worker"; no "claim_handoff"
+ *   ARGV_TEMPLATE_VERSION = "0.30.0-v1"
+ *   RESUME_CONTINUATION_MESSAGE =
+ *     "Interrupted. Inspect the working tree before continuing; do not redo completed steps."
+ *   AgentKind = "claude" | "codex" | "grok"
+ *   ClaudePermissionProfile { permissionMode, allowedTools, disallowedTools }
+ *   CodexPermissionProfile { sandbox, approvalPolicy, extraArgs? }
+ *   GrokPermissionProfile { permissionMode, allow, deny, extraArgs? }
+ *   WorkerPermissions { claude?, codex?, grok? }
+ *   WorkerConfig { backend, cwd, allowedRoots, maxConcurrent, timeoutMs, permissions }
+ *   defaultWorkerPermissions(): WorkerPermissions
+ *   validateWorkerConfig(config: WorkerConfig): void     // throws, fail-closed
+ *   promptFingerprint(hint, permissions, argvTemplateVersion): string
+ *     sha256(utf8(hint + "\0" + stableStringify(permissions) + "\0" + argvTemplateVersion))
+ *     stableStringify: arrays keep order, object keys sorted, leaves JSON.stringify
+ *   buildAgentArgv({ agent, cwd, sessionId, resumeSessionId?, hint, prompt, promptFile?, permissions })
+ *     -> { argv, promptTransport: "stdin" | "prompt-file", continuationMessage? }
+ *   Claude allowedTools / disallowedTools and codex/grok argv shapes are pinned
+ *   in the tests below (PLAN D3, D10, D12, R4, R48-L2).
+ */
+import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import {
+  ARGV_TEMPLATE_VERSION,
+  HEADLESS_WORKER_HINT,
+  RESUME_CONTINUATION_MESSAGE,
+  buildAgentArgv,
+  defaultWorkerPermissions,
+  promptFingerprint,
+  validateWorkerConfig,
+  type WorkerConfig,
+  type WorkerPermissions,
+} from "./agent-argv";
+
+const ALLOWED = [
+  "Read",
+  "Edit",
+  "Write",
+  "Glob",
+  "Grep",
+  "Bash(git status*)",
+  "Bash(git diff*)",
+  "Bash(git log*)",
+  "Bash(bun test*)",
+  "Bash(bun run *)",
+  "Bash(npm test*)",
+];
+
+const DENIED = [
+  "Bash(rm *)",
+  "Bash(rmdir *)",
+  "Bash(git push*)",
+  "Bash(git reset --hard*)",
+  "Bash(git clean*)",
+  "Bash(sudo *)",
+  "Bash(curl *)",
+  "Bash(wget *)",
+];
+
+const PROMPT = "UNIQUE_PROMPT_SENTINEL_9f3a";
+const CWD = "/tmp/loom-work";
+const SESSION = "11111111-1111-4111-8111-111111111111";
+const RESUME = "22222222-2222-4222-8222-222222222222";
+const PROMPT_FILE = "/tmp/loom-prompt.txt";
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function baseConfig(permissions: WorkerPermissions = defaultWorkerPermissions()): WorkerConfig {
+  return {
+    backend: "headless",
+    cwd: CWD,
+    allowedRoots: [CWD],
+    maxConcurrent: { claude: 1, codex: 1, grok: 1 },
+    timeoutMs: 7_200_000,
+    permissions,
+  };
+}
+
+describe("v0.30.0 P2 expected-red: headless argv", () => {
+  test("(g) HEADLESS_WORKER_HINT is the fixed worker hint, not loomSystemHint", () => {
+    expect(HEADLESS_WORKER_HINT.length).toBeGreaterThan(0);
+    expect(HEADLESS_WORKER_HINT).toContain("Loom card worker");
+    expect(HEADLESS_WORKER_HINT).not.toContain("claim_handoff");
+  });
+
+  test("(g) D12 fingerprint is sha256(hint, permissions, argv template version)", () => {
+    const permissions = defaultWorkerPermissions();
+    const fp = promptFingerprint(
+      HEADLESS_WORKER_HINT,
+      permissions,
+      ARGV_TEMPLATE_VERSION,
+    );
+    const expected = createHash("sha256")
+      .update(
+        `${HEADLESS_WORKER_HINT}\0${stableStringify(permissions)}\0${ARGV_TEMPLATE_VERSION}`,
+      )
+      .digest("hex");
+    expect(fp).toBe(expected);
+    const mutated = structuredClone(permissions);
+    mutated.claude!.permissionMode = "default";
+    expect(
+      promptFingerprint(HEADLESS_WORKER_HINT, mutated, ARGV_TEMPLATE_VERSION),
+    ).not.toBe(fp);
+    expect(
+      promptFingerprint(HEADLESS_WORKER_HINT, permissions, "0.30.0-v2"),
+    ).not.toBe(fp);
+  });
+
+  test("(g) claude new argv is the static acceptEdits profile and stdin prompt", () => {
+    const permissions = defaultWorkerPermissions();
+    const built = buildAgentArgv({
+      agent: "claude",
+      cwd: CWD,
+      sessionId: SESSION,
+      hint: HEADLESS_WORKER_HINT,
+      prompt: PROMPT,
+      permissions,
+    });
+    expect(built.promptTransport).toBe("stdin");
+    expect(built.argv).toEqual([
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--session-id",
+      SESSION,
+      "--append-system-prompt",
+      HEADLESS_WORKER_HINT,
+      "--permission-mode",
+      "acceptEdits",
+      "--allowedTools",
+      ...ALLOWED,
+      "--disallowedTools",
+      ...DENIED,
+    ]);
+    expect(built.argv).not.toContain("-r");
+    expect(built.argv.join("\n")).not.toContain(PROMPT);
+    expect(permissions.claude).toEqual({
+      permissionMode: "acceptEdits",
+      allowedTools: ALLOWED,
+      disallowedTools: DENIED,
+    });
+  });
+
+  test("(g) claude resume uses -r and does not pass --session-id", () => {
+    const built = buildAgentArgv({
+      agent: "claude",
+      cwd: CWD,
+      sessionId: SESSION,
+      resumeSessionId: RESUME,
+      hint: HEADLESS_WORKER_HINT,
+      prompt: PROMPT,
+      permissions: defaultWorkerPermissions(),
+    });
+    expect(built.promptTransport).toBe("stdin");
+    expect(built.continuationMessage).toBe(RESUME_CONTINUATION_MESSAGE);
+    expect(built.argv).toContain("-r");
+    expect(built.argv).toContain(RESUME);
+    expect(built.argv).not.toContain("--session-id");
+    expect(built.argv).not.toContain(RESUME_CONTINUATION_MESSAGE);
+    expect(built.argv.join("\n")).not.toContain(PROMPT);
+  });
+
+  test("(g) codex new argv is exec --json stdin, prompt absent", () => {
+    const built = buildAgentArgv({
+      agent: "codex",
+      cwd: CWD,
+      sessionId: SESSION,
+      hint: HEADLESS_WORKER_HINT,
+      prompt: PROMPT,
+      permissions: defaultWorkerPermissions(),
+    });
+    expect(built.promptTransport).toBe("stdin");
+    expect(built.argv).toEqual([
+      "exec",
+      "--json",
+      "-C",
+      CWD,
+      "--sandbox",
+      "workspace-write",
+      "-c",
+      "approval_policy=never",
+      "-c",
+      `developer_instructions=${HEADLESS_WORKER_HINT}`,
+      "--skip-git-repo-check",
+      "-",
+    ]);
+    expect(built.argv.join("\n")).not.toContain(PROMPT);
+  });
+
+  test("(g) R4 codex resume has no -C and no -s, and pins sandbox_mode", () => {
+    const built = buildAgentArgv({
+      agent: "codex",
+      cwd: CWD,
+      sessionId: SESSION,
+      resumeSessionId: RESUME,
+      hint: HEADLESS_WORKER_HINT,
+      prompt: PROMPT,
+      permissions: defaultWorkerPermissions(),
+    });
+    expect(built.promptTransport).toBe("stdin");
+    expect(built.continuationMessage).toBe(RESUME_CONTINUATION_MESSAGE);
+    expect(built.argv).toEqual([
+      "exec",
+      "resume",
+      RESUME,
+      "--json",
+      "-c",
+      'sandbox_mode="workspace-write"',
+      "-c",
+      "approval_policy=never",
+      "-c",
+      `developer_instructions=${HEADLESS_WORKER_HINT}`,
+      "--skip-git-repo-check",
+      RESUME_CONTINUATION_MESSAGE,
+    ]);
+    expect(built.argv).not.toContain("-C");
+    expect(built.argv).not.toContain("-s");
+    expect(built.argv).not.toContain("--sandbox");
+    expect(built.argv.join("\n")).not.toContain(PROMPT);
+  });
+
+  test("(g) grok new argv uses --prompt-file and the static allow/deny lists", () => {
+    const built = buildAgentArgv({
+      agent: "grok",
+      cwd: CWD,
+      sessionId: SESSION,
+      hint: HEADLESS_WORKER_HINT,
+      prompt: PROMPT,
+      promptFile: PROMPT_FILE,
+      permissions: defaultWorkerPermissions(),
+    });
+    expect(built.promptTransport).toBe("prompt-file");
+    expect(built.argv).toEqual([
+      "-p",
+      "--prompt-file",
+      PROMPT_FILE,
+      "--output-format",
+      "streaming-json",
+      "--cwd",
+      CWD,
+      "--session-id",
+      SESSION,
+      "--rules",
+      HEADLESS_WORKER_HINT,
+      "--permission-mode",
+      "acceptEdits",
+      "--allow",
+      ...ALLOWED,
+      "--deny",
+      ...DENIED,
+    ]);
+    expect(built.argv.join("\n")).not.toContain(PROMPT);
+  });
+
+  test("(g) R4 grok resume has no --session-id", () => {
+    const built = buildAgentArgv({
+      agent: "grok",
+      cwd: CWD,
+      sessionId: SESSION,
+      resumeSessionId: RESUME,
+      hint: HEADLESS_WORKER_HINT,
+      prompt: PROMPT,
+      promptFile: PROMPT_FILE,
+      permissions: defaultWorkerPermissions(),
+    });
+    expect(built.promptTransport).toBe("prompt-file");
+    expect(built.argv).toContain("-r");
+    expect(built.argv).toContain(RESUME);
+    expect(built.argv).not.toContain("--session-id");
+    expect(built.argv).not.toContain("-s");
+    expect(built.argv.join("\n")).not.toContain(PROMPT);
+  });
+
+  test("(g) default profiles do not emit dangerous modes", () => {
+    expect(() => validateWorkerConfig(baseConfig())).not.toThrow();
+    for (const agent of ["claude", "codex", "grok"] as const) {
+      const built = buildAgentArgv({
+        agent,
+        cwd: CWD,
+        sessionId: SESSION,
+        hint: HEADLESS_WORKER_HINT,
+        prompt: PROMPT,
+        promptFile: PROMPT_FILE,
+        permissions: defaultWorkerPermissions(),
+      });
+      const flat = built.argv.join("\n");
+      expect(flat).not.toContain("bypassPermissions");
+      expect(flat).not.toContain("danger-full-access");
+      expect(flat).not.toContain("dangerously-");
+      expect(flat).not.toContain("--always-approve");
+    }
+  });
+
+  test("(g) dangerous permission modes fail closed", () => {
+    const cases: Array<{ token: string; permissions: WorkerPermissions }> = [
+      {
+        token: "bypassPermissions",
+        permissions: {
+          ...defaultWorkerPermissions(),
+          claude: {
+            ...defaultWorkerPermissions().claude!,
+            permissionMode: "bypassPermissions",
+          },
+        },
+      },
+      {
+        token: "danger-full-access",
+        permissions: {
+          ...defaultWorkerPermissions(),
+          codex: {
+            ...defaultWorkerPermissions().codex!,
+            sandbox: "danger-full-access",
+          },
+        },
+      },
+      {
+        token: "--dangerously-bypass-approvals-and-sandbox",
+        permissions: {
+          ...defaultWorkerPermissions(),
+          codex: {
+            ...defaultWorkerPermissions().codex!,
+            extraArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+          },
+        },
+      },
+      {
+        token: "--dangerously-bypass-hook-trust",
+        permissions: {
+          ...defaultWorkerPermissions(),
+          codex: {
+            ...defaultWorkerPermissions().codex!,
+            extraArgs: ["--dangerously-bypass-hook-trust"],
+          },
+        },
+      },
+      {
+        token: "--always-approve",
+        permissions: {
+          ...defaultWorkerPermissions(),
+          grok: {
+            ...defaultWorkerPermissions().grok!,
+            extraArgs: ["--always-approve"],
+          },
+        },
+      },
+    ];
+    for (const item of cases) {
+      expect(() => validateWorkerConfig(baseConfig(item.permissions))).toThrow(
+        new RegExp(item.token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      );
+    }
+  });
+});
