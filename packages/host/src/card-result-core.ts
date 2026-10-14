@@ -2,11 +2,14 @@
  * PLAN 0.30.0 D1 / R48-M1: card result core.
  * Issuer acquire, payload assembly, strict ACK, and send_unknown quarantine.
  * No Flight reads or writes — the pane wrapper applies SendResultOutcome.
- * Pure extract: no serialize-budget truncation.
+ * R48-M2: if the serialized attachment exceeds 256_000 chars, cut output
+ * from the front by the overflow and re-serialize until it fits.
+ * Payloads that already fit stay byte-identical.
  */
 import {
   CARD_CONTRACT_VERSION,
   CARD_RESULT_LABEL,
+  MAX_ATTACHMENT_CONTENT_CHARS,
   buildResultBody,
   serializeCardAttachment,
   type CardResultPayload,
@@ -73,6 +76,30 @@ export function classifyAck(ack: {
     return "accepted";
   }
   return "send_unknown";
+}
+
+/**
+ * R48-M2. Measure the attachment JSON. While it is over the 256_000 cap,
+ * drop that many chars from the front of output (keep the tail) and
+ * re-serialize. Sets truncated. A payload that already fits is returned
+ * as the same object.
+ */
+function fitSerializedPayload(payload: CardResultPayload): CardResultPayload {
+  let body = payload;
+  let json = JSON.stringify(body);
+  while (json.length > MAX_ATTACHMENT_CONTENT_CHARS && body.output.length > 0) {
+    const overflow = json.length - MAX_ATTACHMENT_CONTENT_CHARS;
+    const cut = Math.min(overflow, body.output.length);
+    body = {
+      ...body,
+      output: body.output.slice(cut),
+      truncated: true,
+    };
+    const next = JSON.stringify(body);
+    if (next.length >= json.length) break;
+    json = next;
+  }
+  return body;
 }
 
 type CardResultCoreDeps = {
@@ -173,7 +200,10 @@ export function createCardResultCore(
     }
 
     try {
-      const attachment = serializeCardAttachment(CARD_RESULT_LABEL, payload);
+      const attachment = serializeCardAttachment(
+        CARD_RESULT_LABEL,
+        fitSerializedPayload(payload),
+      );
       const body = buildResultBody({
         cardId: payload.cardId,
         seq: payload.seq,
