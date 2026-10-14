@@ -11,7 +11,13 @@ import {
   timingSafeTokenEqual,
   envRelayToken,
 } from "@loom/protocol";
-import { RoomRegistry, type SocketLike } from "./room";
+import {
+  RoomRegistry,
+  type SocketLike,
+  chatClientEventMaterial,
+  clientEventBodyHash,
+  handoffClientEventMaterial,
+} from "./room";
 
 // L-14: re-export shared constant-time compare (impl lives in @loom/protocol)
 export { timingSafeTokenEqual };
@@ -52,6 +58,8 @@ export class RelayServer {
   readonly allowInsecureOpen: boolean;
   private server: ReturnType<typeof Bun.serve> | null = null;
   private clients = new WeakMap<object, ClientState>();
+  /** v0.29.0: same clientEventId, different body. Fail-visible, no wire code. */
+  private clientEventBodyMismatches = 0;
 
   constructor(opts: RelayServerOptions = {}) {
     this.host = opts.host ?? DEFAULT_RELAY_HOST;
@@ -227,6 +235,19 @@ export class RelayServer {
     return false;
   }
 
+  /** One stderr line. Counter is read into the line so it is not write-only. */
+  private noteClientEventBodyMismatch(
+    roomId: string,
+    peerId: string,
+    clientEventId: string,
+  ): void {
+    this.clientEventBodyMismatches += 1;
+    console.error(
+      `[loom relay] clientEventId body mismatch count=${this.clientEventBodyMismatches}` +
+        ` room=${roomId} peer=${peerId} clientEventId=${clientEventId}`,
+    );
+  }
+
   /** L-4: echo requestId on RPC replies when client provided one. */
   private reply(
     state: ClientState,
@@ -395,16 +416,34 @@ export class RelayServer {
         const room = this.registry.getById(state.roomId);
         if (!room) return;
         const handoff = room.resolveHandoff(state.peerId, msg.handoff);
+        const idempotency =
+          typeof msg.clientEventId === "string"
+            ? {
+                peerId: state.peerId,
+                clientEventId: msg.clientEventId,
+                bodyHash: clientEventBodyHash(
+                  handoffClientEventMaterial(msg.handoff),
+                ),
+              }
+            : undefined;
         try {
-          const result = room.routeHandoff(handoff);
-          this.reply(
-            state,
-            room.handoffAckEnvelope(result) as unknown as Record<
-              string,
-              unknown
-            >,
-            rid,
-          );
+          const result = idempotency
+            ? room.routeHandoff(handoff, idempotency)
+            : room.routeHandoff(handoff);
+          if (result.bodyMismatch && idempotency) {
+            this.noteClientEventBodyMismatch(
+              room.id,
+              state.peerId,
+              idempotency.clientEventId,
+            );
+          }
+          const ack = result.replayAck
+            ? result.replayAck
+            : (room.handoffAckEnvelope(result) as unknown as Record<
+                string,
+                unknown
+              >);
+          this.reply(state, ack, rid);
         } catch (e) {
           this.reply(
             state,
@@ -428,6 +467,32 @@ export class RelayServer {
         }
         const room = this.registry.getById(state.roomId);
         if (!room) return;
+        if (typeof msg.clientEventId === "string") {
+          const bodyHash = clientEventBodyHash(
+            chatClientEventMaterial(msg.text),
+          );
+          const prev = room.lookupChatClientEvent(
+            state.peerId,
+            msg.clientEventId,
+          );
+          if (prev !== undefined) {
+            if (prev !== bodyHash) {
+              this.noteClientEventBodyMismatch(
+                room.id,
+                state.peerId,
+                msg.clientEventId,
+              );
+            }
+            break;
+          }
+          room.broadcast(room.chatEnvelope(state.peerId, msg.text));
+          room.rememberChatClientEvent(
+            state.peerId,
+            msg.clientEventId,
+            bodyHash,
+          );
+          break;
+        }
         room.broadcast(room.chatEnvelope(state.peerId, msg.text));
         break;
       }

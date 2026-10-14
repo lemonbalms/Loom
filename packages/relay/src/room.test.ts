@@ -258,6 +258,45 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
     };
   }
 
+  test("(a) failed seq reservation never issues a seq beyond the durable bound", () => {
+    const { room, b } = pair();
+    const durable: number[] = [];
+    let fail = false;
+    room.setPersistHook(() => {
+      if (fail) throw new Error("EACCES");
+      durable.push((room.toSnapshot() as { seqHigh?: number }).seqHigh ?? 0);
+    });
+    const origError = console.error;
+    console.error = () => {};
+    try {
+      room.broadcast(room.chatEnvelope("p1", "first"), "p1");
+      const first = sent(b, b.sent.length - 1);
+      const bound = durable[durable.length - 1]!;
+      expect(first.seq!).toBeLessThan(bound);
+      // Exhaust the reservation while persistence is failing.
+      fail = true;
+      for (let i = first.seq!; i < bound + 5; i++) {
+        room.broadcast(room.chatEnvelope("p1", `n${i}`), "p1");
+      }
+      // Every stamped seq stays below the last durable bound; the rest go out unstamped.
+      for (const raw of b.sent) {
+        const m = JSON.parse(raw) as { type?: string; seq?: number; eventId?: string };
+        if (m.type !== "chat") continue;
+        if (m.seq !== undefined) expect(m.seq).toBeLessThan(bound);
+        else expect(m.eventId).toBeUndefined();
+      }
+      // Persistence recovers → the next stamp reserves a new durable block above the old one.
+      fail = false;
+      room.broadcast(room.chatEnvelope("p1", "recovered"), "p1");
+      const rec = sent(b, b.sent.length - 1);
+      expect(rec.seq!).toBeGreaterThanOrEqual(bound);
+      expect(durable[durable.length - 1]!).toBeGreaterThan(rec.seq!);
+    } finally {
+      console.error = origError;
+      room.setPersistHook(null);
+    }
+  });
+
   test("(a) stampRoomEvent assigns ev_ ids and a strictly increasing per-room seq", () => {
     const { room } = pair();
     const stamp = (room as unknown as {

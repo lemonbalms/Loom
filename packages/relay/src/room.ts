@@ -22,7 +22,7 @@ import {
   MAX_ATTACHMENTS_PER_HANDOFF,
   MAX_HANDOFF_BODY_CHARS,
 } from "@loom/protocol";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   type RoomSnapshotV1,
   acquireStateDirLock,
@@ -35,6 +35,34 @@ import {
 
 /** v0.29.0: seq block reserved ahead of the persisted high-water. */
 export const SEQ_RESERVE_BLOCK = 1000;
+
+/** v0.29.0: per-(room, peer) clientEventId LRU capacity. UK-4 starting value. */
+export const CLIENT_EVENT_LRU_MAX = 256;
+
+/** sha256 hex of a canonical client-event body string. */
+export function clientEventBodyHash(material: string): string {
+  return createHash("sha256").update(material, "utf8").digest("hex");
+}
+
+/** Client handoff fields only — not the relay-minted id or createdAt. */
+export function handoffClientEventMaterial(h: {
+  to: string;
+  body: string;
+  mode?: string;
+  attachments?: unknown;
+}): string {
+  return JSON.stringify({
+    attachments: h.attachments ?? null,
+    body: h.body,
+    mode: h.mode ?? "message",
+    to: h.to,
+  });
+}
+
+/** Client chat text, before relay sanitize. */
+export function chatClientEventMaterial(text: string): string {
+  return JSON.stringify({ text });
+}
 
 export type SocketLike = {
   send(data: string): void;
@@ -62,6 +90,61 @@ export type HandoffRouteResult = {
   message?: string;
 };
 
+/** Optional replay metadata. Absent when this call routed (or did not match). */
+type HandoffRouteOutcome = HandoffRouteResult & {
+  /** Stored ack from the first successful route. Set only on LRU hit. */
+  replayAck?: Record<string, unknown>;
+  /** True only on replay when the new body hash differs. */
+  bodyMismatch?: boolean;
+};
+
+type HandoffClientEventEntry = {
+  clientEventId: string;
+  handoffId: string;
+  ack: Record<string, unknown>;
+  bodyHash: string;
+  result: HandoffRouteResult;
+};
+
+function handoffResultFromAck(
+  handoffId: string,
+  ack: Record<string, unknown>,
+): HandoffRouteResult {
+  const status = ack.status;
+  const safe: HandoffSendStatus =
+    status === "queued" || status === "delivered" || status === "peer_unknown"
+      ? status
+      : "queued";
+  const result: HandoffRouteResult = {
+    status: safe,
+    handoffId,
+    to: typeof ack.to === "string" ? ack.to : "",
+    notified: ack.notified === true,
+    recipientCount:
+      typeof ack.recipientCount === "number" && ack.recipientCount >= 0
+        ? ack.recipientCount
+        : 0,
+  };
+  if (typeof ack.message === "string") result.message = ack.message;
+  return result;
+}
+
+function isStoredHandoffClientEvent(e: {
+  clientEventId: string;
+  handoffId: string;
+  ack: Record<string, unknown>;
+  bodyHash: string;
+}): boolean {
+  return (
+    e.clientEventId.length > 0 &&
+    e.handoffId.length > 0 &&
+    e.bodyHash.length > 0 &&
+    !!e.ack &&
+    typeof e.ack === "object" &&
+    !Array.isArray(e.ack)
+  );
+}
+
 export class Room {
   readonly id: string;
   readonly name: string;
@@ -75,6 +158,18 @@ export class Room {
   private seq = 0;
   /** Persisted exclusive high-water (issued seq < seqHigh). 0 = none reserved. */
   private seqHigh = 0;
+  /** Broadcasts sent unstamped because the seq reservation failed to persist. */
+  private seqReserveFailures = 0;
+  /**
+   * v0.29.0: handoff clientEventId LRU. peerId → id → entry, oldest first.
+   * Committed only when the routeHandoff touchPersist succeeds.
+   */
+  private handoffClientEvents = new Map<
+    string,
+    Map<string, HandoffClientEventEntry>
+  >();
+  /** v0.29.0: chat clientEventId LRU. Memory only — never snapshotted. */
+  private chatClientEvents = new Map<string, Map<string, { bodyHash: string }>>();
   /** Called after durable-relevant mutations (registry sets this). */
   private persistHook: (() => void) | null = null;
 
@@ -150,6 +245,30 @@ export class Room {
       // stamp is `seqHigh` itself — strictly above anything issued before.
       room.seq = snap.seqHigh - 1;
     }
+    const rawEvents = snap.handoffClientEvents;
+    if (rawEvents && typeof rawEvents === "object") {
+      for (const [peerId, entries] of Object.entries(rawEvents)) {
+        if (!peerId || !Array.isArray(entries)) continue;
+        const map = new Map<string, HandoffClientEventEntry>();
+        for (const e of entries) {
+          if (!isStoredHandoffClientEvent(e)) continue;
+          map.delete(e.clientEventId);
+          map.set(e.clientEventId, {
+            clientEventId: e.clientEventId,
+            handoffId: e.handoffId,
+            ack: e.ack,
+            bodyHash: e.bodyHash,
+            result: handoffResultFromAck(e.handoffId, e.ack),
+          });
+        }
+        while (map.size > CLIENT_EVENT_LRU_MAX) {
+          const oldest = map.keys().next().value;
+          if (oldest === undefined) break;
+          map.delete(oldest);
+        }
+        if (map.size > 0) room.handoffClientEvents.set(peerId, map);
+      }
+    }
     for (const [peerId, entries] of Object.entries(snap.inboxes ?? {})) {
       let box = room.inboxes.get(peerId);
       if (!box) {
@@ -202,7 +321,29 @@ export class Room {
       colorIndex: this.colorIndex,
       updatedAt: nowIso(),
       ...(this.seqHigh > 0 ? { seqHigh: this.seqHigh } : {}),
+      ...this.handoffClientEventsSnapshot(),
     };
+  }
+
+  /** Omit the key when empty so non-idempotent snapshots stay unchanged. */
+  private handoffClientEventsSnapshot(): {
+    handoffClientEvents?: RoomSnapshotV1["handoffClientEvents"];
+  } {
+    const handoffClientEvents: NonNullable<
+      RoomSnapshotV1["handoffClientEvents"]
+    > = {};
+    for (const [peerId, peer] of this.handoffClientEvents) {
+      if (peer.size === 0) continue;
+      handoffClientEvents[peerId] = [...peer.values()].map((e) => ({
+        clientEventId: e.clientEventId,
+        handoffId: e.handoffId,
+        ack: e.ack,
+        bodyHash: e.bodyHash,
+      }));
+    }
+    return Object.keys(handoffClientEvents).length > 0
+      ? { handoffClientEvents }
+      : {};
   }
 
   get peerCount(): number {
@@ -381,8 +522,16 @@ export class Room {
   stampRoomEvent(envelope: Envelope): Envelope {
     this.seq += 1;
     if (this.seq >= this.seqHigh) {
+      // Advance the bound only if the reservation is durable; on failure the
+      // consumed seq is skipped (never reissued) and the next stamp retries.
+      const prevHigh = this.seqHigh;
       this.seqHigh = this.seq + SEQ_RESERVE_BLOCK;
-      this.touchPersist();
+      try {
+        this.touchPersist();
+      } catch (e) {
+        this.seqHigh = prevHigh;
+        throw e;
+      }
     }
     envelope.eventId = `ev_${randomUUID()}`;
     envelope.seq = this.seq;
@@ -391,7 +540,21 @@ export class Room {
 
   /** Broadcast only to online sockets. */
   broadcast(envelope: Envelope, exceptPeerId?: string): void {
-    const raw = JSON.stringify(this.stampRoomEvent(envelope));
+    let stamped: Envelope;
+    try {
+      stamped = this.stampRoomEvent(envelope);
+    } catch (e) {
+      // Fail-open: deliver unstamped (legacy pass-through) rather than issue a
+      // seq outside the durable reservation or drop the event.
+      this.seqReserveFailures += 1;
+      console.error(
+        `[loom relay] seq reservation failed count=${this.seqReserveFailures} room=${this.id}: ${(e as Error).message}`,
+      );
+      envelope.eventId = undefined;
+      envelope.seq = undefined;
+      stamped = envelope;
+    }
+    const raw = JSON.stringify(stamped);
     for (const [id, m] of this.members) {
       if (exceptPeerId && id === exceptPeerId) continue;
       if (!m.socket) continue;
@@ -538,10 +701,115 @@ export class Room {
   }
 
   /**
+   * In-memory chat idempotency. Undefined = first sight (caller broadcasts,
+   * then `rememberChatClientEvent`). A hit must not broadcast.
+   */
+  lookupChatClientEvent(peerId: string, clientEventId: string): string | undefined {
+    if (!clientEventId) return undefined;
+    const peer = this.chatClientEvents.get(peerId);
+    if (!peer) return undefined;
+    const entry = peer.get(clientEventId);
+    if (!entry) return undefined;
+    peer.delete(clientEventId);
+    peer.set(clientEventId, entry);
+    return entry.bodyHash;
+  }
+
+  /** Call only after `broadcast` returns. Not persisted. */
+  rememberChatClientEvent(
+    peerId: string,
+    clientEventId: string,
+    bodyHash: string,
+  ): void {
+    if (!clientEventId) return;
+    let peer = this.chatClientEvents.get(peerId);
+    if (!peer) {
+      peer = new Map();
+      this.chatClientEvents.set(peerId, peer);
+    }
+    if (peer.has(clientEventId)) peer.delete(clientEventId);
+    peer.set(clientEventId, { bodyHash });
+    while (peer.size > CLIENT_EVENT_LRU_MAX) {
+      const oldest = peer.keys().next().value;
+      if (oldest === undefined) break;
+      peer.delete(oldest);
+    }
+  }
+
+  /**
+   * Hit refreshes recency in memory only (no snapshot write).
+   */
+  private takeHandoffClientEvent(
+    peerId: string,
+    clientEventId: string,
+  ): HandoffClientEventEntry | undefined {
+    const peer = this.handoffClientEvents.get(peerId);
+    if (!peer) return undefined;
+    const entry = peer.get(clientEventId);
+    if (!entry) return undefined;
+    peer.delete(clientEventId);
+    peer.set(clientEventId, entry);
+    return entry;
+  }
+
+  /**
+   * Install `entry` on the map `toSnapshot` reads. Returns the previous peer
+   * map so a failed touchPersist can put it back (including any eviction).
+   */
+  private stageHandoffClientEvent(
+    peerId: string,
+    entry: HandoffClientEventEntry,
+  ): Map<string, HandoffClientEventEntry> | undefined {
+    const prev = this.handoffClientEvents.get(peerId);
+    const next = prev
+      ? new Map(prev)
+      : new Map<string, HandoffClientEventEntry>();
+    if (next.has(entry.clientEventId)) next.delete(entry.clientEventId);
+    next.set(entry.clientEventId, entry);
+    while (next.size > CLIENT_EVENT_LRU_MAX) {
+      const oldest = next.keys().next().value;
+      if (oldest === undefined) break;
+      next.delete(oldest);
+    }
+    this.handoffClientEvents.set(peerId, next);
+    return prev ? new Map(prev) : undefined;
+  }
+
+  private restoreHandoffClientEvent(
+    peerId: string,
+    prev: Map<string, HandoffClientEventEntry> | undefined,
+  ): void {
+    if (prev) this.handoffClientEvents.set(peerId, prev);
+    else this.handoffClientEvents.delete(peerId);
+  }
+
+  /**
    * Enqueue to roster targets; notify online sockets.
    * Always stores in inbox (even when notified).
+   * With `idempotency`, a prior successful route for this peer is replayed
+   * and not routed again. The LRU entry is in the touchPersist snapshot and
+   * is dropped if that persist throws. Seq is never rolled back.
    */
-  routeHandoff(handoff: HandoffPayload): HandoffRouteResult {
+  routeHandoff(
+    handoff: HandoffPayload,
+    idempotency?: { peerId: string; clientEventId: string; bodyHash: string },
+  ): HandoffRouteOutcome {
+    const idem =
+      idempotency && idempotency.clientEventId.length > 0
+        ? idempotency
+        : undefined;
+    if (idem) {
+      const hit = this.takeHandoffClientEvent(idem.peerId, idem.clientEventId);
+      if (hit) {
+        const bodyMismatch = hit.bodyHash !== idem.bodyHash;
+        return {
+          ...hit.result,
+          replayAck: hit.ack,
+          ...(bodyMismatch ? { bodyMismatch: true } : {}),
+        };
+      }
+    }
+
     const targets = this.resolveTargets(handoff);
     if (targets.length === 0) {
       return {
@@ -570,9 +838,33 @@ export class Room {
         anyNotified = true;
       }
     }
+    const result: HandoffRouteResult = {
+      status: anyNotified ? "delivered" : "queued",
+      handoffId: handoff.id,
+      to: handoff.to,
+      notified: anyNotified,
+      recipientCount: targets.length,
+    };
+    let stagedPrev: Map<string, HandoffClientEventEntry> | undefined;
+    let staged = false;
+    if (idem) {
+      const ack = {
+        ...this.handoffAckEnvelope(result),
+      } as Record<string, unknown>;
+      if (ack.message === undefined) delete ack.message;
+      stagedPrev = this.stageHandoffClientEvent(idem.peerId, {
+        clientEventId: idem.clientEventId,
+        handoffId: result.handoffId,
+        ack,
+        bodyHash: idem.bodyHash,
+        result: { ...result },
+      });
+      staged = true;
+    }
     try {
       this.touchPersist();
     } catch (e) {
+      if (staged && idem) this.restoreHandoffClientEvent(idem.peerId, stagedPrev);
       for (const to of enqueuedTo) {
         this.inboxes.get(to)?.delete(handoff.id);
       }
@@ -583,13 +875,7 @@ export class Room {
       throw e;
     }
 
-    return {
-      status: anyNotified ? "delivered" : "queued",
-      handoffId: handoff.id,
-      to: handoff.to,
-      notified: anyNotified,
-      recipientCount: targets.length,
-    };
+    return result;
   }
 
   handoffAckEnvelope(result: HandoffRouteResult): Envelope {

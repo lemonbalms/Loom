@@ -60,6 +60,19 @@ export type RoomSnapshotV1 = {
    * (next seq starts at 1). `ROOM_SNAPSHOT_VERSION` stays 1.
    */
   seqHigh?: number;
+  /**
+   * v0.29.0: handoff `(peer, clientEventId)` LRU. Absent on older snapshots.
+   * Chat LRU is memory-only. `ROOM_SNAPSHOT_VERSION` stays 1.
+   */
+  handoffClientEvents?: Record<
+    string,
+    Array<{
+      clientEventId: string;
+      handoffId: string;
+      ack: Record<string, unknown>;
+      bodyHash: string;
+    }>
+  >;
 };
 
 const LOCK_STALE_MS = 5000;
@@ -274,6 +287,50 @@ function isPeerInfoShape(p: unknown): p is RoomSnapshotV1["members"][0]["peer"] 
   );
 }
 
+/** Lenient: bad entries are skipped. A bad field does not reject the snapshot. */
+function parseHandoffClientEvents(
+  raw: unknown,
+): RoomSnapshotV1["handoffClientEvents"] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: NonNullable<RoomSnapshotV1["handoffClientEvents"]> = {};
+  for (const [peerId, entries] of Object.entries(
+    raw as Record<string, unknown>,
+  )) {
+    if (!peerId || !Array.isArray(entries)) continue;
+    const list: NonNullable<RoomSnapshotV1["handoffClientEvents"]>[string] =
+      [];
+    for (const e of entries) {
+      if (!e || typeof e !== "object" || Array.isArray(e)) continue;
+      const ee = e as Record<string, unknown>;
+      if (
+        typeof ee.clientEventId !== "string" ||
+        ee.clientEventId.length === 0 ||
+        typeof ee.handoffId !== "string" ||
+        ee.handoffId.length === 0 ||
+        typeof ee.bodyHash !== "string" ||
+        ee.bodyHash.length === 0 ||
+        !ee.ack ||
+        typeof ee.ack !== "object" ||
+        Array.isArray(ee.ack)
+      ) {
+        continue;
+      }
+      const dup = list.findIndex(
+        (row) => row.clientEventId === ee.clientEventId,
+      );
+      if (dup >= 0) list.splice(dup, 1);
+      list.push({
+        clientEventId: ee.clientEventId,
+        handoffId: ee.handoffId,
+        bodyHash: ee.bodyHash,
+        ack: ee.ack as Record<string, unknown>,
+      });
+    }
+    if (list.length > 0) out[peerId] = list;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseRoomSnapshot(raw: unknown): RoomSnapshotV1 | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -324,6 +381,7 @@ function parseRoomSnapshot(raw: unknown): RoomSnapshotV1 | null {
     o.seqHigh > 0
       ? o.seqHigh
       : undefined;
+  const handoffClientEvents = parseHandoffClientEvents(o.handoffClientEvents);
   return {
     v: 1,
     room: {
@@ -338,6 +396,7 @@ function parseRoomSnapshot(raw: unknown): RoomSnapshotV1 | null {
     updatedAt:
       typeof o.updatedAt === "string" ? o.updatedAt : new Date().toISOString(),
     ...(seqHigh !== undefined ? { seqHigh } : {}),
+    ...(handoffClientEvents ? { handoffClientEvents } : {}),
   };
 }
 
