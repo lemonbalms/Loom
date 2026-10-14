@@ -11,6 +11,8 @@ import {
 } from "@loom/protocol";
 import type { RoomEventStore } from "./room-event-log";
 
+export const RECEIVE_QUEUE_WARN_DEPTH = 256;
+
 /**
  * PLAN 0.27.0 D2: test-only handoff.ack injection result.
  * Production path is unchanged when no injector is registered.
@@ -66,8 +68,10 @@ export type RelayClientOptions = {
   maxReconnectAttempts?: number;
   /**
    * v0.29.0 PATCH 4: opt-in receive store. Absent keeps onmessage synchronous.
-   * When set, each envelope is queued per client, then ingest, then the
-   * existing apply/dispatch/onEnvelope path only if deliver is not false.
+   * When set, RPC replies (handoff.ack, room.state, inbox.state,
+   * inbox.claim_result, error) publish immediately with no ingest and no
+   * queue. Every other envelope is queued per client, then ingest, then
+   * publish only if deliver is not false.
    */
   eventStore?: RoomEventStore;
 };
@@ -94,6 +98,9 @@ export class RelayClient {
   private pendingRequests: PendingRequest[] = [];
   /** Preserves socket arrival order while ingest is async. */
   private receiveQueue: Promise<void> = Promise.resolve();
+  private receiveQueueDepth = 0;
+  private receiveQueueWarnArmed = true;
+  private receiveQueueOverflowCount = 0;
 
   peerId: string | null = null;
   peerSecret: string | null = null;
@@ -185,6 +192,16 @@ export class RelayClient {
         if (!parsed.success) return;
         const env = parsed.data;
         if (this.opts.eventStore) {
+          if (
+            env.type === "handoff.ack" ||
+            env.type === "room.state" ||
+            env.type === "inbox.state" ||
+            env.type === "inbox.claim_result" ||
+            env.type === "error"
+          ) {
+            this.publishReceived(env);
+            return;
+          }
           this.enqueueReceived(env);
           return;
         }
@@ -199,36 +216,54 @@ export class RelayClient {
    * the next envelope runs — the chain catches so one failure cannot stall it.
    */
   private enqueueReceived(env: Envelope): void {
+    this.receiveQueueDepth += 1;
+    if (
+      this.receiveQueueDepth > RECEIVE_QUEUE_WARN_DEPTH &&
+      this.receiveQueueWarnArmed
+    ) {
+      this.receiveQueueWarnArmed = false;
+      this.receiveQueueOverflowCount += 1;
+      console.error(
+        `[loom] room-event receive queue depth ${this.receiveQueueDepth} exceeds ${RECEIVE_QUEUE_WARN_DEPTH}`,
+      );
+    }
     this.receiveQueue = this.receiveQueue
       .catch(() => undefined)
       .then(() => this.drainReceived(env));
   }
 
   private async drainReceived(env: Envelope): Promise<void> {
-    const store = this.opts.eventStore;
-    if (!store) {
-      this.publishReceived(env);
-      return;
-    }
-    let deliver = true;
     try {
-      const result = await store.ingest(env);
-      deliver = result.deliver !== false;
-    } catch (e) {
-      deliver = true;
-      console.error(
-        "[loom] room-event receive queue fail-open",
-        e instanceof Error ? e.message : e,
-      );
-    }
-    if (!deliver) return;
-    try {
-      this.publishReceived(env);
-    } catch (e) {
-      console.error(
-        "[loom] room-event receive downstream failed",
-        e instanceof Error ? e.message : e,
-      );
+      const store = this.opts.eventStore;
+      if (!store) {
+        this.publishReceived(env);
+        return;
+      }
+      let deliver = true;
+      try {
+        const result = await store.ingest(env);
+        deliver = result.deliver !== false;
+      } catch (e) {
+        deliver = true;
+        console.error(
+          "[loom] room-event receive queue fail-open",
+          e instanceof Error ? e.message : e,
+        );
+      }
+      if (!deliver) return;
+      try {
+        this.publishReceived(env);
+      } catch (e) {
+        console.error(
+          "[loom] room-event receive downstream failed",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    } finally {
+      this.receiveQueueDepth -= 1;
+      if (this.receiveQueueDepth < RECEIVE_QUEUE_WARN_DEPTH) {
+        this.receiveQueueWarnArmed = true;
+      }
     }
   }
 

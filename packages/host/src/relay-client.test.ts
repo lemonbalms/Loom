@@ -247,3 +247,85 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
     }
   });
 });
+
+describe("v0.29.0 PATCH 4 review: RPC bypass", () => {
+  test("handoff.ack publishes and resolves while chat ingest is blocked, then chats drain in order", async () => {
+    const relay = startFakeRelay();
+    const order: string[] = [];
+    const chats: string[] = [];
+    const ingested: string[] = [];
+    let releaseFirst = null as (() => void) | null;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let enteredFirst = false;
+    const client = openClient({
+      url: relay.url,
+      eventStore: {
+        async ingest(env) {
+          ingested.push(env.type);
+          if (!enteredFirst) {
+            enteredFirst = true;
+            await firstGate;
+          }
+          return { deliver: true, logged: false, failOpen: false };
+        },
+      },
+      onEnvelope(env) {
+        if (env.type === "handoff.ack") order.push("ack");
+        if (env.type === "chat") {
+          order.push(env.text);
+          chats.push(env.text);
+        }
+      },
+    });
+    let pendingAck: Promise<Extract<Envelope, { type: "handoff.ack" }>> | null =
+      null;
+    try {
+      await client.connect();
+      relay.send(chat("first"));
+      await waitFor(() => enteredFirst);
+      expect(chats).toEqual([]);
+      expect(ingested).toEqual(["chat"]);
+
+      pendingAck = client.handoff({ to: "*", body: "ping" });
+      await Bun.sleep(20);
+      relay.send({
+        v: PROTOCOL_VERSION,
+        type: "handoff.ack",
+        roomId: "room_client",
+        ts: "2026-03-15T12:00:00.000Z",
+        handoffId: "ho_1",
+        to: "*",
+        status: "delivered",
+        notified: true,
+        recipientCount: 1,
+      } as Envelope);
+      relay.send(chat("second"));
+
+      const ack = await pendingAck;
+      expect(ack).toMatchObject({
+        type: "handoff.ack",
+        handoffId: "ho_1",
+        to: "*",
+        status: "delivered",
+        notified: true,
+        recipientCount: 1,
+      });
+      expect(order).toEqual(["ack"]);
+      expect(chats).toEqual([]);
+      expect(ingested).toEqual(["chat"]);
+
+      releaseFirst?.();
+      await waitFor(() => order.length >= 3);
+      expect(order).toEqual(["ack", "first", "second"]);
+      expect(chats).toEqual(["first", "second"]);
+      expect(ingested).toEqual(["chat", "chat"]);
+    } finally {
+      releaseFirst?.();
+      client.close();
+      relay.stop();
+      await pendingAck?.catch(() => undefined);
+    }
+  });
+});
