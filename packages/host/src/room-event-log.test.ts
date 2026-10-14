@@ -8,6 +8,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -375,6 +376,180 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
       expect(lines[lines.length - 1]).not.toContain("ev_torn");
       expect(raw).toContain("ev_torn");
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolveWait, rejectWait) => {
+    const tick = (): void => {
+      if (predicate()) {
+        resolveWait();
+        return;
+      }
+      if (Date.now() - start > timeoutMs) {
+        rejectWait(new Error("timed out waiting for reclaim mutex"));
+        return;
+      }
+      setTimeout(tick, 5);
+    };
+    tick();
+  });
+}
+
+describe("v0.29.0 PATCH 4 review fixes", () => {
+  test("reclaim does not delete a live replacement lock", async () => {
+    const { roomKey, roomEventLogTestHooks } = await import(ROOM_EVENT_LOG_SPECIFIER);
+    const dir = tempDir("reclaim");
+    const roomId = "room_reclaim";
+    const lock = join(dir, "rooms", roomKey(roomId), ".lock");
+    let releaseGate = (): void => {};
+    const gate = new Promise<void>((resolveGate) => {
+      releaseGate = resolveGate;
+    });
+    let first: Promise<void> = Promise.resolve();
+    let second: Promise<void> = Promise.resolve();
+    try {
+      mkdirSync(join(dir, "rooms", roomKey(roomId)), { recursive: true });
+      writeFileSync(lock, JSON.stringify({ pid: 2147483646, nonce: "dead" }), {
+        encoding: "utf8",
+      });
+      roomEventLogTestHooks.afterReclaimMutexAcquired = (lockPath: string) => {
+        if (lockPath === lock) return gate;
+        return undefined;
+      };
+      first = roomEventLogTestHooks.reclaim(lock);
+      second = roomEventLogTestHooks.reclaim(lock);
+      await waitUntil(() => existsSync(`${lock}.reclaim`), 2000);
+      writeFileSync(lock, JSON.stringify({ pid: process.pid, nonce: "live" }), {
+        encoding: "utf8",
+      });
+      releaseGate();
+      await Promise.all([first, second]);
+      expect(existsSync(lock)).toBe(true);
+      expect(JSON.parse(readFileSync(lock, "utf8"))).toEqual({
+        pid: process.pid,
+        nonce: "live",
+      });
+      expect(existsSync(`${lock}.reclaim`)).toBe(false);
+
+      roomEventLogTestHooks.afterReclaimMutexAcquired = null;
+      writeFileSync(lock, "");
+      await roomEventLogTestHooks.reclaim(lock);
+      expect(existsSync(lock)).toBe(true);
+      const past = new Date(Date.now() - 6000);
+      utimesSync(lock, past, past);
+      await roomEventLogTestHooks.reclaim(lock);
+      expect(existsSync(lock)).toBe(false);
+    } finally {
+      releaseGate();
+      await Promise.allSettled([first, second]);
+      roomEventLogTestHooks.reset(dir);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("seen membership is durable before append, so restart does not duplicate a line", async () => {
+    const { RoomEventStore, readRoomEventLog, roomKey, roomEventLogTestHooks } =
+      await import(ROOM_EVENT_LOG_SPECIFIER);
+    const dir = tempDir("seen-first");
+    try {
+      const roomId = "room_seen_first";
+      const ts = "2026-09-01T00:00:00.000Z";
+      const eventId = "ev_crash";
+      const env = stamped({ roomId, eventId, seq: 1, ts, text: "crash-window" });
+      roomEventLogTestHooks.failAppendUnder = dir;
+      const store = new RoomEventStore({ dir, consumer: "bridge" });
+      const result = await store.ingest(env);
+      expect(result.failOpen).toBe(true);
+      expect(result.logged).toBe(false);
+      expect(store.counters().failOpen).toBe(1);
+      const before = await readRoomEventLog(dir, roomId, utcMonth(ts));
+      expect(before.records).toHaveLength(0);
+      const seenFile = join(dir, "rooms", roomKey(roomId), "seen.json");
+      const seen = JSON.parse(readFileSync(seenFile, "utf8")) as { log: string[] };
+      expect(seen.log).toContain(eventId);
+
+      roomEventLogTestHooks.reset(dir);
+      const restarted = new RoomEventStore({ dir, consumer: "bridge" });
+      const again = await restarted.ingest(env);
+      expect(again.logged).toBe(false);
+      const after = await readRoomEventLog(dir, roomId, utcMonth(ts));
+      expect(after.records).toHaveLength(0);
+    } finally {
+      roomEventLogTestHooks.reset(dir);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("seen sets stay within the cap", async () => {
+    const { RoomEventStore, roomKey, roomEventLogTestHooks, ROOM_EVENT_SEEN_CAP } =
+      await import(ROOM_EVENT_LOG_SPECIFIER);
+    const dir = tempDir("cap");
+    try {
+      expect(ROOM_EVENT_SEEN_CAP).toBe(1024);
+      const N = 20;
+      const roomId = "room_cap";
+      const ts = "2026-10-01T00:00:00.000Z";
+      const store = new RoomEventStore({ dir, consumer: "bridge", seenCap: N });
+      for (let i = 0; i < N + 50; i += 1) {
+        const result = await store.ingest(
+          stamped({ roomId, eventId: `ev_${i}`, seq: i + 1, ts, text: "capped" }),
+        );
+        expect(result.failOpen).toBe(false);
+        expect(result.logged).toBe(true);
+      }
+      const sizes = roomEventLogTestHooks.sizes(dir, roomId, "bridge");
+      expect(sizes.log).toBeLessThanOrEqual(N);
+      expect(sizes.delivery).toBeLessThanOrEqual(N);
+      expect(sizes.log).toBe(N);
+      expect(sizes.delivery).toBe(N);
+      const seen = JSON.parse(
+        readFileSync(join(dir, "rooms", roomKey(roomId), "seen.json"), "utf8"),
+      ) as { log: string[]; consumers: Record<string, string[]> };
+      expect(seen.log.length).toBeLessThanOrEqual(N);
+      expect(seen.consumers.bridge!.length).toBeLessThanOrEqual(N);
+      expect(seen.log).toContain(`ev_${N + 49}`);
+      expect(seen.log).not.toContain("ev_0");
+    } finally {
+      roomEventLogTestHooks.reset(dir);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("NaN lock budget fail-opens within the default budget and does not leak the lock", async () => {
+    const { RoomEventStore, roomKey, roomEventLogTestHooks } = await import(
+      ROOM_EVENT_LOG_SPECIFIER
+    );
+    const dir = tempDir("budget");
+    try {
+      const roomId = "room_budget";
+      const ts = "2026-11-01T00:00:00.000Z";
+      const lock = join(dir, "rooms", roomKey(roomId), ".lock");
+      roomEventLogTestHooks.delayAcquireUnder = dir;
+      roomEventLogTestHooks.delayAcquireMs = 400;
+      const store = new RoomEventStore({
+        dir,
+        consumer: "bridge",
+        lockBudgetMs: Number.NaN,
+      });
+      const started = Date.now();
+      const result = await store.ingest(
+        stamped({ roomId, eventId: "ev_budget", seq: 1, ts, text: "budget" }),
+      );
+      const elapsed = Date.now() - started;
+      expect(result.failOpen).toBe(true);
+      expect(result.deliver).toBe(true);
+      expect(elapsed).toBeGreaterThanOrEqual(200);
+      expect(elapsed).toBeLessThan(370);
+      await new Promise((resolveSleep) => {
+        setTimeout(resolveSleep, 700);
+      });
+      expect(existsSync(lock)).toBe(false);
+    } finally {
+      roomEventLogTestHooks.reset(dir);
       rmSync(dir, { recursive: true, force: true });
     }
   });

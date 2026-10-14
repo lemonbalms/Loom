@@ -7,7 +7,7 @@
  * still suppresses a second delivery in this process.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import {
   chmod,
@@ -27,8 +27,10 @@ export const ROOM_EVENT_SEEN_CAP = 1024;
 
 const DEFAULT_LOCK_BUDGET_MS = 250;
 const LOCK_POLL_MS = 5;
-/** Empty lock files younger than this are still being created. */
-const LOCK_PID_GRACE_MS = 50;
+/** Empty or unparsable locks younger than this are still being written. */
+const LOCK_STALE_MS = 5000;
+/** `<lock>.reclaim` older than this may be removed. */
+const RECLAIM_MUTEX_STALE_MS = 10000;
 
 export type IngestResult = {
   deliver: boolean;
@@ -65,6 +67,25 @@ type SeenState = {
 };
 
 type FailReason = "lock_timeout" | "append_failed" | "seen_unreadable";
+
+type ParsedLock =
+  | { kind: "json"; pid: number; nonce: string }
+  | { kind: "empty" }
+  | { kind: "unparsable" };
+
+type LockIdentity =
+  | { kind: "dead"; pid: number; nonce: string }
+  | { kind: "stale-blank"; mtimeMs: number };
+
+type RoomEventLogTestHooks = {
+  afterReclaimMutexAcquired: null | ((lockPath: string) => Promise<void> | void);
+  failAppendUnder: string | null;
+  delayAcquireUnder: string | null;
+  delayAcquireMs: number;
+  reset(dir?: string): void;
+  sizes(dir: string, roomId: string, consumer: string): { log: number; delivery: number };
+  reclaim(lockPath: string): Promise<void>;
+};
 
 const chains = new Map<string, Promise<void>>();
 const loggedMemory = new Map<string, Set<string>>();
@@ -151,6 +172,50 @@ function touch(list: string[], id: string, cap: number): void {
   while (list.length > cap) list.shift();
 }
 
+function capList(list: string[], cap: number): string[] {
+  if (list.length <= cap) return list;
+  return list.slice(list.length - cap);
+}
+
+function trimSet(set: Set<string>, cap: number): void {
+  while (set.size > cap) {
+    const oldest = set.values().next().value;
+    if (typeof oldest !== "string") break;
+    set.delete(oldest);
+  }
+}
+
+function rememberSet(set: Set<string>, id: string, cap: number): void {
+  if (set.has(id)) set.delete(id);
+  set.add(id);
+  trimSet(set, cap);
+}
+
+function capSeen(state: SeenState, cap: number): void {
+  state.log = capList(state.log, cap);
+  for (const [name, list] of Object.entries(state.consumers)) {
+    state.consumers[name] = capList(list, cap);
+  }
+}
+
+function sanitizeLockBudget(ms: number | undefined): number {
+  if (ms === undefined || !Number.isFinite(ms) || ms <= 0) return DEFAULT_LOCK_BUDGET_MS;
+  return Math.min(ms, DEFAULT_LOCK_BUDGET_MS);
+}
+
+function underDir(dir: string, file: string): boolean {
+  const root = resolve(dir);
+  const abs = resolve(file);
+  return abs === root || abs.startsWith(root + sep);
+}
+
+function dropScoped(map: Map<string, Set<string>>, dir: string): void {
+  const prefix = `${resolve(dir)}\0`;
+  for (const key of [...map.keys()]) {
+    if (key.startsWith(prefix)) map.delete(key);
+  }
+}
+
 function emptySeen(): SeenState {
   return { v: 1, log: [], lastSeq: 0, consumers: {} };
 }
@@ -208,32 +273,123 @@ async function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function reclaimStaleLock(lockPath: string): Promise<void> {
-  let age = 0;
+function parseLock(raw: string): ParsedLock {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return { kind: "empty" };
+  try {
+    const value: unknown = JSON.parse(trimmed);
+    if (!value || typeof value !== "object") return { kind: "unparsable" };
+    const obj = value as Record<string, unknown>;
+    const pid = obj.pid;
+    const nonce = obj.nonce;
+    if (
+      typeof pid === "number" &&
+      Number.isInteger(pid) &&
+      pid > 0 &&
+      typeof nonce === "string" &&
+      nonce.length > 0
+    ) {
+      return { kind: "json", pid, nonce };
+    }
+  } catch {
+    /* unparsable */
+  }
+  return { kind: "unparsable" };
+}
+
+function sameIdentity(a: LockIdentity, b: LockIdentity): boolean {
+  if (a.kind === "dead" && b.kind === "dead") {
+    return a.pid === b.pid && a.nonce === b.nonce;
+  }
+  if (a.kind === "stale-blank" && b.kind === "stale-blank") {
+    return a.mtimeMs === b.mtimeMs;
+  }
+  return false;
+}
+
+/** Reclaimable identity, or null when the lock is missing or still live. */
+async function observeLock(lockPath: string): Promise<LockIdentity | null> {
+  let mtimeMs: number;
   try {
     const info = await stat(lockPath);
-    age = Date.now() - info.mtimeMs;
+    mtimeMs = info.mtimeMs;
+  } catch (e) {
+    if (errno(e) === "ENOENT") return null;
+    throw e;
+  }
+  let raw: string;
+  try {
+    raw = await readFile(lockPath, "utf8");
+  } catch (e) {
+    if (errno(e) === "ENOENT") return null;
+    throw e;
+  }
+  const parsed = parseLock(raw);
+  if (parsed.kind === "json") {
+    if (isPidAlive(parsed.pid)) return null;
+    return { kind: "dead", pid: parsed.pid, nonce: parsed.nonce };
+  }
+  if (Date.now() - mtimeMs <= LOCK_STALE_MS) return null;
+  return { kind: "stale-blank", mtimeMs };
+}
+
+async function reclaimStaleLock(lockPath: string): Promise<void> {
+  let observed: LockIdentity | null;
+  try {
+    observed = await observeLock(lockPath);
   } catch {
     return;
   }
-  let pid: number | null = null;
+  if (!observed) return;
+  const mutexPath = `${lockPath}.reclaim`;
   try {
-    const raw = await readFile(lockPath, "utf8");
-    const n = Number(raw.split("\n")[0]);
-    pid = Number.isFinite(n) && n > 0 ? n : null;
+    const info = await stat(mutexPath);
+    if (Date.now() - info.mtimeMs > RECLAIM_MUTEX_STALE_MS) await unlink(mutexPath);
   } catch {
-    return;
+    /* absent or raced */
   }
-  if (pid !== null && isPidAlive(pid)) return;
-  if (pid === null && age < LOCK_PID_GRACE_MS) return;
+  let heldMutex = false;
+  let fh: Awaited<ReturnType<typeof open>> | null = null;
   try {
-    await unlink(lockPath);
-  } catch {
-    /* another waiter took it */
+    fh = await open(mutexPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
+    heldMutex = true;
+    await fh.write(JSON.stringify({ pid: process.pid }));
+    await fh.close();
+    fh = null;
+    const hook = roomEventLogTestHooks.afterReclaimMutexAcquired;
+    if (hook) await hook(lockPath);
+    // Re-read under the mutex so a live replacement is never unlinked.
+    let again: LockIdentity | null;
+    try {
+      again = await observeLock(lockPath);
+    } catch {
+      return;
+    }
+    if (again && sameIdentity(observed, again)) await unlink(lockPath);
+  } catch (e) {
+    if (errno(e) === "EEXIST") return;
+  } finally {
+    if (fh) {
+      try {
+        await fh.close();
+      } catch {
+        /* */
+      }
+    }
+    if (heldMutex) {
+      try {
+        await unlink(mutexPath);
+      } catch {
+        /* */
+      }
+    }
   }
 }
 
-async function acquireLock(lockPath: string, budgetMs: number): Promise<boolean> {
+async function acquireLockBody(
+  lockPath: string,
+  budgetMs: number,
+): Promise<{ ok: boolean; nonce: string | null }> {
   const start = Date.now();
   await mkdir(dirname(lockPath), { recursive: true });
   for (;;) {
@@ -243,8 +399,9 @@ async function acquireLock(lockPath: string, budgetMs: number): Promise<boolean>
         constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
         0o600,
       );
+      const nonce = randomBytes(16).toString("hex");
       try {
-        await fh.write(`${process.pid}\n${Date.now()}\n`);
+        await fh.write(JSON.stringify({ pid: process.pid, nonce }));
         await fh.sync();
       } finally {
         await fh.close();
@@ -254,30 +411,107 @@ async function acquireLock(lockPath: string, budgetMs: number): Promise<boolean>
       } catch {
         /* */
       }
-      return true;
+      const delayDir = roomEventLogTestHooks.delayAcquireUnder;
+      const delayMs = roomEventLogTestHooks.delayAcquireMs;
+      if (delayMs > 0 && delayDir && underDir(delayDir, lockPath)) {
+        roomEventLogTestHooks.delayAcquireMs = 0;
+        roomEventLogTestHooks.delayAcquireUnder = null;
+        await sleep(delayMs);
+      }
+      return { ok: true, nonce };
     } catch (e) {
       if (errno(e) === "EEXIST") await reclaimStaleLock(lockPath);
       else if (errno(e) !== "ENOENT") throw e;
     }
     const elapsed = Date.now() - start;
-    if (elapsed >= budgetMs) return false;
-    await sleep(Math.min(LOCK_POLL_MS, budgetMs - elapsed));
+    if (elapsed >= budgetMs) return { ok: false, nonce: null };
+    await sleep(Math.min(LOCK_POLL_MS, Math.max(0, budgetMs - elapsed)));
   }
 }
 
-async function releaseLock(lockPath: string): Promise<void> {
+async function acquireLock(
+  lockPath: string,
+  budgetMs: number,
+): Promise<{ held: boolean; nonce: string | null }> {
+  const work = acquireLockBody(lockPath, budgetMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((resolveTimeout) => {
+    timer = setTimeout(() => resolveTimeout("timeout"), budgetMs);
+  });
+  try {
+    const winner = await Promise.race([
+      work.then((result) => ({ tag: "done" as const, result })),
+      timeout.then(() => ({ tag: "timeout" as const })),
+    ]);
+    if (winner.tag === "timeout") {
+      void work
+        .then((result) => {
+          if (result.ok && result.nonce !== null) return releaseLock(lockPath, result.nonce);
+          return undefined;
+        })
+        .catch(() => {
+          /* late acquire failed */
+        });
+      return { held: false, nonce: null };
+    }
+    if (winner.result.ok && winner.result.nonce !== null) {
+      return { held: true, nonce: winner.result.nonce };
+    }
+    return { held: false, nonce: null };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function releaseLock(lockPath: string, nonce: string): Promise<void> {
   try {
     const raw = await readFile(lockPath, "utf8");
-    const pid = Number(raw.split("\n")[0]);
-    if (pid !== process.pid) return;
+    const parsed = parseLock(raw);
+    if (parsed.kind !== "json") return;
+    if (parsed.pid !== process.pid || parsed.nonce !== nonce) return;
     await unlink(lockPath);
   } catch {
     /* already released */
   }
 }
 
+export const roomEventLogTestHooks: RoomEventLogTestHooks = {
+  afterReclaimMutexAcquired: null,
+  failAppendUnder: null,
+  delayAcquireUnder: null,
+  delayAcquireMs: 0,
+  reset(dir?: string): void {
+    this.afterReclaimMutexAcquired = null;
+    this.failAppendUnder = null;
+    this.delayAcquireUnder = null;
+    this.delayAcquireMs = 0;
+    if (!dir) {
+      loggedMemory.clear();
+      namedShadow.clear();
+      return;
+    }
+    dropScoped(loggedMemory, dir);
+    dropScoped(namedShadow, dir);
+  },
+  sizes(dir: string, roomId: string, consumer: string): { log: number; delivery: number } {
+    const id = scopeKey(dir, roomKey(roomId));
+    return {
+      log: loggedMemory.get(id)?.size ?? 0,
+      delivery: namedShadow.get(`${id}\0${consumer}`)?.size ?? 0,
+    };
+  },
+  reclaim(lockPath: string): Promise<void> {
+    return reclaimStaleLock(lockPath);
+  },
+};
+
 /** Returns whether a missing trailing newline was repaired (R4). */
 async function appendJsonl(file: string, line: string): Promise<boolean> {
+  const failUnder = roomEventLogTestHooks.failAppendUnder;
+  if (failUnder && underDir(failUnder, file)) {
+    roomEventLogTestHooks.failAppendUnder = null;
+    throw new Error("injected append failure");
+  }
   await mkdir(dirname(file), { recursive: true });
   let repair = false;
   try {
@@ -351,14 +585,14 @@ function memoryHas(dir: string, key: string, eventId: string): boolean {
   return loggedMemory.get(scopeKey(dir, key))?.has(eventId) ?? false;
 }
 
-function memoryAdd(dir: string, key: string, eventId: string): void {
+function memoryAdd(dir: string, key: string, eventId: string, cap: number): void {
   const id = scopeKey(dir, key);
   let set = loggedMemory.get(id);
   if (!set) {
     set = new Set();
     loggedMemory.set(id, set);
   }
-  set.add(eventId);
+  rememberSet(set, eventId, cap);
 }
 
 function namedShadowSet(dir: string, key: string, consumer: string): Set<string> {
@@ -418,8 +652,7 @@ export class RoomEventStore {
     this.dir = dir;
     const consumer = opts.consumer?.trim();
     this.consumer = consumer && consumer.length > 0 ? consumer : undefined;
-    const requested = opts.lockBudgetMs ?? DEFAULT_LOCK_BUDGET_MS;
-    this.lockBudgetMs = Math.max(0, Math.min(requested, DEFAULT_LOCK_BUDGET_MS));
+    this.lockBudgetMs = sanitizeLockBudget(opts.lockBudgetMs);
     const cap = opts.seenCap ?? ROOM_EVENT_SEEN_CAP;
     this.seenCap = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : ROOM_EVENT_SEEN_CAP;
   }
@@ -456,10 +689,10 @@ export class RoomEventStore {
 
   private shadowAdd(key: string, consumer: string | undefined, eventId: string): void {
     if (!consumer) {
-      this.anonShadow.add(eventId);
+      rememberSet(this.anonShadow, eventId, this.seenCap);
       return;
     }
-    namedShadowSet(this.dir, key, consumer).add(eventId);
+    rememberSet(namedShadowSet(this.dir, key, consumer), eventId, this.seenCap);
   }
 
   private failOpen(
@@ -494,18 +727,23 @@ export class RoomEventStore {
     const roomId = env.roomId;
     const lockPath = childPath(this.dir, roomId, ".lock");
     let held = false;
+    let nonce: string | null = null;
     try {
-      held = await acquireLock(lockPath, this.lockBudgetMs);
+      const lock = await acquireLock(lockPath, this.lockBudgetMs);
+      held = lock.held;
+      nonce = lock.nonce;
     } catch {
       return this.failOpen("lock_timeout", roomId, eventId, key, consumer);
     }
-    if (!held) return this.failOpen("lock_timeout", roomId, eventId, key, consumer);
+    if (!held || nonce === null) {
+      return this.failOpen("lock_timeout", roomId, eventId, key, consumer);
+    }
     try {
       return await this.decide(env, eventId, key, consumer);
     } catch {
       return this.failOpen("append_failed", roomId, eventId, key, consumer);
     } finally {
-      if (held) await releaseLock(lockPath);
+      if (held && nonce !== null) await releaseLock(lockPath, nonce);
     }
   }
 
@@ -523,8 +761,19 @@ export class RoomEventStore {
     } catch {
       return this.failOpen("seen_unreadable", roomId, eventId, key, consumer);
     }
-    for (const id of loggedMemory.get(scopeKey(this.dir, key)) ?? []) {
-      if (!seen.log.includes(id)) seen.log.push(id);
+    capSeen(seen, this.seenCap);
+    const memory = loggedMemory.get(scopeKey(this.dir, key));
+    if (memory) {
+      trimSet(memory, this.seenCap);
+      for (const id of memory) {
+        if (!seen.log.includes(id)) seen.log.push(id);
+      }
+      seen.log = capList(seen.log, this.seenCap);
+    }
+    trimSet(this.anonShadow, this.seenCap);
+    if (consumer) {
+      const named = namedShadow.get(`${scopeKey(this.dir, key)}\0${consumer}`);
+      if (named) trimSet(named, this.seenCap);
     }
 
     const inLog = seen.log.includes(eventId) || memoryHas(this.dir, key, eventId);
@@ -532,6 +781,34 @@ export class RoomEventStore {
       ? (seen.consumers[consumer]?.includes(eventId) ?? false) ||
         this.shadowHas(key, consumer, eventId)
       : this.shadowHas(key, consumer, eventId);
+
+    const deliver = !inDelivery;
+    if (!inLog) {
+      touch(seen.log, eventId, this.seenCap);
+      const seq = seqOf(env);
+      if (seq > seen.lastSeq) seen.lastSeq = seq;
+    }
+    if (deliver && consumer) {
+      const list = seen.consumers[consumer] ?? [];
+      seen.consumers[consumer] = list;
+      touch(list, eventId, this.seenCap);
+    }
+
+    const persist = !inLog || (deliver && consumer !== undefined);
+    if (persist) {
+      capSeen(seen, this.seenCap);
+      // B membership is durable before we return deliver=true. A crash after this
+      // write and before the caller runs onEnvelope drops that delivery by design
+      // (at-most-once).
+      try {
+        await writeSeen(seenPath, seen);
+      } catch {
+        return this.failOpen("append_failed", roomId, eventId, key, consumer);
+      }
+    }
+
+    if (!inLog) memoryAdd(this.dir, key, eventId, this.seenCap);
+    if (deliver || inDelivery) this.shadowAdd(key, consumer, eventId);
 
     let logged = false;
     if (!inLog) {
@@ -551,27 +828,6 @@ export class RoomEventStore {
         const repaired = await appendJsonl(file, JSON.stringify(record));
         if (repaired) this.tornSkippedCount += 1;
       } catch {
-        return this.failOpen("append_failed", roomId, eventId, key, consumer);
-      }
-      logged = true;
-      touch(seen.log, eventId, this.seenCap);
-      memoryAdd(this.dir, key, eventId);
-      const seq = seqOf(env);
-      if (seq > seen.lastSeq) seen.lastSeq = seq;
-    }
-
-    const deliver = !inDelivery;
-    if (deliver && consumer) {
-      const list = seen.consumers[consumer] ?? [];
-      seen.consumers[consumer] = list;
-      touch(list, eventId, this.seenCap);
-    }
-    if (deliver || inDelivery) this.shadowAdd(key, consumer, eventId);
-
-    if (logged || (deliver && consumer)) {
-      try {
-        await writeSeen(seenPath, seen);
-      } catch {
         this.failOpenCount += 1;
         console.error(
           "[loom] room-event-log fail-open",
@@ -583,8 +839,9 @@ export class RoomEventStore {
             eventId,
           }),
         );
-        return { deliver, logged, failOpen: true };
+        return { deliver, logged: false, failOpen: true };
       }
+      logged = true;
     }
     return { deliver, logged, failOpen: false };
   }
