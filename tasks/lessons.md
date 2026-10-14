@@ -374,3 +374,5 @@
 - [gate] 2026-10-15 (58) **PLAN 버전·리뷰 번호·토폴로지를 올리는 게이트 커밋은 라이브 핀 테스트도 같이 올린다** — `scripts/handoff-checkpoint.test.ts`(:141 Version · :474-483 Dashboard Product/Review/topology) · `scripts/session-routing.test.ts` V9가 현재 HANDOFF/PLAN 값을 축자 고정한다. 안 올리면 다음 PATCH의 red/green 판독에 무관한 실패 3~4건이 섞인다(0.29.0 `30be330`에서 발생, `ae60cdb`에서 정렬).
 
 - [workers] 2026-10-15 (59) **grok 레인 병렬 시 spec 파일은 호출 명령 안에서 고유 mktemp로** — zsh에서 변수 미유지로 "temp 디렉터리 최신 grok-spec" 을 집으면 다른 레인 spec을 실행한다(0.29.0 hardening ② 출처 모호). 병렬 grok 위임 프롬프트에 이 제약을 명시하고, 결과는 diff↔spec 대조로만 수용.
+
+- [gate] 2026-10-15 (60) **교차 검증을 건너뛴 PATCH에서 최종 리뷰 차단 결함이 나왔다** — 0.29.0 PATCH 2~4는 codex fix-first로 각각 교정됐지만 검증 없이 들어간 PATCH 5에서 다중 프로필 브릿지 전달 억제(공유 소비자 키)가 발견됨. 모든 production PATCH는 다음 PATCH 전에 독립 검증 1회.
