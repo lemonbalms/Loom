@@ -257,7 +257,7 @@ describe("V5 — restoration questions", () => {
 describe("live checkpoint (current gate)", () => {
   test("live HANDOFF is the canonical checkpoint with all V2 information", () => {
     const errs = validateCheckpoint(liveHandoff, {
-      planVersion: "0.28.1",
+      planVersion: "0.29.0",
       trapsText: liveTraps,
     });
     expect(errs).toEqual([]);
@@ -270,7 +270,7 @@ describe("live checkpoint (current gate)", () => {
     );
     expect(extractSection(liveHandoff, "Don't redo")).toMatch(/Phase D|Dashboard|warm-base/i);
     expect(extractSection(liveHandoff, "Current loop")).toMatch(
-      /Dashboard|v0\.28\.1|Harness/i,
+      /Dashboard|v0\.29\.0|v0\.28\.1|Harness/i,
     );
     expect(extractSection(liveHandoff, "Current action")).toMatch(
       /SINGLE topology|current-session|NORMS/i,
@@ -592,7 +592,7 @@ describe("Phase D — SessionStart vs no-hook equivalence (V4; view ≠ model dr
       "## Evidence\n\n<details>\n\nhidden history\n\n</details>\n\n",
     );
     expect(
-      validateCheckpoint(withDetails, { planVersion: "0.28.1" }).some((e) =>
+      validateCheckpoint(withDetails, { planVersion: "0.29.0" }).some((e) =>
         e.includes("<details>"),
       ),
     ).toBe(true);
@@ -612,7 +612,7 @@ describe("Phase D — SessionStart vs no-hook equivalence (V4; view ≠ model dr
     expect(manual).toEqual(injected);
     expect(state).toMatch(/required HANDOFF sections missing: Don't redo/);
     expect(
-      validateCheckpoint(renamed, { planVersion: "0.28.1" }).some((e) =>
+      validateCheckpoint(renamed, { planVersion: "0.29.0" }).some((e) =>
         e.includes("missing required heading: Don't redo"),
       ),
     ).toBe(true);

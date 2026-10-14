@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.28.1** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.29.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -849,4 +849,4 @@ bun test
 
 ---
 
-*가이드 핀: 제품 **v0.28.1** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*
+*가이드 핀: 제품 **v0.29.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*

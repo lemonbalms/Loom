@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-07-22 (0.28.1 herdr 0.7.5 / protocol-17 adapter) |
+| **Last updated** | 2026-10-15 (0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신) |
 
 ---
 
@@ -39,6 +39,37 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.29.0 — 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신 (`clientEventId`)
+
+PLAN §0.29.0 (R47 `approved-with-fixes` → `approved`) · 커밋 `ae60cdb`(PATCH 1 red) → `8010f31`(PATCH 2) → `1096b10`(PATCH 3 + PATCH 2 codex 교정) → `2fc9b2b`(PATCH 3 codex 교정) → `d3e1a38`(PATCH 4) → `d273b82`·`00f8f80`(PATCH 4 codex 교정) → `c183c92`(PATCH 5) → PATCH 6(문서·VERSION).
+
+**설계 결정 기록 (R47 수용분 — PLAN Done when 요구):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-15 | UK-1 ② · R47-M3 | seq 영속 = **블록 예약**(`SEQ_RESERVE_BLOCK` = 1000). 스냅샷 `seqHigh`는 **배타 상한**(발급 seq < `seqHigh`) — seq가 상한에 닿으면 `seqHigh = seq+K`를 **먼저 영속한 뒤** 스탬프, 재로드는 `seqHigh`부터. `ROOM_SNAPSHOT_VERSION` 1 유지 + optional 필드. | chat마다 스냅샷 쓰기를 피하면서 *"재시작 후 seq 비감소"* 를 지킨다. 간격은 Non-goal("간격 메우지 않음")과 양립. | — |
+| 2026-10-15 | R1 (R47 수용) | 로그 디렉터리 키 = `roomKey = sha256(roomId)` hex 앞 16자. 원문 `roomId`는 각 줄에 보존. | 원문 `roomId`(`min(1)`뿐)를 경로로 쓰면 `loomDir()` 밖 쓰기가 가능하다. | — |
+| 2026-10-15 | R2 (R47 수용) | dedupe 2층 — A(로그, 룸 공유) · B(전달, 소비자별 + 인메모리 섀도). 브릿지 소비자 키 = `bridge`. | 단일 공유 seen이면 같은 룸의 두 번째 로컬 프로세스가 이벤트를 못 받는다. | — |
+| 2026-10-15 | R3 (R47 수용) | 중복 판정 키 = `eventId`뿐. `seq`는 간격·역행 관측 기록. | ephemeral relay·스냅샷 유실에서 seq가 역행해도 정상 이벤트를 버리지 않는다. | — |
+| 2026-10-15 | R4 (R47 수용) | append 직전 **락 안에서** 꼬리 개행 보정 · 리더는 torn 줄을 세고 건너뜀. | torn 잔편이 새 레코드를 삼키지 않는다. | — |
+| 2026-10-15 | R47-M2 · seqHigh 실패 경로 | 예약 영속 실패 시 `seqHigh`를 되돌리고(소비 seq는 건너뜀·재발급 없음) broadcast는 **비스탬프로 송신**(= 구 relay 통과) + 카운터 + stderr. handoff push는 enqueue 전에 중단(기존 `routeHandoff` 영속 실패와 같음). | 영속 상한 밖 seq를 발급하면 크래시 후 seq가 재발급된다. 이벤트를 버리는 것보다 구 형식 통과가 보수적이다. | — |
+
+**Deviations (계획 대비 실행 방식):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-15 | `CLAUDE.md` 규칙 5 (실작업 표면 = herdr pane 카드) · PLAN ④ 레인 | **(a) 작업 표면** — herdr pane 카드 대신 **in-harness 서브에이전트 레인**: `grok-implementer`(Grok 4.7, 구현) · codex(GPT-5.6, 검증). 레인 배치(구현 grok · 검증 codex · 자문 fable-advisor)는 유지. | pane 레인은 **긴 카드에서 죽는다** — 바로 이 업그레이드 계획(헤드리스 워커·카드별 세션, 2단계)이 메우려는 공백이다. 발견자≠수정자 교차 검증은 그대로 성립. | 2단계(헤드리스 워커) ship 후 pane/헤드리스 표면으로 복귀 검토. |
+| 2026-10-15 | 레인 타임아웃 | **(b)** grok 실행이 여러 차례 **590s 상한에서 타임아웃**(PATCH 1: 3회 중 2회 · PATCH 2: 4파일 중 3파일에서 중단) → **≥1500s 타임아웃으로 재실행**. | 타임아웃을 완료로 읽지 않고(CLAUDE.md 규칙 7) 산출물을 독립 검증했다. | 레인 기본 타임아웃 상향 검토. |
+| 2026-10-15 | 레인 산출물 결함 | **(c) 아키텍트 직접 수정:** ① PATCH 1 테스트 파일 결함(누락 import `safeParseClientMessage` · 미사용 import · TS narrowing — unknown 인자·클로저 대입 release fn의 never-narrowing) ② 라이브 핀 테스트(`handoff-checkpoint`·`session-routing`)를 `30be330` 상태로 재정렬(lessons (58)) ③ **`seqHigh`를 배타 상한으로 교정** — 포함 상한이면 크래시 후 재로드가 마지막 예약 seq를 **재발급**하는 off-by-one ④ 예약 영속 교정(`seqHigh`는 영속 성공 시에만 전진) + 회귀 테스트(mutation-checked). | 모두 수 줄 단위의 국소 교정이다(①②는 테스트·핀 전용, production 0줄). ③은 seq 비감소 불변식의 직접 위반이라 레인 왕복보다 즉시 교정이 안전했다. | — |
+| 2026-10-15 | 검증 게이트 | **(d) PATCH 2~4 전부 codex `fix-first` 판정 → 다음 PATCH 전에 교정 완료.** PATCH 2: 영속 전 예약 전진(**High**) · broadcast 예외 탈출(Med) → `1096b10`. PATCH 3: peer 이탈 후 캐시 소유권 잔존(**High** — 같은 id로 재합류한 peer가 원 ack 획득·chat 억제) · 로스터 밖 peer 캐시 churn 상한 · `__proto__` peer id(null-prototype dict) · 첫 ack/재응답 ack `ts` 불일치 → `2fc9b2b`. PATCH 4: 오래된 락 회수(stale-lock reclaim, **High**) · seen 기록 전 append 순서(append-before-seen, **High**) · 무한 증가 집합(상한) · 락 예산 준수 · RPC 응답 기아(직렬 수신 큐가 RPC 응답을 막음 → RPC 우회 + 큐 깊이 경고) → `d273b82`·`00f8f80`. | 발견자(codex)와 수정자(grok/아키텍트)를 분리해 각 PATCH를 닫고 넘어갔다. | — |
+
+**Known limits (이 버전이 보장하지 않는 것):**
+
+- **스냅샷 쓰기에 fsync 없음**(기존 write+rename) — 호스트/전원 크래시는 예약을 잃을 수 있다(seq 재발급 가능). relay **프로세스** 크래시는 커버된다. (codex Med, 기존 결함)
+- **보장은 at-most-once다.** 로그 ≤1줄 · 소비자당 전달 ≤1회. 내구 B층 기록과 `onEnvelope` 사이 크래시는 그 전달을 **잃는다**. seen 창은 상한이 있어 축출된 `eventId`는 **재전달될 수 있다**.
+- **UK-4 상한값(seen 1024 / clientEventId LRU 256)은 여전히 추정값**이다 — 측정 근거 없음, 상수 한 곳 + 경계 테스트로 고정.
+- **기존 red 테스트** `handoff-checkpoint` "live HANDOFF ... V2 information"의 Evidence 핀은 `08ae0c9` 이후 무변경(이 버전 범위 밖).
 
 ### §0.28.1 — herdr 0.7.5 / protocol-17 adapter
 

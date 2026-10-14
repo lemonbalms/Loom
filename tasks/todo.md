@@ -1,6 +1,19 @@
 # Todo — Loom
 
-## Current — owner pick next
+## Current — Loom 업그레이드 계획 (오너 지명 2026-10-15)
+
+> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47 approved). 2단계 이후는 PLAN 미작성 — 단계마다 새 PLAN 버전 + R{n} 게이트.
+
+1. [x] **1단계 — v0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신(`clientEventId`)** —
+   `ae60cdb` → `8010f31` → `1096b10` → `2fc9b2b` → `d3e1a38` + PATCH 4 hardening → `c183c92` → PATCH 6(PROTOCOL · implementation-notes §0.29.0 · VERSION 0.29.0).
+   Done when (a)(c)(d)(f) green · (b)(e) 부분 · ship 검사(full test · typecheck · lint · handoff:check) 대기.
+2. [ ] **2단계 — 헤드리스 워커 + 카드별 세션 + 프롬프트 주입 + 정책 + 스킬 materialize** (미착수)
+3. [ ] **3단계 — host를 OS 서비스로** (미착수)
+4. [ ] **4단계 — memory / rules / skills 저장소** (미착수)
+5. [ ] **5단계 — 프롬프트 조립** (미착수)
+6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
+
+## Previous — owner pick next (2026-07-28, superseded by 업그레이드 계획)
 
 > **SSOT = `HANDOFF.md`.** `bun run status` · `check:mem-header` (expect OK).
 

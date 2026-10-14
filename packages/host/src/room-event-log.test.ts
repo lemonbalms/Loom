@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -550,6 +551,53 @@ describe("v0.29.0 PATCH 4 review fixes", () => {
       expect(existsSync(lock)).toBe(false);
     } finally {
       roomEventLogTestHooks.reset(dir);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("consumer seen.json write failure fail-opens once then the same store shadows the duplicate", async () => {
+    const { RoomEventStore, roomKey, roomEventLogTestHooks } = await import(
+      ROOM_EVENT_LOG_SPECIFIER
+    );
+    const dir = tempDir("seen-shadow");
+    const roomId = "room_seen_shadow";
+    const roomDir = join(dir, "rooms", roomKey(roomId));
+    mkdirSync(roomDir, { recursive: true });
+    const seenFile = join(roomDir, "seen.json");
+    writeFileSync(seenFile, "{\"v\":1,\"log\":[],\"lastSeq\":0,\"consumers\":{}}\n");
+    if (typeof process.getuid === "function" && process.getuid() === 0) {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    }
+    chmodSync(seenFile, 0o400);
+    chmodSync(roomDir, 0o500);
+    const store = new RoomEventStore({ dir, consumer: "bridge" });
+    const env = stamped({
+      roomId,
+      eventId: "ev_shadow",
+      seq: 1,
+      ts: "2026-09-02T00:00:00.000Z",
+      text: "shadow",
+    });
+    try {
+      const first = await store.ingest(env);
+      expect(first.deliver).toBe(true);
+      expect(first.failOpen).toBe(true);
+      expect(store.counters().failOpen).toBe(1);
+      const second = await store.ingest(env);
+      expect(second.deliver).toBe(false);
+    } finally {
+      roomEventLogTestHooks.reset(dir);
+      try {
+        chmodSync(roomDir, 0o700);
+      } catch {
+        // directory mode restore is best-effort when the path is already gone
+      }
+      try {
+        chmodSync(seenFile, 0o600);
+      } catch {
+        // file mode restore is best-effort when the path is already gone
+      }
       rmSync(dir, { recursive: true, force: true });
     }
   });

@@ -4006,7 +4006,7 @@ function makeEnvelopeBase(roomId) {
     ts: nowIso()
   };
 }
-var PROTOCOL_VERSION = 1, DEFAULT_RELAY_PORT = 7842, DEFAULT_RELAY_HOST = "127.0.0.1", AgentKindSchema, PeerInfoSchema, MAX_ATTACHMENT_CONTENT_CHARS = 256000, MAX_ATTACHMENTS_PER_HANDOFF = 32, MAX_HANDOFF_BODY_CHARS = 1e5, MAX_INBOX_ENTRIES_PER_PEER = 100, HandoffAttachmentSchema, HandoffInboxStatusSchema, HandoffPayloadSchema, InboxEntrySchema, HandoffSendStatusSchema, BaseEnvelope, ClientRequestIdFields, PeerJoinEnvelopeSchema, PeerLeaveEnvelopeSchema, PeerPresenceEnvelopeSchema, PresenceTypingEnvelopeSchema, ChatEnvelopeSchema, HandoffEnvelopeSchema, HandoffAckEnvelopeSchema, InboxStateEnvelopeSchema, InboxClaimResultEnvelopeSchema, TranscriptMirrorEnvelopeSchema, RoomStateEnvelopeSchema, ErrorEnvelopeSchema, ClientPeerSchema, JoinRequestSchema, CreateRequestSchema, ClientHandoffRequestSchema, ClientChatRequestSchema, ClientListPeersRequestSchema, ClientLeaveRequestSchema, ClientListInboxRequestSchema, ClientClaimHandoffRequestSchema, EnvelopeSchema, ClientMessageSchema;
+var PROTOCOL_VERSION = 1, DEFAULT_RELAY_PORT = 7842, DEFAULT_RELAY_HOST = "127.0.0.1", AgentKindSchema, PeerInfoSchema, MAX_ATTACHMENT_CONTENT_CHARS = 256000, MAX_ATTACHMENTS_PER_HANDOFF = 32, MAX_HANDOFF_BODY_CHARS = 1e5, MAX_INBOX_ENTRIES_PER_PEER = 100, HandoffAttachmentSchema, HandoffInboxStatusSchema, HandoffPayloadSchema, InboxEntrySchema, HandoffSendStatusSchema, BaseEnvelope, ClientRequestIdFields, ClientEventIdField, PeerJoinEnvelopeSchema, PeerLeaveEnvelopeSchema, PeerPresenceEnvelopeSchema, PresenceTypingEnvelopeSchema, ChatEnvelopeSchema, HandoffEnvelopeSchema, HandoffAckEnvelopeSchema, InboxStateEnvelopeSchema, InboxClaimResultEnvelopeSchema, TranscriptMirrorEnvelopeSchema, RoomStateEnvelopeSchema, ErrorEnvelopeSchema, ClientPeerSchema, JoinRequestSchema, CreateRequestSchema, ClientHandoffRequestSchema, ClientChatRequestSchema, ClientListPeersRequestSchema, ClientLeaveRequestSchema, ClientListInboxRequestSchema, ClientClaimHandoffRequestSchema, EnvelopeSchema, ClientMessageSchema;
 var init_envelope = __esm(() => {
   init_zod();
   AgentKindSchema = exports_external.enum([
@@ -4059,10 +4059,15 @@ var init_envelope = __esm(() => {
     v: exports_external.literal(PROTOCOL_VERSION),
     roomId: exports_external.string().min(1),
     ts: exports_external.string().min(1),
-    requestId: exports_external.string().min(1).max(80).optional()
+    requestId: exports_external.string().min(1).max(80).optional(),
+    eventId: exports_external.string().regex(/^ev_.+/).optional(),
+    seq: exports_external.number().int().positive().optional()
   });
   ClientRequestIdFields = {
     requestId: exports_external.string().min(1).max(80).optional()
+  };
+  ClientEventIdField = {
+    clientEventId: exports_external.string().uuid().max(64).optional()
   };
   PeerJoinEnvelopeSchema = BaseEnvelope.extend({
     type: exports_external.literal("peer.join"),
@@ -4160,13 +4165,15 @@ var init_envelope = __esm(() => {
       fromPeerId: exports_external.string().optional(),
       createdAt: exports_external.string().optional()
     }),
-    ...ClientRequestIdFields
+    ...ClientRequestIdFields,
+    ...ClientEventIdField
   });
   ClientChatRequestSchema = exports_external.object({
     type: exports_external.literal("chat"),
     v: exports_external.literal(PROTOCOL_VERSION),
     text: exports_external.string(),
-    ...ClientRequestIdFields
+    ...ClientRequestIdFields,
+    ...ClientEventIdField
   });
   ClientListPeersRequestSchema = exports_external.object({
     type: exports_external.literal("list_peers"),
@@ -5447,17 +5454,17 @@ import {
   unlinkSync as unlinkSync4,
   rmSync as rmSync3
 } from "fs";
-import { join as join19, dirname as dirname6, basename as basename3, resolve as resolve3, sep as sep2 } from "path";
-import { createHash as createHash4 } from "crypto";
+import { join as join20, dirname as dirname7, basename as basename3, resolve as resolve4, sep as sep3 } from "path";
+import { createHash as createHash5 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
-  return join19(homedir5(), ".loom", "relay-state");
+  return join20(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
-  const h = createHash4("sha256").update(roomId).digest("hex").slice(0, 16);
-  return join19(stateDir2, `${h}.json`);
+  const h = createHash5("sha256").update(roomId).digest("hex").slice(0, 16);
+  return join20(stateDir2, `${h}.json`);
 }
-function isPidAlive3(pid) {
+function isPidAlive4(pid) {
   if (!Number.isFinite(pid) || pid <= 0)
     return false;
   try {
@@ -5468,10 +5475,10 @@ function isPidAlive3(pid) {
   }
 }
 function processLockDir(stateDir2) {
-  return join19(stateDir2, ".relay-writer.lock");
+  return join20(stateDir2, ".relay-writer.lock");
 }
 function lockPidPath2(lockDir) {
-  return join19(lockDir, "owner.pid");
+  return join20(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
   mkdirSync16(stateDir2, { recursive: true });
@@ -5508,7 +5515,7 @@ function acquireStateDirLock(stateDir2) {
     } catch {
       owner = null;
     }
-    if (age >= LOCK_STALE_MS2 && (owner === null || !isPidAlive3(owner))) {
+    if (age >= LOCK_STALE_MS3 && (owner === null || !isPidAlive4(owner))) {
       try {
         rmSync3(lockDir, { recursive: true, force: true });
       } catch {}
@@ -5539,7 +5546,7 @@ function releaseStateDirLock(stateDir2) {
   } catch {}
 }
 function writeAtomicJson2(filePath, data) {
-  const parent = dirname6(resolve3(filePath));
+  const parent = dirname7(resolve4(filePath));
   mkdirSync16(parent, { recursive: true });
   let realParent;
   try {
@@ -5551,7 +5558,7 @@ function writeAtomicJson2(filePath, data) {
   if (!base || base === "." || base === "..") {
     throw new Error(`Invalid snapshot basename: ${filePath}`);
   }
-  const finalPath = join19(realParent, base);
+  const finalPath = join20(realParent, base);
   try {
     const st = lstatSync(finalPath);
     if (st.isSymbolicLink()) {
@@ -5566,7 +5573,7 @@ function writeAtomicJson2(filePath, data) {
         throw e;
     }
   }
-  const tmp = join19(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
+  const tmp = join20(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
   try {
@@ -5607,6 +5614,36 @@ function isPeerInfoShape(p) {
     return false;
   const o = p;
   return typeof o.id === "string" && typeof o.displayName === "string" && typeof o.color === "string" && typeof o.agentKind === "string" && typeof o.joinedAt === "string";
+}
+function parseHandoffClientEvents(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    return;
+  const out = Object.create(null);
+  for (const [peerId, entries] of Object.entries(raw)) {
+    if (!peerId || !Array.isArray(entries))
+      continue;
+    const list = [];
+    for (const e of entries) {
+      if (!e || typeof e !== "object" || Array.isArray(e))
+        continue;
+      const ee = e;
+      if (typeof ee.clientEventId !== "string" || ee.clientEventId.length === 0 || typeof ee.handoffId !== "string" || ee.handoffId.length === 0 || typeof ee.bodyHash !== "string" || ee.bodyHash.length === 0 || !ee.ack || typeof ee.ack !== "object" || Array.isArray(ee.ack)) {
+        continue;
+      }
+      const dup = list.findIndex((row) => row.clientEventId === ee.clientEventId);
+      if (dup >= 0)
+        list.splice(dup, 1);
+      list.push({
+        clientEventId: ee.clientEventId,
+        handoffId: ee.handoffId,
+        bodyHash: ee.bodyHash,
+        ack: ee.ack
+      });
+    }
+    if (list.length > 0)
+      out[peerId] = list;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 function parseRoomSnapshot(raw) {
   if (!raw || typeof raw !== "object")
@@ -5653,6 +5690,8 @@ function parseRoomSnapshot(raw) {
       inboxes[peerId] = list;
     }
   }
+  const seqHigh = typeof o.seqHigh === "number" && Number.isInteger(o.seqHigh) && o.seqHigh > 0 ? o.seqHigh : undefined;
+  const handoffClientEvents = parseHandoffClientEvents(o.handoffClientEvents);
   return {
     v: 1,
     room: {
@@ -5664,7 +5703,9 @@ function parseRoomSnapshot(raw) {
     members,
     inboxes,
     colorIndex: typeof o.colorIndex === "number" ? o.colorIndex : 0,
-    updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : new Date().toISOString()
+    updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : new Date().toISOString(),
+    ...seqHigh !== undefined ? { seqHigh } : {},
+    ...handoffClientEvents ? { handoffClientEvents } : {}
   };
 }
 function loadAllSnapshots(stateDir2) {
@@ -5682,7 +5723,7 @@ function loadAllSnapshots(stateDir2) {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith("."))
       continue;
-    const path = join19(stateDir2, name);
+    const path = join20(stateDir2, name);
     try {
       const st = statSync4(path);
       if (!st.isFile())
@@ -5712,10 +5753,10 @@ function saveRoomSnapshot(stateDir2, snap) {
   try {
     realState = realpathSync2(stateDir2);
   } catch {
-    realState = resolve3(stateDir2);
+    realState = resolve4(stateDir2);
   }
   const path = roomStatePath(realState, snap.room.id);
-  if (!path.startsWith(realState + sep2) && path !== realState) {
+  if (!path.startsWith(realState + sep3) && path !== realState) {
     throw new Error(`Snapshot path escapes state dir: ${path}`);
   }
   writeAtomicJson2(path, snap);
@@ -5729,10 +5770,44 @@ function peerForSnapshot(p) {
     joinedAt: p.joinedAt
   };
 }
-var ROOM_SNAPSHOT_VERSION = 1, LOCK_STALE_MS2 = 5000;
+var ROOM_SNAPSHOT_VERSION = 1, LOCK_STALE_MS3 = 5000;
 var init_persist = () => {};
 
 // packages/relay/src/room.ts
+import { createHash as createHash6, randomUUID } from "crypto";
+function clientEventBodyHash(material) {
+  return createHash6("sha256").update(material, "utf8").digest("hex");
+}
+function handoffClientEventMaterial(h) {
+  const attachments = h.attachments == null || Array.isArray(h.attachments) && h.attachments.length === 0 ? null : h.attachments;
+  return JSON.stringify({
+    attachments,
+    body: h.body,
+    mode: h.mode ?? "message",
+    to: h.to
+  });
+}
+function chatClientEventMaterial(text) {
+  return JSON.stringify({ text });
+}
+function handoffResultFromAck(handoffId, ack) {
+  const status = ack.status;
+  const safe = status === "queued" || status === "delivered" || status === "peer_unknown" ? status : "queued";
+  const result = {
+    status: safe,
+    handoffId,
+    to: typeof ack.to === "string" ? ack.to : "",
+    notified: ack.notified === true,
+    recipientCount: typeof ack.recipientCount === "number" && ack.recipientCount >= 0 ? ack.recipientCount : 0
+  };
+  if (typeof ack.message === "string")
+    result.message = ack.message;
+  return result;
+}
+function isStoredHandoffClientEvent(e) {
+  return e.clientEventId.length > 0 && e.handoffId.length > 0 && e.bodyHash.length > 0 && !!e.ack && typeof e.ack === "object" && !Array.isArray(e.ack);
+}
+
 class Room {
   id;
   name;
@@ -5741,6 +5816,11 @@ class Room {
   members = new Map;
   inboxes = new Map;
   colorIndex = 0;
+  seq = 0;
+  seqHigh = 0;
+  seqReserveFailures = 0;
+  handoffClientEvents = new Map;
+  chatClientEvents = new Map;
   persistHook = null;
   constructor(name, inviteCode, id, opts) {
     this.id = id ?? generateRoomId();
@@ -5786,6 +5866,40 @@ class Room {
       });
       if (!room.inboxes.has(peer.id)) {
         room.inboxes.set(peer.id, new Map);
+      }
+    }
+    if (typeof snap.seqHigh === "number" && Number.isInteger(snap.seqHigh) && snap.seqHigh > 0) {
+      room.seqHigh = snap.seqHigh;
+      room.seq = snap.seqHigh - 1;
+    }
+    const rawEvents = snap.handoffClientEvents;
+    if (rawEvents && typeof rawEvents === "object") {
+      for (const [peerId, entries] of Object.entries(rawEvents)) {
+        if (!peerId || !Array.isArray(entries))
+          continue;
+        if (!room.members.has(peerId))
+          continue;
+        const map = new Map;
+        for (const e of entries) {
+          if (!isStoredHandoffClientEvent(e))
+            continue;
+          map.delete(e.clientEventId);
+          map.set(e.clientEventId, {
+            clientEventId: e.clientEventId,
+            handoffId: e.handoffId,
+            ack: e.ack,
+            bodyHash: e.bodyHash,
+            result: handoffResultFromAck(e.handoffId, e.ack)
+          });
+        }
+        while (map.size > CLIENT_EVENT_LRU_MAX) {
+          const oldest = map.keys().next().value;
+          if (oldest === undefined)
+            break;
+          map.delete(oldest);
+        }
+        if (map.size > 0)
+          room.handoffClientEvents.set(peerId, map);
       }
     }
     for (const [peerId, entries] of Object.entries(snap.inboxes ?? {})) {
@@ -5840,8 +5954,26 @@ class Room {
       members,
       inboxes,
       colorIndex: this.colorIndex,
-      updatedAt: nowIso()
+      updatedAt: nowIso(),
+      ...this.seqHigh > 0 ? { seqHigh: this.seqHigh } : {},
+      ...this.handoffClientEventsSnapshot()
     };
+  }
+  handoffClientEventsSnapshot() {
+    const handoffClientEvents = Object.create(null);
+    for (const [peerId, peer] of this.handoffClientEvents) {
+      if (peer.size === 0)
+        continue;
+      if (!this.members.has(peerId))
+        continue;
+      handoffClientEvents[peerId] = [...peer.values()].map((e) => ({
+        clientEventId: e.clientEventId,
+        handoffId: e.handoffId,
+        ack: e.ack,
+        bodyHash: e.bodyHash
+      }));
+    }
+    return Object.keys(handoffClientEvents).length > 0 ? { handoffClientEvents } : {};
   }
   get peerCount() {
     return this.members.size;
@@ -5939,8 +6071,12 @@ class Room {
     if (!m)
       return;
     const prevInbox = this.inboxes.get(peerId);
+    const prevHandoffEvents = this.handoffClientEvents.get(peerId);
+    const prevChatEvents = this.chatClientEvents.get(peerId);
     this.members.delete(peerId);
     this.inboxes.delete(peerId);
+    this.handoffClientEvents.delete(peerId);
+    this.chatClientEvents.delete(peerId);
     try {
       this.touchPersist();
     } catch (e) {
@@ -5949,6 +6085,14 @@ class Room {
         this.inboxes.set(peerId, prevInbox);
       else
         this.inboxes.delete(peerId);
+      if (prevHandoffEvents)
+        this.handoffClientEvents.set(peerId, prevHandoffEvents);
+      else
+        this.handoffClientEvents.delete(peerId);
+      if (prevChatEvents)
+        this.chatClientEvents.set(peerId, prevChatEvents);
+      else
+        this.chatClientEvents.delete(peerId);
       console.error(`[loom relay] persist failed room=${this.id} (removePeer rolled back):`, e instanceof Error ? e.message : e);
       throw e;
     }
@@ -5971,8 +6115,34 @@ class Room {
       return false;
     }
   }
+  stampRoomEvent(envelope2) {
+    this.seq += 1;
+    if (this.seq >= this.seqHigh) {
+      const prevHigh = this.seqHigh;
+      this.seqHigh = this.seq + SEQ_RESERVE_BLOCK;
+      try {
+        this.touchPersist();
+      } catch (e) {
+        this.seqHigh = prevHigh;
+        throw e;
+      }
+    }
+    envelope2.eventId = `ev_${randomUUID()}`;
+    envelope2.seq = this.seq;
+    return envelope2;
+  }
   broadcast(envelope2, exceptPeerId) {
-    const raw = JSON.stringify(envelope2);
+    let stamped;
+    try {
+      stamped = this.stampRoomEvent(envelope2);
+    } catch (e) {
+      this.seqReserveFailures += 1;
+      console.error(`[loom relay] seq reservation failed count=${this.seqReserveFailures} room=${this.id}: ${e.message}`);
+      envelope2.eventId = undefined;
+      envelope2.seq = undefined;
+      stamped = envelope2;
+    }
+    const raw = JSON.stringify(stamped);
     for (const [id, m] of this.members) {
       if (exceptPeerId && id === exceptPeerId)
         continue;
@@ -6076,7 +6246,83 @@ class Room {
     this.trimInbox(box);
     return entry;
   }
-  routeHandoff(handoff) {
+  lookupChatClientEvent(peerId, clientEventId) {
+    if (!clientEventId)
+      return;
+    const peer = this.chatClientEvents.get(peerId);
+    if (!peer)
+      return;
+    const entry = peer.get(clientEventId);
+    if (!entry)
+      return;
+    peer.delete(clientEventId);
+    peer.set(clientEventId, entry);
+    return entry.bodyHash;
+  }
+  rememberChatClientEvent(peerId, clientEventId, bodyHash) {
+    if (!clientEventId)
+      return;
+    let peer = this.chatClientEvents.get(peerId);
+    if (!peer) {
+      peer = new Map;
+      this.chatClientEvents.set(peerId, peer);
+    }
+    if (peer.has(clientEventId))
+      peer.delete(clientEventId);
+    peer.set(clientEventId, { bodyHash });
+    while (peer.size > CLIENT_EVENT_LRU_MAX) {
+      const oldest = peer.keys().next().value;
+      if (oldest === undefined)
+        break;
+      peer.delete(oldest);
+    }
+  }
+  takeHandoffClientEvent(peerId, clientEventId) {
+    const peer = this.handoffClientEvents.get(peerId);
+    if (!peer)
+      return;
+    const entry = peer.get(clientEventId);
+    if (!entry)
+      return;
+    peer.delete(clientEventId);
+    peer.set(clientEventId, entry);
+    return entry;
+  }
+  stageHandoffClientEvent(peerId, entry) {
+    const prev = this.handoffClientEvents.get(peerId);
+    const next = prev ? new Map(prev) : new Map;
+    if (next.has(entry.clientEventId))
+      next.delete(entry.clientEventId);
+    next.set(entry.clientEventId, entry);
+    while (next.size > CLIENT_EVENT_LRU_MAX) {
+      const oldest = next.keys().next().value;
+      if (oldest === undefined)
+        break;
+      next.delete(oldest);
+    }
+    this.handoffClientEvents.set(peerId, next);
+    return prev ? new Map(prev) : undefined;
+  }
+  restoreHandoffClientEvent(peerId, prev) {
+    if (prev)
+      this.handoffClientEvents.set(peerId, prev);
+    else
+      this.handoffClientEvents.delete(peerId);
+  }
+  routeHandoff(handoff, idempotency) {
+    const idem = idempotency && idempotency.clientEventId.length > 0 ? idempotency : undefined;
+    if (idem) {
+      const hit = this.takeHandoffClientEvent(idem.peerId, idem.clientEventId);
+      if (hit) {
+        const bodyMismatch = hit.bodyHash !== idem.bodyHash;
+        return {
+          ...hit.result,
+          replayAck: hit.ack,
+          ack: hit.ack,
+          ...bodyMismatch ? { bodyMismatch: true } : {}
+        };
+      }
+    }
     const targets = this.resolveTargets(handoff);
     if (targets.length === 0) {
       return {
@@ -6088,11 +6334,11 @@ class Room {
         message: `No peer matching "${handoff.to}"`
       };
     }
-    const notifyEnv = {
+    const notifyEnv = this.stampRoomEvent({
       ...makeEnvelopeBase(this.id),
       type: "handoff",
       handoff
-    };
+    });
     let anyNotified = false;
     const enqueuedTo = [];
     for (const t of targets) {
@@ -6103,22 +6349,44 @@ class Room {
         anyNotified = true;
       }
     }
-    try {
-      this.touchPersist();
-    } catch (e) {
-      for (const to of enqueuedTo) {
-        this.inboxes.get(to)?.delete(handoff.id);
-      }
-      console.error(`[loom relay] persist failed room=${this.id} (routeHandoff rolled back):`, e instanceof Error ? e.message : e);
-      throw e;
-    }
-    return {
+    const result = {
       status: anyNotified ? "delivered" : "queued",
       handoffId: handoff.id,
       to: handoff.to,
       notified: anyNotified,
       recipientCount: targets.length
     };
+    let stagedPrev;
+    let staged = false;
+    let storedAck;
+    if (idem) {
+      const ack = {
+        ...this.handoffAckEnvelope(result)
+      };
+      if (ack.message === undefined)
+        delete ack.message;
+      storedAck = ack;
+      stagedPrev = this.stageHandoffClientEvent(idem.peerId, {
+        clientEventId: idem.clientEventId,
+        handoffId: result.handoffId,
+        ack,
+        bodyHash: idem.bodyHash,
+        result: { ...result }
+      });
+      staged = true;
+    }
+    try {
+      this.touchPersist();
+    } catch (e) {
+      if (staged && idem)
+        this.restoreHandoffClientEvent(idem.peerId, stagedPrev);
+      for (const to of enqueuedTo) {
+        this.inboxes.get(to)?.delete(handoff.id);
+      }
+      console.error(`[loom relay] persist failed room=${this.id} (routeHandoff rolled back):`, e instanceof Error ? e.message : e);
+      throw e;
+    }
+    return storedAck ? { ...result, ack: storedAck } : result;
   }
   handoffAckEnvelope(result) {
     return {
@@ -6287,6 +6555,7 @@ class RoomRegistry {
     }));
   }
 }
+var SEQ_RESERVE_BLOCK = 1000, CLIENT_EVENT_LRU_MAX = 256;
 var init_room = __esm(() => {
   init_src();
   init_persist();
@@ -6306,6 +6575,7 @@ class RelayServer {
   allowInsecureOpen;
   server = null;
   clients = new WeakMap;
+  clientEventBodyMismatches = 0;
   constructor(opts = {}) {
     this.host = opts.host ?? DEFAULT_RELAY_HOST;
     this.port = opts.port ?? DEFAULT_RELAY_PORT;
@@ -6443,6 +6713,10 @@ Phase 3 remote-ready. GET /health  WS /ws
       return true;
     return false;
   }
+  noteClientEventBodyMismatch(roomId, peerId, clientEventId) {
+    this.clientEventBodyMismatches += 1;
+    console.error(`[loom relay] clientEventId body mismatch count=${this.clientEventBodyMismatches}` + ` room=${roomId} peer=${peerId} clientEventId=${clientEventId}`);
+  }
   reply(state, env2, requestId) {
     const payload = requestId && requestId.length > 0 ? { ...env2, requestId } : env2;
     state.socket.send(JSON.stringify(payload));
@@ -6556,9 +6830,18 @@ Phase 3 remote-ready. GET /health  WS /ws
         if (!room)
           return;
         const handoff = room.resolveHandoff(state.peerId, msg.handoff);
+        const idempotency = typeof msg.clientEventId === "string" ? {
+          peerId: state.peerId,
+          clientEventId: msg.clientEventId,
+          bodyHash: clientEventBodyHash(handoffClientEventMaterial(msg.handoff))
+        } : undefined;
         try {
-          const result = room.routeHandoff(handoff);
-          this.reply(state, room.handoffAckEnvelope(result), rid);
+          const result = idempotency ? room.routeHandoff(handoff, idempotency) : room.routeHandoff(handoff);
+          if (result.bodyMismatch && idempotency) {
+            this.noteClientEventBodyMismatch(room.id, state.peerId, idempotency.clientEventId);
+          }
+          const ack = result.ack ?? result.replayAck ?? room.handoffAckEnvelope(result);
+          this.reply(state, ack, rid);
         } catch (e) {
           this.reply(state, {
             v: PROTOCOL_VERSION,
@@ -6579,6 +6862,19 @@ Phase 3 remote-ready. GET /health  WS /ws
         const room = this.registry.getById(state.roomId);
         if (!room)
           return;
+        if (typeof msg.clientEventId === "string") {
+          const bodyHash = clientEventBodyHash(chatClientEventMaterial(msg.text));
+          const prev = room.lookupChatClientEvent(state.peerId, msg.clientEventId);
+          if (prev !== undefined) {
+            if (prev !== bodyHash) {
+              this.noteClientEventBodyMismatch(room.id, state.peerId, msg.clientEventId);
+            }
+            break;
+          }
+          room.broadcast(room.chatEnvelope(state.peerId, msg.text));
+          room.rememberChatClientEvent(state.peerId, msg.clientEventId, bodyHash);
+          break;
+        }
         room.broadcast(room.chatEnvelope(state.peerId, msg.text));
         break;
       }
@@ -6732,6 +7028,7 @@ init_session_store();
 
 // packages/host/src/relay-client.ts
 init_src();
+var RECEIVE_QUEUE_WARN_DEPTH = 256;
 var __ackInjector = null;
 class RelayClient {
   ws = null;
@@ -6741,6 +7038,10 @@ class RelayClient {
   reconnectAttempt = 0;
   reconnectTimer = null;
   pendingRequests = [];
+  receiveQueue = Promise.resolve();
+  receiveQueueDepth = 0;
+  receiveQueueWarnArmed = true;
+  receiveQueueOverflowCount = 0;
   peerId = null;
   peerSecret = null;
   setReconnectPeerSecret(secret) {
@@ -6818,12 +7119,63 @@ class RelayClient {
         if (!parsed.success)
           return;
         const env2 = parsed.data;
-        this.applyEnvelope(env2);
-        this.dispatchPending(env2);
-        this.opts.onEnvelope?.(env2);
+        if (this.opts.eventStore) {
+          if (env2.type === "handoff.ack" || env2.type === "room.state" || env2.type === "inbox.state" || env2.type === "inbox.claim_result" || env2.type === "error") {
+            this.publishReceived(env2);
+            return;
+          }
+          this.enqueueReceived(env2);
+          return;
+        }
+        this.publishReceived(env2);
       };
     });
     return this.openPromise;
+  }
+  enqueueReceived(env2) {
+    this.receiveQueueDepth += 1;
+    if (this.receiveQueueDepth > RECEIVE_QUEUE_WARN_DEPTH && this.receiveQueueWarnArmed) {
+      this.receiveQueueWarnArmed = false;
+      this.receiveQueueOverflowCount += 1;
+      console.error(`[loom] room-event receive queue depth ${this.receiveQueueDepth} exceeds ${RECEIVE_QUEUE_WARN_DEPTH}`);
+    }
+    this.receiveQueue = this.receiveQueue.catch(() => {
+      return;
+    }).then(() => this.drainReceived(env2));
+  }
+  async drainReceived(env2) {
+    try {
+      const store = this.opts.eventStore;
+      if (!store) {
+        this.publishReceived(env2);
+        return;
+      }
+      let deliver = true;
+      try {
+        const result = await store.ingest(env2);
+        deliver = result.deliver !== false;
+      } catch (e) {
+        deliver = true;
+        console.error("[loom] room-event receive queue fail-open", e instanceof Error ? e.message : e);
+      }
+      if (!deliver)
+        return;
+      try {
+        this.publishReceived(env2);
+      } catch (e) {
+        console.error("[loom] room-event receive downstream failed", e instanceof Error ? e.message : e);
+      }
+    } finally {
+      this.receiveQueueDepth -= 1;
+      if (this.receiveQueueDepth < RECEIVE_QUEUE_WARN_DEPTH) {
+        this.receiveQueueWarnArmed = true;
+      }
+    }
+  }
+  publishReceived(env2) {
+    this.applyEnvelope(env2);
+    this.dispatchPending(env2);
+    this.opts.onEnvelope?.(env2);
   }
   dispatchPending(env2) {
     const idx = this.pendingRequests.findIndex((p) => p.match(env2));
@@ -6988,10 +7340,12 @@ class RelayClient {
     }
     await this.connect();
     this.lastHandoffAck = null;
+    const { clientEventId, ...handoff } = partial;
     const env2 = await this.requestOnce({
       type: "handoff",
       v: PROTOCOL_VERSION,
-      handoff: partial
+      handoff,
+      ...typeof clientEventId === "string" ? { clientEventId } : {}
     }, (e) => e.type === "handoff.ack" || e.type === "error");
     if (env2.type === "error") {
       throw new Error(env2.message);
@@ -7001,9 +7355,9 @@ class RelayClient {
     }
     return env2;
   }
-  async chat(text) {
+  async chat(text, clientEventId) {
     await this.connect();
-    this.send({ type: "chat", v: PROTOCOL_VERSION, text });
+    this.send(typeof clientEventId === "string" ? { type: "chat", v: PROTOCOL_VERSION, text, clientEventId } : { type: "chat", v: PROTOCOL_VERSION, text });
   }
   async listPeers() {
     await this.connect();
@@ -9054,12 +9408,14 @@ async function opsHandoff(args) {
       boardAttached = boardAtt.length > 0;
     }
   }
+  const clientEventId = crypto.randomUUID();
   const host = await tryStickyRpc({
     op: "handoff",
     to: args.to,
     body,
     mode: args.mode,
-    attachments
+    attachments,
+    clientEventId
   });
   if (host?.ok && host.op === "handoff") {
     return {
@@ -9081,7 +9437,8 @@ async function opsHandoff(args) {
       to: args.to,
       body,
       mode: args.mode ?? "message",
-      attachments
+      attachments,
+      clientEventId
     });
     return {
       status: ack.status,
@@ -9101,13 +9458,14 @@ async function opsHandoff(args) {
 }
 async function opsChat(text) {
   const t = sanitizePeerText(text);
-  const host = await tryStickyRpc({ op: "chat", text: t });
+  const clientEventId = crypto.randomUUID();
+  const host = await tryStickyRpc({ op: "chat", text: t, clientEventId });
   if (host?.ok && host.op === "chat") {
     return { source: "host" };
   }
   const { client } = await withOneShotClient();
   try {
-    await client.chat(t);
+    await client.chat(t, clientEventId);
     await Bun.sleep(80);
     return { source: "oneshot" };
   } finally {
@@ -10220,6 +10578,655 @@ var MAX_WORKER_ARTIFACT_BYTES = 10 * 1024 * 1024;
 // packages/host/src/bridge-runtime.ts
 init_session_store();
 
+// packages/host/src/room-event-log.ts
+init_session_store();
+import { createHash as createHash4, randomBytes } from "crypto";
+import { constants } from "fs";
+import {
+  chmod,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  stat,
+  unlink
+} from "fs/promises";
+import { dirname as dirname4, join as join13, resolve as resolve3, sep as sep2 } from "path";
+var ROOM_EVENT_SEEN_CAP = 1024;
+var DEFAULT_LOCK_BUDGET_MS = 250;
+var LOCK_POLL_MS2 = 5;
+var LOCK_STALE_MS2 = 5000;
+var RECLAIM_MUTEX_STALE_MS = 1e4;
+var chains = new Map;
+var loggedMemory = new Map;
+var namedShadow = new Map;
+function isPidAlive3(pid) {
+  if (!Number.isFinite(pid) || pid <= 0)
+    return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function sleep(ms) {
+  return new Promise((resolveSleep) => {
+    setTimeout(resolveSleep, ms);
+  });
+}
+function errno(e) {
+  return e && typeof e === "object" && "code" in e ? String(e.code) : undefined;
+}
+function roomKey(roomId) {
+  return createHash4("sha256").update(roomId).digest("hex").slice(0, 16);
+}
+function scopeKey(dir, key) {
+  return `${resolve3(dir)}\x00${key}`;
+}
+function roomDirectory(dir, roomId) {
+  const root = resolve3(dir);
+  const key = roomKey(roomId);
+  const abs = resolve3(root, "rooms", key);
+  if (!/^[0-9a-f]{16}$/.test(key) || !abs.startsWith(root + sep2)) {
+    throw new Error("room event path escaped state dir");
+  }
+  return abs;
+}
+function childPath(dir, roomId, ...parts) {
+  for (const part of parts) {
+    if (part.length === 0 || part.includes("/") || part.includes("\\") || part.includes("..")) {
+      throw new Error("room event path segment escaped");
+    }
+  }
+  return join13(roomDirectory(dir, roomId), ...parts);
+}
+function eventIdOf(env2) {
+  const id = env2.eventId;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+function seqOf(env2) {
+  const seq = env2.seq;
+  return typeof seq === "number" && Number.isFinite(seq) ? seq : 0;
+}
+function tsOf(env2) {
+  const ts = env2.ts;
+  if (typeof ts === "string" && ts.length > 0 && !Number.isNaN(Date.parse(ts))) {
+    return ts;
+  }
+  return new Date().toISOString();
+}
+function utcMonth(ts) {
+  const parsed = new Date(ts);
+  const d = Number.isNaN(parsed.getTime()) ? new Date : parsed;
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${month}`;
+}
+function touch(list, id, cap) {
+  const at = list.indexOf(id);
+  if (at >= 0)
+    list.splice(at, 1);
+  list.push(id);
+  while (list.length > cap)
+    list.shift();
+}
+function capList(list, cap) {
+  if (list.length <= cap)
+    return list;
+  return list.slice(list.length - cap);
+}
+function trimSet(set, cap) {
+  while (set.size > cap) {
+    const oldest = set.values().next().value;
+    if (typeof oldest !== "string")
+      break;
+    set.delete(oldest);
+  }
+}
+function rememberSet(set, id, cap) {
+  if (set.has(id))
+    set.delete(id);
+  set.add(id);
+  trimSet(set, cap);
+}
+function capSeen(state, cap) {
+  state.log = capList(state.log, cap);
+  for (const [name, list] of Object.entries(state.consumers)) {
+    state.consumers[name] = capList(list, cap);
+  }
+}
+function sanitizeLockBudget(ms) {
+  if (ms === undefined || !Number.isFinite(ms) || ms <= 0)
+    return DEFAULT_LOCK_BUDGET_MS;
+  return Math.min(ms, DEFAULT_LOCK_BUDGET_MS);
+}
+function underDir(dir, file) {
+  const root = resolve3(dir);
+  const abs = resolve3(file);
+  return abs === root || abs.startsWith(root + sep2);
+}
+function dropScoped(map, dir) {
+  const prefix = `${resolve3(dir)}\x00`;
+  for (const key of [...map.keys()]) {
+    if (key.startsWith(prefix))
+      map.delete(key);
+  }
+}
+function emptySeen() {
+  return { v: 1, log: [], lastSeq: 0, consumers: {} };
+}
+function parseSeen(raw) {
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object")
+    return null;
+  const obj = value;
+  const log = Array.isArray(obj.log) ? obj.log.filter((item) => typeof item === "string") : [];
+  const lastSeq = typeof obj.lastSeq === "number" && Number.isFinite(obj.lastSeq) ? obj.lastSeq : 0;
+  const consumers = {};
+  if (obj.consumers && typeof obj.consumers === "object") {
+    for (const [name, items] of Object.entries(obj.consumers)) {
+      if (!Array.isArray(items))
+        continue;
+      consumers[name] = items.filter((item) => typeof item === "string");
+    }
+  }
+  return { v: 1, log, lastSeq, consumers };
+}
+async function serial(key, fn) {
+  const prev = chains.get(key) ?? Promise.resolve();
+  let release = () => {};
+  const gate = new Promise((resolveGate) => {
+    release = resolveGate;
+  });
+  chains.set(key, gate);
+  try {
+    return await prev.then(fn, fn);
+  } finally {
+    release();
+  }
+}
+function parseLock(raw) {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0)
+    return { kind: "empty" };
+  try {
+    const value = JSON.parse(trimmed);
+    if (!value || typeof value !== "object")
+      return { kind: "unparsable" };
+    const obj = value;
+    const pid = obj.pid;
+    const nonce = obj.nonce;
+    if (typeof pid === "number" && Number.isInteger(pid) && pid > 0 && typeof nonce === "string" && nonce.length > 0) {
+      return { kind: "json", pid, nonce };
+    }
+  } catch {}
+  return { kind: "unparsable" };
+}
+function sameIdentity(a, b) {
+  if (a.kind === "dead" && b.kind === "dead") {
+    return a.pid === b.pid && a.nonce === b.nonce;
+  }
+  if (a.kind === "stale-blank" && b.kind === "stale-blank") {
+    return a.mtimeMs === b.mtimeMs;
+  }
+  return false;
+}
+async function observeLock(lockPath) {
+  let mtimeMs;
+  try {
+    const info = await stat(lockPath);
+    mtimeMs = info.mtimeMs;
+  } catch (e) {
+    if (errno(e) === "ENOENT")
+      return null;
+    throw e;
+  }
+  let raw;
+  try {
+    raw = await readFile(lockPath, "utf8");
+  } catch (e) {
+    if (errno(e) === "ENOENT")
+      return null;
+    throw e;
+  }
+  const parsed = parseLock(raw);
+  if (parsed.kind === "json") {
+    if (isPidAlive3(parsed.pid))
+      return null;
+    return { kind: "dead", pid: parsed.pid, nonce: parsed.nonce };
+  }
+  if (Date.now() - mtimeMs <= LOCK_STALE_MS2)
+    return null;
+  return { kind: "stale-blank", mtimeMs };
+}
+async function reclaimStaleLock(lockPath) {
+  let observed;
+  try {
+    observed = await observeLock(lockPath);
+  } catch {
+    return;
+  }
+  if (!observed)
+    return;
+  const mutexPath = `${lockPath}.reclaim`;
+  try {
+    const info = await stat(mutexPath);
+    if (Date.now() - info.mtimeMs > RECLAIM_MUTEX_STALE_MS)
+      await unlink(mutexPath);
+  } catch {}
+  let heldMutex = false;
+  let fh = null;
+  try {
+    fh = await open(mutexPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 384);
+    heldMutex = true;
+    await fh.write(JSON.stringify({ pid: process.pid }));
+    await fh.close();
+    fh = null;
+    const hook = roomEventLogTestHooks.afterReclaimMutexAcquired;
+    if (hook)
+      await hook(lockPath);
+    let again;
+    try {
+      again = await observeLock(lockPath);
+    } catch {
+      return;
+    }
+    if (again && sameIdentity(observed, again))
+      await unlink(lockPath);
+  } catch (e) {
+    if (errno(e) === "EEXIST")
+      return;
+  } finally {
+    if (fh) {
+      try {
+        await fh.close();
+      } catch {}
+    }
+    if (heldMutex) {
+      try {
+        await unlink(mutexPath);
+      } catch {}
+    }
+  }
+}
+async function acquireLockBody(lockPath, budgetMs) {
+  const start = Date.now();
+  await mkdir(dirname4(lockPath), { recursive: true });
+  for (;; ) {
+    try {
+      const fh = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 384);
+      const nonce = randomBytes(16).toString("hex");
+      try {
+        await fh.write(JSON.stringify({ pid: process.pid, nonce }));
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+      try {
+        await chmod(lockPath, 384);
+      } catch {}
+      const delayDir = roomEventLogTestHooks.delayAcquireUnder;
+      const delayMs = roomEventLogTestHooks.delayAcquireMs;
+      if (delayMs > 0 && delayDir && underDir(delayDir, lockPath)) {
+        roomEventLogTestHooks.delayAcquireMs = 0;
+        roomEventLogTestHooks.delayAcquireUnder = null;
+        await sleep(delayMs);
+      }
+      return { ok: true, nonce };
+    } catch (e) {
+      if (errno(e) === "EEXIST")
+        await reclaimStaleLock(lockPath);
+      else if (errno(e) !== "ENOENT")
+        throw e;
+    }
+    const elapsed = Date.now() - start;
+    if (elapsed >= budgetMs)
+      return { ok: false, nonce: null };
+    await sleep(Math.min(LOCK_POLL_MS2, Math.max(0, budgetMs - elapsed)));
+  }
+}
+async function acquireLock(lockPath, budgetMs) {
+  const work = acquireLockBody(lockPath, budgetMs);
+  let timer;
+  const timeout = new Promise((resolveTimeout) => {
+    timer = setTimeout(() => resolveTimeout("timeout"), budgetMs);
+  });
+  try {
+    const winner = await Promise.race([
+      work.then((result) => ({ tag: "done", result })),
+      timeout.then(() => ({ tag: "timeout" }))
+    ]);
+    if (winner.tag === "timeout") {
+      work.then((result) => {
+        if (result.ok && result.nonce !== null)
+          return releaseLock2(lockPath, result.nonce);
+        return;
+      }).catch(() => {});
+      return { held: false, nonce: null };
+    }
+    if (winner.result.ok && winner.result.nonce !== null) {
+      return { held: true, nonce: winner.result.nonce };
+    }
+    return { held: false, nonce: null };
+  } finally {
+    if (timer !== undefined)
+      clearTimeout(timer);
+  }
+}
+async function releaseLock2(lockPath, nonce) {
+  try {
+    const raw = await readFile(lockPath, "utf8");
+    const parsed = parseLock(raw);
+    if (parsed.kind !== "json")
+      return;
+    if (parsed.pid !== process.pid || parsed.nonce !== nonce)
+      return;
+    await unlink(lockPath);
+  } catch {}
+}
+var roomEventLogTestHooks = {
+  afterReclaimMutexAcquired: null,
+  failAppendUnder: null,
+  delayAcquireUnder: null,
+  delayAcquireMs: 0,
+  reset(dir) {
+    this.afterReclaimMutexAcquired = null;
+    this.failAppendUnder = null;
+    this.delayAcquireUnder = null;
+    this.delayAcquireMs = 0;
+    if (!dir) {
+      loggedMemory.clear();
+      namedShadow.clear();
+      return;
+    }
+    dropScoped(loggedMemory, dir);
+    dropScoped(namedShadow, dir);
+  },
+  sizes(dir, roomId, consumer) {
+    const id = scopeKey(dir, roomKey(roomId));
+    return {
+      log: loggedMemory.get(id)?.size ?? 0,
+      delivery: namedShadow.get(`${id}\x00${consumer}`)?.size ?? 0
+    };
+  },
+  reclaim(lockPath) {
+    return reclaimStaleLock(lockPath);
+  }
+};
+async function appendJsonl(file, line) {
+  const failUnder = roomEventLogTestHooks.failAppendUnder;
+  if (failUnder && underDir(failUnder, file)) {
+    roomEventLogTestHooks.failAppendUnder = null;
+    throw new Error("injected append failure");
+  }
+  await mkdir(dirname4(file), { recursive: true });
+  let repair = false;
+  try {
+    const info = await stat(file);
+    if (info.size > 0) {
+      const fh2 = await open(file, "r");
+      try {
+        const last = Buffer.alloc(1);
+        const read = await fh2.read(last, 0, 1, info.size - 1);
+        repair = read.bytesRead === 1 && last[0] !== 10;
+      } finally {
+        await fh2.close();
+      }
+    }
+  } catch (e) {
+    if (errno(e) !== "ENOENT")
+      throw e;
+  }
+  const fh = await open(file, "a", 384);
+  try {
+    if (repair)
+      await fh.write(Buffer.from(`
+`));
+    await fh.write(Buffer.from(`${line}
+`, "utf8"));
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+  try {
+    await chmod(file, 384);
+  } catch {}
+  return repair;
+}
+async function loadSeen(path) {
+  let raw;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (e) {
+    if (errno(e) === "ENOENT")
+      return emptySeen();
+    throw e;
+  }
+  const parsed = parseSeen(raw);
+  if (!parsed)
+    throw new Error("room event seen state unreadable");
+  return parsed;
+}
+async function writeSeen(path, state) {
+  await mkdir(dirname4(path), { recursive: true });
+  const tmp = join13(dirname4(path), `.seen.tmp.${process.pid}`);
+  const fh = await open(tmp, "w", 384);
+  try {
+    await fh.write(`${JSON.stringify(state)}
+`);
+    await fh.sync();
+  } finally {
+    await fh.close();
+  }
+  try {
+    await chmod(tmp, 384);
+  } catch {}
+  await rename(tmp, path);
+  try {
+    await chmod(path, 384);
+  } catch {}
+}
+function memoryHas(dir, key, eventId) {
+  return loggedMemory.get(scopeKey(dir, key))?.has(eventId) ?? false;
+}
+function memoryAdd(dir, key, eventId, cap) {
+  const id = scopeKey(dir, key);
+  let set = loggedMemory.get(id);
+  if (!set) {
+    set = new Set;
+    loggedMemory.set(id, set);
+  }
+  rememberSet(set, eventId, cap);
+}
+function namedShadowSet(dir, key, consumer) {
+  const id = `${scopeKey(dir, key)}\x00${consumer}`;
+  let set = namedShadow.get(id);
+  if (!set) {
+    set = new Set;
+    namedShadow.set(id, set);
+  }
+  return set;
+}
+class RoomEventStore {
+  dir;
+  consumer;
+  lockBudgetMs;
+  seenCap;
+  anonShadow = new Set;
+  failOpenCount = 0;
+  tornSkippedCount = 0;
+  constructor(opts = {}) {
+    const dir = opts.dir && opts.dir.length > 0 ? opts.dir : loomDir();
+    this.dir = dir;
+    const consumer = opts.consumer?.trim();
+    this.consumer = consumer && consumer.length > 0 ? consumer : undefined;
+    this.lockBudgetMs = sanitizeLockBudget(opts.lockBudgetMs);
+    const cap = opts.seenCap ?? ROOM_EVENT_SEEN_CAP;
+    this.seenCap = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : ROOM_EVENT_SEEN_CAP;
+  }
+  counters() {
+    return { failOpen: this.failOpenCount, tornSkipped: this.tornSkippedCount };
+  }
+  async ingest(env2, consumerKey) {
+    const eventId = eventIdOf(env2);
+    if (!eventId) {
+      return { deliver: true, logged: false, failOpen: false };
+    }
+    if (typeof env2.roomId !== "string" || env2.roomId.length === 0) {
+      return { deliver: true, logged: false, failOpen: false };
+    }
+    const key = roomKey(env2.roomId);
+    const consumer = this.resolveConsumer(consumerKey);
+    return serial(scopeKey(this.dir, key), () => this.ingestSerial(env2, eventId, key, consumer));
+  }
+  resolveConsumer(consumerKey) {
+    const named = consumerKey?.trim();
+    if (named && named.length > 0)
+      return named;
+    return this.consumer;
+  }
+  shadowHas(key, consumer, eventId) {
+    if (!consumer)
+      return this.anonShadow.has(eventId);
+    return namedShadowSet(this.dir, key, consumer).has(eventId);
+  }
+  shadowAdd(key, consumer, eventId) {
+    if (!consumer) {
+      rememberSet(this.anonShadow, eventId, this.seenCap);
+      return;
+    }
+    rememberSet(namedShadowSet(this.dir, key, consumer), eventId, this.seenCap);
+  }
+  failOpen(reason, roomId, eventId, key, consumer) {
+    this.failOpenCount += 1;
+    const deliver = !this.shadowHas(key, consumer, eventId);
+    if (deliver)
+      this.shadowAdd(key, consumer, eventId);
+    console.error("[loom] room-event-log fail-open", JSON.stringify({
+      event: "room_event_fail_open",
+      reason,
+      count: this.failOpenCount,
+      roomId,
+      eventId
+    }));
+    return { deliver, logged: false, failOpen: true };
+  }
+  async ingestSerial(env2, eventId, key, consumer) {
+    const roomId = env2.roomId;
+    const lockPath = childPath(this.dir, roomId, ".lock");
+    let held = false;
+    let nonce = null;
+    try {
+      const lock = await acquireLock(lockPath, this.lockBudgetMs);
+      held = lock.held;
+      nonce = lock.nonce;
+    } catch {
+      return this.failOpen("lock_timeout", roomId, eventId, key, consumer);
+    }
+    if (!held || nonce === null) {
+      return this.failOpen("lock_timeout", roomId, eventId, key, consumer);
+    }
+    try {
+      return await this.decide(env2, eventId, key, consumer);
+    } catch {
+      return this.failOpen("append_failed", roomId, eventId, key, consumer);
+    } finally {
+      if (held && nonce !== null)
+        await releaseLock2(lockPath, nonce);
+    }
+  }
+  async decide(env2, eventId, key, consumer) {
+    const roomId = env2.roomId;
+    const seenPath = childPath(this.dir, roomId, "seen.json");
+    let seen;
+    try {
+      seen = await loadSeen(seenPath);
+    } catch {
+      return this.failOpen("seen_unreadable", roomId, eventId, key, consumer);
+    }
+    capSeen(seen, this.seenCap);
+    const memory = loggedMemory.get(scopeKey(this.dir, key));
+    if (memory) {
+      trimSet(memory, this.seenCap);
+      for (const id of memory) {
+        if (!seen.log.includes(id))
+          seen.log.push(id);
+      }
+      seen.log = capList(seen.log, this.seenCap);
+    }
+    trimSet(this.anonShadow, this.seenCap);
+    if (consumer) {
+      const named = namedShadow.get(`${scopeKey(this.dir, key)}\x00${consumer}`);
+      if (named)
+        trimSet(named, this.seenCap);
+    }
+    const inLog = seen.log.includes(eventId) || memoryHas(this.dir, key, eventId);
+    const inDelivery = consumer ? (seen.consumers[consumer]?.includes(eventId) ?? false) || this.shadowHas(key, consumer, eventId) : this.shadowHas(key, consumer, eventId);
+    const deliver = !inDelivery;
+    if (!inLog) {
+      touch(seen.log, eventId, this.seenCap);
+      const seq = seqOf(env2);
+      if (seq > seen.lastSeq)
+        seen.lastSeq = seq;
+    }
+    if (deliver && consumer) {
+      const list = seen.consumers[consumer] ?? [];
+      seen.consumers[consumer] = list;
+      touch(list, eventId, this.seenCap);
+    }
+    const persist = !inLog || deliver && consumer !== undefined;
+    if (persist) {
+      capSeen(seen, this.seenCap);
+      try {
+        await writeSeen(seenPath, seen);
+      } catch {
+        return this.failOpen("append_failed", roomId, eventId, key, consumer);
+      }
+    }
+    if (!inLog)
+      memoryAdd(this.dir, key, eventId, this.seenCap);
+    if (deliver || inDelivery)
+      this.shadowAdd(key, consumer, eventId);
+    let logged = false;
+    if (!inLog) {
+      const ts = tsOf(env2);
+      const month = utcMonth(ts);
+      const file = childPath(this.dir, roomId, "events", `${month}.jsonl`);
+      const record = {
+        v: 1,
+        roomId,
+        seq: seqOf(env2),
+        eventId,
+        ts,
+        type: env2.type,
+        envelope: env2
+      };
+      try {
+        const repaired = await appendJsonl(file, JSON.stringify(record));
+        if (repaired)
+          this.tornSkippedCount += 1;
+      } catch {
+        this.failOpenCount += 1;
+        console.error("[loom] room-event-log fail-open", JSON.stringify({
+          event: "room_event_fail_open",
+          reason: "append_failed",
+          count: this.failOpenCount,
+          roomId,
+          eventId
+        }));
+        return { deliver, logged: false, failOpen: true };
+      }
+      logged = true;
+    }
+    return { deliver, logged, failOpen: false };
+  }
+}
+
 // packages/host/src/result-issuer.ts
 function issuerKey(cardId, dispatchHandoffId) {
   if (cardId === "task_0")
@@ -10300,7 +11307,7 @@ import {
   writeFileSync as writeFileSync7,
   readFileSync as readFileSync8
 } from "fs";
-import { join as join13 } from "path";
+import { join as join14 } from "path";
 var CONV_NODE_PEER_ID_RE = /^p_[a-f0-9]{16}$/;
 var CONV_NODE_HOST_RE = /^[A-Za-z0-9._@-]+$/;
 function validateConvNodePeerId(peerId) {
@@ -10329,7 +11336,7 @@ function isWellFormedConvNodeMapping(peerId, host) {
   return validateConvNodePeerId(peerId) === null && validateConvNodeHost(host) === null;
 }
 function convNodeHostsPath() {
-  return join13(loomDir(), "conv-node-hosts.json");
+  return join14(loomDir(), "conv-node-hosts.json");
 }
 function loadConvNodeHosts() {
   const p = convNodeHostsPath();
@@ -10435,7 +11442,7 @@ function loomSystemHint(agentLabel) {
 
 // packages/adapters/src/claude.ts
 import { mkdirSync as mkdirSync10, writeFileSync as writeFileSync8 } from "fs";
-import { join as join14 } from "path";
+import { join as join15 } from "path";
 var claudeAdapter = {
   id: "claude",
   label: "Claude Code",
@@ -10470,9 +11477,9 @@ var claudeAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const dir = join14(opts.cwd, ".loom");
+    const dir = join15(opts.cwd, ".loom");
     mkdirSync10(dir, { recursive: true });
-    const path = join14(dir, "claude.mcp.json");
+    const path = join15(dir, "claude.mcp.json");
     const config = {
       mcpServers: {
         loom: {
@@ -10493,7 +11500,7 @@ var claudeAdapter = {
 
 // packages/adapters/src/user-mcp-config.ts
 import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync9, writeFileSync as writeFileSync9 } from "fs";
-import { dirname as dirname4 } from "path";
+import { dirname as dirname5 } from "path";
 var LOOM_BEGIN = "# --- Loom multiplayer (managed) BEGIN ---";
 var LOOM_END = "# --- Loom multiplayer (managed) END ---";
 var FABLE_BEGIN = "# --- Fable multiplayer (managed) BEGIN ---";
@@ -10595,7 +11602,7 @@ function stripAllLoomMcpSections(existing) {
 }
 function upsertUserMcpConfig(opts) {
   const { configPath, block } = opts;
-  mkdirSync11(dirname4(configPath), { recursive: true });
+  mkdirSync11(dirname5(configPath), { recursive: true });
   let existing = "";
   if (existsSync15(configPath)) {
     existing = readFileSync9(configPath, "utf8");
@@ -10639,7 +11646,7 @@ function projectMcpSnippetToml(opts) {
 
 // packages/adapters/src/codex.ts
 import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync10 } from "fs";
-import { join as join15 } from "path";
+import { join as join16 } from "path";
 import { homedir as homedir3 } from "os";
 var codexAdapter = {
   id: "codex",
@@ -10670,9 +11677,9 @@ var codexAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join15(opts.cwd, ".loom");
+    const projectDir = join16(opts.cwd, ".loom");
     mkdirSync12(projectDir, { recursive: true });
-    const snippetPath = join15(projectDir, "codex.mcp.toml");
+    const snippetPath = join16(projectDir, "codex.mcp.toml");
     writeFileSync10(snippetPath, projectMcpSnippetToml({
       header: `# Generated by Loom \u2014 Codex MCP (project).
 ` + "# Session entry: read repo AGENTS.md + HANDOFF.md (or `bun run status`); brief user before large work.\n" + "# Prefer: loom run codex",
@@ -10680,7 +11687,7 @@ var codexAdapter = {
       sessionEnv: opts.sessionEnv
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join15(homedir3(), ".codex", "config.toml");
+      const configPath = join16(homedir3(), ".codex", "config.toml");
       const block = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv
@@ -10697,7 +11704,7 @@ var codexAdapter = {
 
 // packages/adapters/src/grok.ts
 import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync11 } from "fs";
-import { join as join16 } from "path";
+import { join as join17 } from "path";
 import { homedir as homedir4 } from "os";
 var grokAdapter = {
   id: "grok",
@@ -10728,9 +11735,9 @@ var grokAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join16(opts.cwd, ".loom");
+    const projectDir = join17(opts.cwd, ".loom");
     mkdirSync13(projectDir, { recursive: true });
-    const snippetPath = join16(projectDir, "grok.mcp.toml");
+    const snippetPath = join17(projectDir, "grok.mcp.toml");
     writeFileSync11(snippetPath, projectMcpSnippetToml({
       header: "# Generated by Loom \u2014 Grok MCP (project). Use: loom run grok --write-user-config to install into ~/.grok/config.toml",
       mcpStdioPath: opts.mcpStdioPath,
@@ -10738,7 +11745,7 @@ var grokAdapter = {
       extraServerLines: ["enabled = true"]
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join16(homedir4(), ".grok", "config.toml");
+      const configPath = join17(homedir4(), ".grok", "config.toml");
       const block = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv,
@@ -10843,16 +11850,16 @@ function capabilityMatrix() {
 }
 // packages/mcp-server/src/config.ts
 import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync12 } from "fs";
-import { join as join17 } from "path";
+import { join as join18 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function resolveMcpStdio() {
   const here = fileURLToPath4(new URL(".", import.meta.url));
-  return join17(here, "stdio.ts");
+  return join18(here, "stdio.ts");
 }
 function writeMcpConfig(opts) {
   const dir = opts?.dir ?? loomDir();
   mkdirSync14(dir, { recursive: true });
-  const path = join17(dir, "mcp.json");
+  const path = join18(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
   const config = {
     mcpServers: {
@@ -10870,7 +11877,7 @@ function writeMcpConfig(opts) {
 function writeAgentHintFile(opts) {
   const dir = opts?.dir ?? loomDir();
   mkdirSync14(dir, { recursive: true });
-  const path = join17(dir, "AGENT_HINT.txt");
+  const path = join18(dir, "AGENT_HINT.txt");
   const body = opts?.hint ?? [
     "Loom multiplayer room is active.",
     "MCP tools: list_peers, handoff, check_handoffs, claim_handoff, room_chat",
@@ -11126,7 +12133,7 @@ import {
   readFileSync as readFileSync10,
   writeFileSync as writeFileSync13
 } from "fs";
-import { dirname as dirname5, join as join18 } from "path";
+import { dirname as dirname6, join as join19 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -11152,7 +12159,7 @@ function mergeClaudeStopHook(settings, command) {
   return next;
 }
 function ensureClaudeStopHook(cwd, idleMarkerPath) {
-  const settingsPath = join18(cwd, ".claude", "settings.local.json");
+  const settingsPath = join19(cwd, ".claude", "settings.local.json");
   let settings = {};
   if (existsSync16(settingsPath)) {
     try {
@@ -11162,7 +12169,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
     }
   }
   const merged = mergeClaudeStopHook(settings, claudeStopHookCommand(idleMarkerPath));
-  mkdirSync15(dirname5(settingsPath), { recursive: true });
+  mkdirSync15(dirname6(settingsPath), { recursive: true });
   writeFileSync13(settingsPath, `${JSON.stringify(merged, null, 2)}
 `, {
     encoding: "utf8",
@@ -11172,7 +12179,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.28.1";
+var VERSION = "0.29.0";
 function eprint(msg) {
   try {
     writeSync2(2, msg);
@@ -11919,11 +12926,11 @@ async function cmdVerify(flags) {
         process.exit(2);
       }
       process.stdout.write("Run these commands? [y/N] ");
-      const answer = await new Promise((resolve4) => {
+      const answer = await new Promise((resolve5) => {
         const chunks = [];
         process.stdin.once("data", (d) => {
           chunks.push(Buffer.from(d));
-          resolve4(Buffer.concat(chunks).toString("utf8"));
+          resolve5(Buffer.concat(chunks).toString("utf8"));
         });
       });
       if (!/^y(es)?$/i.test(answer.trim())) {
@@ -13210,7 +14217,7 @@ function runAgentChild(spec) {
   return spawnWait(spec.command, spec.args, spec);
 }
 function spawnWait(command, args, spec, opts) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     const child = nodeSpawn(command, args, {
       cwd: spec.cwd,
       env: cleanEnv(spec.env),
@@ -13232,14 +14239,14 @@ function spawnWait(command, args, spec, opts) {
       cleanup();
       eprint(`\x1B[31mFailed to start agent: ${err.message}\x1B[0m
 `);
-      resolve4(1);
+      resolve5(1);
     });
     child.on("exit", (c, signal) => {
       cleanup();
       if (signal)
-        resolve4(1);
+        resolve5(1);
       else
-        resolve4(c ?? 1);
+        resolve5(c ?? 1);
     });
   });
 }
@@ -13289,14 +14296,14 @@ Workaround: leave Loom MCP configured, run Claude directly:
   return lastCode;
 }
 function spawnOnDevTty(spec) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     const fds = [];
     try {
       fds.push(openSync4("/dev/tty", "r"), openSync4("/dev/tty", "w"), openSync4("/dev/tty", "w"));
     } catch (e) {
       eprint(`\x1B[2m/dev/tty unavailable: ${e instanceof Error ? e.message : e}\x1B[0m
 `);
-      resolve4(1);
+      resolve5(1);
       return;
     }
     const child = nodeSpawn(spec.command, spec.args, {
@@ -13315,14 +14322,14 @@ function spawnOnDevTty(spec) {
       closeFds();
       eprint(`\x1B[31m/dev/tty spawn failed: ${err.message}\x1B[0m
 `);
-      resolve4(1);
+      resolve5(1);
     });
     child.on("exit", (c, signal) => {
       closeFds();
       if (signal)
-        resolve4(1);
+        resolve5(1);
       else
-        resolve4(c ?? 1);
+        resolve5(c ?? 1);
     });
   });
 }
@@ -13356,12 +14363,12 @@ Session stays active. Type commands (e.g. ${loomCmd()} peers). exit to leave.
   return runLoomShellRepl(spec);
 }
 function spawnShellOnDevTty(spec) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     const fds = [];
     try {
       fds.push(openSync4("/dev/tty", "r"), openSync4("/dev/tty", "w"), openSync4("/dev/tty", "w"));
     } catch {
-      resolve4(0);
+      resolve5(0);
       return;
     }
     const child = nodeSpawn(spec.command, spec.args, {
@@ -13381,14 +14388,14 @@ function spawnShellOnDevTty(spec) {
       closeFds();
       process.stderr.write(`\x1B[2m/dev/tty spawn failed: ${err.message}\x1B[0m
 `);
-      resolve4(0);
+      resolve5(0);
     });
     child.on("exit", (c, signal) => {
       closeFds();
       if (signal)
-        resolve4(1);
+        resolve5(1);
       else
-        resolve4(c ?? 1);
+        resolve5(c ?? 1);
     });
   });
 }

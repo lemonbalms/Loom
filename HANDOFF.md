@@ -5,39 +5,39 @@
 
 ## One-line resume
 
-> v0.29.0 **approved** (R47 w/ fixes) · **PATCH 1 next** · event seq + stable id (upgrade step 1) · topology full
+> v0.29.0 **shipped** · event seq + stable id (step 1) · **next = owner pick step 2** · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.29.0 `approved`** · PATCH 1 · shipped 0.28.1 | `docs/PLAN.md` |
+| Product | **v0.29.0 `approved`** · shipped through PATCH 6 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.29.0 approved · PATCH 1 (tests-first red)
+### v0.29.0 shipped · next = upgrade step 2 (owner pick)
 
-**Goal:** owner pick 2026-10-15 (upgrade step 1) — relay `eventId`/`seq` (D1) · durable ingest dedupe (D2) · per-room JSONL log (D3) · `clientEventId` idempotent send (D4). R47 fixes absorbed. Authority `docs/PLAN.md` §0.29.0 · `docs/UNKNOWNS.md`.
+**Goal:** step 1 done — relay `eventId`/`seq` (D1) · durable 2-layer ingest dedupe (D2) · per-room JSONL log (D3) · `clientEventId` idempotent send (D4). Each of PATCH 2–4 passed codex `fix-first` → fixed. Authority `docs/PLAN.md` §0.29.0 · `implementation-notes.md` §0.29.0 (deviations · known limits).
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check`
-2. PATCH 1 tests-only red (production 0 lines) — grok implement · codex verify
-3. PATCH 2→6 per PLAN §0.29.0 ④ — grok implement · codex verify each
+2. Owner picks step 2 (headless worker · session per card · prompt injection · policy · skill materialize) → new PLAN MINOR + review before code
+3. Known limits to carry: no fsync on relay snapshot · at-most-once semantics · UK-4 caps estimate
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `packages/*` product meaning, `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** PLAN §0.29.0 Done when (a)–(f) green + ship checks green.
+**Done when (this handoff):** step-2 PLAN drafted and reviewed (no code before approval).
 
-**Must not:** PATCH 2+ before PATCH 1 red · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** start step 2 code without owner pick + PLAN review · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.29.0 PLAN | **approved** | PATCH 1 | `docs/PLAN.md` |
+| v0.29.0 | **shipped** | step 1 done | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
 | 3.3–3.4b live | **false** | blocked | consts false · RESULT |

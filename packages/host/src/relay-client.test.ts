@@ -329,3 +329,133 @@ describe("v0.29.0 PATCH 4 review: RPC bypass", () => {
     }
   });
 });
+
+function startDroppingFakeRelay(): {
+  url: string;
+  closeAccepted(): void;
+  socketCount(): number;
+  stop(): void;
+} {
+  const sockets = new Set<{ send(data: string): void; close(): void }>();
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(req, srv) {
+      const url = new URL(req.url);
+      if (url.pathname === "/ws" && srv.upgrade(req)) return undefined;
+      return new Response("not found", { status: 404 });
+    },
+    websocket: {
+      open(ws) {
+        sockets.add(ws);
+      },
+      close(ws) {
+        sockets.delete(ws);
+      },
+      message(ws, raw) {
+        const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString()) as {
+          type?: string;
+          requestId?: unknown;
+        };
+        if (msg.type !== "join") return;
+        const envelope: Record<string, unknown> = {
+          v: PROTOCOL_VERSION,
+          type: "room.state",
+          roomId: "room_reconnect",
+          ts: "2026-03-15T12:00:00.000Z",
+          peers: [],
+          roomName: "reconnect",
+          inviteCode: "LOOM-ABCD",
+        };
+        if (typeof msg.requestId === "string") envelope.requestId = msg.requestId;
+        ws.send(JSON.stringify(envelope));
+      },
+    },
+  });
+  return {
+    url: `ws://127.0.0.1:${server.port}/ws`,
+    closeAccepted() {
+      for (const ws of [...sockets]) ws.close();
+    },
+    socketCount() {
+      return sockets.size;
+    },
+    stop() {
+      server.stop(true);
+    },
+  };
+}
+
+describe("v0.29.0 reconnect synthetic chat", () => {
+  test(
+    "synthetic reconnect chat is not stamped and is not ingested",
+    async () => {
+      const relay = startDroppingFakeRelay();
+      const ingested: Envelope[] = [];
+      const received: Envelope[] = [];
+      let client: RelayClient | undefined;
+      try {
+        client = new RelayClient({
+          url: relay.url,
+          autoReconnect: true,
+          reconnectJoin: { inviteCode: "LOOM-ABCD", displayName: "bridge" },
+          eventStore: {
+            async ingest(env: Envelope) {
+              ingested.push(env);
+              return { deliver: true, logged: false, failOpen: false };
+            },
+          } as unknown as RelayClientOptions["eventStore"],
+          onEnvelope(env) {
+            received.push(env);
+          },
+        });
+        await client.connect();
+        relay.closeAccepted();
+        await waitFor(
+          () =>
+            received.some((e) => {
+              if (e.type !== "chat") return false;
+              const row = e as { from?: string; text?: string };
+              return (
+                row.from === "system" &&
+                typeof row.text === "string" &&
+                row.text.startsWith("reconnected (attempt ")
+              );
+            }),
+          5000,
+        );
+        const chats = received.filter((e) => {
+          if (e.type !== "chat") return false;
+          const row = e as { from?: string; text?: string };
+          return (
+            row.from === "system" &&
+            typeof row.text === "string" &&
+            row.text.startsWith("reconnected (attempt ")
+          );
+        });
+        expect(chats).toHaveLength(1);
+        const synthetic = chats[0] as {
+          text?: string;
+          eventId?: string;
+          seq?: number;
+        };
+        expect(synthetic.text).toMatch(/^reconnected/); // attempt number is a pre-existing cosmetic issue (always 0) — not pinned
+        expect(synthetic.eventId).toBeUndefined();
+        expect(synthetic.seq).toBeUndefined();
+        expect(
+          ingested.some((e) => {
+            if (e.type !== "chat") return false;
+            return (e as { from?: string }).from === "system";
+          }),
+        ).toBe(false);
+        expect(received.some((e) => e.type === "room.state")).toBe(true);
+        expect(ingested.some((e) => e.type === "room.state")).toBe(false);
+        expect(ingested).toEqual([]);
+      } finally {
+        client?.close();
+        relay.stop();
+      }
+    },
+    15000,
+  );
+});
