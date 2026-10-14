@@ -292,7 +292,9 @@ function parseHandoffClientEvents(
   raw: unknown,
 ): RoomSnapshotV1["handoffClientEvents"] {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-  const out: NonNullable<RoomSnapshotV1["handoffClientEvents"]> = {};
+  const out = Object.create(null) as NonNullable<
+    RoomSnapshotV1["handoffClientEvents"]
+  >;
   for (const [peerId, entries] of Object.entries(
     raw as Record<string, unknown>,
   )) {

@@ -437,12 +437,13 @@ export class RelayServer {
               idempotency.clientEventId,
             );
           }
-          const ack = result.replayAck
-            ? result.replayAck
-            : (room.handoffAckEnvelope(result) as unknown as Record<
-                string,
-                unknown
-              >);
+          const ack =
+            result.ack ??
+            result.replayAck ??
+            (room.handoffAckEnvelope(result) as unknown as Record<
+              string,
+              unknown
+            >);
           this.reply(state, ack, rid);
         } catch (e) {
           this.reply(

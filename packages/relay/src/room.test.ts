@@ -3,7 +3,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MAX_INBOX_ENTRIES_PER_PEER, PROTOCOL_VERSION } from "@loom/protocol";
-import { Room, RoomRegistry, type SocketLike } from "./room";
+import {
+  Room,
+  RoomRegistry,
+  chatClientEventMaterial,
+  clientEventBodyHash,
+  handoffClientEventMaterial,
+  type SocketLike,
+} from "./room";
 import {
   loadAllSnapshots,
   releaseStateDirLock,
@@ -501,5 +508,248 @@ describe("v0.29.0 PATCH 1 expected-red", () => {
       }
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("v0.29.0 PATCH 3 review fixes", () => {
+  function handoffHash(to: string, body: string): string {
+    return clientEventBodyHash(handoffClientEventMaterial({ to, body }));
+  }
+
+  test("v0.29.0 PATCH 3 removePeer drops idempotency caches on leave and restores them on persist rollback", () => {
+    const room = new Room("demo");
+    const alice = mockSocket();
+    mustAdd(
+      room,
+      { id: "p1", displayName: "alice", agentKind: "claude" },
+      alice.socket,
+    );
+    mustAdd(
+      room,
+      { id: "p2", displayName: "bob", agentKind: "codex" },
+      mockSocket().socket,
+    );
+    const body = "cache-me";
+    const bodyHash = handoffHash("@alice", body);
+    const first = room.routeHandoff(room.resolveHandoff("p2", { to: "@alice", body }), {
+      peerId: "p2",
+      clientEventId: "U",
+      bodyHash,
+    });
+    const chatId = "chat-U";
+    const chatText = "again";
+    const chatHash = clientEventBodyHash(chatClientEventMaterial(chatText));
+    room.rememberChatClientEvent("p2", chatId, chatHash);
+    expect(room.lookupChatClientEvent("p2", chatId)).toBe(chatHash);
+
+    room.setPersistHook(() => {
+      throw new Error("EACCES");
+    });
+    const origError = console.error;
+    console.error = () => {};
+    try {
+      expect(() => room.removePeer("p2")).toThrow();
+      expect(room.getPeer("p2")).toBeTruthy();
+      const rolled = room.routeHandoff(
+        room.resolveHandoff("p2", { to: "@alice", body }),
+        { peerId: "p2", clientEventId: "U", bodyHash },
+      );
+      expect(rolled.handoffId).toBe(first.handoffId);
+      expect(room.lookupChatClientEvent("p2", chatId)).toBe(chatHash);
+    } finally {
+      console.error = origError;
+      room.setPersistHook(null);
+    }
+
+    expect(room.removePeer("p2")?.id).toBe("p2");
+    expect(room.peerCount).toBe(1);
+    mustAdd(
+      room,
+      { id: "p2", displayName: "bob", agentKind: "codex" },
+      mockSocket().socket,
+    );
+    const rejoined = room.routeHandoff(
+      room.resolveHandoff("p2", { to: "@alice", body }),
+      { peerId: "p2", clientEventId: "U", bodyHash },
+    );
+    expect(rejoined.handoffId).not.toBe(first.handoffId);
+    expect(room.lookupChatClientEvent("p2", chatId)).toBeUndefined();
+    room.broadcast(room.chatEnvelope("p2", chatText), "p2");
+    const chats = alice.sent
+      .map((raw) => JSON.parse(raw) as { type?: string; text?: string })
+      .filter((m) => m.type === "chat" && m.text === chatText);
+    expect(chats).toHaveLength(1);
+  });
+
+  test("v0.29.0 PATCH 3 snapshot drops handoffClientEvents whose peer is not in the roster", () => {
+    const room = new Room("demo");
+    mustAdd(
+      room,
+      { id: "p1", displayName: "alice", agentKind: "claude" },
+      mockSocket().socket,
+    );
+    mustAdd(
+      room,
+      { id: "p2", displayName: "bob", agentKind: "codex" },
+      mockSocket().socket,
+    );
+    const bodyHash = handoffHash("@alice", "orphan");
+    const first = room.routeHandoff(
+      room.resolveHandoff("p2", { to: "@alice", body: "orphan" }),
+      { peerId: "p2", clientEventId: "orphan-U", bodyHash },
+    );
+    const snap = room.toSnapshot();
+    const src = snap.handoffClientEvents?.p2;
+    expect(src?.length).toBeGreaterThan(0);
+    snap.handoffClientEvents = {
+      ...snap.handoffClientEvents,
+      ghost: src!.map((e) => ({ ...e, ack: { ...e.ack } })),
+    };
+    const restored = Room.fromSnapshot(snap);
+    const out = restored.toSnapshot();
+    expect(out.handoffClientEvents?.p2?.length).toBeGreaterThan(0);
+    expect(out.handoffClientEvents?.ghost).toBeUndefined();
+    mustAdd(
+      restored,
+      { id: "ghost", displayName: "ghost", agentKind: "grok" },
+      mockSocket().socket,
+    );
+    const again = restored.routeHandoff(
+      restored.resolveHandoff("ghost", { to: "@alice", body: "orphan" }),
+      { peerId: "ghost", clientEventId: "orphan-U", bodyHash },
+    );
+    expect(again.handoffId).not.toBe(first.handoffId);
+  });
+
+  test("v0.29.0 PATCH 3 __proto__ peer handoff survives toSnapshot fromSnapshot and replays", () => {
+    const room = new Room("demo");
+    mustAdd(
+      room,
+      { id: "p1", displayName: "alice", agentKind: "claude" },
+      mockSocket().socket,
+    );
+    mustAdd(
+      room,
+      { id: "__proto__", displayName: "proto", agentKind: "codex" },
+      mockSocket().socket,
+    );
+    const body = "proto-body";
+    const bodyHash = handoffHash("@alice", body);
+    const first = room.routeHandoff(
+      room.resolveHandoff("__proto__", { to: "@alice", body }),
+      { peerId: "__proto__", clientEventId: "proto-U", bodyHash },
+    );
+    const restored = Room.fromSnapshot(room.toSnapshot());
+    const retry = restored.routeHandoff(
+      restored.resolveHandoff("__proto__", { to: "@alice", body }),
+      { peerId: "__proto__", clientEventId: "proto-U", bodyHash },
+    );
+    expect(retry.handoffId).toBe(first.handoffId);
+  });
+
+  test("v0.29.0 PATCH 3 __proto__ peer handoff survives disk reload and replays", () => {
+    const dir = mkdtempSync(join(tmpdir(), "loom-proto-"));
+    let reg: RoomRegistry | null = null;
+    let reg2: RoomRegistry | null = null;
+    try {
+      reg = new RoomRegistry({ stateDir: dir });
+      const room = reg.create("proto");
+      mustAdd(
+        room,
+        { id: "p1", displayName: "alice", agentKind: "claude" },
+        mockSocket().socket,
+      );
+      mustAdd(
+        room,
+        { id: "__proto__", displayName: "proto", agentKind: "codex" },
+        mockSocket().socket,
+      );
+      const body = "proto-body";
+      const bodyHash = handoffHash("@alice", body);
+      const first = room.routeHandoff(
+        room.resolveHandoff("__proto__", { to: "@alice", body }),
+        { peerId: "__proto__", clientEventId: "proto-U", bodyHash },
+      );
+      const code = room.inviteCode;
+      reg.close();
+      reg = null;
+      reg2 = new RoomRegistry({ stateDir: dir });
+      const loaded = reg2.getByCode(code);
+      expect(loaded).toBeTruthy();
+      const retry = loaded!.routeHandoff(
+        loaded!.resolveHandoff("__proto__", { to: "@alice", body }),
+        { peerId: "__proto__", clientEventId: "proto-U", bodyHash },
+      );
+      expect(retry.handoffId).toBe(first.handoffId);
+    } finally {
+      try {
+        reg?.close();
+      } catch {
+        /* */
+      }
+      try {
+        reg2?.close();
+      } catch {
+        /* */
+      }
+      try {
+        releaseStateDirLock(dir);
+      } catch {
+        /* */
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("v0.29.0 PATCH 3 first idempotent ack and replay ack are the same stored body", () => {
+    const room = new Room("demo");
+    mustAdd(
+      room,
+      { id: "p1", displayName: "alice", agentKind: "claude" },
+      mockSocket().socket,
+    );
+    mustAdd(
+      room,
+      { id: "p2", displayName: "bob", agentKind: "codex" },
+      mockSocket().socket,
+    );
+    const body = "ack-body";
+    const bodyHash = handoffHash("@alice", body);
+    const idem = { peerId: "p2", clientEventId: "ack-U", bodyHash };
+    const first = room.routeHandoff(
+      room.resolveHandoff("p2", { to: "@alice", body }),
+      idem,
+    ) as {
+      ack?: { ts?: string; handoffId?: string; status?: string };
+    };
+    const replay = room.routeHandoff(
+      room.resolveHandoff("p2", { to: "@alice", body }),
+      idem,
+    ) as {
+      replayAck?: { ts?: string; handoffId?: string; status?: string };
+    };
+    expect(replay.replayAck).toBe(first.ack);
+    expect(first.ack?.ts).toBe(replay.replayAck?.ts);
+    expect(first.ack?.handoffId).toBe(replay.replayAck?.handoffId);
+    expect(first.ack?.status).toBe(replay.replayAck?.status);
+  });
+
+  test("v0.29.0 PATCH 3 absent attachments and empty array materialize the same", () => {
+    const base = { to: "@bob", body: "m" };
+    const absent = handoffClientEventMaterial(base);
+    expect(handoffClientEventMaterial({ ...base, attachments: undefined })).toBe(
+      absent,
+    );
+    expect(handoffClientEventMaterial({ ...base, attachments: null })).toBe(absent);
+    expect(handoffClientEventMaterial({ ...base, attachments: [] })).toBe(absent);
+    const ordered = handoffClientEventMaterial({
+      ...base,
+      attachments: [{ id: "a" }, { id: "b" }],
+    });
+    const swapped = handoffClientEventMaterial({
+      ...base,
+      attachments: [{ id: "b" }, { id: "a" }],
+    });
+    expect(ordered).not.toBe(swapped);
   });
 });

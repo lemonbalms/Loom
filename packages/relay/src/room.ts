@@ -51,8 +51,13 @@ export function handoffClientEventMaterial(h: {
   mode?: string;
   attachments?: unknown;
 }): string {
+  const attachments =
+    h.attachments == null ||
+    (Array.isArray(h.attachments) && h.attachments.length === 0)
+      ? null
+      : h.attachments;
   return JSON.stringify({
-    attachments: h.attachments ?? null,
+    attachments,
     body: h.body,
     mode: h.mode ?? "message",
     to: h.to,
@@ -92,6 +97,11 @@ export type HandoffRouteResult = {
 
 /** Optional replay metadata. Absent when this call routed (or did not match). */
 type HandoffRouteOutcome = HandoffRouteResult & {
+  /**
+   * Stored ack body. Set on the first idempotent route and on replay
+   * (same object as `replayAck`). Absent when nothing was staged.
+   */
+  ack?: Record<string, unknown>;
   /** Stored ack from the first successful route. Set only on LRU hit. */
   replayAck?: Record<string, unknown>;
   /** True only on replay when the new body hash differs. */
@@ -249,6 +259,7 @@ export class Room {
     if (rawEvents && typeof rawEvents === "object") {
       for (const [peerId, entries] of Object.entries(rawEvents)) {
         if (!peerId || !Array.isArray(entries)) continue;
+        if (!room.members.has(peerId)) continue;
         const map = new Map<string, HandoffClientEventEntry>();
         for (const e of entries) {
           if (!isStoredHandoffClientEvent(e)) continue;
@@ -329,11 +340,12 @@ export class Room {
   private handoffClientEventsSnapshot(): {
     handoffClientEvents?: RoomSnapshotV1["handoffClientEvents"];
   } {
-    const handoffClientEvents: NonNullable<
+    const handoffClientEvents = Object.create(null) as NonNullable<
       RoomSnapshotV1["handoffClientEvents"]
-    > = {};
+    >;
     for (const [peerId, peer] of this.handoffClientEvents) {
       if (peer.size === 0) continue;
+      if (!this.members.has(peerId)) continue;
       handoffClientEvents[peerId] = [...peer.values()].map((e) => ({
         clientEventId: e.clientEventId,
         handoffId: e.handoffId,
@@ -480,8 +492,12 @@ export class Room {
     const m = this.members.get(peerId);
     if (!m) return undefined;
     const prevInbox = this.inboxes.get(peerId);
+    const prevHandoffEvents = this.handoffClientEvents.get(peerId);
+    const prevChatEvents = this.chatClientEvents.get(peerId);
     this.members.delete(peerId);
     this.inboxes.delete(peerId);
+    this.handoffClientEvents.delete(peerId);
+    this.chatClientEvents.delete(peerId);
     try {
       this.touchPersist();
     } catch (e) {
@@ -489,6 +505,10 @@ export class Room {
       this.members.set(peerId, m);
       if (prevInbox) this.inboxes.set(peerId, prevInbox);
       else this.inboxes.delete(peerId);
+      if (prevHandoffEvents) this.handoffClientEvents.set(peerId, prevHandoffEvents);
+      else this.handoffClientEvents.delete(peerId);
+      if (prevChatEvents) this.chatClientEvents.set(peerId, prevChatEvents);
+      else this.chatClientEvents.delete(peerId);
       console.error(
         `[loom relay] persist failed room=${this.id} (removePeer rolled back):`,
         e instanceof Error ? e.message : e,
@@ -805,6 +825,7 @@ export class Room {
         return {
           ...hit.result,
           replayAck: hit.ack,
+          ack: hit.ack,
           ...(bodyMismatch ? { bodyMismatch: true } : {}),
         };
       }
@@ -847,11 +868,13 @@ export class Room {
     };
     let stagedPrev: Map<string, HandoffClientEventEntry> | undefined;
     let staged = false;
+    let storedAck: Record<string, unknown> | undefined;
     if (idem) {
       const ack = {
         ...this.handoffAckEnvelope(result),
       } as Record<string, unknown>;
       if (ack.message === undefined) delete ack.message;
+      storedAck = ack;
       stagedPrev = this.stageHandoffClientEvent(idem.peerId, {
         clientEventId: idem.clientEventId,
         handoffId: result.handoffId,
@@ -875,7 +898,7 @@ export class Room {
       throw e;
     }
 
-    return result;
+    return storedAck ? { ...result, ack: storedAck } : result;
   }
 
   handoffAckEnvelope(result: HandoffRouteResult): Envelope {
