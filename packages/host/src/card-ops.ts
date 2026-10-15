@@ -67,7 +67,7 @@ function auditL2Refusal(cardId: string): void {
   );
   try {
     const session = loadSession();
-    const record = {
+    const record: PolicyAuditRecord = {
       v: 1,
       ts: new Date().toISOString(),
       kind: "refused",
@@ -78,7 +78,7 @@ function auditL2Refusal(cardId: string): void {
       roomId: session?.roomId ?? "",
       agentKind: session?.agentKind ?? "",
       cardId,
-    } as unknown as PolicyAuditRecord;
+    };
     appendPolicyAudit(loomDir(), session?.roomId ?? "", record);
   } catch {
     // Audit never changes the decision.

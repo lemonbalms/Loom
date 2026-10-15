@@ -173,7 +173,12 @@ const PROPOSE_GATE = resolveLoomToolsGate(policy({ loomTools: { done: "propose" 
 const ALL_MODES_GATE = resolveLoomToolsGate(policy({ loomTools: { denyModes: ALL_MODES } }));
 const INVALID_GATE = resolveLoomToolsGate({ invalid: "policy.json: loomTools.done: bad" });
 
-function evaluate(gate: LoomToolsGate, name: string, args: unknown, reg = fakeRegistry()) {
+function evaluate(
+  gate: LoomToolsGate,
+  name: string,
+  args: unknown,
+  reg: ToolRegistry = fakeRegistry(),
+) {
   return evaluateMcpCall(gate, reg, name, args, CTX);
 }
 
@@ -626,6 +631,23 @@ describe("step 6 — done (D4 / R2 / R50-L1)", () => {
       expect(a.ok).toBe(true);
       if (a.ok) expect(a.audit?.kind).toBe("done_via_mcp");
     }
+  });
+
+  test("revoked Proxy snapshot (every access throws, incl. Array.isArray) → done present, no throw", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+    // Lax registry: the fake schema check would itself touch the revoked proxy.
+    const lax: ToolRegistry = {
+      has: () => true,
+      validate: (_n, args) => ({ ok: true, args: args as Record<string, unknown> }),
+    };
+    let d: McpCallDecision | undefined;
+    expect(() => {
+      d = evaluate(PROPOSE_GATE, "import_board", { snapshot: proxy }, lax);
+    }).not.toThrow();
+    expect(d && reasonOf(d)).toBe("done_propose");
+    const a = evaluate(DEFAULT_GATE, "import_board", { snapshot: proxy }, lax);
+    expect(a.ok && a.audit?.kind).toBe("done_via_mcp");
   });
 
   test("status is read once per task (a flipping getter cannot slip past)", () => {

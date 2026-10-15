@@ -14,8 +14,8 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  renameSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +25,10 @@ import {
   evaluateMcpCall,
   POLICY_AUDIT_FILE,
   POLICY_AUDIT_MAX_BYTES,
+  listPolicyAuditGenerations,
+  POLICY_AUDIT_KEEP_GENERATIONS,
   type PolicyAuditRecord,
+  policyAuditGenerationName,
   policyAuditTestHooks,
   resolveLoomToolsGate,
   type ToolRegistry,
@@ -57,6 +60,10 @@ function rec(over: Partial<PolicyAuditRecord> = {}): PolicyAuditRecord {
 
 function auditPath(root = dir, room = ROOM): string {
   return join(root, "rooms", roomKey(room), POLICY_AUDIT_FILE);
+}
+
+function roomDirOf(root = dir, room = ROOM): string {
+  return join(root, "rooms", roomKey(room));
 }
 
 function lines(path: string): string[] {
@@ -108,7 +115,7 @@ describe("appendPolicyAudit — location, modes, format", () => {
     ).toBe(true);
     const ls = lines(auditPath());
     expect(ls.length).toBe(1);
-    expect(Buffer.byteLength(ls[0], "utf8")).toBeLessThanOrEqual(4096);
+    expect(Buffer.byteLength(`${ls[0]}\n`, "utf8")).toBeLessThanOrEqual(4096);
     const parsed = JSON.parse(ls[0]);
     expect(parsed.kind).toBe("refused");
     expect(parsed.peerId).toBe("peer-self");
@@ -135,35 +142,59 @@ describe("appendPolicyAudit — location, modes, format", () => {
   });
 });
 
-describe("appendPolicyAudit — rotation (UK-3: 1 MiB, one generation)", () => {
-  test("file ≥ 1 MiB → renamed to .1 before the append; new file holds only the new record", () => {
+describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3)", () => {
+  afterEach(() => {
+    policyAuditTestHooks.afterLstat = undefined;
+    policyAuditTestHooks.generationName = undefined;
+  });
+
+  test("generation name: policy-audit.<YYYYMMDDTHHmmssSSSZ>-<pid>-<6 base36>.jsonl, fixed width, no colons", () => {
+    const a = policyAuditGenerationName(new Date("2026-10-16T01:02:03.004Z"), 42, "a1b2c3");
+    expect(a).toBe("policy-audit.20261016T010203004Z-0000000042-a1b2c3.jsonl");
+    expect(a).not.toContain(":");
+    const b = policyAuditGenerationName(new Date("2026-10-16T01:02:03.005Z"), 4194304, "000000");
+    expect(b.length).toBe(a.length);
+    expect([b, a].sort()).toEqual([a, b]);
+    const c = policyAuditGenerationName(new Date("2027-01-01T00:00:00.000Z"), 1, "zzzzzz");
+    expect([c, b, a].sort()).toEqual([a, b, c]);
+  });
+
+  test("listPolicyAuditGenerations: rotated oldest → newest, then the live file; others ignored", () => {
+    const roomDir = join(dir, "rooms", roomKey(ROOM));
+    mkdirSync(roomDir, { recursive: true });
+    const g1 = policyAuditGenerationName(new Date("2026-01-01T00:00:00.000Z"), 7, "aaaaaa");
+    const g2 = policyAuditGenerationName(new Date("2026-02-01T00:00:00.000Z"), 7, "aaaaaa");
+    for (const n of [
+      g2,
+      POLICY_AUDIT_FILE,
+      g1,
+      "events.jsonl",
+      "policy-audit.jsonl.1",
+      "policy-audit.x.jsonl",
+    ]) {
+      writeFileSync(join(roomDir, n), "x\n");
+    }
+    expect(listPolicyAuditGenerations(roomDir)).toEqual([g1, g2, POLICY_AUDIT_FILE]);
+    expect(listPolicyAuditGenerations(join(dir, "missing"))).toEqual([]);
+    rmSync(join(roomDir, POLICY_AUDIT_FILE));
+    expect(listPolicyAuditGenerations(roomDir)).toEqual([g1, g2]);
+  });
+
+  test("file over the cap → renamed to a unique generation before the append; new file holds only the new record", () => {
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
     const filler = `${JSON.stringify({ filler: "z".repeat(1000) })}\n`;
     writeFileSync(path, filler.repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / filler.length)));
     const bigSize = statSync(path).size;
-    expect(bigSize).toBeGreaterThanOrEqual(POLICY_AUDIT_MAX_BYTES);
-
     expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "after" }))).toBe(true);
-    expect(statSync(`${path}.1`).size).toBe(bigSize); // moved whole — no truncation
+    const gens = listPolicyAuditGenerations(roomDirOf());
+    expect(gens.length).toBe(2);
+    expect(gens[1]).toBe(POLICY_AUDIT_FILE);
+    expect(statSync(join(roomDirOf(), gens[0])).size).toBe(bigSize); // moved whole — no truncation
     const ls = lines(path);
     expect(ls.length).toBe(1);
     expect(JSON.parse(ls[0]).cardId).toBe("after");
     expect(statSync(path).mode & 0o777).toBe(0o600);
-  });
-
-  test("an older .1 is replaced (one generation only)", () => {
-    const path = auditPath();
-    appendPolicyAudit(dir, ROOM, rec());
-    writeFileSync(`${path}.1`, "OLD-GENERATION\n");
-    writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES));
-    appendPolicyAudit(dir, ROOM, rec());
-    expect(readFileSync(`${path}.1`, "utf8")).not.toContain("OLD-GENERATION");
-    expect(statSync(`${path}.1`).size).toBe(POLICY_AUDIT_MAX_BYTES);
-    expect(readdirSync(join(dir, "rooms", roomKey(ROOM))).sort()).toEqual([
-      POLICY_AUDIT_FILE,
-      `${POLICY_AUDIT_FILE}.1`,
-    ]);
   });
 
   test("size + line ≤ cap → no rotation (exactly reaching the cap is fine)", () => {
@@ -172,7 +203,7 @@ describe("appendPolicyAudit — rotation (UK-3: 1 MiB, one generation)", () => {
     appendPolicyAudit(dir, ROOM, rec());
     writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES - Buffer.byteLength(line)));
     expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
-    expect(existsSync(`${path}.1`)).toBe(false);
+    expect(listPolicyAuditGenerations(roomDirOf())).toEqual([POLICY_AUDIT_FILE]);
     expect(statSync(path).size).toBe(POLICY_AUDIT_MAX_BYTES);
   });
 
@@ -183,11 +214,13 @@ describe("appendPolicyAudit — rotation (UK-3: 1 MiB, one generation)", () => {
     const before = POLICY_AUDIT_MAX_BYTES - Buffer.byteLength(line) + 1;
     writeFileSync(path, "a".repeat(before));
     expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
-    expect(statSync(`${path}.1`).size).toBe(before);
+    const gens = listPolicyAuditGenerations(roomDirOf());
+    expect(gens.length).toBe(2);
+    expect(statSync(join(roomDirOf(), gens[0])).size).toBe(before);
     expect(statSync(path).size).toBe(Buffer.byteLength(line));
   });
 
-  test("many appends from empty: the live file stays ≤ cap and the lock is released", () => {
+  test("many appends: the live file stays ≤ cap; no lockfile or other stray files", () => {
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
     writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES - 10));
@@ -195,69 +228,99 @@ describe("appendPolicyAudit — rotation (UK-3: 1 MiB, one generation)", () => {
       expect(appendPolicyAudit(dir, ROOM, rec({ cardId: `c${i}` }))).toBe(true);
       expect(statSync(path).size).toBeLessThanOrEqual(POLICY_AUDIT_MAX_BYTES);
     }
-    expect(existsSync(`${path}.lock`)).toBe(false);
-  });
-});
-
-describe("appendPolicyAudit — rotation lock (concurrent writers)", () => {
-  afterEach(() => {
-    policyAuditTestHooks.afterSizeCheck = undefined;
+    expect(readdirSync(roomDirOf()).sort()).toEqual(listPolicyAuditGenerations(roomDirOf()).sort());
   });
 
-  test("interleaved rotation: the old generation survives (B must not rename A's new live file)", () => {
+  test("pruning keeps exactly the newest 3 rotated generations (≤ 4 MiB per room)", () => {
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const old = [1, 2, 3, 4, 5].map((m) =>
+      policyAuditGenerationName(new Date(`2025-0${m}-01T00:00:00.000Z`), 9, "oooooo"),
+    );
+    for (const n of old) writeFileSync(join(roomDir, n), "old\n");
+    writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "new" }))).toBe(true);
+    const gens = listPolicyAuditGenerations(roomDir);
+    expect(gens.length).toBe(4);
+    expect(gens.slice(0, 2)).toEqual([old[3], old[4]]);
+    expect(statSync(join(roomDir, gens[2])).size).toBe(POLICY_AUDIT_MAX_BYTES);
+    expect(gens[3]).toBe(POLICY_AUDIT_FILE);
+    expect(POLICY_AUDIT_KEEP_GENERATIONS).toBe(3);
+  });
+
+  test("no rotation → no pruning (old generations untouched)", () => {
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const old = [1, 2, 3, 4, 5].map((m) =>
+      policyAuditGenerationName(new Date(`2025-0${m}-01T00:00:00.000Z`), 9, "oooooo"),
+    );
+    for (const n of old) writeFileSync(join(roomDir, n), "old\n");
+    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
+    expect(listPolicyAuditGenerations(roomDir).length).toBe(6);
+  });
+
+  test("interleaving 1: B sees oversized G0, A rotates + writes first → G0 kept, ≤ 1 extra small generation, no record lost", () => {
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
-    writeFileSync(path, "OLD-GENERATION\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 15)));
-    const oldSize = statSync(path).size;
+    writeFileSync(path, "G0-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 8)));
+    const g0Size = statSync(path).size;
     let fired = false;
-    // B has opened the live file and seen it over the cap; before B rotates,
-    // writer A runs to completion (rotates + writes its record).
-    policyAuditTestHooks.afterSizeCheck = () => {
+    policyAuditTestHooks.afterLstat = () => {
       if (fired) return;
-      fired = true;
+      fired = true; // B is between lstat and rename; A runs to completion.
       expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "writer-A" }))).toBe(true);
     };
     expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "writer-B" }))).toBe(true);
     expect(fired).toBe(true);
-    const gen1 = readFileSync(`${path}.1`, "utf8");
-    expect(gen1).toContain("OLD-GENERATION");
-    expect(statSync(`${path}.1`).size).toBe(oldSize);
-    const live = lines(path).map((l) => JSON.parse(l).cardId);
-    expect(live).toEqual(["writer-A", "writer-B"]);
-    expect(existsSync(`${path}.lock`)).toBe(false);
+    const gens = listPolicyAuditGenerations(roomDirOf());
+    const rotated = gens.filter((g) => g !== POLICY_AUDIT_FILE);
+    const g0 = rotated.filter((g) => statSync(join(roomDirOf(), g)).size === g0Size);
+    expect(g0.length).toBe(1);
+    expect(readFileSync(join(roomDirOf(), g0[0]), "utf8")).toContain("G0-LINE");
+    expect(rotated.length).toBeLessThanOrEqual(2);
+    for (const g of rotated.filter((x) => x !== g0[0])) {
+      expect(statSync(join(roomDirOf(), g)).size).toBeLessThan(4096);
+    }
+    const all = gens.flatMap((g) => readFileSync(join(roomDirOf(), g), "utf8").split("\n"));
+    const ids = all.filter((l) => l.startsWith("{")).map((l) => JSON.parse(l).cardId);
+    expect(ids).toContain("writer-A");
+    expect(ids).toContain("writer-B");
   });
 
-  test("lock held by another writer → rotation skipped, record still appended, lock kept", () => {
+  test("interleaving 2: another writer renames G0 between B's lstat and rename → B's rename ENOENT, continues", () => {
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
-    writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES));
-    writeFileSync(`${path}.lock`, "other");
-    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "over" }))).toBe(true);
-    expect(existsSync(`${path}.1`)).toBe(false);
-    expect(readFileSync(path, "utf8")).toContain('"over"');
-    expect(readFileSync(`${path}.lock`, "utf8")).toBe("other");
+    writeFileSync(path, "G0-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 8)));
+    const g0Size = statSync(path).size;
+    const otherGen = policyAuditGenerationName(new Date(), 1, "other0");
+    let fired = false;
+    policyAuditTestHooks.afterLstat = () => {
+      if (fired) return;
+      fired = true;
+      renameSync(path, join(roomDirOf(), otherGen)); // the other writer's rotation
+    };
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "writer-B" }))).toBe(true);
+    const gens = listPolicyAuditGenerations(roomDirOf());
+    expect(gens).toEqual([otherGen, POLICY_AUDIT_FILE]);
+    expect(statSync(join(roomDirOf(), otherGen)).size).toBe(g0Size);
+    expect(lines(path).map((l) => JSON.parse(l).cardId)).toEqual(["writer-B"]);
   });
 
-  test("stale lock (> 10 s) is removed and rotation proceeds; lock released after", () => {
+  test("interleaving 3: both writers rotate (A writes nothing in between) → G0 kept, no overwrite", () => {
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
-    writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES));
-    writeFileSync(`${path}.lock`, "stale");
-    const old = new Date(Date.now() - 20_000);
-    utimesSync(`${path}.lock`, old, old);
-    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
-    expect(statSync(`${path}.1`).size).toBe(POLICY_AUDIT_MAX_BYTES);
-    expect(existsSync(`${path}.lock`)).toBe(false);
-  });
-
-  test("lock is released even when the rename fails", () => {
-    const path = auditPath();
-    appendPolicyAudit(dir, ROOM, rec());
-    writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES));
-    mkdirSync(`${path}.1`);
-    writeFileSync(join(`${path}.1`, "keep"), "k");
-    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(false);
-    expect(existsSync(`${path}.lock`)).toBe(false);
+    writeFileSync(path, "G0-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 8)));
+    const g0Size = statSync(path).size;
+    let depth = 0;
+    policyAuditTestHooks.afterLstat = () => {
+      depth++;
+      if (depth === 1) appendPolicyAudit(dir, ROOM, rec({ cardId: "writer-A" }));
+    };
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "writer-B" }))).toBe(true);
+    const gens = listPolicyAuditGenerations(roomDirOf());
+    const sizes = gens.map((g) => statSync(join(roomDirOf(), g)).size);
+    expect(sizes).toContain(g0Size);
+    expect(gens.length).toBeLessThanOrEqual(3);
   });
 });
 
@@ -273,6 +336,17 @@ describe("appendPolicyAudit — symlinks (O_NOFOLLOW)", () => {
     const text = stderrText();
     expect(text).toContain("audit_write_failed");
     expect(text.trim().split("\n").length).toBe(1);
+  });
+
+  test("symlinked live file over the cap is neither rotated nor followed", () => {
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const target = join(dir, "big-victim.txt");
+    writeFileSync(target, "v".repeat(POLICY_AUDIT_MAX_BYTES + 10));
+    symlinkSync(target, join(roomDir, POLICY_AUDIT_FILE));
+    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(false);
+    expect(readdirSync(roomDir)).toEqual([POLICY_AUDIT_FILE]);
+    expect(statSync(target).size).toBe(POLICY_AUDIT_MAX_BYTES + 10);
   });
 
   test("existing live file with loose mode is tightened to 0600 via the fd", () => {
@@ -295,6 +369,27 @@ describe("appendPolicyAudit — field allowlist and 4 KiB byte cap", () => {
     );
   });
 
+  test("line of exactly 4096 bytes including LF is written verbatim", () => {
+    const base = JSON.stringify(rec({ cardId: "" }));
+    const cardId = "x".repeat(4095 - Buffer.byteLength(base));
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId }))).toBe(true);
+    const raw = readFileSync(auditPath());
+    expect(raw.length).toBe(4096);
+    expect(raw[raw.length - 1]).toBe(0x0a);
+    expect(JSON.parse(raw.toString("utf8")).cardId).toBe(cardId);
+  });
+
+  test("line of 4097 bytes including LF is shrunk to ≤ 4096 incl LF", () => {
+    const base = JSON.stringify(rec({ cardId: "" }));
+    const cardId = "x".repeat(4096 - Buffer.byteLength(base));
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId }))).toBe(true);
+    const raw = readFileSync(auditPath());
+    expect(raw.length).toBeLessThanOrEqual(4096);
+    const parsed = JSON.parse(raw.toString("utf8"));
+    expect(parsed.cardId.length).toBeLessThan(cardId.length);
+    expect(parsed.kind).toBe("refused");
+  });
+
   test('"\\0".repeat(1000) in peerId/roomId/cardId → line ≤ 4096 bytes, valid JSON', () => {
     const nul = "\0".repeat(1000);
     const big = rec({
@@ -309,7 +404,7 @@ describe("appendPolicyAudit — field allowlist and 4 KiB byte cap", () => {
     expect(appendPolicyAudit(dir, ROOM, big)).toBe(true);
     const ls = lines(auditPath());
     expect(ls.length).toBe(1);
-    expect(Buffer.byteLength(ls[0], "utf8")).toBeLessThanOrEqual(4096);
+    expect(Buffer.byteLength(`${ls[0]}\n`, "utf8")).toBeLessThanOrEqual(4096);
     const parsed = JSON.parse(ls[0]);
     expect(parsed.v).toBe(1);
     expect(parsed.kind).toBe("refused");
@@ -330,7 +425,7 @@ describe("appendPolicyAudit — field allowlist and 4 KiB byte cap", () => {
     });
     expect(appendPolicyAudit(dir, ROOM, big)).toBe(true);
     const ls = lines(auditPath());
-    expect(Buffer.byteLength(ls[0], "utf8")).toBeLessThanOrEqual(4096);
+    expect(Buffer.byteLength(`${ls[0]}\n`, "utf8")).toBeLessThanOrEqual(4096);
     expect(() => JSON.parse(ls[0])).not.toThrow();
   });
 });
@@ -353,10 +448,16 @@ describe("appendPolicyAudit — failure never propagates (D8)", () => {
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
     writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES));
-    // A non-empty directory at `.1` makes rename(path, path.1) fail.
-    mkdirSync(`${path}.1`);
-    writeFileSync(join(`${path}.1`, "keep"), "k");
-    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "skipped" }))).toBe(false);
+    // A non-empty directory at the generation name makes rename(path, gen) fail.
+    const gen = policyAuditGenerationName(new Date(), 1, "blockd");
+    mkdirSync(join(roomDirOf(), gen));
+    writeFileSync(join(roomDirOf(), gen, "keep"), "k");
+    policyAuditTestHooks.generationName = () => gen;
+    try {
+      expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "skipped" }))).toBe(false);
+    } finally {
+      policyAuditTestHooks.generationName = undefined;
+    }
     expect(stderrText()).toContain("audit_write_failed");
     expect(readFileSync(path, "utf8")).not.toContain("skipped");
     expect(statSync(path).size).toBe(POLICY_AUDIT_MAX_BYTES);
