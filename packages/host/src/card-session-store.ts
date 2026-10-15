@@ -3,6 +3,7 @@
  * cardKey = sha16(roomId NUL agent NUL cardId). cwd is a record field, not a key.
  */
 import { createHash } from "node:crypto";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonFile, writeAtomicJson } from "./atomic-json";
 
@@ -53,6 +54,28 @@ export function readCardSession(opts: CardSessionKey): CardSessionRecord | null 
   const raw = readJsonFile(cardSessionPath(opts));
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return raw as CardSessionRecord;
+}
+
+/** Every session.json under loomDir/cards/<sha16>/. Missing dir → []. */
+export function listCardSessions(loomDir: string): CardSessionRecord[] {
+  const root = join(loomDir, "cards");
+  let names: string[];
+  try {
+    names = readdirSync(root);
+  } catch {
+    return [];
+  }
+  const records: CardSessionRecord[] = [];
+  for (const name of names) {
+    if (!/^[0-9a-f]{16}$/.test(name)) continue;
+    const raw = readJsonFile(join(root, name, "session.json"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const record = raw as Partial<CardSessionRecord>;
+    if (record.state !== "running" && record.state !== "exited") continue;
+    if (typeof record.roomId !== "string" || typeof record.cardId !== "string") continue;
+    records.push(raw as CardSessionRecord);
+  }
+  return records;
 }
 
 export function writeCardSession(
