@@ -16,7 +16,8 @@
  *     last agent_message item.text, turn.completed.usage,
  *     command_execution with exit_code !== 0 is a denial only when
  *     aggregated_output names a sandbox/permission block ("Operation not
- *     permitted", "Permission denied", "sandbox", case-insensitive).
+ *     permitted", "Permission denied", "Read-only file system", "sandbox",
+ *     case-insensitive).
  *     Other non-zero exits are ordinary command failures.
  *     isError false unless some object has is_error:true.
  *   Grok: concatenate text.data, end.sessionId, end.usage,
@@ -263,6 +264,42 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
         command: "ls",
         exitCode: 1,
         text: "blocked by sandbox policy",
+      },
+    ]);
+  });
+
+  test("codex non-zero command_execution with Read-only file system is a denial", () => {
+    const jsonl = [
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "mkdir nested",
+          aggregated_output: "mkdir: nested: Read-only file system",
+          exit_code: 1,
+        },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "touch y",
+          aggregated_output: "touch: y: READ-ONLY FILE SYSTEM",
+          exit_code: 1,
+        },
+      }),
+    ].join("\n");
+    const parsed = parseAgentStream("codex", jsonl);
+    expect(parsed.denials).toEqual([
+      {
+        command: "mkdir nested",
+        exitCode: 1,
+        text: "mkdir: nested: Read-only file system",
+      },
+      {
+        command: "touch y",
+        exitCode: 1,
+        text: "touch: y: READ-ONLY FILE SYSTEM",
       },
     ]);
   });

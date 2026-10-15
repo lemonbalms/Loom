@@ -150,6 +150,8 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
       "--disallowedTools",
       ...DENIED,
     ]);
+    // Variadic tool flags swallow a later positional. Nothing follows them.
+    expect(built.argv.slice(built.argv.indexOf("--disallowedTools") + 1)).toEqual(DENIED);
     expect(built.argv).not.toContain("-r");
     expect(built.argv.join("\n")).not.toContain(PROMPT);
     expect(permissions.claude).toEqual({
@@ -261,10 +263,8 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
       HEADLESS_WORKER_HINT,
       "--permission-mode",
       "acceptEdits",
-      "--allow",
-      ...ALLOWED,
-      "--deny",
-      ...DENIED,
+      ...ALLOWED.flatMap((rule) => ["--allow", rule]),
+      ...DENIED.flatMap((rule) => ["--deny", rule]),
     ]);
     expect(built.argv.join("\n")).not.toContain(PROMPT);
   });
@@ -370,6 +370,74 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     }
   });
 
+  test("permission rule lists reject flag-shaped, empty, NUL, and newline values", () => {
+    const samples = [
+      "--yolo",
+      "--always-approve",
+      "-x",
+      "",
+      "has\nnewline",
+      "has\0nul",
+    ];
+    const lists: Array<{
+      field: string;
+      agent: "claude" | "grok";
+      set: (permissions: WorkerPermissions, value: string) => void;
+    }> = [
+      {
+        field: "claude.allowedTools",
+        agent: "claude",
+        set: (permissions, value) => {
+          permissions.claude!.allowedTools = [value];
+        },
+      },
+      {
+        field: "claude.disallowedTools",
+        agent: "claude",
+        set: (permissions, value) => {
+          permissions.claude!.disallowedTools = [value];
+        },
+      },
+      {
+        field: "grok.allow",
+        agent: "grok",
+        set: (permissions, value) => {
+          permissions.grok!.allow = [value];
+        },
+      },
+      {
+        field: "grok.deny",
+        agent: "grok",
+        set: (permissions, value) => {
+          permissions.grok!.deny = [value];
+        },
+      },
+    ];
+    for (const list of lists) {
+      for (const value of samples) {
+        const permissions = defaultWorkerPermissions();
+        list.set(permissions, value);
+        // `--always-approve` is also an exact dangerous token, so that
+        // check fires first. Every sample must still fail closed.
+        const pattern = value.includes("--always-approve")
+          ? /--always-approve/
+          : `worker.permissions.${list.field} rejected: ${JSON.stringify(value)}`;
+        expect(() => validateWorkerConfig(baseConfig(permissions))).toThrow(pattern);
+        expect(() =>
+          buildAgentArgv({
+            agent: list.agent,
+            cwd: CWD,
+            sessionId: SESSION,
+            hint: HEADLESS_WORKER_HINT,
+            prompt: PROMPT,
+            promptFile: PROMPT_FILE,
+            permissions,
+          }),
+        ).toThrow(/worker\.permissions/);
+      }
+    }
+  });
+
   test("strict fake accepts builder argv for new and resume", () => {
     for (const agent of ["claude", "codex", "grok"] as const) {
       for (const resume of [false, true]) {
@@ -414,6 +482,52 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     const resumeCd = runFake("codex", ["exec", "resume", RESUME, "-C", CWD]);
     expect(resumeCd.status).toBe(2);
     expect(resumeCd.stderr).toContain("unexpected argument");
+  });
+
+  test("strict fake rejects variadic grok --allow/--deny and accepts one flag per rule", () => {
+    const oldArgv = [
+      "--prompt-file",
+      PROMPT_FILE,
+      "--output-format",
+      "streaming-json",
+      "--cwd",
+      CWD,
+      "--session-id",
+      SESSION,
+      "--rules",
+      HEADLESS_WORKER_HINT,
+      "--permission-mode",
+      "acceptEdits",
+      "--allow",
+      ...ALLOWED,
+      "--deny",
+      ...DENIED,
+    ];
+    const rejected = runFake("grok", oldArgv);
+    expect(rejected.status).toBe(2);
+    expect(rejected.stderr).toContain(`error: unexpected argument '${ALLOWED[1]}' found`);
+
+    const built = buildAgentArgv({
+      agent: "grok",
+      cwd: CWD,
+      sessionId: SESSION,
+      hint: HEADLESS_WORKER_HINT,
+      prompt: PROMPT,
+      promptFile: PROMPT_FILE,
+      permissions: defaultWorkerPermissions(),
+    });
+    const accepted = runFake("grok", built.argv);
+    expect(accepted.status).toBe(0);
+
+    const stray = runFake("grok", [...built.argv, "Write"]);
+    expect(stray.status).toBe(2);
+    expect(stray.stderr).toContain("error: unexpected argument 'Write' found");
+
+    const bareResume = runFake("grok", ["-r"]);
+    expect(bareResume.status).toBe(2);
+    const resumeFlag = runFake("grok", ["-r", "--prompt-file", PROMPT_FILE]);
+    expect(resumeFlag.status).toBe(2);
+    expect(resumeFlag.stderr).toContain("a value is required for '-r <SESSION_ID>'");
   });
 });
 

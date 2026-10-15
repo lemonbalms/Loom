@@ -8,9 +8,13 @@
  *
  * Argv after `--fake-kind` is checked per kind. Unknown flags exit 2 with
  * an error on stderr. Grok `-p`/`--single` requires a non-flag value, so
- * `-p --prompt-file <file>` is rejected. Claude `-p` is a boolean print
- * flag (the prompt stays on stdin). Codex must be `exec` or `exec resume`;
- * resume does not accept `-C` or `--sandbox`.
+ * `-p --prompt-file <file>` is rejected. Grok `--allow`, `--deny`, `--rules`,
+ * `--permission-mode`, `--cwd`, `--prompt-file`, `--output-format`,
+ * `--session-id`, and `-r` each take exactly one value. A stray non-flag
+ * token exits 2 (`error: unexpected argument '<tok>' found`). Claude `-p`
+ * is a boolean print flag (the prompt stays on stdin) and its
+ * `--allowedTools`/`--disallowedTools` stay variadic. Codex must be `exec`
+ * or `exec resume`; resume does not accept `-C` or `--sandbox`.
  *
  * Knobs are env-only so argv stays the real CLI argv:
  * - FAKE_OUTPUT_BYTES       body length (default 32). Body is "x" repeated.
@@ -29,6 +33,9 @@
  *                           (detached false, no setsid, not unref'd).
  * - FAKE_GRANDCHILD_PID_FILE  decimal pid of that grandchild.
  * - FAKE_PROMPT_DUMP        stdin text, plus `--prompt-file` contents.
+ * - FAKE_STDERR_EXIT        when set, write this string to stderr and exit 2
+ *                           after argv checks and dumps, before any stream
+ *                           event (no terminal event).
  *
  * Session id, from the real argv only (`-s` is sandbox, never a session id):
  * `--session-id`, else `-r` / `--resume`, else `exec resume <id>`,
@@ -52,6 +59,7 @@ import {
   mkdirSync,
   readFileSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { dirname } from "node:path";
 
@@ -184,8 +192,9 @@ function flagMap(rows: Array<[string[], FlagSpec]>): Map<string, FlagSpec> {
 
 /**
  * Walk argv the way the real CLIs do for the flags buildAgentArgv emits.
- * List flags (`--allow`, `--allowedTools`, …) consume every following
- * non-flag token, which is how those builders pass the tool lists.
+ * Claude list flags (`--allowedTools`, `--disallowedTools`) consume every
+ * following non-flag token. Grok `--allow` and `--deny` each take one value;
+ * a later non-flag token is a stray positional.
  * Returns an error string, or null when the argv is accepted.
  */
 function parseFlags(
@@ -229,11 +238,11 @@ const grokFlags = flagMap([
   [["--output-format"], { take: "value", label: "--output-format <OUTPUT_FORMAT>" }],
   [["--cwd"], { take: "value", label: "--cwd <CWD>" }],
   [["-s", "--session-id"], { take: "value", label: "--session-id <SESSION_ID>" }],
-  [["-r", "--resume"], { take: "optional", label: "--resume [<SESSION_ID>]" }],
+  [["-r", "--resume"], { take: "value", label: "-r <SESSION_ID>" }],
   [["--rules"], { take: "value", label: "--rules <RULES>" }],
   [["--permission-mode"], { take: "value", label: "--permission-mode <MODE>" }],
-  [["--allow"], { take: "variadic", label: "--allow <RULE>" }],
-  [["--deny"], { take: "variadic", label: "--deny <RULE>" }],
+  [["--allow"], { take: "value", label: "--allow <RULE>" }],
+  [["--deny"], { take: "value", label: "--deny <RULE>" }],
 ]);
 
 const claudeFlags = flagMap([
@@ -266,7 +275,7 @@ const codexResumeFlags = flagMap([
 ]);
 
 function validateKindArgv(kind: Kind, argv: string[]): string | null {
-  if (kind === "grok") return parseFlags(argv, grokFlags, 2);
+  if (kind === "grok") return parseFlags(argv, grokFlags, 0);
   if (kind === "claude") return parseFlags(argv, claudeFlags, 1);
   if (argv[0] !== "exec") return unexpectedArg(argv[0] ?? "");
   const next = argv[1];
@@ -319,6 +328,12 @@ async function main(): Promise<void> {
     } catch {
       /* best-effort */
     }
+  }
+
+  const stderrExit = process.env.FAKE_STDERR_EXIT;
+  if (stderrExit) {
+    writeSync(2, stderrExit);
+    process.exit(2);
   }
 
   if (process.env.FAKE_SPAWN_GRANDCHILD === "1") {

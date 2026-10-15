@@ -152,6 +152,72 @@ async function waitFor(pred: () => boolean, ms = 5_000): Promise<void> {
   }
 }
 
+async function grokStderrGiveUp(stderrBody: string): Promise<SinkCall[]> {
+  return withFakeLock(async () => {
+    const loomDir = mkdtempSync(join(tmpdir(), "loom-p2-stderr-"));
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "loom-p2-stderr-cwd-")));
+    const dump = join(loomDir, "argv.jsonl");
+    const calls: SinkCall[] = [];
+    const restore = pushEnv({
+      LOOM_DIR: loomDir,
+      FAKE_OUTPUT_BYTES: "8",
+      FAKE_DURATION_MS: "0",
+      FAKE_TIME_SCALE: "1",
+      FAKE_ARGV_DUMP: dump,
+      FAKE_STDERR_EXIT: stderrBody,
+      FAKE_HANG: undefined,
+      FAKE_EXIT_ONCE_MARKER: undefined,
+      FAKE_DENIAL: undefined,
+      FAKE_SPAWN_GRANDCHILD: undefined,
+      FAKE_ENV_DUMP: undefined,
+      FAKE_PROMPT_DUMP: undefined,
+      FAKE_KIND: undefined,
+      FAKE_GRANDCHILD_PID_FILE: undefined,
+    });
+    const dispatcher = new HeadlessDispatcher({
+      config: configFor(cwd, 30_000),
+      loomDir,
+      localPeerId: "test-local-peer",
+      node: "bridge-node",
+      commands: commands(),
+      sink: {
+        async composeAndSend(target, fields) {
+          calls.push({ target, fields });
+          return {
+            branch: "accepted",
+            relayAcceptedAt: "2026-10-15T00:00:03.000Z",
+            status: "delivered",
+            recipientCount: 1,
+          };
+        },
+      },
+    });
+    try {
+      await dispatcher.dispatch({
+        roomId: "room_stderr",
+        cardId: "task_stderr",
+        agent: "grok",
+        prompt: "stderr-note",
+        fromPeerId: "peer_stderr",
+        dispatchHandoffId: "hstderr",
+        cwd,
+      });
+      expect(spawnCount(dump)).toBe(2);
+      return calls;
+    } finally {
+      for (const line of dumpLines(dump)) killRecorded(line.pid);
+      try {
+        await dispatcher.close();
+      } catch {
+        /* */
+      }
+      restore();
+      rmSync(loomDir, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+}
+
 function commands(): Record<"claude" | "codex" | "grok", { bin: string; args: string[] }> {
   return {
     claude: { bin: "bun", args: [FAKE, "--fake-kind", "claude"] },
@@ -1089,6 +1155,34 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           rmSync(cwd, { recursive: true, force: true });
         }
       });
+    },
+    { timeout: 20_000 },
+  );
+
+  test(
+    "(g) exit 2 without a terminal event keeps the last stderr line in the give-up note",
+    async () => {
+      const body = "prelude\n\n\u0001error: unexpected argument 'Write' found\u0007\n\n";
+      const calls = await grokStderrGiveUp(body);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.fields.status).toBe("failed");
+      expect(calls[0]!.fields.reason).toBe("needs_verification");
+      expect(calls[0]!.fields.note).toBe(
+        "attempts 2 exhausted; not resuming; last stderr: error: unexpected argument 'Write' found",
+      );
+    },
+    { timeout: 20_000 },
+  );
+
+  test(
+    "(g) give-up stderr note strips controls, trims, and caps at 300 chars",
+    async () => {
+      const body = `\n\n\u0001${"B".repeat(320)}\u007f\n   \n`;
+      const calls = await grokStderrGiveUp(body);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.fields.note).toBe(
+        `attempts 2 exhausted; not resuming; last stderr: ${"B".repeat(300)}`,
+      );
     },
     { timeout: 20_000 },
   );

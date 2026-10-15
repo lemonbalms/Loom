@@ -256,6 +256,18 @@ async function readTranscript(path: string): Promise<string> {
   }
 }
 
+const STDERR_LINE_CAP = 300;
+
+/** Last non-empty stderr line: controls stripped, trimmed, capped. */
+function lastStderrLine(raw: string): string {
+  const lines = raw.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cleaned = lines[i]!.replace(/\p{Cc}/gu, "").trim();
+    if (cleaned.length > 0) return cleaned.slice(0, STDERR_LINE_CAP);
+  }
+  return "";
+}
+
 async function readStableTranscript(path: string): Promise<string> {
   let last = await readTranscript(path);
   for (let i = 0; i < 6; i++) {
@@ -811,13 +823,17 @@ export class HeadlessDispatcher {
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const truncated = truncationNote(capped.truncated, transcriptPath, fullText);
     const attemptsNote = `attempts ${record.attempts} exhausted; not resuming`;
+    const stderrLine = lastStderrLine(
+      await readTranscript(join(this.cardDir(record), `transcript-${record.attempts}.stderr`)),
+    );
+    const withStderr = stderrLine ? `${attemptsNote}; last stderr: ${stderrLine}` : attemptsNote;
     await this.sendAndMark(record, {
       status: "failed",
       reason: "needs_verification",
       output: capped.text,
       truncated: capped.truncated,
       summary: summaryLine(capped.text),
-      note: truncated ? `${attemptsNote}; ${truncated}`.slice(0, 500) : attemptsNote,
+      note: truncated ? `${withStderr}; ${truncated}`.slice(0, 500) : withStderr,
     });
   }
 

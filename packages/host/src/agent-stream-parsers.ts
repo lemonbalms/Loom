@@ -228,7 +228,11 @@ function parseCodex(events: unknown[]): ParsedAgentStream {
       typeof item.aggregated_output === "string" ? item.aggregated_output : "";
     // A non-zero exit is a normal command failure unless the output names a
     // sandbox or permission block. `rg --files` exits 1 when it finds nothing.
-    if (!/operation not permitted|permission denied|sandbox/i.test(output)) {
+    if (
+      !/operation not permitted|permission denied|read-only file system|sandbox/i.test(
+        output,
+      )
+    ) {
       continue;
     }
     parsed.denials.push({

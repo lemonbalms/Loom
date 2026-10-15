@@ -158,6 +158,47 @@ function assertExact(
   }
 }
 
+/**
+ * Permission-rule operands (claude tool lists, grok allow/deny, any rule list).
+ * A leading dash is flag-shaped (`--yolo` must not become another argv flag).
+ * Empty, NUL, and newline cannot be a single rule value.
+ */
+function assertPermissionRuleList(field: string, rules: unknown): void {
+  if (!Array.isArray(rules)) {
+    const shown = typeof rules === "string" ? JSON.stringify(rules) : String(rules);
+    throw new Error(`worker.permissions.${field} rejected: ${shown}`);
+  }
+  for (const rule of rules) {
+    const invalid =
+      typeof rule !== "string" ||
+      rule.length === 0 ||
+      rule.startsWith("-") ||
+      rule.includes("\0") ||
+      rule.includes("\n");
+    if (!invalid) continue;
+    const shown = typeof rule === "string" ? JSON.stringify(rule) : String(rule);
+    throw new Error(`worker.permissions.${field} rejected: ${shown}`);
+  }
+}
+
+const PERMISSION_RULE_LISTS = [
+  ["claude", "allowedTools"],
+  ["claude", "disallowedTools"],
+  ["grok", "allow"],
+  ["grok", "deny"],
+] as const;
+
+function validatePermissionRuleLists(permissions: WorkerPermissions): void {
+  for (const [agent, key] of PERMISSION_RULE_LISTS) {
+    const profile = permissions[agent];
+    if (!profile || !Object.hasOwn(profile, key)) continue;
+    assertPermissionRuleList(
+      `${agent}.${key}`,
+      (profile as Record<string, unknown>)[key],
+    );
+  }
+}
+
 function validatePermissions(permissions: WorkerPermissions): void {
   rejectDangerous(permissions);
   if (permissions.claude) {
@@ -182,6 +223,7 @@ function validatePermissions(permissions: WorkerPermissions): void {
       CODEX_APPROVALS,
     );
   }
+  validatePermissionRuleLists(permissions);
 }
 
 /** Fail-closed. Dangerous modes never reach spawn. */
@@ -250,6 +292,8 @@ function claudeArgv(opts: BuildAgentArgvInput): string[] {
     "--disallowedTools",
     ...profile.disallowedTools,
   );
+  // Both tool lists are variadic and swallow any later positional.
+  // Nothing may follow them; the prompt stays on stdin.
   return argv;
 }
 
@@ -337,6 +381,8 @@ function grokArgv(opts: BuildAgentArgvInput): string[] {
   if (!opts.promptFile) throw new Error("grok promptFile is required");
   // grok 1.0.54: -p/--single <PROMPT> requires a non-flag value and exits
   // when the next token is a flag. Headless prompt transport is --prompt-file.
+  // --allow <RULE> and --deny <RULE> each take one value. Extra rules passed
+  // as bare tokens become positionals ("unexpected argument 'Write' found").
   const argv = [
     "--prompt-file",
     opts.promptFile,
@@ -348,16 +394,9 @@ function grokArgv(opts: BuildAgentArgvInput): string[] {
   // R4: --session-id starts a new conversation and is omitted on resume.
   if (opts.resumeSessionId) argv.push("-r", opts.resumeSessionId);
   else argv.push("--session-id", opts.sessionId);
-  argv.push(
-    "--rules",
-    opts.hint,
-    "--permission-mode",
-    profile.permissionMode,
-    "--allow",
-    ...profile.allow,
-    "--deny",
-    ...profile.deny,
-  );
+  argv.push("--rules", opts.hint, "--permission-mode", profile.permissionMode);
+  for (const rule of profile.allow) argv.push("--allow", rule);
+  for (const rule of profile.deny) argv.push("--deny", rule);
   return argv;
 }
 
