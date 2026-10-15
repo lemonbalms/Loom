@@ -3,13 +3,23 @@
  * M-1: authorizedDispatchers allowlist (default deny when empty/missing).
  */
 import { existsSync, mkdirSync, chmodSync, writeFileSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { loomDir, ensureFableDir } from "./session-store";
 import {
   DEFAULT_HERDR_SOCKET,
   HERDR_PROTOCOL_EXPECTED,
 } from "./herdr-client";
 import type { DispatchAgentKind } from "@loom/protocol";
+import {
+  defaultWorkerPermissions,
+  validateWorkerConfig,
+  type AgentKind,
+  type ClaudePermissionProfile,
+  type CodexPermissionProfile,
+  type GrokPermissionProfile,
+  type WorkerConfig,
+  type WorkerPermissions,
+} from "./agent-argv";
 
 export type BridgeConfig = {
   /** M-1: tower peer ids allowed to dispatch. Empty ⇒ default deny. */
@@ -54,6 +64,34 @@ export type BridgeConfig = {
    * Load sanitizes non-true values to false (fail-closed opt-in).
    */
   hookSensor?: boolean;
+  /**
+   * PLAN 0.30.0 P6a. Absent or `backend: "pane"` keeps the pane path.
+   * `backend: "headless"` is fail-closed: invalid keys throw from
+   * loadBridgeConfig (not swallowed into defaults).
+   */
+  worker?: BridgeWorkerConfig;
+};
+
+/** Bridge-local headless worker section. Pane ignores every key but backend. */
+export type BridgeWorkerConfig = {
+  backend: "pane" | "headless";
+  /** Required when backend is headless. Absolute path. */
+  cwd?: string;
+  /** Required non-empty absolute paths when backend is headless. */
+  allowedRoots?: string[];
+  maxConcurrent?: Partial<Record<AgentKind, number>>;
+  timeoutMs?: number;
+  permissions?: WorkerPermissions;
+  /** Argv prefix per agent. `[0]` is bin, the rest are args. */
+  agentBin?: Partial<Record<AgentKind, string[]>>;
+};
+
+const HEADLESS_AGENTS: readonly AgentKind[] = ["claude", "codex", "grok"];
+const DEFAULT_TIMEOUT_MS = 7_200_000;
+const DEFAULT_AGENT_BIN: Record<AgentKind, string[]> = {
+  claude: ["claude"],
+  codex: ["codex"],
+  grok: ["grok"],
 };
 
 const DEFAULT_AGENT_ARGV: BridgeConfig["agentArgv"] = {
@@ -125,37 +163,296 @@ function sanitizeAgentArgv(
   return out;
 }
 
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${field} is required`);
+  }
+  return value;
+}
+
+function stringArray(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`${field} must be a string[]`);
+  }
+  return [...value];
+}
+
+function parseClaudeProfile(raw: unknown): ClaudePermissionProfile {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.permissions.claude must be an object");
+  }
+  const o = raw as Record<string, unknown>;
+  return {
+    permissionMode: requiredString(
+      o.permissionMode,
+      "worker.permissions.claude.permissionMode",
+    ),
+    allowedTools: stringArray(
+      o.allowedTools,
+      "worker.permissions.claude.allowedTools",
+    ),
+    disallowedTools: stringArray(
+      o.disallowedTools,
+      "worker.permissions.claude.disallowedTools",
+    ),
+  };
+}
+
+function parseCodexProfile(raw: unknown): CodexPermissionProfile {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.permissions.codex must be an object");
+  }
+  const o = raw as Record<string, unknown>;
+  const profile: CodexPermissionProfile = {
+    sandbox: requiredString(o.sandbox, "worker.permissions.codex.sandbox"),
+    approvalPolicy: requiredString(
+      o.approvalPolicy,
+      "worker.permissions.codex.approvalPolicy",
+    ),
+  };
+  if (o.extraArgs !== undefined) {
+    profile.extraArgs = stringArray(
+      o.extraArgs,
+      "worker.permissions.codex.extraArgs",
+    );
+  }
+  return profile;
+}
+
+function parseGrokProfile(raw: unknown): GrokPermissionProfile {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.permissions.grok must be an object");
+  }
+  const o = raw as Record<string, unknown>;
+  const profile: GrokPermissionProfile = {
+    permissionMode: requiredString(
+      o.permissionMode,
+      "worker.permissions.grok.permissionMode",
+    ),
+    allow: stringArray(o.allow, "worker.permissions.grok.allow"),
+    deny: stringArray(o.deny, "worker.permissions.grok.deny"),
+  };
+  if (o.extraArgs !== undefined) {
+    profile.extraArgs = stringArray(o.extraArgs, "worker.permissions.grok.extraArgs");
+  }
+  return profile;
+}
+
+function parsePermissions(raw: unknown): WorkerPermissions {
+  const defaults = defaultWorkerPermissions();
+  if (raw === undefined) return defaults;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.permissions must be an object");
+  }
+  // Walk the raw tree first so a dangerous token in any nested field fails
+  // closed before known-field projection drops it.
+  validateWorkerConfig({
+    backend: "headless",
+    cwd: "/",
+    allowedRoots: ["/"],
+    maxConcurrent: { claude: 1, codex: 1, grok: 1 },
+    timeoutMs: 1,
+    permissions: raw as WorkerPermissions,
+  });
+  const src = raw as Record<string, unknown>;
+  return {
+    claude: src.claude === undefined ? defaults.claude : parseClaudeProfile(src.claude),
+    codex: src.codex === undefined ? defaults.codex : parseCodexProfile(src.codex),
+    grok: src.grok === undefined ? defaults.grok : parseGrokProfile(src.grok),
+  };
+}
+
+function parseMaxConcurrent(raw: unknown): Record<AgentKind, number> {
+  const out: Record<AgentKind, number> = { claude: 1, codex: 1, grok: 1 };
+  if (raw === undefined) return out;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.maxConcurrent must be an object");
+  }
+  const src = raw as Record<string, unknown>;
+  for (const agent of HEADLESS_AGENTS) {
+    if (!Object.prototype.hasOwnProperty.call(src, agent)) continue;
+    const value = src[agent];
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+      throw new Error(
+        `worker.maxConcurrent.${agent} must be an integer >= 1`,
+      );
+    }
+    out[agent] = value;
+  }
+  return out;
+}
+
+function parseTimeoutMs(raw: unknown): number {
+  if (raw === undefined) return DEFAULT_TIMEOUT_MS;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
+    throw new Error("worker.timeoutMs must be a positive number");
+  }
+  return raw;
+}
+
+function parseCwd(raw: unknown): string {
+  if (typeof raw !== "string" || raw.length === 0) {
+    throw new Error("worker.cwd is required when worker.backend is headless");
+  }
+  if (!isAbsolute(raw)) {
+    throw new Error("worker.cwd must be an absolute path");
+  }
+  return raw;
+}
+
+function parseAllowedRoots(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new Error(
+      "worker.allowedRoots must be a non-empty string[] when worker.backend is headless",
+    );
+  }
+  const roots: string[] = [];
+  for (const root of raw) {
+    if (typeof root !== "string" || root.length === 0 || !isAbsolute(root)) {
+      throw new Error("worker.allowedRoots entries must be absolute paths");
+    }
+    roots.push(root);
+  }
+  return roots;
+}
+
+function parseAgentBin(raw: unknown): Record<AgentKind, string[]> {
+  if (raw === undefined) {
+    return {
+      claude: [...DEFAULT_AGENT_BIN.claude],
+      codex: [...DEFAULT_AGENT_BIN.codex],
+      grok: [...DEFAULT_AGENT_BIN.grok],
+    };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.agentBin must be an object");
+  }
+  const src = raw as Record<string, unknown>;
+  const out = {} as Record<AgentKind, string[]>;
+  for (const agent of HEADLESS_AGENTS) {
+    if (src[agent] === undefined) {
+      out[agent] = [...DEFAULT_AGENT_BIN[agent]];
+      continue;
+    }
+    const argv = src[agent];
+    if (
+      !Array.isArray(argv) ||
+      argv.length === 0 ||
+      argv.some((part) => typeof part !== "string" || part.length === 0)
+    ) {
+      throw new Error(`worker.agentBin.${agent} must be a non-empty string[]`);
+    }
+    out[agent] = [...argv];
+  }
+  return out;
+}
+
+function workerConfigFromParts(src: {
+  cwd?: unknown;
+  allowedRoots?: unknown;
+  maxConcurrent?: unknown;
+  timeoutMs?: unknown;
+  permissions?: unknown;
+}): WorkerConfig {
+  const config: WorkerConfig = {
+    backend: "headless",
+    cwd: parseCwd(src.cwd),
+    allowedRoots: parseAllowedRoots(src.allowedRoots),
+    maxConcurrent: parseMaxConcurrent(src.maxConcurrent),
+    timeoutMs: parseTimeoutMs(src.timeoutMs),
+    permissions: parsePermissions(src.permissions),
+  };
+  validateWorkerConfig(config);
+  return config;
+}
+
+/**
+ * WorkerConfig for a headless bridge. Throws a clear Error when the section
+ * is missing, not headless, or fails agent-argv permission checks.
+ * Omitted permissions and concurrency use agent-argv / D8–D9 defaults.
+ */
+export function workerConfigFromBridge(cfg: BridgeConfig): WorkerConfig {
+  const worker = cfg.worker;
+  if (!worker || worker.backend !== "headless") {
+    throw new Error('worker.backend must be "headless"');
+  }
+  return workerConfigFromParts(worker);
+}
+
+/** `{bin, args}` map for HeadlessDispatcher. Defaults: claude, codex, grok. */
+export function headlessAgentCommands(
+  cfg: BridgeConfig,
+): Record<AgentKind, { bin: string; args: string[] }> {
+  const worker = cfg.worker;
+  if (!worker || worker.backend !== "headless") {
+    throw new Error('worker.backend must be "headless"');
+  }
+  const bins = parseAgentBin(worker.agentBin);
+  return {
+    claude: { bin: bins.claude[0]!, args: bins.claude.slice(1) },
+    codex: { bin: bins.codex[0]!, args: bins.codex.slice(1) },
+    grok: { bin: bins.grok[0]!, args: bins.grok.slice(1) },
+  };
+}
+
+/**
+ * Headless sections throw. Pane, unknown backend, a missing section, and
+ * junk keys under a non-headless backend return undefined and do not throw.
+ */
+function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const src = raw as Record<string, unknown>;
+  if (src.backend !== "headless") return undefined;
+  const parsed = workerConfigFromParts(src);
+  const agentBin = parseAgentBin(src.agentBin);
+  return {
+    backend: "headless",
+    cwd: parsed.cwd,
+    allowedRoots: [...parsed.allowedRoots],
+    maxConcurrent: { ...parsed.maxConcurrent },
+    timeoutMs: parsed.timeoutMs,
+    permissions: parsed.permissions,
+    agentBin,
+  };
+}
+
 export function loadBridgeConfig(profile: string): BridgeConfig {
   const p = bridgeConfigPath(profile);
   const base = defaultBridgeConfig();
   if (!existsSync(p)) return base;
+  let raw: Record<string, unknown>;
   try {
-    const raw = JSON.parse(readFileSync(p, "utf8")) as Partial<BridgeConfig>;
-    const dispatchers = Array.isArray(raw.authorizedDispatchers)
-      ? raw.authorizedDispatchers.map(String).filter(Boolean)
-      : [];
-    return {
-      authorizedDispatchers: dispatchers,
-      herdrSocketPath:
-        typeof raw.herdrSocketPath === "string" && raw.herdrSocketPath
-          ? raw.herdrSocketPath
-          : base.herdrSocketPath,
-      agentArgv: {
-        ...DEFAULT_AGENT_ARGV,
-        ...sanitizeAgentArgv(raw.agentArgv),
-      },
-      herdrProtocol:
-        typeof raw.herdrProtocol === "number"
-          ? raw.herdrProtocol
-          : base.herdrProtocol,
-      paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
-      panePlacement: sanitizePanePlacement(raw.panePlacement),
-      paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),
-      hookSensor: sanitizeHookSensor(raw.hookSensor),
-    };
+    const parsed: unknown = JSON.parse(readFileSync(p, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return base;
+    raw = parsed as Record<string, unknown>;
   } catch {
     return base;
   }
+  // Worker errors must escape. The JSON try/catch above only covers read/parse.
+  const worker = workerSectionFromRaw(raw.worker);
+  const dispatchers = Array.isArray(raw.authorizedDispatchers)
+    ? raw.authorizedDispatchers.map(String).filter(Boolean)
+    : [];
+  return {
+    authorizedDispatchers: dispatchers,
+    herdrSocketPath:
+      typeof raw.herdrSocketPath === "string" && raw.herdrSocketPath
+        ? raw.herdrSocketPath
+        : base.herdrSocketPath,
+    agentArgv: {
+      ...DEFAULT_AGENT_ARGV,
+      ...sanitizeAgentArgv(raw.agentArgv),
+    },
+    herdrProtocol:
+      typeof raw.herdrProtocol === "number"
+        ? raw.herdrProtocol
+        : base.herdrProtocol,
+    paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
+    panePlacement: sanitizePanePlacement(raw.panePlacement),
+    paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),
+    hookSensor: sanitizeHookSensor(raw.hookSensor),
+    ...(worker ? { worker } : {}),
+  };
 }
 
 export function saveBridgeConfig(profile: string, cfg: BridgeConfig): void {

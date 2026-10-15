@@ -87,8 +87,11 @@ import {
   loadBridgeConfig,
   isAuthorizedDispatcher,
   resolveAgentArgv,
+  headlessAgentCommands,
+  workerConfigFromBridge,
   type BridgeConfig,
 } from "./bridge-config";
+import { HeadlessDispatcher } from "./headless-worker";
 import {
   writeBridgeMeta,
   clearBridgeMeta,
@@ -553,6 +556,12 @@ function log(...args: unknown[]): void {
   console.error("[loom-bridge]", ...args);
 }
 
+function isHeadlessAgentKind(
+  kind: string,
+): kind is "claude" | "codex" | "grok" {
+  return kind === "claude" || kind === "codex" || kind === "grok";
+}
+
 /** Stable log/counter key for a result handoff whose delivery was not acked. */
 export const RESULT_DELIVERY_UNCONFIRMED = "result_delivery_unconfirmed";
 
@@ -676,6 +685,10 @@ export async function startBridgeRuntime(opts?: {
   const profile =
     opts?.profile ?? getActiveProfile() ?? session.displayName ?? "default";
   const cfg = opts?.config ?? loadBridgeConfig(profile);
+  // Fail closed before herdr or the room join. Pane configs skip this.
+  const headlessConfig =
+    cfg.worker?.backend === "headless" ? workerConfigFromBridge(cfg) : null;
+  const headlessCommands = headlessConfig ? headlessAgentCommands(cfg) : null;
   const submitVerify = opts?.submitVerify ?? {
     waitMs: SUBMIT_VERIFY_MS,
     retries: SUBMIT_RETRIES,
@@ -685,6 +698,8 @@ export async function startBridgeRuntime(opts?: {
   const stillRunningMaxMs = opts?.stillRunningMaxMs ?? STILL_RUNNING_MAX_MS;
 
   const flights = new Map<string, Flight>(); // paneId → flight
+  /** PLAN 0.30.0 P6a. Null unless worker.backend is headless. */
+  let headlessDispatcher: HeadlessDispatcher | null = null;
   /** Attempt-axis only (agent name / hook sock). Result payload seq → issuer. */
   const cardSeq = new Map<string, number>();
   const processedHandoffs = new Set<string>();
@@ -831,6 +846,64 @@ export async function startBridgeRuntime(opts?: {
     client.setReconnectPeerSecret(joinEnv.peerSecret);
   }
 
+  if (headlessConfig && headlessCommands) {
+    try {
+      headlessDispatcher = new HeadlessDispatcher({
+        config: headlessConfig,
+        loomDir: loomDir(),
+        localPeerId: session.peerId,
+        node: session.displayName,
+        commands: headlessCommands,
+        sink: {
+          async composeAndSend(target, fields) {
+            const lease = cardResult.acquireInitial({
+              cardId: target.cardId,
+              fromPeerId: target.fromPeerId,
+              dispatchHandoffId: target.dispatchHandoffId,
+              startedAt: target.startedAt,
+              ...(target.paneId ? { paneId: target.paneId } : {}),
+            });
+            if (!lease) {
+              if (fields.reason === "needs_verification") {
+                log(
+                  `card ${target.cardId}: proposeCardVerification issuer.acquire(initial) denied`,
+                );
+              } else {
+                log(
+                  `card ${target.cardId}: finishCardFailure issuer.acquire(initial) denied reason=${fields.reason}`,
+                );
+              }
+              return;
+            }
+            const content: CardResultContent = {
+              status: fields.status,
+              reason: fields.reason,
+              output: fields.output,
+              truncated: fields.truncated,
+              summary: fields.summary,
+              ...(fields.note ? { note: fields.note } : {}),
+            };
+            return cardResult.composeAndSend(lease, content, {
+              node: session!.displayName,
+              applyOutcome: () => {},
+            });
+          },
+        },
+      });
+      await headlessDispatcher.recover();
+    } catch (e) {
+      try {
+        await headlessDispatcher?.close();
+      } catch {
+        /* */
+      }
+      headlessDispatcher = null;
+      herdr.close();
+      client.close();
+      throw e;
+    }
+  }
+
   // Health / control HTTP (sticky-host pattern)
   const token = generateBridgeToken();
   const server = Bun.serve({
@@ -884,6 +957,10 @@ export async function startBridgeRuntime(opts?: {
             quarantineUnresolved: quarantine.unresolvedCount(),
             // PLAN 0.28.0 M5: observation-only count of preserved card panes (U3)
             preservedCardPanes: preservedCardPaneIds.size,
+            // PLAN 0.30.0 D8: counts only, and only when the backend is headless.
+            ...(headlessDispatcher
+              ? { headless: headlessDispatcher.status() }
+              : {}),
           });
         }
         // PLAN 0.28.0 M3: operator quarantine ack against this process's store
@@ -966,6 +1043,11 @@ export async function startBridgeRuntime(opts?: {
 
   const listenPort = server.port;
   if (listenPort == null) {
+    try {
+      await headlessDispatcher?.close();
+    } catch {
+      /* */
+    }
     herdr.close();
     client.close();
     server.stop(true);
@@ -1390,6 +1472,29 @@ export async function startBridgeRuntime(opts?: {
         fromPeerId,
         dispatchHandoffId,
         reason: "agent_kind_not_allowed",
+      });
+      return;
+    }
+
+    // PLAN 0.30.0 P6a. Sibling path. Everything below stays the pane path.
+    if (cfg.worker?.backend === "headless") {
+      if (!isHeadlessAgentKind(payload.agentKind) || !headlessDispatcher) {
+        await sendFailedResult({
+          cardId: payload.cardId,
+          fromPeerId,
+          dispatchHandoffId,
+          reason: "agent_kind_not_allowed",
+        });
+        return;
+      }
+      await headlessDispatcher.dispatch({
+        roomId: session!.roomId,
+        cardId: payload.cardId,
+        agent: payload.agentKind,
+        prompt: payload.prompt,
+        fromPeerId,
+        dispatchHandoffId,
+        ...(payload.cwd ? { cwd: payload.cwd } : {}),
       });
       return;
     }
@@ -2992,6 +3097,13 @@ export async function startBridgeRuntime(opts?: {
     if (stopped) return;
     stopped = true;
     clearInterval(pollTimer);
+    if (headlessDispatcher) {
+      try {
+        await headlessDispatcher.close();
+      } catch {
+        /* */
+      }
+    }
     // PLAN 0.23.7: drop any still-running poll timers on bridge stop.
     for (const f of flights.values()) {
       clearStillRunningState(f);
