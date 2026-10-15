@@ -6,8 +6,8 @@
  * synchronously where sendResult wrote the flight (send_unknown before
  * quarantine.enter; accepted before autoResolve), inside the same try.
  * R48-M2: if the serialized attachment exceeds 256_000 chars, cut output
- * from the front by the overflow and re-serialize until it fits.
- * Payloads that already fit stay byte-identical.
+ * from the front (never on a lone low surrogate) and re-serialize until
+ * it fits. Payloads that already fit stay byte-identical.
  */
 import {
   CARD_CONTRACT_VERSION,
@@ -92,26 +92,38 @@ export function classifyAck(ack: {
 
 /**
  * R48-M2. Measure the attachment JSON. While it is over the 256_000 cap,
- * drop that many chars from the front of output (keep the tail) and
- * re-serialize. Sets truncated. A payload that already fits is returned
- * as the same object.
+ * drop at least the overflow (minimum 1) from the front of output and
+ * re-serialize. If the cut would start on a low surrogate, take one more
+ * unit so the tail stays well-formed. A payload that already fits is
+ * returned as the same object. If output is gone and the JSON is still
+ * over, drop it and note that, instead of throwing here.
  */
 function fitSerializedPayload(payload: CardResultPayload): CardResultPayload {
+  const budget = MAX_ATTACHMENT_CONTENT_CHARS;
+  let json = JSON.stringify(payload);
+  if (json.length <= budget) return payload;
+
   let body = payload;
-  let json = JSON.stringify(body);
-  while (json.length > MAX_ATTACHMENT_CONTENT_CHARS && body.output.length > 0) {
-    const overflow = json.length - MAX_ATTACHMENT_CONTENT_CHARS;
-    const cut = Math.min(overflow, body.output.length);
+  while (json.length > budget && body.output.length > 0) {
+    const overflow = json.length - budget;
+    let cut = Math.min(Math.max(overflow, 1), body.output.length);
+    if (cut < body.output.length) {
+      const at = body.output.charCodeAt(cut);
+      if (at >= 0xdc00 && at <= 0xdfff) cut += 1;
+    }
     body = {
       ...body,
       output: body.output.slice(cut),
       truncated: true,
     };
-    const next = JSON.stringify(body);
-    if (next.length >= json.length) break;
-    json = next;
+    json = JSON.stringify(body);
   }
-  return body;
+
+  if (json.length <= budget) return body;
+
+  const drop = "output dropped: exceeds attachment budget";
+  const note = (body.note ? `${body.note} ${drop}` : drop).slice(0, 500);
+  return { ...body, output: "", truncated: true, note };
 }
 
 export type ComposeAndSendOpts = {
