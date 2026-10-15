@@ -591,6 +591,63 @@ describe("step 6 — done (D4 / R2 / R50-L1)", () => {
       ).not.toThrow();
     }
   });
+
+  test("throwing accessors in the scan → treated as done present (fail-closed), no throw", () => {
+    const throwingTasks = {
+      get tasks(): unknown {
+        throw new Error("boom");
+      },
+    };
+    const throwingStatus = {
+      tasks: [
+        {
+          id: "t1",
+          get status(): unknown {
+            throw new Error("boom");
+          },
+        },
+      ],
+    };
+    const throwingIter = {
+      tasks: new Proxy([], {
+        get(target, prop, recv) {
+          if (prop === Symbol.iterator || prop === "length") throw new Error("boom");
+          return Reflect.get(target, prop, recv);
+        },
+      }),
+    };
+    for (const snapshot of [throwingTasks, throwingStatus, throwingIter]) {
+      let d: McpCallDecision | undefined;
+      expect(() => {
+        d = evaluate(PROPOSE_GATE, "import_board", { snapshot });
+      }).not.toThrow();
+      expect(d && reasonOf(d)).toBe("done_propose");
+      const a = evaluate(DEFAULT_GATE, "import_board", { snapshot });
+      expect(a.ok).toBe(true);
+      if (a.ok) expect(a.audit?.kind).toBe("done_via_mcp");
+    }
+  });
+
+  test("status is read once per task (a flipping getter cannot slip past)", () => {
+    let reads = 0;
+    const task = {
+      id: "t1",
+      get status(): unknown {
+        reads++;
+        return reads === 1 ? "done" : "todo";
+      },
+    };
+    const d = evaluate(PROPOSE_GATE, "import_board", { snapshot: { tasks: [task] } });
+    expect(reasonOf(d)).toBe("done_propose");
+    expect(reads).toBe(1);
+  });
+
+  test("array-typed task entries are read like objects (.status)", () => {
+    const arrTask = Object.assign(["x"], { id: "arr1", status: "done" });
+    const d = evaluate(PROPOSE_GATE, "import_board", { snapshot: { tasks: [arrTask] } });
+    expect(reasonOf(d)).toBe("done_propose");
+    if (!d.ok) expect(d.message).toContain("arr1");
+  });
 });
 
 describe("steps 5/6 read the VALIDATED args, never the raw args (R6)", () => {

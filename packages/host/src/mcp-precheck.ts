@@ -8,13 +8,15 @@
  * JSONL, never the relay event log).
  */
 import {
-  chmodSync,
   closeSync,
+  constants,
+  fchmodSync,
   fstatSync,
+  lstatSync,
   mkdirSync,
   openSync,
   renameSync,
-  statSync,
+  unlinkSync,
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -143,21 +145,32 @@ function hitDenyMode(
   return hits.find((m) => gate.denyModes.has(m)) ?? null;
 }
 
-/** R50-L1 defensive scan: non-array tasks / non-object items are skipped, never thrown. */
+/**
+ * R50-L1 defensive scan: non-array tasks / non-object items are skipped. Each status
+ * is read once; array-typed entries are read like objects. Any throw while scanning
+ * (e.g. a throwing accessor) counts as "done present" — fail-closed under propose.
+ * stdio only passes JSON-parsed args, so this is defence in depth.
+ */
 function doneCardsInSnapshot(snapshot: unknown): { count: number; ids: string[] } {
   if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) {
     return { count: 0, ids: [] };
   }
-  const tasks = (snapshot as Record<string, unknown>).tasks;
-  if (!Array.isArray(tasks)) return { count: 0, ids: [] };
   let count = 0;
   const ids: string[] = [];
-  for (const item of tasks) {
-    if (item === null || typeof item !== "object" || Array.isArray(item)) continue;
-    const task = item as Record<string, unknown>;
-    if (task.status !== "done") continue;
-    count++;
-    if (typeof task.id === "string") ids.push(task.id);
+  try {
+    const tasks = (snapshot as Record<string, unknown>).tasks;
+    if (!Array.isArray(tasks)) return { count: 0, ids: [] };
+    for (const item of tasks) {
+      if (item === null || typeof item !== "object") continue;
+      const task = item as Record<string, unknown>;
+      const status = task.status;
+      if (status !== "done") continue;
+      count++;
+      const id = task.id;
+      if (typeof id === "string") ids.push(id);
+    }
+  } catch {
+    return { count: Math.max(count, 1), ids };
   }
   return { count, ids };
 }
@@ -320,22 +333,54 @@ export function evaluateMcpCall(
 // ---------------------------------------------------------------------------
 
 export const POLICY_AUDIT_FILE = "policy-audit.jsonl";
-/** UK-3 starting value: rotate to `.1` (one generation) at 1 MiB. */
+/** UK-3 starting value: rotate to `.1` (one generation) before a write would pass 1 MiB. */
 export const POLICY_AUDIT_MAX_BYTES = 1024 * 1024;
 const POLICY_AUDIT_MAX_LINE_BYTES = 4096;
-const TRUNCATED_FIELD_CHARS = 256;
+/** A rotation lock older than this is presumed abandoned (crashed writer). */
+const POLICY_AUDIT_LOCK_STALE_MS = 10_000;
+const AUDIT_REQUIRED_KEYS = ["ts", "kind", "tool", "peerId", "roomId", "agentKind"] as const;
+const AUDIT_OPTIONAL_KEYS = ["reason", "mode", "cardId", "convId"] as const;
 
+/** Test seam: fires after the writer has opened the live file and sized it. */
+export const policyAuditTestHooks: { afterSizeCheck?: () => void } = {};
+
+function cutField(v: string, max: number): string {
+  return v.length > max ? `${v.slice(0, max)}…` : v;
+}
+
+/**
+ * Serialize only the PolicyAuditRecord fields (explicit allowlist — extra keys on
+ * the object are dropped) into one line of at most 4096 UTF-8 bytes: full →
+ * fields cut to 256 → 64 chars → optional fields dropped → required cut to 16.
+ */
 function auditLine(record: PolicyAuditRecord): string {
-  const line = JSON.stringify(record);
-  if (Buffer.byteLength(line, "utf8") <= POLICY_AUDIT_MAX_LINE_BYTES) return line;
-  const cut: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(record)) {
-    cut[k] =
-      typeof v === "string" && v.length > TRUNCATED_FIELD_CHARS
-        ? `${v.slice(0, TRUNCATED_FIELD_CHARS)}…`
-        : v;
+  const src = record as unknown as Record<string, unknown>;
+  const pick = (keys: readonly string[], max: number): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const k of keys) {
+      const v = src[k];
+      if (typeof v === "string") out[k] = cutField(v, max);
+    }
+    return out;
+  };
+  const attempts: Array<() => Record<string, unknown>> = [
+    () => ({
+      v: 1,
+      ...pick(AUDIT_REQUIRED_KEYS, Infinity),
+      ...pick(AUDIT_OPTIONAL_KEYS, Infinity),
+    }),
+    () => ({ v: 1, ...pick(AUDIT_REQUIRED_KEYS, 256), ...pick(AUDIT_OPTIONAL_KEYS, 256) }),
+    () => ({ v: 1, ...pick(AUDIT_REQUIRED_KEYS, 64), ...pick(AUDIT_OPTIONAL_KEYS, 64) }),
+    () => ({ v: 1, ...pick(AUDIT_REQUIRED_KEYS, 64) }),
+    () => ({ v: 1, ...pick(AUDIT_REQUIRED_KEYS, 16) }),
+  ];
+  let line = "";
+  for (const build of attempts) {
+    line = JSON.stringify(build());
+    if (Buffer.byteLength(line, "utf8") <= POLICY_AUDIT_MAX_LINE_BYTES) return line;
   }
-  return JSON.stringify(cut);
+  // Unreachable: 6 fields × 16 chars × ≤ 6 escaped bytes stays far below 4 KiB.
+  return JSON.stringify({ v: 1, kind: "refused" });
 }
 
 function auditFailed(roomId: string, err: unknown): false {
@@ -350,10 +395,48 @@ function auditFailed(roomId: string, err: unknown): false {
   return false;
 }
 
+const OPEN_LIVE =
+  constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY | constants.O_NOFOLLOW;
+const OPEN_LOCK = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW;
+
+/** Open the live file without following a symlink; tighten its mode via the fd. */
+function openLive(path: string): number {
+  const fd = openSync(path, OPEN_LIVE, 0o600);
+  try {
+    if ((fstatSync(fd).mode & 0o777) !== 0o600) fchmodSync(fd, 0o600);
+  } catch (e) {
+    closeSync(fd);
+    throw e;
+  }
+  return fd;
+}
+
+/** One non-blocking O_EXCL attempt (after clearing a stale lock). Returns the lock fd or null. */
+function tryRotationLock(lockPath: string): number | null {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return openSync(lockPath, OPEN_LOCK, 0o600);
+    } catch (e) {
+      if ((e as { code?: unknown }).code !== "EEXIST" || attempt > 0) return null;
+      try {
+        const st = lstatSync(lockPath);
+        if (Date.now() - st.mtimeMs <= POLICY_AUDIT_LOCK_STALE_MS) return null;
+        unlinkSync(lockPath);
+      } catch {
+        // Lock vanished or could not be cleared — retry once / give up.
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Append one record to `<stateDir>/rooms/<roomKey(roomId)>/policy-audit.jsonl`
- * (dir 0700, file 0600, one O_APPEND write). A file already ≥ 1 MiB is renamed
- * to `.1` first (replacing any older `.1`; never truncated). Any failure is
+ * (dir 0700, file 0600 opened O_NOFOLLOW, one O_APPEND write). When the write
+ * would push the live file past 1 MiB, it is first renamed to `.1` (replacing any
+ * older `.1`; never truncated) under a non-blocking O_EXCL lockfile
+ * `policy-audit.jsonl.lock`. If the lock is held, rotation is skipped and the
+ * record is appended anyway (the file may briefly exceed the cap). Any failure is
  * swallowed with one stderr line and returns false — the decision never changes.
  */
 export function appendPolicyAudit(
@@ -362,26 +445,62 @@ export function appendPolicyAudit(
   record: PolicyAuditRecord,
 ): boolean {
   if (roomId.length === 0) return auditFailed(roomId, { code: "no_room" });
+  let fd: number | null = null;
   try {
     const roomDir = join(stateDir, "rooms", roomKey(roomId));
     mkdirSync(roomDir, { recursive: true, mode: 0o700 });
     const path = join(roomDir, POLICY_AUDIT_FILE);
-    let size = -1;
-    try {
-      size = statSync(path).size;
-    } catch (e) {
-      if ((e as { code?: unknown }).code !== "ENOENT") throw e;
+    const line = `${auditLine(record)}\n`;
+    const lineBytes = Buffer.byteLength(line, "utf8");
+    fd = openLive(path);
+    const size = fstatSync(fd).size;
+    policyAuditTestHooks.afterSizeCheck?.();
+    if (size > 0 && size + lineBytes > POLICY_AUDIT_MAX_BYTES) {
+      const lockPath = `${path}.lock`;
+      const lockFd = tryRotationLock(lockPath);
+      if (lockFd !== null) {
+        try {
+          // Re-check under the lock: another writer may already have rotated, in
+          // which case our fd points at `.1` — reopen the current live file.
+          const atPath = lstatSync(path);
+          let mine = fstatSync(fd);
+          if (atPath.ino !== mine.ino || atPath.dev !== mine.dev) {
+            closeSync(fd);
+            fd = null;
+            fd = openLive(path);
+            mine = fstatSync(fd);
+          }
+          if (mine.size > 0 && mine.size + lineBytes > POLICY_AUDIT_MAX_BYTES) {
+            renameSync(path, `${path}.1`);
+            closeSync(fd);
+            fd = null;
+            fd = openLive(path);
+          }
+        } finally {
+          try {
+            // Unlink only our own lock (it may have been stale-cleared and re-taken).
+            const held = fstatSync(lockFd);
+            const now = lstatSync(lockPath);
+            if (held.ino === now.ino && held.dev === now.dev) unlinkSync(lockPath);
+          } catch {
+            // Already gone — nothing to release.
+          } finally {
+            closeSync(lockFd);
+          }
+        }
+      }
     }
-    if (size >= POLICY_AUDIT_MAX_BYTES) renameSync(path, `${path}.1`);
-    const fd = openSync(path, "a", 0o600);
-    try {
-      if ((fstatSync(fd).mode & 0o777) !== 0o600) chmodSync(path, 0o600);
-      writeSync(fd, `${auditLine(record)}\n`);
-    } finally {
-      closeSync(fd);
-    }
+    writeSync(fd, line);
     return true;
   } catch (e) {
     return auditFailed(roomId, e);
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Best-effort close.
+      }
+    }
   }
 }
