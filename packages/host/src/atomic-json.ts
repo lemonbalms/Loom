@@ -15,6 +15,7 @@ import {
   copyFileSync,
   statSync,
   rmSync,
+  unlinkSync,
 } from "node:fs";
 import { dirname, basename, join } from "node:path";
 
@@ -29,8 +30,18 @@ export function writeAtomicJson(filePath: string, data: unknown): void {
     `.${basename(filePath)}.tmp.${process.pid}.${Date.now()}`,
   );
   const body = JSON.stringify(data, null, 2) + "\n";
-  writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
-  renameSync(tmp, filePath);
+  try {
+    writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
+    renameSync(tmp, filePath);
+  } catch (err) {
+    // 0.33.0 P1 L6: never leave an orphan tmp file behind on a failed write/rename.
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* best effort */
+    }
+    throw err;
+  }
   try {
     chmodSync(filePath, 0o600);
   } catch {

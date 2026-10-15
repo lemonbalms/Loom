@@ -109,4 +109,10 @@ describe("atomic-json (H-7 / L-12)", () => {
     sleepMs(30);
     expect(Date.now() - t0).toBeGreaterThanOrEqual(20);
   });
+  test("writeAtomicJson: a failed rename throws and unlinks its tmp file (no residue)", () => {
+    const target = join(dir, "occupied");
+    mkdirSync(target, { recursive: true });
+    expect(() => writeAtomicJson(target, { n: 1 })).toThrow();
+    expect(readdirSync(dir).filter((n) => n.includes(".tmp."))).toEqual([]);
+  });
 });

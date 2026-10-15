@@ -247,7 +247,8 @@ export function createBridgeStatusWriter(opts: BridgeStatusWriterOptions): Bridg
   }
 
   function heartbeat(): boolean {
-    if (!status) return false;
+    // P1 L4: `stopped` is the final record — nothing may rewrite it afterwards.
+    if (!status || status.state === "stopped") return false;
     if (sampler) {
       try {
         applyPatch(status, pickPatch(sampler()));
@@ -306,6 +307,7 @@ export function createBridgeStatusWriter(opts: BridgeStatusWriterOptions): Bridg
     },
     heartbeat,
     startHeartbeat(sample) {
+      if (status?.state === "stopped") return;
       if (sample) sampler = sample;
       if (timer !== null) return;
       const handle = startTimer(() => {

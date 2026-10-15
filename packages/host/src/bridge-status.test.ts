@@ -458,3 +458,37 @@ describe("bridge status — atomic visibility", () => {
     expect(readdirSync(dirname(path))).toEqual(["default.status.json"]);
   }, 20_000);
 });
+
+describe("bridge status — P1 hardening (Opus verify L4 / L6)", () => {
+  test("L4: heartbeat() and startHeartbeat() are no-ops once stopped", () => {
+    const timers = fakeTimers();
+    const w = createBridgeStatusWriter({
+      ...baseOpts(),
+      setInterval: timers.setInterval,
+      clearInterval: timers.clearInterval,
+    });
+    w.transition("starting");
+    w.transition("stopping");
+    w.transition("stopped");
+    const before = readFileSync(w.path, "utf8");
+    clock += 60_000;
+    expect(w.heartbeat()).toBe(false);
+    w.startHeartbeat();
+    expect(timers.handles.length).toBe(0);
+    expect(readFileSync(w.path, "utf8")).toBe(before);
+    expect(readStatus().heartbeatAt).toBe("2026-10-16T00:00:00.000Z");
+  });
+
+  test("L6: a failed rename leaves no tmp residue (status path occupied by a directory)", () => {
+    const p = bridgeStatusPath("e");
+    mkdirSync(p, { recursive: true });
+    const w = createBridgeStatusWriter({ ...baseOpts(), profile: "e" });
+    w.transition("starting");
+    for (let i = 0; i < 3; i++) {
+      Bun.sleepSync(2);
+      expect(w.heartbeat()).toBe(false);
+    }
+    expect(logs.length).toBe(1);
+    expect(readdirSync(dirname(p)).filter((n) => n.includes(".tmp."))).toEqual([]);
+  });
+});

@@ -2,16 +2,22 @@
  * PLAN 0.33.0 D3 — per-profile bridge pid-ownership lock (② 락 / 거부 / 회수 rows · R8 · R9).
  *
  * Layout: `loomDir()/bridge/<safeProfile>.lock/owner.json` — dir 0700, file 0600,
- * `{v:1, pid, lstart, startedAt, version}`. Acquire = exclusive `mkdir` → atomic owner.json
- * (directory removed on write failure — `relay/src/persist.ts` pattern). Release removes the
- * lock only when owner.json still names us (pid + lstart + startedAt).
+ * `{v:1, pid, lstart, startedAt, version}`. Acquire = build a private staging dir next to the
+ * lock (0700 + owner.json 0600), then `rename` it into place — an existing target is "busy"
+ * (P1 L2: our own acquire never exposes an owner-less lock dir). Release removes the lock only
+ * when owner.json still names us (pid + lstart + startedAt).
  *
  * Stale reclaim: holder pid dead (`kill(pid,0)` → ESRCH) or alive with a different
  * `ps -o lstart=` start time (pid reuse). Alive with an unreadable start time → assumed alive
  * (refused, lock path named for manual removal). Reclaim renames the stale dir away under a
- * short `<lock>.reclaim` mutex and never signals any process; the fresh `mkdir` race that
- * follows has exactly one winner — losers take the refusal path.
+ * short `<lock>.reclaim` mutex and never signals any process; the publish race that follows
+ * has exactly one winner — losers take the refusal path. The mutex is published the same way
+ * with its own pid + lstart record (P1 L1): it is broken only when that owner is dead or has
+ * a mismatched start time (owner-less legacy/foreign mutex: by age), and the reclaimer removes
+ * it in `finally` only while it is still its own.
  */
+
+import { randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -20,16 +26,17 @@ import {
   renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { sleepMs, writeAtomicJson } from "./atomic-json";
+import { sleepMs } from "./atomic-json";
 import { sanitizeProfileLogName } from "./bridge-spawn";
 import { parseLstart, readProcessLstart } from "./process-lstart";
 import { loomDir } from "./session-store";
 
 /** A lock dir whose owner.json is missing/corrupt is "being acquired" for this long. */
 export const LOCK_INCOMPLETE_GRACE_MS = 5_000;
-/** A leftover reclaim mutex older than this belongs to a crashed reclaimer. */
+/** An owner-less (legacy/foreign) reclaim mutex older than this is abandoned. */
 const RECLAIM_MUTEX_STALE_MS = 5_000;
 /** Upper bound on in-call retries (lock vanished / reclaim mutex busy). */
 const ACQUIRE_WAIT_MS = 3_000;
@@ -62,6 +69,8 @@ export interface AcquireBridgeLockOptions {
   /** Start-time reader. Default: shared `ps -o lstart=` reader. */
   readLstart?: (pid: number) => string | null;
   now?: () => Date;
+  /** Test seam: called with the complete private staging dir just before it is published. */
+  beforePublish?: (stagingDir: string) => void;
 }
 
 export class BridgeLockBusyError extends Error {
@@ -87,7 +96,7 @@ function parseOwner(raw: unknown): BridgeLockOwner | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   if (o.v !== 1) return null;
-  if (typeof o.pid !== "number" || !Number.isInteger(o.pid) || o.pid <= 1) return null;
+  if (typeof o.pid !== "number" || !Number.isInteger(o.pid) || o.pid < 1) return null;
   if (typeof o.lstart !== "string") return null;
   if (typeof o.startedAt !== "string") return null;
   if (typeof o.version !== "string") return null;
@@ -109,6 +118,10 @@ export function readBridgeLockOwner(profile: string): BridgeLockOwner | null {
 
 function sameOwner(a: BridgeLockOwner, b: BridgeLockOwner): boolean {
   return a.pid === b.pid && a.lstart === b.lstart && a.startedAt === b.startedAt;
+}
+
+function sameRecord(a: BridgeLockOwner, b: BridgeLockOwner): boolean {
+  return sameOwner(a, b) && a.version === b.version;
 }
 
 /** "same" | "different" | "unknown" — recorded vs observed start time. */
@@ -148,25 +161,34 @@ function inspect(lockPath: string, probe: Probe): Verdict {
   if (!existsSync(lockPath)) return { kind: "gone" };
   const owner = readOwnerAt(lockPath);
   if (!owner) {
-    // Missing / partial / corrupt owner.json: a racing acquirer between mkdir and the
-    // owner write, or a crash in that window. Only the latter gets old.
-    const youngest = Math.min(
-      ageMs(lockPath),
-      ageMs(ownerPath(lockPath), Number.POSITIVE_INFINITY),
-    );
-    return youngest >= LOCK_INCOMPLETE_GRACE_MS
+    // Missing / partial / corrupt owner.json. Our own acquire publishes a complete dir by
+    // rename, so this is a legacy/foreign dir (or one being hand-edited): grace, then stale.
+    return ownerlessOlderThan(lockPath, LOCK_INCOMPLETE_GRACE_MS)
       ? { kind: "stale", owner: null }
       : { kind: "incomplete" };
   }
+  const state = holderState(owner, probe);
+  if (state === "stale") return { kind: "stale", owner };
+  return { kind: "live", owner, verified: state === "verified" };
+}
+
+/** Owner-less dir (missing / partial / corrupt owner.json) at least this old? */
+function ownerlessOlderThan(dir: string, ms: number): boolean {
+  const youngest = Math.min(ageMs(dir), ageMs(ownerPath(dir), Number.POSITIVE_INFINITY));
+  return youngest >= ms;
+}
+
+/** stale = dead (ESRCH) or pid reused (start time differs); otherwise alive. */
+function holderState(owner: BridgeLockOwner, probe: Probe): "stale" | "verified" | "unverified" {
   try {
     probe.kill(owner.pid, 0);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ESRCH") return { kind: "stale", owner };
+    if ((err as NodeJS.ErrnoException).code === "ESRCH") return "stale";
     // EPERM etc.: the pid exists — fall through to the start-time check.
   }
   const cmp = compareLstart(owner.lstart, probe.readLstart(owner.pid));
-  if (cmp === "different") return { kind: "stale", owner };
-  return { kind: "live", owner, verified: cmp === "same" };
+  if (cmp === "different") return "stale";
+  return cmp === "same" ? "verified" : "unverified";
 }
 
 function busyError(profile: string, lockPath: string, verdict: Verdict): BridgeLockBusyError {
@@ -185,25 +207,78 @@ function busyError(profile: string, lockPath: string, verdict: Verdict): BridgeL
   );
 }
 
-/** Exclusive mkdir + atomic owner.json. false = the lock dir already exists. */
-function tryCreate(lockPath: string, owner: BridgeLockOwner): boolean {
+/**
+ * Build `<target>.new-*` privately (dir 0700, owner.json 0600) and rename it into place.
+ * false = the target already exists (busy). The existence pre-check also keeps a rename
+ * from replacing an empty legacy/foreign dir; our own targets are never empty.
+ */
+function publishDir(
+  target: string,
+  record: BridgeLockOwner,
+  beforePublish?: (stagingDir: string) => void,
+): boolean {
+  if (existsSync(target)) return false;
+  const staging = `${target}.new-${process.pid}-${randomUUID()}`;
   try {
-    mkdirSync(lockPath, { mode: 0o700 });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
-    throw err;
-  }
-  try {
-    chmodSync(lockPath, 0o700);
-    writeAtomicJson(ownerPath(lockPath), owner);
-    return true;
-  } catch (err) {
+    mkdirSync(staging, { mode: 0o700 });
+    chmodSync(staging, 0o700);
+    const file = ownerPath(staging);
+    writeFileSync(file, `${JSON.stringify(record)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    chmodSync(file, 0o600);
+    beforePublish?.(staging);
     try {
-      rmSync(lockPath, { recursive: true, force: true });
+      renameSync(staging, target);
+      return true;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOTEMPTY" || code === "EEXIST") return false;
+      throw err;
+    }
+  } finally {
+    try {
+      rmSync(staging, { recursive: true, force: true }); // no-op after a successful rename
     } catch {
       /* */
     }
-    throw err;
+  }
+}
+
+/**
+ * Break a reclaim mutex only when its owner is dead / pid-reused (or, owner-less, abandoned
+ * by age). Moves it aside and verifies it moved the judged one; a fresh mutex moved by a
+ * lost race is put back.
+ */
+function breakStaleMutex(mutex: string, probe: Probe): void {
+  if (!existsSync(mutex)) return;
+  const owner = readOwnerAt(mutex);
+  const breakable = owner
+    ? holderState(owner, probe) === "stale"
+    : ownerlessOlderThan(mutex, RECLAIM_MUTEX_STALE_MS);
+  if (!breakable) return;
+  const away = `${mutex}.stale-${process.pid}-${randomUUID()}`;
+  try {
+    renameSync(mutex, away);
+  } catch {
+    return;
+  }
+  const moved = readOwnerAt(away);
+  const judged = owner ? moved !== null && sameRecord(moved, owner) : moved === null;
+  if (!judged) {
+    try {
+      renameSync(away, mutex);
+      return;
+    } catch {
+      /* the owner already lost it; fall through to cleanup */
+    }
+  }
+  try {
+    rmSync(away, { recursive: true, force: true });
+  } catch {
+    /* */
   }
 }
 
@@ -215,18 +290,18 @@ function reclaim(
   lockPath: string,
   judged: Verdict & { kind: "stale" },
   probe: Probe,
+  selfLstart: string,
 ): "reclaimed" | "busy" | "changed" {
   const mutex = `${lockPath}.reclaim`;
-  try {
-    mkdirSync(mutex, { mode: 0o700 });
-  } catch {
-    if (ageMs(mutex) >= RECLAIM_MUTEX_STALE_MS) {
-      try {
-        rmSync(mutex, { recursive: true, force: true });
-      } catch {
-        /* */
-      }
-    }
+  const mine: BridgeLockOwner = {
+    v: 1,
+    pid: process.pid,
+    lstart: selfLstart,
+    startedAt: new Date().toISOString(),
+    version: `reclaim:${randomUUID()}`,
+  };
+  if (!publishDir(mutex, mine)) {
+    breakStaleMutex(mutex, probe);
     return "busy";
   }
   try {
@@ -247,10 +322,14 @@ function reclaim(
     }
     return "reclaimed";
   } finally {
-    try {
-      rmSync(mutex, { recursive: true, force: true });
-    } catch {
-      /* */
+    // Remove the mutex only while it is still ours (never another reclaimer's).
+    const current = readOwnerAt(mutex);
+    if (current && sameRecord(current, mine)) {
+      try {
+        rmSync(mutex, { recursive: true, force: true });
+      } catch {
+        /* */
+      }
     }
   }
 }
@@ -300,7 +379,7 @@ export function acquireBridgeLock(opts: AcquireBridgeLockOptions): BridgeLockHan
   const deadline = Date.now() + ACQUIRE_WAIT_MS;
   let last: Verdict = { kind: "incomplete" };
   while (true) {
-    if (tryCreate(lockPath, owner)) {
+    if (publishDir(lockPath, owner, opts.beforePublish)) {
       const handle: BridgeLockHandle = {
         path: lockPath,
         profile: opts.profile,
@@ -315,7 +394,7 @@ export function acquireBridgeLock(opts: AcquireBridgeLockOptions): BridgeLockHan
       throw busyError(opts.profile, lockPath, verdict);
     }
     if (verdict.kind === "stale") {
-      const outcome = reclaim(lockPath, verdict, probe);
+      const outcome = reclaim(lockPath, verdict, probe, owner.lstart);
       if (outcome === "reclaimed") {
         log(`[bridge] reclaimed stale lock pid=${verdict.owner ? verdict.owner.pid : "unknown"}`);
         continue;

@@ -405,3 +405,254 @@ describe("bridge lock — cross-process", () => {
     expect(results.filter((o) => o.ok).length).toBe(1);
   }, 30_000);
 });
+
+describe("bridge lock — P1 hardening (Opus verify L1–L3)", () => {
+  function contenderScript(profile: string, outFile: string, holdMs: number): string {
+    return `
+      import { writeFileSync } from "node:fs";
+      import { acquireBridgeLock } from ${JSON.stringify(LOCK_MODULE)};
+      try {
+        const h = acquireBridgeLock({ profile: ${JSON.stringify(profile)}, version: "B", log: () => {} });
+        writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ ok: true, pid: process.pid }));
+        await Bun.sleep(${holdMs});
+        h.release();
+      } catch (e) {
+        writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ ok: false, holderPid: e.holderPid ?? null, message: String(e.message) }));
+      }
+    `;
+  }
+
+  /** Spawn a contender and block (sync) until it has reported. */
+  function runContenderSync(profile: string, holdMs: number) {
+    const out = join(home, `contender-${Math.random().toString(36).slice(2)}.json`);
+    const child = spawn(process.execPath, ["-e", contenderScript(profile, out, holdMs)], {
+      env: { ...process.env, LOOM_TEST_HOME: home },
+      stdio: "ignore",
+    });
+    const t0 = Date.now();
+    while (!existsSync(out) && Date.now() - t0 < 15_000) Bun.sleepSync(20);
+    Bun.sleepSync(20);
+    return { child, result: JSON.parse(readFileSync(out, "utf8")) };
+  }
+
+  test("L2: the lock is staged privately (0700 dir, 0600 owner.json) and only then renamed into place", () => {
+    const lock = bridgeLockPath("default");
+    let staged: string | null = null;
+    const h = acquireBridgeLock({
+      profile: "default",
+      version: "0.33.0",
+      ...deps(),
+      beforePublish: (stagingDir: string) => {
+        staged = stagingDir;
+        // no owner-less lock dir is ever visible at the lock path
+        expect(existsSync(lock)).toBe(false);
+        expect(stagingDir).not.toBe(lock);
+        expect(statSync(stagingDir).mode & 0o777).toBe(0o700);
+        const ownerFile = join(stagingDir, "owner.json");
+        expect(statSync(ownerFile).mode & 0o777).toBe(0o600);
+        const owner = JSON.parse(readFileSync(ownerFile, "utf8"));
+        expect(owner.pid).toBe(process.pid);
+        expect(owner.version).toBe("0.33.0");
+      },
+    });
+    expect(staged).not.toBeNull();
+    expect(existsSync(staged!)).toBe(false);
+    expect(readBridgeLockOwner("default")).toEqual(h.owner);
+    expect(readdirSync(join(loomDir(), "bridge"))).toEqual(["default.lock"]);
+    h.release();
+  });
+
+  test("L2: an acquirer stalled before publishing cannot be reclaimed — the contender wins, the staller is refused", () => {
+    let contender = null as ReturnType<typeof runContenderSync> | null;
+    let err: unknown;
+    try {
+      acquireBridgeLock({
+        profile: "default",
+        version: "A",
+        ...deps(),
+        beforePublish: () => {
+          // A is suspended between building its owner record and publishing it (probe-owner-stall)
+          contender = runContenderSync("default", 3_000);
+        },
+      });
+    } catch (e) {
+      err = e;
+    }
+    try {
+      expect(contender!.result.ok).toBe(true);
+      expect(err).toBeInstanceOf(BridgeLockBusyError);
+      expect((err as BridgeLockBusyError).holderPid).toBe(contender!.result.pid);
+      expect(readBridgeLockOwner("default")?.pid).toBe(contender!.result.pid);
+      // A's staging dir was cleaned up
+      expect(readdirSync(join(loomDir(), "bridge"))).toEqual(["default.lock"]);
+    } finally {
+      contender?.child.kill("SIGKILL");
+    }
+  }, 30_000);
+
+  test("L1: a reclaim mutex held by a live owner is never broken on age alone (probe-mutex-break)", () => {
+    const x = spawn("sleep", ["60"], { stdio: "ignore" });
+    const lock = bridgeLockPath("p");
+    const mutex = `${lock}.reclaim`;
+    writeOwner("p", {
+      v: 1,
+      pid: x.pid,
+      lstart: "Mon Jan  1 00:00:00 2001",
+      startedAt: "2001-01-01T00:00:00.000Z",
+      version: "old",
+    });
+    let calls = 0;
+    let contender = null as ReturnType<typeof runContenderSync> | null;
+    try {
+      const hA = acquireBridgeLock({
+        profile: "p",
+        version: "A",
+        ...deps(),
+        readLstart: (pid: number) => {
+          if (pid === x.pid && ++calls === 2) {
+            // inside A's reclaim critical section: the mutex looks old, and B arrives
+            expect(existsSync(mutex)).toBe(true);
+            backdate(mutex, 60_000);
+            contender = runContenderSync("p", 500);
+          }
+          return readProcessLstart(pid);
+        },
+      });
+      expect(contender!.result.ok).toBe(false);
+      expect(hA.owner.pid).toBe(process.pid);
+      expect(readBridgeLockOwner("p")).toEqual(hA.owner);
+      expect(existsSync(mutex)).toBe(false);
+      hA.release();
+    } finally {
+      contender?.child.kill("SIGKILL");
+      x.kill("SIGKILL");
+    }
+  }, 30_000);
+
+  test("L1: the reclaimer removes the mutex in finally only if it is still its own", () => {
+    const x = spawn("sleep", ["60"], { stdio: "ignore" });
+    const lock = bridgeLockPath("p");
+    const mutex = `${lock}.reclaim`;
+    writeOwner("p", {
+      v: 1,
+      pid: x.pid,
+      lstart: "Mon Jan  1 00:00:00 2001",
+      startedAt: "2001-01-01T00:00:00.000Z",
+      version: "old",
+    });
+    let calls = 0;
+    const foreign = {
+      v: 1,
+      pid: x.pid,
+      lstart: readProcessLstart(x.pid!) ?? "",
+      startedAt: "2026-10-16T00:00:00.000Z",
+      version: "reclaim:foreign",
+    };
+    try {
+      const h = acquireBridgeLock({
+        profile: "p",
+        version: "A",
+        ...deps(),
+        readLstart: (pid: number) => {
+          if (pid === x.pid && ++calls === 2) {
+            // someone replaced our mutex while we were inside the critical section
+            rmSync(mutex, { recursive: true, force: true });
+            mkdirSync(mutex, { mode: 0o700 });
+            writeFileSync(join(mutex, "owner.json"), JSON.stringify(foreign), { mode: 0o600 });
+          }
+          return readProcessLstart(pid);
+        },
+      });
+      expect(existsSync(mutex)).toBe(true);
+      expect(JSON.parse(readFileSync(join(mutex, "owner.json"), "utf8"))).toEqual(foreign);
+      h.release();
+    } finally {
+      x.kill("SIGKILL");
+    }
+  }, 30_000);
+
+  test("L1: a reclaim mutex whose owner is dead (or has a mismatched lstart) is broken", () => {
+    for (const [profile, mutexOwner] of [
+      ["dead", { pid: deadPid(), lstart: "Mon Jan  1 00:00:00 2001" }],
+      ["reused", { pid: process.pid, lstart: "Mon Jan  1 00:00:00 2001" }],
+    ] as const) {
+      writeOwner(profile, {
+        v: 1,
+        pid: deadPid(),
+        lstart: "Mon Jan  1 00:00:00 2001",
+        startedAt: "2001-01-01T00:00:00.000Z",
+        version: "old",
+      });
+      const mutex = `${bridgeLockPath(profile)}.reclaim`;
+      mkdirSync(mutex, { mode: 0o700 });
+      writeFileSync(
+        join(mutex, "owner.json"),
+        JSON.stringify({
+          v: 1,
+          ...mutexOwner,
+          startedAt: "2001-01-01T00:00:00.000Z",
+          version: "reclaim:x",
+        }),
+        { mode: 0o600 },
+      );
+      const h = acquireBridgeLock({ profile, version: "0.33.0", ...deps() });
+      expect(h.owner.pid).toBe(process.pid);
+      expect(existsSync(mutex)).toBe(false);
+      h.release();
+    }
+  }, 30_000);
+
+  test("L1: an old reclaim mutex held by a live, verified owner → refused (not broken)", () => {
+    const x = spawn("sleep", ["60"], { stdio: "ignore" });
+    try {
+      Bun.sleepSync(100);
+      writeOwner("p", {
+        v: 1,
+        pid: deadPid(),
+        lstart: "Mon Jan  1 00:00:00 2001",
+        startedAt: "2001-01-01T00:00:00.000Z",
+        version: "old",
+      });
+      const mutex = `${bridgeLockPath("p")}.reclaim`;
+      mkdirSync(mutex, { mode: 0o700 });
+      const owner = {
+        v: 1,
+        pid: x.pid,
+        lstart: readProcessLstart(x.pid!) ?? "",
+        startedAt: "2026-10-16T00:00:00.000Z",
+        version: "reclaim:live",
+      };
+      writeFileSync(join(mutex, "owner.json"), JSON.stringify(owner), { mode: 0o600 });
+      backdate(mutex, 60_000);
+      expect(() => acquireBridgeLock({ profile: "p", version: "0.33.0", ...deps() })).toThrow(
+        BridgeLockBusyError,
+      );
+      expect(JSON.parse(readFileSync(join(mutex, "owner.json"), "utf8"))).toEqual(owner);
+    } finally {
+      x.kill("SIGKILL");
+    }
+  }, 30_000);
+
+  test("L3: a pid-1 holder is a valid owner (alive, start time unverifiable) → refused, not reclaimed", () => {
+    const dir = writeOwner("pid1", {
+      v: 1,
+      pid: 1,
+      lstart: "",
+      startedAt: "2026-10-16T00:00:00.000Z",
+      version: "v",
+    });
+    backdate(join(dir, "owner.json"), LOCK_INCOMPLETE_GRACE_MS + 1_000);
+    backdate(dir, LOCK_INCOMPLETE_GRACE_MS + 1_000);
+    expect(readBridgeLockOwner("pid1")?.pid).toBe(1);
+    let err: unknown;
+    try {
+      acquireBridgeLock({ profile: "pid1", version: "0.33.0", ...deps() });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(BridgeLockBusyError);
+    expect((err as BridgeLockBusyError).holderPid).toBe(1);
+    expect(logs.filter((l) => l.includes("reclaimed"))).toEqual([]);
+    expect(kills.every((k) => k.signal === 0)).toBe(true);
+  });
+});
