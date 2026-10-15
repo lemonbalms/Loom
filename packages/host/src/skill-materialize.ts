@@ -5,12 +5,25 @@
  * D2  sources = bundled packages/host/skills/<name>/ + loomDir()/skills/<name>/; user wins.
  * D3  copy (never link) into <card dir>/skills/; files 0600, dirs 0700; manifest sha256.
  * D6  / R49-M5 script = regular file under a scripts/ dir, or any file with an exec bit.
- *     A skill with scripts is copied only when allowScripts names it; its scripts are 0700.
+ *     A skill with scripts is copied only when allowScripts names it; its scripts are 0700
+ *     and the manifest records them (`scripts`), so the hash covers every file mode.
  * R1  room path = loomDir/rooms/roomKey(roomId)/skills.json.
  * R3  / R49-L3 policy skills.allow: null = all, [] = none.
  * R7  symlink / non-regular source entry → unsafe source; > 1 MiB or > 256 files → too large.
  * R49-L1 description = one line, control/format chars removed, ≤ 160 code points.
  * Unavailable skills are never copied. Writes happen only under the card dir.
+ *
+ * Path trust: loomDir is realpath'd once (it and everything above it, e.g. HOME, is
+ * trusted). Every component below it — rooms/<key>, skills/<name>/…, cards/<peer>/<card>/
+ * skills — must be a real directory (lstat, never a symlink) or the operation fails closed.
+ * Source file reads use O_NOFOLLOW + fd inode checks + realpath containment.
+ * Residual (out of scope): a same-user process swapping directories mid-traversal; it
+ * already holds the owner's privileges.
+ *
+ * Concurrency: materialize swaps the copy with two renames, so a concurrent verify can see
+ * no skills dir (→ ok:false → fingerprint_changed, fail closed) and two concurrent
+ * materializes make one throw. Callers serialize per card (headless-worker withCardLock,
+ * in-process; one bridge per profile is the documented 0.30.0 limit).
  */
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
@@ -20,15 +33,20 @@ import {
   lstat,
   mkdir,
   open,
-  readdir,
+  opendir,
+  realpath,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
-import { DISPATCHED_TASK_MARKER } from "@loom/protocol";
 import loomCardReportSkill from "../skills/loom-card-report/SKILL.md" with { type: "text" };
-import { type CardSessionKey, cardSessionPath } from "./card-session-store";
+import {
+  type CardSessionKey,
+  cardKeyHash,
+  cardPeerHash,
+  cardSessionPath,
+} from "./card-session-store";
 import type { EffectivePolicy } from "./policy";
 import { roomKey } from "./room-event-log";
 
@@ -41,15 +59,41 @@ export const SKILL_MAX_FILES = 256;
 export const SKILL_DESCRIPTION_MAX = 160;
 export const CARD_SKILLS_PLUGIN_NAME = "loom-card";
 
+/**
+ * Frontmatter keys accepted at the top level (anything else → invalid SKILL.md).
+ * name/description = Claude skill core; version/license/metadata = common informational
+ * keys; allowed-tools/hooks = Claude keys that widen execution (gated like scripts);
+ * loom / loom.requires-policy = D6.
+ */
+export const SKILL_FRONTMATTER_KEYS: readonly string[] = Object.freeze([
+  "name",
+  "description",
+  "version",
+  "license",
+  "metadata",
+  "allowed-tools",
+  "hooks",
+  "loom",
+  "loom.requires-policy",
+]);
+
 const SKILLS_JSON_MAX_BYTES = 64 * 1024;
 const MANIFEST_MAX_BYTES = 4 * 1024 * 1024;
 /** Directory entries walked per skill (files + dirs); bounds a hostile tree. */
 const SKILL_MAX_ENTRIES = 1024;
+/** Entries read from any single directory before giving up. */
+const DIR_MAX_ENTRIES = 512;
 const PLUGIN_JSON_TEXT = `${JSON.stringify({ name: CARD_SKILLS_PLUGIN_NAME })}\n`;
-const MARKER_HEAD = "loom dispatched task";
-/** Frontmatter keys that widen what a skill can run; gated like scripts. */
-const GATED_KEYS = new Set(["allowed-tools", "allowed_tools", "allowedtools", "hooks"]);
+/** Letters/digits of the dispatched-task marker head, after NFKC + case folding. */
+const MARKER_LETTERS = "loomdispatchedtask";
+const GATED_KEYS = new Set(["allowed-tools", "hooks"]);
+/** Keys whose value may be a nested block. */
+const BLOCK_KEYS = new Set(["allowed-tools", "hooks", "metadata", "loom"]);
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+/** Any C0/C1/DEL, format (bidi, zero-width, BOM), or line/paragraph separator except LF. */
+const RAW_FORBIDDEN = /(?!\n)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const TOP_KEY_LINE = /^([a-z][a-z0-9.-]*):(?: +(.*))?$/;
+const NESTED_KEY_LINE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):(?: +(.*))?$/;
 
 export type SkillSource = "builtin" | "user";
 
@@ -69,6 +113,8 @@ export type SkillManifestEntry = {
   source: SkillSource;
   /** relPath → sha256 hex. */
   files: Record<string, string>;
+  /** relPaths copied at 0700 (allowScripts scripts); every other file is 0600. Sorted. */
+  scripts: string[];
 };
 
 export type SkillUnavailableReason =
@@ -85,7 +131,7 @@ export type AvailableSkill = {
   source: SkillSource;
   /** Sanitized: one line, no control/format chars, ≤ 160 code points. */
   description: string;
-  /** Absolute path of SKILL.md inside the card copy. */
+  /** Absolute path of SKILL.md inside the card copy (under the caller's loomDir). */
   skillMdPath: string;
 };
 
@@ -178,6 +224,44 @@ export function cardSkillsDir(key: CardSessionKey): string {
   return join(dirname(cardSessionPath(key)), "skills");
 }
 
+/** realpath of loomDir (trusted, may itself be a symlink); null when it does not exist. */
+async function realLoomDir(loomDir: string): Promise<string | null> {
+  let real: string;
+  try {
+    real = await realpath(loomDir);
+  } catch (err) {
+    if (errCode(err) === "ENOENT") return null;
+    throw err;
+  }
+  if (!(await lstat(real)).isDirectory()) throw new Error(`loom dir is not a directory: ${real}`);
+  return real;
+}
+
+/** "missing" | "dir"; anything else (symlink, file, …) throws. */
+async function realDirState(path: string): Promise<"missing" | "dir"> {
+  let st: Awaited<ReturnType<typeof lstat>>;
+  try {
+    st = await lstat(path);
+  } catch (err) {
+    if (errCode(err) === "ENOENT") return "missing";
+    throw err;
+  }
+  if (st.isSymbolicLink() || !st.isDirectory()) {
+    throw new Error(`unsafe path: ${path} is not a real directory`);
+  }
+  return "dir";
+}
+
+/** Names in a directory, read with an early abort; null when over `cap`. Sorted. */
+async function listCapped(path: string, cap: number): Promise<string[] | null> {
+  const names: string[] = [];
+  for await (const ent of await opendir(path)) {
+    names.push(ent.name);
+    if (names.length > cap) return null;
+  }
+  return names.sort(compareCodeUnits);
+}
+
 async function readAll(fh: FileHandle, size: number): Promise<Buffer> {
   const buf = Buffer.alloc(size + 1);
   let total = 0;
@@ -190,11 +274,12 @@ async function readAll(fh: FileHandle, size: number): Promise<Buffer> {
   return buf.subarray(0, total);
 }
 
-/** Opens without blocking on special files; rejects non-regular files and files over max. */
-async function readRegularFile(path: string, max: number, follow: boolean): Promise<Buffer> {
-  const flags =
-    fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | (follow ? 0 : fsConstants.O_NOFOLLOW);
-  const fh = await open(path, flags);
+/** O_NOFOLLOW + O_NONBLOCK; rejects symlinks, non-regular files, and files over max. */
+async function readRegularFile(path: string, max: number): Promise<Buffer> {
+  const fh = await open(
+    path,
+    fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW,
+  );
   try {
     const st = await fh.stat();
     if (!st.isFile()) throw new Error("not a regular file");
@@ -206,20 +291,29 @@ async function readRegularFile(path: string, max: number, follow: boolean): Prom
 }
 
 /**
- * D1 / R1. `{version:1, skills:[name…]}`. Absent file → [] (no skills).
- * Any other failure throws naming the path (fail closed: the caller does not spawn).
+ * D1 / R1. `{version:1, skills:[name…]}`. Absent file (or absent rooms/room dir) → [].
+ * A symlinked rooms dir, room dir, or skills.json, and any other failure, throws
+ * naming the path (fail closed: the caller does not spawn).
  */
 export async function readRoomSkillSelection(loomDir: string, roomId: string): Promise<string[]> {
   const path = roomSkillsPath(loomDir, roomId);
-  let buf: Buffer;
-  try {
-    buf = await readRegularFile(path, SKILLS_JSON_MAX_BYTES, true);
-  } catch (err) {
-    if (errCode(err) === "ENOENT") return [];
-    throw new Error(`invalid skills.json ${path}: ${errDetail(err)}`);
-  }
   const bad = (field: string, what: string) =>
     new Error(`invalid skills.json ${path}: ${field} ${what}`);
+  let buf: Buffer;
+  try {
+    const root = await realLoomDir(loomDir);
+    if (root === null) return [];
+    let cur = root;
+    for (const seg of ["rooms", roomKey(roomId)]) {
+      cur = join(cur, seg);
+      if ((await realDirState(cur)) === "missing") return [];
+    }
+    buf = await readRegularFile(join(cur, "skills.json"), SKILLS_JSON_MAX_BYTES);
+  } catch (err) {
+    if (errCode(err) === "ENOENT") return [];
+    const detail = errCode(err) === "ELOOP" ? "is a symlink" : errDetail(err);
+    throw new Error(`invalid skills.json ${path}: ${detail}`);
+  }
   let json: unknown;
   try {
     json = JSON.parse(buf.toString("utf8"));
@@ -251,79 +345,144 @@ export function sanitizeSkillDescription(raw: string): string | null {
     .trim();
   if (text.length === 0) return null;
   if ([...text].length > SKILL_DESCRIPTION_MAX) return null;
-  // A description must not forge the boundary between system text and card data.
-  if (text.toLowerCase().includes(MARKER_HEAD) || text.includes(DISPATCHED_TASK_MARKER)) {
-    return null;
-  }
+  // Must not forge the system/data boundary, including fullwidth, case, and
+  // punctuation lookalikes of the marker head.
+  const letters = text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+  if (letters.includes(MARKER_LETTERS)) return null;
   return text;
 }
 
 type Frontmatter = {
-  name?: string;
+  name: string;
+  /** undefined = key absent. */
   description?: string;
   requiresPolicy: boolean;
   gated: boolean;
 };
 
-type FrontmatterEntry = { value: string; cont: string[] };
-
-function scalar(entry: FrontmatterEntry): string {
-  if (/^[>|][+-]?$/.test(entry.value)) return entry.cont.join(" ");
-  let v = [entry.value, ...entry.cont].join(" ").trim();
-  if (v.length >= 2 && (v[0] === '"' || v[0] === "'") && v.at(-1) === v[0]) v = v.slice(1, -1);
-  return v;
+/**
+ * One scalar of the strict subset. null = outside the subset:
+ * flow collections, anchors, aliases, tags, block indicators, directives, reserved
+ * starts, `": "` / `" #"` inside a plain scalar, any backslash or `"` inside a
+ * double-quoted scalar (no escapes), a lone `'` inside a single-quoted scalar.
+ */
+function scalar(v: string): string | null {
+  if (v === "") return "";
+  if (/^[{[&*!|>%@`#?]/.test(v) || /^-( |$)/.test(v)) return null;
+  if (v.startsWith('"')) {
+    if (v.length < 2 || !v.endsWith('"')) return null;
+    const inner = v.slice(1, -1);
+    return inner.includes('"') || inner.includes("\\") ? null : inner;
+  }
+  if (v.startsWith("'")) {
+    if (v.length < 2 || !v.endsWith("'")) return null;
+    const inner = v.slice(1, -1);
+    return inner.replace(/''/g, "").includes("'") ? null : inner.replace(/''/g, "'");
+  }
+  if (v.includes(": ") || v.endsWith(":") || v.includes(" #")) return null;
+  return v.trim();
 }
 
-function truthy(v: string): boolean {
-  return v.trim().toLowerCase() !== "false";
+/** Value of loom.requires-policy: anything but an exact `false` requires policy. */
+function requiresFrom(value: string): boolean {
+  return scalar(value) !== "false";
 }
+
+type TopEntry = { value: string; nested: string[] };
 
 /**
- * Line-based subset of YAML frontmatter: top-level `key: value`, indented
- * continuation / nested lines belong to the previous key. null = malformed.
+ * Strict line-based subset of YAML frontmatter (see SKILL_FRONTMATTER_KEYS).
+ * null = invalid SKILL.md. Raw frontmatter must contain no control (except LF, and CR
+ * immediately before LF), format, or separator characters — claude parses these bytes.
  */
 function parseFrontmatter(text: string): Frontmatter | null {
-  const lines = (text.startsWith("\uFEFF") ? text.slice(1) : text).split(/\r?\n/);
-  if (lines[0]?.trimEnd() !== "---") return null;
-  const end = lines.findIndex((l, i) => i > 0 && l.trimEnd() === "---");
-  if (end < 0) return null;
-  const top = new Map<string, FrontmatterEntry>();
-  let cur: FrontmatterEntry | null = null;
-  for (const line of lines.slice(1, end)) {
-    if (line.trim() === "") continue;
-    if (/^\s/.test(line)) {
+  const lines = text.split("\n");
+  if (lines[0] !== "---" && lines[0] !== "---\r") return null;
+  const body: string[] = [];
+  let closed = false;
+  for (const rawLine of lines.slice(1)) {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line === "---") {
+      closed = true;
+      break;
+    }
+    body.push(line);
+  }
+  if (!closed) return null;
+  for (const line of ["---", ...body]) if (RAW_FORBIDDEN.test(line)) return null;
+
+  const top = new Map<string, TopEntry>();
+  let cur: TopEntry | null = null;
+  for (const line of body) {
+    if (line.trim() === "" || /^ *#/.test(line)) continue;
+    if (line === "..." || line.startsWith("%")) return null;
+    if (line.startsWith(" ")) {
       if (!cur) return null;
-      cur.cont.push(line.trim());
+      cur.nested.push(line);
       continue;
     }
-    if (line.startsWith("#")) continue;
-    const m = /^([A-Za-z0-9_.-]+):(?:[ \t]+(.*))?$/.exec(line);
-    if (!m) return null;
-    const key = m[1]!.toLowerCase();
-    if (top.has(key)) return null;
-    cur = { value: (m[2] ?? "").trim(), cont: [] };
-    top.set(key, cur);
+    const m = TOP_KEY_LINE.exec(line);
+    if (!m || !SKILL_FRONTMATTER_KEYS.includes(m[1]!) || top.has(m[1]!)) return null;
+    cur = { value: (m[2] ?? "").trimEnd(), nested: [] };
+    top.set(m[1]!, cur);
   }
-  const fm: Frontmatter = { requiresPolicy: false, gated: false };
-  const name = top.get("name");
-  if (name) fm.name = scalar(name);
-  const description = top.get("description");
-  if (description) fm.description = scalar(description);
-  const flat = top.get("loom.requires-policy");
-  if (flat && truthy(scalar(flat))) fm.requiresPolicy = true;
-  for (const line of top.get("loom")?.cont ?? []) {
-    const nested = /^requires-policy\s*:\s*(.*)$/.exec(line);
-    if (nested && truthy(nested[1]!.replace(/^(["'])(.*)\1$/, "$2"))) fm.requiresPolicy = true;
+
+  const fm: Frontmatter = { name: "", requiresPolicy: false, gated: false };
+  for (const [key, entry] of top) {
+    if (GATED_KEYS.has(key)) fm.gated = true;
+    if (key === "description" && /^[>|][+-]?$/.test(entry.value)) {
+      fm.description = entry.nested.map((l) => l.trim()).join(" ");
+      continue;
+    }
+    if (entry.nested.length > 0) {
+      if (entry.value !== "" || !BLOCK_KEYS.has(key)) return null;
+      for (const raw of entry.nested) {
+        let item = raw.trim();
+        let listItem = false;
+        while (item === "-" || item.startsWith("- ")) {
+          listItem = true;
+          item = item.slice(1).trimStart();
+        }
+        if (item === "") continue;
+        const kv = NESTED_KEY_LINE.exec(item);
+        if (kv) {
+          if (scalar((kv[2] ?? "").trimEnd()) === null) return null;
+          if (key === "loom") {
+            if (listItem || kv[1] !== "requires-policy") return null;
+            if (requiresFrom((kv[2] ?? "").trimEnd())) fm.requiresPolicy = true;
+          }
+        } else if (!listItem || scalar(item) === null || key === "loom") {
+          return null;
+        }
+        // Fail safe: a requires-policy mention anywhere else (e.g. metadata) counts.
+        if (key !== "loom" && item.includes("requires-policy")) fm.requiresPolicy = true;
+      }
+      continue;
+    }
+    const value = scalar(entry.value);
+    if (value === null) return null;
+    if (key === "loom") {
+      if (value !== "") return null;
+    } else if (key === "loom.requires-policy") {
+      if (requiresFrom(entry.value)) fm.requiresPolicy = true;
+    } else if (key === "name") {
+      fm.name = value;
+    } else if (key === "description") {
+      fm.description = value;
+    }
   }
-  for (const key of top.keys()) if (GATED_KEYS.has(key)) fm.gated = true;
   return fm;
 }
 
-async function loadUserSkill(dir: string): Promise<Loaded> {
+async function loadUserSkill(skillsRoot: string, name: string): Promise<Loaded> {
   const unsafe: Loaded = { ok: false, reason: "unsafe source" };
   const tooLarge: Loaded = { ok: false, reason: "too large" };
+  const dir = join(skillsRoot, name);
   try {
-    if (!(await lstat(dir)).isDirectory()) return unsafe;
+    if ((await realDirState(dir)) !== "dir") return unsafe;
   } catch {
     return unsafe;
   }
@@ -333,16 +492,20 @@ async function loadUserSkill(dir: string): Promise<Loaded> {
   const stack = [""];
   while (stack.length > 0) {
     const relDir = stack.pop()!;
-    let names: string[];
+    let names: string[] | null;
     try {
-      names = await readdir(relDir ? join(dir, relDir) : dir);
+      names = await listCapped(
+        relDir ? join(dir, relDir) : dir,
+        Math.min(DIR_MAX_ENTRIES, SKILL_MAX_ENTRIES - entries),
+      );
     } catch {
       return unsafe;
     }
-    for (const name of names.sort(compareCodeUnits)) {
+    if (names === null) return tooLarge;
+    for (const entryName of names) {
       entries += 1;
       if (entries > SKILL_MAX_ENTRIES) return tooLarge;
-      const rel = relDir ? `${relDir}/${name}` : name;
+      const rel = relDir ? `${relDir}/${entryName}` : entryName;
       let st: Awaited<ReturnType<typeof lstat>>;
       try {
         st = await lstat(join(dir, rel));
@@ -363,12 +526,16 @@ async function loadUserSkill(dir: string): Promise<Loaded> {
   const files: LoadedFile[] = [];
   let total = 0;
   for (const f of found) {
+    const abs = join(dir, f.rel);
+    try {
+      // Containment: every component is a real dir, so the canonical path is the path.
+      if ((await realpath(abs)) !== abs) return unsafe;
+    } catch {
+      return unsafe;
+    }
     let fh: FileHandle;
     try {
-      fh = await open(
-        join(dir, f.rel),
-        fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
-      );
+      fh = await open(abs, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
     } catch {
       return unsafe;
     }
@@ -415,7 +582,7 @@ function evaluate(
   if (!skillMd) return "invalid SKILL.md";
   let text: string;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(skillMd.data);
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(skillMd.data);
   } catch {
     return "invalid SKILL.md";
   }
@@ -436,6 +603,7 @@ function canonicalManifest(manifest: readonly SkillManifestEntry[]): SkillManife
       name: e.name,
       source: e.source,
       files: Object.fromEntries(Object.entries(e.files).sort(([a], [b]) => compareCodeUnits(a, b))),
+      scripts: [...e.scripts].sort(compareCodeUnits),
     }));
 }
 
@@ -463,9 +631,9 @@ type UserRoot = "absent" | "dir" | "unsafe";
 
 async function userRootState(path: string): Promise<UserRoot> {
   try {
-    return (await lstat(path)).isDirectory() ? "dir" : "unsafe";
-  } catch (err) {
-    return errCode(err) === "ENOENT" ? "absent" : "unsafe";
+    return (await realDirState(path)) === "dir" ? "dir" : "absent";
+  } catch {
+    return "unsafe";
   }
 }
 
@@ -474,13 +642,13 @@ async function resolveSkill(
   userRoot: string,
   rootState: UserRoot,
 ): Promise<{ source: SkillSource; loaded: Loaded } | null> {
-  if (rootState === "unsafe")
+  if (rootState === "unsafe") {
     return { source: "user", loaded: { ok: false, reason: "unsafe source" } };
+  }
   if (rootState === "dir") {
-    const dir = join(userRoot, name);
     try {
-      await lstat(dir);
-      return { source: "user", loaded: await loadUserSkill(dir) };
+      await lstat(join(userRoot, name));
+      return { source: "user", loaded: await loadUserSkill(userRoot, name) };
     } catch (err) {
       if (errCode(err) !== "ENOENT") {
         return { source: "user", loaded: { ok: false, reason: "unsafe source" } };
@@ -491,11 +659,33 @@ async function resolveSkill(
   return builtin ? { source: "builtin", loaded: loadBuiltinSkill(builtin) } : null;
 }
 
+function cardChain(key: CardSessionKey): string[] {
+  return ["cards", cardPeerHash(key.localPeerId), cardKeyHash(key.roomId, key.agent, key.cardId)];
+}
+
+/** Creates cards/<peer>/<card> under the real loom dir; every component must be a real dir. */
+async function ensureCardDir(root: string, key: CardSessionKey): Promise<string> {
+  let cur = root;
+  for (const seg of cardChain(key)) {
+    cur = join(cur, seg);
+    if ((await realDirState(cur)) === "missing") {
+      try {
+        await mkdir(cur, { mode: 0o700 });
+      } catch (err) {
+        if (errCode(err) !== "EEXIST") throw err;
+      }
+      if ((await realDirState(cur)) !== "dir") throw new Error(`card dir vanished: ${cur}`);
+    }
+  }
+  return cur;
+}
+
 /**
  * D1–D3 · D6 · R1 · R3 · R7. Reads the room's skills.json, resolves each selected
  * name (user over builtin), validates it, and copies the available ones into
  * <card dir>/skills/ (replacing any earlier copy). Throws on an invalid
- * skills.json or a write failure; nothing outside the card dir is written.
+ * skills.json, an unsafe (symlinked) card-dir path, or a write failure; nothing
+ * outside the card dir is written. Callers serialize per card (see header).
  */
 export async function materializeCardSkills(opts: MaterializeOptions): Promise<MaterializeResult> {
   if (!opts.enabled) {
@@ -517,8 +707,14 @@ export async function materializeCardSkills(opts: MaterializeOptions): Promise<M
     cardId: opts.cardId,
   };
   const selected = await readRoomSkillSelection(key.loomDir, key.roomId);
+  let root = await realLoomDir(key.loomDir);
+  if (root === null) {
+    await mkdir(key.loomDir, { recursive: true, mode: 0o700 });
+    root = await realLoomDir(key.loomDir);
+    if (root === null) throw new Error(`loom dir vanished: ${key.loomDir}`);
+  }
   const allow = opts.policy.allow === null ? null : new Set(opts.policy.allow);
-  const userRoot = join(key.loomDir, "skills");
+  const userRoot = join(root, "skills");
   const rootState = await userRootState(userRoot);
 
   const accepted: Accepted[] = [];
@@ -542,10 +738,9 @@ export async function materializeCardSkills(opts: MaterializeOptions): Promise<M
     else accepted.push(verdict);
   }
 
-  const skillsDir = cardSkillsDir(key);
-  const cardDir = dirname(skillsDir);
-  const pluginDir = join(skillsDir, "plugin");
-  await mkdir(cardDir, { recursive: true, mode: 0o700 });
+  const cardDir = await ensureCardDir(root, key);
+  const realSkillsDir = join(cardDir, "skills");
+  const previousState = await realDirState(realSkillsDir);
   await chmod(cardDir, 0o700);
   const staging = join(cardDir, `.skills.tmp.${process.pid}.${randomUUID()}`);
   const manifest: SkillManifestEntry[] = [];
@@ -564,6 +759,7 @@ export async function materializeCardSkills(opts: MaterializeOptions): Promise<M
       await mkdirPrivate(base);
       const made = new Set<string>();
       const files: Record<string, string> = Object.create(null);
+      const scripts: string[] = [];
       for (const f of [...skill.files].sort((a, b) => compareCodeUnits(a.rel, b.rel))) {
         const segs = f.rel.split("/");
         for (let i = 1; i < segs.length; i++) {
@@ -573,28 +769,27 @@ export async function materializeCardSkills(opts: MaterializeOptions): Promise<M
           made.add(sub);
         }
         // Only allowScripts skills reach here with scripts (evaluate gate).
-        await writePrivate(join(base, f.rel), f.data, isScript(f.rel, f.mode) ? 0o700 : 0o600);
+        const script = isScript(f.rel, f.mode);
+        await writePrivate(join(base, f.rel), f.data, script ? 0o700 : 0o600);
         files[f.rel] = sha256Hex(f.data);
+        if (script) scripts.push(f.rel);
       }
-      manifest.push({ name: skill.name, source: skill.source, files });
+      manifest.push({ name: skill.name, source: skill.source, files, scripts });
     }
     await writePrivate(join(staging, "manifest.json"), manifestFileText(manifest), 0o600);
 
-    let previous: string | null = null;
-    try {
-      await lstat(skillsDir);
-      previous = join(cardDir, `.skills.old.${process.pid}.${randomUUID()}`);
-    } catch (err) {
-      if (errCode(err) !== "ENOENT") throw err;
-    }
-    if (previous) await rename(skillsDir, previous);
-    await rename(staging, skillsDir);
+    const previous =
+      previousState === "dir" ? join(cardDir, `.skills.old.${process.pid}.${randomUUID()}`) : null;
+    if (previous) await rename(realSkillsDir, previous);
+    await rename(staging, realSkillsDir);
     if (previous) await rm(previous, { recursive: true, force: true });
   } catch (err) {
     await rm(staging, { recursive: true, force: true });
     throw err;
   }
 
+  const skillsDir = cardSkillsDir(key);
+  const pluginDir = join(skillsDir, "plugin");
   const canonical = canonicalManifest(manifest);
   return {
     enabled: true,
@@ -618,9 +813,8 @@ function parseManifest(raw: unknown): SkillManifestEntry[] | null {
   const out: SkillManifestEntry[] = [];
   for (const e of raw) {
     if (!isPlainObject(e)) return null;
-    const keys = Object.keys(e).sort();
-    if (keys.join(",") !== "files,name,source") return null;
-    const { name, source, files } = e;
+    if (Object.keys(e).sort().join(",") !== "files,name,scripts,source") return null;
+    const { name, source, files, scripts } = e;
     if (typeof name !== "string" || !SKILL_NAME_RE.test(name) || seen.has(name)) return null;
     if (source !== "builtin" && source !== "user") return null;
     if (!isPlainObject(files) || !Object.hasOwn(files, "SKILL.md")) return null;
@@ -630,19 +824,33 @@ function parseManifest(raw: unknown): SkillManifestEntry[] | null {
       entryFiles[rel] = h;
     }
     if (Object.keys(entryFiles).length > SKILL_MAX_FILES) return null;
+    if (!Array.isArray(scripts)) return null;
+    const entryScripts: string[] = [];
+    for (const rel of scripts) {
+      if (typeof rel !== "string" || !Object.hasOwn(entryFiles, rel)) return null;
+      if (entryScripts.includes(rel)) return null;
+      entryScripts.push(rel);
+    }
     seen.add(name);
-    out.push({ name, source, files: entryFiles });
+    out.push({ name, source, files: entryFiles, scripts: entryScripts });
   }
   return out;
 }
 
-async function entriesOf(dir: string): Promise<string[]> {
-  return (await readdir(dir)).sort(compareCodeUnits);
+async function entriesOf(dir: string, cap = SKILL_MAX_ENTRIES): Promise<string[]> {
+  const names = await listCapped(dir, cap);
+  if (names === null) throw new Error(`too many entries in ${dir}`);
+  return names;
 }
 
 async function isPrivateDir(path: string): Promise<boolean> {
   const st = await lstat(path);
   return st.isDirectory() && (st.mode & 0o777) === 0o700;
+}
+
+async function isPrivateFile(path: string, mode: number): Promise<boolean> {
+  const st = await lstat(path);
+  return st.isFile() && (st.mode & 0o777) === mode;
 }
 
 /** Re-hashes one skill's copy against its manifest entry. null = match. */
@@ -660,7 +868,11 @@ async function verifySkillCopy(dir: string, entry: SkillManifestEntry): Promise<
   const stack = [""];
   while (stack.length > 0) {
     const relDir = stack.pop()!;
-    for (const name of await entriesOf(relDir ? join(dir, relDir) : dir)) {
+    const names = await entriesOf(
+      relDir ? join(dir, relDir) : dir,
+      Math.min(DIR_MAX_ENTRIES, SKILL_MAX_ENTRIES - entries),
+    );
+    for (const name of names) {
       entries += 1;
       if (entries > SKILL_MAX_ENTRIES) return `${entry.name}: too many entries`;
       const rel = relDir ? `${relDir}/${name}` : name;
@@ -672,16 +884,13 @@ async function verifySkillCopy(dir: string, entry: SkillManifestEntry): Promise<
         continue;
       }
       if (!st.isFile()) return `${entry.name}/${rel}: not a regular file`;
-      const mode = st.mode & 0o777;
-      if (mode !== 0o600 && mode !== 0o700) return `${entry.name}/${rel}: file mode`;
-      const want = entry.files[rel];
-      if (want === undefined || !Object.hasOwn(entry.files, rel)) {
-        return `${entry.name}/${rel}: not in manifest`;
-      }
+      if (!Object.hasOwn(entry.files, rel)) return `${entry.name}/${rel}: not in manifest`;
+      const wantMode = entry.scripts.includes(rel) ? 0o700 : 0o600;
+      if ((st.mode & 0o777) !== wantMode) return `${entry.name}/${rel}: file mode`;
       total += st.size;
       if (total > SKILL_MAX_BYTES) return `${entry.name}: too large`;
-      const data = await readRegularFile(join(dir, rel), SKILL_MAX_BYTES, false);
-      if (sha256Hex(data) !== want) return `${entry.name}/${rel}: sha256 mismatch`;
+      const data = await readRegularFile(join(dir, rel), SKILL_MAX_BYTES);
+      if (sha256Hex(data) !== entry.files[rel]) return `${entry.name}/${rel}: sha256 mismatch`;
       seenFiles.push(rel);
     }
   }
@@ -693,19 +902,29 @@ async function verifySkillCopy(dir: string, entry: SkillManifestEntry): Promise<
 }
 
 /**
- * D3 / R49-M3 resume check. Re-hashes the card copy against its manifest.json
- * without reading any skill source. ok:false → the caller treats it as
- * fingerprint_changed. ok:true → manifestHash for the fingerprint.
+ * D3 / R49-M3 resume check. Re-hashes the card copy (contents and modes) against its
+ * manifest.json without reading any skill source. Every component from the real loom
+ * dir down to skills/ must be a real directory. ok:false → the caller treats it as
+ * fingerprint_changed. ok:true → manifestHash for the fingerprint (compare it too).
  */
-export async function verifyCardSkillsCopy(skillsDir: string): Promise<VerifyCardSkillsResult> {
+export async function verifyCardSkillsCopy(key: CardSessionKey): Promise<VerifyCardSkillsResult> {
   const fail = (reason: string): VerifyCardSkillsResult => ({ ok: false, reason });
   try {
-    if (!(await isPrivateDir(skillsDir))) return fail("skills dir missing or not 0700");
-    if ((await entriesOf(skillsDir)).join("\0") !== ["manifest.json", "plugin"].join("\0")) {
+    const root = await realLoomDir(key.loomDir);
+    if (root === null) return fail("loom dir missing");
+    let cur = root;
+    for (const seg of [...cardChain(key), "skills"]) {
+      cur = join(cur, seg);
+      if ((await realDirState(cur)) === "missing") return fail(`missing ${cur}`);
+    }
+    const skillsDir = cur;
+    if (!(await isPrivateDir(skillsDir))) return fail("skills dir not 0700");
+    if ((await entriesOf(skillsDir, 8)).join("\0") !== ["manifest.json", "plugin"].join("\0")) {
       return fail("unexpected entries in skills dir");
     }
     const manifestPath = join(skillsDir, "manifest.json");
-    const text = (await readRegularFile(manifestPath, MANIFEST_MAX_BYTES, false)).toString("utf8");
+    if (!(await isPrivateFile(manifestPath, 0o600))) return fail("manifest.json mode");
+    const text = (await readRegularFile(manifestPath, MANIFEST_MAX_BYTES)).toString("utf8");
     let raw: unknown;
     try {
       raw = JSON.parse(text);
@@ -718,17 +937,17 @@ export async function verifyCardSkillsCopy(skillsDir: string): Promise<VerifyCar
 
     const pluginDir = join(skillsDir, "plugin");
     if (!(await isPrivateDir(pluginDir))) return fail("plugin dir mode");
-    if ((await entriesOf(pluginDir)).join("\0") !== [".claude-plugin", "skills"].join("\0")) {
+    if ((await entriesOf(pluginDir, 8)).join("\0") !== [".claude-plugin", "skills"].join("\0")) {
       return fail("unexpected entries in plugin dir");
     }
     const metaDir = join(pluginDir, ".claude-plugin");
     if (!(await isPrivateDir(metaDir))) return fail(".claude-plugin dir mode");
-    if ((await entriesOf(metaDir)).join("\0") !== "plugin.json") {
+    if ((await entriesOf(metaDir, 8)).join("\0") !== "plugin.json") {
       return fail("unexpected entries in .claude-plugin");
     }
     const pluginJsonPath = join(metaDir, "plugin.json");
-    if (((await lstat(pluginJsonPath)).mode & 0o777) !== 0o600) return fail("plugin.json mode");
-    const pluginJson = await readRegularFile(pluginJsonPath, 4096, false);
+    if (!(await isPrivateFile(pluginJsonPath, 0o600))) return fail("plugin.json mode");
+    const pluginJson = await readRegularFile(pluginJsonPath, 4096);
     if (pluginJson.toString("utf8") !== PLUGIN_JSON_TEXT) return fail("plugin.json changed");
 
     const skillsRoot = join(pluginDir, "skills");
@@ -743,10 +962,11 @@ export async function verifyCardSkillsCopy(skillsDir: string): Promise<VerifyCar
       const problem = await verifySkillCopy(dir, entry);
       if (problem) return fail(problem);
     }
+    const callerSkillsDir = cardSkillsDir(key);
     return {
       ok: true,
-      skillsDir,
-      pluginDir,
+      skillsDir: callerSkillsDir,
+      pluginDir: join(callerSkillsDir, "plugin"),
       manifest,
       manifestHash: skillsManifestHash(manifest),
     };

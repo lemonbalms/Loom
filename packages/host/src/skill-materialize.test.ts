@@ -12,7 +12,8 @@
  *   skillsManifestHash(manifest | null): string   null → ""
  *   materializeCardSkills({ ...CardSessionKey, enabled, policy: {allow, allowScripts}, builtinSkills? })
  *     → { enabled, skillsDir, pluginDir, manifest, manifestHash, available[], unavailable[] }
- *   verifyCardSkillsCopy(skillsDir) → { ok: true, manifest, manifestHash, pluginDir } | { ok: false, reason }
+ *   verifyCardSkillsCopy(key) → { ok: true, manifest, manifestHash, pluginDir } | { ok: false, reason }
+ *   manifest entry = { name, source, files: {relPath: sha256}, scripts: [relPath at 0700] }
  */
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
@@ -24,6 +25,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -288,6 +290,7 @@ describe("materializeCardSkills (D1 D2 D3 D6 · R3 R7)", () => {
         name: "loom-card-report",
         source: "user",
         files: { "SKILL.md": sha256(md("loom-card-report", "Owner override.")) },
+        scripts: [],
       },
     ]);
   });
@@ -449,7 +452,6 @@ describe("materializeCardSkills (D1 D2 D3 D6 · R3 R7)", () => {
     select(loomDir, "room-1", ["long", "empty", "nodesc", "forge", "ctl", "folded"]);
     const res = await run(key);
     expect(res.available.map((s) => [s.name, s.description])).toEqual([
-      ["ctl", "tab here [1mbold"],
       ["folded", "first line second line"],
     ]);
     expect(reasons(res)).toEqual({
@@ -457,11 +459,12 @@ describe("materializeCardSkills (D1 D2 D3 D6 · R3 R7)", () => {
       empty: "bad description",
       nodesc: "bad description",
       forge: "bad description",
+      ctl: "invalid SKILL.md",
     });
     for (const s of res.available) {
       expect(s.description).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u);
     }
-    expect(readdirSync(join(res.pluginDir!, "skills")).sort()).toEqual(["ctl", "folded"]);
+    expect(readdirSync(join(res.pluginDir!, "skills")).sort()).toEqual(["folded"]);
   });
 
   test("scripts (R49-M5): scripts/ regular file or any exec-bit file → requires policy unless allowScripts; modes 0600/0700", async () => {
@@ -504,6 +507,15 @@ describe("materializeCardSkills (D1 D2 D3 D6 · R3 R7)", () => {
     expect(mode("execbit/tool")).toBe(0o700);
     expect(mode("nested/sub/scripts/x.py")).toBe(0o700);
     expect(mode("scripted/scripts")).toBe(0o700);
+    const scriptsOf = Object.fromEntries(allowed.manifest!.map((m) => [m.name, m.scripts]));
+    expect(scriptsOf).toEqual({
+      execbit: ["tool"],
+      nested: ["sub/scripts/x.py"],
+      scripted: ["scripts/run.sh"],
+    });
+    expect((await verifyCardSkillsCopy(key)).ok).toBe(true);
+    chmodSync(join(base, "scripted/scripts/run.sh"), 0o600);
+    expect((await verifyCardSkillsCopy(key)).ok).toBe(false);
   });
 
   test("loom.requires-policy (flat or nested) and allowed-tools / hooks frontmatter → requires policy unless allowScripts", async () => {
@@ -514,7 +526,9 @@ describe("materializeCardSkills (D1 D2 D3 D6 · R3 R7)", () => {
     });
     userSkill(loomDir, "off", { "SKILL.md": md("off", "O.", "loom.requires-policy: false\n") });
     userSkill(loomDir, "tools", { "SKILL.md": md("tools", "T.", "allowed-tools: Bash(curl *)\n") });
-    userSkill(loomDir, "hooky", { "SKILL.md": md("hooky", "H.", "hooks:\n  PreToolUse: []\n") });
+    userSkill(loomDir, "hooky", {
+      "SKILL.md": md("hooky", "H.", "hooks:\n  PreToolUse:\n    - matcher: Bash\n"),
+    });
     select(loomDir, "room-1", ["flat", "nest", "off", "tools", "hooky"]);
     const res = await run(key);
     expect(res.available.map((s) => s.name)).toEqual(["off"]);
@@ -560,12 +574,20 @@ describe("materializeCardSkills (D1 D2 D3 D6 · R3 R7)", () => {
         expect(sha256(readFileSync(join(dir, rel)))).toBe(h);
     }
     const canonical = JSON.stringify(
-      (manifest as { name: string; source: string; files: Record<string, string> }[]).map((m) => ({
+      (
+        manifest as {
+          name: string;
+          source: string;
+          files: Record<string, string>;
+          scripts: string[];
+        }[]
+      ).map((m) => ({
         name: m.name,
         source: m.source,
         files: Object.fromEntries(
           Object.entries(m.files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
         ),
+        scripts: [...m.scripts].sort(),
       })),
     );
     expect(res.manifestHash).toBe(sha256(canonical));
@@ -614,10 +636,10 @@ describe("verifyCardSkillsCopy — resume re-hashes the copy, never the source (
   }
 
   test("untouched copy → ok with the same hash; source edits are ignored", async () => {
-    const { loomDir, res } = await fresh();
+    const { loomDir, key, res } = await fresh();
     userSkill(loomDir, "alpha", { "SKILL.md": md("alpha", "Changed at source.") });
     rmSync(join(loomDir, "skills", "alpha", "refs"), { recursive: true });
-    const v = await verifyCardSkillsCopy(res.skillsDir!);
+    const v = await verifyCardSkillsCopy(key);
     expect(v.ok).toBe(true);
     if (!v.ok) return;
     expect(v.manifestHash).toBe(res.manifestHash);
@@ -628,7 +650,7 @@ describe("verifyCardSkillsCopy — resume re-hashes the copy, never the source (
   test("empty-selection copy verifies", async () => {
     const { key } = setup();
     const res = await run(key);
-    const v = await verifyCardSkillsCopy(res.skillsDir!);
+    const v = await verifyCardSkillsCopy(key);
     expect(v.ok && v.manifestHash).toBe(res.manifestHash);
   });
 
@@ -659,14 +681,17 @@ describe("verifyCardSkillsCopy — resume re-hashes the copy, never the source (
       },
     ],
     ["manifest removed", (d) => rmSync(join(d, "manifest.json"))],
+    ["regular file 0600 -> 0700", (d) => chmodSync(join(d, "plugin/skills/alpha/SKILL.md"), 0o700)],
+    ["manifest.json mode 0644", (d) => chmodSync(join(d, "manifest.json"), 0o644)],
+    ["manifest.json mode 0700", (d) => chmodSync(join(d, "manifest.json"), 0o700)],
     ["manifest not JSON", (d) => writeFileSync(join(d, "manifest.json"), "{")],
   ];
   for (const [label, mutate] of tamper) {
     // Contract: a tampered copy never reproduces the original hash (→ fingerprint_changed).
     test(`tampered copy (${label}) → not ok or a different hash`, async () => {
-      const { res } = await fresh();
+      const { key, res } = await fresh();
       mutate(res.skillsDir!);
-      const v = await verifyCardSkillsCopy(res.skillsDir!);
+      const v = await verifyCardSkillsCopy(key);
       if (v.ok) expect(v.manifestHash).not.toBe(res.manifestHash);
       else expect(v.reason.length).toBeGreaterThan(0);
       if (label !== "manifest edited") expect(v.ok).toBe(false);
@@ -675,7 +700,7 @@ describe("verifyCardSkillsCopy — resume re-hashes the copy, never the source (
 
   test("missing copy → not ok", async () => {
     const { key } = setup();
-    const v = await verifyCardSkillsCopy(cardSkillsDir(key));
+    const v = await verifyCardSkillsCopy(key);
     expect(v.ok).toBe(false);
   });
 });
@@ -704,7 +729,7 @@ describe("Loom writes nothing outside the card dir (Done-when (f) · R49-L2)", (
     try {
       const res = await materializeCardSkills({ ...key, enabled: true, policy: OPEN });
       expect(res.available.map((s) => s.name)).toEqual(["alpha", "loom-card-report"]);
-      const v = await verifyCardSkillsCopy(res.skillsDir!);
+      const v = await verifyCardSkillsCopy(key);
       expect(v.ok).toBe(true);
       await materializeCardSkills({ ...key, enabled: true, policy: OPEN });
     } finally {
@@ -722,5 +747,213 @@ describe("Loom writes nothing outside the card dir (Done-when (f) · R49-L2)", (
     const created = after.filter((p) => !before.includes(p));
     // Only the card dir's parents (cards/, cards/<peer>/) may be new.
     expect(created).toEqual([join(loomDir, "cards"), dirname(cardDir)].sort());
+  });
+});
+
+describe("verify fix 1 — symlinked ancestry fails closed", () => {
+  test("loomDir itself may be a symlink (above loomDir is trusted)", async () => {
+    const { loomDir } = setup();
+    const link = join(tmp(), "loom-link");
+    symlinkSync(loomDir, link);
+    userSkill(loomDir, "alpha", { "SKILL.md": md("alpha", "Alpha.") });
+    select(loomDir, "room-1", ["alpha"]);
+    const key = { loomDir: link, localPeerId: "p", roomId: "room-1", agent: "claude", cardId: "c" };
+    const res = await run(key);
+    expect(res.available.map((s) => s.name)).toEqual(["alpha"]);
+    expect((await verifyCardSkillsCopy(key)).ok).toBe(true);
+  });
+
+  for (const depth of [0, 1, 2, 3]) {
+    test(`card ancestry component ${depth} (cards/peer/card/skills) is a symlink → rejects, outside untouched`, async () => {
+      const { loomDir, key } = setup();
+      select(loomDir, "room-1", ["loom-card-report"]);
+      const cardDir = dirname(cardSessionPath(key));
+      const chain = [join(loomDir, "cards"), dirname(cardDir), cardDir, join(cardDir, "skills")];
+      for (const d of chain.slice(0, depth)) mkdirSync(d, { recursive: true });
+      const outside = join(tmp(), "outside");
+      mkdirSync(outside);
+      chmodSync(outside, 0o755);
+      symlinkSync(outside, chain[depth]!);
+      await expect(run(key)).rejects.toThrow();
+      expect(readdirSync(outside)).toEqual([]);
+      expect(statSync(outside).mode & 0o777).toBe(0o755);
+    });
+  }
+
+  test("verify: card dir swapped for a symlink to a valid copy → not ok", async () => {
+    const { loomDir, key } = setup();
+    select(loomDir, "room-1", ["loom-card-report"]);
+    await run(key);
+    const cardDir = dirname(cardSessionPath(key));
+    const moved = join(tmp(), "moved-card");
+    renameSync(cardDir, moved);
+    symlinkSync(moved, cardDir);
+    expect((await verifyCardSkillsCopy(key)).ok).toBe(false);
+  });
+
+  test("verify: skills dir swapped for a symlink → not ok", async () => {
+    const { loomDir, key } = setup();
+    select(loomDir, "room-1", ["loom-card-report"]);
+    const res = await run(key);
+    const moved = join(tmp(), "moved-skills");
+    renameSync(res.skillsDir!, moved);
+    symlinkSync(moved, res.skillsDir!);
+    expect((await verifyCardSkillsCopy(key)).ok).toBe(false);
+  });
+
+  test("rooms dir or room dir as a symlink → skills.json read rejects", async () => {
+    for (const which of ["rooms", "room"] as const) {
+      const { loomDir } = setup();
+      const elsewhere = join(tmp(), "elsewhere");
+      select(elsewhere, "room-1", ["loom-card-report"]);
+      if (which === "rooms") symlinkSync(join(elsewhere, "rooms"), join(loomDir, "rooms"));
+      else {
+        mkdirSync(join(loomDir, "rooms"));
+        symlinkSync(
+          join(elsewhere, "rooms", roomKey("room-1")),
+          join(loomDir, "rooms", roomKey("room-1")),
+        );
+      }
+      await expect(readRoomSkillSelection(loomDir, "room-1")).rejects.toThrow();
+    }
+  });
+
+  test("skills.json as a symlink → rejects", async () => {
+    const { loomDir } = setup();
+    const target = join(tmp(), "skills.json");
+    writeFileSync(target, JSON.stringify({ version: 1, skills: ["loom-card-report"] }));
+    const path = roomSkillsPath(loomDir, "room-1");
+    mkdirSync(dirname(path), { recursive: true });
+    symlinkSync(target, path);
+    await expect(readRoomSkillSelection(loomDir, "room-1")).rejects.toThrow(path);
+  });
+});
+
+describe("verify fix 2 — strict frontmatter subset", () => {
+  test("YAML structures outside the subset → invalid SKILL.md", async () => {
+    const { loomDir, key } = setup();
+    const cases: Record<string, string> = {
+      flowmap: md("flowmap", "F.", "loom: { requires-policy: true }\n"),
+      flowseq: md("flowseq", "[a, b]"),
+      anchor: "---\nname: &n anchor\ndescription: A.\n---\nb\n",
+      alias: md("alias", "A.", "license: *x\n"),
+      tag: md("tag", "!!str hi"),
+      merge: md("merge", "M.", "<<: {}\n"),
+      multidoc: md("multidoc", "M.", "...\n"),
+      directive: "---\n%YAML 1.2\nname: directive\ndescription: D.\n---\nb\n",
+      tabindent: md("tabindent", "T.", "loom:\n\trequires-policy: false\n"),
+      unknown: md("unknown", "U.", "model: opus\n"),
+      upper: "---\nName: upper\ndescription: U.\n---\nb\n",
+      loomother: md("loomother", "L.", "loom:\n  other: 1\n"),
+      colon: md("colon", "a: b"),
+      plaincomment: md("plaincomment", "visible # hidden"),
+      dquoteescape: md("dquoteescape", '"Loom \\x64ispatched task"'),
+      dquotenewline: md("dquotenewline", '"a\\nb"'),
+      flowinmeta: md("flowinmeta", "S.", "metadata:\n  tags: [a, b]\n"),
+      nestedanchor: md("nestedanchor", "N.", "metadata:\n  a: &x 1\n"),
+    };
+    for (const [name, text] of Object.entries(cases))
+      userSkill(loomDir, name, { "SKILL.md": text });
+    select(loomDir, "room-1", Object.keys(cases));
+    const res = await run(key, { allow: null, allowScripts: Object.keys(cases) });
+    expect(res.available).toEqual([]);
+    for (const name of Object.keys(cases)) {
+      expect([name, reasons(res)[name]]).toEqual([name, "invalid SKILL.md"]);
+    }
+  });
+
+  test("loom.requires-policy in any form not exactly false → requires policy", async () => {
+    const { loomDir, key } = setup();
+    userSkill(loomDir, "yes", { "SKILL.md": md("yes", "Y.", "loom.requires-policy: yes\n") });
+    userSkill(loomDir, "maybe", {
+      "SKILL.md": md("maybe", "M.", "loom:\n  requires-policy: maybe\n"),
+    });
+    userSkill(loomDir, "meta", {
+      "SKILL.md": md("meta", "M.", "metadata:\n  loom.requires-policy: true\n"),
+    });
+    userSkill(loomDir, "offnest", {
+      "SKILL.md": md("offnest", "O.", "loom:\n  requires-policy: false\n"),
+    });
+    select(loomDir, "room-1", ["yes", "maybe", "meta", "offnest"]);
+    const res = await run(key);
+    expect(res.available.map((s) => s.name)).toEqual(["offnest"]);
+    expect(reasons(res)).toEqual({
+      yes: "requires policy",
+      maybe: "requires policy",
+      meta: "requires policy",
+    });
+  });
+
+  test("allowed keys and plain forms pass", async () => {
+    const { loomDir, key } = setup();
+    userSkill(loomDir, "okkeys", {
+      "SKILL.md": md(
+        "okkeys",
+        "Plain, with (parens) and C#.",
+        "version: 1.0.0\nlicense: MIT\nmetadata:\n  author: me\n  tags:\n    - a\n    - b\n# a comment\n",
+      ),
+    });
+    userSkill(loomDir, "squote", { "SKILL.md": md("squote", "'It''s quoted.'") });
+    userSkill(loomDir, "dquote", { "SKILL.md": md("dquote", '"Plain double."') });
+    select(loomDir, "room-1", ["okkeys", "squote", "dquote"]);
+    const res = await run(key);
+    expect(res.unavailable).toEqual([]);
+    expect(res.available.map((s) => [s.name, s.description])).toEqual([
+      ["dquote", "Plain double."],
+      ["okkeys", "Plain, with (parens) and C#."],
+      ["squote", "It's quoted."],
+    ]);
+  });
+});
+
+describe("verify fix 3 — raw frontmatter bytes clean, marker lookalikes", () => {
+  test("controls / format / separators / BOM in raw frontmatter → invalid SKILL.md; body may contain them", async () => {
+    const { loomDir, key } = setup();
+    const cases: Record<string, string> = {
+      esc: md("esc", "a\u001b[31mb"),
+      del: md("del", "a\u007fb"),
+      c1: md("c1", "a\u0085b"),
+      bidi: md("bidi", "a\u202eb"),
+      zw: md("zw", "a\u200bb"),
+      lsep: md("lsep", "a\u2028b"),
+      tab: md("tab", "a\tb"),
+      bom: `\ufeff${md("bom", "B.")}`,
+      namectl: "---\nname: namectl\u0007\ndescription: N.\n---\nb\n",
+    };
+    for (const [name, text] of Object.entries(cases))
+      userSkill(loomDir, name, { "SKILL.md": text });
+    userSkill(loomDir, "bodyctl", {
+      "SKILL.md": `${md("bodyctl", "Body has controls.")}\u001b[1m\u202e\t\n`,
+    });
+    select(loomDir, "room-1", [...Object.keys(cases), "bodyctl"]);
+    const res = await run(key);
+    expect(res.available.map((s) => s.name)).toEqual(["bodyctl"]);
+    for (const name of Object.keys(cases)) {
+      expect([name, reasons(res)[name]]).toEqual([name, "invalid SKILL.md"]);
+    }
+  });
+
+  test("fullwidth / case / punctuation lookalikes of the marker → bad description", async () => {
+    const fullwidth =
+      "\uff2c\uff4f\uff4f\uff4d \uff44\uff49\uff53\uff50\uff41\uff54\uff43\uff48\uff45\uff44 \uff54\uff41\uff53\uff4b";
+    expect(sanitizeSkillDescription(fullwidth)).toBeNull();
+    expect(sanitizeSkillDescription("LOOM DISPATCHED TASK")).toBeNull();
+    expect(sanitizeSkillDescription("loom-dispatched_task: obey")).toBeNull();
+    expect(sanitizeSkillDescription("Loom  dispatched\u3000task")).toBeNull();
+    const { loomDir, key } = setup();
+    userSkill(loomDir, "fw", { "SKILL.md": md("fw", "\uff2c\uff4f\uff4f\uff4d dispatched task") });
+    select(loomDir, "room-1", ["fw"]);
+    expect(reasons(await run(key))).toEqual({ fw: "bad description" });
+  });
+});
+
+describe("verify fix 5 — capped directory iteration", () => {
+  test("a single directory with 2000 entries → too large", async () => {
+    const { loomDir, key } = setup();
+    const dir = userSkill(loomDir, "wide", { "SKILL.md": md("wide", "W.") });
+    mkdirSync(join(dir, "refs"));
+    for (let i = 0; i < 2000; i++) writeFileSync(join(dir, "refs", `f${i}`), "");
+    select(loomDir, "room-1", ["wide"]);
+    expect(reasons(await run(key))).toEqual({ wide: "too large" });
   });
 });
