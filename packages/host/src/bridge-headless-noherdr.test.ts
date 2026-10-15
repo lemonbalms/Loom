@@ -613,4 +613,38 @@ describe("headless bridge without herdr + bridge readers (PLAN 0.33.0 P4 · g ·
     expect(none.stdout).toContain("bridge: offline");
     expect(none.stdout).not.toContain("status file:");
   }, 90_000);
+  test("unreadable status file: doctor warns with path + reason; offline bridge status prints it (P5 · P4-verify L1)", async () => {
+    const p = bridgeStatusPath("corrupt");
+    mkdirSync(join(p, ".."), { recursive: true });
+    writeFileSync(p, '{"v":1,"pid":7,"sta', "utf8");
+    const doc = await runCli(["doctor"], 30_000, { LOOM_PROFILE: "corrupt" });
+    expect(doc.stdout).toMatch(/warn\s+bridge status file unreadable: \S*corrupt\.status\.json \(invalid JSON\)/);
+    expect(doc.stdout).not.toContain("never started");
+    const st = await runCli(["bridge", "status"], 20_000, { LOOM_PROFILE: "corrupt" });
+    expect(st.code).toBe(0);
+    expect(st.stdout).toContain("bridge: offline");
+    expect(st.stdout).toMatch(/bridge status file unreadable: \S*corrupt\.status\.json \(invalid JSON\)/);
+    // Readers stay read-only: the corrupt file is left as it was.
+    expect(readFileSync(p, "utf8")).toBe('{"v":1,"pid":7,"sta');
+  }, 60_000);
+
+  test("headless: `loom bridge start` and online `loom bridge status` print herdr: skipped (headless) (P5 · P4-verify)", async () => {
+    let pid: number | undefined;
+    try {
+      const start = await runCli(["bridge", "start"], 30_000);
+      expect(start.code).toBe(0);
+      pid = loadBridgeMeta(sessionFile)?.pid;
+      expect(start.stdout).toContain("herdr: skipped (headless)");
+      expect(start.stdout).not.toContain(absentSock);
+      const st = await runCli(["bridge", "status"], 20_000);
+      expect(st.stdout).toContain("bridge: online");
+      expect(st.stdout).toContain("  herdr: skipped (headless)");
+      expect(st.stdout).not.toContain(`  herdr: ${absentSock}`);
+      const stop = await runCli(["bridge", "stop"], 30_000);
+      expect(stop.code).toBe(0);
+      expect(readStatus()?.state).toBe("stopped");
+    } finally {
+      killHard(pid);
+    }
+  }, 90_000);
 });

@@ -29,6 +29,7 @@ import {
   STATUS_STALE_MS,
   truncateLastError,
 } from "./bridge-status";
+import * as statusMod from "./bridge-status";
 import { loomDir, resetStateHomeDirCache } from "./session-store";
 
 let home: string;
@@ -490,5 +491,66 @@ describe("bridge status — P1 hardening (Opus verify L4 / L6)", () => {
     }
     expect(logs.length).toBe(1);
     expect(readdirSync(dirname(p)).filter((n) => n.includes(".tmp."))).toEqual([]);
+  });
+});
+
+describe("status file reader: absent vs unreadable (PLAN 0.33.0 P5 · P4-verify L1)", () => {
+  type ReadResult =
+    | { kind: "absent" }
+    | { kind: "invalid"; reason: string }
+    | { kind: "ok"; status: { state: string; pid: number } };
+  const read = (path: string): ReadResult =>
+    (statusMod as unknown as { readBridgeStatusFileResult: (p: string) => ReadResult }).readBridgeStatusFileResult(
+      path,
+    );
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "loom-status-read-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("absent file → absent (legacy reader: null)", () => {
+    const p = join(dir, "none.status.json");
+    expect(read(p)).toEqual({ kind: "absent" });
+    expect(statusMod.readBridgeStatusFile(p)).toBeNull();
+  });
+
+  test("valid v1 record → ok", () => {
+    const p = join(dir, "ok.status.json");
+    writeFileSync(p, JSON.stringify({ v: 1, pid: 7, state: "stopped", herdr: "skipped" }));
+    const r = read(p);
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") expect(r.status.state).toBe("stopped");
+    expect(statusMod.readBridgeStatusFile(p)?.pid).toBe(7);
+  });
+
+  const bad: Array<[string, string, RegExp]> = [
+    ["empty", "", /empty/],
+    ["truncated", '{"v":1,"pid":7,"sta', /JSON/],
+    ["null", "null", /not an object/],
+    ["array", "[1,2]", /not an object/],
+    ["unknown version", JSON.stringify({ v: 2, pid: 7, state: "running" }), /version/],
+    ["unknown state", JSON.stringify({ v: 1, pid: 7, state: "exploded" }), /state/],
+  ];
+  for (const [name, body, reason] of bad) {
+    test(`${name} file → invalid with a short reason (legacy reader: null)`, () => {
+      const p = join(dir, `${name.replace(/ /g, "-")}.status.json`);
+      writeFileSync(p, body);
+      const r = read(p);
+      expect(r.kind).toBe("invalid");
+      if (r.kind === "invalid") {
+        expect(r.reason).toMatch(reason);
+        expect(r.reason.length).toBeLessThanOrEqual(80);
+      }
+      expect(statusMod.readBridgeStatusFile(p)).toBeNull();
+    });
+  }
+
+  test("path is a directory → invalid, never absent", () => {
+    const p = join(dir, "isdir.status.json");
+    mkdirSync(p);
+    expect(read(p).kind).toBe("invalid");
   });
 });

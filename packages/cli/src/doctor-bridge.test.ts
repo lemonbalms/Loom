@@ -176,3 +176,33 @@ describe("offline `loom bridge status` summary (PLAN 0.33.0 ② bridge status)",
     expect(lines).toContain("lock holder: none");
   });
 });
+
+describe("unreadable status file vs absent (PLAN 0.33.0 P5 · P4-verify L1)", () => {
+  const bad = (reason: string): BridgeReadInput =>
+    ({
+      ...input({ status: null, lock: { kind: "none" }, pidAlive: false }),
+      statusInvalid: reason,
+    }) as BridgeReadInput;
+
+  test("doctor: present but unusable → warn 'bridge status file unreadable: <path> (<reason>)', not 'never started'", () => {
+    const s = bridgeSection(bad("invalid JSON"));
+    const t = text(s);
+    expect(t).toContain("warn bridge status file unreadable: /h/.loom/bridge/node.status.json (invalid JSON)");
+    expect(t).not.toContain("never started");
+    expect(t).toContain("/h/.loom/bridge/node.stderr.log");
+    expect(summarizeDoctor([s]).fail).toBe(0);
+    expect(doctorExitCode([s])).toBe(0);
+  });
+
+  test("doctor: absent file keeps today's info line (no warn)", () => {
+    const s = bridgeSection(input({ status: null, lock: { kind: "none" }, pidAlive: false }));
+    expect(text(s)).toContain("info bridge never started under this profile (no status file: /h/.loom/bridge/node.status.json)");
+    expect(summarizeDoctor([s]).warn).toBe(0);
+  });
+
+  test("offline bridge status prints the same reason line", () => {
+    const out = offlineBridgeStatusLines(bad("unknown version v=2")).join("\n");
+    expect(out).toContain("bridge status file unreadable: /h/.loom/bridge/node.status.json (unknown version v=2)");
+    expect(out).not.toContain("state:");
+  });
+});
