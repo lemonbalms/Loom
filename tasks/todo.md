@@ -2,7 +2,7 @@
 
 ## Current — Loom 업그레이드 계획 (오너 지명 2026-10-15)
 
-> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
+> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51) · 2부 = §0.34.0 (R52). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
 
 1. [x] **1단계 — v0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신(`clientEventId`)** —
    `ae60cdb` → … → `c183c92` → PATCH 6 · 최종 리뷰 `c778d4d`. shipped.
@@ -15,7 +15,7 @@
    2단계 완료.
 3. [ ] **3단계 — host를 OS 서비스로** (오너 "진행해" 2026-10-16 — 3단계 전체 승인 · 두 릴리스로 분할)
    - [x] **1부 — v0.33.0 bridge 생명주기 보강** — `b8739d9` P1 → … → `236a8c1` P4 → `38933f1` P4 검증 교정 → `bb97ffd` 스모크 → PATCH 5(USER_GUIDE §18 · PROTOCOL · implementation-notes §0.33.0 · VERSION 0.33.0 · 스모크 `BRIDGE-LIFECYCLE-SMOKE-0330.md`). Done when (a)~(i) green · (j) ship 검사.
-   - [ ] **2부 — v0.34.0 `loom service` launchd/systemd 설치**(**다음** 후보) — PLAN + R52 뒤 착수 · **실 OS 등록·라이브 스모크는 별도 오너 명시 승인**.
+   - [ ] **2부 — v0.34.0 `loom service` launchd/systemd 설치** — PLAN §0.34.0 `approved`(R52 approved-with-fixes, M1~M3·L1~L3 반영, no R52b). 다음 = **P1**(생성기, red = 테스트 파일만) → P2 D3 양보 + 결정적 위험 → P3 CLI → P4 doctor → P5 문서·스모크. **실 OS 등록·라이브 스모크는 별도 오너 명시 승인**.
 4. [ ] **4단계 — memory / rules / skills 저장소** (미착수)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)

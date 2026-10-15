@@ -1,8 +1,9 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R51** PLAN **v0.33.0**(bridge 생명주기 보강, MINOR — 업그레이드 3단계 1부) **`approved-with-fixes` → M1·M2·M3·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R51b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **4**) — 결정적 **R51-M2**: 정지 뒤 `main()`이 반환돼도 남은 핸들이 프로세스를 붙잡을 수 있고, `stop()` 범위만 grep하면 `bridge-runtime.ts` 다른 곳의 `process.exit`를 놓친다 → `bridge-main.ts`가 `stopped` 기록 확인 후 `process.exit(0)` · `process.exit`는 `bridge-main.ts`에만 셋(정상 0 · catch 1 · 두 번째 신호) · `bridge-runtime.ts` 전체 0곳 grep. **M1**(headless conv.open = `payload_invalid` 패턴 — claim 1회 후 `sendConvReject(…, "conv_unavailable_headless")` · drain 중 미claim · 미claim 거절은 재기동마다 반복)·**M3**(`stop()`은 `close()` 8초 경쟁 · 동기 꼬리(격리 · meta · 락 · `stopped`)는 `finally`)·**L1**(drain 검사 위치 `:1180` 앞 + claim 클로저 · conv `:1136` 앞)·**L2**(`startFakeHerdr` 재사용 · red = 테스트 파일만)·**L3**(CLI 12초는 RPC ok일 때만)·**L4**(수용 계급 3항). R1~R12 수용(R5→M1 · R2→M3 · R1→L3) · UK-4 resolved. **Advisor: fable-advisor consulted: yes.**
-> **이전:** **R50** PLAN **v0.32.0**(Loom MCP 사전 점검, MINOR — 업그레이드 2단계 2부 마무리) **`approved-with-fixes` → M1·M2·L1·L2·L3 반영 완료 · PLAN `approved`(no R50b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **2** · Low **3**) — 결정적 **R50-M1**: `toolVisible`이 `policy_invalid`를 포함하면 무효 정책에서 `tools/list`가 비어 D9 "거르지 않은 목록"과 모순 → `toolVisible(gate, name)` = `gate.invalid ? true : (name ∈ TOOLS && !mcpDeny(name))` · `policy_invalid`는 `evaluateMcpCall` 1단계에만 · (f) 무효 정책 목록 20개 성질 테스트. **M2**(UK-5 실측 제외 — ack `to`는 입력 에코(`room-ops.ts:114-125`) · `dispatchPeerId`는 로컬 peer 목록 이름 일치 정확히 1개일 때만 · `fromPeerId`는 모델이 베끼는 주장이라 생략 시 우회 — `blocked` 착지로 수용)·**L1**(변환기 자유형 객체 · `.strict()` 최상위만 · done 카드 방어적 스캔)·**L2**(거부 모드 → done)·**L3**(워커 파일 diff 0줄 → ship 검사 `git diff --stat a2e0d99`). R1~R9 수용(R7 M2로 수정 · R9 문서화로 충분). **Advisor: fable-advisor consulted: yes.**
+> **최신:** **R52** PLAN **v0.34.0**(`loom service` launchd/systemd 사용자 서비스 설치, MINOR — 업그레이드 3단계 2부) **`approved-with-fixes` → M1·M2·M3·L1·L2·L3 반영 완료 · PLAN `approved`(no R52b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **3**) — 결정적 **R52-M1**: install 흐름 6이 bootout을 **실행 중**에만 걸어 "적재됨 + 실행 아님"(양보 · drain 뒤 · 조절 중)에서 `bootstrap`이 EALREADY로 실패 → bootout 조건 = **적재됨** · 바이트 동일 + 적재·실행 아님 → `kickstart` · bootout 뒤 ≤25초 not-found 폴(M2). 기록 §Review R52.  
+> **이전:** **R51** PLAN **v0.33.0**(bridge 생명주기 보강, MINOR — 업그레이드 3단계 1부) **`approved-with-fixes` → M1·M2·M3·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R51b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **4**) — 결정적 **R51-M2**: 정지 뒤 `main()`이 반환돼도 남은 핸들이 프로세스를 붙잡을 수 있고, `stop()` 범위만 grep하면 `bridge-runtime.ts` 다른 곳의 `process.exit`를 놓친다 → `bridge-main.ts`가 `stopped` 기록 확인 후 `process.exit(0)` · `process.exit`는 `bridge-main.ts`에만 셋(정상 0 · catch 1 · 두 번째 신호) · `bridge-runtime.ts` 전체 0곳 grep. **M1**(headless conv.open = `payload_invalid` 패턴 — claim 1회 후 `sendConvReject(…, "conv_unavailable_headless")` · drain 중 미claim · 미claim 거절은 재기동마다 반복)·**M3**(`stop()`은 `close()` 8초 경쟁 · 동기 꼬리(격리 · meta · 락 · `stopped`)는 `finally`)·**L1**(drain 검사 위치 `:1180` 앞 + claim 클로저 · conv `:1136` 앞)·**L2**(`startFakeHerdr` 재사용 · red = 테스트 파일만)·**L3**(CLI 12초는 RPC ok일 때만)·**L4**(수용 계급 3항). R1~R12 수용(R5→M1 · R2→M3 · R1→L3) · UK-4 resolved. **Advisor: fable-advisor consulted: yes.**
+> **직전:** **R50** PLAN **v0.32.0**(Loom MCP 사전 점검, MINOR — 업그레이드 2단계 2부 마무리) **`approved-with-fixes` → M1·M2·L1·L2·L3 반영 완료 · PLAN `approved`(no R50b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **2** · Low **3**) — 결정적 **R50-M1**: `toolVisible`이 `policy_invalid`를 포함하면 무효 정책에서 `tools/list`가 비어 D9 "거르지 않은 목록"과 모순 → `toolVisible(gate, name)` = `gate.invalid ? true : (name ∈ TOOLS && !mcpDeny(name))` · `policy_invalid`는 `evaluateMcpCall` 1단계에만 · (f) 무효 정책 목록 20개 성질 테스트. **M2**(UK-5 실측 제외 — ack `to`는 입력 에코(`room-ops.ts:114-125`) · `dispatchPeerId`는 로컬 peer 목록 이름 일치 정확히 1개일 때만 · `fromPeerId`는 모델이 베끼는 주장이라 생략 시 우회 — `blocked` 착지로 수용)·**L1**(변환기 자유형 객체 · `.strict()` 최상위만 · done 카드 방어적 스캔)·**L2**(거부 모드 → done)·**L3**(워커 파일 diff 0줄 → ship 검사 `git diff --stat a2e0d99`). R1~R9 수용(R7 M2로 수정 · R9 문서화로 충분). **Advisor: fable-advisor consulted: yes.**
 > **직전:** **R49** PLAN **v0.31.0**(스킬 materialize + `policy.json` v1 → CLI별 권한 번역, MINOR — 업그레이드 2단계 2부) **`approved-with-fixes` → H1·M1~M5·L1~L4 반영 완료 · PLAN `approved`(no R49b — 리뷰어 명시: H1·M1~M5 축자 반영 + 아키텍트 PLAN diff 확인 시 재리뷰 불요)**(2026-10-15, High **1** · Medium **5** · Low **4**) — 결정적 **R49-H1**: 내장 deny가 공백 없는 형 `Bash(git push*)`·`Bash(git reset --hard*)`(`agent-argv.ts:79-88`)인데 정책 문법이 ` *`를 강제 → ` *`가 맨 명령을 못 잡으면(UK-1) 맨 `git push` 허용 → deny 접두마다 `Bash(p)` + `Bash(p *)` 이중 컴파일 · (b) 0.30.0 deny 8개 의미 포괄 · UK-1 P2 deny 경로 차단. **M1**(`mcp.isolate` 기본 true — claude `--strict-mcp-config`, false는 오너 옵트인)·**M2**(deprecated allow — `policy.json` 없으면 사용 · `shell.allow`와 공존 시 기동 거부)·**M3**(살아 있는 pid kill 0 + `needs_verification` 선점 · 입양은 fingerprint 무변경만 · 복사본 재해시)·**M4**(가짜 CLI 엄격성 P2/P4 red)·**M5**(스크립트 = `scripts/` 정규 파일 또는 실행 비트 파일)·**L1**~**L4** 반영. R1~R8 수용(R4 H1 조건부) · 범위 분할(MCP 사전 점검 → v0.32.0) 승인. **Advisor: fable-advisor consulted: yes.**
 > **직전:** **R48** PLAN **v0.30.0**(헤드리스 카드 워커 · 카드별 세션 · 재개/입양 · 동시성 · 정적 권한 프로필, MINOR) **`approved-with-fixes` → H1·M1·M2·M3·L1·L2 반영 + UK-5 실측 PLAN 기재 완료 · PLAN `approved`(no R48b — 리뷰어 명시: H1·M1·M2·M3 반영 + UK-5 실측 결과 기재 시 재리뷰 불요)**(2026-10-15, High **1** · Medium **3** · Low **2**) — 결정적 **R48-H1**: 헤드리스 spawn이 브릿지 env를 상속해 `LOOM_RELAY_TOKEN`/`LOOM_RELAY_URL`(`env.ts:68,72`)이 제3자 프롬프트를 실행하는 Bash 가능 워커에 노출 → spawn env = 상속분에서 `LOOM_*`·`FABLE_*` 전부 제거 후 `LOOM_CARD`만 재주입. **M1**(코어 시그니처 `composeAndSend(target, {…}, {node}) → SendResultOutcome` 고정 · pane 래퍼 `sendResultForFlight`가 flight 부작용 적용)·**M2**(직렬화 예산 기준 꼬리 보존 절단 루프 — 256k 첨부 상한 throw로 인한 결과 유실 차단, UK-1 설계 해소)·**M3**(같은 카드·다른 `dispatchHandoffId` → `card_already_running`)·**L1**(cwd 심볼릭 링크 테스트)·**L2**(codex resume 파서·고정 재개 문구 argv 허용). R1·R4·R5·R6 수용 · R2(보조 인덱스 기각 · cardKey에서 cwd 제외)·R3(`loomSystemHint` 미주입 → `HEADLESS_WORKER_HINT`) 수정 수용 · UK-1/3/5/8/9 resolved. **Advisor: fable-advisor consulted: yes.**
 > **직전:** **R47** PLAN **v0.29.0**(룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신, MINOR) **`approved-with-fixes` → H1·M1·M2·M3·L1·L2 반영 완료 · PLAN `approved`(no R47b — 리뷰어 명시: H1/M1/M2 반영 시 재리뷰 불요)**(2026-10-15, High **1** · Medium **3** · Low **2**) — 결정적 **R47-H1**: 동기 `withFileLock`(4s 대기, 25ms `Bun.sleepSync` 폴링, `atomic-json.ts:22,179-198`)이 WS 수신 경로에 걸리고 R2 하에서 경합이 평상시 → async 저장소 API · `RelayClient`별 직렬 큐 · 프로세스 간 락 예산 ≤250ms · 타임아웃 = UK-5 fail-open + 카운터. **M1**(반복 `clientEventId` ack = 원래 본문 + 재시도 요청의 `requestId`, `relay-client.ts:505-515`)·**M2**(LRU는 `touchPersist` 성공 후에만 · seq 롤백 금지)·**M3**(UK-1② 블록 예약 `seqHigh` · chat-LRU 인메모리 · handoff-LRU 기존 영속 편승)·**L1**(Done when (a) 문구)·**L2**(B층 인메모리 섀도 집합). R1~R4 수용 · UK-1/2/3/5/6 resolved · UK-4 open(비차단). 스탬프 경계(`server.ts:205,381,386,431,522` · `room.ts:534`, RPC는 `server.ts:231-241`) 완결 확인. **Advisor: fable-advisor consulted: yes.**
@@ -24,6 +25,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R52** | **v0.34.0** | **closed (approved-with-fixes 2026-10-16 → M1·M2·M3·L1·L2·L3 반영 완료 · PLAN `approved`, no R52b)** | **`loom service` launchd/systemd 사용자 서비스 설치** (MINOR — 업그레이드 3단계 2부) — 게이트 = 새 MINOR + 신규 제품 표면 + 영속성·신뢰 경계(OS 서비스 등록 · 유닛 내용 토큰 0 · 서비스 stop의 워커 생존 `KillMode=process`). **M1**(재설치 멱등성 — 적재됨·실행 아님) 결정적 · 실 OS 등록·라이브 스모크는 별도 오너 승인 |
 | **R51** | **v0.33.0** | **closed (approved-with-fixes 2026-10-16 → M1·M2·M3·L1·L2·L3·L4 반영 완료 · PLAN `approved`, no R51b)** | **bridge 생명주기 보강** (MINOR — 업그레이드 3단계 1부) — 게이트 = 새 MINOR + 신뢰·내구성 경계 변경(bridge 프로세스 생명주기 상태기계 · 프로세스 간 락 · 종료 시 수용 손실 계급 공식화). **M2**(`process.exit`는 `bridge-main.ts`에만) 결정적 · 오너 "진행해"(2026-10-16) = 3단계 승인, 0.34.0 라이브 스모크는 별도 승인 |
 | **R50** | **v0.32.0** | **closed (approved-with-fixes 2026-10-16 → M1·M2·L1·L2·L3 반영 완료 · PLAN `approved`, no R50b)** | **Loom MCP 사전 점검** (MINOR — 업그레이드 2단계 2부 마무리) — 게이트 = 새 MINOR + 보안·신뢰 경계 변경(대화형 에이전트의 Loom 상태 쓰기에 정책 판정 계층 · 완료 판정 이월(D4) 공식화) |
 | **R49** | **v0.31.0** | **closed (approved-with-fixes 2026-10-15 → H1·M1~M5·L1~L4 반영 완료 · PLAN `approved`, no R49b)** | **스킬 materialize + `policy.json` v1 → CLI별 권한 번역** (MINOR — 업그레이드 2단계 2부) — 게이트 성립 = `WORKFLOW.md` §5.1(새 MINOR · 보안·신뢰 경계 변경). **H1**(deny 이중 형식 `Bash(p)`+`Bash(p *)` · UK-1 P2 deny 경로 차단)·**M1**(`mcp.isolate` 기본 true)·**M2**(deprecated allow 사용/충돌 시 기동 거부)·**M3**(살아 있는 pid kill 0 + 선점)·**M4**(가짜 CLI 엄격성 P2/P4 red)·**M5**(스크립트 정의)·**L1**~**L4** 반영. R1~R8 수용 · 범위 분할(MCP 사전 점검 → v0.32.0) 승인 |
@@ -140,6 +142,57 @@ author-close(Fable 사전 승인, no R41b) — verdict `pending-revision`의 M-1
 - **M-2 반영**: "conv 턴 delta화" 행에 슬라이스 메커니즘 단락(정규화 오프셋→원문 오프셋 인덱스 맵 동반 구축 → 마지막 출현 매치 끝의 원문 오프셋에서 원문 슬라이스, 정규화본 슬라이스 금지) + "0.23.5 프로브 동일 기법" 인용을 매칭 원리 한정으로 정정 · 테스트 ④에 슬라이스 원문 무결성 어서션 보강.
 - **L-1**: "32k 트리거와의 관계" 행 신설(임계 판정·패키징 입력 = 필터 후 full scrape·delta 미적용·앵커는 패키징 턴에도 갱신) + 테스트 ⑪ 신설. **L-2**: delta 적용 턴 상시 통계 note `delta: kept N/M chars` 명기 + Security ② 정정. **L-3**: 빈 delta note `delta empty (no new output)` 명기. **L-4**: "done_proposal 판정 입력" 행 신설(delta 텍스트 선두 기준 + 폴백 턴 현행 유지 — 권고안 채택). **L-5**: settle 비교 = `stripAnsi` 후 텍스트 기준 명기.
 - PLAN 헤더 Status/Fable-when·섹션 헤더·Approved by 갱신 → **`approved`** (no R31b, Fable 사전 승인 조건 충족).
+
+---
+
+## Review R52 — Plan v0.34.0 (`loom service` launchd/systemd 사용자 서비스 설치, MINOR)
+
+**검토 대상:** `docs/PLAN.md` §0.34.0(권위 고지 · D1~D8 · ② 인터페이스 정본 · install 흐름 1~9 · ③ doctor 행 · R1~R14 · 계급 1~13 · P1~P5 · UK-1~UK-5 · Done when (a)~(j)) + `docs/UNKNOWNS.md` §0.34.0 + 코드 대조(`0a20173`): `bridge-main.ts:52-55`(catch 한 곳) · `bridge-lock.ts:226-240`(`holderPid` = live→pid / 그 밖 null) · `headless-worker.ts:615-635`(`close()` = abandon만, 워커 kill 0 — SIGTERM은 `:1478`·`:1782` 타임아웃 경로뿐) · `process-group.ts:96-104`(`detached:true` + pgid 기록) · `session-store.ts:300`·`:408`(`envRelayToken()` 폴백) · `protocol/src/env.ts:67-73`(`LOOM_`/`FABLE_` 이중 읽기) · `bridge-spawn.ts:28`·`:68-75`.
+**검토자:** Fable 5.1 (fable-advisor). **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-10-16
+**결론:** **`approved-with-fixes`** — High 0 · Medium 3(M1~M3) · Low 3(L1~L3). 전부 PLAN 문안으로 닫힌다. **D1~D8 충실·완전** · 아키텍트 답 1~5 전부 타당하고 반영됨(5는 L2로 정밀화) · **R1~R14 수용**(R5→L1 · R10→L2). **no R52b**(아키텍트 PLAN diff 확인 후 `approved`).
+
+### 결정적 발견
+성패는 (1) 서비스 stop이 워커를 살리는가, (2) install이 "적재됨·실행 아님" 상태에서도 멱등인가. (1)은 코드가 뒷받침한다 — `close()`는 워커를 죽이지 않으므로 main에만 SIGTERM이면 워커는 산다. **(2)가 새는 곳이다(M1·M2):** 양보·drain·조절 재시도 중인 서비스는 "적재됨 + 실행 아님"인데 흐름 6은 bootout을 "실행 중"에만 걸어 바로 `bootstrap`으로 가고, 이미 적재된 label에 bootstrap은 실패한다(EALREADY) → `error` → exit 1. 올바른 유닛이 있는데도 재설치가 실패한다.
+
+### Checklist
+- [x] ① D3 exit 표 — PASS(`holderPid` 의미 실측 일치 · catch 한 곳 · R2)
+- [x] ② 결정적 위험 — PASS(L3로 보강 · 계급 8 과소 → M3)
+- [x] ③ 유닛 내용 · R3 · R5 — PASS(L1)
+- [ ] ④ 설치 가드·멱등성 — **FAIL → M1·M2** · exit 3 · R8 타당
+- [x] ⑤ 실 OS 무접촉 — PASS
+- [x] ⑥ doctor 예외(R12) — PASS(명시 예외 · 2초 · info 강등 · exit 불변)
+- [x] ⑦ 계급 1~13 — PASS(M3와 함께 · 11·12 수용)
+- [x] ⑧ R1~R14 — PASS(R5→L1 · R10→L2)
+- [x] ⑨ red = production 0줄 — PASS
+
+### Findings
+| ID | Sev | 결함 | 수정 |
+|---|---|---|---|
+| **R52-M1** | Med | install 흐름 6(`:131`)이 bootout을 **실행 중**에만 걸어 D5 락 문면 "bootout(**if loaded**)"과 어긋남 — 적재됨+실행 아님(양보·drain 뒤·조절 중)에서 9의 `bootstrap`이 EALREADY로 exit 1 | 6을 "**적재됨**(print 성공) + 내용 다름 → 진행 중 가드 → bootout" · "바이트 동일 + 적재됨 → 쓰기·bootout 0 → 실행 중이면 `already installed` exit 0, 아니면 `start` 경로(kickstart)" · (e)·P3 red에 "적재됨·실행 아님 재설치" 케이스 |
+| **R52-M2** | Med | bootout → 다시 쓰기 → bootstrap 사이 순서 보장 없음 — bootout이 옛 인스턴스 종료 전에 반환하면 bootstrap EALREADY(UK-1) | 6 뒤 "`print`가 not-found 될 때까지 ≤25초 폴(ExitTimeOut 20+5) → 그 뒤 쓰기·bootstrap · 초과 → exit 1, 옛 파일 무변경" · systemd `stop`은 동기이므로 생략 가능 명시 |
+| **R52-M3** | Med | 계급 8(`:181`)이 Linux 전용 — **macOS 로그아웃도 gui 로그인 세션 전체(setsid 워커 포함)를 죽이며 linger 동등물이 없다**(LaunchDaemons 범위 밖) | 계급 8 → "Linux linger 없음 / **macOS 로그아웃 공통**" · 회복 = 다음 로그인 기동 `recover()`(계급 3) · USER_GUIDE 서비스 절 |
+| **R52-L1** | Low | R5(`:159`) 문구가 `LOOM_RELAY_TOKEN`만 — `envRelayToken()`은 `FABLE_RELAY_TOKEN`도 읽음(`env.ts:67-68`) | 판정 = `!session.relayToken && envRelayToken()` · ② env 금지 행에 `FABLE_RELAY_TOKEN` |
+| **R52-L2** | Low | R10(`:164`) `no_domain`이 **코드 5/125 단독**으로도 성립 → 미실측 위에서 exit 3 "loads at next login"이 거짓 약속이 될 수 있음(답 5의 보수 분기와 어긋남) | `no_domain`/`no_bus`/`disabled`는 **stderr 패턴 일치 필수**, 코드 단독 → `error` exit 1 · UK-3 실측 뒤 완화 |
+| **R52-L3** | Low | P2 결정적 위험 테스트(`:208`)가 증명 범위를 말하지 않음 | 추가 단언: **워커 pgid ≠ bridge pgid**(이것이 AbandonProcessGroup·KillMode=process가 작동하는 전제) · SIGTERM 뒤 ≤10초 exit 0(SIGKILL 불요). 추정/실측 표에 "**증명함**: 유닛 argv/env만으로 뜬 bridge의 자체 stop 경로가 워커를 죽이지 않고 입양이 1회 — **증명 못함**: systemd cgroup 범위 kill·left-over 처리 · launchd pgroup/감사 세션 처리 · SIGKILL 경로(UK-1·UK-4)". P1에 darwin이면 `plutil -lint`(읽기 전용 · launchd 접촉 0)로 마커 주석 위치 수용 확인 |
+
+### Decision notes
+- **아키텍트 답 1~5** 타당. exit 3 = "성공도 실패도 아님"의 유일 코드(packages 내 기존 exit 3 없음) · `--force` uninstall 동일 가드 옳음(계급 1 동일 위험) · doctor subprocess는 R12에 예외로 명시됨 · status exit 0 · 미분류 → exit 1(L2로 R10을 그 원칙에 맞춤).
+- **R8** 타당 — 상대 심링크 `../x.service`는 배포 패키지가 쓰는 형식 · `UnitFileState`는 파일시스템을 읽으므로 doctor `enabled` 판정 성립 · `enable` 동등성은 UK-4로 바르게 남김.
+- **R5** 타당(L1만) — bridge는 `envRelayUrl()`을 읽지 않으므로 URL 쪽 동일 문제 없음.
+- **결정을 가르는 리스크:** M1(올바른 유닛이 있는데 재설치가 실패하는 멱등성 구멍).
+- **UK 판정:** UK-1~UK-5 비차단 유지.
+- **수정 범위:** `docs/PLAN.md` §0.34.0(`:131` · `:134` · `:159` · `:164` · `:181` · `:208` · `:238-239` · (d)(e)) · `docs/plan_review.md` · `docs/UNKNOWNS.md` 게이트 블록. 제품 코드 0.
+
+### 반영 확인 (2026-10-16, 아키텍트)
+- **M1** — install 흐름 6(적재됨 + 내용 다름 → 가드 → bootout · 바이트 동일 + 적재·실행 아님 → `kickstart`) · 흐름 9 · ⑦ P3 · (e)("적재됨·실행 아님 재설치").
+- **M2** — 흐름 6(c)(bootout 뒤 `print` not-found ≤25초 폴 · 초과 exit 1 + 옛 파일 무변경 · systemd `stop` 동기) · P3 · (e).
+- **M3** — ⑤ 계급 8(Linux linger 없음 / macOS 로그아웃 공통 · 회복 = 다음 로그인 `recover()` · USER_GUIDE) · Security/trust.
+- **L1** — R5(`!session.relayToken && envRelayToken()`) · 흐름 2 · ② env 금지 행 `FABLE_RELAY_TOKEN` · P3 · (e). **L2** — R10(stderr 패턴 필수 · 코드 단독 `error` exit 1) · 흐름 9 · P1 · P3 · (e). **L3** — P2(워커 pgid ≠ bridge pgid · ≤10초 exit 0) · 추정/실측 표 "증명함/증명 못함" 행 · P1 darwin `plutil -lint` · (d).
+- 아키텍트 답 1~5 — exit 3 · uninstall `--force` · doctor subprocess ≤2초 → `info unknown` · exit 불변(R12) · `service status` exit 0(사용 오류 제외) · 미분류 → exit 1 — PLAN 문안 확인.
+- `UNKNOWNS.md` — UK-1~UK-5 비차단 · Current decision 갱신.
+- 재리뷰 면제 조건 충족 → PLAN **`approved`**(no R52b).
+- Advisor: fable-advisor consulted: yes.
 
 ---
 

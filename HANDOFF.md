@@ -5,31 +5,31 @@
 
 ## One-line resume
 
-> v0.33.0 **implemented** · 3단계 1부 bridge lifecycle · **next = 0.34.0 `loom service`** (PLAN+R52) · topology full
+> v0.34.0 **approved** (R52) · 3단계 2부 `loom service` · **next = P1** generators (red first) · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.33.0 `implemented`** · P5 docs/smoke in | `docs/PLAN.md` |
+| Product | **v0.34.0 `approved`** (R52) · next P1 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.33.0 implemented · next = 0.34.0 `loom service` (3단계 2부)
+### v0.34.0 approved (R52) · next = P1 service-unit generators
 
-**Goal:** 3단계 1부 done — bridge lifecycle (profile lock · status file + heartbeat · SIGTERM → exit 0 · `loom bridge drain` · doctor Bridge section · headless skips herdr). Authority `docs/PLAN.md` §0.33.0 · impl-notes §0.33.0 · `USER_GUIDE.md` §18 · smoke `BRIDGE-LIFECYCLE-SMOKE-0330.md`.
+**Goal:** 3단계 2부 — `loom service install|uninstall|start|status` (launchd/systemd user units · D3 `LOOM_SERVICE=1` lock-busy yield exit 0 · `KillMode=process` · doctor Service section). Authority `docs/PLAN.md` §0.34.0 (D1–D8 · R1–R14 · classes 1–13 · UK-1–5) · `docs/plan_review.md` R52 (M1–M3 · L1–L3 in PLAN). v0.33.0 shipped `0a20173`.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:bridge-lifecycle`
-2. 0.34.0 `loom service` (3단계 2부): PLAN MINOR + R52 before code · live launchd/systemd registration needs a separate owner yes
+2. P1 red (test files only — generators, D8 names, `KillMode=process` pin, darwin `plutil -lint`) → green → Opus 5.5 xhigh verify → P2…P5 (PLAN ⑦) · no real launchctl/systemctl
 3. Carry: Linux `ps -o lstart=` unverified (UK-2) · grok drain `--timeout 1200` (UK-3) · codex MCP approval · `propose` shell bypass · L-2 advisory
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** 0.34.0 PLAN drafted and R52 gated (owner go on live OS smoke separate).
+**Done when (this handoff):** P1 red→green committed and independently verified.
 
 **Must not:** run 0.34.0 live launchd/systemd registration without explicit owner yes · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -37,7 +37,8 @@
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.33.0 | **implemented** | 3단계 1부 · smoke ①~④ PASS | `docs/PLAN.md` |
+| v0.34.0 | **approved** (R52) | 3단계 2부 · next P1 | `docs/PLAN.md` |
+| v0.33.0 | **shipped** `0a20173` | 3단계 1부 · smoke ①~④ PASS | `docs/PLAN.md` |
 | v0.32.0 | **shipped** `9567f87` | step 2 done | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
@@ -49,7 +50,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| 0.34.0 live OS smoke | 3단계 go = "진행해" 2026-10-16 · real launchd/systemd write needs separate yes · 7단계 last — 재질문 금지 | not run | PLAN §0.33.0 |
+| 0.34.0 live OS smoke | 3단계 go = "진행해" 2026-10-16 · real launchd/systemd write needs separate yes · 7단계 last — 재질문 금지 | not run | PLAN §0.34.0 P5 |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
