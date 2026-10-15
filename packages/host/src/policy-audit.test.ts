@@ -444,6 +444,102 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     expect(all).toContain("L-LINE"); // D1 (just rotated by R1) kept
   });
 
+  test("round 6 (codex): live idle 120 s, W opens, four quick rotations, W writes → no record lost", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    let clock = NOW;
+    policyAuditTestHooks.now = () => clock;
+    const roomDir = roomDirOf();
+    const path = auditPath();
+    appendPolicyAudit(dir, ROOM, rec());
+    writeFileSync(path, "L-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 7)));
+    const idle = new Date(NOW - 120_000);
+    utimesSync(path, idle, idle);
+    const wFd = openSync(path, "a"); // W opens L just before the rotations, then pauses
+    try {
+      for (let r = 1; r <= 4; r++) {
+        if (r > 1) appendFileSync(path, "F\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 2)));
+        expect(appendPolicyAudit(dir, ROOM, rec({ cardId: `R${r}` }))).toBe(true);
+        clock += 1_000;
+      }
+      writeSync(wFd, `${JSON.stringify(rec({ cardId: "W" }))}\n`);
+    } finally {
+      closeSync(wFd);
+    }
+    const all = listPolicyAuditGenerations(roomDir)
+      .map((n) => readFileSync(join(roomDir, n), "utf8"))
+      .join("");
+    expect(all.includes("L-LINE")).toBe(true);
+    for (const id of ["R1", "R2", "R3", "R4", "W"]) {
+      expect({ id, present: all.includes(`"${id}"`) }).toEqual({ id, present: true });
+    }
+  });
+
+  test("round 6: old mtime but a recent rotation name → kept", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const recent = policyAuditGenerationName(new Date(NOW - 10_000), 9, "rrrrrr");
+    const newer = [3, 2, 1].map((s) =>
+      policyAuditGenerationName(new Date(NOW - s * 1000), 9, "nnnnnn"),
+    );
+    for (const n of [recent, ...newer]) {
+      writeFileSync(join(roomDir, n), "x\n");
+      const t = new Date(NOW - 3_600_000);
+      utimesSync(join(roomDir, n), t, t);
+    }
+    writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
+    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
+    expect(readdirSync(roomDir)).toContain(recent);
+  });
+
+  test("round 6: old mtime and an old rotation name → pruned", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const old = policyAuditGenerationName(new Date(NOW - 120_000), 9, "oooooo");
+    const newer = [3, 2, 1].map((s) =>
+      policyAuditGenerationName(new Date(NOW - s * 1000), 9, "nnnnnn"),
+    );
+    for (const n of [old, ...newer]) {
+      writeFileSync(join(roomDir, n), "x\n");
+      const t = new Date(NOW - 3_600_000);
+      utimesSync(join(roomDir, n), t, t);
+    }
+    writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
+    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
+    expect(readdirSync(roomDir)).not.toContain(old);
+  });
+
+  test("round 6: a generation-shaped name whose timestamp does not parse is never pruned", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const bad = [
+      "policy-audit.20250099T250000000Z-0000000009-uuuuuu.jsonl", // month 00, day 99, hour 25
+      "policy-audit.20250230T000000000Z-0000000009-vvvvvv.jsonl", // Feb 30
+      "policy-audit.20250101T006000000Z-0000000009-wwwwww.jsonl", // minute 60
+    ];
+    const older = policyAuditGenerationName(new Date("2025-01-02T00:00:00.000Z"), 9, "pppppp");
+    for (const n of [...bad, older]) {
+      writeFileSync(join(roomDir, n), "x\n");
+      const t = new Date(NOW - 3_600_000);
+      utimesSync(join(roomDir, n), t, t);
+    }
+    // Newer names so the bad ones are beyond the newest 3 by name.
+    for (const s of [3, 2, 1]) {
+      const n = policyAuditGenerationName(new Date(NOW - s * 1000), 9, "nnnnnn");
+      writeFileSync(join(roomDir, n), "x\n");
+    }
+    writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
+    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
+    const left = readdirSync(roomDir);
+    for (const n of bad) expect(left).toContain(n);
+    expect(left).not.toContain(older); // a parseable old one in the same position is pruned
+  });
+
   test("no rotation → no pruning (old generations untouched)", () => {
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });

@@ -464,15 +464,52 @@ const OPEN_LIVE =
   constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 
 /**
- * Prune rule (P2 verify round 5 — replaces rounds 3–4). A rotated generation is
+ * Rotation time (ms) encoded in a generation name, parsed strictly (every component
+ * must round-trip through Date.UTC). null = unparsable → the generation is never pruned.
+ */
+export function policyAuditGenerationTime(name: string): number | null {
+  const m =
+    /^policy-audit\.(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z-\d{10}-[0-9a-z]{6}\.jsonl$/.exec(
+      name,
+    );
+  if (!m) return null;
+  const [y, mo, d, h, mi, sec, ms] = m.slice(1).map(Number);
+  const t = Date.UTC(y, mo - 1, d, h, mi, sec, ms);
+  const back = new Date(t);
+  if (
+    !Number.isFinite(t) ||
+    back.getUTCFullYear() !== y ||
+    back.getUTCMonth() !== mo - 1 ||
+    back.getUTCDate() !== d ||
+    back.getUTCHours() !== h ||
+    back.getUTCMinutes() !== mi ||
+    back.getUTCSeconds() !== sec ||
+    back.getUTCMilliseconds() !== ms
+  ) {
+    return null;
+  }
+  return t;
+}
+
+function auditNow(): number {
+  return policyAuditTestHooks.now?.() ?? Date.now();
+}
+
+/**
+ * Prune rule (P2 verify rounds 5–6 — replaces rounds 3–4). A rotated generation is
  * unlinked only if ALL hold: it is not `fresh` (this call's own rename); it is not
- * among the newest 3 by NAME (rotation timestamp); and its mtime, re-stat'ed right
- * before the unlink, is more than POLICY_AUDIT_PRUNE_GRACE_MS (60 s) old. Recently
+ * among the newest 3 by NAME (rotation timestamp); its name's rotation time parses
+ * (unparsable → never pruned); and max(mtime re-stat'ed right before the unlink,
+ * rotation time) is more than POLICY_AUDIT_PRUNE_GRACE_MS (60 s) before now. The
+ * rotation time matters because rename keeps the inode's old mtime: an idle live file
+ * rotated just now still looks old by mtime, while a writer that opened it before the
+ * rotation may still be about to write. The rotation time is never earlier than any
+ * writer's open of that inode, so only a pause > 60 s can lose a record. Recently
  * written or recently rotated generations are never deleted, whatever their rank, so
  * a stale snapshot held by a slow pruner cannot remove live data; no slot is reserved
  * for a `fresh` that has since vanished — candidates come from the actual listing.
- * Disk bound per room: live (≤ 1 MiB) + 3 newest-by-name + every generation whose
- * last write was within the last 60 s; each rotation needs ~1 MiB of audit writes, so
+ * Disk bound per room: live (≤ 1 MiB) + 3 newest-by-name + every generation written
+ * or rotated within the last 60 s (+ any unparsable-name files, which Loom never creates); each rotation needs ~1 MiB of audit writes, so
  * the excess over ~4 MiB grows with the write rate (≈ MiB written in the last 60 s).
  * ENOENT (a concurrent pruner) is fine.
  */
@@ -481,10 +518,12 @@ function pruneGenerations(roomDir: string, fresh: string): void {
   const newestByName = new Set(rotated.slice(-POLICY_AUDIT_KEEP_GENERATIONS));
   for (const name of rotated) {
     if (name === fresh || newestByName.has(name)) continue;
+    const rotatedAt = policyAuditGenerationTime(name);
+    if (rotatedAt === null) continue;
     const file = join(roomDir, name);
     try {
-      const now = policyAuditTestHooks.now?.() ?? Date.now();
-      if (now - lstatSync(file).mtimeMs <= POLICY_AUDIT_PRUNE_GRACE_MS) continue;
+      const lastTouch = Math.max(lstatSync(file).mtimeMs, rotatedAt);
+      if (auditNow() - lastTouch <= POLICY_AUDIT_PRUNE_GRACE_MS) continue;
       unlinkSync(file);
     } catch (e) {
       if (errCode(e) !== "ENOENT") throw e;
@@ -554,7 +593,7 @@ export function appendPolicyAudit(
     if (size > 0 && size + lineBytes > POLICY_AUDIT_MAX_BYTES) {
       const gen =
         policyAuditTestHooks.generationName?.() ??
-        policyAuditGenerationName(new Date(), process.pid, randomBase36());
+        policyAuditGenerationName(new Date(auditNow()), process.pid, randomBase36());
       policyAuditTestHooks.beforeRename?.();
       let rotated = false;
       try {
@@ -569,9 +608,9 @@ export function appendPolicyAudit(
       }
     }
 
-    // Accepted limit (P2 verify round 5): only a writer or rotator paused for longer than
-    // the 60 s prune grace can lose records (e.g. it appends to, or its generation is,
-    // an inode another writer pruned once its mtime aged past the grace). No lock
+    // Accepted limit (P2 verify rounds 5–6): only a writer or rotator paused for longer
+    // than the 60 s prune grace can lose records (e.g. it appends to, or its generation
+    // is, an inode another writer pruned once max(mtime, rotation time) aged past it). No lock
     // protocol is added for it (D8 amended: lock-free).
     const fd = openSync(path, OPEN_LIVE, 0o600);
     let written = false;
