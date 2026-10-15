@@ -87,10 +87,12 @@ import {
   loadBridgeConfig,
   isAuthorizedDispatcher,
   resolveAgentArgv,
+  assertHeadlessCommandArgv,
   headlessAgentCommands,
   workerConfigFromBridge,
   type BridgeConfig,
 } from "./bridge-config";
+import { type AgentKind } from "./agent-argv";
 import { HeadlessDispatcher } from "./headless-worker";
 import {
   writeBridgeMeta,
@@ -562,6 +564,30 @@ function isHeadlessAgentKind(
   return kind === "claude" || kind === "codex" || kind === "grok";
 }
 
+const HEADLESS_AGENT_KINDS = ["claude", "codex", "grok"] as const;
+
+/** Override argv is `[bin, ...args]`. Dangerous flags fail closed before spawn. */
+function headlessCommandsFromOverride(
+  override: Record<AgentKind, string[]>,
+): Record<AgentKind, { bin: string; args: string[] }> {
+  const out = {} as Record<AgentKind, { bin: string; args: string[] }>;
+  for (const agent of HEADLESS_AGENT_KINDS) {
+    const argv = override[agent];
+    if (
+      !Array.isArray(argv) ||
+      argv.length === 0 ||
+      argv.some((part) => typeof part !== "string" || part.length === 0)
+    ) {
+      throw new Error(
+        `headlessAgentCommandOverride.${agent} must be a non-empty string[]`,
+      );
+    }
+    assertHeadlessCommandArgv(argv);
+    out[agent] = { bin: argv[0]!, args: argv.slice(1) };
+  }
+  return out;
+}
+
 /** Stable log/counter key for a result handoff whose delivery was not acked. */
 export const RESULT_DELIVERY_UNCONFIRMED = "result_delivery_unconfirmed";
 
@@ -675,6 +701,12 @@ export async function startBridgeRuntime(opts?: {
    * Test injection — production default 300_000. Real timers only.
    */
   stillRunningMaxMs?: number;
+  /**
+   * Test injection. Replaces the config-file agent path for the argv the
+   * worker execs. Not read from the config file. Still passes the
+   * agent-argv dangerous-flag scan.
+   */
+  headlessAgentCommandOverride?: Record<AgentKind, string[]>;
 }): Promise<BridgeRuntime> {
   let session = opts?.session ?? loadSession();
   if (!session) {
@@ -688,7 +720,10 @@ export async function startBridgeRuntime(opts?: {
   // Fail closed before herdr or the room join. Pane configs skip this.
   const headlessConfig =
     cfg.worker?.backend === "headless" ? workerConfigFromBridge(cfg) : null;
-  const headlessCommands = headlessConfig ? headlessAgentCommands(cfg) : null;
+  let headlessCommands = headlessConfig ? headlessAgentCommands(cfg) : null;
+  if (headlessCommands && opts?.headlessAgentCommandOverride) {
+    headlessCommands = headlessCommandsFromOverride(opts.headlessAgentCommandOverride);
+  }
   const submitVerify = opts?.submitVerify ?? {
     waitMs: SUBMIT_VERIFY_MS,
     retries: SUBMIT_RETRIES,
@@ -890,7 +925,7 @@ export async function startBridgeRuntime(opts?: {
           },
         },
       });
-      await headlessDispatcher.recover();
+      await headlessDispatcher.registerRecovery();
     } catch (e) {
       try {
         await headlessDispatcher?.close();

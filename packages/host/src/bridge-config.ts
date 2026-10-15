@@ -3,7 +3,7 @@
  * M-1: authorizedDispatchers allowlist (default deny when empty/missing).
  */
 import { existsSync, mkdirSync, chmodSync, writeFileSync, readFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import { loomDir, ensureFableDir } from "./session-store";
 import {
   DEFAULT_HERDR_SOCKET,
@@ -82,16 +82,19 @@ export type BridgeWorkerConfig = {
   maxConcurrent?: Partial<Record<AgentKind, number>>;
   timeoutMs?: number;
   permissions?: WorkerPermissions;
-  /** Argv prefix per agent. `[0]` is bin, the rest are args. */
-  agentBin?: Partial<Record<AgentKind, string[]>>;
+  /**
+   * One executable path per agent. `basename` of that path (no realpath)
+   * must equal the agent kind. Arguments, shells, and other names are rejected.
+   */
+  agentBin?: Partial<Record<AgentKind, string>>;
 };
 
 const HEADLESS_AGENTS: readonly AgentKind[] = ["claude", "codex", "grok"];
 const DEFAULT_TIMEOUT_MS = 7_200_000;
-const DEFAULT_AGENT_BIN: Record<AgentKind, string[]> = {
-  claude: ["claude"],
-  codex: ["codex"],
-  grok: ["grok"],
+const DEFAULT_AGENT_BIN: Record<AgentKind, string> = {
+  claude: "claude",
+  codex: "codex",
+  grok: "grok",
 };
 
 const DEFAULT_AGENT_ARGV: BridgeConfig["agentArgv"] = {
@@ -316,33 +319,53 @@ function parseAllowedRoots(raw: unknown): string[] {
   return roots;
 }
 
-function parseAgentBin(raw: unknown): Record<AgentKind, string[]> {
-  if (raw === undefined) {
-    return {
-      claude: [...DEFAULT_AGENT_BIN.claude],
-      codex: [...DEFAULT_AGENT_BIN.codex],
-      grok: [...DEFAULT_AGENT_BIN.grok],
-    };
+/**
+ * Defence in depth for the argv the worker actually execs, including a
+ * code-level command override. Uses agent-argv's dangerous-token walk.
+ * A fake CLI path and `--fake-kind` pass; bypass / dangerously-* / --always-approve do not.
+ */
+export function assertHeadlessCommandArgv(argv: readonly string[]): void {
+  validateWorkerConfig({
+    backend: "headless",
+    cwd: "/",
+    allowedRoots: ["/"],
+    maxConcurrent: { claude: 1, codex: 1, grok: 1 },
+    timeoutMs: 1,
+    permissions: {
+      codex: {
+        sandbox: "workspace-write",
+        approvalPolicy: "never",
+        extraArgs: [...argv],
+      },
+    },
+  });
+}
+
+function parseAgentBinPath(agent: AgentKind, raw: unknown): string {
+  if (typeof raw !== "string" || raw.length === 0) {
+    throw new Error(
+      `worker.agentBin.${agent} must be a single executable path`,
+    );
   }
+  if (basename(raw) !== agent) {
+    throw new Error(`worker.agentBin.${agent} basename must be ${agent}`);
+  }
+  assertHeadlessCommandArgv([raw]);
+  return raw;
+}
+
+function parseAgentBin(raw: unknown): Record<AgentKind, string> {
+  if (raw === undefined) return { ...DEFAULT_AGENT_BIN };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("worker.agentBin must be an object");
   }
   const src = raw as Record<string, unknown>;
-  const out = {} as Record<AgentKind, string[]>;
+  const out = {} as Record<AgentKind, string>;
   for (const agent of HEADLESS_AGENTS) {
-    if (src[agent] === undefined) {
-      out[agent] = [...DEFAULT_AGENT_BIN[agent]];
-      continue;
-    }
-    const argv = src[agent];
-    if (
-      !Array.isArray(argv) ||
-      argv.length === 0 ||
-      argv.some((part) => typeof part !== "string" || part.length === 0)
-    ) {
-      throw new Error(`worker.agentBin.${agent} must be a non-empty string[]`);
-    }
-    out[agent] = [...argv];
+    out[agent] =
+      src[agent] === undefined
+        ? DEFAULT_AGENT_BIN[agent]
+        : parseAgentBinPath(agent, src[agent]);
   }
   return out;
 }
@@ -389,9 +412,9 @@ export function headlessAgentCommands(
   }
   const bins = parseAgentBin(worker.agentBin);
   return {
-    claude: { bin: bins.claude[0]!, args: bins.claude.slice(1) },
-    codex: { bin: bins.codex[0]!, args: bins.codex.slice(1) },
-    grok: { bin: bins.grok[0]!, args: bins.grok.slice(1) },
+    claude: { bin: bins.claude, args: [] },
+    codex: { bin: bins.codex, args: [] },
+    grok: { bin: bins.grok, args: [] },
   };
 }
 

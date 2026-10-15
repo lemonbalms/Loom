@@ -474,12 +474,17 @@ export class HeadlessDispatcher {
     return { running, queueDepth };
   }
 
+  /** In-flight (b). Cleared when that wave settles so a later recover() can scan again. */
+  private recoveryInFlight: Promise<void> | null = null;
+
   /**
-   * Startup hook (D6). Scans unfinished and unsent session records,
-   * then adopts, resumes, retries delivery, or gives up. Does not kill
-   * a live worker. Not invoked from the constructor — bridge startup calls it.
+   * (a) Scan unfinished records and register byCard ownership. Each
+   * dispatchOwned call registers the owner before its first await, and that
+   * call decides adopt / resume / give-up. (b) Monitoring and result delivery
+   * stay on the returned promise.
    */
-  async recover(): Promise<void> {
+  private ensureRecovery(): Promise<void> {
+    if (this.recoveryInFlight) return this.recoveryInFlight;
     const pending: Promise<void>[] = [];
     for (const record of listCardSessions(this.deps.loomDir, this.deps.localPeerId)) {
       if (record.resultSent) continue;
@@ -500,7 +505,26 @@ export class HeadlessDispatcher {
         }),
       );
     }
-    await Promise.all(pending);
+    const done = Promise.all(pending).then(() => undefined);
+    this.recoveryInFlight = done;
+    void done.finally(() => {
+      if (this.recoveryInFlight === done) this.recoveryInFlight = null;
+    });
+    return done;
+  }
+
+  /**
+   * Startup hook (D6), registration only. Ownership is visible to a later
+   * inbox drain before this resolves. Does not wait for a live worker.
+   * close() still abandons that monitoring without signalling the worker.
+   */
+  async registerRecovery(): Promise<void> {
+    void this.ensureRecovery();
+  }
+
+  /** registerRecovery plus awaiting monitoring and result delivery. */
+  async recover(): Promise<void> {
+    await this.ensureRecovery();
   }
 
   /** Does not kill workers. In-flight runs relinquish the result to a later adopt. */

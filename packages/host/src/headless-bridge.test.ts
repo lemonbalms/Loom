@@ -335,11 +335,6 @@ describe("headless bridge runtime (v0.30.0 P6a)", () => {
         allowedRoots: [cwd],
         timeoutMs: 30_000,
         permissions: defaultWorkerPermissions(),
-        agentBin: {
-          claude: ["bun", FAKE, "--fake-kind", "claude"],
-          codex: ["bun", FAKE, "--fake-kind", "codex"],
-          grok: ["bun", FAKE, "--fake-kind", "grok"],
-        },
       },
     };
     bridge = await startBridgeRuntime({
@@ -348,6 +343,11 @@ describe("headless bridge runtime (v0.30.0 P6a)", () => {
       config: cfg,
       herdr: new HerdrClient({ socketPath: herdrSock }),
       submitVerify: { waitMs: 50, retries: 0 },
+      headlessAgentCommandOverride: {
+        claude: ["bun", FAKE, "--fake-kind", "claude"],
+        codex: ["bun", FAKE, "--fake-kind", "codex"],
+        grok: ["bun", FAKE, "--fake-kind", "grok"],
+      },
     });
   });
 
