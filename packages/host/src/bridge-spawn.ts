@@ -3,7 +3,7 @@
  * PLAN 0.23.4: stderr → finite log file under loomDir()/bridge/.
  */
 import { spawn } from "bun";
-import { existsSync, mkdirSync, openSync, closeSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, closeSync, chmodSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -38,6 +38,32 @@ function bridgeMainPath(): string {
   const fromCwd = join(process.cwd(), "packages/host/src/bridge-main.ts");
   if (existsSync(fromCwd)) return fromCwd;
   throw new Error("Cannot find bridge-main.ts");
+}
+
+/** PLAN 0.33.0 D2: outer bound on the bridge's graceful `stop()` (signal or RPC `stop`). */
+export const STOP_BOUND_MS = 10_000;
+
+/**
+ * PLAN 0.33.0 R1 / R51-L3: how long `loom bridge stop` waits for the pid to exit before
+ * SIGTERM (= second signal → immediate exit). Only an ok RPC `stop` reply earns the full
+ * bound + 2 s; an unreachable / non-ok bridge keeps today's 3 s.
+ */
+export function bridgeStopWaitMs(rpcOk: boolean): number {
+  return rpcOk ? STOP_BOUND_MS + 2_000 : 3_000;
+}
+
+/** PLAN 0.33.0 R7: last non-empty line of the bridge stderr log (capped), or null. */
+function lastLogLine(path: string): string | null {
+  try {
+    const lines = readFileSync(path, "utf8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const last = lines[lines.length - 1];
+    return last ? last.slice(0, 400) : null;
+  } catch {
+    return null;
+  }
 }
 
 export type BridgeStartResult =
@@ -119,9 +145,12 @@ export async function startBridgeProcess(): Promise<BridgeStartResult> {
       }
     }
     if (proc.exitCode !== null && proc.exitCode !== undefined) {
+      const last = stderrFd !== undefined ? lastLogLine(stderrPath) : null;
       return {
         ok: false,
-        error: `bridge exited early (code ${proc.exitCode}). herdr up? session active? authorizedDispatchers set?`,
+        error: `bridge exited early (code ${proc.exitCode}). herdr up? session active? authorizedDispatchers set?${
+          last ? ` — last log: ${last}` : ""
+        }`,
       };
     }
   }
@@ -138,8 +167,9 @@ export async function stopBridgeProcess(): Promise<{
     return { ok: true, message: "no bridge running" };
   }
 
+  let rpcOk = false;
   try {
-    await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+    const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${meta.token}`,
@@ -148,11 +178,15 @@ export async function stopBridgeProcess(): Promise<{
       body: JSON.stringify({ op: "stop" }),
       signal: AbortSignal.timeout(2000),
     });
+    if (res.ok) {
+      const body = (await res.json().catch(() => null)) as { ok?: unknown } | null;
+      rpcOk = body?.ok === true;
+    }
   } catch {
     /* */
   }
 
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + bridgeStopWaitMs(rpcOk);
   while (Date.now() < deadline && isPidAlive(meta.pid)) {
     await Bun.sleep(50);
   }

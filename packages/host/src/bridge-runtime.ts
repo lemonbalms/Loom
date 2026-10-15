@@ -2,6 +2,7 @@
  * Bridge runtime: herdr ping → room join → dispatch claim → agent → [DONE].
  * Binding M-1 (dispatcher allowlist) · M-2 (submit separation).
  */
+import { join } from "node:path";
 import type { Envelope, HandoffPayload, InboxEntry } from "@loom/protocol";
 import {
   CARD_DISPATCH_LABEL,
@@ -99,6 +100,15 @@ import {
 } from "./bridge-meta";
 import { timingSafeTokenEqual } from "@loom/protocol";
 import { getActiveProfile } from "./session-store";
+import { acquireBridgeLock, type BridgeLockHandle } from "./bridge-lock";
+import {
+  createBridgeStatusWriter,
+  type BridgeInFlight,
+  type BridgeState,
+  type BridgeStatusPatch,
+  type BridgeStatusWriter,
+} from "./bridge-status";
+import { STOP_BOUND_MS } from "./bridge-spawn";
 import {
   appendHookSettingsArgv,
   appendHookTelemetry,
@@ -115,7 +125,91 @@ export { classifyAck } from "./card-result-core";
 
 export type BridgeRuntime = {
   meta: BridgeMeta;
+  /** Same path as requestStop("api:stop"). Resolves once `stopped` is recorded. */
   stop: () => Promise<void>;
+  /**
+   * PLAN 0.33.0 D2 / R1: the one stop path shared by signals (`signal:<NAME>`) and RPC
+   * `stop` (`rpc:stop`). Idempotent — later calls return the first stop's promise.
+   */
+  requestStop: (reason: string) => Promise<void>;
+  /** Resolves after the synchronous stop tail ran and `stopped` was recorded (R51-M2). */
+  stopped: Promise<void>;
+  /** Current lifecycle state (null only if the status writer refused every transition). */
+  state: () => BridgeState | null;
+};
+
+/**
+ * CLI `VERSION` of the bridge build (status file `version`, lock `owner.json` `version`).
+ * Host cannot import the CLI package; a host test pins this to `packages/cli/src/index.ts`.
+ */
+export const BRIDGE_VERSION = "0.32.0";
+/** PLAN 0.33.0 R2 / R51-M3: headless close() bound inside the outer STOP_BOUND_MS. */
+export const HEADLESS_CLOSE_BOUND_MS = 8_000;
+/** `lastError` recorded when the outer stop bound abandons the async teardown. */
+export const STOP_BOUND_EXCEEDED = "stop_bound_exceeded";
+const DEFAULT_BRIDGE_MAIN_PATH = join(import.meta.dir, "bridge-main.ts");
+
+/** Resolve "done" or "timeout" — never rejects. The timer is not unref'd on purpose. */
+async function raceBound(work: Promise<unknown>, ms: number): Promise<"done" | "timeout"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work.then(
+        () => "done" as const,
+        () => "done" as const,
+      ),
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Lock + status file owned by one bridge process (PLAN 0.33.0 D3 · D5). */
+type BridgeLifecycle = {
+  lock: BridgeLockHandle;
+  status: BridgeStatusWriter;
+  setState: (to: BridgeState, reason?: string, patch?: BridgeStatusPatch) => boolean;
+};
+
+export type StartBridgeRuntimeOptions = {
+  session?: FableSession;
+  profile?: string;
+  port?: number;
+  /** Test injection */
+  herdr?: HerdrClient;
+  config?: BridgeConfig;
+  /** M-2 submit verify tuning (test injection); defaults to production values. */
+  submitVerify?: { waitMs: number; retries: number };
+  /**
+   * PLAN 0.23.6 settle re-read delay (ms) between pane reads.
+   * Test injection — production default 250. Real timers only (no fake-timer).
+   */
+  settleMs?: number;
+  /**
+   * PLAN 0.23.7 still-running deferral poll interval (ms).
+   * Test injection — production default 10_000. Real timers only.
+   */
+  stillRunningPollMs?: number;
+  /**
+   * PLAN 0.23.7 still-running deferral hard cap (ms).
+   * Test injection — production default 300_000. Real timers only.
+   */
+  stillRunningMaxMs?: number;
+  /**
+   * Test injection. Replaces the config-file agent path for the argv the
+   * worker execs. Not read from the config file. Still passes the
+   * agent-argv dangerous-flag scan.
+   */
+  headlessAgentCommandOverride?: Record<AgentKind, string[]>;
+  /** PLAN 0.33.0 R2: outer stop bound. Test injection — production `STOP_BOUND_MS`. */
+  stopBoundMs?: number;
+  /** Test injection: awaited first inside the bounded async teardown (simulates a slow close). */
+  beforeStopTeardown?: () => Promise<void>;
+  /** Absolute path of the running `bridge-main.ts` (status `srcPath`). */
+  srcPath?: string;
 };
 
 /**
@@ -652,38 +746,53 @@ function hasDispatchLabel(h: HandoffPayload): boolean {
   return Boolean(h.attachments?.some((a) => a.kind === "text" && a.label === CARD_DISPATCH_LABEL));
 }
 
-export async function startBridgeRuntime(opts?: {
-  session?: FableSession;
-  profile?: string;
-  port?: number;
-  /** Test injection */
-  herdr?: HerdrClient;
-  config?: BridgeConfig;
-  /** M-2 submit verify tuning (test injection); defaults to production values. */
-  submitVerify?: { waitMs: number; retries: number };
-  /**
-   * PLAN 0.23.6 settle re-read delay (ms) between pane reads.
-   * Test injection — production default 250. Real timers only (no fake-timer).
-   */
-  settleMs?: number;
-  /**
-   * PLAN 0.23.7 still-running deferral poll interval (ms).
-   * Test injection — production default 10_000. Real timers only.
-   */
-  stillRunningPollMs?: number;
-  /**
-   * PLAN 0.23.7 still-running deferral hard cap (ms).
-   * Test injection — production default 300_000. Real timers only.
-   */
-  stillRunningMaxMs?: number;
-  /**
-   * Test injection. Replaces the config-file agent path for the argv the
-   * worker execs. Not read from the config file. Still passes the
-   * agent-argv dangerous-flag scan.
-   */
-  headlessAgentCommandOverride?: Record<AgentKind, string[]>;
-}): Promise<BridgeRuntime> {
-  let session = opts?.session ?? loadSession();
+/**
+ * PLAN 0.33.0: resolve session + config, take the per-profile lock (D3 — before any herdr
+ * connect or relay join), record `starting`, then start. A startup failure after the lock
+ * records `stopped` + `lastError` and releases the lock before rethrowing (R10). A lock
+ * refusal (`BridgeLockBusyError`) writes nothing — the status file is the holder's.
+ */
+export async function startBridgeRuntime(opts?: StartBridgeRuntimeOptions): Promise<BridgeRuntime> {
+  const session = opts?.session ?? loadSession();
+  if (!session) {
+    throw new Error("No session. Join a room first, then: loom bridge start");
+  }
+  const profile = opts?.profile ?? getActiveProfile() ?? session.displayName ?? "default";
+  const config = opts?.config ?? loadBridgeConfig(profile);
+  const lock = acquireBridgeLock({ profile, version: BRIDGE_VERSION });
+  const status = createBridgeStatusWriter({
+    profile,
+    version: BRIDGE_VERSION,
+    srcPath: opts?.srcPath ?? DEFAULT_BRIDGE_MAIN_PATH,
+  });
+  const setState = (to: BridgeState, reason?: string, patch?: BridgeStatusPatch): boolean => {
+    const ok = status.transition(to, patch);
+    if (ok) log(`state ${to}${reason ? ` (${reason})` : ""}`);
+    return ok;
+  };
+  setState("starting");
+  // D5: heartbeat from `starting` on (sampler attached at `running`); stopped in stop().
+  status.startHeartbeat();
+  try {
+    return await startLockedBridgeRuntime(
+      { ...opts, session, profile, config },
+      { lock, status, setState },
+    );
+  } catch (e) {
+    status.stopHeartbeat();
+    setState("stopped", "startup failed", {
+      lastError: e instanceof Error ? e.message : String(e),
+    });
+    lock.release();
+    throw e;
+  }
+}
+
+async function startLockedBridgeRuntime(
+  opts: StartBridgeRuntimeOptions,
+  life: BridgeLifecycle,
+): Promise<BridgeRuntime> {
+  let session = opts.session ?? loadSession();
   if (!session) {
     throw new Error("No session. Join a room first, then: loom bridge start");
   }
@@ -706,6 +815,14 @@ export async function startBridgeRuntime(opts?: {
   const stillRunningMaxMs = opts?.stillRunningMaxMs ?? STILL_RUNNING_MAX_MS;
 
   const flights = new Map<string, Flight>(); // paneId → flight
+  // PLAN 0.33.0 D2: stop state is declared before any await so an early RPC stop / signal
+  // never hits a temporal dead zone.
+  const stopBoundMs = opts.stopBoundMs ?? STOP_BOUND_MS;
+  let stopPromise: Promise<void> | null = null;
+  let resolveStopped: () => void = () => {};
+  const stoppedPromise = new Promise<void>((resolve) => {
+    resolveStopped = resolve;
+  });
   /** PLAN 0.30.0 P6a. Null unless worker.backend is headless. */
   let headlessDispatcher: HeadlessDispatcher | null = null;
   /** Attempt-axis only (agent name / hook sock). Result payload seq → issuer. */
@@ -775,6 +892,7 @@ export async function startBridgeRuntime(opts?: {
       throw new Error(`herdr protocol ${pong.protocol} != expected ${expected}`);
     }
     herdrOk = true;
+    life.status.update({ herdr: "ok" });
     log(`herdr ok v${pong.version} protocol ${pong.protocol}`);
   } catch (e) {
     herdr.close();
@@ -856,6 +974,8 @@ export async function startBridgeRuntime(opts?: {
         localPeerId: session.peerId,
         node: session.displayName,
         commands: headlessCommands,
+        // PLAN 0.33.0 R2: inner bound below the outer STOP_BOUND_MS.
+        closeDeadlineMs: HEADLESS_CLOSE_BOUND_MS,
         sink: {
           async composeAndSend(target, fields) {
             const lease = cardResult.acquireInitial({
@@ -946,6 +1066,8 @@ export async function startBridgeRuntime(opts?: {
             displayName: session!.displayName,
             herdrSocketPath: cfg.herdrSocketPath,
             herdrOk,
+            // PLAN 0.33.0 D5: lifecycle state (starting|running|draining|stopping|stopped)
+            state: life.status.current()?.state ?? null,
             inFlight: flights.size,
             // PLAN 0.23.4 observability
             eventConnected: herdr.eventConnected,
@@ -1026,8 +1148,9 @@ export async function startBridgeRuntime(opts?: {
           });
         }
         if (body.op === "stop") {
+          // PLAN 0.33.0 R1: same requestStop path as SIGTERM/SIGINT.
           queueMicrotask(() => {
-            void stop();
+            void requestStop("rpc:stop");
           });
           return Response.json({ ok: true, op: "stop" });
         }
@@ -1063,6 +1186,14 @@ export async function startBridgeRuntime(opts?: {
     startedAt: new Date().toISOString(),
   };
   writeBridgeMeta(meta);
+
+  // PLAN 0.33.0 D5: relay joined + startup recovery registered → running; attach the
+  // heartbeat sampler (the timer itself runs since `starting`).
+  life.setState("running", undefined, { inFlight: inFlightCounts(), herdr: herdrOk ? "ok" : "down" });
+  life.status.startHeartbeat(() => ({
+    inFlight: inFlightCounts(),
+    herdr: herdrOk ? "ok" : "down",
+  }));
 
   // Drain existing inbox
   try {
@@ -1102,6 +1233,10 @@ export async function startBridgeRuntime(opts?: {
   // Single-flight: a slow tick must not overlap the next 1.5s poll.
   let inboxPollInFlight = false;
   const pollTimer = setInterval(() => {
+    if (stopPromise) {
+      clearInterval(pollTimer);
+      return;
+    }
     if (inboxPollInFlight) return;
     inboxPollInFlight = true;
     void (async () => {
@@ -3030,14 +3165,37 @@ export async function startBridgeRuntime(opts?: {
     });
   }
 
-  let stopped = false;
-  async function stop(): Promise<void> {
-    if (stopped) return;
-    stopped = true;
-    clearInterval(pollTimer);
+  function inFlightCounts(): BridgeInFlight {
+    let headlessRunning = 0;
+    let headlessQueued = 0;
     if (headlessDispatcher) {
       try {
-        await headlessDispatcher.close();
+        const h = headlessDispatcher.status();
+        for (const n of Object.values(h.running)) headlessRunning += n;
+        for (const n of Object.values(h.queueDepth)) headlessQueued += n;
+      } catch {
+        /* diagnostics only */
+      }
+    }
+    return {
+      paneCards: flights.size,
+      convs: convFlights.size,
+      headlessRunning,
+      headlessQueued,
+    };
+  }
+
+  /**
+   * PLAN 0.33.0 D2 / R2 / R51-M3. Async teardown (headless close under its own 8 s bound,
+   * pane flight cleanup, server / herdr / relay close) races the outer bound; the
+   * synchronous tail runs in `finally` no matter what. The tail records `stopped` before
+   * releasing the lock so a successor's `starting` is never overwritten by this process.
+   */
+  async function teardownAsync(): Promise<void> {
+    if (opts.beforeStopTeardown) await opts.beforeStopTeardown();
+    if (headlessDispatcher) {
+      try {
+        await raceBound(headlessDispatcher.close(), HEADLESS_CLOSE_BOUND_MS);
       } catch {
         /* */
       }
@@ -3050,15 +3208,8 @@ export async function startBridgeRuntime(opts?: {
     // PLAN 0.28.0 M5: process-local preserved-pane tracking ends with the process.
     preservedCardPaneIds.clear();
     terminalObservedPaneIds.clear();
-    // PLAN 0.27.0: unresolved quarantine is fail-visible on process/bridge exit
     try {
-      quarantine.onProcessExit();
-      quarantine.disposeTimers();
-    } catch {
-      /* */
-    }
-    try {
-      server.stop(true);
+      await server.stop(true);
     } catch {
       /* */
     }
@@ -3070,11 +3221,65 @@ export async function startBridgeRuntime(opts?: {
     } catch {
       /* */
     }
-    clearBridgeMeta(meta.sessionPath);
+  }
+
+  async function runStop(): Promise<void> {
+    try {
+      clearInterval(pollTimer);
+    } catch {
+      /* stop requested before the poll timer existed (initial inbox drain) */
+    }
+    life.status.stopHeartbeat();
+    let lastError: string | undefined;
+    try {
+      if ((await raceBound(teardownAsync(), stopBoundMs)) === "timeout") {
+        lastError = STOP_BOUND_EXCEEDED;
+        log(`stop bound ${stopBoundMs}ms exceeded — async teardown abandoned`);
+      }
+    } catch (e) {
+      lastError = `stop failed: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      // PLAN 0.27.0: unresolved quarantine is fail-visible on process/bridge exit
+      try {
+        quarantine.onProcessExit();
+        quarantine.disposeTimers();
+      } catch {
+        /* */
+      }
+      try {
+        clearBridgeMeta(meta.sessionPath);
+      } catch {
+        /* */
+      }
+      life.setState("stopped", undefined, lastError ? { lastError } : undefined);
+      try {
+        life.lock.release();
+      } catch {
+        /* */
+      }
+      resolveStopped();
+    }
+  }
+
+  function requestStop(reason: string): Promise<void> {
+    if (stopPromise) return stopPromise;
+    life.setState("stopping", reason, { inFlight: inFlightCounts() });
+    stopPromise = runStop();
+    return stopPromise;
+  }
+
+  function stop(): Promise<void> {
+    return requestStop("api:stop");
   }
 
   // Keep reference so herdrOk can flip on reconnect failures (slice: static)
   void herdrOk;
 
-  return { meta, stop };
+  return {
+    meta,
+    stop,
+    requestStop,
+    stopped: stoppedPromise,
+    state: () => life.status.current()?.state ?? null,
+  };
 }

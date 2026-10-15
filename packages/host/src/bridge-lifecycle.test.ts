@@ -53,6 +53,7 @@ type StatusView = {
   herdr?: string;
   lastError?: string;
   stoppedAt?: string;
+  heartbeatAt?: string;
   inFlight?: Record<string, number>;
 };
 
@@ -360,6 +361,14 @@ describe("bridge lifecycle — real spawned bridge (PLAN 0.33.0 P2)", () => {
     await waitRunning(b);
     expect(existsSync(bridgeLockPath(PROFILE))).toBe(true);
     expect(readStatus()?.herdr).toBe("ok");
+    // D5: the 5 s heartbeat runs on a live bridge (doctor stale-detection depends on it).
+    const hb0 = readStatus()?.heartbeatAt;
+    const advanced = await waitFor(() => {
+      const hb = readStatus()?.heartbeatAt;
+      return hb && hb !== hb0 && Date.parse(hb) > Date.parse(hb0 ?? "") ? hb : null;
+    }, 7_000, 100);
+    expect(advanced).not.toBeNull();
+    expect(readStatus()?.state).toBe("running");
     const t0 = Date.now();
     b.proc.kill("SIGTERM");
     const code = await exitWithin(b.proc, 12_000);
@@ -394,6 +403,23 @@ describe("bridge lifecycle — real spawned bridge (PLAN 0.33.0 P2)", () => {
     expect(r.message).toBe("bridge stopped");
     expect(Date.now() - t0).toBeLessThan(12_000);
     expect(await exitWithin(b.proc, 2_000)).toBe(0);
+    assertCleanStop(b);
+    expect(b.stderr()).toContain("state stopping (rpc:stop)");
+  }, 40_000);
+
+  test("RPC stop reply stays {ok:true, op:\"stop\"} and is delivered before teardown (L3 input)", async () => {
+    const b = spawnBridge();
+    await waitRunning(b);
+    const meta = loadBridgeMeta(sessionFile);
+    if (!meta) throw new Error("no meta");
+    const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${meta.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ op: "stop" }),
+    });
+    expect(res.ok).toBe(true);
+    expect(await res.json()).toEqual({ ok: true, op: "stop" });
+    expect(await exitWithin(b.proc, 12_000)).toBe(0);
     assertCleanStop(b);
     expect(b.stderr()).toContain("state stopping (rpc:stop)");
   }, 40_000);
