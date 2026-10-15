@@ -17,7 +17,7 @@
  * Disabled = the 0.30.0/P2 argv, prompt, and fingerprint (manifest hash "").
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import { execFile, execFileSync, type ChildProcess } from "node:child_process";
+import { execFile, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -52,6 +52,7 @@ import {
   spawnDetachedWorker,
   type SpawnedWorker,
 } from "./process-group";
+import { parseLstart, readProcessLstart } from "./process-lstart";
 import { redactSecrets } from "./redact";
 import { materializeCardSkills, verifyCardSkillsCopy } from "./skill-materialize";
 import { composeFirstTurnPrompt, renderSkillListing } from "./skill-prompt";
@@ -346,23 +347,6 @@ function denialNote(parsed: ParsedAgentStream): string | undefined {
   return `denials: ${parsed.denials.length}${listed.length ? ` (${listed.join(", ")})` : ""}`;
 }
 
-/** A failed ps observation is unknown, never proof of death. */
-function processLstart(pid: number): string | null {
-  if (!Number.isInteger(pid) || pid <= 1) return null;
-  try {
-    const out = execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
-      encoding: "utf8",
-      timeout: 2_000,
-      stdio: ["ignore", "pipe", "ignore"],
-      env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
-    });
-    const text = out.trim();
-    return text.length > 0 ? text : null;
-  } catch {
-    return null;
-  }
-}
-
 type Liveness = "alive" | "dead" | "unknown";
 
 function observeProcess(record: CardSessionRecord): { liveness: Liveness; leaderExited: boolean } {
@@ -376,47 +360,9 @@ function observeProcess(record: CardSessionRecord): { liveness: Liveness; leader
     const leaderExited = (err as NodeJS.ErrnoException).code === "ESRCH";
     return { liveness: leaderExited ? "dead" : "unknown", leaderExited };
   }
-  const live = processLstart(record.pid);
-  const normalize = (value: string): number | null => {
-    const text = value.trim().replace(/\s+/g, " ");
-    const parts =
-      /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(
-        text,
-      );
-    if (!parts) return null;
-    const month = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ].indexOf(parts[1]!);
-    const day = Number(parts[2]),
-      hour = Number(parts[3]),
-      minute = Number(parts[4]);
-    const second = Number(parts[5]),
-      year = Number(parts[6]);
-    const date = new Date(Date.UTC(year, month, day, hour, minute, second));
-    if (
-      date.getUTCFullYear() !== year ||
-      date.getUTCMonth() !== month ||
-      date.getUTCDate() !== day ||
-      date.getUTCHours() !== hour ||
-      date.getUTCMinutes() !== minute ||
-      date.getUTCSeconds() !== second
-    )
-      return null;
-    return date.getTime();
-  };
-  const expected = normalize(record.procStartedAt);
-  const observed = live ? normalize(live) : null;
+  const live = readProcessLstart(record.pid);
+  const expected = parseLstart(record.procStartedAt);
+  const observed = live ? parseLstart(live) : null;
   if (expected === null || observed === null) return { liveness: "unknown", leaderExited: false };
   return { liveness: expected === observed ? "alive" : "dead", leaderExited: false };
 }
@@ -1439,8 +1385,7 @@ export class HeadlessDispatcher {
     });
     return {
       manifestHash: result.manifestHash,
-      pluginDir:
-        card.agent === "claude" && result.available.length > 0 ? result.pluginDir : null,
+      pluginDir: card.agent === "claude" && result.available.length > 0 ? result.pluginDir : null,
       listing: renderSkillListing(card.agent, result),
     };
   }

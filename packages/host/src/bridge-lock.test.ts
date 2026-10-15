@@ -29,7 +29,7 @@ import {
   releaseBridgeLock,
 } from "./bridge-lock";
 import { readProcessLstart } from "./process-lstart";
-import { loomDir } from "./session-store";
+import { loomDir, resetStateHomeDirCache } from "./session-store";
 
 const LOCK_MODULE = join(import.meta.dir, "bridge-lock.ts");
 
@@ -74,6 +74,7 @@ beforeEach(() => {
   prevHome = process.env.LOOM_TEST_HOME;
   home = mkdtempSync(join(tmpdir(), "loom-bridge-lock-"));
   process.env.LOOM_TEST_HOME = home;
+  resetStateHomeDirCache();
   logs = [];
   kills = [];
 });
@@ -81,6 +82,7 @@ beforeEach(() => {
 afterEach(() => {
   if (prevHome === undefined) delete process.env.LOOM_TEST_HOME;
   else process.env.LOOM_TEST_HOME = prevHome;
+  resetStateHomeDirCache();
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -88,7 +90,7 @@ describe("bridge lock — path (R9)", () => {
   test("lives under loomDir()/bridge/<safeProfile>.lock", () => {
     expect(bridgeLockPath("default")).toBe(join(loomDir(), "bridge", "default.lock"));
     // same sanitizer as the stderr log: slashes / leading dots cannot escape the bridge dir
-    expect(bridgeLockPath("../evil/x")).toBe(join(loomDir(), "bridge", "__-evil-x.lock"));
+    expect(bridgeLockPath("../evil/x")).toBe(join(loomDir(), "bridge", "___evil-x.lock"));
   });
 });
 
@@ -200,7 +202,7 @@ describe("bridge lock — stale reclaim (② 회수 row · R8)", () => {
       version: "0.32.0",
     });
     const h = acquireBridgeLock({ profile: "default", version: "0.33.0", ...deps() });
-    expect(h.owner.lstart).toBe(readProcessLstart(process.pid));
+    expect(h.owner.lstart).toBe(readProcessLstart(process.pid) ?? "");
     expect(logs).toEqual([`[bridge] reclaimed stale lock pid=${process.pid}`]);
     h.release();
   });

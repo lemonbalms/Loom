@@ -29,7 +29,7 @@ import {
   STATUS_STALE_MS,
   truncateLastError,
 } from "./bridge-status";
-import { loomDir } from "./session-store";
+import { loomDir, resetStateHomeDirCache } from "./session-store";
 
 let home: string;
 let prevHome: string | undefined;
@@ -89,6 +89,7 @@ beforeEach(() => {
   prevHome = process.env.LOOM_TEST_HOME;
   home = mkdtempSync(join(tmpdir(), "loom-bridge-status-"));
   process.env.LOOM_TEST_HOME = home;
+  resetStateHomeDirCache();
   logs = [];
   clock = Date.parse("2026-10-16T00:00:00.000Z");
 });
@@ -96,6 +97,7 @@ beforeEach(() => {
 afterEach(() => {
   if (prevHome === undefined) delete process.env.LOOM_TEST_HOME;
   else process.env.LOOM_TEST_HOME = prevHome;
+  resetStateHomeDirCache();
   rmSync(home, { recursive: true, force: true });
 });
 
@@ -109,7 +111,7 @@ describe("bridge status — constants and path", () => {
 
   test("path = loomDir()/bridge/<safeProfile>.status.json (R9 — same sanitizer as the stderr log)", () => {
     expect(bridgeStatusPath("default")).toBe(join(loomDir(), "bridge", "default.status.json"));
-    expect(bridgeStatusPath("../evil/x")).toBe(join(loomDir(), "bridge", "__-evil-x.status.json"));
+    expect(bridgeStatusPath("../evil/x")).toBe(join(loomDir(), "bridge", "___evil-x.status.json"));
   });
 });
 
@@ -358,6 +360,7 @@ describe("bridge status — heartbeat", () => {
   test("real timer: heartbeat runs on its own and stops cleanly", async () => {
     const w = createBridgeStatusWriter({ ...baseOpts(), now: () => new Date(), heartbeatMs: 20 });
     w.transition("starting");
+    w.startHeartbeat();
     const first = readStatus().heartbeatAt as string;
     await Bun.sleep(80);
     const later = readStatus().heartbeatAt as string;
