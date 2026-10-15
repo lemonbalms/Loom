@@ -8,9 +8,20 @@
  * derived from network=false, not stored in the builtin shell deny.
  * R5 / R49-M2 deprecated bridge tool lists. D13 isolate defaults true.
  * UK-1: owner rules are `p *`; builtin no-space Bash forms become `p` + `p *`.
+ * UK-1 §G: a no-space `p*` also matches lookalikes (`echo*` denies `echoes`),
+ * so a deprecated owner deny in that form refuses startup instead of being
+ * silently narrowed. A deprecated owner allow in that form is narrowed (safe).
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  statSync,
+} from "node:fs";
 import { join } from "node:path";
 import { defaultWorkerPermissions } from "./agent-argv";
 
@@ -21,6 +32,8 @@ const SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MCP_DENY = /^[A-Za-z0-9][A-Za-z0-9._-]*__[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const WEB_TOOLS = new Set(["WebFetch", "WebSearch"]);
 const NON_SHELL_TOOLS = new Set(["Read", "Edit", "Write", "Glob", "Grep", "WebFetch", "WebSearch"]);
+/** policy.json read cap (bytes). Larger files fail closed. */
+export const POLICY_MAX_BYTES = 64 * 1024;
 
 export type ShellRules = {
   allow: string[];
@@ -56,12 +69,20 @@ export type PolicyDefaults = {
 
 /**
  * Deprecated `worker.permissions` tool lists (0.30.0 Bash()/tool names).
- * `allow` / `deny` omitted means that list is absent. An empty array is present.
+ * Presence is raw and three-valued per list:
+ * - `undefined` (or key omitted): the owner did not write the list → no effect, no warning.
+ * - `[]`: the owner wrote an empty list → present; it still triggers the deprecation
+ *   warning (and an empty deprecated allow still replaces the shell allow set).
+ * - non-empty: present.
+ * P2 callers must pass raw presence from the bridge config as the owner wrote it,
+ * never materialized defaults (e.g. not `defaultWorkerPermissions()` lists).
  * Paths are named in the refusal and the startup warnings.
  */
 export type DeprecatedToolLists = {
-  allow?: readonly string[];
-  deny?: readonly string[];
+  /** Raw owner allow list. `undefined` = absent; `[]` = present-but-empty. */
+  allow?: readonly string[] | undefined;
+  /** Raw owner deny list. `undefined` = absent; `[]` = present-but-empty. */
+  deny?: readonly string[] | undefined;
   allowPath?: string;
   denyPath?: string;
   policyPath?: string;
@@ -96,7 +117,11 @@ type ProjectedRules = {
   shell: string[];
   web: string[];
   tools: string[];
+  /** Deprecated allow entries in no-space `p*` form that were narrowed. */
+  narrowed: string[];
 };
+
+type DeprecatedKind = "allow" | "deny";
 
 function sortedUnique(values: Iterable<string>): string[] {
   return [...new Set(values)].sort();
@@ -250,15 +275,45 @@ function shellRulesFromTools(tools: readonly string[]): string[] {
   return out;
 }
 
-function projectDeprecated(entries: readonly string[], field: string): ProjectedRules {
+/** `p*` (no space before the star) → `p`; otherwise null. */
+function noSpaceCommand(rule: string): string | null {
+  if (!rule.endsWith("*") || rule.endsWith(" *")) return null;
+  return rule.slice(0, -1);
+}
+
+function refuseNoSpaceDeny(entry: string, command: string, sourcePath: string, policyPath: string) {
+  return new Error(
+    `deprecated deny entry ${JSON.stringify(entry)} in ${sourcePath} uses the no-space "p*" form, ` +
+      `which also matches lookalike commands (e.g. "rm*" also denies "rmdir"); ` +
+      `move it into ${policyPath} shell.deny as ${JSON.stringify(`${command} *`)} ` +
+      `plus each lookalike you meant, listed explicitly`,
+  );
+}
+
+function projectDeprecated(
+  entries: readonly string[],
+  kind: DeprecatedKind,
+  sourcePath: string,
+  policyPath: string,
+): ProjectedRules {
+  const field = `deprecated ${kind}`;
   const shell: string[] = [];
   const web: string[] = [];
   const tools: string[] = [];
+  const narrowed: string[] = [];
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     const at = `${field}[${i}]`;
     if (typeof entry !== "string") throw new Error(`${at}: must be a string`);
     const inner = bashInner(entry);
+    const rule = inner ?? entry;
+    const command = noSpaceCommand(rule);
+    if (command !== null) {
+      if (kind === "deny") throw refuseNoSpaceDeny(entry, command, sourcePath, policyPath);
+      shell.push(...normalizeBashInner(rule, at));
+      narrowed.push(entry);
+      continue;
+    }
     if (inner !== null) {
       shell.push(...normalizeBashInner(inner, at));
       continue;
@@ -274,7 +329,7 @@ function projectDeprecated(entries: readonly string[], field: string): Projected
     assertShellRule(entry, at);
     shell.push(entry);
   }
-  return { shell, web, tools };
+  return { shell, web, tools, narrowed };
 }
 
 /** D10 lists in agent-argv, normalized. curl/wget are not part of builtin deny (R4). */
@@ -340,32 +395,135 @@ export function parsePolicy(json: unknown): PolicyV1 {
   return parsed;
 }
 
-/** Reads `<loomDir>/policy.json`. Absent file → null. Invalid file throws. */
+function errCode(err: unknown): string | undefined {
+  if (err && typeof err === "object" && "code" in err) {
+    const code = (err as { code?: unknown }).code;
+    return typeof code === "string" ? code : undefined;
+  }
+  return undefined;
+}
+
+function errDetail(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function lookupFailed(filePath: string, detail: string): Error {
+  return new Error(`policy.json lookup failed ${filePath}: ${detail} (fail-closed)`);
+}
+
+/**
+ * ENOENT on `<loomDir>/policy.json`: absent only when loomDir is a real directory
+ * (or loomDir itself does not exist, i.e. not created yet). Anything else throws.
+ */
+function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void {
+  let dirStat: ReturnType<typeof statSync>;
+  try {
+    dirStat = statSync(loomDir);
+  } catch (err) {
+    if (errCode(err) === "ENOENT") {
+      try {
+        lstatSync(loomDir);
+      } catch (lerr) {
+        if (errCode(lerr) === "ENOENT") return;
+        throw lookupFailed(filePath, `loomDir lstat ${errDetail(lerr)}`);
+      }
+      throw lookupFailed(filePath, `loomDir is a dangling symlink: ${errDetail(err)}`);
+    }
+    throw lookupFailed(filePath, `loomDir stat ${errDetail(err)}`);
+  }
+  if (!dirStat.isDirectory()) {
+    throw lookupFailed(filePath, `loomDir is not a directory: ${errDetail(cause)}`);
+  }
+}
+
+/**
+ * Reads `<loomDir>/policy.json`. `loomDir` is the already-resolved Loom dir.
+ * Absent file → null (only ENOENT on the final path with a real loomDir, or no loomDir).
+ * Dangling/looping symlink, EACCES, ENOTDIR, any other lookup error, a non-regular
+ * file (dir/FIFO/device), or a file over POLICY_MAX_BYTES → throws (fail-closed).
+ * A symlink is followed only when its target is a regular file.
+ * The file is opened O_NONBLOCK and checked with fstat, so a special file never blocks.
+ */
 export function loadPolicy(loomDir: string): PolicyV1 | null {
   const filePath = join(loomDir, "policy.json");
-  if (!existsSync(filePath)) return null;
+  let link: ReturnType<typeof lstatSync>;
+  try {
+    link = lstatSync(filePath);
+  } catch (err) {
+    if (errCode(err) !== "ENOENT") throw lookupFailed(filePath, errDetail(err));
+    confirmAbsent(loomDir, filePath, err);
+    return null;
+  }
+  if (link.isSymbolicLink()) {
+    try {
+      statSync(filePath);
+    } catch (err) {
+      const code = errCode(err);
+      const what = code === "ENOENT" ? "dangling symlink" : "symlink target lookup";
+      throw lookupFailed(filePath, `${what}: ${errDetail(err)}`);
+    }
+  }
+
+  let fd: number;
+  try {
+    fd = openSync(filePath, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
+  } catch (err) {
+    throw lookupFailed(filePath, errDetail(err));
+  }
   let text: string;
   try {
-    text = readFileSync(filePath, "utf8");
+    const st = fstatSync(fd);
+    if (!st.isFile()) {
+      throw new Error(`invalid policy.json ${filePath}: not a regular file`);
+    }
+    if (st.size > POLICY_MAX_BYTES) {
+      throw new Error(
+        `invalid policy.json ${filePath}: size ${st.size} bytes exceeds the ${POLICY_MAX_BYTES}-byte cap`,
+      );
+    }
+    const buf = Buffer.alloc(POLICY_MAX_BYTES + 1);
+    let total = 0;
+    while (total < buf.length) {
+      const n = readSync(fd, buf, total, buf.length - total, null);
+      if (n === 0) break;
+      total += n;
+    }
+    if (total > POLICY_MAX_BYTES) {
+      throw new Error(
+        `invalid policy.json ${filePath}: size over ${POLICY_MAX_BYTES} bytes (grew while reading)`,
+      );
+    }
+    text = buf.toString("utf8", 0, total);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errDetail(err);
+    if (detail.startsWith("invalid policy.json ")) throw err;
     throw new Error(`invalid policy.json ${filePath}: ${detail}`);
+  } finally {
+    closeSync(fd);
   }
   let json: unknown;
   try {
     json = JSON.parse(text);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(`invalid policy.json ${filePath}: JSON parse failed: ${detail}`);
+    throw new Error(`invalid policy.json ${filePath}: JSON parse failed: ${errDetail(err)}`);
   }
   try {
     return parsePolicy(json);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(`invalid policy.json ${filePath}: ${detail}`);
+    throw new Error(`invalid policy.json ${filePath}: ${errDetail(err)}`);
   }
 }
 
+/**
+ * D8 merge for ONE CLI agent. P2 contract (not enforced here):
+ * - Callers merge per CLI agent separately (claude / codex / grok); never pool
+ *   one agent's deprecated lists into another's.
+ * - Pass only owner-provided deprecated lists with raw presence from the bridge
+ *   config (`undefined` = absent, `[]` = present); never materialized defaults.
+ * - Resolve the Loom dir via the session-store `loomDir()` (including its legacy
+ *   fallback) and pass that resolved dir to `loadPolicy`; this module does not
+ *   resolve it.
+ */
 export function mergePolicy(
   builtinDefaults: PolicyDefaults,
   userPolicy: PolicyV1 | null,
@@ -386,10 +544,20 @@ export function mergePolicy(
   if (policyAllow !== undefined) {
     shellAllow = [...policyAllow];
   } else if (deprecatedAllowSpecified) {
-    shellAllow = projectDeprecated(deprecatedLists.allow ?? [], "deprecated allow").shell;
+    const projected = projectDeprecated(
+      deprecatedLists.allow ?? [],
+      "allow",
+      allowPath,
+      policyPath,
+    );
+    shellAllow = projected.shell;
     const absent = userPolicy ? `${policyPath} shell.allow` : policyPath;
+    const narrowed =
+      projected.narrowed.length > 0
+        ? `; no-space entries narrowed to "p" and "p *": ${projected.narrowed.join(", ")}`
+        : "";
     warnings.push(
-      `deprecated allow list ${allowPath} is the shell allow set because ${absent} is absent`,
+      `deprecated allow list ${allowPath} is the shell allow set because ${absent} is absent${narrowed}`,
     );
   } else {
     shellAllow = [...builtinDefaults.shell.allow];
@@ -403,8 +571,8 @@ export function mergePolicy(
 
   const webDeny = new Set<string>();
   const toolDeny = new Set<string>();
-  if (deprecatedLists.deny && deprecatedLists.deny.length > 0) {
-    const projected = projectDeprecated(deprecatedLists.deny, "deprecated deny");
+  if (deprecatedLists.deny !== undefined) {
+    const projected = projectDeprecated(deprecatedLists.deny, "deny", denyPath, policyPath);
     for (const rule of projected.shell) shellDeny.add(rule);
     for (const name of projected.web) webDeny.add(name);
     for (const name of projected.tools) toolDeny.add(name);

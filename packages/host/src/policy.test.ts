@@ -1,17 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultWorkerPermissions } from "./agent-argv";
 import {
   builtinPolicyDefaults,
-  loadPolicy,
-  mergePolicy,
-  parsePolicy,
-  policyHash,
   type DeprecatedToolLists,
   type EffectivePolicy,
+  loadPolicy,
+  mergePolicy,
   type PolicyV1,
+  parsePolicy,
+  policyHash,
 } from "./policy";
 
 const POLICY_PATH = "/tmp/loom-policy/policy.json";
@@ -325,7 +325,7 @@ describe("mergePolicy", () => {
     expect(effective.shell.allow).not.toContain("bun test *");
     expect(effective.shell.allow).not.toContain("git status*");
     expect(warnings).toEqual([
-      `deprecated allow list ${ALLOW_PATH} is the shell allow set because ${POLICY_PATH} is absent`,
+      `deprecated allow list ${ALLOW_PATH} is the shell allow set because ${POLICY_PATH} is absent; no-space entries narrowed to "p" and "p *": Bash(git status*)`,
     ]);
   });
 
@@ -375,7 +375,7 @@ describe("mergePolicy", () => {
     expect(effective.shell.deny).toContain("dd *");
     expect(effective.shell.deny).toContain("rm *");
     expect(warnings).toEqual([
-      `deprecated allow list ${ALLOW_PATH} is the shell allow set because ${POLICY_PATH} shell.allow is absent`,
+      `deprecated allow list ${ALLOW_PATH} is the shell allow set because ${POLICY_PATH} shell.allow is absent; no-space entries narrowed to "p" and "p *": Bash(git status*)`,
     ]);
   });
 
@@ -388,23 +388,77 @@ describe("mergePolicy", () => {
     ).toThrow(`policy allow specified in both ${POLICY_PATH} shell.allow and ${ALLOW_PATH}`);
   });
 
-  test("deprecated deny is unioned and warned, including no-space Bash forms", () => {
+  test("deprecated deny is unioned and warned", () => {
     const { effective, warnings } = merge(parsed({ shell: { allow: ["make *"], deny: [] } }), {
-      deny: ["Bash(shutdown*)", "Bash(dd *)", "Read", "WebFetch"],
+      deny: ["Bash(shutdown *)", "Bash(halt)", "Bash(dd *)", "Read", "WebFetch"],
       denyPath: DENY_PATH,
     });
-    expect(effective.shell.deny).toContain("shutdown");
     expect(effective.shell.deny).toContain("shutdown *");
+    expect(effective.shell.deny).toContain("halt");
     expect(effective.shell.deny).toContain("dd *");
     expect(effective.shell.deny).toContain("git push *");
-    expect(effective.shell.deny).not.toContain("shutdown*");
-    expect(effective.shell.deny).not.toContain("Bash(shutdown*)");
+    expect(effective.shell.deny).not.toContain("Bash(shutdown *)");
     expect(effective.shell.deny.join("\n")).not.toMatch(/\S\*/);
     expect(effective.toolDeny).toEqual(["Read"]);
     expect(effective.webDeny).toEqual(["WebFetch", "WebSearch"]);
     expect(warnings).toEqual([
       `deprecated deny list ${DENY_PATH} is unioned into the effective deny`,
     ]);
+  });
+
+  test("a deprecated deny with a no-space p* form refuses startup (lookalike coverage, UK-1 §G)", () => {
+    for (const entry of ["Bash(rm*)", "rm*"]) {
+      let message = "";
+      try {
+        merge(parsed({ shell: { allow: ["make *"], deny: [] } }), {
+          deny: ["Bash(dd *)", entry],
+          denyPath: DENY_PATH,
+        });
+      } catch (err) {
+        message = err instanceof Error ? err.message : String(err);
+      }
+      expect(message).toContain(JSON.stringify(entry));
+      expect(message).toContain(DENY_PATH);
+      expect(message).toContain(POLICY_PATH);
+      expect(message).toContain('"rm *"');
+      expect(message).toContain("lookalike");
+    }
+    expect(() => merge(null, { deny: ["Bash(git push*)"], denyPath: DENY_PATH })).toThrow(
+      /Bash\(git push\*\)/,
+    );
+  });
+
+  test("a deprecated allow with a no-space form is narrowed to p and p * and named in the warning", () => {
+    const { effective, warnings } = merge(null, {
+      allow: ["Bash(git status*)", "git log*", "Bash(make *)"],
+      allowPath: ALLOW_PATH,
+    });
+    expect(effective.shell.allow).toEqual([
+      "git log",
+      "git log *",
+      "git status",
+      "git status *",
+      "make *",
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Bash(git status*)");
+    expect(warnings[0]).toContain("git log*");
+    expect(warnings[0]).not.toContain("Bash(make *)");
+  });
+
+  test("an explicit empty deprecated deny or allow still warns", () => {
+    const deny = merge(parsed(), { deny: [], denyPath: DENY_PATH });
+    expect(deny.warnings).toEqual([
+      `deprecated deny list ${DENY_PATH} is unioned into the effective deny`,
+    ]);
+    expect(deny.effective.toolDeny).toEqual([]);
+    const allow = merge(null, { allow: [], allowPath: ALLOW_PATH });
+    expect(allow.warnings).toEqual([
+      `deprecated allow list ${ALLOW_PATH} is the shell allow set because ${POLICY_PATH} is absent`,
+    ]);
+    expect(allow.effective.shell.allow).toEqual([]);
+    expect(merge(parsed(), {}).warnings).toEqual([]);
+    expect(merge(parsed(), { deny: undefined, allow: undefined }).warnings).toEqual([]);
   });
 
   test("a deprecated web deny is kept when network is true", () => {
@@ -499,6 +553,130 @@ describe("loadPolicy", () => {
     } finally {
       rmSync(loomDir, { recursive: true, force: true });
     }
+  });
+
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const fileOf = (dir: string) => join(dir, "policy.json");
+  const good = `${JSON.stringify(body({ shell: { allow: ["make *"], deny: ["dd *"] } }))}\n`;
+
+  function withDir(prefix: string, fn: (dir: string) => void): void {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    try {
+      fn(dir);
+    } finally {
+      try {
+        chmodSync(dir, 0o700);
+      } catch {}
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  function loadError(dir: string): string {
+    try {
+      loadPolicy(dir);
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+    return "<no throw>";
+  }
+
+  test("a dangling symlink fails closed instead of reading as absent", () => {
+    withDir("loom-policy-dangling-", (dir) => {
+      symlinkSync(join(dir, "missing-target.json"), fileOf(dir));
+      const message = loadError(dir);
+      expect(message).toContain(fileOf(dir));
+      expect(message).toMatch(/dangling|ENOENT/);
+    });
+  });
+
+  test("a looping symlink fails closed", () => {
+    withDir("loom-policy-loop-", (dir) => {
+      symlinkSync(fileOf(dir), fileOf(dir));
+      const message = loadError(dir);
+      expect(message).toContain(fileOf(dir));
+      expect(message).toContain("ELOOP");
+    });
+  });
+
+  test.skipIf(isRoot)("an unreadable parent (EACCES) fails closed", () => {
+    withDir("loom-policy-eacces-", (root) => {
+      const dir = join(root, "loom");
+      mkdirSync(dir);
+      writeFileSync(fileOf(dir), good);
+      chmodSync(dir, 0o000);
+      try {
+        const message = loadError(dir);
+        expect(message).toContain(fileOf(dir));
+        expect(message).toContain("EACCES");
+      } finally {
+        chmodSync(dir, 0o700);
+      }
+    });
+  });
+
+  test("a loomDir that is a regular file (ENOTDIR) fails closed", () => {
+    withDir("loom-policy-enotdir-", (root) => {
+      const dir = join(root, "not-a-dir");
+      writeFileSync(dir, "x");
+      const message = loadError(dir);
+      expect(message).toContain(fileOf(dir));
+      expect(message).toContain("ENOTDIR");
+    });
+  });
+
+  test("a missing loomDir reads as absent; a dangling-symlink loomDir fails closed", () => {
+    withDir("loom-policy-nodir-", (root) => {
+      expect(loadPolicy(join(root, "never-created"))).toBeNull();
+      const linked = join(root, "linked");
+      symlinkSync(join(root, "gone"), linked);
+      expect(loadError(linked)).toContain(fileOf(linked));
+    });
+  });
+
+  test("a symlink to a regular file is followed; a symlink to a directory is rejected", () => {
+    withDir("loom-policy-link-", (dir) => {
+      const target = join(dir, "real.json");
+      writeFileSync(target, good);
+      symlinkSync(target, fileOf(dir));
+      expect(loadPolicy(dir)).toEqual(parsed({ shell: { allow: ["make *"], deny: ["dd *"] } }));
+    });
+    withDir("loom-policy-linkdir-", (dir) => {
+      const target = join(dir, "sub");
+      mkdirSync(target);
+      symlinkSync(target, fileOf(dir));
+      const message = loadError(dir);
+      expect(message).toContain(fileOf(dir));
+      expect(message).toMatch(/not a regular file/);
+    });
+  });
+
+  test("a directory or FIFO at policy.json is rejected without blocking", () => {
+    withDir("loom-policy-dir-", (dir) => {
+      mkdirSync(fileOf(dir));
+      expect(loadError(dir)).toMatch(/not a regular file/);
+    });
+    withDir("loom-policy-fifo-", (dir) => {
+      const made = Bun.spawnSync(["mkfifo", fileOf(dir)]);
+      expect(made.exitCode).toBe(0);
+      const started = Date.now();
+      const message = loadError(dir);
+      expect(Date.now() - started).toBeLessThan(2000);
+      expect(message).toContain(fileOf(dir));
+      expect(message).toMatch(/not a regular file/);
+    });
+  });
+
+  test("caps policy.json at 64 KiB and names the size", () => {
+    withDir("loom-policy-big-", (dir) => {
+      const base = good.trimEnd();
+      writeFileSync(fileOf(dir), base + " ".repeat(65536 - base.length));
+      expect(loadPolicy(dir)).toEqual(parsed({ shell: { allow: ["make *"], deny: ["dd *"] } }));
+      writeFileSync(fileOf(dir), base + " ".repeat(65537 - base.length));
+      const message = loadError(dir);
+      expect(message).toContain(fileOf(dir));
+      expect(message).toContain("65537");
+      expect(message).toContain("65536");
+    });
   });
 
   test("fail-closed errors name the file path and the field path", () => {
