@@ -40,6 +40,7 @@
     "smoke:desktop": "bun run scripts/smoke-desktop-rpc.ts",
     "smoke:uc": "bun run scripts/smoke-uc.ts",
     "smoke:durable": "bun run scripts/smoke-durable.ts",
+    "smoke:mcp-precheck": "bun run scripts/smoke-mcp-precheck.ts",
     "dogfood:room": "bash scripts/dogfood-room-up.sh",
     "dogfood:up": "bash scripts/dogfood-up.sh",
     "dogfood:status": "bash scripts/dogfood-room-status.sh",
