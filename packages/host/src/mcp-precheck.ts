@@ -366,6 +366,11 @@ export const policyAuditTestHooks: {
   write?: (fd: number, buf: Buffer, offset: number, length: number) => number;
   beforePrune?: () => void;
   now?: () => number;
+  /**
+   * Prune-time ctime override (round 7): the fs cannot move a real ctime onto the
+   * injected test clock, so tests supply it here; undefined → the real lstat ctime.
+   */
+  ctimeMs?: (file: string) => number | undefined;
 } = {};
 
 /**
@@ -499,12 +504,14 @@ function auditNow(): number {
  * Prune rule (P2 verify rounds 5–6 — replaces rounds 3–4). A rotated generation is
  * unlinked only if ALL hold: it is not `fresh` (this call's own rename); it is not
  * among the newest 3 by NAME (rotation timestamp); its name's rotation time parses
- * (unparsable → never pruned); and max(mtime re-stat'ed right before the unlink,
- * rotation time) is more than POLICY_AUDIT_PRUNE_GRACE_MS (60 s) before now. The
- * rotation time matters because rename keeps the inode's old mtime: an idle live file
- * rotated just now still looks old by mtime, while a writer that opened it before the
- * rotation may still be about to write. The rotation time is never earlier than any
- * writer's open of that inode, so only a pause > 60 s can lose a record. Recently
+ * (unparsable → never pruned); and max(mtime, ctime — both re-stat'ed right before the
+ * unlink — and the name's rotation time) is more than POLICY_AUDIT_PRUNE_GRACE_MS
+ * (60 s) before now. Rename keeps the inode's old mtime, so an idle live file rotated
+ * just now still looks old by mtime while a writer that opened it before the rotation
+ * may still be about to write. The name's timestamp is sampled before the rename (a
+ * rotator can pause between the two), but rename updates the inode's ctime (macOS
+ * APFS and Linux), and ctime is never earlier than the rename — which is after any
+ * open of that inode as the live file. So only a writer paused > 60 s can lose a record. Recently
  * written or recently rotated generations are never deleted, whatever their rank, so
  * a stale snapshot held by a slow pruner cannot remove live data; no slot is reserved
  * for a `fresh` that has since vanished — candidates come from the actual listing.
@@ -522,7 +529,9 @@ function pruneGenerations(roomDir: string, fresh: string): void {
     if (rotatedAt === null) continue;
     const file = join(roomDir, name);
     try {
-      const lastTouch = Math.max(lstatSync(file).mtimeMs, rotatedAt);
+      const st = lstatSync(file);
+      const ctime = policyAuditTestHooks.ctimeMs?.(file) ?? st.ctimeMs;
+      const lastTouch = Math.max(st.mtimeMs, ctime, rotatedAt);
       if (auditNow() - lastTouch <= POLICY_AUDIT_PRUNE_GRACE_MS) continue;
       unlinkSync(file);
     } catch (e) {
@@ -610,7 +619,7 @@ export function appendPolicyAudit(
 
     // Accepted limit (P2 verify rounds 5–6): only a writer or rotator paused for longer
     // than the 60 s prune grace can lose records (e.g. it appends to, or its generation
-    // is, an inode another writer pruned once max(mtime, rotation time) aged past it). No lock
+    // is, an inode another writer pruned once max(mtime, ctime, rotation time) aged past it). No lock
     // protocol is added for it (D8 amended: lock-free).
     const fd = openSync(path, OPEN_LIVE, 0o600);
     let written = false;

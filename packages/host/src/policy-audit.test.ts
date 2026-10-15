@@ -72,6 +72,15 @@ function roomDirOf(root = dir, room = ROOM): string {
   return join(root, "rooms", roomKey(room));
 }
 
+/**
+ * Injected audit clock one hour ahead of the real one (whole seconds). Every file a
+ * test creates gets a real ctime ≈ the real now, which the prune grace (max(mtime,
+ * ctime, rotation time), round 7) would otherwise treat as "just touched".
+ */
+function clockAhead(): number {
+  return Math.floor(Date.now() / 1000) * 1000 + 3_600_000;
+}
+
 function lines(path: string): string[] {
   return readFileSync(path, "utf8")
     .split("\n")
@@ -92,6 +101,7 @@ afterEach(() => {
   policyAuditTestHooks.write = undefined;
   policyAuditTestHooks.now = undefined;
   policyAuditTestHooks.beforePrune = undefined;
+  policyAuditTestHooks.ctimeMs = undefined;
 });
 
 describe("appendPolicyAudit — location, modes, format", () => {
@@ -244,7 +254,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("prune: old (> 60 s) generations beyond the newest 3 by NAME are pruned (≤ 4 MiB when idle)", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -268,7 +278,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("prune: a generation beyond the newest 3 by name with a recent mtime is NOT pruned (grace)", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -294,7 +304,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("prune: the newest 3 by name are kept even when their mtimes are old", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -314,7 +324,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("M2 interleaving: A allocates t0 and pauses, B rotates 3×, A renames with t0 → nothing lost", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     const path = auditPath();
@@ -351,7 +361,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("round 4: the generation this call just rotated survives even with the oldest mtime; a paused writer's record stays reachable", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -390,7 +400,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("round 5 (codex): R1 rotates and pauses before pruning; 256+ appends; R2 rotates + prunes; R1 resumes → no record lost", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -445,7 +455,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("round 6 (codex): live idle 120 s, W opens, four quick rotations, W writes → no record lost", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     let clock = NOW;
     policyAuditTestHooks.now = () => clock;
     const roomDir = roomDirOf();
@@ -475,7 +485,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("round 6: old mtime but a recent rotation name → kept", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -494,7 +504,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("round 6: old mtime and an old rotation name → pruned", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -513,7 +523,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
   });
 
   test("round 6: a generation-shaped name whose timestamp does not parse is never pruned", () => {
-    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    const NOW = clockAhead();
     policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
@@ -538,6 +548,69 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     const left = readdirSync(roomDir);
     for (const n of bad) expect(left).toContain(n);
     expect(left).not.toContain(older); // a parseable old one in the same position is pruned
+  });
+
+  test("round 7 (codex): R names at t, pauses 59 s, renames; W opens at 58 s, writes at 62 s; 3 more rotations → no record lost", () => {
+    const NOW = clockAhead();
+    let clock = NOW;
+    policyAuditTestHooks.now = () => clock;
+    const roomDir = roomDirOf();
+    const path = auditPath();
+    appendPolicyAudit(dir, ROOM, rec());
+    writeFileSync(path, "L-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 7)));
+    const idle = new Date(NOW - 120_000);
+    utimesSync(path, idle, idle);
+    // The fs cannot move ctime onto the injected clock, so the prune reads ctime
+    // through the ctimeMs seam: the first generation's ctime = its rename time.
+    let gen1 = "";
+    let renameAt = 0;
+    policyAuditTestHooks.ctimeMs = (file) => (file.endsWith(gen1) && gen1 ? renameAt : undefined);
+    let wFd = -1;
+    let fired = false;
+    policyAuditTestHooks.beforeRename = () => {
+      if (fired) return;
+      fired = true; // R has allocated its name at NOW
+      clock = NOW + 58_000;
+      wFd = openSync(path, "a"); // W opens L at 58 s
+      clock = NOW + 59_000;
+      renameAt = clock; // R renames at 59 s
+    };
+    try {
+      expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "R" }))).toBe(true);
+      gen1 = listPolicyAuditGenerations(roomDir).filter((n) => n !== POLICY_AUDIT_FILE)[0];
+      expect(gen1).toBeTruthy();
+      clock = NOW + 61_000; // three more rotations: gen1 is beyond the newest 3 by name
+      for (let r = 2; r <= 4; r++) {
+        appendFileSync(path, "F\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 2)));
+        expect(appendPolicyAudit(dir, ROOM, rec({ cardId: `R${r}` }))).toBe(true);
+      }
+      clock = NOW + 62_000;
+      writeSync(wFd, `${JSON.stringify(rec({ cardId: "W" }))}\n`); // W writes at 62 s
+    } finally {
+      if (wFd >= 0) closeSync(wFd);
+    }
+    expect(readdirSync(roomDir)).toContain(gen1);
+    const g1 = readFileSync(join(roomDir, gen1), "utf8");
+    expect(g1.includes("L-LINE")).toBe(true);
+    expect(g1.includes('"W"')).toBe(true);
+  });
+
+  test("round 7: old mtime + old name but a recent real ctime (just renamed) → kept", () => {
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const real = Date.now();
+    const old = policyAuditGenerationName(new Date(real - 120_000), 9, "cccccc");
+    const newer = [3, 2, 1].map((s) =>
+      policyAuditGenerationName(new Date(real - s * 1000), 9, "nnnnnn"),
+    );
+    for (const n of [old, ...newer]) {
+      writeFileSync(join(roomDir, n), "x\n");
+      const t = new Date(real - 3_600_000);
+      utimesSync(join(roomDir, n), t, t); // mtime old; utimes itself sets ctime = now
+    }
+    writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
+    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
+    expect(readdirSync(roomDir)).toContain(old);
   });
 
   test("no rotation → no pruning (old generations untouched)", () => {
