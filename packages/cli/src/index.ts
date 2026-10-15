@@ -29,6 +29,9 @@ import {
   isPidAlive,
   startBridgeProcess,
   stopBridgeProcess,
+  drainBridgeProcess,
+  parseDrainTimeoutSec,
+  bridgeStatusPath,
   bridgeStatus,
   bridgeQuarantineAck,
   loadBridgeConfig,
@@ -1798,6 +1801,42 @@ async function cmdBridge(
     console.log(r.message);
     return;
   }
+  // PLAN 0.33.0 D4: stop claiming, wait for in-flight cards, bridge exits 0.
+  if (sub === "drain") {
+    let timeoutSec: number | undefined;
+    if (flags.timeout !== undefined) {
+      const raw = flags.timeout;
+      const n = typeof raw === "string" && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN;
+      const parsed = parseDrainTimeoutSec(n);
+      if (parsed === null) {
+        console.error("Usage: loom bridge drain [--timeout <seconds 1..86400>]");
+        process.exit(1);
+      }
+      timeoutSec = parsed;
+    }
+    const r = await drainBridgeProcess({
+      ...(timeoutSec !== undefined ? { timeoutSec } : {}),
+      onProgress: (line) => console.log(line),
+    });
+    if (r.kind === "no_bridge") {
+      console.log("no bridge running");
+      return;
+    }
+    const profile =
+      getActiveProfile() ?? loadSession()?.displayName ?? "default";
+    if (r.kind === "rpc_failed") {
+      console.error(`drain request failed (pid ${r.pid}): ${r.error}`);
+      console.error(`  status file: ${bridgeStatusPath(profile)}`);
+      process.exit(1);
+    }
+    if (r.kind === "still_alive") {
+      console.error(`bridge still running after the drain bound (pid ${r.pid})`);
+      console.error(`  status file: ${bridgeStatusPath(profile)}`);
+      process.exit(1);
+    }
+    console.log(`bridge drained and stopped (pid ${r.pid})`);
+    return;
+  }
   // PLAN 0.28.0 M3: operator quarantine ack (not delivery proof).
   // Live daemon → authenticated RPC on its store; offline → local durable fold.
   if (sub === "quarantine") {
@@ -1903,6 +1942,17 @@ async function cmdBridge(
       st.health && typeof st.health === "object" && st.health !== null
         ? (st.health as Record<string, unknown>)
         : null;
+    // PLAN 0.33.0 D5 / D4: lifecycle state; while draining, deadline + remaining counts.
+    if (health && typeof health.state === "string") {
+      console.log(`  state: ${health.state}`);
+      const drainInfo = health.drain as { deadlineAt?: unknown } | undefined;
+      const rem = health.remaining as Record<string, unknown> | undefined;
+      if (drainInfo && typeof drainInfo.deadlineAt === "string") {
+        console.log(
+          `  drain: deadline=${drainInfo.deadlineAt} paneCards=${rem?.paneCards ?? "?"} convs=${rem?.convs ?? "?"} headlessRunning=${rem?.headlessRunning ?? "?"} headlessQueued=${rem?.headlessQueued ?? "?"}`,
+        );
+      }
+    }
     if (health && typeof health.quarantineUnresolved === "number") {
       console.log(`  quarantineUnresolved: ${health.quarantineUnresolved}`);
     }
@@ -1924,7 +1974,7 @@ async function cmdBridge(
     return;
   }
   console.error(
-    "Usage: loom bridge start|stop|status|quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]",
+    "Usage: loom bridge start|stop|drain [--timeout <s>]|status|quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]",
   );
   process.exit(1);
 }

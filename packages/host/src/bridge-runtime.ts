@@ -147,6 +147,20 @@ export const BRIDGE_VERSION = "0.32.0";
 export const HEADLESS_CLOSE_BOUND_MS = 8_000;
 /** `lastError` recorded when the outer stop bound abandons the async teardown. */
 export const STOP_BOUND_EXCEEDED = "stop_bound_exceeded";
+/** PLAN 0.33.0 D4 / UK-3: drain deadline when `timeoutSec` is absent (re-evaluated in P5). */
+export const DRAIN_DEFAULT_TIMEOUT_SEC = 600;
+/** PLAN 0.33.0 ② RPC `drain`: `timeoutSec` is an integer in 1..86400. */
+export const DRAIN_MAX_TIMEOUT_SEC = 86_400;
+/** How often a draining bridge re-checks the remaining in-flight counts. */
+const DRAIN_CHECK_MS = 100;
+
+/** PLAN 0.33.0 ② RPC `drain`: absent → default · integer 1..86400 · anything else → null. */
+export function parseDrainTimeoutSec(raw: unknown): number | null {
+  if (raw === undefined) return DRAIN_DEFAULT_TIMEOUT_SEC;
+  if (typeof raw !== "number" || !Number.isInteger(raw)) return null;
+  if (raw < 1 || raw > DRAIN_MAX_TIMEOUT_SEC) return null;
+  return raw;
+}
 const DEFAULT_BRIDGE_MAIN_PATH = join(import.meta.dir, "bridge-main.ts");
 
 /** Resolve "done" or "timeout" — never rejects. The timer is not unref'd on purpose. */
@@ -829,6 +843,22 @@ async function startLockedBridgeRuntime(
   const cardSeq = new Map<string, number>();
   const processedHandoffs = new Set<string>();
   const convFlights = new Map<string, ConvFlight>(); // paneId → conv flight
+  /**
+   * PLAN 0.33.0 D4 / R4: drain bookkeeping. Non-null from RPC `drain` on; claims stop at
+   * both card claim points and before conv.open. Declared before any await (TDZ, like stop).
+   */
+  let drain: {
+    startedAt: string;
+    deadlineAt: string;
+    check: ReturnType<typeof setInterval> | null;
+    deadline: ReturnType<typeof setTimeout> | null;
+  } | null = null;
+  /**
+   * Claimed handoffs whose pane card / conv work has not returned yet (claim → flight
+   * registration window). Drain waits for these too, so a claimed card is never cut off
+   * before it shows up in `flights` / `convFlights`. Not reported (counts stay map sizes).
+   */
+  let claimedStarting = 0;
   const convPaneByConvId = new Map<string, string>(); // convId → paneId
   /** PLAN 0.27.0: dispatch-scoped result issuers (receipt-time create). */
   const issuers = new ResultIssuerRegistry();
@@ -1068,6 +1098,9 @@ async function startLockedBridgeRuntime(
             herdrOk,
             // PLAN 0.33.0 D5: lifecycle state (starting|running|draining|stopping|stopped)
             state: life.status.current()?.state ?? null,
+            // PLAN 0.33.0 D4: drain window + remaining in-flight counts
+            ...(drain ? { drain: { startedAt: drain.startedAt, deadlineAt: drain.deadlineAt } } : {}),
+            remaining: inFlightCounts(),
             inFlight: flights.size,
             // PLAN 0.23.4 observability
             eventConnected: herdr.eventConnected,
@@ -1146,6 +1179,22 @@ async function startLockedBridgeRuntime(
             key: result.key,
             quarantineUnresolved: quarantine.unresolvedCount(),
           });
+        }
+        if (body.op === "drain") {
+          // PLAN 0.33.0 D4: same trust boundary as `stop` (127.0.0.1 + bearer token).
+          const timeoutSec = parseDrainTimeoutSec((body as { timeoutSec?: unknown }).timeoutSec);
+          if (timeoutSec === null) {
+            return Response.json(
+              {
+                ok: false,
+                op: "drain",
+                error: "invalid_args",
+                message: `timeoutSec must be an integer 1..${DRAIN_MAX_TIMEOUT_SEC}`,
+              },
+              { status: 400 },
+            );
+          }
+          return Response.json(requestDrain(timeoutSec));
         }
         if (body.op === "stop") {
           // PLAN 0.33.0 R1: same requestStop path as SIGTERM/SIGINT.
@@ -1268,10 +1317,21 @@ async function startLockedBridgeRuntime(
         log(`M-1 deny conv.open (no claim) from ${h.fromPeerId}`);
         return;
       }
+      // PLAN 0.33.0 R3 / R4 / R51-L1: no new conv while draining — conv.open stays unclaimed
+      // in the relay inbox (not marked processed). turn / close of an in-progress conv go on.
+      if (convLbl === CONV_OPEN_LABEL && drain) {
+        logNotClaiming(h.id);
+        return;
+      }
       processedHandoffs.add(h.id);
-      const claim = await client.claimHandoff(h.id, "claim");
-      if (!claim.ok) return;
-      await processConvIntent(h, convLbl);
+      claimedStarting += 1;
+      try {
+        const claim = await client.claimHandoff(h.id, "claim");
+        if (!claim.ok) return;
+        await processConvIntent(h, convLbl);
+      } finally {
+        claimedStarting -= 1;
+      }
       return;
     }
 
@@ -1285,6 +1345,13 @@ async function startLockedBridgeRuntime(
       log(`M-1 deny dispatch from ${fromPeerId} handoff ${h.id}`);
       processedHandoffs.add(h.id);
       // Spec: ignore + log without claim (at-most-once processing marker only).
+      return;
+    }
+
+    // PLAN 0.33.0 R4 / R51-L1 check ①: before any issuer / processedHandoffs record — the
+    // handoff stays unclaimed in the relay inbox and is re-observed each poll (R51-L4 iii).
+    if (drain) {
+      logNotClaiming(h.id);
       return;
     }
 
@@ -1316,6 +1383,13 @@ async function startLockedBridgeRuntime(
 
     processedHandoffs.add(h.id);
     const claim = async (): Promise<boolean> => {
+      // PLAN 0.33.0 R4 / R51-L1 check ②: covers the pane immediate claim and the headless
+      // permit-time claim. Unmark so a later poll re-observes it (and logs) while draining.
+      if (drain) {
+        processedHandoffs.delete(h.id);
+        logNotClaiming(h.id);
+        return false;
+      }
       const result = await client.claimHandoff(h.id, "claim");
       if (!result.ok) log(`claim failed for ${h.id}:`, result.error);
       return result.ok;
@@ -1327,14 +1401,21 @@ async function startLockedBridgeRuntime(
       headlessDispatcher &&
       isHeadlessAgentKind(payload.agentKind) &&
       resolveAgentArgv(cfg, payload.agentKind);
-    if (!deferClaim && !(await claim())) return;
+    if (deferClaim) {
+      await runCard({ payload, fromPeerId, dispatchHandoffId: h.id, claim });
+      return;
+    }
+    claimedStarting += 1;
+    try {
+      if (!(await claim())) return;
+      await runCard({ payload, fromPeerId, dispatchHandoffId: h.id });
+    } finally {
+      claimedStarting -= 1;
+    }
+  }
 
-    await runCard({
-      payload,
-      fromPeerId,
-      dispatchHandoffId: h.id,
-      ...(deferClaim ? { claim } : {}),
-    });
+  function logNotClaiming(handoffId: string): void {
+    log(`drain: not claiming handoff ${handoffId} (draining — stays in the relay inbox)`);
   }
 
   function extractCardIdLoose(content: string): string | null {
@@ -3185,6 +3266,73 @@ async function startLockedBridgeRuntime(
     };
   }
 
+  function formatRemaining(r: BridgeInFlight): string {
+    return `paneCards=${r.paneCards} convs=${r.convs} headlessRunning=${r.headlessRunning} headlessQueued=${r.headlessQueued}`;
+  }
+
+  /** R3: pane card flights + conv flights + headless running (+ claim→flight window). */
+  function drainSettled(): boolean {
+    const r = inFlightCounts();
+    return r.paneCards + r.convs + r.headlessRunning + claimedStarting === 0;
+  }
+
+  function clearDrainTimers(): void {
+    if (!drain) return;
+    if (drain.check) clearInterval(drain.check);
+    if (drain.deadline) clearTimeout(drain.deadline);
+    drain.check = null;
+    drain.deadline = null;
+  }
+
+  function finishDrain(reason: "drain" | "drain_timeout"): void {
+    if (stopPromise) return;
+    clearDrainTimers();
+    if (reason === "drain_timeout") {
+      log(`drain deadline reached — stopping with ${formatRemaining(inFlightCounts())}`);
+    }
+    void requestStop(reason);
+  }
+
+  /**
+   * PLAN 0.33.0 D4 / ② RPC `drain`. `running` → `draining`; claims stop (R4); once pane
+   * cards + convs + headless running reach 0 → requestStop("drain"); at the deadline →
+   * requestStop("drain_timeout"). Both end in exit 0. Idempotent: later calls keep the first
+   * deadline and report current progress; during `stopping` / `stopped` only report.
+   */
+  function requestDrain(timeoutSec: number): {
+    ok: true;
+    op: "drain";
+    state: BridgeState | null;
+    deadlineAt: string | null;
+    remaining: BridgeInFlight;
+  } {
+    const current = life.status.current()?.state ?? null;
+    if (!drain && !stopPromise && current === "running") {
+      const startedMs = Date.now();
+      const startedAt = new Date(startedMs).toISOString();
+      const deadlineAt = new Date(startedMs + timeoutSec * 1000).toISOString();
+      drain = { startedAt, deadlineAt, check: null, deadline: null };
+      life.setState("draining", "rpc:drain", {
+        drain: { startedAt, deadlineAt },
+        inFlight: inFlightCounts(),
+      });
+      log(`drain: deadline ${deadlineAt} · ${formatRemaining(inFlightCounts())}`);
+      drain.check = setInterval(() => {
+        if (drainSettled()) finishDrain("drain");
+      }, DRAIN_CHECK_MS);
+      // The first check tick (DRAIN_CHECK_MS) settles an idle bridge — never synchronously
+      // with this reply, so the RPC response is flushed before the control server stops.
+      drain.deadline = setTimeout(() => finishDrain("drain_timeout"), timeoutSec * 1000);
+    }
+    return {
+      ok: true,
+      op: "drain",
+      state: life.status.current()?.state ?? null,
+      deadlineAt: drain?.deadlineAt ?? null,
+      remaining: inFlightCounts(),
+    };
+  }
+
   /**
    * PLAN 0.33.0 D2 / R2 / R51-M3. Async teardown (headless close under its own 8 s bound,
    * pane flight cleanup, server / herdr / relay close) races the outer bound; the
@@ -3224,6 +3372,7 @@ async function startLockedBridgeRuntime(
   }
 
   async function runStop(): Promise<void> {
+    clearDrainTimers();
     try {
       clearInterval(pollTimer);
     } catch {

@@ -210,6 +210,115 @@ export async function stopBridgeProcess(): Promise<{
   return { ok: true, message: "bridge stopped" };
 }
 
+export type BridgeDrainRemaining = {
+  paneCards: number;
+  convs: number;
+  headlessRunning: number;
+  headlessQueued: number;
+};
+
+/** PLAN 0.33.0 ② CLI drain: progress line every 2 s while waiting for the pid to exit. */
+export const DRAIN_PROGRESS_MS = 2_000;
+/** PLAN 0.33.0 ② CLI drain: wait bound = deadline + STOP_BOUND_MS + this slack. */
+export const DRAIN_EXIT_SLACK_MS = 5_000;
+
+export type BridgeDrainOutcome =
+  | { kind: "no_bridge" }
+  | { kind: "rpc_failed"; pid: number; error: string }
+  | { kind: "stopped"; pid: number }
+  | { kind: "still_alive"; pid: number };
+
+async function postBridgeRpc(meta: BridgeMeta, body: Record<string, unknown>): Promise<Response> {
+  return fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${meta.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(2000),
+  });
+}
+
+function formatDrainProgress(state: unknown, remaining: unknown, deadlineAt: unknown): string {
+  const r = (remaining ?? {}) as Partial<BridgeDrainRemaining>;
+  const n = (v: unknown) => (typeof v === "number" ? v : "?");
+  const parts = [
+    `${typeof state === "string" ? state : "unknown"}:`,
+    `paneCards=${n(r.paneCards)}`,
+    `convs=${n(r.convs)}`,
+    `headlessRunning=${n(r.headlessRunning)}`,
+    `headlessQueued=${n(r.headlessQueued)}`,
+  ];
+  if (typeof deadlineAt === "string") parts.push(`deadline=${deadlineAt}`);
+  return parts.join(" ");
+}
+
+/**
+ * PLAN 0.33.0 D4 / ② CLI `loom bridge drain`: RPC `drain` → one progress line every 2 s →
+ * wait for the pid to exit, bounded by deadline + STOP_BOUND_MS + 5 s. Never signals the
+ * bridge (drain always ends in its own exit 0; a stuck bridge is reported, not killed).
+ */
+export async function drainBridgeProcess(opts: {
+  timeoutSec?: number;
+  onProgress?: (line: string) => void;
+}): Promise<BridgeDrainOutcome> {
+  const meta = resolveAliveBridgeMeta();
+  if (!meta) return { kind: "no_bridge" };
+  const say = opts.onProgress ?? (() => {});
+
+  let deadlineAt: string | null = null;
+  try {
+    const res = await postBridgeRpc(meta, {
+      op: "drain",
+      ...(opts.timeoutSec !== undefined ? { timeoutSec: opts.timeoutSec } : {}),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      ok?: unknown;
+      state?: unknown;
+      deadlineAt?: unknown;
+      remaining?: unknown;
+      message?: unknown;
+      error?: unknown;
+    } | null;
+    if (!res.ok || body?.ok !== true) {
+      const why = typeof body?.message === "string" ? body.message : `HTTP ${res.status}`;
+      return { kind: "rpc_failed", pid: meta.pid, error: why };
+    }
+    deadlineAt = typeof body.deadlineAt === "string" ? body.deadlineAt : null;
+    say(formatDrainProgress(body.state, body.remaining, body.deadlineAt));
+  } catch (e) {
+    // The bridge may have finished an idle drain before replying; judge by the pid.
+    if (isPidAlive(meta.pid)) {
+      return { kind: "rpc_failed", pid: meta.pid, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  const deadlineMs = deadlineAt ? Date.parse(deadlineAt) : Date.now();
+  const bound =
+    (Number.isFinite(deadlineMs) ? deadlineMs : Date.now()) + STOP_BOUND_MS + DRAIN_EXIT_SLACK_MS;
+  let nextProgress = Date.now() + DRAIN_PROGRESS_MS;
+  while (Date.now() < bound && isPidAlive(meta.pid)) {
+    if (Date.now() >= nextProgress) {
+      nextProgress = Date.now() + DRAIN_PROGRESS_MS;
+      try {
+        const res = await postBridgeRpc(meta, { op: "status" });
+        const st = (await res.json().catch(() => null)) as {
+          state?: unknown;
+          remaining?: unknown;
+          drain?: { deadlineAt?: unknown };
+        } | null;
+        if (st) say(formatDrainProgress(st.state, st.remaining, st.drain?.deadlineAt));
+      } catch {
+        /* stopping: the control server is going away */
+      }
+    }
+    await Bun.sleep(50);
+  }
+  if (isPidAlive(meta.pid)) return { kind: "still_alive", pid: meta.pid };
+  return { kind: "stopped", pid: meta.pid };
+}
+
 export async function bridgeStatus(): Promise<{
   running: boolean;
   meta: BridgeMeta | null;
