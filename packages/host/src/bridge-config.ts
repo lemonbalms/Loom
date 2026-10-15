@@ -109,9 +109,16 @@ export function bridgeConfigDir(): string {
   return join(loomDir(), "bridge");
 }
 
+/**
+ * The config-file name sanitizer (out-of-range chars → `_`, empty → `default`). Extracted for
+ * PLAN 0.34.0 D8 so `loom service` can compare it with the lock/log `sanitizeProfileLogName`.
+ */
+export function bridgeConfigSafeName(profile: string): string {
+  return profile.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
+}
+
 export function bridgeConfigPath(profile: string): string {
-  const safe = profile.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
-  return join(bridgeConfigDir(), `${safe}.json`);
+  return join(bridgeConfigDir(), `${bridgeConfigSafeName(profile)}.json`);
 }
 
 export function defaultBridgeConfig(): BridgeConfig {

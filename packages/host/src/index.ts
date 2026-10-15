@@ -76,3 +76,5 @@ export {
   type ToolRegistry,
   toolVisible,
 } from "./mcp-precheck";
+// PLAN 0.34.0 P1 (D4 · D8 · R10): pure `loom service` unit generators, names, marker, parsers.
+export * from "./service-units";
