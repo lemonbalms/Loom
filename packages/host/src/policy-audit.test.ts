@@ -30,6 +30,7 @@ import {
   evaluateMcpCall,
   POLICY_AUDIT_FILE,
   POLICY_AUDIT_MAX_BYTES,
+  POLICY_AUDIT_PRUNE_GRACE_MS,
   listPolicyAuditGenerations,
   POLICY_AUDIT_KEEP_GENERATIONS,
   type PolicyAuditRecord,
@@ -89,6 +90,8 @@ afterEach(() => {
   policyAuditTestHooks.generationName = undefined;
   policyAuditTestHooks.beforeRename = undefined;
   policyAuditTestHooks.write = undefined;
+  policyAuditTestHooks.now = undefined;
+  policyAuditTestHooks.beforePrune = undefined;
 });
 
 describe("appendPolicyAudit — location, modes, format", () => {
@@ -240,7 +243,9 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     expect(readdirSync(roomDirOf()).sort()).toEqual(listPolicyAuditGenerations(roomDirOf()).sort());
   });
 
-  test("pruning keeps exactly the newest 3 rotated generations (≤ 4 MiB per room)", () => {
+  test("prune: old (> 60 s) generations beyond the newest 3 by NAME are pruned (≤ 4 MiB when idle)", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
     const old = [1, 2, 3, 4, 5].map((m) =>
@@ -248,7 +253,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     );
     old.forEach((n, i) => {
       writeFileSync(join(roomDir, n), "old\n");
-      const t = new Date(Date.now() - (100 - i) * 1000);
+      const t = new Date(NOW - (120 - i) * 1000);
       utimesSync(join(roomDir, n), t, t);
     });
     writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
@@ -259,37 +264,63 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     expect(statSync(join(roomDir, gens[2])).size).toBe(POLICY_AUDIT_MAX_BYTES);
     expect(gens[3]).toBe(POLICY_AUDIT_FILE);
     expect(POLICY_AUDIT_KEEP_GENERATIONS).toBe(3);
+    expect(POLICY_AUDIT_PRUNE_GRACE_MS).toBe(60_000);
   });
 
-  test("pruning is by mtime, not name: a newer-written generation with an older name is kept", () => {
+  test("prune: a generation beyond the newest 3 by name with a recent mtime is NOT pruned (grace)", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
-    // Names in one order, mtimes in the reverse order.
-    const names = [1, 2, 3, 4].map((m) =>
-      policyAuditGenerationName(new Date(`2025-0${m}-01T00:00:00.000Z`), 9, "nnnnnn"),
+    const old = [1, 2, 3, 4, 5].map((m) =>
+      policyAuditGenerationName(new Date(`2025-0${m}-01T00:00:00.000Z`), 9, "rrrrrr"),
     );
-    names.forEach((n, i) => {
+    // old[0]: written 10 s ago; old[1]: exactly 60 s ago (not older than grace);
+    // old[2]: 61 s ago (pruned); old[3], old[4]: newest by name (kept regardless).
+    const ages = [10, 60, 61, 300, 300];
+    old.forEach((n, i) => {
       writeFileSync(join(roomDir, n), `gen${i}\n`);
-      const t = new Date(Date.now() - (10 + i) * 1000); // names[0] newest mtime
+      const t = new Date(NOW - ages[i] * 1000);
       utimesSync(join(roomDir, n), t, t);
     });
     writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
     expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
     const left = readdirSync(roomDir);
-    // 5 rotated → keep 3 newest by mtime: the fresh rotation, names[0], names[1].
-    expect(left).toContain(names[0]);
-    expect(left).toContain(names[1]);
-    expect(left).not.toContain(names[2]);
-    expect(left).not.toContain(names[3]);
+    expect(left).toContain(old[0]);
+    expect(left).toContain(old[1]);
+    expect(left).not.toContain(old[2]);
+    expect(left).toContain(old[3]);
+    expect(left).toContain(old[4]);
+  });
+
+  test("prune: the newest 3 by name are kept even when their mtimes are old", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const names = [1, 2].map((m) =>
+      policyAuditGenerationName(new Date(`2025-0${m}-01T00:00:00.000Z`), 9, "kkkkkk"),
+    );
+    for (const n of names) {
+      writeFileSync(join(roomDir, n), "k\n");
+      const t = new Date(NOW - 3_600_000);
+      utimesSync(join(roomDir, n), t, t);
+    }
+    writeFileSync(join(roomDir, POLICY_AUDIT_FILE), "a".repeat(POLICY_AUDIT_MAX_BYTES));
+    const t = new Date(NOW - 3_600_000);
+    utimesSync(join(roomDir, POLICY_AUDIT_FILE), t, t);
+    expect(appendPolicyAudit(dir, ROOM, rec())).toBe(true);
     expect(listPolicyAuditGenerations(roomDir).length).toBe(4);
   });
 
-  test("M2 interleaving: A allocates t0 and pauses, B rotates 3×, A renames with t0 → A's generation kept", () => {
+  test("M2 interleaving: A allocates t0 and pauses, B rotates 3×, A renames with t0 → nothing lost", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
     writeFileSync(path, "G0-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 8)));
-    const g0Time = new Date(Date.now() - 100_000);
+    const g0Time = new Date(NOW - 100_000);
     utimesSync(path, g0Time, g0Time);
     const t0 = policyAuditGenerationName(new Date("2026-01-01T00:00:00.000Z"), 1, "aaaaaa");
     let nameCalls = 0;
@@ -301,7 +332,7 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
       for (let i = 1; i <= 3; i++) {
         if (i > 1) {
           appendFileSync(path, "B-FILL\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 7)));
-          const t = new Date(Date.now() - (60 - i) * 1000);
+          const t = new Date(NOW - (60 - i) * 1000);
           utimesSync(path, t, t);
         }
         expect(appendPolicyAudit(dir, ROOM, rec({ cardId: `B${i}` }))).toBe(true);
@@ -309,19 +340,19 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     };
     expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "A" }))).toBe(true);
     expect(paused).toBe(true);
-    const left = readdirSync(roomDir);
-    // A's t0 generation holds B3's record and is the most recently written → kept.
-    expect(left).toContain(t0);
+    expect(readdirSync(roomDir)).toContain(t0);
     expect(readFileSync(join(roomDir, t0), "utf8")).toContain('"B3"');
-    const rotated = listPolicyAuditGenerations(roomDir).filter((n) => n !== POLICY_AUDIT_FILE);
-    expect(rotated.length).toBe(POLICY_AUDIT_KEEP_GENERATIONS);
-    // The oldest-written generation (G0) is the one pruned.
-    for (const n of rotated)
-      expect(readFileSync(join(roomDir, n), "utf8")).not.toContain("G0-LINE");
+    const all = listPolicyAuditGenerations(roomDir)
+      .map((n) => readFileSync(join(roomDir, n), "utf8"))
+      .join("");
+    expect(all).toContain("G0-LINE");
+    for (const id of ["B1", "B2", "B3", "A"]) expect(all).toContain(`"${id}"`);
     expect(lines(path).map((l) => JSON.parse(l).cardId)).toEqual(["A"]);
   });
 
   test("round 4: the generation this call just rotated survives even with the oldest mtime; a paused writer's record stays reachable", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
     const roomDir = roomDirOf();
     mkdirSync(roomDir, { recursive: true });
     const others = ["A", "B", "C"].map((x, i) =>
@@ -333,12 +364,12 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     );
     others.forEach((n, i) => {
       writeFileSync(join(roomDir, n), `other${i}\n`);
-      const t = new Date(Date.now() - (10 - i) * 1000); // newer than L
+      const t = new Date(NOW - (10 - i) * 1000); // newer than L, inside the grace
       utimesSync(join(roomDir, n), t, t);
     });
     const path = auditPath();
     writeFileSync(path, "L-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 7)));
-    const lTime = new Date(Date.now() - 100_000); // rename keeps L's old mtime
+    const lTime = new Date(NOW - 100_000); // rename keeps L's old mtime
     utimesSync(path, lTime, lTime);
     // W has L open (paused before its write).
     const wFd = openSync(path, "a");
@@ -351,14 +382,66 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     const rotated = listPolicyAuditGenerations(roomDir).filter((n) => n !== POLICY_AUDIT_FILE);
     const d = rotated.filter((n) => !others.includes(n));
     expect(d.length).toBe(1);
-    expect(rotated.length).toBe(POLICY_AUDIT_KEEP_GENERATIONS);
     const dText = readFileSync(join(roomDir, d[0]), "utf8");
     expect(dText).toContain("L-LINE");
     expect(dText).toContain('"W"');
-    // Remaining slots = newest others by mtime: others[2], others[1]; others[0] pruned.
-    expect(rotated).toContain(others[1]);
-    expect(rotated).toContain(others[2]);
-    expect(rotated).not.toContain(others[0]);
+    // others[0] is beyond the newest 3 by name but written within the grace → kept.
+    for (const o of others) expect(rotated).toContain(o);
+  });
+
+  test("round 5 (codex): R1 rotates and pauses before pruning; 256+ appends; R2 rotates + prunes; R1 resumes → no record lost", () => {
+    const NOW = Math.floor(Date.now() / 1000) * 1000;
+    policyAuditTestHooks.now = () => NOW;
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    // C: an older generation (name-wise), written long ago.
+    const c = policyAuditGenerationName(new Date("2025-01-01T00:00:00.000Z"), 9, "cccccc");
+    writeFileSync(join(roomDir, c), "C-LINE\n");
+    const cTime = new Date(NOW - 3_600_000);
+    utimesSync(join(roomDir, c), cTime, cTime);
+    // A, B: recently written generations (newer mtimes than C and L).
+    for (const [m, r] of [
+      ["02", "aaaaaa"],
+      ["03", "bbbbbb"],
+    ] as const) {
+      const n = policyAuditGenerationName(new Date(`2025-${m}-01T00:00:00.000Z`), 9, r);
+      writeFileSync(join(roomDir, n), `${r}\n`);
+      const t = new Date(NOW - 5_000);
+      utimesSync(join(roomDir, n), t, t);
+    }
+    const path = auditPath();
+    writeFileSync(path, "L-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 7)));
+    const lTime = new Date(NOW - 3_600_000);
+    utimesSync(path, lTime, lTime);
+
+    const base = Buffer.byteLength(`${JSON.stringify(rec({ cardId: "w000:" }))}\n`);
+    const pad = "p".repeat(4090 - base);
+    const total = Math.ceil(POLICY_AUDIT_MAX_BYTES / 4090) + 4;
+    let paused = false;
+    let rotationsDuringPause = 0;
+    policyAuditTestHooks.generationName = () => {
+      if (paused) rotationsDuringPause++;
+      return undefined;
+    };
+    policyAuditTestHooks.beforePrune = () => {
+      if (paused) return;
+      paused = true; // R1 renamed live → D1; ordinary writers fill the new live, R2 rotates.
+      for (let i = 0; i < total; i++) {
+        const id = `w${String(i).padStart(3, "0")}:`;
+        expect(appendPolicyAudit(dir, ROOM, rec({ cardId: `${id}${pad}` }))).toBe(true);
+      }
+    };
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "R1" }))).toBe(true);
+    expect(paused).toBe(true);
+    expect(rotationsDuringPause).toBeGreaterThanOrEqual(1);
+    const all = listPolicyAuditGenerations(roomDir)
+      .map((n) => readFileSync(join(roomDir, n), "utf8"))
+      .join("");
+    for (let i = 0; i < total; i++) {
+      expect(all).toContain(`"w${String(i).padStart(3, "0")}:`);
+    }
+    expect(all).toContain('"R1"');
+    expect(all).toContain("L-LINE"); // D1 (just rotated by R1) kept
   });
 
   test("no rotation → no pruning (old generations untouched)", () => {

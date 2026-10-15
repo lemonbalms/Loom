@@ -339,8 +339,13 @@ export function evaluateMcpCall(
 export const POLICY_AUDIT_FILE = "policy-audit.jsonl";
 /** UK-3 starting value: rotate before a write would push the live file past 1 MiB. */
 export const POLICY_AUDIT_MAX_BYTES = 1024 * 1024;
-/** Rotated generations retained per room (disk ≤ (K + 1) × 1 MiB = 4 MiB). */
+/** Rotated generations always retained per room: the newest 3 by name. */
 export const POLICY_AUDIT_KEEP_GENERATIONS = 3;
+/**
+ * A generation whose last write is within this window is never pruned. Disk per room
+ * ≤ live + 3 + generations written within the last 60 s (write-rate dependent).
+ */
+export const POLICY_AUDIT_PRUNE_GRACE_MS = 60_000;
 /** Full written line, LF included. */
 const POLICY_AUDIT_MAX_LINE_BYTES = 4096;
 const AUDIT_REQUIRED_KEYS = ["ts", "kind", "tool", "peerId", "roomId", "agentKind"] as const;
@@ -359,6 +364,8 @@ export const policyAuditTestHooks: {
   generationName?: () => string | undefined;
   beforeRename?: () => void;
   write?: (fd: number, buf: Buffer, offset: number, length: number) => number;
+  beforePrune?: () => void;
+  now?: () => number;
 } = {};
 
 /**
@@ -385,8 +392,8 @@ function randomBase36(): string {
 /**
  * Audit files in a room directory for readers: rotated generations by name (≈ oldest
  * → newest), then the live file if present. The order is approximate under concurrent
- * rotation (a paused writer may rename with an earlier-stamped name; pruning goes by
- * mtime instead). A missing directory → []; a file can vanish between this listing
+ * rotation (a paused writer may rename with an earlier-stamped name; pruning also
+ * honours a 60 s mtime grace). A missing directory → []; a file can vanish between this listing
  * and the read (concurrent prune) — readers tolerate ENOENT. Readers must also skip
  * unparsable lines: a crash mid-write can leave a partial final line.
  */
@@ -457,30 +464,28 @@ const OPEN_LIVE =
   constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 
 /**
- * Keep K rotated generations: always `fresh` (the one this call just created by its
- * own rename — rename keeps the old mtime, and a writer that still has it open as the
- * live file may append to it right after this prune), then the newest K−1 others by
- * mtime (last write), name as tiebreak — not by name alone, since a paused writer can
- * rename the freshest data with an earlier-stamped name. ENOENT (a concurrent pruner)
- * is fine.
+ * Prune rule (P2 verify round 5 — replaces rounds 3–4). A rotated generation is
+ * unlinked only if ALL hold: it is not `fresh` (this call's own rename); it is not
+ * among the newest 3 by NAME (rotation timestamp); and its mtime, re-stat'ed right
+ * before the unlink, is more than POLICY_AUDIT_PRUNE_GRACE_MS (60 s) old. Recently
+ * written or recently rotated generations are never deleted, whatever their rank, so
+ * a stale snapshot held by a slow pruner cannot remove live data; no slot is reserved
+ * for a `fresh` that has since vanished — candidates come from the actual listing.
+ * Disk bound per room: live (≤ 1 MiB) + 3 newest-by-name + every generation whose
+ * last write was within the last 60 s; each rotation needs ~1 MiB of audit writes, so
+ * the excess over ~4 MiB grows with the write rate (≈ MiB written in the last 60 s).
+ * ENOENT (a concurrent pruner) is fine.
  */
 function pruneGenerations(roomDir: string, fresh: string): void {
-  const rotated: Array<{ name: string; mtime: bigint }> = [];
-  for (const name of listPolicyAuditGenerations(roomDir)) {
-    if (name === POLICY_AUDIT_FILE || name === fresh) continue;
+  const rotated = listPolicyAuditGenerations(roomDir).filter((n) => n !== POLICY_AUDIT_FILE);
+  const newestByName = new Set(rotated.slice(-POLICY_AUDIT_KEEP_GENERATIONS));
+  for (const name of rotated) {
+    if (name === fresh || newestByName.has(name)) continue;
+    const file = join(roomDir, name);
     try {
-      rotated.push({ name, mtime: lstatSync(join(roomDir, name), { bigint: true }).mtimeNs });
-    } catch (e) {
-      if (errCode(e) !== "ENOENT") throw e;
-    }
-  }
-  rotated.sort((a, b) =>
-    a.mtime < b.mtime ? -1 : a.mtime > b.mtime ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-  );
-  const excess = Math.max(0, rotated.length - (POLICY_AUDIT_KEEP_GENERATIONS - 1));
-  for (const { name } of rotated.slice(0, excess)) {
-    try {
-      unlinkSync(join(roomDir, name));
+      const now = policyAuditTestHooks.now?.() ?? Date.now();
+      if (now - lstatSync(file).mtimeMs <= POLICY_AUDIT_PRUNE_GRACE_MS) continue;
+      unlinkSync(file);
     } catch (e) {
       if (errCode(e) !== "ENOENT") throw e;
     }
@@ -515,8 +520,8 @@ function writeFully(fd: number, line: string): boolean {
  *   3. open O_WRONLY|O_APPEND|O_CREAT|O_NOFOLLOW 0600 (no O_EXCL: concurrent
  *      creators append to the same inode), fchmod 0600, write the whole line
  *      (loop over short writes; 0 bytes or a throw → short_write), close.
- * Pruning keeps the generation this call just rotated plus the newest 2 others by
- * mtime (name as tiebreak).
+ * Pruning never deletes this call's own generation, the newest 3 by name, or any
+ * generation written within the last 60 s (see pruneGenerations).
  * Renames never target an existing name, so nothing is overwritten; a concurrent
  * loser can at worst rotate a small fresh file into one extra small generation.
  * Any failure is swallowed with one stderr line and returns false — the decision
@@ -558,13 +563,16 @@ export function appendPolicyAudit(
       } catch (e) {
         if (errCode(e) !== "ENOENT") throw e;
       }
-      if (rotated) pruneGenerations(roomDir, gen);
+      if (rotated) {
+        policyAuditTestHooks.beforePrune?.();
+        pruneGenerations(roomDir, gen);
+      }
     }
 
-    // Accepted limit (P2 verify round 3, M1): a writer paused between this open and
-    // its write while other writers rotate ≥ 3 times (≥ 3 MiB of audit lines) appends
-    // to an inode that pruning has already unlinked — at most that one record is lost.
-    // No lock protocol is added for it (D8 amended: lock-free).
+    // Accepted limit (P2 verify round 5): only a writer or rotator paused for longer than
+    // the 60 s prune grace can lose records (e.g. it appends to, or its generation is,
+    // an inode another writer pruned once its mtime aged past the grace). No lock
+    // protocol is added for it (D8 amended: lock-free).
     const fd = openSync(path, OPEN_LIVE, 0o600);
     let written = false;
     try {
