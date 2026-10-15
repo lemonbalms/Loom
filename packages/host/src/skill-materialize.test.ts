@@ -1114,3 +1114,29 @@ describe("verify round 3 - nested key spelling and bare list items", () => {
     expect(reasons(res)).toEqual({ baredup: "invalid SKILL.md" });
   });
 });
+
+describe("verify round 4 - bare '-' column ignores trailing spaces", () => {
+  test("'-' + 0/1/3 trailing spaces: sibling items may share a key; a duplicate inside one item is rejected", async () => {
+    const { loomDir, key } = setup();
+    const names: string[] = [];
+    for (const n of [0, 1, 3]) {
+      const sp = " ".repeat(n);
+      const name = `trail${n}`;
+      names.push(name);
+      userSkill(loomDir, name, {
+        "SKILL.md": md(
+          name,
+          "T.",
+          `metadata:\n  items:\n    -${sp}\n      k: 1\n    -${sp}\n      k: 2\n`,
+        ),
+      });
+    }
+    userSkill(loomDir, "traildup", {
+      "SKILL.md": md("traildup", "T.", "metadata:\n  items:\n    -   \n      k: 1\n      k: 2\n"),
+    });
+    select(loomDir, "room-1", [...names, "traildup"]);
+    const res = await run(key);
+    expect(res.available.map((s) => s.name)).toEqual(["trail0", "trail1", "trail3"]);
+    expect(reasons(res)).toEqual({ traildup: "invalid SKILL.md" });
+  });
+});

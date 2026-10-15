@@ -486,12 +486,16 @@ function parseFrontmatter(text: string): Frontmatter | null {
         let item = raw.trimStart();
         let col = raw.length - item.length;
         let listItem = false;
+        let dashCol = col;
         while (item === "-" || item.startsWith("- ")) {
           listItem = true;
+          dashCol = col;
           const rest = item.slice(1);
           item = rest.trimStart();
           col += 1 + rest.length - item.length;
         }
+        // A bare `-` is anchored at its dash: trailing spaces never move its scope.
+        if (listItem && item === "") col = dashCol + 1;
         // A list item (bare `-` included) closes every scope at or right of its content.
         while (
           scopes.length > 0 &&
