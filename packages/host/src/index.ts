@@ -24,7 +24,13 @@ export * from "./bridge-config";
 export * from "./bridge-meta";
 export * from "./bridge-spawn";
 export * from "./bridge-runtime";
-export { bridgeStatusPath } from "./bridge-status";
+export {
+  bridgeStatusPath,
+  readBridgeStatusFile,
+  STATUS_STALE_MS,
+  type BridgeStatus,
+} from "./bridge-status";
+export { bridgeLockPath, inspectBridgeLockAt, type BridgeLockInspection } from "./bridge-lock";
 export * from "./result-quarantine";
 export * from "./card-ops";
 export * from "./conv-state";

@@ -281,6 +281,162 @@ export function hostSection(input: {
   return { title: "Host", lines };
 }
 
+/** PLAN 0.33.0 D5 reader view of `<p>.status.json` (fields optional — never trust the file). */
+export type BridgeStatusFileView = {
+  pid?: number;
+  state?: string;
+  startedAt?: string;
+  heartbeatAt?: string;
+  stoppedAt?: string;
+  herdr?: string;
+  lastError?: string;
+  drain?: { startedAt?: string; deadlineAt?: string };
+  inFlight?: {
+    paneCards?: number;
+    convs?: number;
+    headlessRunning?: number;
+    headlessQueued?: number;
+  };
+};
+
+/** Read-only lock view (owner.json + kill 0 + ps lstart — no reclaim, no signal). */
+export type BridgeLockView =
+  | { kind: "none" }
+  | { kind: "held"; pid: number; startedAt: string; verified: boolean }
+  | { kind: "stale"; pid: number | null }
+  | { kind: "incomplete" };
+
+export type BridgeReadInput = {
+  statusPath: string;
+  lockPath: string;
+  logPath: string;
+  /** Parsed status file, or null when absent / unreadable. */
+  status: BridgeStatusFileView | null;
+  /** kill(status.pid, 0) succeeded. */
+  pidAlive: boolean;
+  lock: BridgeLockView;
+  nowMs: number;
+  /** Advisory heartbeat staleness (PLAN D5: 3 × 5 s heartbeat). */
+  staleMs?: number;
+};
+
+const BRIDGE_STALE_MS_DEFAULT = 15_000;
+
+function ageSec(iso: string | undefined, nowMs: number): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.round((nowMs - t) / 1000));
+}
+
+function lockText(lock: BridgeLockView): string {
+  switch (lock.kind) {
+    case "none":
+      return "lock holder: none";
+    case "incomplete":
+      return "lock holder: lock dir without owner (being acquired or foreign)";
+    case "stale":
+      return `lock holder: ${lock.pid !== null ? `pid ${lock.pid} ` : ""}stale (dead or pid reused — next start reclaims it)`;
+    case "held":
+      return `lock holder: pid ${lock.pid} (alive, started ${lock.startedAt}${lock.verified ? "" : ", start time unverified"})`;
+  }
+}
+
+function drainText(st: BridgeStatusFileView): string | null {
+  if (st.state !== "draining" || !st.drain?.deadlineAt) return null;
+  const f = st.inFlight ?? {};
+  const n = (v: number | undefined) => (typeof v === "number" ? v : "?");
+  return `drain: deadline ${st.drain.deadlineAt} · paneCards=${n(f.paneCards)} convs=${n(f.convs)} headlessRunning=${n(f.headlessRunning)} headlessQueued=${n(f.headlessQueued)}`;
+}
+
+/**
+ * PLAN 0.33.0 D5 / R6 — `loom doctor` Bridge section. Reads files + pid liveness only
+ * (no network, no RPC, no ensureRelay). ok / warn / info only — never `fail`: the bridge is
+ * optional, so its state never changes the doctor exit code.
+ */
+export function bridgeSection(input: BridgeReadInput): DoctorSection {
+  const staleMs = input.staleMs ?? BRIDGE_STALE_MS_DEFAULT;
+  const lines: DoctorLine[] = [];
+  const st = input.status;
+  if (!st) {
+    lines.push({
+      status: "info",
+      message: `bridge never started under this profile (no status file: ${input.statusPath})`,
+    });
+    if (input.lock.kind !== "none") lines.push({ status: "info", message: lockText(input.lock) });
+    lines.push({ status: "info", message: `log: ${input.logPath}` });
+    return { title: "Bridge", lines };
+  }
+
+  const state = st.state ?? "unknown";
+  const stopped = state === "stopped";
+  const pid = typeof st.pid === "number" ? st.pid : null;
+  const hbAge = ageSec(st.heartbeatAt, input.nowMs);
+
+  if (input.pidAlive) {
+    lines.push({ status: "ok", message: `bridge pid ${pid ?? "?"} alive` });
+    if (hbAge === null) {
+      lines.push({ status: "warn", message: "heartbeat missing in status file" });
+    } else if (hbAge * 1000 <= staleMs) {
+      lines.push({ status: "ok", message: `heartbeat fresh (${hbAge}s ago)` });
+    } else {
+      lines.push({
+        status: "warn",
+        message: `stale heartbeat (${hbAge}s ago > ${Math.round(staleMs / 1000)}s, pid ${pid ?? "?"} alive)`,
+      });
+    }
+  } else if (stopped) {
+    const at = ageSec(st.stoppedAt, input.nowMs);
+    lines.push({
+      status: "info",
+      message: `bridge not running — stopped at ${st.stoppedAt ?? "?"}${at !== null ? ` (${at}s ago)` : ""}`,
+    });
+  } else {
+    lines.push({
+      status: "warn",
+      message: `bridge died without clean stop — stale status (pid ${pid ?? "?"} dead, last state ${state}, last heartbeat ${hbAge !== null ? `${hbAge}s ago` : "unknown"})`,
+    });
+  }
+
+  lines.push({ status: "info", message: `state: ${state}` });
+  lines.push({ status: "info", message: `herdr: ${st.herdr ?? "unknown"}` });
+  const drain = drainText(st);
+  if (drain) lines.push({ status: "info", message: drain });
+  if (st.lastError) lines.push({ status: "warn", message: `lastError: ${st.lastError}` });
+  lines.push({ status: "info", message: lockText(input.lock) });
+  lines.push({ status: "info", message: `status file: ${input.statusPath}` });
+  lines.push({ status: "info", message: `log: ${input.logPath}` });
+  return { title: "Bridge", lines };
+}
+
+/**
+ * PLAN 0.33.0 ② `loom bridge status` with the bridge down: status-file summary printed after
+ * today's `bridge: offline` lines. No status file → no lines (today's output unchanged).
+ */
+export function offlineBridgeStatusLines(input: BridgeReadInput): string[] {
+  const st = input.status;
+  if (!st) return [];
+  const state = st.state ?? "unknown";
+  const pid = typeof st.pid === "number" ? st.pid : null;
+  const out = [`  status file: ${input.statusPath}`];
+  let stateLine = `  state: ${state}`;
+  if (pid !== null) {
+    if (input.pidAlive) stateLine += ` (pid ${pid} alive — not answering as this session's bridge)`;
+    else if (state !== "stopped") stateLine += ` (pid ${pid} dead — no clean stop)`;
+  }
+  out.push(stateLine);
+  const hb = ageSec(st.heartbeatAt, input.nowMs);
+  if (st.heartbeatAt) out.push(`  heartbeatAt: ${st.heartbeatAt}${hb !== null ? ` (${hb}s ago)` : ""}`);
+  const sa = ageSec(st.stoppedAt, input.nowMs);
+  if (st.stoppedAt) out.push(`  stoppedAt: ${st.stoppedAt}${sa !== null ? ` (${sa}s ago)` : ""}`);
+  const drain = drainText(st);
+  if (drain) out.push(`  ${drain}`);
+  if (st.lastError) out.push(`  lastError: ${st.lastError}`);
+  out.push(`  ${lockText(input.lock)}`);
+  out.push(`  log: ${input.logPath}`);
+  return out;
+}
+
 export function summarizeDoctor(sections: DoctorSection[]): Record<DoctorStatus, number> {
   const summary: Record<DoctorStatus, number> = {
     ok: 0,

@@ -22,6 +22,7 @@ import {
   CONV_ACCEPT_SEQ,
   MAX_CONV_TURN_INLINE_CHARS,
   nextOwnSeq,
+  ConvIdSchema,
   ConvOpenPayloadSchema,
   ConvAcceptPayloadSchema,
   ConvRejectPayloadSchema,
@@ -99,7 +100,6 @@ import {
   type BridgeMeta,
 } from "./bridge-meta";
 import { timingSafeTokenEqual } from "@loom/protocol";
-import { getActiveProfile } from "./session-store";
 import { acquireBridgeLock, type BridgeLockHandle } from "./bridge-lock";
 import {
   createBridgeStatusWriter,
@@ -107,8 +107,9 @@ import {
   type BridgeState,
   type BridgeStatusPatch,
   type BridgeStatusWriter,
+  type HerdrHealth,
 } from "./bridge-status";
-import { STOP_BOUND_MS } from "./bridge-spawn";
+import { resolveBridgeProfile, STOP_BOUND_MS } from "./bridge-spawn";
 import {
   appendHookSettingsArgv,
   appendHookTelemetry,
@@ -179,6 +180,68 @@ async function raceBound(work: Promise<unknown>, ms: number): Promise<"done" | "
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** PLAN 0.33.0 D6 / R5: the conv.reject reason a headless bridge sends for every conv.open. */
+export const CONV_UNAVAILABLE_HEADLESS = "conv_unavailable_headless";
+
+/** The HerdrClient surface the runtime uses (lets a headless bridge run with no client). */
+type HerdrPort = Pick<
+  HerdrClient,
+  | "setOnEvent"
+  | "connect"
+  | "ping"
+  | "eventsSubscribe"
+  | "eventsPrune"
+  | "close"
+  | "eventConnected"
+  | "lastSubscribeAck"
+  | "eventSubscriptions"
+  | "request"
+  | "agentStart"
+  | "agentPrompt"
+  | "agentSendKeys"
+  | "injectPromptAndSubmit"
+  | "tabCreate"
+  | "paneSplit"
+  | "paneList"
+  | "paneLayout"
+  | "paneResize"
+  | "paneRead"
+>;
+
+/**
+ * PLAN 0.33.0 D6 (UK-7): stand-in for `worker.backend === "headless"`. No HerdrClient is
+ * constructed and no socket is opened; teardown calls are no-ops and anything that would need
+ * herdr fails visibly (the headless backend never takes the pane paths — cards branch to the
+ * headless dispatcher and conv.open is rejected before it reaches the conv pane code).
+ */
+function skippedHerdr(): HerdrPort {
+  const unavailable = async (): Promise<never> => {
+    throw new Error("herdr skipped (worker.backend=headless)");
+  };
+  return {
+    setOnEvent() {},
+    close() {},
+    eventsPrune() {},
+    eventConnected: false,
+    lastSubscribeAck: null,
+    eventSubscriptions: 0,
+    connect: unavailable,
+    ping: unavailable,
+    eventsSubscribe: unavailable,
+    request: unavailable,
+    agentStart: unavailable,
+    agentPrompt: unavailable,
+    agentSendKeys: unavailable,
+    injectPromptAndSubmit: unavailable,
+    tabCreate: unavailable,
+    paneSplit: unavailable,
+    paneList: unavailable,
+    paneLayout: unavailable,
+    paneResize: unavailable,
+    paneRead: unavailable,
+  };
 }
 
 /** Lock + status file owned by one bridge process (PLAN 0.33.0 D3 · D5). */
@@ -771,7 +834,8 @@ export async function startBridgeRuntime(opts?: StartBridgeRuntimeOptions): Prom
   if (!session) {
     throw new Error("No session. Join a room first, then: loom bridge start");
   }
-  const profile = opts?.profile ?? getActiveProfile() ?? session.displayName ?? "default";
+  // P4 (L3): one profile name for config / lock / status / log — shared with the CLI.
+  const profile = opts?.profile ?? resolveBridgeProfile(session);
   const config = opts?.config ?? loadBridgeConfig(profile);
   const lock = acquireBridgeLock({ profile, version: BRIDGE_VERSION });
   const status = createBridgeStatusWriter({
@@ -810,7 +874,8 @@ async function startLockedBridgeRuntime(
   if (!session) {
     throw new Error("No session. Join a room first, then: loom bridge start");
   }
-  const profile = opts?.profile ?? getActiveProfile() ?? session.displayName ?? "default";
+  // P4 (L3): one profile name for config / lock / status / log — shared with the CLI.
+  const profile = opts?.profile ?? resolveBridgeProfile(session);
   const cfg = opts?.config ?? loadBridgeConfig(profile);
   // Fail closed before herdr or the room join. Pane configs skip this.
   const headlessConfig = cfg.worker?.backend === "headless" ? workerConfigFromBridge(cfg) : null;
@@ -859,6 +924,24 @@ async function startLockedBridgeRuntime(
    * before it shows up in `flights` / `convFlights`. Not reported (counts stay map sizes).
    */
   let claimedStarting = 0;
+  /**
+   * P4 (P3-L2): worker-turn sends that run detached from the event handler — notably the
+   * "blocked" notice sent after a flight is deleted (pane_closed / events_subscribe_failed).
+   * Drain waits for these so the tower still gets the turn before the bridge stops.
+   */
+  const pendingConvSends = new Set<Promise<void>>();
+  function trackConvSend(p: Promise<void>): void {
+    const tracked: Promise<void> = p.then(
+      () => {
+        pendingConvSends.delete(tracked);
+      },
+      (e: unknown) => {
+        pendingConvSends.delete(tracked);
+        log("worker turn send failed:", e);
+      },
+    );
+    pendingConvSends.add(tracked);
+  }
   const convPaneByConvId = new Map<string, string>(); // convId → paneId
   /** PLAN 0.27.0: dispatch-scoped result issuers (receipt-time create). */
   const issuers = new ResultIssuerRegistry();
@@ -905,41 +988,63 @@ async function startLockedBridgeRuntime(
   let workerPool: { tabId: string; paneIds: Set<string> } | null = null;
   const POOL_MAX_WORKERS = 4;
 
-  // Fail-fast: herdr ping before room join (§2.2)
-  const herdr =
-    opts?.herdr ??
-    new HerdrClient({
-      socketPath: cfg.herdrSocketPath,
-    });
-  herdr.setOnEvent((event, data) => onHerdrEvent(event, data));
+  // PLAN 0.33.0 D6 (UK-7): a headless bridge skips herdr entirely — no client, no connect,
+  // no ping, no events.subscribe, no setOnEvent (an injected client is ignored too).
+  const herdrSkipped = cfg.worker?.backend === "headless";
+  const herdr: HerdrPort = herdrSkipped
+    ? skippedHerdr()
+    : (opts?.herdr ??
+      new HerdrClient({
+        socketPath: cfg.herdrSocketPath,
+      }));
 
   let herdrOk = false;
-  try {
-    await herdr.connect();
-    const pong = await herdr.ping();
-    const expected = cfg.herdrProtocol ?? HERDR_PROTOCOL_EXPECTED;
-    if (pong.protocol !== expected) {
-      throw new Error(`herdr protocol ${pong.protocol} != expected ${expected}`);
+  if (herdrSkipped) {
+    life.status.update({ herdr: "skipped" });
+    log("herdr skipped (worker.backend=headless — no herdr connection; conv.open is rejected)");
+  } else {
+    // Fail-fast: herdr ping before room join (§2.2) — pane backend unchanged.
+    herdr.setOnEvent((event, data) => onHerdrEvent(event, data));
+    try {
+      await herdr.connect();
+      const pong = await herdr.ping();
+      const expected = cfg.herdrProtocol ?? HERDR_PROTOCOL_EXPECTED;
+      if (pong.protocol !== expected) {
+        throw new Error(`herdr protocol ${pong.protocol} != expected ${expected}`);
+      }
+      herdrOk = true;
+      life.status.update({ herdr: "ok" });
+      log(`herdr ok v${pong.version} protocol ${pong.protocol}`);
+    } catch (e) {
+      herdr.close();
+      throw new Error(
+        `herdr unreachable (${cfg.herdrSocketPath}): ${e instanceof Error ? e.message : e}`,
+      );
     }
-    herdrOk = true;
-    life.status.update({ herdr: "ok" });
-    log(`herdr ok v${pong.version} protocol ${pong.protocol}`);
-  } catch (e) {
-    herdr.close();
-    throw new Error(
-      `herdr unreachable (${cfg.herdrSocketPath}): ${e instanceof Error ? e.message : e}`,
-    );
+
+    // PLAN 0.23.4 / R29 L-2: global pane.closed once at startup — fail-fast if
+    // the event stream cannot be established (same class as herdr ping fail-fast).
+    try {
+      await herdr.eventsSubscribe([{ type: "pane.closed" }]);
+    } catch (e) {
+      herdr.close();
+      throw new Error(
+        `herdr events.subscribe (pane.closed) failed: ${e instanceof Error ? e.message : e}`,
+      );
+    }
   }
 
-  // PLAN 0.23.4 / R29 L-2: global pane.closed once at startup — fail-fast if
-  // the event stream cannot be established (same class as herdr ping fail-fast).
-  try {
-    await herdr.eventsSubscribe([{ type: "pane.closed" }]);
-  } catch (e) {
-    herdr.close();
-    throw new Error(
-      `herdr events.subscribe (pane.closed) failed: ${e instanceof Error ? e.message : e}`,
-    );
+  /**
+   * P4 (P2 carry-over L2): live herdr health instead of the startup snapshot. "ok" needs the
+   * startup ping AND a currently established event stream (the client drops it on herdr
+   * loss and re-subscribes with backoff when herdr returns). Read by `/health`, `/rpc
+   * status` and every status-file heartbeat (so the file lags by ≤ HEARTBEAT_MS). A
+   * per-pane re-subscribe briefly re-opens the stream — a sample can read "down" for those
+   * few ms.
+   */
+  function herdrHealth(): HerdrHealth {
+    if (herdrSkipped) return "skipped";
+    return herdrOk && herdr.eventConnected ? "ok" : "down";
   }
 
   const client = new RelayClient({
@@ -1071,7 +1176,7 @@ async function startLockedBridgeRuntime(
       if (url.pathname === "/health" || url.pathname === "/ping") {
         return Response.json({
           ok: true,
-          herdr: herdrOk,
+          herdr: herdrHealth() === "ok",
           peerId: session!.peerId,
           roomId: session!.roomId,
         });
@@ -1095,7 +1200,9 @@ async function startLockedBridgeRuntime(
             roomId: session!.roomId,
             displayName: session!.displayName,
             herdrSocketPath: cfg.herdrSocketPath,
-            herdrOk,
+            herdrOk: herdrHealth() === "ok",
+            // PLAN 0.33.0 D5 / D6: ok | skipped (headless) | down (live — L2)
+            herdr: herdrHealth(),
             // PLAN 0.33.0 D5: lifecycle state (starting|running|draining|stopping|stopped)
             state: life.status.current()?.state ?? null,
             // PLAN 0.33.0 D4: drain window + remaining in-flight counts
@@ -1238,10 +1345,10 @@ async function startLockedBridgeRuntime(
 
   // PLAN 0.33.0 D5: relay joined + startup recovery registered → running; attach the
   // heartbeat sampler (the timer itself runs since `starting`).
-  life.setState("running", undefined, { inFlight: inFlightCounts(), herdr: herdrOk ? "ok" : "down" });
+  life.setState("running", undefined, { inFlight: inFlightCounts(), herdr: herdrHealth() });
   life.status.startHeartbeat(() => ({
     inFlight: inFlightCounts(),
-    herdr: herdrOk ? "ok" : "down",
+    herdr: herdrHealth(),
   }));
 
   // Drain existing inbox
@@ -1323,6 +1430,25 @@ async function startLockedBridgeRuntime(
         logNotClaiming(h.id);
         return;
       }
+      // PLAN 0.33.0 D6 / R5 / R51-M1: a headless bridge runs no conv panes. Claim exactly
+      // once (payload_invalid pattern) and reject — an unclaimed reject would stay in the
+      // inbox and be re-rejected on every restart. Drain wins (checked just above).
+      if (convLbl === CONV_OPEN_LABEL && herdrSkipped) {
+        processedHandoffs.add(h.id);
+        claimedStarting += 1;
+        try {
+          const claim = await client.claimHandoff(h.id, "claim");
+          if (!claim.ok) return;
+          const convId = convOpenIdLoose(h);
+          log(
+            `conv.open ${convId ?? "(no valid convId)"} from ${h.fromPeerId} rejected: ${CONV_UNAVAILABLE_HEADLESS} (worker.backend=headless)`,
+          );
+          if (convId) await sendConvReject(convId, h.fromPeerId, CONV_UNAVAILABLE_HEADLESS);
+        } finally {
+          claimedStarting -= 1;
+        }
+        return;
+      }
       processedHandoffs.add(h.id);
       claimedStarting += 1;
       try {
@@ -1367,14 +1493,20 @@ async function startLockedBridgeRuntime(
       const looseId = extractCardIdLoose(att.content) ?? "task_0";
       issuers.getOrCreate(looseId, h.id);
       processedHandoffs.add(h.id);
-      const claim = await client.claimHandoff(h.id, "claim");
-      if (!claim.ok) return;
-      await sendFailedResult({
-        cardId: looseId,
-        fromPeerId,
-        dispatchHandoffId: h.id,
-        reason: "payload_invalid",
-      });
+      // P4 (P3-L1): claim → failed-result send is in flight work — a drain must wait for it.
+      claimedStarting += 1;
+      try {
+        const claim = await client.claimHandoff(h.id, "claim");
+        if (!claim.ok) return;
+        await sendFailedResult({
+          cardId: looseId,
+          fromPeerId,
+          dispatchHandoffId: h.id,
+          reason: "payload_invalid",
+        });
+      } finally {
+        claimedStarting -= 1;
+      }
       return;
     }
 
@@ -1416,6 +1548,18 @@ async function startLockedBridgeRuntime(
 
   function logNotClaiming(handoffId: string): void {
     log(`drain: not claiming handoff ${handoffId} (draining — stays in the relay inbox)`);
+  }
+
+  /** conv.open convId (schema-valid id only), even when the rest of the payload is invalid. */
+  function convOpenIdLoose(h: HandoffPayload): string | null {
+    const att = h.attachments?.find((a) => a.kind === "text" && a.label === CONV_OPEN_LABEL);
+    if (!att) return null;
+    try {
+      const id = (JSON.parse(att.content) as { convId?: unknown }).convId;
+      return ConvIdSchema.safeParse(id).success ? (id as string) : null;
+    } catch {
+      return null;
+    }
   }
 
   function extractCardIdLoose(content: string): string | null {
@@ -2146,7 +2290,7 @@ async function startLockedBridgeRuntime(
       log("conv events.subscribe failed:", e);
       convFlights.delete(agent.pane_id);
       convPaneByConvId.delete(payload.convId);
-      void sendWorkerTurnFromPane(flight, "blocked", "events_subscribe_failed");
+      trackConvSend(sendWorkerTurnFromPane(flight, "blocked", "events_subscribe_failed"));
       return;
     }
 
@@ -3026,7 +3170,7 @@ async function startLockedBridgeRuntime(
       convFlights.delete(paneId);
       convPaneByConvId.delete(flight.convId);
       herdr.eventsPrune(paneId);
-      void sendWorkerTurnFromPane(flight, "blocked", "pane_closed");
+      trackConvSend(sendWorkerTurnFromPane(flight, "blocked", "pane_closed"));
       return;
     }
 
@@ -3043,12 +3187,12 @@ async function startLockedBridgeRuntime(
     }
 
     if (status === "blocked") {
-      void sendWorkerTurnFromPane(flight, "blocked", "agent_blocked");
+      trackConvSend(sendWorkerTurnFromPane(flight, "blocked", "agent_blocked"));
       return;
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
       flight.sawWorking = false;
-      void sendWorkerTurnFromPane(flight, "auto");
+      trackConvSend(sendWorkerTurnFromPane(flight, "auto"));
     }
   }
 
@@ -3273,7 +3417,7 @@ async function startLockedBridgeRuntime(
   /** R3: pane card flights + conv flights + headless running (+ claim→flight window). */
   function drainSettled(): boolean {
     const r = inFlightCounts();
-    return r.paneCards + r.convs + r.headlessRunning + claimedStarting === 0;
+    return r.paneCards + r.convs + r.headlessRunning + claimedStarting + pendingConvSends.size === 0;
   }
 
   function clearDrainTimers(): void {
@@ -3356,6 +3500,11 @@ async function startLockedBridgeRuntime(
     // PLAN 0.28.0 M5: process-local preserved-pane tracking ends with the process.
     preservedCardPaneIds.clear();
     terminalObservedPaneIds.clear();
+    // P4 (P2 carry-over L1): RPC `stop` queues requestStop in a microtask, so on the pane
+    // backend nothing above yields before the forced server stop — the `{ok:true, op:"stop"}`
+    // reply would be cut off (and the CLI would fall back to its 3 s wait). One macrotask
+    // lets the in-flight response flush first.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     try {
       await server.stop(true);
     } catch {
@@ -3421,8 +3570,6 @@ async function startLockedBridgeRuntime(
     return requestStop("api:stop");
   }
 
-  // Keep reference so herdrOk can flip on reconnect failures (slice: static)
-  void herdrOk;
 
   return {
     meta,

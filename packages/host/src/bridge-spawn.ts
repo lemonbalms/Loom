@@ -13,7 +13,7 @@ import {
   resolveAliveBridgeMeta,
   type BridgeMeta,
 } from "./bridge-meta";
-import { isPidAlive } from "./session-store";
+import { isPidAlive, loadSession } from "./session-store";
 import { getActiveProfile, sessionPath, loomDir } from "./session-store";
 import {
   QuarantineStore,
@@ -29,6 +29,40 @@ export function sanitizeProfileLogName(profile: string): string {
   let s = profile.replace(/[^A-Za-z0-9._-]/g, "-");
   s = s.replace(/^[.\-]+/, (m) => "_".repeat(m.length));
   return s.length > 0 ? s : "default";
+}
+
+/**
+ * PLAN 0.33.0 P4 (P2 carry-over L3): the ONE profile name for every per-profile bridge file
+ * (config, lock, status file, stderr log, quarantine). Same resolution the runtime has always
+ * used: active profile (`--profile` / LOOM_PROFILE) → session displayName → "default".
+ * `session` undefined → load the current session; null → no session.
+ */
+export function resolveBridgeProfile(session?: { displayName?: string } | null): string {
+  const active = getActiveProfile();
+  if (active) return active;
+  const s = session === undefined ? loadSession() : session;
+  return s?.displayName || "default";
+}
+
+/** PLAN 0.23.4 / 0.33.0 R9: `<bridgeDir>/<safeProfile>.stderr.log` (bridgeDir default `loomDir()/bridge`). */
+export function bridgeLogPath(profile: string, bridgeDir?: string): string {
+  return join(bridgeDir ?? join(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.stderr.log`);
+}
+
+/**
+ * P4 (L3): does a live process hold this profile's bridge lock? Read-only (owner.json pid +
+ * kill 0). An owner-less / unreadable lock dir counts as held (being acquired or foreign) —
+ * the caller only uses this to avoid truncating a log someone may be writing.
+ */
+function bridgeLockLooksHeld(profile: string): boolean {
+  const lockDir = join(loomDir(), "bridge", `${sanitizeProfileLogName(profile)}.lock`);
+  if (!existsSync(lockDir)) return false;
+  try {
+    const owner = JSON.parse(readFileSync(join(lockDir, "owner.json"), "utf8")) as { pid?: unknown };
+    return typeof owner.pid === "number" && isPidAlive(owner.pid);
+  } catch {
+    return true;
+  }
 }
 
 function bridgeMainPath(): string {
@@ -97,19 +131,23 @@ export async function startBridgeProcess(): Promise<BridgeStartResult> {
     ...process.env,
     LOOM_SESSION: sp,
   };
-  const profile = getActiveProfile() ?? "default";
-  if (getActiveProfile()) env.LOOM_PROFILE = profile;
+  // P4 (L3): same name the runtime uses for its lock / status file (resolveBridgeProfile).
+  const profile = resolveBridgeProfile();
+  const active = getActiveProfile();
+  if (active) env.LOOM_PROFILE = active;
 
   // PLAN 0.23.4: finite stderr log (truncate on each spawn, mode 0600).
   // stdout stays ignore — only bridge diagnostic logs need a sink.
   // Sanitize profile for filename so slash profiles / ".." cannot escape logDir.
-  const safeProfile = sanitizeProfileLogName(profile);
+  // PLAN 0.33.0 P4 (L3): never truncate while a live bridge holds the profile lock — that is
+  // the holder's log, and this spawn will be refused; append so the refusal (R7) lands after
+  // the holder's lines instead of wiping them.
   const logDir = join(loomDir(), "bridge");
   mkdirSync(logDir, { recursive: true });
-  const stderrPath = join(logDir, `${safeProfile}.stderr.log`);
+  const stderrPath = bridgeLogPath(profile, logDir);
   let stderrFd: number | undefined;
   try {
-    stderrFd = openSync(stderrPath, "w", 0o600);
+    stderrFd = openSync(stderrPath, bridgeLockLooksHeld(profile) ? "a" : "w", 0o600);
     try {
       chmodSync(stderrPath, 0o600);
     } catch {
@@ -445,8 +483,7 @@ export async function bridgeQuarantineAck(args: {
   }
 
   // Offline: authoritative durable store is local JSONL (no live daemon).
-  const profile =
-    args.profile ?? getActiveProfile() ?? "default";
+  const profile = args.profile ?? resolveBridgeProfile();
   const store = new QuarantineStore({ profile });
   store.load();
   const result = store.ackOperator({

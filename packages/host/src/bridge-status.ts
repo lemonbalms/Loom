@@ -7,9 +7,10 @@
  * copied; `lastError` is secret-redacted and capped at 512 UTF-8 bytes).
  *
  * Diagnostics are a record, not a gate: write failures never throw (one stderr line per
- * failure kind) and never change a decision. Readers / doctor are P4.
+ * failure kind) and never change a decision. Reader (`readBridgeStatusFile`) added in P4.
  */
 
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeAtomicJson } from "./atomic-json";
 import { sanitizeProfileLogName } from "./bridge-spawn";
@@ -80,8 +81,56 @@ export function canTransition(from: BridgeState | null, to: BridgeState): boolea
   return TRANSITIONS[from ?? "none"].includes(to);
 }
 
-export function bridgeStatusPath(profile: string): string {
-  return join(loomDir(), "bridge", `${sanitizeProfileLogName(profile)}.status.json`);
+/** `<bridgeDir>/<safeProfile>.status.json` (bridgeDir default `loomDir()/bridge`; readers that
+ * must not touch `loomDir()` — doctor — pass their own). */
+export function bridgeStatusPath(profile: string, bridgeDir?: string): string {
+  return join(bridgeDir ?? join(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.status.json`);
+}
+
+/**
+ * PLAN 0.33.0 P4 — D5 reader. Parse a status file read-only; null when absent, unreadable or
+ * not a v1 status record. Only the ② keys are returned (a hand-edited file cannot inject
+ * extra fields into doctor / `bridge status` output).
+ */
+export function readBridgeStatusFile(path: string): BridgeStatus | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.v !== 1) return null;
+  if (typeof o.state !== "string" || !(BRIDGE_STATES as readonly string[]).includes(o.state)) return null;
+  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const f = (o.inFlight && typeof o.inFlight === "object" ? o.inFlight : {}) as Record<string, unknown>;
+  const herdr = o.herdr === "ok" || o.herdr === "skipped" || o.herdr === "down" ? o.herdr : "down";
+  const out: BridgeStatus = {
+    v: 1,
+    pid: num(o.pid),
+    version: str(o.version),
+    srcPath: str(o.srcPath),
+    profile: str(o.profile),
+    startedAt: str(o.startedAt),
+    heartbeatAt: str(o.heartbeatAt),
+    state: o.state as BridgeState,
+    inFlight: {
+      paneCards: num(f.paneCards),
+      convs: num(f.convs),
+      headlessRunning: num(f.headlessRunning),
+      headlessQueued: num(f.headlessQueued),
+    },
+    herdr,
+  };
+  const d = o.drain as Record<string, unknown> | undefined;
+  if (d && typeof d === "object" && typeof d.deadlineAt === "string") {
+    out.drain = { startedAt: str(d.startedAt), deadlineAt: d.deadlineAt };
+  }
+  if (typeof o.stoppedAt === "string") out.stoppedAt = o.stoppedAt;
+  if (typeof o.lastError === "string") out.lastError = truncateLastError(o.lastError);
+  return out;
 }
 
 /** Cut to ≤ `max` UTF-8 bytes on a code-point boundary. */

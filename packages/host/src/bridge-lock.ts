@@ -84,8 +84,9 @@ export class BridgeLockBusyError extends Error {
   }
 }
 
-export function bridgeLockPath(profile: string): string {
-  return join(loomDir(), "bridge", `${sanitizeProfileLogName(profile)}.lock`);
+/** `<bridgeDir>/<safeProfile>.lock` (bridgeDir default `loomDir()/bridge`). */
+export function bridgeLockPath(profile: string, bridgeDir?: string): string {
+  return join(bridgeDir ?? join(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.lock`);
 }
 
 function ownerPath(lockPath: string): string {
@@ -114,6 +115,37 @@ function readOwnerAt(lockPath: string): BridgeLockOwner | null {
 /** Current owner of a profile's bridge lock, or null (absent / incomplete / corrupt). */
 export function readBridgeLockOwner(profile: string): BridgeLockOwner | null {
   return readOwnerAt(bridgeLockPath(profile));
+}
+
+/**
+ * PLAN 0.33.0 P4 — read-only lock view for doctor / `loom bridge status` (D5 · R6): owner.json +
+ * `kill(pid, 0)` + `ps -o lstart=` only. Never reclaims, renames or signals anything.
+ * held.verified=false: pid alive but its start time could not be confirmed (R8).
+ */
+export type BridgeLockInspection =
+  | { kind: "none" }
+  | { kind: "held"; pid: number; startedAt: string; verified: boolean }
+  | { kind: "stale"; pid: number | null }
+  | { kind: "incomplete" };
+
+export function inspectBridgeLockAt(
+  lockPath: string,
+  probe: Partial<Probe> = {},
+): BridgeLockInspection {
+  const v = inspect(lockPath, {
+    kill: probe.kill ?? ((pid, sig) => process.kill(pid, sig)),
+    readLstart: probe.readLstart ?? readProcessLstart,
+  });
+  switch (v.kind) {
+    case "gone":
+      return { kind: "none" };
+    case "incomplete":
+      return { kind: "incomplete" };
+    case "stale":
+      return { kind: "stale", pid: v.owner?.pid ?? null };
+    case "live":
+      return { kind: "held", pid: v.owner.pid, startedAt: v.owner.startedAt, verified: v.verified };
+  }
 }
 
 function sameOwner(a: BridgeLockOwner, b: BridgeLockOwner): boolean {

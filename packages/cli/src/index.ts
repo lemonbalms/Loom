@@ -32,6 +32,11 @@ import {
   drainBridgeProcess,
   parseDrainTimeoutSec,
   bridgeStatusPath,
+  bridgeLockPath,
+  bridgeLogPath,
+  inspectBridgeLockAt,
+  readBridgeStatusFile,
+  STATUS_STALE_MS,
   bridgeStatus,
   bridgeQuarantineAck,
   loadBridgeConfig,
@@ -131,11 +136,14 @@ import {
 import { join as pathJoin } from "node:path";
 import { homedir } from "node:os";
 import {
+  type BridgeReadInput,
+  bridgeSection,
   doctorExitCode,
   homeProfileSection,
   hostSection,
   installEnvSection,
   relaySection,
+  offlineBridgeStatusLines,
   renderDoctor,
   sessionSection,
   type HostRpcProbe,
@@ -147,6 +155,27 @@ import {
 } from "./inject-handoffs";
 
 const VERSION = "0.32.0";
+
+/**
+ * PLAN 0.33.0 D5 readers (P4): status file + pid liveness + read-only lock view for one
+ * profile. `bridgeDir` lets doctor read under its own read-only home (never `loomDir()`).
+ * Files and `kill(pid, 0)` / `ps -o lstart=` only — no network, no RPC, nothing mutated.
+ */
+function readBridgeView(profile: string, bridgeDir?: string): BridgeReadInput {
+  const statusPath = bridgeStatusPath(profile, bridgeDir);
+  const lockPath = bridgeLockPath(profile, bridgeDir);
+  const status = readBridgeStatusFile(statusPath);
+  return {
+    statusPath,
+    lockPath,
+    logPath: bridgeLogPath(profile, bridgeDir),
+    status,
+    pidAlive: status !== null && status.pid > 0 ? isPidAlive(status.pid) : false,
+    lock: inspectBridgeLockAt(lockPath),
+    nowMs: Date.now(),
+    staleMs: STATUS_STALE_MS,
+  };
+}
 
 /**
  * Write to fd 1/2 without going through Node/Bun stream or node:tty WriteStream.
@@ -1931,6 +1960,8 @@ async function cmdBridge(
       console.log(
         "  preservedCardPanes: unavailable (bridge offline)",
       );
+      // PLAN 0.33.0 D5: why / when it stopped — from the status file (absent → nothing).
+      for (const line of offlineBridgeStatusLines(readBridgeView(profile))) console.log(line);
       console.log(`Tip: ${loomCmd()} bridge start --allow <towerPeerId>`);
       return;
     }
@@ -2242,6 +2273,10 @@ async function cmdDoctor(flags: Record<string, string | boolean>) {
       pidAlive,
       rpc: hostRpc,
     }),
+    // PLAN 0.33.0 D5 / R6: files + pid only, ok/warn/info — never changes the exit code.
+    bridgeSection(
+      readBridgeView(profile ?? (session?.displayName || "default"), pathJoin(home, "bridge")),
+    ),
   ];
   process.stdout.write(renderDoctor(sections));
   process.exit(doctorExitCode(sections));
