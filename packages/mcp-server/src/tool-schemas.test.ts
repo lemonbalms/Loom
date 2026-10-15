@@ -8,11 +8,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import baseline031 from "./__fixtures__/tools-0.31.0.json";
-import snapshot from "./__fixtures__/tools.snapshot.json";
+import baselineJson from "./__fixtures__/tools-0.31.0.json";
+import snapshotJson from "./__fixtures__/tools.snapshot.json";
 import { TOOL_DEFINITIONS, toJsonSchema, toolRegistry, toolSchemas } from "./tool-schemas";
 
 type ToolDef = { name: string; description: string; inputSchema: Record<string, unknown> };
+
+const baseline031 = baselineJson as unknown as ToolDef[];
+const snapshot = snapshotJson as unknown as ToolDef[];
+const derived: ToolDef[] = TOOL_DEFINITIONS;
 
 /** 0.31.0 advertised TOOLS + `additionalProperties:false` on each top-level object, nothing else. */
 function withTopLevelAdditionalPropertiesFalse(tools: ToolDef[]): ToolDef[] {
@@ -149,14 +153,12 @@ describe("0.32.0 P3 — derived inputSchema snapshot (advertised == enforced)", 
   });
 
   test("committed snapshot == 0.31.0 advertised + additionalProperties:false only", () => {
-    expect(snapshot).toEqual(withTopLevelAdditionalPropertiesFalse(baseline031 as ToolDef[]));
+    expect(snapshot).toEqual(withTopLevelAdditionalPropertiesFalse(baseline031));
   });
 
   test("derived TOOL_DEFINITIONS == committed snapshot (names, order, descriptions, schemas)", () => {
-    expect(TOOL_DEFINITIONS).toEqual(snapshot as ToolDef[]);
-    expect(TOOL_DEFINITIONS.map((t) => t.name)).toEqual(
-      (baseline031 as ToolDef[]).map((t) => t.name),
-    );
+    expect(derived).toEqual(snapshot);
+    expect(derived.map((t) => t.name)).toEqual(baseline031.map((t) => t.name));
   });
 
   test("each tool's derived inputSchema == toJsonSchema(zod schema)", () => {
