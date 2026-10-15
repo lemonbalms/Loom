@@ -53,3 +53,18 @@ export {
   resolveLoomTools,
   type ShellRules,
 } from "./policy";
+// PLAN 0.32.0 D1 / D8 / D10: pure Loom MCP pre-check (injected tool registry) + per-room audit.
+export {
+  appendPolicyAudit,
+  evaluateMcpCall,
+  type LoomToolsGate,
+  type McpCallCtx,
+  type McpCallDecision,
+  type McpRefusalReason,
+  POLICY_AUDIT_FILE,
+  POLICY_AUDIT_MAX_BYTES,
+  type PolicyAuditRecord,
+  resolveLoomToolsGate,
+  type ToolRegistry,
+  toolVisible,
+} from "./mcp-precheck";
