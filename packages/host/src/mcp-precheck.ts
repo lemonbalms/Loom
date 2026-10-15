@@ -457,14 +457,17 @@ const OPEN_LIVE =
   constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 
 /**
- * Unlink all but the newest K rotated generations, newest = latest mtime (last write),
- * name as tiebreak — not by name alone, since a paused writer can rename the freshest
- * data with an earlier-stamped name. ENOENT (a concurrent pruner) is fine.
+ * Keep K rotated generations: always `fresh` (the one this call just created by its
+ * own rename — rename keeps the old mtime, and a writer that still has it open as the
+ * live file may append to it right after this prune), then the newest K−1 others by
+ * mtime (last write), name as tiebreak — not by name alone, since a paused writer can
+ * rename the freshest data with an earlier-stamped name. ENOENT (a concurrent pruner)
+ * is fine.
  */
-function pruneGenerations(roomDir: string): void {
+function pruneGenerations(roomDir: string, fresh: string): void {
   const rotated: Array<{ name: string; mtime: bigint }> = [];
   for (const name of listPolicyAuditGenerations(roomDir)) {
-    if (name === POLICY_AUDIT_FILE) continue;
+    if (name === POLICY_AUDIT_FILE || name === fresh) continue;
     try {
       rotated.push({ name, mtime: lstatSync(join(roomDir, name), { bigint: true }).mtimeNs });
     } catch (e) {
@@ -474,7 +477,7 @@ function pruneGenerations(roomDir: string): void {
   rotated.sort((a, b) =>
     a.mtime < b.mtime ? -1 : a.mtime > b.mtime ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
   );
-  const excess = Math.max(0, rotated.length - POLICY_AUDIT_KEEP_GENERATIONS);
+  const excess = Math.max(0, rotated.length - (POLICY_AUDIT_KEEP_GENERATIONS - 1));
   for (const { name } of rotated.slice(0, excess)) {
     try {
       unlinkSync(join(roomDir, name));
@@ -512,7 +515,8 @@ function writeFully(fd: number, line: string): boolean {
  *   3. open O_WRONLY|O_APPEND|O_CREAT|O_NOFOLLOW 0600 (no O_EXCL: concurrent
  *      creators append to the same inode), fchmod 0600, write the whole line
  *      (loop over short writes; 0 bytes or a throw → short_write), close.
- * Pruning keeps the newest 3 generations by mtime (name as tiebreak).
+ * Pruning keeps the generation this call just rotated plus the newest 2 others by
+ * mtime (name as tiebreak).
  * Renames never target an existing name, so nothing is overwritten; a concurrent
  * loser can at worst rotate a small fresh file into one extra small generation.
  * Any failure is swallowed with one stderr line and returns false — the decision
@@ -554,7 +558,7 @@ export function appendPolicyAudit(
       } catch (e) {
         if (errCode(e) !== "ENOENT") throw e;
       }
-      if (rotated) pruneGenerations(roomDir);
+      if (rotated) pruneGenerations(roomDir, gen);
     }
 
     // Accepted limit (P2 verify round 3, M1): a writer paused between this open and

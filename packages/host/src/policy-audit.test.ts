@@ -8,9 +8,11 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   appendFileSync,
   chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -317,6 +319,46 @@ describe("appendPolicyAudit — rotation to unique generations (D8 amended, UK-3
     for (const n of rotated)
       expect(readFileSync(join(roomDir, n), "utf8")).not.toContain("G0-LINE");
     expect(lines(path).map((l) => JSON.parse(l).cardId)).toEqual(["A"]);
+  });
+
+  test("round 4: the generation this call just rotated survives even with the oldest mtime; a paused writer's record stays reachable", () => {
+    const roomDir = roomDirOf();
+    mkdirSync(roomDir, { recursive: true });
+    const others = ["A", "B", "C"].map((x, i) =>
+      policyAuditGenerationName(
+        new Date(`2025-0${i + 1}-01T00:00:00.000Z`),
+        9,
+        `${x}${x}${x}${x}${x}${x}`.toLowerCase(),
+      ),
+    );
+    others.forEach((n, i) => {
+      writeFileSync(join(roomDir, n), `other${i}\n`);
+      const t = new Date(Date.now() - (10 - i) * 1000); // newer than L
+      utimesSync(join(roomDir, n), t, t);
+    });
+    const path = auditPath();
+    writeFileSync(path, "L-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 7)));
+    const lTime = new Date(Date.now() - 100_000); // rename keeps L's old mtime
+    utimesSync(path, lTime, lTime);
+    // W has L open (paused before its write).
+    const wFd = openSync(path, "a");
+    try {
+      expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "R" }))).toBe(true); // R rotates L → D
+      writeSync(wFd, `${JSON.stringify(rec({ cardId: "W" }))}\n`);
+    } finally {
+      closeSync(wFd);
+    }
+    const rotated = listPolicyAuditGenerations(roomDir).filter((n) => n !== POLICY_AUDIT_FILE);
+    const d = rotated.filter((n) => !others.includes(n));
+    expect(d.length).toBe(1);
+    expect(rotated.length).toBe(POLICY_AUDIT_KEEP_GENERATIONS);
+    const dText = readFileSync(join(roomDir, d[0]), "utf8");
+    expect(dText).toContain("L-LINE");
+    expect(dText).toContain('"W"');
+    // Remaining slots = newest others by mtime: others[2], others[1]; others[0] pruned.
+    expect(rotated).toContain(others[1]);
+    expect(rotated).toContain(others[2]);
+    expect(rotated).not.toContain(others[0]);
   });
 
   test("no rotation → no pruning (old generations untouched)", () => {
