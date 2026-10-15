@@ -27,6 +27,15 @@
  * - grok `--disable-web-search` is a bool. Env `GROK_FOLDER_TRUST` is rejected.
  * - claude and grok permission rules with a `*` right after a non-space
  *   character (the `p*` form, PLAN §0.31.0 UK-1) are rejected.
+ * - A flag given more than once exits 2 unless its spec is `repeatable`
+ *   (aliases count as the same flag, e.g. codex `-C` + `--cd`). Measured
+ *   2026-10-15 (grok 1.0.54, codex-cli 0.162.1, claude 2.1.300):
+ *   grok `--allow`/`--deny` and codex `-c`/`--config` are repeatable; every
+ *   other grok and codex flag the fake knows is rejected by the real CLI
+ *   ("cannot be used multiple times", exit 2). Claude accepts repeats
+ *   (last value wins), but the fake rejects them on purpose: a later
+ *   `--settings`/`--permission-mode` would silently override the policy,
+ *   and resolveIds reads the first `--session-id` while claude uses the last.
  *
  * Knobs are env-only so argv stays the real CLI argv:
  * - FAKE_OUTPUT_BYTES       body length (default 32). Body is "x" repeated.
@@ -178,7 +187,7 @@ function realSleepMs(): number {
 
 type FlagTake = "bool" | "value" | "variadic" | "optional";
 
-type FlagSpec = { take: FlagTake; label: string };
+type FlagSpec = { take: FlagTake; label: string; repeatable?: true };
 
 /** A token that occupies a flag slot. `-` is the codex stdin positional. */
 function isFlag(arg: string): boolean {
@@ -194,6 +203,10 @@ function missingValue(label: string): string {
   return `error: a value is required for '${label}' but none was supplied\n\nFor more information, try '--help'.\n`;
 }
 
+function repeatedFlag(label: string): string {
+  return `error: the argument '${label}' cannot be used multiple times\n\nFor more information, try '--help'.\n`;
+}
+
 function flagMap(rows: Array<[string[], FlagSpec]>): Map<string, FlagSpec> {
   const map = new Map<string, FlagSpec>();
   for (const [names, spec] of rows) {
@@ -206,7 +219,8 @@ function flagMap(rows: Array<[string[], FlagSpec]>): Map<string, FlagSpec> {
  * Walk argv the way the real CLIs do for the flags buildAgentArgv emits.
  * A "variadic" flag consumes every following non-flag token (none of the
  * 0.31.0 flags are variadic). Grok `--allow` and `--deny` each take one value;
- * a later non-flag token is a stray positional.
+ * a later non-flag token is a stray positional. A flag (or an alias of it)
+ * seen twice is an error unless its spec is `repeatable`.
  * Returns an error string, or null when the argv is accepted.
  */
 function parseFlags(
@@ -215,6 +229,7 @@ function parseFlags(
   maxPositionals: number,
 ): string | null {
   const positionals: string[] = [];
+  const seen = new Set<FlagSpec>();
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] ?? "";
     if (!isFlag(arg)) {
@@ -224,6 +239,8 @@ function parseFlags(
     }
     const spec = flags.get(arg);
     if (!spec) return unexpectedArg(arg);
+    if (seen.has(spec) && !spec.repeatable) return repeatedFlag(spec.label);
+    seen.add(spec);
     if (spec.take === "bool") continue;
     if (spec.take === "optional") {
       const next = argv[i + 1];
@@ -253,8 +270,8 @@ const grokFlags = flagMap([
   [["-r", "--resume"], { take: "value", label: "-r <SESSION_ID>" }],
   [["--rules"], { take: "value", label: "--rules <RULES>" }],
   [["--permission-mode"], { take: "value", label: "--permission-mode <MODE>" }],
-  [["--allow"], { take: "value", label: "--allow <RULE>" }],
-  [["--deny"], { take: "value", label: "--deny <RULE>" }],
+  [["--allow"], { take: "value", label: "--allow <RULE>", repeatable: true }],
+  [["--deny"], { take: "value", label: "--deny <RULE>", repeatable: true }],
   [["--disable-web-search"], { take: "bool", label: "--disable-web-search" }],
 ]);
 
@@ -281,7 +298,7 @@ const CLAUDE_REMOVED_FLAGS = new Set([
 /** `*` right after a non-space character: the banned `p*` rule form. */
 const NO_SPACE_STAR = /[^ ]\*/;
 
-const codexConfig: FlagSpec = { take: "value", label: "--config <key=value>" };
+const codexConfig: FlagSpec = { take: "value", label: "--config <key=value>", repeatable: true };
 const codexExecFlags = flagMap([
   [["--json"], { take: "bool", label: "--json" }],
   [["-C", "--cd"], { take: "value", label: "--cd <DIR>" }],
