@@ -540,6 +540,31 @@ function pruneGenerations(roomDir: string, fresh: string): void {
   }
 }
 
+const ROTATE_NAME_RETRIES = 3;
+
+/**
+ * A generation name verified absent (lstat ENOENT) just before the rename: first
+ * attempt + up to 3 retries with a fresh random suffix; all taken → null (skip the
+ * rotation). rename(2) is kept for its atomicity (whatever is at the live path moves;
+ * link+unlink could delete a newer live file another writer just created). Within one
+ * process the check is exact (appends are synchronous); across processes a replace
+ * needs the same pid, millisecond and 6-char suffix (pid namespaces sharing the dir).
+ */
+function freeGenerationName(roomDir: string): string | null {
+  for (let attempt = 0; attempt <= ROTATE_NAME_RETRIES; attempt++) {
+    const name =
+      policyAuditTestHooks.generationName?.() ??
+      policyAuditGenerationName(new Date(auditNow()), process.pid, randomBase36());
+    try {
+      lstatSync(join(roomDir, name));
+    } catch (e) {
+      if (errCode(e) === "ENOENT") return name;
+      throw e;
+    }
+  }
+  return null;
+}
+
 /** Write every byte of `line`; a 0-byte or throwing write → false (no retry). */
 function writeFully(fd: number, line: string): boolean {
   const buf = Buffer.from(line, "utf8");
@@ -600,18 +625,23 @@ export function appendPolicyAudit(
     policyAuditTestHooks.afterLstat?.();
 
     if (size > 0 && size + lineBytes > POLICY_AUDIT_MAX_BYTES) {
-      const gen =
-        policyAuditTestHooks.generationName?.() ??
-        policyAuditGenerationName(new Date(auditNow()), process.pid, randomBase36());
-      policyAuditTestHooks.beforeRename?.();
+      const gen = freeGenerationName(roomDir);
       let rotated = false;
-      try {
-        renameSync(path, join(roomDir, gen));
-        rotated = true;
-      } catch (e) {
-        if (errCode(e) !== "ENOENT") throw e;
+      if (gen === null) {
+        // Every candidate name is taken: skip this rotation, still append to live.
+        process.stderr.write(
+          `[loom-mcp] audit_rotate_skipped room=${roomKey(roomId)} err=name_taken\n`,
+        );
+      } else {
+        policyAuditTestHooks.beforeRename?.();
+        try {
+          renameSync(path, join(roomDir, gen));
+          rotated = true;
+        } catch (e) {
+          if (errCode(e) !== "ENOENT") throw e;
+        }
       }
-      if (rotated) {
+      if (rotated && gen !== null) {
         policyAuditTestHooks.beforePrune?.();
         pruneGenerations(roomDir, gen);
       }

@@ -850,23 +850,64 @@ describe("appendPolicyAudit — failure never propagates (D8)", () => {
     expect(text.trim().split("\n").length).toBe(1);
   });
 
-  test("rename failure → record skipped, false, stderr audit_write_failed, live file untouched", () => {
+  test("rename failure (name taken after the absent-check) → record skipped, false, stderr, live untouched", () => {
     const path = auditPath();
     appendPolicyAudit(dir, ROOM, rec());
     writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES));
-    // A non-empty directory at the generation name makes rename(path, gen) fail.
     const gen = policyAuditGenerationName(new Date(), 1, "blockd");
-    mkdirSync(join(roomDirOf(), gen));
-    writeFileSync(join(roomDirOf(), gen, "keep"), "k");
     policyAuditTestHooks.generationName = () => gen;
-    try {
-      expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "skipped" }))).toBe(false);
-    } finally {
-      policyAuditTestHooks.generationName = undefined;
-    }
+    // Race: the name is absent at the check, then a non-empty directory appears there,
+    // so rename(path, gen) fails.
+    policyAuditTestHooks.beforeRename = () => {
+      mkdirSync(join(roomDirOf(), gen));
+      writeFileSync(join(roomDirOf(), gen, "keep"), "k");
+    };
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "skipped" }))).toBe(false);
     expect(stderrText()).toContain("audit_write_failed");
     expect(readFileSync(path, "utf8")).not.toContain("skipped");
     expect(statSync(path).size).toBe(POLICY_AUDIT_MAX_BYTES);
+  });
+
+  test("round 7b: forced name collision → the existing generation survives; a fresh suffix is used", () => {
+    const roomDir = roomDirOf();
+    const path = auditPath();
+    appendPolicyAudit(dir, ROOM, rec());
+    const taken = policyAuditGenerationName(new Date(), 1, "taken0");
+    writeFileSync(join(roomDir, taken), "FIRST-GEN\n");
+    writeFileSync(path, "L-LINE\n".repeat(Math.ceil(POLICY_AUDIT_MAX_BYTES / 7)));
+    const liveSize = statSync(path).size;
+    let calls = 0;
+    policyAuditTestHooks.generationName = () => (calls++ === 0 ? taken : undefined);
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "after" }))).toBe(true);
+    expect(calls).toBe(2);
+    expect(readFileSync(join(roomDir, taken), "utf8")).toBe("FIRST-GEN\n");
+    const rotated = listPolicyAuditGenerations(roomDir).filter((n) => n !== POLICY_AUDIT_FILE);
+    expect(rotated.length).toBe(2);
+    const fresh = rotated.find((n) => n !== taken) ?? "";
+    expect(statSync(join(roomDir, fresh)).size).toBe(liveSize);
+    expect(lines(path).map((l) => JSON.parse(l).cardId)).toEqual(["after"]);
+  });
+
+  test("round 7b: every attempt collides → rotation skipped (one stderr line), record appended to live", () => {
+    const roomDir = roomDirOf();
+    const path = auditPath();
+    appendPolicyAudit(dir, ROOM, rec());
+    const taken = policyAuditGenerationName(new Date(), 1, "taken1");
+    writeFileSync(join(roomDir, taken), "FIRST-GEN\n");
+    writeFileSync(path, "a".repeat(POLICY_AUDIT_MAX_BYTES));
+    let calls = 0;
+    policyAuditTestHooks.generationName = () => {
+      calls++;
+      return taken;
+    };
+    expect(appendPolicyAudit(dir, ROOM, rec({ cardId: "appended" }))).toBe(true);
+    expect(calls).toBe(4); // first attempt + 3 retries
+    expect(readFileSync(join(roomDir, taken), "utf8")).toBe("FIRST-GEN\n");
+    expect(readFileSync(path, "utf8")).toContain('"appended"');
+    expect(statSync(path).size).toBeGreaterThan(POLICY_AUDIT_MAX_BYTES);
+    const text = stderrText();
+    expect(text).toContain("audit_rotate_skipped");
+    expect(text.trim().split("\n").length).toBe(1);
   });
 
   test("empty roomId → stderr only, false, no file", () => {
