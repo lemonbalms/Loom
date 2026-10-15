@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-15 (0.30.0 헤드리스 카드 워커 · 카드별 세션 · 재개/입양 · 동시성 · 정적 권한 프로필) |
+| **Last updated** | 2026-10-15 (0.31.0 스킬 materialize · `policy.json` v1 → CLI별 권한 번역) |
 
 ---
 
@@ -39,6 +39,53 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.31.0 — 스킬 materialize · `policy.json` v1 → CLI별 권한 번역 (업그레이드 2단계 2부)
+
+PLAN §0.31.0 (R49 `approved-with-fixes` → `approved`) · 커밋 `9f52ba0`(P1 red) → `5cce3ad`(P1 정책 코어) → `d17c656`(P1 검증 교정) → `2b5d472`(P2 red) → `c5b7c9d`(P2 컴파일러) → `1bdd0ae`(P2 검증 교정) → `0706d47`(프로브 §H UK-5) → `3fd3419`(P3 red) → `c397625`(P3 materialize) → `3d1037c`·`c508fcb`·`8863e5d`·`3dcbb31`(P3 검증 1~4차) → `0fd3379`(P4 red) → `a912236`(P4 통합) → `c2b454a`·`4068563`(P4 검증 1~2차) → `3f92eeb`(업그레이드 호환 — D10과 같은 deprecated `p*` deny 수용) → PATCH 5(문서·VERSION·라이브 스모크 `docs/spikes/HEADLESS-SMOKE-0310.md`).
+
+**설계 결정 기록 (구현 중 확정 — PLAN 문면 대비):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-15 | ④ 영향 파일(이름 추정) | 모듈 = `policy.ts`(스키마·로더·병합·`policyHash`) · `policy-compile.ts`(CLI별 컴파일 · `resolveWorkerPolicy` · `POLICY_ENFORCEMENT` 정직 표 상수) · `skill-materialize.ts` · `skill-prompt.ts`(목록 렌더). 내장 스킬 `packages/host/skills/loom-card-report/SKILL.md`. | 순수 모듈(정책)과 I/O(materialize)를 분리해 각각 단위 테스트. | — |
+| 2026-10-15 | D7 · UK-1 §G | 오너 규칙은 `p *`만. **deprecated deny의 공백 없는 `p*` → 기동 거부**(오류가 `policy.json` `shell.deny`로 옮기는 법을 안내) — **예외(`3f92eeb`, 업그레이드 호환):** 0.30.0 D10 deny 항목과 글자 그대로 같은 `Bash(git push*)` · `Bash(git reset --hard*)` · `Bash(git clean*)`는 내장처럼 `p` + `p *`로 정규화해 받고 경고(목록을 지우라) · deprecated allow의 `p*` → `p` + `p *`로 좁히고 경고. | deny를 조용히 좁히면 `p*`가 잡던 비슷한 이름(`rm*` → `rmdir`)이 풀린다 — deny 단조성(D8) 위반. allow를 좁히는 것은 안전 쪽. 글자 그대로 같은 D10 항목은 이미 내장 deny에 있어 정규화해도 빠지는 차단이 없다. | 0.30.0 기본 목록을 복사한 설정은 경고와 함께 기동한다 — 목록을 지운다. 그 밖의 `p*` deny는 기동 거부(USER_GUIDE §16.2). |
+| 2026-10-15 | D7 fail-closed | `loadPolicy`: lstat 오류 코드 구분 — **최종 경로 ENOENT + 실제 디렉터리 loomDir(또는 loomDir 부재)만 "없음"**. 매달린/순환 링크 · EACCES · ENOTDIR · loomDir 비디렉터리 = 거부. 링크는 대상이 정규 파일일 때만 따라감. `O_NONBLOCK` open + fstat 정규 파일 확인 · **64 KiB** 상한(읽는 중 커져도 거부). | "없음"을 넓게 잡으면 접근 불가 정책 파일이 내장 기본값으로 폴백한다 — fail-open. FIFO는 open에서 막힐 수 있다. | — |
+| 2026-10-15 | D8 · R5 · R49-M2 | 병합은 **에이전트별**(claude 목록은 claude에만, grok 목록은 grok에만, codex는 목록 없음). 설정 수준 해시 = 세 에이전트 `policyHash`의 sha256. deprecated 목록은 **원시 존재**로 전달(키 없음 = 부재 · `[]` = 존재). 정책은 headless bridge 설정 파싱(`loadBridgeConfig` → `workerConfigFromBridge`) 때 로드 — 무효/충돌 = 기동 거부, pane bridge는 읽지 않음. | 한 에이전트의 목록을 다른 에이전트에 섞으면 deny/allow가 엉뚱한 CLI로 샌다. `[]`를 "없음"으로 보면 빈 allow 의도가 기본값으로 바뀐다. | — |
+| 2026-10-15 | D8 · D9 | deprecated deny의 비-셸 항목 보존: `WebFetch`/`WebSearch` → `webDeny`, `Read`/`Edit`/… → `toolDeny`(claude deny · grok `--deny`). grok에는 웹 도구 규칙 형식이 없어 **웹 deny가 하나라도 있으면 `--disable-web-search`**. | D8 "어느 것도 deny를 줄이지 못한다" — deprecated deny를 버리지 않는다. | — |
+| 2026-10-15 | ② `mcp.deny` · UK-5 §H | 형식은 `<server>__<tool>`만(서버·툴 각각 `[A-Za-z0-9][A-Za-z0-9._-]*`). 서버 단위 `mcp__<server>`는 §H에서 동작이 측정됐지만 v1 문법에 넣지 않았다. | PLAN ② 문면 유지 — 표면을 넓히지 않는다. 서버 차단은 기본 `isolate:true`가 이미 한다. | 필요하면 v2 스키마. |
+| 2026-10-15 | (g) · R49-M4 | 가짜 CLI가 **반복 불가 플래그의 반복을 거부**(실측: grok·codex 단일 값 플래그 반복 = exit 2 · grok `--allow`/`--deny`·codex `-c`는 반복 가능 · claude 실 CLI는 마지막 값 우선이지만 가짜는 거부 — 더 엄격). `--plugin-dir` 반복도 Loom 제약으로 거부. | 관대한 가짜는 실 CLI의 거부를 재현하지 못한다(0.30.0 Deviation (d) 교훈). | — |
+| 2026-10-15 | D3 · R7 경로 신뢰 | loomDir만 realpath 1회(그 위 = HOME 등은 신뢰). 그 아래 모든 구성요소(`rooms/<key>` · `skills/<name>/…` · `cards/<peer>/<card>/skills`)는 **lstat으로 실제 디렉터리**여야 함. 소스 파일은 `O_NOFOLLOW` + fd inode 대조 + realpath 포함 확인. 교체는 임시 디렉터리 + rename 2회. | 링크 하나로 `~/.ssh`가 카드 복사본(→ 워커 컨텍스트)에 들어오는 길을 막는다. | 동일 사용자 프로세스의 탐색 중 교체 — Known limits. |
+| 2026-10-15 | D6 · R49-M5 · ② 매니페스트 | 실행을 넓히는 프론트매터 키 **`allowed-tools` · `hooks`도 스크립트처럼 `allowScripts` 게이트**. 매니페스트 항목에 **`scripts`(0700으로 복사한 상대경로)** 추가 — PLAN 모양 `{name, source, files}`에 없던 필드 — 해시가 파일 모드까지 덮는다. 재검증은 정확한 모드(파일 0600/0700 · 디렉터리 0700)와 정확한 파일·디렉터리 집합을 요구. | 스크립트만 막고 훅·도구 허용 확장을 열어 두면 D6의 의도(원격이 부를 수 있는 로컬 실행 = 이름 단위 옵트인)가 샌다. 모드가 해시 밖이면 실행 비트 변조가 재개를 통과한다. | — |
+| 2026-10-15 | D2 · R49-L1 (SKILL.md 형식 미규정) | **엄격한 줄 단위 YAML 부분집합**: 허용 키 9개(`name`·`description`·`version`·`license`·`metadata`·`allowed-tools`·`hooks`·`loom`·`loom.requires-policy`) · 흐름/앵커/별칭/태그/병합/이스케이프 거부 · 중첩은 4개 키 아래만 · 중첩 키 평문 식별자(YAML 불리언/null 단어 거부) · `description` 필수(블록 스칼라는 한 줄로 접음) · `name` = 디렉터리 이름 · `loom.requires-policy`는 정확히 `false`가 아니면 요구로 간주. | claude가 같은 바이트를 YAML로 해석한다 — Loom 파서와 claude 파서가 다르게 읽을 여지(별칭·태그·키 철자 변형)를 없앤다. 애매하면 `invalid SKILL.md`. | — |
+| 2026-10-15 | R6 · 마커 | description과 **프론트매터의 모든 원시 줄**, 그리고 목록에 넣는 SKILL.md 경로를 NFKC + 소문자 + 문자/숫자만 남겨 `loomdispatchedtask` 포함 시 거부(materialize: `bad description`/`invalid SKILL.md` · 목록: throw → `spawn_setup_failed`). 프론트매터에 제어·서식·구분 문자 금지(CRLF 허용). | 마커 앞(시스템 측)에 들어가는 텍스트가 시스템/데이터 경계를 위조하지 못하게 한다. | 키릴 동형 문자 잔여 — Known limits. |
+| 2026-10-15 | D5 · R6 | claude 프롬프트에는 `Unavailable skills:` 머리줄 + unavailable 줄만. 4,096바이트는 **머리줄·cap 줄 포함 블록 전체** 기준 · 사용 가능 → 불가 순. `--plugin-dir`은 사용 가능한 스킬이 1개 이상일 때만. | 빈 플러그인 디렉터리를 넘기지 않는다. 상한은 실제로 프롬프트에 들어가는 바이트로 잰다. | claude는 상한 밖 스킬도 본다 — Known limits. |
+| 2026-10-15 | D11 · R49-M3 | materialize는 카드 락 아래 · **살아 있는 그룹 확인 뒤 · write-ahead 기록 전**. 재개 · 복구 · **모든 입양**에서 복사본 재해시(`verifyCardSkillsCopy`) + fingerprint 대조. 스킬이 꺼진 설정의 재개 경로는 0.30.0대로(fingerprint 불일치 → 새 세션). | 복사본을 살아 있는 워커 밑에서 바꾸지 않는다. 입양 경로마다 대조해야 "입양은 fingerprint 무변경일 때만"이 성립한다. | — |
+| 2026-10-15 | UK-7 | Bun `import … with { type: "text" }`로 내장 SKILL.md가 단일 파일 번들에 들어감(PATCH 5에서 `build:cli`와 같은 명령으로 스크래치 출력에 빌드 — `LOOM-REPORT-END` 1건 확인). 텍스트 모듈 선언은 `*/SKILL.md`로 한정. | — | UK-7 resolved. |
+
+**Deviations (계획 대비 실행 방식):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-15 | PLAN ⑤ 레인(구현 grok) | **(a) 레인** — P1은 `grok-implementer`(Grok 4.7). **P2~P5는 Opus 5.5 서브에이전트**(오너 지시 *"다음 작업은 opus 5.5로 진행해"*). 검증 = codex `gpt-6.1-sol` xhigh · 리뷰 = fable-advisor. | 오너 지시. 발견자(codex)≠수정자 분리는 유지. | — |
+| 2026-10-15 | lessons (60) | **(b) PATCH별 검증 라운드:** P1 1회 교정(`d17c656` — fail-closed 조회 · 유한 읽기 · deprecated `p*` deny 거부) · P2 1회(`1bdd0ae` — 가짜 CLI 플래그 반복, 실측) · **P3 4라운드**(`3d1037c` 심볼릭 링크 안전 조상 경로 · 엄격 YAML 부분집합 → `c508fcb` 블록 스칼라 내용을 주석으로 보지 않음 · 원시 줄 마커 검사 · 중첩 중복 키 → `8863e5d` 중첩 키 철자 제한 · 맨 `-` 새 범위 → `3dcbb31` 맨 `-` 항목 열 고정) · P4 2라운드(`c2b454a` — 모든 입양 경로의 복사본+fingerprint 검증 · 목록 경로의 마커 검사 · 스킬 끔 argv를 리터럴 배열로 고정(순환 오라클 제거) → `4068563` — 검증을 입양 분기 자체로 옮겨 앞선 생존성 스냅샷에 의존하지 않음). | 파서·경로 신뢰는 한 번에 닫히지 않았다 — 라운드마다 범위를 좁혀 재검증. | — |
+| 2026-10-15 | D11 · R49-M3 | **(c) 동작 변경 — 보통 디스패치의 입양도 fingerprint 대조**(`c2b454a` · `4068563`). 불일치 → 살아 있는 pid 유지 · 감시 안 함 · 결과 `needs_verification` `fingerprint_changed` 선점. 스킬이 꺼져 있어도 적용. 0.30.0의 "입양 후 새 세션" 테스트 H3 · (c)를 이 동작으로 다시 썼다. | PLAN "입양은 fingerprint 무변경일 때만"을 복구 경로뿐 아니라 모든 입양에 적용 — 바뀐 정책 아래서 이전 정책의 워커 결과를 이어받지 않는다. | USER_GUIDE §16.2에 업그레이드 주석. |
+| 2026-10-15 | UK-1 · UK-5 | **(d) 실측으로 닫음:** UK-1 = `SKILLS-POLICY-PROBE` §G(claude `Bash(p *)`는 맨 `p`도 막음 · grok은 못 막음 → 이중 형식 유지 · `p*` 과매칭) · UK-5 = §H(claude `--settings` deny `mcp__srv__tool` → 툴 숨김 · 신호 없음 → `--disallowedTools` 폴백 불요). | 추정 대신 실측 후 컴파일 형식 확정. | — |
+| 2026-10-15 | PLAN 권위 고지 · 범위 | **(e) 범위 분할 — MCP 사전 점검은 v0.32.0으로.** 오너 2단계 문면의 "MCP 사전 점검"을 이 릴리스에서 뺐다(R49 ① PASS). | 헤드리스 워커는 Loom MCP가 없고, 호출자는 대화형 pane뿐 · 완료 권위는 이미 구조적(§0.30.0 D13). | **다음 = v0.32.0**(오너 지명). |
+
+**Known limits (이 버전이 보장하지 않는 것):**
+
+- **키릴 등 교차 문자 동형(homoglyph) 잔여.** 마커 검사는 NFKC + 소문자 접기라 키릴 `е` 같은 다른 문자 체계의 동형 문자는 잡지 않는다(수용한 Low).
+- **동일 사용자 프로세스의 탐색 중 교체.** 경로 구성요소를 lstat으로 확인한 뒤 같은 사용자의 다른 프로세스가 디렉터리를 바꿔치기하는 창은 남는다 — 그 프로세스는 이미 오너 권한을 가진다.
+- **claude는 상한 밖 스킬도 본다.** 목록 상한(20줄 · 4 KB)은 codex/grok 안내에만 걸린다. 복사는 전부 하므로 claude 플러그인은 모든 사용 가능 스킬을 로드한다.
+- **codex trust 자동 기록.** codex 0.162.1은 헤드리스로 돈 cwd마다 `~/.codex/config.toml`에 `trust_level = "trusted"` 항목을 스스로 추가한다(스모크 0310 finding 2). 이후 그 저장소의 `.codex/config.toml`(프로젝트 MCP·훅)이 오너 codex에서 적용된다. Loom은 trust 플래그를 넘기지 않는다. 끄는 codex 설정 키는 미확인.
+- **grok의 오너 `~/.claude` 누수(D12).** grok 워커는 오너 권한·MCP·스킬을 병합한다 — 문서화된 비목표.
+- **claude 오너 플러그인·스킬 상속(UK-6).** MCP는 기본 격리되지만 오너 플러그인 19개 · 스킬은 계속 로드된다(스모크 h1 init 실측).
+- **정확히 한 번 전송은 보장하지 않는다.** 결과 전송과 `resultSent` 기록 사이에 bridge가 죽으면 재생이 같은 결과를 한 번 더 보낼 수 있다(전송 먼저, 표시 나중의 크래시 창).
+- **재생 소진 카드의 영구 차단(0.30.0에서 이어짐).** `replay_exhausted` 카드는 운영자가 세션 기록을 지울 때까지 막힌다.
+- **deprecated 목록.** `worker.permissions` 도구 목록은 아직 읽는다(경고). 0.30.0 D10 deny 항목과 글자 그대로 같은 `p*`는 경고와 함께 수용(목록을 지운다) · 그 밖의 공백 없는 `p*` deny는 기동 거부. 제거 시점 미정.
+- **마커 글자를 담은 정당한 경로는 거부된다.** `loomDir`나 카드 경로가 접은 뒤 `loomdispatchedtask`를 담으면 목록 렌더가 거부해 카드가 `spawn_setup_failed`로 끝난다.
+- **셸 deny 강제력은 CLI마다 다르다(D10).** codex 셸 deny는 강제되지 않고 grok은 best-effort다. 접두 규칙 우회(`/bin/rm` 등)는 0.30.0과 같다.
 
 ### §0.30.0 — 헤드리스 카드 워커 · 카드별 세션 · 재개/입양 · 동시성 · 정적 권한 프로필 (업그레이드 2단계 1부)
 

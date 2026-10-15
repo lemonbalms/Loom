@@ -5,39 +5,39 @@
 
 ## One-line resume
 
-> v0.31.0 **approved** (R49) · skills + policy.json (step 2.2) · **next = P1 red tests** · topology full
+> v0.31.0 **shipped** · skills + policy.json (step 2.2) · **next = v0.32.0** (owner pick) · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.31.0 `approved`** · R49 fixes in | `docs/PLAN.md` |
+| Product | **v0.31.0 `approved`** · shipped through P5 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.31.0 approved · next = P1 (policy schema, red tests first)
+### v0.31.0 shipped · next = v0.32.0 (MCP pre-checks, owner pick)
 
-**Goal:** implement PLAN §0.31.0 (skills materialize · `policy.json` v1 → per-CLI permissions). MCP pre-checks split out → **v0.32.0** candidate, next after 0.31.0. Authority `docs/PLAN.md` §0.31.0 · `SKILLS-POLICY-PROBE.md`.
+**Goal:** step 2 part 2 done — `policy.json` v1 → per-CLI permissions · room skills copied per card. Authority `docs/PLAN.md` §0.31.0 · impl-notes §0.31.0 · `USER_GUIDE.md` §16.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check`
-2. P1 red (tests only, 0 prod lines) → green; each PATCH red→green, codex verify
-3. P2: UK-1 resolved (§G) — emit `Bash(p)`+`Bash(p *)`, never `p*` · isolate on
+2. Owner picks v0.32.0 → PLAN MINOR + R{n} before code
+3. Carry: codex trust auto-entries · grok `~/.claude` leak · deprecated lists (impl-notes)
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** P1 red+green landed, independently verified.
+**Done when (this handoff):** v0.32.0 PLAN drafted and gated (R{n}).
 
-**Must not:** write production code in a red commit · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** start v0.32.0 code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.31.0 | **approved** | P1 next | `docs/PLAN.md` |
+| v0.31.0 | **shipped** | step 2 part 2 done | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
 | 3.3–3.4b live | **false** | blocked | consts false · RESULT |
@@ -48,7 +48,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| UK-4 caps | open, non-blocking | 1024 / 256 | UNKNOWNS |
+| Step 7 orchestrator agent | candidate, unconfirmed | not started | `tasks/todo.md` |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 

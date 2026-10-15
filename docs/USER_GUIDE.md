@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.30.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.31.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -102,7 +102,8 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 13 | 완료 권한 — `card.done` 이후 board를 어떻게 닫나 (0.28.0) | blocked · 로컬 검증 · 명시 mutation |
 | 14 | herdr 0.7.5 dogfood 준비 (0.28.1) | `dogfood:herdr` · named agent · config migrate |
 | 15 | 헤드리스 카드 워커 (0.30.0, opt-in) — pane 대신 비대화형 CLI | bridge `worker` 설정 · 카드별 세션 · 재개/입양 |
-| 16 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
+| 16 | 스킬과 정책 (0.31.0) — 헤드리스 워커의 권한을 한 파일로, 룸이 고른 스킬을 카드에 | `policy.json` · `worker.skills` · 룸 `skills.json` · 정직 표 |
+| 17 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -804,7 +805,8 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 | `allowedRoots` | 절대경로 배열(비어 있으면 안 됨) | **headless면 필수.** 실제 cwd의 **realpath**가 이 중 하나 아래여야 spawn한다 — 심볼릭 링크로 밖을 가리키면 spawn 0 · `failed` reason `cwd_not_allowed` |
 | `maxConcurrent.<agent>` | 정수 ≥1 | 에이전트별 기본 **1**. 초과 카드는 FIFO **큐 대기**(대기 시간은 타임아웃에서 제외). 핸드오프는 **허가를 얻은 시점에** 가져가므로 대기 중인 카드는 relay inbox에 남아 bridge가 죽었다 떠도 살아남는다(단 inbox 상한 100을 넘으면 가장 오래된 대기 항목이 밀려날 수 있다). 실행 수·큐 깊이는 bridge `/rpc` status의 `headless`(`running` · `queueDepth`)로 본다 |
 | `timeoutMs` | 양수 ms, 최대 **2,147,483,647** | 기본 **7,200,000**(2h). **카드 단위**다 — 재개 시도도 카드 시작 시각 기준 *남은* 시간만 받고(시도당 **최소 60초**), 초과 → 프로세스 **그룹** SIGTERM → 10s → SIGKILL, 부분 transcript와 reason `timeout`으로 결과 |
-| `permissions.<agent>` | 에이전트별 프로필 객체 | 생략 시 아래 기본값. 넣으면 **그 에이전트 프로필 전체를 대체**한다(필드 전부 필수) |
+| `permissions.<agent>` | 에이전트별 프로필 객체 | 생략 시 아래 기본값. 넣으면 **그 에이전트 프로필 전체를 대체**한다. 0.31.0부터 필수는 모드 필드뿐(claude·grok `permissionMode` · codex `sandbox`·`approvalPolicy`)이고 도구 목록은 **deprecated 선택 키**다(§16.2) |
+| `skills` | `{"enabled": boolean}` | 0.31.0. 기본 **꺼짐**(키 없음 = 0.30.0 동작). 다른 키는 기동 거부(§16.3) |
 | `agentBin.<agent>` | **실행 파일 경로 하나** | 기본 = PATH의 `claude`/`codex`/`grok`. 인자·셸 명령·배열 불가, **basename이 에이전트 이름과 같아야** 한다(`…/claude`). PATH를 믿을 수 없으면 절대경로로 고정한다 |
 
 **에이전트 종류 허용은 headless에서도 `agentArgv.<kind>` 유무로 정해진다.** `agentArgv`의 기본값은 `{"claude":["claude"]}`뿐이라, 위처럼 `codex`·`grok` 항목을 넣지 않으면 그 종류의 카드는 `failed` reason `agent_kind_not_allowed`로 거절된다(핸드오프 claim 이연 판단도 같은 조회를 쓴다). 반대로 headless에서는 `agentArgv`의 **pane용 플래그**(§12.4의 `-a never` · `-s read-only` 등)가 **무시된다** — 실행 파일은 `worker.agentBin`, 권한은 `worker.permissions`(없으면 §15.2 기본 프로필)가 정한다.
@@ -815,15 +817,15 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 
 | 에이전트 | 기본 프로필 |
 |----------|-------------|
-| **claude** | `permissionMode: "acceptEdits"` · `allowedTools`: `Read`, `Edit`, `Write`, `Glob`, `Grep`, `Bash(git status*)`, `Bash(git diff*)`, `Bash(git log*)`, `Bash(bun test*)`, `Bash(bun run *)`, `Bash(npm test*)` · `disallowedTools`: `Bash(rm *)`, `Bash(rmdir *)`, `Bash(git push*)`, `Bash(git reset --hard*)`, `Bash(git clean*)`, `Bash(sudo *)`, `Bash(curl *)`, `Bash(wget *)` |
+| **claude** | `permissionMode: "acceptEdits"`. 도구 allow/deny는 0.31.0부터 프로필이 아니라 **정책**(§16.1)에서 나온다 — 내장 기본은 0.30.0 목록(`Bash(git status*)` … · `Bash(rm *)` … `Bash(wget *)`)에서 파생되며, argv는 `--settings '<JSON>'` 하나다 |
 | **codex** | `sandbox: "workspace-write"` · `approvalPolicy: "never"` — 커널 샌드박스가 **네트워크를 막는다** → `npm install`·`bun install` 같은 설치는 실패한다 |
-| **grok** | `permissionMode: "acceptEdits"` · `allow` / `deny` = claude와 같은 두 목록, 규칙마다 `--allow <rule>` / `--deny <rule>` 한 번씩. **best effort**(grok은 구조화된 거부 신호가 없다) |
+| **grok** | `permissionMode: "acceptEdits"` · allow/deny = claude와 같은 정책, 규칙마다 `--allow <rule>` / `--deny <rule>` 한 번씩. **best effort**(grok은 구조화된 거부 신호가 없다) |
 
 - 허용 값: `permissionMode` ∈ `acceptEdits`·`default`·`plan` · codex `sandbox` ∈ `read-only`·`workspace-write` · `approvalPolicy` ∈ `never`·`untrusted`·`on-request`·`on-failure`. 규칙 값은 비어 있거나 `-`로 시작하거나 NUL/개행을 담으면 거부.
 - **위험 모드는 거부된다:** `bypassPermissions` · `danger-full-access` · `dangerously-*`(codex `--dangerously-bypass-…` 포함) · `--always-approve` — 설정 어디에 있어도 bridge 기동 실패.
-- **claude `acceptEdits`는 cwd 안 `mkdir`·`cp`·`mv`·`rm`·리다이렉트를 allowedTools 밖에서도 자동 허용한다** — 그래서 deny 목록이 실질 방어선이다. **잔여 위험:** 접두 규칙은 `/bin/rm` · `command rm` · `find -delete` · 인터프리터 한 줄(`python -c …`)을 잡지 못한다. 최종 방어선은 cwd 경계(`allowedRoots`) + 결과 미검증 착지(`needs_verification`)다 → **git으로 추적되는 작업 디렉터리**에서 돌리고 결과는 diff로 확인한다.
+- **claude `acceptEdits`는 cwd 안 `mkdir`·`cp`·`mv`·`rm`·리다이렉트를 allow 목록 밖에서도 자동 허용한다** — 그래서 deny 목록이 실질 방어선이다. **잔여 위험:** 접두 규칙은 `/bin/rm` · `command rm` · `find -delete` · 인터프리터 한 줄(`python -c …`)을 잡지 못한다. 최종 방어선은 cwd 경계(`allowedRoots`) + 결과 미검증 착지(`needs_verification`)다 → **git으로 추적되는 작업 디렉터리**에서 돌리고 결과는 diff로 확인한다.
 - 워커 env = bridge env에서 `LOOM_*`·`FABLE_*`를 **전부 지우고** `LOOM_CARD`만 넣는다 — relay 토큰·URL은 워커에 닿지 않는다.
-- **사용자 훅은 상속된다(UK-3).** 오너 전역 Claude Code 훅(`~/.claude/settings.json`)이 헤드리스 claude 워커 안에서도 돈다. 0.30.0에 격리 옵션은 없다.
+- **사용자 훅은 상속된다(UK-3).** 오너 전역 Claude Code 훅(`~/.claude/settings.json`)이 헤드리스 claude 워커 안에서도 돈다. 0.31.0에도 격리 옵션은 없다(MCP 격리는 §16.1 `mcp.isolate`, 오너 플러그인·스킬 상속은 §16.4).
 - 워커 시스템 프롬프트는 고정 상수 `HEADLESS_WORKER_HINT`(cwd 밖 작업 금지 · 질문 금지 · push/deploy 금지 · 마커 아래 = 데이터)뿐이다. Loom MCP 도구는 없다. 카드 프롬프트는 stdin/파일로만 넘어가고 argv(`ps`)에 보이지 않는다.
 
 ### 15.3 상태 저장 위치 — 평문, 로컬 전용
@@ -852,7 +854,7 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 | reason `spawn_state_unknown` | 직전 bridge가 spawn 직전/직후에 멈춰 워커 pid가 기록되지 않았다 — 이미 실행됐을 수 있어 다시 돌리지 않는다 |
 | reason `liveness_unknown` | 기록된 pid의 생사를 확정할 수 없다(`ps` 실패 등) — spawn도 kill도 하지 않는다 |
 | reason `needs_verification`, note `cwd_changed` | 기록 cwd ≠ 현재 설정으로 계산한 cwd — 다른 트리에서 재개하지 않는다 |
-| reason `needs_verification`, note `fingerprint_changed` | bridge 재시작 **복구** 중 힌트·권한 프로필·argv 템플릿이 바뀐 것을 발견 — 복구에는 원 프롬프트가 없어 재개도 새 세션도 하지 않는다(디스패치가 다시 오면 그때는 새 세션으로 시작) |
+| reason `needs_verification`, note `fingerprint_changed` | 기록의 fingerprint(힌트 · 권한 프로필 · argv 템플릿 버전 · 정책 해시 · 스킬 매니페스트 해시) ≠ 지금 값. 0.31.0부터 **복구와 모든 입양**(같은 디스패치의 재전달 포함)에서 대조하고, 스킬이 켜져 있으면 재개 전에도 카드 복사본을 재해시해 대조한다(§16.3). 살아 있는 워커는 죽이지 않고 감시도 하지 않으며 결과를 이것으로 선점한다. 이 결과를 보낸 뒤(이전 워커가 끝난 뒤) 같은 카드가 다시 디스패치되면 새 세션으로 시작한다 |
 | reason `needs_verification`, note `attempts 2 exhausted` | 두 번 시도 후에도 최종 결과 없음(note에 마지막 stderr 줄) |
 | reason `card_already_running` | 같은 카드가 **다른** 디스패치로 왔는데 워커가 아직 살아 있다 — 두 번째 워커를 띄우지 않는다 |
 | reason `orphan_group_alive` | 이전 워커 프로세스가 아직 살아 있을 수 있는데 신원을 확인할 수 없다 — 신호를 보내지 않고 카드도 재개하지 않는다 |
@@ -873,11 +875,193 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 - 결과 `note`는 **`denials: N (tool, …)`(권한 거부 내역, 500자 상한)을 맨 앞**에 싣고, 이어서 시도 횟수 · 마지막 stderr 줄 · transcript 경로를 붙인다. stderr 줄은 키·토큰·`Authorization`·URL 자격증명 등을 패턴으로 가리지만 **best-effort**이므로 완전한 비밀 제거를 기대하지 않는다.
 - `output`은 최종 텍스트 원문(TUI 스트립 없음) ≤ 200,000자. 넘으면 앞을 잘라 꼬리를 남기고 `truncated: true` + note에 transcript 경로·바이트 수. `summary` = 첫 비공백 줄 ≤ 900자.
 - 와이어는 그대로다(`CardResultPayload` 필드 추가 없음) — 구 타워도 받는다.
-- 0.30.0도 bridge 기동에 **herdr가 필요하다**(헤드리스만 써도).
+- 0.31.0도 bridge 기동에 **herdr가 필요하다**(헤드리스만 써도).
+
+## 16. 스킬과 정책 (v0.31.0)
+
+**하고 싶은 일:** 헤드리스 워커(§15)가 **무엇을 할 수 있는지**를 CLI마다 다른 목록 대신 **한 파일**(`policy.json`)에 적고, 룸이 고른 **스킬**(절차 지식)을 카드마다 고정된 복사본으로 워커에게 준다.
+
+**pane 경로와 와이어는 그대로다.** 이 절은 `worker.backend: "headless"`일 때만 적용된다. 결과는 여전히 `failed` / `needs_verification`, 타워 착지는 `blocked`(§15.5). `policy.json`이 없고 `worker.skills`도 없으면 실효 권한은 0.30.0과 같거나 더 좁다(웹 도구 deny 추가 · claude MCP 격리 기본 on).
+
+### 16.1 `policy.json` — 권한을 한 곳에
+
+**위치:** `loomDir()/policy.json`(기본 `~/.loom/policy.json`). 없으면 **내장 기본값**만 쓴다. bridge는 **기동할 때 한 번** 읽는다 — 고친 뒤에는 bridge를 다시 띄운다.
+
+```json
+{
+  "version": 1,
+  "shell": {
+    "allow": ["git status *", "git diff *", "git log *", "bun test *", "bun run *"],
+    "deny": ["git commit *", "npm publish *"]
+  },
+  "network": false,
+  "mcp": { "deny": ["github__create_issue"], "isolate": true },
+  "skills": { "allow": ["loom-card-report"], "allowScripts": [] }
+}
+```
+
+| 키 | 필수 | 뜻 |
+|----|------|----|
+| `version` | 예 | `1`만 |
+| `shell.deny` | 예 | 셸 명령 접두 deny. 내장 deny와 **합집합** |
+| `shell.allow` | 아니오 | 있으면 내장 allow를 **대체**(`[]` = 셸 allow 없음). 없으면 내장 allow(또는 deprecated allow, §16.2) |
+| `network` | 예 | 네트워크 허용 여부(내장 기본 `false`) |
+| `mcp.deny` | 예 | `"<server>__<tool>"` 목록 |
+| `mcp.isolate` | 아니오 | 기본 **`true`** |
+| `skills.allowScripts` | 예 | 스크립트·실행 확장 키를 가진 스킬 중 복사를 허용할 이름(§16.3) |
+| `skills.allow` | 아니오 | **없음 = 설치된 이름 전부** 선택 가능 · **`[]` = 아무것도 안 됨** · 그 밖 = 그 이름만 |
+
+모르는 키 · 타입 위반 · `version ≠ 1` · 규칙 문법 위반은 전부 **기동 거부**다(아래 fail-closed).
+
+**병합 규칙:** 내장 기본값 **<** `policy.json`. **allow는 대체, deny는 합집합** — `policy.json`도 bridge 설정도 카드도 **deny를 줄이지 못한다.** 줄일 수 있는 것은 오너 로컬 `policy.json`의 `network`(curl/wget·웹 deny가 이것에서 파생)와 allow 대체뿐이다.
+
+| 내장 기본 | 값 (0.30.0 목록에서 파생) |
+|-----------|---------------------------|
+| shell allow | `git status` · `git diff` · `git log` · `bun test` · `npm test` — 각각 `Bash(p)` + `Bash(p *)` · 그리고 `Bash(bun run *)` |
+| shell deny | `rm` · `rmdir` · `sudo` · `git push` · `git reset --hard` · `git clean` — 컴파일 시 각각 `Bash(p)` + `Bash(p *)`. `curl`·`wget`은 여기 없고 `network: false`에서 파생 |
+| network | `false` |
+| mcp | `deny: []` · `isolate: true` |
+| skills | `allow` 없음(전부) · `allowScripts: []` |
+| 비-셸 도구(claude·grok) | `Read` · `Edit` · `Write` · `Glob` · `Grep` 항상 allow — 정책 표면이 아니다 |
+
+**셸 규칙 문법 — `p *`만:** 규칙은 명령 접두 뒤에 **공백 + `*`** 로 끝나야 한다(`"git commit *"`).
+- 컴파일러는 deny 접두마다 **`Bash(p)` + `Bash(p *)` 두 형식**을 낸다 — 인자 없는 맨 `p`까지 막기 위해서다(grok은 `Bash(p *)`만으로 맨 `p`를 막지 못한다, `SKILLS-POLICY-PROBE` §G). allow는 `Bash(p *)` 하나로 컴파일된다(grok에서 맨 `p`가 이 allow에 걸리는지는 미측정).
+- **공백 없는 `p*`는 거부한다**(`"git push*"` → 기동 거부). claude에서 `echo*`가 `echoes`까지 막는 과매칭이 실측됐다(§G).
+- 그 밖에 거부: 접두 안의 다른 `*` · `-`(유니코드 대시 포함)로 시작 · 셸 메타문자 `;` `&` `|` `` ` `` `>` `<` `$(` · NUL/CR/LF · 빈 값 · 앞뒤 공백.
+- 접두 규칙의 잔여 위험(§15.2 — `/bin/rm` · `command rm` · `find -delete` · 인터프리터 한 줄)은 그대로다. 체이닝(`true && p`)은 claude·grok 모두 막았다(§G).
+
+**`network`:**
+
+| 값 | claude | codex | grok |
+|----|--------|-------|------|
+| `false` | deny `+ Bash(curl)`·`Bash(curl *)`·`Bash(wget)`·`Bash(wget *)` · `WebFetch` · `WebSearch` | `-c sandbox_workspace_write.network_access=false`(exec·resume 모두) | deny `+` curl/wget 4개 · `--disable-web-search` |
+| `true` | 위 deny 없음(`shell.deny`에 직접 적은 것은 유지) | `network_access=true` | 위 deny 없음 · 플래그 없음 |
+
+**`mcp`:** `deny` 항목 `"<server>__<tool>"`(서버 이름·툴 이름 각각 `[A-Za-z0-9][A-Za-z0-9._-]*`) → claude `--settings` deny `mcp__<server>__<tool>` · grok `--deny 'MCPTool(<server>__<tool>)'` · codex 해당 없음. 서버 단위 형식은 받지 않는다. **`isolate` 기본 `true` → claude에 `--strict-mcp-config`**(오너 MCP 서버 0개). `false`는 오너 옵트인이며, 0.30.0처럼 claude 워커가 오너 전역 MCP 서버를 상속한다(실측 7개). codex·grok은 격리할 수 없다(§16.4).
+
+**fail-closed 로딩 — 기본값으로 폴백하지 않는다:**
+- 파일이 없으면(ENOENT) 내장 기본값. 그 밖의 조회 실패(권한 없음 · `ENOTDIR` · 매달린/순환 심볼릭 링크 · `loomDir`가 디렉터리가 아님)는 **기동 거부**(`policy.json lookup failed <경로>: … (fail-closed)`).
+- **정규 파일만** 읽는다(디렉터리·FIFO·장치 거부, 비차단 open 후 fstat). **64 KiB(65,536바이트) 초과 거부.**
+- 심볼릭 링크는 **대상이 정규 파일일 때만** 따라간다.
+- JSON 파싱·스키마 오류 → `invalid policy.json <경로>: <필드>: …`로 기동 거부. 오류 문구에 파일 경로와 필드 경로가 있다.
+
+### 16.2 0.30.0에서 올라올 때
+
+**deprecated 도구 목록.** `worker.permissions.claude.allowedTools` / `disallowedTools` · `worker.permissions.grok.allow` / `deny`는 이제 **선택 키이자 deprecated**다(에이전트별로 따로 병합 · codex에는 목록이 없다). 키가 있으면(`[]` 포함) 기동 로그에 `warning:` 줄이 찍힌다.
+
+| 상황 | 동작 |
+|------|------|
+| deprecated allow만 있고 `policy.json`에 `shell.allow` 없음(파일 자체가 없어도 같음) | 그 목록이 **셸 allow 집합**이 된다(0.30.0 동작) + 경고. `Bash(p*)` 형 항목은 `p` + `p *`로 **좁혀** 쓰고 경고에 적는다 |
+| deprecated allow **와** `policy.json` `shell.allow` 둘 다 | **기동 거부** — `policy allow specified in both <policy.json> shell.allow and worker.permissions.<agent>.…` → 한쪽을 지운다 |
+| deprecated deny | effective deny에 **합집합**(완화 불가) + 경고. `Bash(p *)`·`Bash(p)`·`p *`·`WebFetch`·`WebSearch`·비-셸 도구 이름을 받는다 |
+| deprecated deny에 공백 없는 `p*`인데 0.30.0 기본 deny 항목과 **글자 그대로 같음**(`Bash(git push*)` · `Bash(git reset --hard*)` · `Bash(git clean*)`) | **받아들인다** + 경고. 내장과 같게 `p` + `p *`로 바꾼다. 이 문자열은 이미 내장 deny에 있으므로 빠지는 차단은 없다. 경고: *"… no-space entries identical to built-in defaults accepted …: Bash(git push*), …; remove the list"* |
+| 그 밖의 공백 없는 `p*` deny(예: `Bash(rm*)`, 대소문자만 다른 `Bash(Git push*)`) | **기동 거부**. 오류가 고치는 법을 말한다: *"move it into `<policy.json>` shell.deny as `"rm *"` plus each lookalike you meant, listed explicitly"* — `p*`는 비슷한 이름까지 막았으므로(`rm*` → `rmdir`) 조용히 좁히지 않는다 |
+
+**0.30.0 §15.2의 기본 목록을 bridge 설정에 그대로 복사해 둔 경우** 0.31.0 bridge는 **경고와 함께 기동한다**(위 표의 "글자 그대로 같음" 행). 같은 내용이 이미 내장 기본값이므로 **목록을 지운다.** 더 넣고 싶은 deny는 `policy.json` `shell.deny`에 `p *` 형으로 적는다. 복사한 목록에 직접 고친 공백 없는 `p*` 항목이 섞여 있으면 그 항목 때문에 여전히 기동을 거부한다.
+
+**실행 중이던 카드.** 0.31.0은 argv 템플릿 버전(`0.31.0-v1`)과 fingerprint 입력(정책 해시 · 스킬 매니페스트 해시)이 바뀌어 **0.30.0 기록의 fingerprint는 모두 달라진다.**
+- bridge 재시작 복구에서 워커가 죽어 있으면 `needs_verification`, note `fingerprint_changed; not resuming`.
+- 워커가 살아 있으면 **죽이지 않는다** — 감시하지 않고 결과를 같은 `fingerprint_changed`로 선점한다. 그 워커의 작업은 사람이 워킹트리에서 확인한다.
+- **동작 변경:** 입양은 fingerprint가 **그대로일 때만** 한다. 0.30.0은 bridge 재시작 복구에서만 대조했지만 0.31.0은 **보통 디스패치 경로의 입양**(같은 핸드오프의 재전달 등)에서도 대조한다. `policy.json` · `worker.permissions` · `worker.skills`를 고치고 bridge를 다시 띄워도 같은 일이 생긴다.
+
+### 16.3 스킬 — 룸이 고르고, 카드에 복사한다
+
+**켜기:** bridge 설정 `worker.skills: {"enabled": true}`. 기본은 꺼짐 — 스킬 디렉터리 · 목록 · `--plugin-dir` 모두 없고 argv·프롬프트·fingerprint는 0.30.0 경로와 같다(매니페스트 해시 `""`). `enabled` 외 키 · 불리언 아닌 값은 기동 거부.
+
+**소스:**
+- **내장** `loom-card-report` 1개 — 최종 보고 형식(Status / Summary / Changes / Checks / Open)과 끝 줄 `LOOM-REPORT-END`를 지시한다. `dist/loom.js` 번들에 텍스트로 들어 있다. `LOOM-REPORT-END`를 읽는 파서는 없다(스모크 표적).
+- **사용자** `loomDir()/skills/<name>/SKILL.md`(+ 같은 디렉터리의 파일). 이름이 겹치면 **사용자가 이긴다.** `loomDir()/skills` 자체가 심볼릭 링크이거나 디렉터리가 아니면 선택된 이름은 전부 `unsafe source`.
+- peer가 보낸 스킬은 설치하지 않는다. 카드 페이로드에는 스킬 필드가 없다.
+
+**룸 선택 — 유일한 선택 권위:** `loomDir()/rooms/<roomKey>/skills.json`. `roomKey` = roomId(UTF-8)의 sha256 16진 **앞 16자**(0.29.0 룸 이벤트 디렉터리와 같은 키):
+
+```bash
+printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
+```
+
+```json
+{ "version": 1, "skills": ["loom-card-report"] }
+```
+
+- 키는 `version`(`1`)과 `skills`(이름 배열)뿐. 이름 = `^[a-z0-9][a-z0-9-]{0,63}$` · 중복은 한 번으로 · ≤64 KiB.
+- 파일(또는 `rooms/`·룸 디렉터리)이 없으면 스킬 0개. `rooms/`·룸 디렉터리·`skills.json`이 심볼릭 링크이거나 파일이 무효면 그 카드는 spawn하지 않고 `failed` reason `spawn_setup_failed`(§16.5).
+- 선택됐어도 `policy.json` `skills.allow` 밖이면 `unavailable: not allowed by policy`.
+
+**SKILL.md 규칙** (어기면 그 스킬만 `unavailable`, 사유는 아래 표):
+- 디렉터리 이름 = 프론트매터 `name`. 파일은 유효한 UTF-8.
+- 프론트매터: 첫 줄 `---` … 닫는 `---`. **허용 키:** `name` · `description` · `version` · `license` · `metadata` · `allowed-tools` · `hooks` · `loom` · `loom.requires-policy`. 모르는 키 · 중복 키 → `invalid SKILL.md`.
+- **엄격한 YAML 부분집합:** 평문 · 작은따옴표 · 큰따옴표(이스케이프·내부 `"`·`\` 없음) 스칼라만. 흐름 컬렉션(`{}` `[]`) · 앵커 · 별칭 · 태그 · `...` · `%` 지시자 거부. 중첩 블록은 `metadata` · `allowed-tools` · `hooks` · `loom` 아래만, `loom:` 안에는 `requires-policy:`만. 중첩 키는 평문 식별자만(YAML 불리언/null 단어 `true`·`yes`·`on`·`null` 등 거부). `description`은 `|`·`>` 블록 스칼라 가능(한 줄로 접는다).
+- 프론트매터의 어느 줄에도 제어 · 서식(bidi·zero-width·BOM) · 줄/문단 구분 문자 금지(CRLF는 허용). NFKC + 소문자 + 문자·숫자만 남긴 결과에 `loomdispatchedtask`(작업 마커 머리)가 들어가면 거부.
+- **`description` 필수:** 제어 문자는 공백, 서식 문자는 제거, 공백 압축 후 **한 줄 · 1~160자(코드 포인트)** · 마커 글자 없음 → 아니면 `bad description`.
+- **`allowScripts`가 필요한 것** — 아래 중 하나라도 있으면 `policy.json` `skills.allowScripts`에 그 이름이 있어야 복사한다(없으면 `requires policy`): `scripts/` 디렉터리 아래 정규 파일 · 실행 비트가 있는 파일 · `allowed-tools` 키 · `hooks` 키 · `loom.requires-policy`(값이 정확히 `false`가 아니면) · 중첩 블록 안의 `requires-policy` 언급.
+- **상한:** 스킬당 **1 MiB · 정규 파일 256개**(탐색 항목 1,024개 · 디렉터리당 512개) → 넘으면 `too large`. 심볼릭 링크 · 비정규 파일 · 이상한 경로 → `unsafe source`.
+
+**카드 복사본과 매니페스트:** 새 카드의 **첫 턴에만**, 카드 락 아래에서 소스를 읽어 복사한다(그 뒤 재개는 소스를 다시 읽지 않는다):
+
+```text
+~/.loom/cards/<sha16(로컬 peer id)>/<sha16(room × agent × cardId)>/skills/
+  manifest.json                         # 0600
+  plugin/.claude-plugin/plugin.json     # {"name":"loom-card"}, 0600
+  plugin/skills/<name>/SKILL.md …       # 파일 0600 (allowScripts 스킬의 스크립트만 0700), 디렉터리 0700
+```
+
+- **복사이지 링크가 아니다.** `unavailable` 스킬은 복사하지 않는다. 이전 복사본은 임시 디렉터리 + rename으로 교체한다. GC는 없다(transcript와 같다).
+- `manifest.json` = `[{"name", "source": "builtin"|"user", "files": {"<상대경로>": "<sha256>"}, "scripts": ["<상대경로>"]}]`, 이름순. 이 정규 직렬화의 sha256이 fingerprint에 들어간다.
+
+**CLI별 전달:**
+
+| CLI | 전달 | 프롬프트 |
+|-----|------|----------|
+| claude | 사용 가능한 스킬이 1개 이상이면 `--plugin-dir <card>/skills/plugin` 1개(`--add-dir`은 쓰지 않는다 — 접근 범위를 넓힌다). claude가 플러그인 스킬을 네이티브로 로드(`loom-card:<name>`) | `Unavailable skills:` 줄만(있을 때) |
+| codex · grok | 플래그 없음 | 첫 턴 프롬프트의 **작업 마커 앞**에 `Available skills — read the SKILL.md before use:` + `- <name>: <description> — <절대 SKILL.md 경로>`, 이어서 `- <name>: unavailable: <사유>` |
+
+- 목록은 argv에 없고(stdin · grok은 `--prompt-file`), **첫 턴에만** 들어간다 — 재개 턴은 세션이 기억한다.
+- **목록 상한: 항목 20줄 · 블록 전체 4,096바이트**(UTF-8, 머리줄 포함). 넘는 항목은 한 줄 `- (+N more): unavailable: cap`. 순서는 사용 가능 → 불가, 각각 이름순. 복사는 상한과 무관하게 전부 한다 → **claude는 플러그인으로 모든 사용 가능 스킬을 보지만 codex/grok은 목록에 든 것만 안내받는다.**
+
+**`unavailable` 사유:**
+
+| 사유 | 뜻 |
+|------|----|
+| `not allowed by policy` | `policy.json` `skills.allow` 밖(`[]`이면 전부) |
+| `not installed` | 사용자·내장 어디에도 없음 |
+| `unsafe source` | 소스에 심볼릭 링크 · 비정규 파일 · 이상한 경로, 또는 `loomDir()/skills`가 실제 디렉터리가 아님 |
+| `too large` | 1 MiB · 256파일 · 탐색 상한 초과 |
+| `invalid SKILL.md` | `SKILL.md` 없음 · UTF-8 아님 · 프론트매터가 부분집합 밖 · `name` ≠ 디렉터리 이름 |
+| `bad description` | `description` 없음 · 160자 초과 · 비었음 · 마커 글자 포함 |
+| `requires policy` | 스크립트·`allowed-tools`·`hooks`·`requires-policy`가 있는데 `allowScripts`에 이름이 없음 |
+| `cap` (`(+N more)` 줄) | 목록 상한 밖 — 복사는 됐지만 codex/grok에는 안내되지 않음 |
+
+**재개 재검증:** 재개 · bridge 재시작 복구 · 입양 전에 카드 복사본을 `manifest.json`과 **재해시**한다(내용 · 파일/디렉터리 모드 · 정확한 파일·디렉터리 집합 · `plugin.json`). 소스는 읽지 않는다 — 첫 턴 뒤 소스를 고쳐도 그 카드에는 반영되지 않는다. 복사본이 없거나 바뀌었거나 해시가 다르면 `needs_verification`, note `fingerprint_changed; not resuming`. 스킬이 꺼진 설정에서 fingerprint만 다른 재개는 0.30.0처럼 새 세션이다.
+
+### 16.4 정직 표 — CLI마다 실제로 강제되는 것
+
+정책 문법은 하나지만 **강제력은 CLI마다 다르다.** 과신하지 않는다.
+
+| 항목 | claude 2.1.300 | codex-cli 0.162.1 | grok 1.0.54 (alpha) |
+|------|----------------|-------------------|---------------------|
+| **셸 deny** | **강제**(접두) — `--settings` deny · `permission_denials` 구조화 신호(스모크 i1: `echo hi` 미실행) | **강제 아님** — 명령 단위 deny 플래그가 없다. 실질 강제는 커널 샌드박스(`workspace-write`) + 네트워크 차단 | **best-effort** — 텍스트 신호(`Denied by permission policy …`) |
+| **네트워크** | 권고 — curl/wget·WebFetch/WebSearch deny(다른 경로는 못 막음) | **강제** — 스모크 i2: `false` → `curl` exit 6 · `true` → `HTTP/2 200` | 권고 — curl/wget deny + `--disable-web-search`(효과 미측정, UK-4) |
+| **MCP deny** | 툴이 **목록에서 사라질 뿐 신호 없음**(`permission_denials` 비어 있음, `SKILLS-POLICY-PROBE` §H) | 해당 없음(`approval_policy=never`에서 MCP 호출은 기본 실패, §C) | 호출 시 텍스트 거부 |
+| **MCP 격리** | **강제** — `--strict-mcp-config` → 서버 0개(스모크 h1 `mcp_servers: []`) | 불가 | 불가 |
+| **스킬** | 로드 **강제**(플러그인 — init `plugins`에 `loom-card`) | 권고(첫 턴 목록) | 권고(첫 턴 목록) |
+| **오너 설정 상속** | 오너 플러그인·스킬은 **계속 로드된다**(UK-6 — 실측 init: 오너 플러그인 19개 + `loom-card` · 스킬 142개) · 오너 훅(UK-3) | 오너 전역 스킬이 보일 수 있다 · **trust 자동 기록**(아래) | 오너 `~/.claude` 권한·MCP·스킬을 병합한다(D12) |
+
+- **codex는 실행한 저장소를 신뢰 목록에 스스로 넣는다.** codex 0.162.1은 헤드리스 실행마다 그 cwd를 `~/.codex/config.toml`에 `[projects."<cwd>"] trust_level = "trusted"`로 기록한다(스모크 0.31.0에서 확인). 그러면 나중에 그 저장소에 생긴 `<repo>/.codex/config.toml`(프로젝트 MCP · 훅)이 오너의 codex에서 적용된다. **Loom은 trust 플래그를 넘기지 않는다** — codex 자체 동작이다. 원치 않으면 `~/.codex/config.toml`의 해당 `[projects."…"]` 항목을 직접 지운다(이 기록을 끄는 codex 설정 키가 있는지는 확인하지 않았다).
+- **grok은 오너의 `~/.claude` 설정을 읽는다(D12).** 권한·MCP·스킬이 grok 워커에 섞인다 — 문서화된 비목표다. 민감한 저장소면 grok 카드를 쓰지 않는다.
+- **거부 note는 도구 이름만 싣는다.** 결과 note 선두가 `denials: 1 (Bash)` 형태다 — 어떤 명령이 막혔는지는 transcript의 `permission_denials`에서 본다.
+- codex에서 `git push`·`rm` 같은 deny 접두는 막히지 않는다. 막는 것은 쓰기 범위와 네트워크뿐이다 — 결과는 언제나 diff로 확인한다(§15.5).
+
+### 16.5 실패 사유 (0.31.0 추가분)
+
+| reason / note | 원인 |
+|---------------|------|
+| bridge **기동 거부** | 무효 `policy.json` · 조회 실패 · deprecated allow와 `shell.allow` 공존 · deprecated deny의 `p*`(0.30.0 기본 항목과 글자 그대로 같은 것은 제외) · `worker.skills` 형식 오류 |
+| reason `spawn_setup_failed` (note = 오류 문구 ≤500자) | 무효/심볼릭 링크 `skills.json` · 카드 디렉터리 경로 중간의 심볼릭 링크 · 복사 쓰기 실패 · SKILL.md 절대경로나 description에 제어 문자 또는 작업 마커 글자(예: `loomDir` 경로 자체가 그 글자를 담은 경우) — spawn하지 않는다 |
+| reason `needs_verification`, note `fingerprint_changed; not resuming` | §16.2 · §16.3 — 정책 · 권한 · 템플릿 · 스킬 복사본이 기록과 다름 |
 
 ---
 
-## 16. 명령 치트시트
+## 17. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -901,7 +1085,7 @@ bun test
 
 ---
 
-## 17. 자주 하는 실수
+## 18. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -919,10 +1103,12 @@ bun test
 | `card.done` 보고 board를 done으로 | 완료 권한 오해 (0.28) | §12.8 · §13 — 로컬 검증 후 명시 mutation |
 | herdr 0.7.5인데 카드 스폰 실패 | p16 어댑터/설정 또는 config-only 17 | §14 · `dogfood:herdr` · Loom 0.28.1+ |
 | prompt가 다른 pane으로 감 | pane id 타깃 | exact agent **name** |
+| 0.31.0 업그레이드 후 헤드리스 bridge 기동 경고 `deprecated deny list … identical to built-in defaults accepted …; remove the list` | 0.30.0 기본 목록을 bridge 설정에 그대로 복사해 둠(`Bash(git push*)` 등). 기동은 된다 | 목록 삭제(내장 기본이 같음). 더 막을 것은 `policy.json` `shell.deny`에 `p *` 형 (§16.2) |
+| 0.31.0 업그레이드 후 헤드리스 bridge 기동 거부 `deprecated deny entry "Bash(rm*)"` | 내장 기본과 글자 그대로 같지 않은 공백 없는 `p*` deny | `policy.json` `shell.deny`에 `p *` 형 + 막으려던 비슷한 이름을 따로 적고 목록에서 지움 (§16.2) |
 
 ---
 
-## 18. 지금 버전에서 **아직** 못 하는 것
+## 19. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
@@ -932,11 +1118,11 @@ bun test
 - 원격 result만으로 타워 board **`done`** (0.28.0 이후 의도적 금지 — `blocked` 후 로컬 확정)  
 - 전역 `loom` 설치가 OS 패키지 매니저 기본 제공 (원하면 `scripts/install.sh` · `link:loom`)
 
-**할 수 있는 것 (0.28.1 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · dogfood 3-kind · 완료 권한 분리 운영.
+**할 수 있는 것 (0.31.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · dogfood 3-kind · 완료 권한 분리 운영.
 
 ---
 
-## 19. 더 읽을 문서
+## 20. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|
@@ -953,4 +1139,4 @@ bun test
 
 ---
 
-*가이드 핀: 제품 **v0.30.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5 · §15 헤드리스 카드 워커. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*
+*가이드 핀: 제품 **v0.31.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5 · §15 헤드리스 카드 워커 · §16 스킬과 정책. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*

@@ -2,7 +2,7 @@
 
 **철학 (첫 문단):** 이 문서는 Loom **relay WebSocket 와이어(protocol v1)** 만 다룬다 — room·handoff·inbox·presence의 봉투와 라우팅. **herdr 로컬 소켓 RPC**(agent/pane/tab)는 이 파일의 범위가 아니며, as-built 정본은 [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md)다. 이름을 섞어 쓰지 않는다.
 
-**As-built pin:** product / PLAN **v0.30.0** (2026-10-15) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.30.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0 changes **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged)).
+**As-built pin:** product / PLAN **v0.31.0** (2026-10-15) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.31.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0 and v0.31.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged) and [Skills and policy](#skills-and-policy-v0310--wire-unchanged)).
 
 Wire Version: **1** (`v: 1` on every envelope) — not product SemVer; historical origin: M1.1 + M-7 + Loom rename under PLAN 0.9.0
 
@@ -104,6 +104,18 @@ v0.30.0 adds a bridge-local **headless** worker backend (opt-in `worker.backend:
 - **`output`** = the CLI's final text verbatim (no TUI stripping), ≤ **200,000** chars; longer text keeps the **tail** with `truncated: true` and `note` naming the local transcript path + byte count.
 - **Serialize-budget cut (both backends).** If the serialized result attachment would exceed the **256,000**-char attachment cap (JSON escaping of `\r\n` / `"` can inflate a 200k output), the core cuts `output` from the **front** (surrogate-safe, repeated until it fits) and sets `truncated: true`; if nothing fits, `output` is `""` with note `output dropped: exceeds attachment budget`. A result is never lost to a serialize throw. Outputs that already fit are unchanged.
 - **`summary`** (headless) = the first non-blank line of the final text, ≤ **900** chars. `note` ≤ 500.
+
+## Skills and policy (v0.31.0) — wire unchanged
+
+v0.31.0 adds bridge-local `loomDir()/policy.json` (per-CLI permission compile) and room-selected skills for headless workers (opt-in `worker.skills.enabled`; user-facing config in [`USER_GUIDE.md`](./USER_GUIDE.md) §16). Nothing new crosses the relay:
+
+- **No new envelope, field, or version.** `CardDispatchPayload` / `CardResultPayload` gain **0 fields**; `PROTOCOL_VERSION` and `CARD_CONTRACT_VERSION` are unchanged. The dispatch carries **no skill or policy field** — skill selection is only the receiving bridge's local `loomDir()/rooms/<roomKey>/skills.json`, and a peer can never send or install a skill.
+- **Same result shape and completion authority** as v0.30.0: headless results are still `status: "failed"` with `reason: "needs_verification"` or an existing-style reason string; the tower lands them as `blocked`.
+- **New failure causes on existing reasons (bridge-local, not wire):**
+  - `reason: "spawn_setup_failed"` (no spawn; `note` = the error, ≤500 chars) now also covers: an invalid or symlinked room `skills.json`, a symlink inside the card-directory chain, a skill-copy write failure, and a skill listing refused because a SKILL.md path or description carries control characters or the folded dispatched-task marker letters.
+  - `reason: "needs_verification"`, `note: "fingerprint_changed; not resuming"` now also fires when the policy hash, the argv template version (`0.31.0-v1`), or the card's skill copy no longer matches the session record — on recovery, on **every** adoption (including normal-dispatch adoption), and before a skills-enabled resume. A live worker is not killed; its result is pre-empted.
+  - `note` denial prefix is unchanged: `denials: N (<tool names>)` — tool names only, no command text.
+- **Startup refusal, not a result:** an invalid `policy.json`, a deprecated bridge-config allow list next to `policy.json` `shell.allow`, or a deprecated no-space `p*` deny (other than the three verbatim 0.30.0 defaults, accepted with a warning) makes the headless bridge refuse to start; no result is sent.
 
 ## Handoff routing
 

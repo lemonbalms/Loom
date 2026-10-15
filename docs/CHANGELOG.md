@@ -5,8 +5,83 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.28.1**) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.31.0**) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.31.0 — 2026-10-15
+
+**스킬과 정책** — 헤드리스 워커의 권한을 `policy.json` 한 파일에 적고, 룸이 고른 스킬을 카드마다 고정된 복사본으로 준다.
+
+### 가능해진 것
+
+- **`loomDir()/policy.json` v1** — 셸 allow/deny(`p *` 형) · `network` · `mcp.deny`/`isolate` · `skills.allow`/`allowScripts`. 내장 기본값 위에 병합: **allow는 대체, deny는 합집합**(어떤 설정도 deny를 줄이지 못한다). 무효 파일 = 헤드리스 bridge 기동 거부(fail-closed).
+- CLI별 번역: claude `--settings` 인라인 JSON(+ 기본 `--strict-mcp-config` — 오너 MCP 서버 0개) · codex `network_access` · grok 규칙별 `--allow`/`--deny`.
+- **룸별 스킬:** `worker.skills.enabled: true` + `loomDir()/rooms/<roomKey>/skills.json`이 고른 스킬(내장 `loom-card-report` 또는 `loomDir()/skills/<name>/`)을 카드 디렉터리에 **복사**(링크 없음 · sha256 매니페스트). claude는 `--plugin-dir`로 로드, codex/grok은 첫 턴 프롬프트의 절대경로 목록.
+- 강제력이 CLI마다 다르다는 **정직 표**(USER_GUIDE §16.4) — 예: codex 셸 deny는 강제되지 않고 네트워크만 강제.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.30.0) | 지금 (0.31.0) |
+|---------------|---------------|
+| `worker.permissions.<agent>`의 도구 목록이 권한 | 도구 목록은 **deprecated**(경고) — 권한은 `policy.json`. 목록과 `shell.allow` 공존 · 내장과 다른 공백 없는 `p*` deny = 기동 거부 |
+| claude 워커가 오너 MCP 서버를 상속 | 기본 격리(`mcp.isolate: true`) |
+| 입양은 복구 때만 fingerprint 대조 | **모든 입양**에서 대조 — 정책·설정이 바뀌면 살아 있는 워커는 죽이지 않고 결과를 `needs_verification` `fingerprint_changed`로 선점 |
+
+### 불변
+
+- 와이어 · `CardDispatchPayload`/`CardResultPayload` 필드 · 완료 권위(`blocked` 착지) · pane 경로 무변경. 스킬 선택은 수신 bridge 로컬뿐 — peer는 스킬을 보내지도 고르지도 못한다.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §16 · PLAN 0.31.0 · R49 · `implementation-notes.md` §0.31.0 · [`spikes/HEADLESS-SMOKE-0310.md`](./spikes/HEADLESS-SMOKE-0310.md)
+
+---
+
+## 0.30.0 — 2026-10-15
+
+**헤드리스 카드 워커 (opt-in)** — 긴 카드를 herdr pane TUI 대신 비대화형 CLI 프로세스로.
+
+### 가능해진 것
+
+- bridge 설정 `worker.backend: "headless"`면 claude(`-p`) · codex(`exec --json`) · grok(`--prompt-file`)이 카드를 **비대화형으로** 돌리고 최종 텍스트 **전문**(≤200,000자)을 결과로 보낸다 — pane 사망·스크레이프 꼬리 잘림 없음.
+- **카드별 세션** — bridge가 죽었다 떠도 살아 있는 워커를 **입양**하고, 결과 없이 죽은 워커는 같은 세션으로 **재개**(최대 2회).
+- 에이전트별 동시성(`maxConcurrent`, 기본 1, 대기 카드는 relay inbox에 남음) · 카드 단위 타임아웃(기본 2h) · 정적 권한 프로필(위험 모드 거부).
+- 워커 env에서 `LOOM_*`·`FABLE_*` 제거(relay 토큰 비노출) · 카드 프롬프트는 argv에 없음.
+
+### 바뀐 습관 (깨진 가정)
+
+- 기본값은 여전히 **pane** — `worker` 절이 없으면 아무것도 안 바뀐다. 헤드리스에서도 에이전트 종류 허용은 `agentArgv.<kind>` 유무, 실행 파일은 `worker.agentBin`.
+- 카드 상태·transcript가 `~/.loom/cards/…`에 **평문**으로 남는다(GC 없음) · 프로필당 bridge는 하나만.
+
+### 불변
+
+- 와이어 무변경 · 결과는 정상 종료여도 `failed`/`needs_verification` → 타워 `blocked`(0.28.0 완료 권한 그대로).
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §15 · PLAN 0.30.0 · R48 · `implementation-notes.md` §0.30.0 · [`spikes/HEADLESS-SMOKE-0300.md`](./spikes/HEADLESS-SMOKE-0300.md)
+
+---
+
+## 0.29.0 — 2026-10-15
+
+**룸 이벤트 id·순번과 멱등 송수신** — 같은 이벤트가 두 번 와도 한 번으로.
+
+### 가능해진 것
+
+- relay가 룸 이벤트(chat · peer join/leave/presence · handoff push)에 `eventId`(`ev_…`)와 룸별 단조 `seq`를 찍는다(optional 필드).
+- 클라이언트·bridge가 `eventId`로 **재시작을 넘어 dedupe**하고, 새 이벤트를 `loomDir()/rooms/<roomKey>/events/YYYY-MM.jsonl`에 원문 그대로(0600) 남긴다.
+- chat·handoff 송신에 `clientEventId` — sticky 타임아웃 → one-shot 폴백이 **같은 카드를 두 번 디스패치하지 않는다**(재전송은 원래 결과만 돌려받음).
+
+### 불변
+
+- 와이어 v1 그대로(필드 전부 optional) — 구 relay·구 클라이언트와 양방향 공존. 전달은 at-most-once 지향(크래시 창에서 한 번 유실 가능 · dedupe 기억 창(1024) 밖으로 밀린 id는 다시 올 수 있음).
+
+### 정본
+
+- [`PROTOCOL.md`](./PROTOCOL.md) v0.29.0 절 · PLAN 0.29.0 · R47 · `implementation-notes.md` §0.29.0
 
 ---
 
