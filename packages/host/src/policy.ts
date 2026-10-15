@@ -11,6 +11,9 @@
  * UK-1 §G: a no-space `p*` also matches lookalikes (`echo*` denies `echoes`),
  * so a deprecated owner deny in that form refuses startup instead of being
  * silently narrowed. A deprecated owner allow in that form is narrowed (safe).
+ * Upgrade compatibility: a deprecated deny entry that exactly equals a 0.30.0
+ * D10 deny entry is accepted and normalized like the builtin (already in the
+ * builtin deny, so no coverage is lost), with a warning to remove the list.
  */
 import { createHash } from "node:crypto";
 import {
@@ -60,6 +63,9 @@ export const LEGACY_D10_DENIED_TOOLS: readonly string[] = [
   "Bash(curl *)",
   "Bash(wget *)",
 ];
+
+/** D10 deny entries an owner may have copied verbatim; exact (case-sensitive) match only. */
+const LEGACY_D10_DENY_SET: ReadonlySet<string> = new Set(LEGACY_D10_DENIED_TOOLS);
 
 /** policy.json read cap (bytes). Larger files fail closed. */
 export const POLICY_MAX_BYTES = 64 * 1024;
@@ -148,6 +154,8 @@ type ProjectedRules = {
   tools: string[];
   /** Deprecated allow entries in no-space `p*` form that were narrowed. */
   narrowed: string[];
+  /** Deprecated deny entries in no-space `p*` form identical to a 0.30.0 D10 deny entry. */
+  builtinIdentical: string[];
 };
 
 type DeprecatedKind = "allow" | "deny";
@@ -330,6 +338,7 @@ function projectDeprecated(
   const web: string[] = [];
   const tools: string[] = [];
   const narrowed: string[] = [];
+  const builtinIdentical: string[] = [];
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     const at = `${field}[${i}]`;
@@ -338,9 +347,12 @@ function projectDeprecated(
     const rule = inner ?? entry;
     const command = noSpaceCommand(rule);
     if (command !== null) {
-      if (kind === "deny") throw refuseNoSpaceDeny(entry, command, sourcePath, policyPath);
+      const identical = kind === "deny" && inner !== null && LEGACY_D10_DENY_SET.has(entry);
+      if (kind === "deny" && !identical) {
+        throw refuseNoSpaceDeny(entry, command, sourcePath, policyPath);
+      }
       shell.push(...normalizeBashInner(rule, at));
-      narrowed.push(entry);
+      (identical ? builtinIdentical : narrowed).push(entry);
       continue;
     }
     if (inner !== null) {
@@ -358,7 +370,7 @@ function projectDeprecated(
     assertShellRule(entry, at);
     shell.push(entry);
   }
-  return { shell, web, tools, narrowed };
+  return { shell, web, tools, narrowed, builtinIdentical };
 }
 
 /** 0.30.0 D10 lists, normalized. curl/wget are not part of builtin deny (R4). */
@@ -604,7 +616,14 @@ export function mergePolicy(
     for (const rule of projected.shell) shellDeny.add(rule);
     for (const name of projected.web) webDeny.add(name);
     for (const name of projected.tools) toolDeny.add(name);
-    warnings.push(`deprecated deny list ${denyPath} is unioned into the effective deny`);
+    const identical =
+      projected.builtinIdentical.length > 0
+        ? `; no-space entries identical to built-in defaults accepted (normalized to "p" and "p *"; ` +
+          `already in the built-in deny): ${projected.builtinIdentical.join(", ")}; remove the list`
+        : "";
+    warnings.push(
+      `deprecated deny list ${denyPath} is unioned into the effective deny${identical}`,
+    );
   }
   if (network === false) {
     shellDeny.add("curl *");

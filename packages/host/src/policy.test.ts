@@ -5,8 +5,9 @@ import { join } from "node:path";
 import {
   builtinPolicyDefaults,
   type DeprecatedToolLists,
-  LEGACY_D10_DENIED_TOOLS,
   type EffectivePolicy,
+  LEGACY_D10_ALLOWED_TOOLS,
+  LEGACY_D10_DENIED_TOOLS,
   loadPolicy,
   mergePolicy,
   type PolicyV1,
@@ -422,9 +423,51 @@ describe("mergePolicy", () => {
       expect(message).toContain('"rm *"');
       expect(message).toContain("lookalike");
     }
-    expect(() => merge(null, { deny: ["Bash(git push*)"], denyPath: DENY_PATH })).toThrow(
-      /Bash\(git push\*\)/,
-    );
+    expect(() => merge(null, { deny: ["git push*"], denyPath: DENY_PATH })).toThrow(/"git push\*"/);
+  });
+
+  test("the exact 0.30.0 default lists pasted as deprecated lists start with a warning", () => {
+    const { effective, warnings } = merge(null, {
+      allow: [...LEGACY_D10_ALLOWED_TOOLS],
+      deny: [...LEGACY_D10_DENIED_TOOLS],
+      allowPath: ALLOW_PATH,
+      denyPath: DENY_PATH,
+    });
+    for (const command of ["git push", "git reset --hard", "git clean"]) {
+      expect(effective.shell.deny).toContain(command);
+      expect(effective.shell.deny).toContain(`${command} *`);
+    }
+    expect(effective.shell.deny.join("\n")).not.toMatch(/\S\*/);
+    expect(effective.shell.allow).toEqual(builtinPolicyDefaults().shell.allow);
+    const denyWarning = warnings.find((w) => w.startsWith(`deprecated deny list ${DENY_PATH}`));
+    expect(denyWarning).toBeDefined();
+    expect(denyWarning).toContain("identical to built-in defaults accepted");
+    expect(denyWarning).toContain("remove the list");
+    for (const entry of ["Bash(git push*)", "Bash(git reset --hard*)", "Bash(git clean*)"]) {
+      expect(denyWarning).toContain(entry);
+    }
+    const allowWarning = warnings.find((w) => w.startsWith(`deprecated allow list ${ALLOW_PATH}`));
+    expect(allowWarning).toContain("Bash(git status*)");
+  });
+
+  test("a built-in no-space deny entry is accepted alone and named in the warning", () => {
+    const { effective, warnings } = merge(parsed(), {
+      deny: ["Bash(git push*)"],
+      denyPath: DENY_PATH,
+    });
+    expect(effective.shell.deny).toContain("git push");
+    expect(effective.shell.deny).toContain("git push *");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Bash(git push*)");
+    expect(warnings[0]).toContain("remove the list");
+  });
+
+  test("a no-space deny that is not a built-in entry still refuses (exact match only)", () => {
+    for (const entry of ["Bash(rm*)", "Bash(Git push*)", "Bash(git status*)"]) {
+      expect(() =>
+        merge(null, { deny: [...LEGACY_D10_DENIED_TOOLS, entry], denyPath: DENY_PATH }),
+      ).toThrow(/lookalike/);
+    }
   });
 
   test("a deprecated allow with a no-space form is narrowed to p and p * and named in the warning", () => {
