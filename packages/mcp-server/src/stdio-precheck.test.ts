@@ -553,6 +553,29 @@ describe("0.32.0 P4 verify round 1 — dispatchPeerId never exposed over MCP (L)
       expect(textOf(r)).not.toContain("p_secret_pin");
     }
     expect(textOf(responses[0] as RpcMsg)).toContain(taskId);
+
+    // Round 3 (M4): a mismatch is surfaced as the l2Mismatch flag (visible over MCP);
+    // the pin and the claimed id still never appear.
+    const mism = await s.call("apply_card_result", {
+      resultJson: JSON.stringify({
+        v: 1,
+        cardId: taskId,
+        status: "done",
+        node: "node/one",
+        seq: 2,
+        output: "o",
+        summary: "s",
+        finishedAt: new Date().toISOString(),
+      }),
+      fromPeerId: "p_claimed_other",
+    });
+    expect(mism.result?.isError).toBe(false);
+    expect(textOf(mism)).toContain('"l2Mismatch": true');
+    expect(textOf(mism)).not.toContain("p_secret_pin");
+    expect(textOf(mism)).not.toContain("p_claimed_other");
+    const listed = await s.call("list_tasks", {});
+    expect(textOf(listed)).toContain('"l2Mismatch": true');
+    expect(textOf(listed)).not.toContain("p_secret_pin");
   }, 30_000);
 });
 

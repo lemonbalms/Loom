@@ -14,7 +14,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, te
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CARD_CONTRACT_VERSION, sanitizeHandoffForOutput } from "@loom/protocol";
+import { CARD_CONTRACT_VERSION, sanitizeHandoffForOutput, sanitizePeerText } from "@loom/protocol";
 import { RelayServer } from "@loom/relay";
 import * as cardOps from "./card-ops";
 import { RelayClient } from "./relay-client";
@@ -28,7 +28,47 @@ import * as board from "./task-board";
 
 type Peer = { id: string; displayName: string };
 
-const L2_NOTE = "sender differs from dispatch target";
+/** Round 3 (M4): a mismatch is a local-only card flag; notes stay byte-identical to 0.31.0. */
+function flagOf(task: board.TaskItem | undefined): true | undefined {
+  return (task as (board.TaskItem & { l2Mismatch?: true }) | undefined)?.l2Mismatch;
+}
+
+/** The 0.31.0 apply_card_result notes, verbatim from a2e0d99 card-ops.ts + normalizeTask. */
+function notes031(p: {
+  summary: string;
+  status: "done" | "failed";
+  reason?: string;
+  note?: string;
+  seq: number;
+}): string {
+  const reason =
+    p.status === "done"
+      ? " failed reason=legacy_remote_done_requires_verification"
+      : p.status === "failed" && p.reason
+        ? ` failed reason=${p.reason}`
+        : "";
+  const lastSeqToken = ` last_seq=${p.seq}`;
+  const notePart = p.note && p.note.length > 0 ? ` ${p.note}` : "";
+  const headBudget = Math.max(0, 1000 - lastSeqToken.length);
+  let head = `${p.summary}${reason}${notePart}`;
+  if (head.length > headBudget) head = head.slice(0, headBudget);
+  return sanitizePeerText(`${head}${lastSeqToken}`).slice(0, 1000);
+}
+
+function failedResult(cardId: string, node: string, seq: number, summary: string, reason: string, note?: string): string {
+  return JSON.stringify({
+    v: CARD_CONTRACT_VERSION,
+    cardId,
+    status: "failed",
+    node,
+    seq,
+    output: "out",
+    summary,
+    reason,
+    ...(note === undefined ? {} : { note }),
+    finishedAt: new Date().toISOString(),
+  });
+}
 
 function resolveDispatchPeerId(peers: Peer[], node: string): string | undefined {
   return cardOps.resolveDispatchPeerId(peers, node);
@@ -223,7 +263,7 @@ describe("apply_card_result L-2 (fail-visible): pin vs sanitized fromPeerId", ()
     }
   });
 
-  test("genuine mismatch → lands blocked + fixed note + audit l2_mismatch; no pin / fromPeerId value anywhere", () => {
+  test("genuine mismatch → lands blocked + l2Mismatch flag + audit l2_mismatch; notes == 0.31.0; no pin / fromPeerId value anywhere", () => {
     const task = board.addTask({ title: "mismatch", assignee: "node/one", status: "doing" });
     setDispatchPeerId(task.id, "p_pinned_secret");
     const r = cardOps.applyCardResult({
@@ -234,8 +274,9 @@ describe("apply_card_result L-2 (fail-visible): pin vs sanitized fromPeerId", ()
     if (!r.ok) return;
     expect(r.status).toBe("blocked");
     expect(r.task.status).toBe("blocked");
-    expect(r.task.notes).toContain(L2_NOTE);
-    expect(r.task.notes).toContain("last_seq=1");
+    expect(flagOf(r.task)).toBe(true);
+    expect(flagOf(board.findTask(task.id))).toBe(true);
+    expect(r.task.notes).toBe(notes031({ summary: "sum", status: "done", seq: 1 }));
     expect(r.task.assignee).toBe("node/one");
     expect(board.findTask(task.id)?.status).toBe("blocked");
 
@@ -257,7 +298,46 @@ describe("apply_card_result L-2 (fail-visible): pin vs sanitized fromPeerId", ()
     expect(stderrLines.join("")).toContain("l2_mismatch");
   });
 
-  test("match → blocked, no note, no l2_mismatch, no l2_unverifiable", () => {
+  test("codex input (900-char summary + OSC in reason): notes byte-identical to 0.31.0 with and without a mismatch; last_seq kept", () => {
+    const summary = "S".repeat(900);
+    const reason = "boom \u001b]0;evil-title\u0007 tail";
+    const note = "N".repeat(400);
+    const expected = notes031({ summary, status: "failed", reason, note, seq: 7 });
+    expect(expected).toContain("last_seq=7");
+
+    for (const pinned of [false, true]) {
+      const task = board.addTask({ title: `codex-${pinned}`, assignee: "node/one", status: "doing" });
+      if (pinned) setDispatchPeerId(task.id, "p_pin_codex");
+      const r = cardOps.applyCardResult({
+        resultJson: failedResult(task.id, "node/one", 7, summary, reason, note),
+        fromPeerId: pinned ? "p_someone_else" : undefined,
+      });
+      expect(r.ok).toBe(true);
+      if (!r.ok) continue;
+      expect(r.task.notes).toBe(expected);
+      expect(board.findTask(task.id)?.notes).toBe(expected);
+      expect(flagOf(r.task)).toBe(pinned ? true : undefined);
+    }
+  });
+
+  test("l2Mismatch flag is local-only: never in export / attachments / parsed snapshots", () => {
+    const task = board.addTask({ title: "flag-local", assignee: "node/one", status: "doing" });
+    setDispatchPeerId(task.id, "p_pin_flag");
+    cardOps.applyCardResult({ resultJson: result(task.id, "node/one", 1), fromPeerId: "p_other" });
+    expect(flagOf(board.findTask(task.id))).toBe(true);
+    const snap = board.exportBoardSnapshot();
+    expect(JSON.stringify(snap)).not.toContain("l2Mismatch");
+    expect(
+      JSON.stringify(board.boardToAttachments(board.loadTaskBoard() as board.TaskBoard)),
+    ).not.toContain("l2Mismatch");
+    const forged = {
+      ...snap,
+      tasks: snap.tasks.map((t) => (t.id === task.id ? { ...t, l2Mismatch: true } : t)),
+    };
+    expect(JSON.stringify(board.parseBoardSnapshot(forged))).not.toContain("l2Mismatch");
+  });
+
+  test("match → blocked, no flag, no l2_mismatch, no l2_unverifiable", () => {
     const task = board.addTask({ title: "match", assignee: "node/one", status: "doing" });
     setDispatchPeerId(task.id, "p_one");
     const r = cardOps.applyCardResult({
@@ -267,7 +347,7 @@ describe("apply_card_result L-2 (fail-visible): pin vs sanitized fromPeerId", ()
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.status).toBe("blocked");
-      expect(r.task.notes).not.toContain(L2_NOTE);
+      expect(flagOf(r.task)).toBeUndefined();
     }
     expect(mismatchesFor(task.id)).toHaveLength(0);
     expect(stderrLines.join("")).not.toContain("l2_unverifiable");
@@ -282,7 +362,7 @@ describe("apply_card_result L-2 (fail-visible): pin vs sanitized fromPeerId", ()
       fromPeerId: claimedCopy(ID_64),
     });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.task.notes).not.toContain(L2_NOTE);
+    if (r.ok) expect(flagOf(r.task)).toBeUndefined();
     expect(mismatchesFor(task.id)).toHaveLength(0);
   });
 
@@ -461,12 +541,21 @@ describe("dispatch_card: name routing (0.31.0) + canonical unique pin (in-proces
     expect(ok.ok).toBe(true);
     if (ok.ok) {
       expect(ok.status).toBe("blocked");
-      expect(ok.task.notes).not.toContain(L2_NOTE);
+      expect(flagOf(ok.task)).toBeUndefined();
     }
+
+    // A mismatching result sets the flag; re-dispatch clears it (and the ambiguous pin).
+    const mism = cardOps.applyCardResult({
+      resultJson: result(task.id, "node/one", 2),
+      fromPeerId: "p_not_the_target",
+    });
+    expect(mism.ok).toBe(true);
+    expect(flagOf(board.findTask(task.id))).toBe(true);
 
     const second = await cardOps.dispatchCard({ taskId: task.id, node: "node/dup", prompt: "p" });
     expect(second.ok).toBe(true);
     expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
+    expect(flagOf(board.findTask(task.id))).toBeUndefined();
   }, 30_000);
 
   test("race: lookup sees only offline p_a, online p_b (same name) joins before send → relay routes to p_b; no pin; p_b's honest result lands blocked without l2_mismatch", async () => {
@@ -505,7 +594,7 @@ describe("dispatch_card: name routing (0.31.0) + canonical unique pin (in-proces
       expect(landed.ok).toBe(true);
       if (landed.ok) {
         expect(landed.status).toBe("blocked");
-        expect(landed.task.notes).not.toContain(L2_NOTE);
+        expect(flagOf(landed.task)).toBeUndefined();
       }
       const written = errSpy.mock.calls.map((c) => String(c[0])).join("");
       expect(written).not.toContain("l2_mismatch");

@@ -808,10 +808,11 @@ async function smokeP4() {
     });
     check(
       "P4",
-      "apply_card_result fromPeerId mismatch → blocked + note (fail-visible, no reject)",
+      "apply_card_result fromPeerId mismatch → blocked + l2Mismatch flag (fail-visible, no reject)",
       !r.isError &&
         r.text.includes('"blocked"') &&
-        r.text.includes("sender differs from dispatch target") &&
+        r.text.includes('"l2Mismatch": true') &&
+        !r.text.includes("dispatchPeerId") &&
         !r.text.includes("p_forged_peer") &&
         (bobId === "" || !r.text.includes(bobId)),
       r.text,
@@ -819,8 +820,8 @@ async function smokeP4() {
     r = await mcp.toolsCallRaw("apply_card_result", { resultJson: resultJson(2), fromPeerId: bobId });
     check(
       "P4",
-      "apply_card_result matching fromPeerId lands blocked (no L-2 note)",
-      !r.isError && r.text.includes('"blocked"') && !r.text.includes("sender differs from dispatch target"),
+      "apply_card_result matching fromPeerId lands blocked (flag kept until re-dispatch)",
+      !r.isError && r.text.includes('"blocked"') && !r.text.includes("dispatchPeerId"),
       r.text,
     );
 

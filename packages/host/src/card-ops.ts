@@ -61,9 +61,6 @@ async function lookupDispatchPeerId(node: string): Promise<string | undefined> {
   }
 }
 
-/** Fixed card note on an L-2 mismatch — never carries the pin or the claimed peer id. */
-export const L2_MISMATCH_NOTE = "[L-2: sender differs from dispatch target]";
-
 /**
  * PLAN 0.32.0 D8 + P4 verify round 2 ruling: an L-2 mismatch is fail-visible, not a
  * reject — one stderr line + a local per-room audit record (never the relay log) with
@@ -177,8 +174,13 @@ export async function dispatchCard(args: {
     }
     // R7 / round 2: pin only when the unique canonical match is the same before AND
     // after the send — a same-name peer joining (or leaving) around the send makes the
-    // relay's choice unknowable, so nothing is pinned (→ l2_unverifiable, never a false
-    // mismatch). Residual: a join+leave entirely between the two lookups is not seen.
+    // relay's choice unknowable, so nothing is pinned (→ l2_unverifiable).
+    // Documented limit (P4 verify round 3, M3): two lookups around the send cannot prove
+    // who the relay actually delivered to — churn between them (join→send→leave) or a
+    // peer id that equals another peer's `@name` (relay tries getPeer(to) first) can
+    // leave a pin that differs from the real recipient, so a rare FALSE l2Mismatch flag
+    // is possible. The signal is advisory only: it never rejects, the result still lands
+    // `blocked`, and re-dispatch clears it.
     const pinAfter = pinBefore === undefined ? undefined : await lookupDispatchPeerId(node);
     const dispatchPeerId = pinBefore !== undefined && pinAfter === pinBefore ? pinBefore : undefined;
     // Board transition only on successful route
@@ -189,6 +191,8 @@ export async function dispatchCard(args: {
       notes: `dispatched node=${node}`,
       // R7: re-dispatch always overwrites — an ambiguous / failed lookup clears the old pin.
       dispatchPeerId: dispatchPeerId ?? null,
+      // Round 3 (M4): a new dispatch starts with no L-2 mismatch flag.
+      l2Mismatch: null,
     });
     return {
       ok: true,
@@ -239,7 +243,8 @@ function findTasksByHandoffId(handoffId: string): TaskItem[] {
  * Apply loom-card-result JSON to local board.
  * L-2: optional node must match card assignee when provided. fromPeerId is compared with
  * the recorded dispatchPeerId when both are present (PLAN 0.32.0 R7 / R50-M2): a mismatch
- * still lands `blocked` with a fixed note + `l2_mismatch` audit (fail-visible, no reject);
+ * still lands `blocked` with the local `l2Mismatch` card flag + `l2_mismatch` audit
+ * (fail-visible, no reject; notes unchanged from 0.31.0);
  * either side absent → today's behaviour plus one stderr `l2_unverifiable` line.
  * PLAN 0.27.0 §6.7.3: tower currency gate — dispatchHandoffId vs task.handoffId.
  * PLAN 0.28.0 U2 / PATCH 2: remote result isolation — every accepted remote
@@ -383,7 +388,7 @@ export function applyCardResult(args: {
   // L-2 (PLAN 0.32.0 R7 / R50-M2 + P4 verify round 2 ruling): fromPeerId vs the peer id
   // pinned at dispatch time, compared after the same sanitize the inbox/claim path applies
   // (an honest copy never mismatches). Fail-visible: a mismatch still lands `blocked`
-  // with a fixed note + audit; it is never a reject.
+  // with the l2Mismatch flag + audit; it is never a reject.
   const expectedPeer = task.dispatchPeerId;
   const fromPeer =
     args.fromPeerId !== undefined && args.fromPeerId !== ""
@@ -436,17 +441,19 @@ export function applyCardResult(args: {
   const lastSeqToken = ` last_seq=${payload.seq}`;
   const notePart =
     payload.note && payload.note.length > 0 ? ` ${payload.note}` : "";
-  const l2Part = l2Mismatch ? ` ${L2_MISMATCH_NOTE}` : "";
-  const headBudget = Math.max(0, NOTES_CAP - lastSeqToken.length - l2Part.length);
+  const headBudget = Math.max(0, NOTES_CAP - lastSeqToken.length);
   let head = `${payload.summary}${reason}${notePart}`;
   if (head.length > headBudget) {
     head = head.slice(0, headBudget);
   }
-  const notes = `${head}${l2Part}${lastSeqToken}`;
+  const notes = `${head}${lastSeqToken}`;
 
+  // P4 verify round 3 (M4): notes stay byte-identical to 0.31.0; an L-2 mismatch is the
+  // local-only `l2Mismatch` card flag (cleared on re-dispatch), never a notes edit.
   const updated = updateTask(task.id, {
     status,
     notes,
+    ...(l2Mismatch ? { l2Mismatch: true as const } : {}),
   });
   return { ok: true, task: updated, status };
 }

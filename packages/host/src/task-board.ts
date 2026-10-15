@@ -56,6 +56,12 @@ export type TaskItem = {
    * dispatch time. Local board file only — stripped from every snapshot (no wire).
    */
   dispatchPeerId?: string;
+  /**
+   * PLAN 0.32.0 P4 verify round 3 (M4): set when a result's fromPeerId differed from the
+   * pin (advisory, never a reject); cleared on re-dispatch. Local board only — stripped
+   * from every snapshot; visible in MCP output (unlike the pin itself).
+   */
+  l2Mismatch?: true;
 };
 
 export type TaskBoard = {
@@ -210,6 +216,7 @@ function normalizeTask(t: TaskItem): TaskItem {
     ...(typeof t.dispatchPeerId === "string" && isCanonicalPeerId(t.dispatchPeerId)
       ? { dispatchPeerId: t.dispatchPeerId }
       : {}),
+    ...(t.l2Mismatch === true ? { l2Mismatch: true as const } : {}),
   };
 }
 
@@ -248,8 +255,8 @@ export function isCanonicalPeerId(id: string): boolean {
 
 /** PLAN 0.32.0 R7: local-only fields never leave the board file (snapshots, attachments, imports). */
 function withoutLocalFields(t: TaskItem): TaskItem {
-  if (t.dispatchPeerId === undefined) return t;
-  const { dispatchPeerId: _local, ...rest } = t;
+  if (t.dispatchPeerId === undefined && t.l2Mismatch === undefined) return t;
+  const { dispatchPeerId: _pin, l2Mismatch: _flag, ...rest } = t;
   return rest;
 }
 
@@ -333,6 +340,8 @@ export function updateTask(
     handoffId?: string | null;
     /** PLAN 0.32.0 R7: null clears (ambiguous / failed peer lookup on re-dispatch). */
     dispatchPeerId?: string | null;
+    /** P4 verify round 3: true sets the L-2 mismatch flag; null clears it. */
+    l2Mismatch?: true | null;
   },
   roomId?: string,
 ): TaskItem {
@@ -367,6 +376,8 @@ export function updateTask(
     };
     if (patch.dispatchPeerId === null) delete next.dispatchPeerId;
     else if (patch.dispatchPeerId !== undefined) next.dispatchPeerId = patch.dispatchPeerId;
+    if (patch.l2Mismatch === null) delete next.l2Mismatch;
+    else if (patch.l2Mismatch === true) next.l2Mismatch = true;
     board.tasks[idx] = normalizeTask(next);
     updated = board.tasks[idx]!;
   });
