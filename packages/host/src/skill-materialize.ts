@@ -20,6 +20,10 @@
  * Residual (out of scope): a same-user process swapping directories mid-traversal; it
  * already holds the owner's privileges.
  *
+ * Marker lookalikes: descriptions and every raw frontmatter line are checked after NFKC +
+ * lowercase + letters/digits only. Accepted Low residual: cross-script homoglyphs (e.g.
+ * Cyrillic "е" for Latin "e") are not folded by NFKC and are not caught.
+ *
  * Concurrency: materialize swaps the copy with two renames, so a concurrent verify can see
  * no skills dir (→ ok:false → fingerprint_changed, fail closed) and two concurrent
  * materializes make one throw. Callers serialize per card (headless-worker withCardLock,
@@ -92,6 +96,7 @@ const BLOCK_KEYS = new Set(["allowed-tools", "hooks", "metadata", "loom"]);
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** Any C0/C1/DEL, format (bidi, zero-width, BOM), or line/paragraph separator except LF. */
 const RAW_FORBIDDEN = /(?!\n)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const BLOCK_SCALAR = /^[>|][+-]?$/;
 const TOP_KEY_LINE = /^([a-z][a-z0-9.-]*):(?: +(.*))?$/;
 const NESTED_KEY_LINE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):(?: +(.*))?$/;
 
@@ -336,6 +341,14 @@ export async function readRoomSkillSelection(loomDir: string, roomId: string): P
   return names;
 }
 
+/** NFKC + lowercase + letters/digits only (marker lookalike check). */
+function foldedLetters(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
 /** R49-L1. null = bad description. */
 export function sanitizeSkillDescription(raw: string): string | null {
   const text = raw
@@ -347,11 +360,7 @@ export function sanitizeSkillDescription(raw: string): string | null {
   if ([...text].length > SKILL_DESCRIPTION_MAX) return null;
   // Must not forge the system/data boundary, including fullwidth, case, and
   // punctuation lookalikes of the marker head.
-  const letters = text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]/gu, "");
-  if (letters.includes(MARKER_LETTERS)) return null;
+  if (foldedLetters(text).includes(MARKER_LETTERS)) return null;
   return text;
 }
 
@@ -391,7 +400,7 @@ function requiresFrom(value: string): boolean {
   return scalar(value) !== "false";
 }
 
-type TopEntry = { value: string; nested: string[] };
+type TopEntry = { value: string; nested: string[]; block?: string[] };
 
 /**
  * Strict line-based subset of YAML frontmatter (see SKILL_FRONTMATTER_KEYS).
@@ -412,11 +421,29 @@ function parseFrontmatter(text: string): Frontmatter | null {
     body.push(line);
   }
   if (!closed) return null;
-  for (const line of ["---", ...body]) if (RAW_FORBIDDEN.test(line)) return null;
+  for (const line of ["---", ...body]) {
+    if (RAW_FORBIDDEN.test(line) || foldedLetters(line).includes(MARKER_LETTERS)) return null;
+  }
 
   const top = new Map<string, TopEntry>();
   let cur: TopEntry | null = null;
+  // Active `description: |`/`>` block: every indented or blank line is content, never a comment.
+  let block: { indent: number | null; lines: string[] } | null = null;
   for (const line of body) {
+    if (block) {
+      if (line.trim() === "") {
+        block.lines.push("");
+        continue;
+      }
+      if (line.startsWith(" ")) {
+        const indent = line.length - line.trimStart().length;
+        if (block.indent === null) block.indent = indent;
+        else if (indent < block.indent) return null;
+        block.lines.push(line.slice(block.indent));
+        continue;
+      }
+      block = null; // a column-0 line ends the block scalar
+    }
     if (line.trim() === "" || /^ *#/.test(line)) continue;
     if (line === "..." || line.startsWith("%")) return null;
     if (line.startsWith(" ")) {
@@ -428,28 +455,52 @@ function parseFrontmatter(text: string): Frontmatter | null {
     if (!m || !SKILL_FRONTMATTER_KEYS.includes(m[1]!) || top.has(m[1]!)) return null;
     cur = { value: (m[2] ?? "").trimEnd(), nested: [] };
     top.set(m[1]!, cur);
+    if (m[1] === "description" && BLOCK_SCALAR.test(cur.value)) {
+      block = { indent: null, lines: [] };
+      cur.block = block.lines;
+    }
   }
 
   const fm: Frontmatter = { name: "", requiresPolicy: false, gated: false };
   for (const [key, entry] of top) {
     if (GATED_KEYS.has(key)) fm.gated = true;
-    if (key === "description" && /^[>|][+-]?$/.test(entry.value)) {
-      fm.description = entry.nested.map((l) => l.trim()).join(" ");
+    if (entry.block) {
+      // Folded to one line (YAML folds `>`; R49-L1 makes `|` one line too).
+      fm.description = entry.block
+        .map((l) => l.trim())
+        .filter((l) => l !== "")
+        .join(" ");
       continue;
     }
     if (entry.nested.length > 0) {
       if (entry.value !== "" || !BLOCK_KEYS.has(key)) return null;
+      // Mapping scopes by key column; a duplicate key in any scope is invalid.
+      const scopes: { col: number; keys: Set<string> }[] = [];
       for (const raw of entry.nested) {
-        let item = raw.trim();
+        let item = raw.trimStart();
+        let col = raw.length - item.length;
         let listItem = false;
         while (item === "-" || item.startsWith("- ")) {
           listItem = true;
-          item = item.slice(1).trimStart();
+          const rest = item.slice(1);
+          item = rest.trimStart();
+          col += 1 + rest.length - item.length;
         }
         if (item === "") continue;
+        while (
+          scopes.length > 0 &&
+          (listItem ? scopes.at(-1)!.col >= col : scopes.at(-1)!.col > col)
+        ) {
+          scopes.pop();
+        }
         const kv = NESTED_KEY_LINE.exec(item);
         if (kv) {
           if (scalar((kv[2] ?? "").trimEnd()) === null) return null;
+          if (scopes.length === 0 || scopes.at(-1)!.col < col)
+            scopes.push({ col, keys: new Set() });
+          const scope = scopes.at(-1)!;
+          if (scope.keys.has(kv[1]!)) return null;
+          scope.keys.add(kv[1]!);
           if (key === "loom") {
             if (listItem || kv[1] !== "requires-policy") return null;
             if (requiresFrom((kv[2] ?? "").trimEnd())) fm.requiresPolicy = true;
