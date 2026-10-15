@@ -10,7 +10,6 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
-  ClientPeerSchema,
   generateTaskId,
   sanitizePeerText,
   sanitizePeerName,
@@ -208,19 +207,43 @@ function normalizeTask(t: TaskItem): TaskItem {
     createdByPeerId: t.createdByPeerId
       ? sanitizePeerText(t.createdByPeerId).slice(0, 64)
       : undefined,
-    ...(typeof t.dispatchPeerId === "string" && isPinnablePeerId(t.dispatchPeerId)
+    ...(typeof t.dispatchPeerId === "string" && isCanonicalPeerId(t.dispatchPeerId)
       ? { dispatchPeerId: t.dispatchPeerId }
       : {}),
   };
 }
 
+/** PLAN 0.32.0 R7 (P4 verify round 2): canonical pin length cap. */
+export const DISPATCH_PIN_MAX = 64;
+
+/** Relay targets that are not a single peer (relay `resolveTargets`: `to === "*"` broadcasts). */
+const RESERVED_PEER_TARGETS: ReadonlySet<string> = new Set(["*"]);
+
+/** C0 / DEL / C1 control characters. */
+function hasControlChar(id: string): boolean {
+  for (let i = 0; i < id.length; i++) {
+    const c = id.charCodeAt(i);
+    if (c <= 0x1f || (c >= 0x7f && c <= 0x9f)) return true;
+  }
+  return false;
+}
+
 /**
- * PLAN 0.32.0 R7 (P4 verify round 1): a dispatch pin is stored verbatim or not at all.
- * Same rule as the relay's peer id (`ClientPeerSchema.shape.id` — min 1, no max) plus an
- * exact round-trip through the board sanitizer, so a pin is never truncated or altered.
+ * PLAN 0.32.0 R7 (P4 verify round 2 ruling): the only peer ids that may be pinned as
+ * `dispatchPeerId` — non-empty, trimmed == raw, ≤ 64 chars, no C0/C1/DEL control chars,
+ * not a relay wildcard, and unchanged by the board / inbox sanitizer (so an honest
+ * `fromPeerId` copied from the sanitized inbox always equals the pin). Anything else is
+ * never pinned (stored verbatim or not at all) and lands on the `l2_unverifiable` branch.
  */
-export function isPinnablePeerId(id: string): boolean {
-  return ClientPeerSchema.shape.id.safeParse(id).success && sanitizePeerText(id) === id;
+export function isCanonicalPeerId(id: string): boolean {
+  return (
+    id.length > 0 &&
+    id.length <= DISPATCH_PIN_MAX &&
+    id.trim() === id &&
+    !hasControlChar(id) &&
+    !RESERVED_PEER_TARGETS.has(id) &&
+    sanitizePeerText(id) === id
+  );
 }
 
 /** PLAN 0.32.0 R7: local-only fields never leave the board file (snapshots, attachments, imports). */

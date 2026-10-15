@@ -63,15 +63,15 @@ export type McpRefusalReason =
   | "mcp_deny"
   | "invalid_args"
   | "done_propose"
-  /** Issued by applyCardResult (L-2, D8), never by evaluateMcpCall. */
-  | "l2_from_peer"
+  /** Issued by applyCardResult (L-2, D8 — fail-visible, not a refusal), never by evaluateMcpCall. */
+  | "l2_mismatch"
   | `deny_mode:${LoomDenyMode}`;
 
 /** One line of `policy-audit.jsonl`. IDs only — never titles, bodies, notes, paths. */
 export type PolicyAuditRecord = {
   v: 1;
   ts: string;
-  kind: "refused" | "done_via_mcp";
+  kind: "refused" | "done_via_mcp" | "l2_mismatch";
   tool: string;
   reason?: McpRefusalReason;
   mode?: LoomDenyMode;

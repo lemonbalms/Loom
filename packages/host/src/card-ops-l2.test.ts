@@ -1,16 +1,20 @@
 /**
- * PLAN 0.32.0 P4 — D8 · R7 (as amended by R50-M2) · Done-when (g).
- * L-2 fromPeerId check: dispatch_card records `dispatchPeerId` only when the local peer
- * list has EXACTLY ONE peer whose display name matches `node`; apply_card_result rejects
- * a fromPeerId that differs from the recorded one, and keeps today's behaviour (plus one
- * stderr `l2_unverifiable` line) when either side is absent. Results still land `blocked`.
- * `dispatchPeerId` is a local board field only — never in snapshots / wire.
+ * PLAN 0.32.0 P4 — D8 · R7 (as amended by R50-M2) · Done-when (g), with the P4 verify
+ * round 2 fable-advisor ruling (L-2 is fail-visible, never a reject):
+ * - routing is identical to 0.31.0 (dispatch handoff `to` = `@node` name);
+ * - `dispatchPeerId` is pinned only when exactly one local peer matches `node` (checked
+ *   before AND after the send, same id) and the id is canonical (non-empty, trimmed,
+ *   ≤ 64, no control chars, not a relay wildcard, sanitize-stable);
+ * - compare: pin vs `fromPeerId` after the inbox/claim sanitize (sanitizeHandoffForOutput);
+ * - mismatch → result still lands `blocked` + fixed note + audit `l2_mismatch` (no ids);
+ *   either side absent → today's behaviour + one stderr `l2_unverifiable` line.
+ * `dispatchPeerId` is a local board field only — never in snapshots / wire / MCP output.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CARD_CONTRACT_VERSION, ClientPeerSchema } from "@loom/protocol";
+import { CARD_CONTRACT_VERSION, sanitizeHandoffForOutput } from "@loom/protocol";
 import { RelayServer } from "@loom/relay";
 import * as cardOps from "./card-ops";
 import { RelayClient } from "./relay-client";
@@ -23,42 +27,43 @@ import {
 import * as board from "./task-board";
 
 type Peer = { id: string; displayName: string };
-type ResolveFn = (peers: Peer[], node: string) => string | undefined;
+
+const L2_NOTE = "sender differs from dispatch target";
 
 function resolveDispatchPeerId(peers: Peer[], node: string): string | undefined {
-  const fn = (cardOps as unknown as { resolveDispatchPeerId?: ResolveFn }).resolveDispatchPeerId;
-  expect(typeof fn).toBe("function");
-  return (fn as ResolveFn)(peers, node);
+  return cardOps.resolveDispatchPeerId(peers, node);
 }
 
-/** updateTask patch with the additive local field (cast keeps the red commit type-clean at call sites). */
-function setDispatchPeerId(taskId: string, peerId: string | null): board.TaskItem {
-  return board.updateTask(
-    taskId,
-    { dispatchPeerId: peerId } as unknown as Parameters<typeof board.updateTask>[1],
-  );
-}
-
-/** Round 1 M (exact pin): same id rule as ClientPeerSchema.id + exact round-trip. */
-function isPinnablePeerId(id: string): boolean {
-  const fn = (board as unknown as { isPinnablePeerId?: (id: string) => boolean }).isPinnablePeerId;
+function isCanonicalPeerId(id: string): boolean {
+  const fn = (board as unknown as { isCanonicalPeerId?: (id: string) => boolean }).isCanonicalPeerId;
   expect(typeof fn).toBe("function");
   return (fn as (id: string) => boolean)(id);
 }
 
 type DispatchHooks = { afterPeerLookup?: () => Promise<void> | void };
 function dispatchHooks(): DispatchHooks {
-  const hooks = (cardOps as unknown as { dispatchCardTestHooks?: DispatchHooks }).dispatchCardTestHooks;
+  const hooks = (cardOps as unknown as { dispatchCardTestHooks?: DispatchHooks })
+    .dispatchCardTestHooks;
   expect(hooks).toBeDefined();
   return hooks as DispatchHooks;
 }
 
-/** 82 chars — longer than the old 64-char storage cap; ClientPeerSchema.id has no max. */
-const LONG_PEER_ID = `p_${"a1b2c3d4e5".repeat(8)}`;
+function setDispatchPeerId(taskId: string, peerId: string | null): board.TaskItem {
+  return board.updateTask(taskId, { dispatchPeerId: peerId });
+}
 
 function dispatchPeerIdOf(task: board.TaskItem | undefined): string | undefined {
-  return (task as (board.TaskItem & { dispatchPeerId?: string }) | undefined)?.dispatchPeerId;
+  return task?.dispatchPeerId;
 }
+
+/** What an honest agent passes: the fromPeerId it read from the sanitized inbox / claim. */
+function claimedCopy(peerId: string): string {
+  return sanitizeHandoffForOutput({ body: "", fromPeerId: peerId }).fromPeerId as string;
+}
+
+const ID_64 = `p_${"0123456789abcdef".repeat(4)}`.slice(0, 64);
+const ID_65 = `${ID_64}x`;
+const ID_82 = `p_${"a1b2c3d4e5".repeat(8)}`;
 
 function result(cardId: string, node: string, seq: number): string {
   return JSON.stringify({
@@ -73,7 +78,36 @@ function result(cardId: string, node: string, seq: number): string {
   });
 }
 
-describe("resolveDispatchPeerId — exactly one display-name match (R50-M2)", () => {
+describe("isCanonicalPeerId — the only ids that may be pinned", () => {
+  test("canonical: non-empty, trimmed, ≤ 64, no control chars, not a wildcard, sanitize-stable", () => {
+    expect(ID_64).toHaveLength(64);
+    for (const id of ["p_x", "p_tower", ID_64]) expect(isCanonicalPeerId(id)).toBe(true);
+  });
+
+  test("non-canonical ids are never pinned", () => {
+    const bad = [
+      "",
+      ID_65,
+      ID_82,
+      " p_x",
+      "p_x ",
+      "p x\t",
+      "\tp_x",
+      "p_ctl\u0001x",
+      "p_esc\u001b[31mx",
+      "p_del\u007fx",
+      "p_c1\u0085x",
+      "*",
+    ];
+    for (const id of bad) expect(isCanonicalPeerId(id)).toBe(false);
+  });
+
+  test("a canonical id equals its own inbox/claim sanitized copy (honest ids never mismatch)", () => {
+    for (const id of ["p_x", ID_64]) expect(claimedCopy(id)).toBe(id);
+  });
+});
+
+describe("resolveDispatchPeerId — exactly one display-name match AND a canonical id", () => {
   const peers: Peer[] = [
     { id: "p_one", displayName: "node/one" },
     { id: "p_dup_a", displayName: "dup" },
@@ -87,53 +121,56 @@ describe("resolveDispatchPeerId — exactly one display-name match (R50-M2)", ()
     expect(resolveDispatchPeerId(peers, "NODE/ONE")).toBe("p_one");
   });
 
-  test("zero matches → undefined", () => {
+  test("zero or 2+ matches → undefined; a peer id is not a display name", () => {
     expect(resolveDispatchPeerId(peers, "node/ghost")).toBeUndefined();
-    expect(resolveDispatchPeerId([], "node/one")).toBeUndefined();
-  });
-
-  test("two or more matches (ambiguous display name) → undefined", () => {
     expect(resolveDispatchPeerId(peers, "dup")).toBeUndefined();
-  });
-
-  test("a peer id is not a display name", () => {
     expect(resolveDispatchPeerId(peers, "p_one")).toBeUndefined();
   });
 
-  test("82-char peer id resolves exactly (no truncation)", () => {
-    expect(LONG_PEER_ID).toHaveLength(82);
-    expect(resolveDispatchPeerId([{ id: LONG_PEER_ID, displayName: "node/long" }], "node/long")).toBe(
-      LONG_PEER_ID,
-    );
-  });
-
-  test("a unique match whose id would not round-trip exactly is not pinned", () => {
-    expect(resolveDispatchPeerId([{ id: "p_bad\u0007id", displayName: "node/bad" }], "node/bad")).toBeUndefined();
-  });
-});
-
-describe("isPinnablePeerId — same limit as ClientPeerSchema.id, exact round-trip only", () => {
-  test("agrees with ClientPeerSchema.shape.id for well-formed ids (incl. 82 chars) and rejects empty", () => {
-    for (const id of ["p_x", "p_tower", LONG_PEER_ID, "x".repeat(4096)]) {
-      expect(ClientPeerSchema.shape.id.safeParse(id).success).toBe(true);
-      expect(isPinnablePeerId(id)).toBe(true);
+  test("unique match with a non-canonical id (>64, whitespace, control, `*`) → undefined", () => {
+    for (const id of [ID_65, ID_82, " p_ws", "p_ws ", "p_bad\u0007id", "*"]) {
+      expect(resolveDispatchPeerId([{ id, displayName: "node/x" }], "node/x")).toBeUndefined();
     }
-    expect(ClientPeerSchema.shape.id.safeParse("").success).toBe(false);
-    expect(isPinnablePeerId("")).toBe(false);
-  });
-
-  test("ids the board sanitizer would alter are never pinned (no lossy pin)", () => {
-    expect(isPinnablePeerId("p_ctl\u0001x")).toBe(false);
-    expect(isPinnablePeerId("p_esc\u001b[31mx")).toBe(false);
-    expect(isPinnablePeerId("p_del\u007fx")).toBe(false);
+    expect(resolveDispatchPeerId([{ id: ID_64, displayName: "node/x" }], "node/x")).toBe(ID_64);
   });
 });
 
-describe("apply_card_result L-2 fromPeerId vs dispatchPeerId", () => {
+describe("apply_card_result L-2 (fail-visible): pin vs sanitized fromPeerId", () => {
   const dir = join(tmpdir(), `loom-card-l2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const sessionFile = join(dir, "session.json");
   let stderrLines: string[] = [];
   let stderrSpy: ReturnType<typeof spyOn> | null = null;
+
+  function auditLines(): Array<Record<string, unknown>> {
+    const roomsDir = join(loomDir(), "rooms");
+    if (!existsSync(roomsDir)) return [];
+    const out: Array<Record<string, unknown>> = [];
+    for (const room of readdirSync(roomsDir)) {
+      for (const f of readdirSync(join(roomsDir, room))) {
+        if (!f.startsWith("policy-audit")) continue;
+        const text = readFileSync(join(roomsDir, room, f), "utf8").trim();
+        if (!text) continue;
+        for (const l of text.split("\n")) out.push(JSON.parse(l) as Record<string, unknown>);
+      }
+    }
+    return out;
+  }
+
+  function auditRaw(): string {
+    const roomsDir = join(loomDir(), "rooms");
+    if (!existsSync(roomsDir)) return "";
+    let raw = "";
+    for (const room of readdirSync(roomsDir)) {
+      for (const f of readdirSync(join(roomsDir, room))) {
+        raw += readFileSync(join(roomsDir, room, f), "utf8");
+      }
+    }
+    return raw;
+  }
+
+  function mismatchesFor(cardId: string) {
+    return auditLines().filter((l) => l.reason === "l2_mismatch" && l.cardId === cardId);
+  }
 
   beforeAll(() => {
     mkdirSync(dir, { recursive: true });
@@ -175,64 +212,52 @@ describe("apply_card_result L-2 fromPeerId vs dispatchPeerId", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("82-char pin is stored and read back exactly", () => {
-    const task = board.addTask({ title: "long-pin", assignee: "node/long", status: "doing" });
-    expect(dispatchPeerIdOf(setDispatchPeerId(task.id, LONG_PEER_ID))).toBe(LONG_PEER_ID);
-    expect(dispatchPeerIdOf(board.findTask(task.id))).toBe(LONG_PEER_ID);
-    const r = cardOps.applyCardResult({
-      resultJson: result(task.id, "node/long", 1),
-      fromPeerId: LONG_PEER_ID,
-    });
-    expect(r.ok).toBe(true);
-  });
-
-  test("a pin that would not round-trip exactly is dropped, never truncated or altered", () => {
-    const task = board.addTask({ title: "bad-pin", assignee: "node/one", status: "doing" });
-    expect(dispatchPeerIdOf(setDispatchPeerId(task.id, "p_bad\u0007id"))).toBeUndefined();
-    expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
-  });
-
-  test("updateTask persists dispatchPeerId; null clears it", () => {
+  test("updateTask persists a canonical pin; null clears it; non-canonical is dropped (never truncated)", () => {
     const task = board.addTask({ title: "persist", assignee: "node/one", status: "doing" });
     expect(dispatchPeerIdOf(setDispatchPeerId(task.id, "p_one"))).toBe("p_one");
     expect(dispatchPeerIdOf(board.findTask(task.id))).toBe("p_one");
     expect(dispatchPeerIdOf(setDispatchPeerId(task.id, null))).toBeUndefined();
-    expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
+    for (const bad of [ID_82, " p_ws", "p_bad\u0007id", "*"]) {
+      expect(dispatchPeerIdOf(setDispatchPeerId(task.id, bad))).toBeUndefined();
+      expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
+    }
   });
 
-  test("recorded + fromPeerId differs → rejected `L-2: fromPeerId (…) does not match dispatch target (…)`; board untouched; audit l2_from_peer", () => {
+  test("genuine mismatch → lands blocked + fixed note + audit l2_mismatch; no pin / fromPeerId value anywhere", () => {
     const task = board.addTask({ title: "mismatch", assignee: "node/one", status: "doing" });
-    setDispatchPeerId(task.id, "p_one");
+    setDispatchPeerId(task.id, "p_pinned_secret");
     const r = cardOps.applyCardResult({
       resultJson: result(task.id, "node/one", 1),
-      fromPeerId: "p_evil",
+      fromPeerId: "p_claimed_other",
     });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.error).toBe("L-2: fromPeerId (p_evil) does not match dispatch target (p_one)");
-    }
-    expect(board.findTask(task.id)?.status).toBe("doing");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.status).toBe("blocked");
+    expect(r.task.status).toBe("blocked");
+    expect(r.task.notes).toContain(L2_NOTE);
+    expect(r.task.notes).toContain("last_seq=1");
+    expect(r.task.assignee).toBe("node/one");
+    expect(board.findTask(task.id)?.status).toBe("blocked");
 
-    const rooms = readdirSync(join(loomDir(), "rooms"));
-    expect(rooms).toHaveLength(1);
-    const auditPath = join(loomDir(), "rooms", rooms[0] as string, "policy-audit.jsonl");
-    expect(existsSync(auditPath)).toBe(true);
-    const lines = readFileSync(auditPath, "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l) as Record<string, unknown>);
-    expect(lines.at(-1)).toMatchObject({
-      kind: "refused",
-      tool: "apply_card_result",
-      reason: "l2_from_peer",
-      peerId: "p_tower",
-      roomId: "room_card_l2",
-      cardId: task.id,
-    });
-    expect(stderrLines.join("")).toContain("reason=l2_from_peer");
+    const hits = mismatchesFor(task.id);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ kind: "l2_mismatch", reason: "l2_mismatch", cardId: task.id });
+    expect(typeof hits[0]?.ts).toBe("string");
+
+    // The pin field itself is unchanged on the local card ("change no other fields"); MCP
+    // output drops it via mcpResultJson (stdio-precheck test) — every other text must not
+    // carry either id.
+    expect(r.task.dispatchPeerId).toBe("p_pinned_secret");
+    const resultText = JSON.stringify(r, (k, v) => (k === "dispatchPeerId" ? undefined : v));
+    const outputs = [resultText, r.task.notes ?? "", auditRaw(), stderrLines.join("")];
+    for (const out of outputs) {
+      expect(out).not.toContain("p_pinned_secret");
+      expect(out).not.toContain("p_claimed_other");
+    }
+    expect(stderrLines.join("")).toContain("l2_mismatch");
   });
 
-  test("recorded + fromPeerId matches → lands blocked (never done), no l2_unverifiable", () => {
+  test("match → blocked, no note, no l2_mismatch, no l2_unverifiable", () => {
     const task = board.addTask({ title: "match", assignee: "node/one", status: "doing" });
     setDispatchPeerId(task.id, "p_one");
     const r = cardOps.applyCardResult({
@@ -240,11 +265,64 @@ describe("apply_card_result L-2 fromPeerId vs dispatchPeerId", () => {
       fromPeerId: "p_one",
     });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.status).toBe("blocked");
+    if (r.ok) {
+      expect(r.status).toBe("blocked");
+      expect(r.task.notes).not.toContain(L2_NOTE);
+    }
+    expect(mismatchesFor(task.id)).toHaveLength(0);
     expect(stderrLines.join("")).not.toContain("l2_unverifiable");
   });
 
-  test("no record (legacy / ambiguous dispatch) + fromPeerId → today's behaviour + one l2_unverifiable line", () => {
+  test("honest 64-char id: pin == inbox/claim sanitized copy → blocked, no l2_mismatch", () => {
+    const task = board.addTask({ title: "honest-64", assignee: "node/one", status: "doing" });
+    setDispatchPeerId(task.id, ID_64);
+    expect(dispatchPeerIdOf(board.findTask(task.id))).toBe(ID_64);
+    const r = cardOps.applyCardResult({
+      resultJson: result(task.id, "node/one", 1),
+      fromPeerId: claimedCopy(ID_64),
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.task.notes).not.toContain(L2_NOTE);
+    expect(mismatchesFor(task.id)).toHaveLength(0);
+  });
+
+  test("fromPeerId compared after the inbox/claim sanitize (control chars stripped) → honest copy matches", () => {
+    const task = board.addTask({ title: "sanitized-from", assignee: "node/one", status: "doing" });
+    setDispatchPeerId(task.id, "p_one");
+    const r = cardOps.applyCardResult({
+      resultJson: result(task.id, "node/one", 1),
+      fromPeerId: "p_\u0007one",
+    });
+    expect(r.ok).toBe(true);
+    expect(mismatchesFor(task.id)).toHaveLength(0);
+  });
+
+  test("relay id > 64 chars: no pin (non-canonical) → honest sanitized copy lands blocked, l2_unverifiable, no l2_mismatch", () => {
+    const task = board.addTask({ title: "long-id", assignee: "node/long", status: "doing" });
+    expect(resolveDispatchPeerId([{ id: ID_82, displayName: "node/long" }], "node/long")).toBeUndefined();
+    const r = cardOps.applyCardResult({
+      resultJson: result(task.id, "node/long", 1),
+      fromPeerId: claimedCopy(ID_82),
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.status).toBe("blocked");
+    expect(mismatchesFor(task.id)).toHaveLength(0);
+    expect(stderrLines.filter((l) => l.includes("l2_unverifiable"))).toHaveLength(1);
+  });
+
+  test("whitespace id: no pin → lands blocked, l2_unverifiable, no l2_mismatch", () => {
+    const task = board.addTask({ title: "ws-id", assignee: "node/ws", status: "doing" });
+    expect(resolveDispatchPeerId([{ id: " p_ws ", displayName: "node/ws" }], "node/ws")).toBeUndefined();
+    const r = cardOps.applyCardResult({
+      resultJson: result(task.id, "node/ws", 1),
+      fromPeerId: " p_ws ",
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.status).toBe("blocked");
+    expect(mismatchesFor(task.id)).toHaveLength(0);
+  });
+
+  test("no pin + fromPeerId → today's behaviour + one l2_unverifiable line", () => {
     const task = board.addTask({ title: "legacy", assignee: "node/one", status: "doing" });
     const r = cardOps.applyCardResult({
       resultJson: result(task.id, "node/one", 1),
@@ -252,20 +330,20 @@ describe("apply_card_result L-2 fromPeerId vs dispatchPeerId", () => {
     });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.status).toBe("blocked");
-    const hits = stderrLines.filter((l) => l.includes("l2_unverifiable"));
-    expect(hits).toHaveLength(1);
+    expect(stderrLines.filter((l) => l.includes("l2_unverifiable"))).toHaveLength(1);
   });
 
-  test("record present + fromPeerId omitted → today's behaviour + one l2_unverifiable line", () => {
+  test("pin + fromPeerId omitted → today's behaviour + one l2_unverifiable line", () => {
     const task = board.addTask({ title: "omitted", assignee: "node/one", status: "doing" });
     setDispatchPeerId(task.id, "p_one");
     const r = cardOps.applyCardResult({ resultJson: result(task.id, "node/one", 1) });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.status).toBe("blocked");
     expect(stderrLines.filter((l) => l.includes("l2_unverifiable"))).toHaveLength(1);
+    expect(stderrLines.join("")).not.toContain("p_one");
   });
 
-  test("existing node/assignee L-2 guard still runs first", () => {
+  test("existing node/assignee L-2 guard is unchanged (still rejects)", () => {
     const task = board.addTask({ title: "node-first", assignee: "node/one", status: "doing" });
     setDispatchPeerId(task.id, "p_one");
     const r = cardOps.applyCardResult({
@@ -286,32 +364,35 @@ describe("apply_card_result L-2 fromPeerId vs dispatchPeerId", () => {
     expect(JSON.stringify(board.boardToAttachments(loaded as board.TaskBoard))).not.toContain(
       "dispatchPeerId",
     );
-
     const forged = {
       ...snap,
       tasks: snap.tasks.map((t) => (t.id === task.id ? { ...t, dispatchPeerId: "p_forged" } : t)),
     };
-    const parsed = board.parseBoardSnapshot(forged);
-    expect(JSON.stringify(parsed)).not.toContain("p_forged");
+    expect(JSON.stringify(board.parseBoardSnapshot(forged))).not.toContain("p_forged");
   });
 });
 
-describe("dispatch_card records dispatchPeerId only on exactly one name match (in-process relay)", () => {
+describe("dispatch_card: name routing (0.31.0) + canonical unique pin (in-process relay)", () => {
   const port = 24400 + Math.floor(Math.random() * 300);
   const dir = join(tmpdir(), `loom-card-l2-relay-${Date.now()}`);
   const sessionFile = join(dir, "tower-session.json");
   const relay = new RelayServer({ host: "127.0.0.1", port });
   const clients: RelayClient[] = [];
   const peerIds: Record<string, string> = {};
-  const inviteCodeRef = { value: "" };
+  let inviteCode = "";
 
-  async function join_(displayName: string, inviteCode: string): Promise<string> {
-    const peerId = `p_${displayName.replace(/[^a-z0-9]/gi, "")}_${Math.random().toString(36).slice(2, 8)}`;
+  async function joinAs(displayName: string, peerId?: string): Promise<{ id: string; client: RelayClient }> {
+    const id =
+      peerId ?? `p_${displayName.replace(/[^a-z0-9]/gi, "")}_${Math.random().toString(36).slice(2, 8)}`;
     const c = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
-    const joined = await c.joinRoom({ inviteCode, displayName, agentKind: "shell", peerId });
+    const joined = await c.joinRoom({ inviteCode, displayName, agentKind: "shell", peerId: id });
     if (joined.type === "error") throw new Error(`join failed: ${joined.message}`);
     clients.push(c);
-    return peerId;
+    return { id, client: c };
+  }
+
+  async function inboxHas(c: RelayClient, cardId: string): Promise<boolean> {
+    return (await c.listInbox()).some((e) => e.handoff.body.includes(cardId));
   }
 
   beforeAll(async () => {
@@ -331,8 +412,7 @@ describe("dispatch_card records dispatchPeerId only on exactly one name match (i
       peerId: "p_tower",
     });
     if (created.type !== "room.state") throw new Error("create failed");
-    const inviteCode = created.inviteCode ?? "";
-    inviteCodeRef.value = inviteCode;
+    inviteCode = created.inviteCode ?? "";
     const towerSecret = created.peerSecret ?? bootstrap.peerSecret;
     bootstrap.close();
     const session: FableSession = {
@@ -349,9 +429,9 @@ describe("dispatch_card records dispatchPeerId only on exactly one name match (i
     };
     writeFileSync(sessionFile, JSON.stringify(session), "utf8");
 
-    peerIds.one = await join_("node/one", inviteCode);
-    peerIds.dupA = await join_("node/dup", inviteCode);
-    peerIds.dupB = await join_("node/dup", inviteCode);
+    peerIds.one = (await joinAs("node/one")).id;
+    peerIds.dupA = (await joinAs("node/dup")).id;
+    peerIds.dupB = (await joinAs("node/dup")).id;
   });
 
   afterAll(() => {
@@ -364,47 +444,36 @@ describe("dispatch_card records dispatchPeerId only on exactly one name match (i
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("unique name → recorded; re-dispatch to an ambiguous name → cleared; apply mismatch rejected", async () => {
+  test("unique name → pinned and routed by NAME (handoff.to === @node); ambiguous re-dispatch clears the pin", async () => {
     const task = board.addTask({ title: "relay-dispatch", status: "todo" });
-
     const first = await cardOps.dispatchCard({ taskId: task.id, node: "node/one", prompt: "p" });
     expect(first.ok).toBe(true);
     expect(dispatchPeerIdOf(board.findTask(task.id))).toBe(peerIds.one);
-
-    const mismatch = cardOps.applyCardResult({
-      resultJson: result(task.id, "node/one", 1),
-      fromPeerId: peerIds.dupA,
-    });
-    expect(mismatch.ok).toBe(false);
-    if (!mismatch.ok) expect(mismatch.error).toContain("L-2: fromPeerId");
+    const entry = (await (clients[0] as RelayClient).listInbox()).find((e) =>
+      e.handoff.body.includes(task.id),
+    );
+    expect(entry?.handoff.to).toBe("@node/one");
 
     const ok = cardOps.applyCardResult({
-      resultJson: result(task.id, "node/one", 2),
-      fromPeerId: peerIds.one,
+      resultJson: result(task.id, "node/one", 1),
+      fromPeerId: claimedCopy(peerIds.one as string),
     });
     expect(ok.ok).toBe(true);
-    if (ok.ok) expect(ok.status).toBe("blocked");
+    if (ok.ok) {
+      expect(ok.status).toBe("blocked");
+      expect(ok.task.notes).not.toContain(L2_NOTE);
+    }
 
     const second = await cardOps.dispatchCard({ taskId: task.id, node: "node/dup", prompt: "p" });
     expect(second.ok).toBe(true);
     expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
   }, 30_000);
 
-  test("pinned dispatch is routed to the pinned peer id (handoff.to === peerId)", async () => {
-    const task = board.addTask({ title: "route-by-id", status: "todo" });
-    const r = await cardOps.dispatchCard({ taskId: task.id, node: "node/one", prompt: "p" });
-    expect(r.ok).toBe(true);
-    const inbox = await (clients[0] as RelayClient).listInbox();
-    const entry = inbox.find((e) => e.handoff.body.includes(task.id));
-    expect(entry).toBeDefined();
-    expect(entry?.handoff.to).toBe(peerIds.one);
-  }, 30_000);
-
-  test("race: lookup pins offline p_a, same-name p_b joins before send → still routed to p_a; p_a's result lands", async () => {
+  test("race: lookup sees only offline p_a, online p_b (same name) joins before send → relay routes to p_b; no pin; p_b's honest result lands blocked without l2_mismatch", async () => {
     const offline = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
     const aId = `p_racea_${Math.random().toString(36).slice(2, 8)}`;
     const joinedA = await offline.joinRoom({
-      inviteCode: inviteCodeRef.value,
+      inviteCode,
       displayName: "node/race",
       agentKind: "shell",
       peerId: aId,
@@ -413,35 +482,44 @@ describe("dispatch_card records dispatchPeerId only on exactly one name match (i
     offline.close();
     await Bun.sleep(100);
 
-    let bClient: RelayClient | null = null;
+    let b: { id: string; client: RelayClient } | null = null;
     const hooks = dispatchHooks();
     hooks.afterPeerLookup = async () => {
-      bClient = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
-      clients.push(bClient);
-      await bClient.joinRoom({
-        inviteCode: inviteCodeRef.value,
-        displayName: "node/race",
-        agentKind: "shell",
-        peerId: `p_raceb_${Math.random().toString(36).slice(2, 8)}`,
-      });
+      b = await joinAs("node/race");
     };
+    const errSpy = spyOn(process.stderr, "write");
     try {
       const task = board.addTask({ title: "race", status: "todo" });
       const r = await cardOps.dispatchCard({ taskId: task.id, node: "node/race", prompt: "p" });
       expect(r.ok).toBe(true);
-      expect(dispatchPeerIdOf(board.findTask(task.id))).toBe(aId);
-      expect(bClient).not.toBeNull();
-      const bInbox = await (bClient as unknown as RelayClient).listInbox();
-      expect(bInbox.some((e) => e.handoff.body.includes(task.id))).toBe(false);
+      const joinedB = b as { id: string; client: RelayClient } | null;
+      expect(joinedB).not.toBeNull();
+      if (!joinedB) return;
+      expect(await inboxHas(joinedB.client, task.id)).toBe(true);
+      expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
 
       const landed = cardOps.applyCardResult({
         resultJson: result(task.id, "node/race", 1),
-        fromPeerId: aId,
+        fromPeerId: claimedCopy(joinedB.id),
       });
       expect(landed.ok).toBe(true);
-      if (landed.ok) expect(landed.status).toBe("blocked");
+      if (landed.ok) {
+        expect(landed.status).toBe("blocked");
+        expect(landed.task.notes).not.toContain(L2_NOTE);
+      }
+      const written = errSpy.mock.calls.map((c) => String(c[0])).join("");
+      expect(written).not.toContain("l2_mismatch");
     } finally {
       hooks.afterPeerLookup = undefined;
+      errSpy.mockRestore();
     }
+  }, 30_000);
+
+  test("`*` is never pinned and dispatch_card never broadcasts", async () => {
+    const task = board.addTask({ title: "star", status: "todo" });
+    const r = await cardOps.dispatchCard({ taskId: task.id, node: "*", prompt: "p" });
+    expect(r.ok).toBe(false);
+    expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
+    for (const c of clients) expect(await inboxHas(c, task.id)).toBe(false);
   }, 30_000);
 });

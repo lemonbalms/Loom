@@ -15,12 +15,13 @@ import {
   cardPayloadFromAttachments,
   type DispatchAgentKind,
   type HandoffAttachment,
+  sanitizeHandoffForOutput,
 } from "@loom/protocol";
 import { appendPolicyAudit, type PolicyAuditRecord } from "./mcp-precheck";
 import { loadSession, loomDir } from "./session-store";
 import { opsHandoff, opsListPeers } from "./room-ops";
 import {
-  isPinnablePeerId,
+  isCanonicalPeerId,
   loadTaskBoard,
   updateTask,
   findTask,
@@ -34,7 +35,7 @@ import {
  * display name matches `node` (same comparison as relay `findPeerByName`: leading `@`
  * stripped, case-insensitive). Zero or several matches → undefined (not recorded) —
  * relay prefers an online peer among duplicates, so an ambiguous name is never pinned.
- * A unique match whose id would not be stored verbatim (isPinnablePeerId) is not pinned.
+ * A unique match whose id is not canonical (isCanonicalPeerId) is not pinned either.
  */
 export function resolveDispatchPeerId(
   peers: ReadonlyArray<{ id: string; displayName: string }>,
@@ -44,10 +45,10 @@ export function resolveDispatchPeerId(
   if (!n) return undefined;
   const matches = peers.filter((p) => p.displayName.toLowerCase() === n);
   const id = matches.length === 1 ? matches[0]?.id : undefined;
-  return id !== undefined && isPinnablePeerId(id) ? id : undefined;
+  return id !== undefined && isCanonicalPeerId(id) ? id : undefined;
 }
 
-/** Test seam (P4 verify round 1): fires between the peer lookup and the dispatch send. */
+/** Test seam: fires between the pre-send peer lookup and the dispatch send. */
 export const dispatchCardTestHooks: { afterPeerLookup?: () => Promise<void> | void } = {};
 
 /** Best-effort peer lookup at dispatch time; any failure → not recorded (l2_unverifiable later). */
@@ -60,26 +61,25 @@ async function lookupDispatchPeerId(node: string): Promise<string | undefined> {
   }
 }
 
-const L2_ID_ECHO_MAX = 64;
+/** Fixed card note on an L-2 mismatch — never carries the pin or the claimed peer id. */
+export const L2_MISMATCH_NOTE = "[L-2: sender differs from dispatch target]";
 
-function l2Echo(id: string): string {
-  return id.length > L2_ID_ECHO_MAX ? `${id.slice(0, L2_ID_ECHO_MAX)}…` : id;
-}
-
-/** PLAN 0.32.0 D8: L-2 fromPeerId refusal → one stderr line + local per-room audit (never the relay log). */
-function auditL2Refusal(cardId: string): void {
-  process.stderr.write(
-    "[loom-mcp] precheck refused tool=apply_card_result reason=l2_from_peer\n",
-  );
+/**
+ * PLAN 0.32.0 D8 + P4 verify round 2 ruling: an L-2 mismatch is fail-visible, not a
+ * reject — one stderr line + a local per-room audit record (never the relay log) with
+ * the card id and timestamp only. Neither the pin nor the claimed fromPeerId is written.
+ */
+function auditL2Mismatch(cardId: string): void {
+  process.stderr.write(`[loom-tower] l2_mismatch cardId=${cardId}\n`);
   try {
     const session = loadSession();
     const record: PolicyAuditRecord = {
       v: 1,
       ts: new Date().toISOString(),
-      kind: "refused",
+      kind: "l2_mismatch",
       tool: "apply_card_result",
-      // `l2_from_peer` is issued by applyCardResult, not the evaluator (PLAN ② 거부 코드).
-      reason: "l2_from_peer",
+      // Issued by applyCardResult, not the evaluator (PLAN ② codes).
+      reason: "l2_mismatch",
       peerId: session?.peerId ?? "",
       roomId: session?.roomId ?? "",
       agentKind: session?.agentKind ?? "",
@@ -163,13 +163,11 @@ export async function dispatchCard(args: {
   });
 
   try {
-    const dispatchPeerId = await lookupDispatchPeerId(node);
+    const pinBefore = await lookupDispatchPeerId(node);
     await dispatchCardTestHooks.afterPeerLookup?.();
-    // P4 verify round 1: routing == pin. With a pin, send to that peer id (relay
-    // resolveTargets tries getPeer(to) before the name), so a same-name peer joining
-    // after the lookup cannot receive the card. Without a pin, today's name routing.
+    // Routing is identical to 0.31.0: the handoff goes to the `@node` name (no peer id).
     const ack = await opsHandoff({
-      to: dispatchPeerId ?? `@${node}`,
+      to: `@${node}`,
       body,
       mode: "task",
       attachments: [attachment],
@@ -177,6 +175,12 @@ export async function dispatchCard(args: {
     if (ack.status === "peer_unknown") {
       return { ok: false, error: `peer_unknown: @${node}` };
     }
+    // R7 / round 2: pin only when the unique canonical match is the same before AND
+    // after the send — a same-name peer joining (or leaving) around the send makes the
+    // relay's choice unknowable, so nothing is pinned (→ l2_unverifiable, never a false
+    // mismatch). Residual: a join+leave entirely between the two lookups is not seen.
+    const pinAfter = pinBefore === undefined ? undefined : await lookupDispatchPeerId(node);
+    const dispatchPeerId = pinBefore !== undefined && pinAfter === pinBefore ? pinBefore : undefined;
     // Board transition only on successful route
     updateTask(task.id, {
       status: "doing",
@@ -233,9 +237,10 @@ function findTasksByHandoffId(handoffId: string): TaskItem[] {
 
 /**
  * Apply loom-card-result JSON to local board.
- * L-2: optional node must match card assignee when provided; fromPeerId must match the
- * recorded dispatchPeerId when both are present (PLAN 0.32.0 R7 / R50-M2) — otherwise
- * today's behaviour plus one stderr `l2_unverifiable` line.
+ * L-2: optional node must match card assignee when provided. fromPeerId is compared with
+ * the recorded dispatchPeerId when both are present (PLAN 0.32.0 R7 / R50-M2): a mismatch
+ * still lands `blocked` with a fixed note + `l2_mismatch` audit (fail-visible, no reject);
+ * either side absent → today's behaviour plus one stderr `l2_unverifiable` line.
  * PLAN 0.27.0 §6.7.3: tower currency gate — dispatchHandoffId vs task.handoffId.
  * PLAN 0.28.0 U2 / PATCH 2: remote result isolation — every accepted remote
  * result maps board status to `blocked` (never `done`). Legacy payload
@@ -375,16 +380,20 @@ export function applyCardResult(args: {
     }
   }
 
-  // L-2 (PLAN 0.32.0 R7 / R50-M2): fromPeerId vs the peer id pinned at dispatch time.
+  // L-2 (PLAN 0.32.0 R7 / R50-M2 + P4 verify round 2 ruling): fromPeerId vs the peer id
+  // pinned at dispatch time, compared after the same sanitize the inbox/claim path applies
+  // (an honest copy never mismatches). Fail-visible: a mismatch still lands `blocked`
+  // with a fixed note + audit; it is never a reject.
   const expectedPeer = task.dispatchPeerId;
-  const fromPeer = args.fromPeerId?.trim() || undefined;
+  const fromPeer =
+    args.fromPeerId !== undefined && args.fromPeerId !== ""
+      ? sanitizeHandoffForOutput({ body: "", fromPeerId: args.fromPeerId }).fromPeerId || undefined
+      : undefined;
+  let l2Mismatch = false;
   if (expectedPeer && fromPeer) {
     if (fromPeer !== expectedPeer) {
-      auditL2Refusal(task.id);
-      return {
-        ok: false,
-        error: `L-2: fromPeerId (${l2Echo(fromPeer)}) does not match dispatch target (${expectedPeer})`,
-      };
+      l2Mismatch = true;
+      auditL2Mismatch(task.id);
     }
   } else {
     process.stderr.write(
@@ -427,12 +436,13 @@ export function applyCardResult(args: {
   const lastSeqToken = ` last_seq=${payload.seq}`;
   const notePart =
     payload.note && payload.note.length > 0 ? ` ${payload.note}` : "";
-  const headBudget = Math.max(0, NOTES_CAP - lastSeqToken.length);
+  const l2Part = l2Mismatch ? ` ${L2_MISMATCH_NOTE}` : "";
+  const headBudget = Math.max(0, NOTES_CAP - lastSeqToken.length - l2Part.length);
   let head = `${payload.summary}${reason}${notePart}`;
   if (head.length > headBudget) {
     head = head.slice(0, headBudget);
   }
-  const notes = `${head}${lastSeqToken}`;
+  const notes = `${head}${l2Part}${lastSeqToken}`;
 
   const updated = updateTask(task.id, {
     status,
