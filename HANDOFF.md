@@ -5,39 +5,39 @@
 
 ## One-line resume
 
-> v0.30.0 **shipped** · headless workers (step 2.1) · **next = v0.31.0** (step 2.2, owner pick) · topology full
+> v0.31.0 **approved** (R49) · skills + policy.json (step 2.2) · **next = P1 red tests** · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.30.0 `approved`** · shipped through PATCH 6 | `docs/PLAN.md` |
+| Product | **v0.31.0 `approved`** · R49 fixes in | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.30.0 shipped · next = v0.31.0 (step 2 part 2, owner pick)
+### v0.31.0 approved · next = P1 (policy schema, red tests first)
 
-**Goal:** step 2 part 1 done — opt-in `worker.backend: "headless"` (per-card session · resume/adopt · concurrency · timeout · static permission profiles). Authority `docs/PLAN.md` §0.30.0 · `implementation-notes.md` §0.30.0 · `USER_GUIDE.md` §15.
+**Goal:** implement PLAN §0.31.0 (skills materialize · `policy.json` v1 → per-CLI permissions). MCP pre-checks split out → **v0.32.0** candidate, next after 0.31.0. Authority `docs/PLAN.md` §0.31.0 · `SKILLS-POLICY-PROBE.md`.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check`
-2. Owner picks v0.31.0 (skills materialize · `policy.json` → CLI permissions · MCP pre-checks) → PLAN MINOR + R{n} before code
-3. Carry: one bridge per profile · deny-prefix bypass · inbox-cap eviction / pidless-window / transcript overwrite on re-dispatch (see impl-notes) · UK-2 unmeasured
+2. P1 red (tests only, 0 prod lines) → green; each PATCH red→green, codex verify
+3. P2: UK-1 resolved (§G) — emit `Bash(p)`+`Bash(p *)`, never `p*` · isolate on
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** v0.31.0 PLAN drafted and gated (R{n}).
+**Done when (this handoff):** P1 red+green landed, independently verified.
 
-**Must not:** start v0.31.0 code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** write production code in a red commit · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.30.0 | **shipped** | step 2 part 1 done | `docs/PLAN.md` |
+| v0.31.0 | **approved** | P1 next | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
 | 3.3–3.4b live | **false** | blocked | consts false · RESULT |

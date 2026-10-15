@@ -2,14 +2,16 @@
 
 ## Current — Loom 업그레이드 계획 (오너 지명 2026-10-15)
 
-> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48). 단계마다 새 PLAN 버전 + R{n} 게이트.
+> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49 approved) + v0.32.0 후보. 단계마다 새 PLAN 버전 + R{n} 게이트.
 
 1. [x] **1단계 — v0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신(`clientEventId`)** —
    `ae60cdb` → … → `c183c92` → PATCH 6 · 최종 리뷰 `c778d4d`. shipped.
 2. [ ] **2단계 — 헤드리스 워커 + 카드별 세션 + 프롬프트 주입 + 정책 + 스킬 materialize**
    - [x] **1부 — v0.30.0 헤드리스 카드 워커**(카드별 세션 · 재개/입양 · 동시성 · 타임아웃 · 정적 권한 프로필) —
      `2d1bc3b` P1 → … → `c59ced5` → PATCH 6(USER_GUIDE §15 · PROTOCOL · implementation-notes §0.30.0 · VERSION 0.30.0). Done when (a)~(i) green · (j) ship 검사.
-   - [ ] **2부 — v0.31.0 스킬 materialize + `policy.json` → CLI별 권한 번역 + MCP 사전 점검** (다음 — 오너 지명 후 PLAN MINOR + R{n})
+   - [ ] **2부 — 두 릴리스로 분할(범위 분할, PLAN §0.31.0 권위 고지)**
+     - [ ] **v0.31.0 스킬 materialize + `policy.json` v1 → CLI별 권한 번역** — PLAN §0.31.0 `approved`(R49 approved-with-fixes, no R49b) · **다음 = P1**(red 선행)~P5 · UK-1 resolved(실측 §G — 이중 형식 · `p*` 금지)
+     - [ ] **v0.32.0 후보 — MCP 사전 점검** (0.31.0 다음 항목 · 이월 근거: 헤드리스 워커 Loom MCP 없음 · 호출자는 대화형 pane뿐 · 완료 권위 구조적 = §0.30.0 D13)
 3. [ ] **3단계 — host를 OS 서비스로** (미착수)
 4. [ ] **4단계 — memory / rules / skills 저장소** (미착수)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)

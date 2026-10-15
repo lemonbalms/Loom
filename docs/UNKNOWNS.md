@@ -42,6 +42,36 @@
 
 ## Gate log
 
+### 0.31.0 — 스킬 materialize + policy.json v1 → CLI별 권한 번역 (`approved` — R49 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.31.0 (`approved` — R49 approved-with-fixes, 반영 완료 · no R49b) · 업그레이드 2단계 2부 · MCP 사전 점검은 v0.32.0 후보로 이월(범위 분할) |
+| **Date** | 2026-10-15 |
+| **Review** | R49 **done 2026-10-15** (새 MINOR + 보안·신뢰 경계 변경 — 무인 워커 권한 결정 원천이 `policy.json` 파생으로 · 로컬 스킬 내용이 워커 컨텍스트로 · MCP 격리 기본값) |
+| **Evidence** | [`docs/spikes/SKILLS-POLICY-PROBE.md`](spikes/SKILLS-POLICY-PROBE.md) (2026-10-15 실측 · claude 2.1.300 · codex-cli 0.162.1 · grok 1.0.54 alpha · §F = R49 전 실측 · §G = UK-1 실측) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 프로브 실측: (1) claude `--plugin-dir` 플러그인 스킬 발견·사용 · `--add-dir`은 그 디렉터리의 `.claude/skills`까지 로드(범위 확대) · 둘 다 가변 인자(§A.2). (2) claude `--settings` 인라인 JSON `permissions.deny` 강제 · `--plugin-dir`·resume과 공존(§B.1 · §F.3). (3) codex `exec` 스킬 플래그 없음 · 규칙 파일은 `$CODEX_HOME/rules`·`<cwd>/.codex/rules`에서만 · `workspace-write` 네트워크 기본 차단, `network_access=true`로 개방(§A.3 · §B.2). (4) codex·grok(미신뢰 cwd 포함) 모두 cwd 밖 절대경로 SKILL.md를 읽는다(§F.1 · §F.2). (5) claude 워커는 오너 MCP 7개 상속 · `--strict-mcp-config` 단독 → 0개(§F.4). (6) grok은 오너 `~/.claude` 권한·MCP·스킬 병합(§A.4) · `--disable-web-search` 플래그 존재(2026-10-15 `--help`). 코드 실측(`2e5349b`): D10 기본 목록 `agent-argv.ts:64-108` · `ARGV_TEMPLATE_VERSION = "0.30.0-v1"`(`:7`) · 카드 디렉터리 `cards/<sha16(localPeerId)>/<sha16(room×agent×card)>/`(`card-session-store.ts:94-106`) · 룸 디렉터리 `rooms/<sha16(roomId)>/`(`room-event-log.ts:125-140`) · `build:cli` 단일 파일 번들. |
+| Known unknowns | **UK-1~UK-7**(아래 표, 정본 = PLAN §0.31.0). 요지: 접두 규칙 매칭 의미 · 프롬프트+목록 크기 · 재개 시 플래그 지속 · grok `--disable-web-search` 효과 · claude `--settings` deny의 MCP 차단 · 오너 전역 스킬·MCP 상속의 실효 · 내장 스킬 번들 포함. |
+| Unknown knowns | "선택 권위 = `skills.json`"은 **Loom이 복사하는 스킬**에만 해당한다 — 오너 전역 스킬·MCP는 여전히 워커에 보인다(UK-6). "정책 문법이 하나"는 "강제력이 같다"가 아니다(D10 정직 표). deny 합집합 규칙 아래에서는 curl/wget을 내장 deny에 두면 `network:true`가 claude/grok에서 무력해진다(PLAN R4). deprecated deny를 무시하면 deny가 완화된다(PLAN R5). |
+| Unknown unknowns | CLI 업데이트가 `--settings`·`--plugin-dir` 의미나 grok 호환 소스 병합을 조용히 바꿀 가능성; 큰 스킬 세트에서 claude 플러그인 설명 주입 비용(claude는 목록 상한이 아니라 복사 개수로만 제한); 스킬 본문이 워커 행동을 바꿔 결과 형식·범위가 흔들릴 가능성; 오너가 `policy.json`을 편집하는 순간 실행 중 카드의 재개가 `fingerprint_changed`로 끊기는 체감. |
+
+**Unknowns 요약 (정본 = PLAN §0.31.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R49 판정 |
+|---|------|-------------|----------|
+| UK-1 | `Bash(git status*)` vs 정책 형식 `Bash(git status *)` 매칭 의미(맨 명령 · `git statusfoo`) — 수용만 실측(§F.3) | 내장 allow를 접두 형식으로 변환 · 좁아지면 저하(교착 아님) · P2 1회 프로브 | R49: P2 차단(deny 경로, H1) → **resolved(실측 `SPROBE` §G, 2026-10-15)** — claude `Bash(p *)`는 맨 `p` 차단 · grok은 못 막음(`Bash(p)`가 맨·인자 모두 차단) · 체이닝 거부(두 CLI) · claude `p*` 과매칭 · `p:*` 맨·인자 차단 → 이중 형식 유지(grok 필요 · claude 무해) · `p*` 형 emit 금지 · 내장 공백 없는 문자열 `p` + `p *` 정규화 |
+| UK-2 | 카드 프롬프트 ≤60,000자 + 스킬 목록 ≤4 KB의 stdin/prompt-file 전달 · 20개/4 KB 상한 적정성(0.30.0 UK-2 승계) | P4 라이브 프로브 | open, 비차단 |
+| UK-3 | 재개 argv에서 `--settings`·`--plugin-dir`·codex `-c …network_access`·grok `--allow/--deny`를 빼도 유지되는가 | 설계 = 매 재개마다 재전달 · 충돌 여부만 P2 확인 | open, 비차단 |
+| UK-4 | grok `--disable-web-search` 효과(존재는 `--help` 확인) | grok 네트워크 = D10 "권고" 행 | open, 비차단 |
+| UK-5 | claude `--settings` `permissions.deny`의 `mcp__srv__tool` 차단(§C는 `--disallowedTools`만 실측) | P2 1회 프로브 · 실패 시 MCP deny만 `--disallowedTools`(Deviation) | open, 비차단 |
+| UK-6 *(작성자)* | 오너 전역 스킬(`~/.claude/skills` · `~/.agents/skills` · `$CODEX_HOME/skills`)·MCP 7개가 워커에서 실제로 쓰이는가 · allow 밖 MCP 호출이 거부되는가 | 문서화(Non-goals) · D13과 함께 판정 | **open, 비차단 유지(R49)** — D13 기본 **true**(R49-M1)로 claude 오너 MCP 상속은 기본 차단 · 잔여 = 오너 전역 스킬 상속 · codex/grok MCP(격리 불가 행) |
+| UK-7 *(작성자)* | 내장 스킬(`packages/host/skills/`)의 단일 파일 번들 포함 | Bun `import … with { type: "text" }`(R49-L4, 동작 추정) · P3 dist 검사 · 불가 시 빈 내장 + 사용자 소스 스모크(Deviation) | open, 비차단 |
+
+**Current decision:** D1~D13 아키텍트 락(fable-advisor 자문 2026-10-15) · **R49 `approved-with-fixes` → H1·M1~M5·L1~L4 PLAN 반영 → PLAN `approved`(2026-10-15, no R49b)** · R1~R8 수용(R4 H1 조건부) · D13 `mcp.isolate` 기본 **true**(M1) · **UK-1 resolved**(P2 deny 경로 차단 → 실측 §G — 이중 형식 유지 · `p*` 금지) · UK-2~UK-7 open(비차단). 범위 분할: 0.31.0 = 스킬 materialize + `policy.json` 번역 · **v0.32.0 후보 = MCP 사전 점검** · 계층형 프롬프트 조립 = 5단계. 구현 착수 = **P1**(정책 스키마·병합, red 선행).
+
 ### 0.30.0 — 헤드리스 카드 워커 · 카드별 세션 키 · 재개/입양 · 에이전트별 동시성 · 정적 권한 프로필 (`approved` — R48 approved-with-fixes)
 
 | Field | Value |
@@ -359,3 +389,6 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-15 | 0.29.0 R47 판정 반영 (UK-1/2/3/5/6 resolved · UK-4 open 비차단 · PLAN `approved`) |
 | 2026-10-15 | 0.30.0 헤드리스 카드 워커 unknowns (UK-1~UK-9 요약 · UK-5 차단 · 프로브 실측 Known knowns · `pending-review` R48) |
 | 2026-10-15 | 0.30.0 R48 판정 + 후속 실측 반영 (UK-1/3/5/8/9 resolved · UK-2/4/6/7 open 비차단 · PLAN `approved`) |
+| 2026-10-15 | 0.31.0 스킬 materialize + policy.json 번역 unknowns (UK-1~UK-7 요약 · 전부 비차단 · 프로브 실측 Known knowns · `pending-review` R49) |
+| 2026-10-15 | 0.31.0 R49 판정 반영 (UK-1 → P2 deny 경로 차단 · UK-6 비차단 유지(D13 기본 true) · UK-7 메커니즘 명시 · PLAN `approved`) |
+| 2026-10-15 | 0.31.0 UK-1 실측 resolved (`SKILLS-POLICY-PROBE.md` §G — grok `Bash(p *)` 맨 명령 미차단 → 이중 형식 유지 · claude `p*` 과매칭 → `p*` 형 금지) |
