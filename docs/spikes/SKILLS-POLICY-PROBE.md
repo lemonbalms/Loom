@@ -251,3 +251,24 @@ grok 텍스트 신호: `Denied by permission policy: deny rule on bash matching 
 - grok: `Bash(p *)`는 bare `p`를 **못 막는다** → `Bash(p)`와 `Bash(p *)` **둘 다 emit이 필요**(`Bash(p)`는 인자 변형도 막는 것으로 관찰되나 양쪽 emit이 안전). 즉 "둘 다 emit"은 grok에 필요·claude에 무해한 공통 최소 해.
 - 체이닝(`true && p`)은 두 CLI 모두 서브커맨드 단위 매칭으로 우회 불가(양쪽 규칙 세트 사용 시 실측).
 - `p*`(공백 없음) 형은 claude에서 `pX…`를 과매칭 → 컴파일러는 항상 공백형(`p *`) + 정확형(`p`)만 emit. 콜론형 `p:*`은 claude에서 bare/인자 모두 차단(레거시 동치). grok에서의 `p*`·`p:*`는 미측정.
+
+---
+
+## H. UK-5 claude --settings MCP deny (2026-10-15)
+
+claude 2.1.300. 스크래치 `probe0310d/`(프로브 서버 `probe`/툴 `pong` 재작성); 오너 설정 무수정. 공통 argv: `-p --output-format stream-json --verbose --permission-mode acceptEdits --mcp-config <probe.json> --strict-mcp-config`, 프롬프트 stdin("pong 툴을 호출하고 토큰을 보고하라"), 180 s 타임아웃. 판정은 init 이벤트 `tools`, tool_use/tool_result, `permission_denials`로.
+
+| # | 조건 | init `tools`에 pong | pong 호출 | `permission_denials` | 결과 |
+|---|---|---|---|---|---|
+| 1 | `--settings` deny `mcp__probe__pong` | **없음** | 없음(ToolSearch "No matching deferred tools") | `[]` | **숨김** |
+| 2 | `--settings` deny `mcp__probe` (서버 단위) | **없음** | 없음 | `[]` | **숨김** (서버는 `connected`로 남음) |
+| 3 | 대조: deny 없음, allow 없음 | 있음 | 호출됨 → *"requires permissions … haven't granted"* | `[mcp__probe__pong]` (미승인) | acceptEdits는 MCP를 자동 승인하지 않음 |
+| 3b | 대조: `--allowedTools mcp__probe__pong` | 있음 | 성공(`PONG-TOKEN`) | `[]` | 정상 호출 |
+| 4 | `--strict-mcp-config`(`--mcp-config` 없음) + `--settings` 권한 | — | — | `[]` | `mcp_servers` = **0개** (F.4 재확인) |
+
+stderr는 전 실행 0 bytes(경고 없음).
+
+**권고(컴파일러):**
+- `policy.mcp.deny` 항목은 `--settings` `permissions.deny`에 툴 단위 `mcp__<server>__<tool>`, 서버 전체 차단은 `mcp__<server>`로 emit. 두 형 모두 동일하게 동작. 서버 단위 차단이 목적이면 deny 대신 `--mcp-config`에서 서버를 아예 빼는 편이 더 확실.
+- 기대 신호: **구조화된 신호 없음** — `permission_denials` 비어 있고 툴이 목록에서 사라질 뿐(§C와 일치). 검증은 init `tools`에 `mcp__…`가 부재한지로 한다. 모델 텍스트("사용할 수 없음")는 부차 신호.
+- MCP 허용은 별도로 `allow`(`mcp__server__tool`)가 필요하다. 없으면 호출은 미승인으로 `permission_denials`에 기록되며, 이는 deny 규칙 신호가 아님(§G 주의와 동일).
