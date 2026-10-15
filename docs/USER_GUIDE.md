@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.31.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.32.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -103,7 +103,8 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 14 | herdr 0.7.5 dogfood 준비 (0.28.1) | `dogfood:herdr` · named agent · config migrate |
 | 15 | 헤드리스 카드 워커 (0.30.0, opt-in) — pane 대신 비대화형 CLI | bridge `worker` 설정 · 카드별 세션 · 재개/입양 |
 | 16 | 스킬과 정책 (0.31.0) — 헤드리스 워커의 권한을 한 파일로, 룸이 고른 스킬을 카드에 | `policy.json` · `worker.skills` · 룸 `skills.json` · 정직 표 |
-| 17 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
+| 17 | Loom MCP 사전 점검 (0.32.0) — 대화형 에이전트의 Loom 도구 호출을 정책으로 검사 | `loomTools` · `mcp.deny` `loom__<tool>` · 감사 파일 · 정직 표 |
+| 18 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -1061,7 +1062,151 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 
 ---
 
-## 17. 명령 치트시트
+## 17. Loom MCP 사전 점검 (v0.32.0)
+
+**하고 싶은 일:** 대화형 `loom run claude|codex|grok` 세션의 에이전트가 Loom MCP 도구(20개)로 보드·인계·conv를 바꾸기 **전에** Loom 서버가 `policy.json`으로 검사하게 한다 — 특정 도구 끄기, 보드 통째 교체·브로드캐스트 같은 위험한 모드 끄기, MCP로 `done` 찍기를 사람 몫으로 돌리기.
+
+**범위는 Loom MCP 서버 한 곳이다.** 헤드리스 워커(§15·§16)는 Loom MCP를 받지 않으므로 이 절과 무관하고, 워커 argv·fingerprint는 0.31.0과 같다 — `policy.json`에 `loomTools`를 넣어도 실행 중 헤드리스 카드에 `fingerprint_changed`가 생기지 않는다. 와이어·완료 권한(원격 결과 = `blocked`)도 그대로다. **`policy.json`이 없거나 `loomTools`가 없으면 0.31.0과 다른 점은 둘뿐이다:** 인자를 엄격하게 검사한다(§17.4) · `import_board mode=replace`를 거부한다(§17.2).
+
+### 17.1 `policy.json`에 쓰는 키
+
+파일 위치와 v1 필수 키는 §16.1 그대로다(`version` · `shell.deny` · `network` · `mcp.deny` · `skills.allowScripts`). 0.32.0이 더한 것은 선택 최상위 키 `loomTools`와, `mcp.deny`의 `loom__<tool>` 항목을 **Loom 서버가 직접** 지키는 것이다.
+
+```json
+{
+  "version": 1,
+  "shell": { "deny": [] },
+  "network": false,
+  "mcp": { "deny": ["loom__room_chat"] },
+  "skills": { "allowScripts": [] },
+  "loomTools": { "done": "propose", "denyModes": ["broadcast"] }
+}
+```
+
+| 키 | 값 | 뜻 |
+|----|----|----|
+| `mcp.deny` 의 `"loom__<tool>"` | Loom 도구 이름(예 `loom__room_chat`) | `tools/list`에서 **숨기고**, 이름으로 불러도 **거부**(`mcp_deny`). 숨기기만 하는 경로는 없다. 다른 서버 항목(`github__…`)은 0.31.0처럼 헤드리스 워커 argv에만 쓰인다 |
+| `loomTools.done` | `"allow"`(내장) \| `"propose"` | MCP로 `done` 찍기 허용(감사 기록) / 거부(§17.3) |
+| `loomTools.denyModes` | 아래 5개 중에서 | 인자 단위 거부. **실효 = 내장 `["board.replace"]` ∪ 정책** — `[]`를 적어도 `board.replace`는 남는다 |
+
+- **읽는 시점:** Loom MCP 서버는 **`tools/list` · `tools/call`마다** `policy.json`을 다시 읽는다 — 고친 뒤 `loom run`을 다시 띄울 필요가 없다(헤드리스 bridge는 여전히 기동 때 한 번, §16.1). 다만 에이전트 CLI가 도구 목록을 언제 다시 읽는지는 CLI 몫이라, 숨김은 늦게 보일 수 있고 호출 거부는 바로 적용된다.
+- `loomTools`의 모르는 키 · `done` 값 오류 · 모르는 모드 = **무효 정책**(§17.5). 오류에 파일 경로와 필드 경로(`loomTools.denyModes[0]: unknown mode …`)가 있다.
+- **0.31.0 바이너리는 `loomTools`를 모르는 키로 거부한다** — 0.31.0 헤드리스 bridge는 이 파일로 기동하지 않는다(fail-closed). 키를 넣기 전에 bridge까지 0.32.0으로 올린다.
+
+### 17.2 거부 모드 (`loomTools.denyModes`)
+
+| 모드 | 막는 호출 | 거부 문구의 다음 행동 | 사람 경로 |
+|------|-----------|------------------------|-----------|
+| `board.replace` (**내장 기본**) | `import_board` `mode: "replace"` | *Use mode=merge, or the owner runs `loom board import --replace <file>`.* | `loom board import --replace <file>` |
+| `broadcast` | `handoff` `to: "*"` — **`to`를 빼도 같다**(기본값이 `*`) | *Address one peer (@name or id).* | `loom handoff '*' "…"` |
+| `conv.writes` | `conv_open` `writesAllowed: true` | *Open the conv with writesAllowed=false, or ask the owner.* | — |
+| `conv.fetch` | `conv_fetch` 호출 전체 | *Ask the owner to fetch the artifact.* | — |
+| `pack.embed` | `handoff` `withPackEmbed: true` | *Use withPack without embedded file bodies.* | `loom handoff … --with-pack-embed` |
+
+- 판정은 **엄격 검사를 통과한 인자**로만 한다(`"true"` 같은 문자열은 불리언이 아니므로 먼저 `invalid_args`로 거부된다).
+- **확인 후 허용은 없다.** MCP에는 확인 채널이 없어서, 위험한 작업은 거부 모드로 끄고 사람이 CLI로 한다.
+
+### 17.3 완료 노브 (`loomTools.done`)
+
+| 값 | MCP의 done 경로 넷 |
+|----|---------------------|
+| `allow` (**내장 기본**) | 0.31.0처럼 허용. 대신 호출마다 감사 파일에 `done_via_mcp` 한 줄(`cardId` 또는 `convId`) |
+| `propose` | 넷 전부 거부(`done_propose`) — 문구가 사람 경로를 가리킨다 |
+
+| done 경로 | `propose` 거부 문구의 다음 행동 |
+|-----------|-------------------------------|
+| `update_task status: "done"` | *Set status blocked with a note and ask the owner to run `loom board set <id> done`.* (실제 id가 들어간다) |
+| `add_task status: "done"` | 같은 문구(`<task_id>`) |
+| `import_board` 스냅숏에 `status: "done"` 카드가 하나라도(merge·replace 모두) | done 카드 id(≤5개 + `+N`) + *Import without done cards, or the owner runs `loom board import <file>`.* |
+| `conv_close` reason `done` — **reason을 빼도 같다**(기본값이 `done`) | *Close with reason=abort and ask the owner to mark the card done (`loom board set <task_id> done`).* — conv를 닫는 CLI는 없으므로 `abort`로 닫으면 작업은 `blocked`가 된다 |
+
+- **사람 경로 = 기존 CLI** `loom board set <task_id> done` — host가 보드를 직접 쓰고 MCP를 거치지 않으므로 `propose`와 무관하게 된다(새 명령 없음).
+- 한 호출이 거부 모드와 done에 함께 걸리면 거부 모드가 먼저다(`propose` + done 카드를 담은 `mode=replace` → `deny_mode:board.replace`).
+- **정직 고지 — 기본 `allow`는 "에이전트가 done을 선언하지 못한다"는 규칙의 준수가 아니라 이월이다.** 기본을 `propose`로 두면 사람이 done을 찍는 길이 `loom board set` 하나뿐인 지금 보드가 멈춘다. 기본 전환은 7단계(총괄 에이전트)에서 한다.
+- **`propose`는 MCP 층만 막는다.** `loom run` 에이전트의 셸은 `LOOM_SESSION`을 물려받아 `loom board set <id> done`을 직접 실행할 수 있고, 정책 `shell` 규칙은 대화형 세션에 적용되지 않는다(§17.7).
+
+### 17.4 거부 응답과 엄격 인자
+
+- **거부 = 도구 결과 `isError: true`**, 텍스트 `Loom pre-check refused <tool>: <사유>. <다음 행동>.` — 인자 값은 되풀이하지 않는다(ID만). 거부마다 서버 stderr에 `[loom-mcp] precheck refused tool=<t> reason=<code>` 한 줄.
+- **모르는 도구 이름**만 예외: 0.31.0과 같은 JSON-RPC 오류 `-32601`(`Unknown tool: …`). `mcp.deny`로 숨긴 도구를 이름으로 부르면 `-32601`이 아니라 `mcp_deny` 거부다 — 정책 때문임을 알 수 있게.
+- **엄격 인자:** 도구마다 광고한 `inputSchema`가 곧 검사 기준이다(최상위 `additionalProperties: false`). 타입이 틀리거나(숫자 자리에 문자열 · 불리언 자리에 `"true"`) 광고하지 않은 키가 있으면 `invalid arguments at <경로> (<zod 코드>)` — 예: `invalid arguments at extra (unrecognized_keys)`. 미지 키 이름은 최대 3개까지만 되풀이한다. `arguments`를 빼면 `{}`로 보지만 `arguments: null`은 거부한다. 자유형 객체 인자(`import_board.snapshot` · `conv_send` 항목) 내부는 검사하지 않는다.
+- 예: MCP `set_purpose`에 `verify`를 넣던 호출은 이제 `invalid arguments at verify (unrecognized_keys)`로 먼저 막힌다(`verify`는 여전히 CLI `loom purpose set --verify …`로만).
+
+**판정 순서와 사유 코드** (`reason`):
+
+| 순서 | 코드 | 언제 |
+|------|------|------|
+| 1 | `policy_invalid` | `policy.json`이 무효이거나 조회 실패(§17.5) |
+| 2 | `unknown_tool` | 20개에 없는 이름(응답은 `-32601`) |
+| 3 | `mcp_deny` | `mcp.deny`에 `loom__<tool>` |
+| 4 | `invalid_args` | 엄격 인자 위반 |
+| 5 | `deny_mode:<mode>` | §17.2 |
+| 6 | `done_propose` | §17.3 `propose` |
+| — | `l2_mismatch` | 거부가 아니다 — `apply_card_result`의 감사 기록(§17.6) |
+
+### 17.5 무효 정책 — 거부하되 서버는 산다
+
+- `policy.json`이 무효(JSON·스키마 오류)이거나 조회에 실패하면(§16.1 fail-closed 규칙 — 권한 없음 · 매달린 링크 · 64 KiB 초과 · `loomDir`가 없고 그 부모도 실제 디렉터리가 아님 · 읽는 동안 바뀜) **모든 `tools/call`을 로더 메시지로 거부한다:** `policy.json is invalid (<로더 메시지>). Every Loom tool call is refused until the owner fixes policy.json.`
+- `tools/list`는 **거르지 않은 20개 전부**를 돌려준다(이때는 `mcp.deny`도 적용되지 않는다) — 에이전트가 불러 보고 이유를 읽게 하기 위해서다.
+- 서버는 종료하지 않는다. 파일을 고치면 **다음 호출부터** 정상이다.
+- 파일이 없으면(ENOENT) 내장 기본값 — `{done: "allow", denyModes: ["board.replace"]}` · Loom 도구 deny 없음.
+
+### 17.6 감사 파일과 L-2 플래그
+
+**위치:** `loomDir()/rooms/<roomKey>/policy-audit.jsonl`(기본 `~/.loom/rooms/<roomKey>/…`). `roomKey`는 §16.3과 같은 키다(`printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16`). **relay 이벤트 로그와 섞지 않는다** — 로컬 판정 기록일 뿐이고 relay로 가지 않는다.
+
+```json
+{"v":1,"ts":"2026-10-16T…Z","kind":"refused","tool":"update_task","peerId":"p_…","roomId":"room_…","agentKind":"claude","reason":"done_propose","cardId":"task_…"}
+```
+
+| 필드 | 값 |
+|------|----|
+| `kind` | `refused`(거부) · `done_via_mcp`(`allow`에서 MCP로 done) · `l2_mismatch`(아래) |
+| 필수 | `v` · `ts` · `kind` · `tool` · `peerId` · `roomId` · `agentKind` |
+| 선택 | `reason` · `mode` · `cardId` · `convId` |
+
+- **인자 본문 · 제목 · 노트 · 경로는 기록하지 않는다**(ID만). 한 줄 ≤ 4,096바이트(줄바꿈 포함 — 넘으면 필드를 줄인다). 파일 0600 · 디렉터리 0700.
+- **회전:** 다음 쓰기가 살아 있는 파일을 **1 MiB** 넘기게 하면 먼저 `policy-audit.<YYYYMMDDTHHmmssSSSZ>-<pid>-<임의 6자>.jsonl`로 이름을 바꾸고 새 파일에 쓴다. 이름순 **최신 3세대**를 남긴다(최근 60초 안에 쓰이거나 회전된 세대도 지우지 않는다) → 보통 룸당 약 4 MiB. 잘라 내기(truncate)는 하지 않는다.
+- **크기 감:** 한 줄 약 172~206바이트(라이브 스모크) → 세대당 약 5,000건. 거부만이면 넉넉하고, 기본 `allow`의 `done_via_mcp` 줄이 양을 좌우한다.
+- **감사는 관문이 아니다.** 쓰기 실패는 판정을 바꾸지 않고 stderr `[loom-mcp] audit_write_failed room=<key> err=<code>`만 남긴다. 세션에 룸이 없으면 기록하지 않는다(`err=no_room`).
+- **읽을 때:** 회전된 세대를 이름순으로 → 마지막에 `policy-audit.jsonl`. 파싱되지 않는 줄은 건너뛴다(쓰기 도중 크래시가 남긴 조각). 읽는 사이 파일이 사라질 수 있다(다른 프로세스의 정리).
+
+**L-2 플래그 (`l2Mismatch`)** — 원격 결과를 보낸 peer가 디스패치 대상과 다르다는 **조언 신호**다.
+- `dispatch_card`는 보내기 전후 로컬 peer 목록에서 그 `node` 이름과 일치하는 peer가 **정확히 하나이고 같을 때만** 그 peer id를 카드에 고정한다(`dispatchPeerId` — 보드 파일에만 있고 MCP·RPC 출력·스냅숏·인계 첨부에는 나가지 않는다). 라우팅은 0.31.0처럼 `@node` 이름이다.
+- `apply_card_result`에 `fromPeerId`가 있고 고정 id와 다르면 **거부하지 않는다** — 결과는 평소처럼 `blocked`로 착지하고, 카드에 `l2Mismatch: true`가 붙고(`list_tasks` · desktop/sticky RPC에 보임), 감사 `l2_mismatch` 한 줄 + stderr `[loom-tower] l2_mismatch cardId=<id>`. 노트는 0.31.0과 같다.
+- 한쪽이라도 없으면(레거시 카드 · 이름 일치 0개/2개 이상 · `fromPeerId` 생략) 0.31.0 동작 + stderr `l2_unverifiable` 한 줄.
+- **플래그를 보면:** 그 결과를 더 의심하고 산출물을 로컬에서 확인한 뒤 닫는다(§13). 다시 디스패치하면 플래그가 지워진다.
+- **한계:** `fromPeerId`는 에이전트가 인박스에서 베껴 넘기는 값이라 **빼면 검사를 우회한다.** 보내는 순간 같은 이름 peer가 들고 나면 드물게 잘못 붙을 수도 있다. 완료 권한이 아니다 — 결과는 어느 경우든 `blocked`다.
+
+### 17.7 정직 표 — 대화형 `loom run`에서 실제로 강제되는 것
+
+2026-10-16 라이브 스모크(`docs/spikes/MCP-PRECHECK-SMOKE-0320.md`) 기준.
+
+| 항목 | claude 2.1.300 | codex-cli 0.162.1 | grok 1.0.54 (alpha) |
+|------|----------------|-------------------|---------------------|
+| **Loom MCP 사전 점검** (§17.1~§17.5) | **강제** — Loom 서버 코드 안 | **강제** | **강제** |
+| **`mcp.deny` `loom__<tool>` 숨김** | 적용(스모크: 19개, `room_chat` 없음) | 적용 | 적용(도구 검색 결과 19개) |
+| **거부 텍스트가 모델에 보이는가** | 보임 — `tool_result` `is_error: true`, 서버 문구 그대로 | 보임 — `mcp_tool_call` `status: "failed"`, `result.content[0].text` = 서버 문구 | 보임 — 서버 문구 앞에 `Failed to call <tool>: ` |
+| **실행 전 사람 확인** | **Loom은 넣지도 억제하지도 않는다**(Loom은 권한 설정을 쓰지 않는다). 오너의 권한 모드가 정한다: `auto` → 확인 없음 · 확인 모드에 allow 규칙 없음 → 대화형은 프롬프트, `-p`는 Loom에 닿기 전에 거부 · `--allowedTools mcp__loom` → 확인 없음 | **codex가 확인을 요구한다** — 도구별/서버별 `approval_mode = "approve"`가 없으면 승인을 묻고, `approval_policy = "never"`면 호출이 `MCP tool call requires approval, but approval policy is never`로 실패한다(Loom 도달 0). Loom은 이 설정을 쓰지 않는다 | 확인 없음(ACP 실측 — 권한 요청 0건) |
+| **셸로 `loom board set … done` 우회** | Bash 권한 확인이 유일한 장벽(`auto`·사전 허용이면 없음) | 막지 않음 | 막지 않음 |
+| **정책 `shell` · `network` 규칙** | 대화형 세션에는 **적용되지 않는다**(0.31.0 = 헤드리스 워커 argv에만) | 〃 | 〃 |
+
+- 스모크에서 세 CLI 모두 거부 문구를 그대로 인용했고, 재시도나 우회를 시도하지 않았다. 사람 경로 `loom board set <id> done`은 세 경우 모두 성공했다.
+- 오너 codex 설정에 일부 Loom 도구만 `approval_mode = "approve"`가 있으면 나머지 도구(`import_board` · `conv_*` · `handoff` 등)는 계속 승인을 묻는다.
+- grok은 ACP 세션에서도 오너 자신의 MCP 서버를 함께 로드한다(격리 없음 — §16.4와 같음).
+
+### 17.8 한계
+
+- **`propose`는 MCP 층만 막는다** — 셸 우회(§17.7). 해소는 7단계 host 소유 쓰기 또는 대화형 세션 셸 정책(후보).
+- **사람 확인 채널은 없다.** 위험한 작업은 거부 모드로만 다룬다.
+- **폴더 규칙(`conv_open cwd` 접두) · 인계 대상 허용 목록은 아직 없다** — `broadcast` 거부까지만.
+- **L-2는 조언 신호다**(§17.6) — `fromPeerId`를 빼면 우회, 드물게 오표시.
+- **감사 기록 유실 창:** 쓰는 프로세스가 60초 넘게 멈춰 있거나 그 사이 시스템 시계가 60초 이상 앞으로 뛰면 그 한 건이 사라질 수 있다. 감사는 기록이지 관문이 아니다.
+- **목록 갱신은 CLI 몫** — 세션 도중 `mcp.deny`를 바꾸면 호출 거부는 즉시, 목록에서 사라지는 시점은 CLI에 따라 늦을 수 있다.
+
+---
+
+## 18. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -1085,7 +1230,7 @@ bun test
 
 ---
 
-## 18. 자주 하는 실수
+## 19. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -1105,10 +1250,14 @@ bun test
 | prompt가 다른 pane으로 감 | pane id 타깃 | exact agent **name** |
 | 0.31.0 업그레이드 후 헤드리스 bridge 기동 경고 `deprecated deny list … identical to built-in defaults accepted …; remove the list` | 0.30.0 기본 목록을 bridge 설정에 그대로 복사해 둠(`Bash(git push*)` 등). 기동은 된다 | 목록 삭제(내장 기본이 같음). 더 막을 것은 `policy.json` `shell.deny`에 `p *` 형 (§16.2) |
 | 0.31.0 업그레이드 후 헤드리스 bridge 기동 거부 `deprecated deny entry "Bash(rm*)"` | 내장 기본과 글자 그대로 같지 않은 공백 없는 `p*` deny | `policy.json` `shell.deny`에 `p *` 형 + 막으려던 비슷한 이름을 따로 적고 목록에서 지움 (§16.2) |
+| 0.32.0 업그레이드 후 MCP 호출이 `Loom pre-check refused <tool>: invalid arguments at …` | 광고하지 않은 키 · 숫자 자리에 문자열 · 불리언 자리에 `"true"` 등 — 0.32.0부터 인자를 엄격히 검사 | 도구의 `inputSchema`대로 인자를 고친다(스키마를 풀지 않는다) (§17.4) |
+| `import_board mode=replace`가 `mode=replace is denied` | 0.32.0 내장 기본 `board.replace` 거부(정책으로 풀 수 없다) | `mode=merge` 또는 사람이 `loom board import --replace <file>` (§17.2) |
+| 모든 Loom 도구가 `policy.json is invalid (…)`로 거부 · 숨긴 도구가 다시 보임 | `policy.json` 무효 또는 조회 실패 — 이때 목록은 거르지 않음 | 메시지의 파일·필드 경로를 고친다. 다음 호출부터 정상(재시작 불요) (§17.5) |
+| `loomTools`를 넣었더니 0.31.0 헤드리스 bridge 기동 거부 `unknown key "loomTools"` | 구 바이너리는 새 키를 모른다(fail-closed) | bridge도 0.32.0으로 올린다 (§17.1) |
 
 ---
 
-## 19. 지금 버전에서 **아직** 못 하는 것
+## 20. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
@@ -1118,11 +1267,11 @@ bun test
 - 원격 result만으로 타워 board **`done`** (0.28.0 이후 의도적 금지 — `blocked` 후 로컬 확정)  
 - 전역 `loom` 설치가 OS 패키지 매니저 기본 제공 (원하면 `scripts/install.sh` · `link:loom`)
 
-**할 수 있는 것 (0.31.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · dogfood 3-kind · 완료 권한 분리 운영.
+**할 수 있는 것 (0.32.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · **Loom MCP 사전 점검(0.32.0 — §17)** · dogfood 3-kind · 완료 권한 분리 운영.
 
 ---
 
-## 20. 더 읽을 문서
+## 21. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|
@@ -1139,4 +1288,4 @@ bun test
 
 ---
 
-*가이드 핀: 제품 **v0.31.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5 · §15 헤드리스 카드 워커 · §16 스킬과 정책. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*
+*가이드 핀: 제품 **v0.32.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5 · §15 헤드리스 카드 워커 · §16 스킬과 정책 · §17 Loom MCP 사전 점검. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*

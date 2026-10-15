@@ -5,8 +5,41 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.31.0**) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.32.0**) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.32.0 — 2026-10-16
+
+**Loom MCP 사전 점검** — 대화형 `loom run` 에이전트가 Loom 도구로 보드·인계·conv를 바꾸기 전에 Loom 서버가 `policy.json`으로 검사한다.
+
+### 가능해진 것
+
+- **`policy.json` `mcp.deny`에 `loom__<tool>`** — 그 Loom 도구를 목록에서 숨기고, 이름으로 불러도 거부한다(0.31.0까지는 Loom 자신의 서버가 이 항목을 무시했다).
+- **`loomTools.denyModes`** — 인자 단위로 위험한 모드를 끈다: `board.replace`(내장 기본) · `broadcast` · `conv.writes` · `conv.fetch` · `pack.embed`. 내장과 합집합이라 정책으로 풀 수 없다.
+- **`loomTools.done: "propose"`**(옵트인) — MCP로 `done` 찍기(`update_task`·`add_task`·done 카드를 담은 `import_board`·reason 없는/`done` `conv_close`)를 거부하고 사람 경로 `loom board set <id> done`을 안내한다. 기본 `allow`는 0.31.0처럼 허용하되 감사 기록을 남긴다.
+- **룸별 로컬 감사 파일** `~/.loom/rooms/<roomKey>/policy-audit.jsonl` — 거부 · MCP발 done · L-2 불일치를 ID만으로(인자 본문 없음) 기록, 1 MiB마다 회전 · 최신 3세대 유지.
+- **L-2 플래그** — 원격 결과를 보낸 peer가 디스패치 대상과 다르면 카드에 `l2Mismatch: true`(결과는 그대로 `blocked`, 거부 아님).
+- 거부 문구가 claude · codex · grok 모두에서 모델에게 그대로 보이는 것을 실측했다(USER_GUIDE §17.7 정직 표).
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.31.0) | 지금 (0.32.0) |
+|---------------|---------------|
+| MCP 인자는 광고만 하고 강제 변환(`"false"`도 참) | **엄격 검사** — 타입 오류 · 광고하지 않은 키 → `Loom pre-check refused <tool>: invalid arguments at …`(예: `set_purpose`의 `verify`) |
+| `import_board mode=replace`가 MCP로 됨 | **기본 거부** — `mode=merge` 또는 사람이 `loom board import --replace <file>` |
+| `policy.json`은 헤드리스 bridge만 읽음 | Loom MCP 서버도 **호출마다** 읽는다(재시작 불요). 무효 파일이면 모든 Loom 도구 호출이 이유와 함께 거부되고 서버는 계속 산다 |
+| `loomTools` 키 | 0.31.0 바이너리는 모르는 키로 **기동 거부** — bridge까지 0.32.0으로 올린 뒤 넣는다 |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · 완료 권한(원격 결과 = `blocked`) · 헤드리스 워커 argv/fingerprint(`0.31.0-v1`) · pane 경로 무변경. `loomTools`를 넣어도 실행 중 헤드리스 카드에 `fingerprint_changed`가 생기지 않는다.
+- **정직 고지:** 기본 `allow`는 "에이전트가 done을 선언하지 못한다"의 준수가 아니라 이월이다(7단계에서 전환). `propose`도 MCP 층만 막는다 — 에이전트 셸의 `loom board set` 우회는 남는다. codex는 MCP 호출마다 승인을 요구한다(오너 `approval_mode` 설정 없을 때) · grok은 묻지 않는다 · claude는 오너 권한 모드에 따른다.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §17 · PLAN 0.32.0 · R50 · `implementation-notes.md` §0.32.0 · [`spikes/MCP-PRECHECK-SMOKE-0320.md`](./spikes/MCP-PRECHECK-SMOKE-0320.md)
 
 ---
 

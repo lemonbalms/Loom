@@ -42,14 +42,14 @@
 
 ## Gate log
 
-### 0.32.0 — Loom MCP 사전 점검 (`approved` — R50 approved-with-fixes)
+### 0.32.0 — Loom MCP 사전 점검 (`approved` — R50 approved-with-fixes · implemented 2026-10-16)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.32.0 (`approved` — R50 approved-with-fixes, 반영 완료 · no R50b) · 업그레이드 2단계 2부 마무리 · §0.31.0 범위 분할 이월분 · 요구 `UPGRADE-PLAN.md:156`·`:161` |
 | **Date** | 2026-10-16 |
 | **Review** | R50 **done 2026-10-16** (새 MINOR + 보안·신뢰 경계 변경 — 대화형 에이전트의 Loom 상태 쓰기에 정책 판정 계층 신설 · 완료 판정 규칙 이월(D4) 공식화) |
-| **Evidence** | 코드 실측 `main @ a2e0d99` (PLAN §0.32.0 Why · 추정/실측 표) · 라이브 스모크는 P5 예정 |
+| **Evidence** | 코드 실측 `main @ a2e0d99` (PLAN §0.32.0 Why · 추정/실측 표) · 라이브 스모크 [`docs/spikes/MCP-PRECHECK-SMOKE-0320.md`](spikes/MCP-PRECHECK-SMOKE-0320.md) (2026-10-16 · claude 2.1.300 · codex-cli 0.162.1 · grok 1.0.54 alpha · 코드 `f5c59ce`) · UK-2 조사 = `implementation-notes.md` §0.32.0 Deviation (e) |
 
 | 분면 | 내용 |
 |------|------|
@@ -62,13 +62,13 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R50 판정 |
 |---|------|-------------|----------|
-| UK-1 | codex/grok이 MCP `isError` 텍스트를 claude처럼 모델에 보여 주는가(거부 문구의 다음 행동 안내가 닿는가) | P5 스모크에서 측정 · 보이지 않으면 정직 표 행 갱신 | **open, 비차단(R50)** |
-| UK-2 | 엄격 D2가 새로 거부할 기존 호출자(비문자열 인자 · `"true"` 문자열 불리언 · 미지 키) | P3에서 리포 grep + smoke-uc 실행으로 조사 · 수정은 호출자 쪽(스키마 완화 아님) | **open, 비차단(R50)** |
-| UK-3 | 감사 파일 상한 값 — 1 MiB + `.1` 한 세대가 바쁜 룸에서 충분한가 | 출발값 1 MiB · 절단 없음 · P5 레코드 크기로 재평가 | **open, 비차단(R50)** |
-| UK-4 | claude MCP 권한 프롬프트가 Loom이 쓴 설정으로 억제되는가 — 정적으로는 `adapters/src`에 `permissions` 쓰기 0 · 오너 전역 사전 허용은 미측정 | 정직 표 "실행 전 사람 확인" 행 문구에만 영향 · P5 관측 | **open, 비차단(R50)** |
+| UK-1 | codex/grok이 MCP `isError` 텍스트를 claude처럼 모델에 보여 주는가(거부 문구의 다음 행동 안내가 닿는가) | P5 스모크에서 측정 · 보이지 않으면 정직 표 행 갱신 | **resolved(2026-10-16, SMOKE-0320)** — 셋 다 보인다: claude `tool_result` `is_error:true` · codex `mcp_tool_call` `status:"failed"` `result.content[0].text` · grok ACP `rawOutput.output.Error`(모델에는 `Failed to call <tool>: ` 접두). 다음 행동 문구(`loom board set …` · `mode=merge`) 그대로 도달 · 재시도·우회 0 |
+| UK-2 | 엄격 D2가 새로 거부할 기존 호출자(비문자열 인자 · `"true"` 문자열 불리언 · 미지 키) | P3에서 리포 grep + smoke-uc 실행으로 조사 · 수정은 호출자 쪽(스키마 완화 아님) | **resolved(P3 조사)** — 걸린 것은 문서 예시 1건(`TEST_PLAN.md` 14.G1 `set_purpose {verify}` → 이제 `invalid_args`가 먼저 · M-24는 host 경로 유지, `0eb9530`) · 기존 smoke-uc 흐름 수정 0줄 · PATCH 5 `smoke:uc` OK |
+| UK-3 | 감사 파일 상한 값 — 1 MiB + `.1` 한 세대가 바쁜 룸에서 충분한가 | 출발값 1 MiB · 절단 없음 · P5 레코드 크기로 재평가 | **resolved(2026-10-16, SMOKE-0320)** — 한 줄 172~206바이트 → 세대당 약 5,000건 · 1 MiB 유지(변경 없음). 구현은 `.1` 대신 고유 세대 최신 3개 유지(D8 구현 정정 → 룸당 보통 ~4 MiB) · 양을 좌우하는 것은 기본 `allow`의 `done_via_mcp` 줄 |
+| UK-4 | claude MCP 권한 프롬프트가 Loom이 쓴 설정으로 억제되는가 — 정적으로는 `adapters/src`에 `permissions` 쓰기 0 · 오너 전역 사전 허용은 미측정 | 정직 표 "실행 전 사람 확인" 행 문구에만 영향 · P5 관측 | **resolved(2026-10-16, SMOKE-0320)** — Loom은 권한 설정을 쓰지 않는다(넣지도 억제하지도 않음). 오너 모드가 결정: `auto`(오너 현재 기본) → 확인 없음 · `--permission-mode manual` + allow 없음 → `-p`에서 Loom 도달 전 거부(대화형이면 프롬프트) · `--allowedTools mcp__loom` → 확인 없음. **곁가지 실측:** codex는 MCP 호출에 승인을 요구(`approval_mode` 없고 `approval_policy=never` → 실패) → PLAN ④ 정직 표 codex 행 정정 · grok(ACP)은 확인 없음 |
 | ~~UK-5~~ *(작성자)* | `dispatch_card` ack가 해석된 대상 peer id를 담는가(PLAN R7 `dispatchPeerId` 비교 대상) | 없으면 디스패치 시점 룸 peer 목록 해석 · 레거시 카드는 오늘 동작 + `l2_unverifiable` | **R50-M2: unknown에서 제외 → 실측** — ack `{status, to, handoffId, notified, recipientCount, message?, …}`(`room-ops.ts:114-125`) · `to` = 입력 에코 → R7 = 로컬 peer 목록 이름 일치 **정확히 1개**일 때만 기록, 0개/2개 이상 → 미기록(`l2_unverifiable`) |
 
-**Current decision:** D1~D10 아키텍트 락(fable-advisor 자문 2026-10-16) · **R50 `approved-with-fixes` → M1·M2·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R50b)** · R1~R9 수용(R7은 M2로 수정 · R9 문서화로 충분 — 0.31.0과 같은 기존 우회 · `propose` 옵트인 · 위협 = 오너 자신의 에이전트) · **UK-5 실측으로 제외**(M2) · UK-1~UK-4 open(비차단). 구현 착수 = **P1**(정책 `loomTools` · fingerprint 투영, red 선행).
+**Current decision:** D1~D10 아키텍트 락(fable-advisor 자문 2026-10-16) · **R50 `approved-with-fixes` → M1·M2·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R50b)** · R1~R9 수용(R7은 M2로 수정 → 구현에서 fail-visible로 정정 · R9 문서화로 충분 — 0.31.0과 같은 기존 우회 · `propose` 옵트인 · 위협 = 오너 자신의 에이전트) · **UK-5 실측으로 제외**(M2) · **UK-1·UK-3·UK-4 resolved**(라이브 스모크 SMOKE-0320) · **UK-2 resolved**(P3 조사) · PLAN ④ 정직 표 codex 행 정정(승인 요구). **v0.32.0 implemented**(2026-10-16 — PLAN §0.32.0 Implemented · (j) ship 검사 후 ship). 다음 = 오너 지명(3단계 OS 서비스 또는 7단계 총괄 에이전트).
 
 ### 0.31.0 — 스킬 materialize + policy.json v1 → CLI별 권한 번역 (`approved` — R49 approved-with-fixes)
 
@@ -423,3 +423,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-15 | 0.31.0 ship 반영 (UK-5 resolved — §H `--settings` MCP deny = 툴 숨김·신호 없음 · UK-7 resolved — dist에 내장 스킬 포함 · UK-2/3/4/6 open 비차단) |
 | 2026-10-16 | 0.32.0 Loom MCP 사전 점검 unknowns (UK-1~UK-5 요약 · 전부 비차단 제안 · 코드 실측 Known knowns · `pending-review` R50) |
 | 2026-10-16 | 0.32.0 R50 판정 반영 (UK-5 → M2 실측으로 제외 · UK-1~UK-4 open 비차단 · PLAN `approved`) |
+| 2026-10-16 | 0.32.0 ship 반영 (UK-1·UK-3·UK-4 resolved — `MCP-PRECHECK-SMOKE-0320.md` · UK-2 resolved — P3 조사 · 정직 표 codex 행 정정) |

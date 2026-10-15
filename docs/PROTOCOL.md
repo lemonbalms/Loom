@@ -2,7 +2,7 @@
 
 **철학 (첫 문단):** 이 문서는 Loom **relay WebSocket 와이어(protocol v1)** 만 다룬다 — room·handoff·inbox·presence의 봉투와 라우팅. **herdr 로컬 소켓 RPC**(agent/pane/tab)는 이 파일의 범위가 아니며, as-built 정본은 [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md)다. 이름을 섞어 쓰지 않는다.
 
-**As-built pin:** product / PLAN **v0.31.0** (2026-10-15) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.31.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0 and v0.31.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged) and [Skills and policy](#skills-and-policy-v0310--wire-unchanged)).
+**As-built pin:** product / PLAN **v0.32.0** (2026-10-16) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.32.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0, v0.31.0 and v0.32.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged), [Skills and policy](#skills-and-policy-v0310--wire-unchanged) and [Loom MCP pre-check](#loom-mcp-pre-check-v0320--wire-unchanged)).
 
 Wire Version: **1** (`v: 1` on every envelope) — not product SemVer; historical origin: M1.1 + M-7 + Loom rename under PLAN 0.9.0
 
@@ -116,6 +116,15 @@ v0.31.0 adds bridge-local `loomDir()/policy.json` (per-CLI permission compile) a
   - `reason: "needs_verification"`, `note: "fingerprint_changed; not resuming"` now also fires when the policy hash, the argv template version (`0.31.0-v1`), or the card's skill copy no longer matches the session record — on recovery, on **every** adoption (including normal-dispatch adoption), and before a skills-enabled resume. A live worker is not killed; its result is pre-empted.
   - `note` denial prefix is unchanged: `denials: N (<tool names>)` — tool names only, no command text.
 - **Startup refusal, not a result:** an invalid `policy.json`, a deprecated bridge-config allow list next to `policy.json` `shell.allow`, or a deprecated no-space `p*` deny (other than the three verbatim 0.30.0 defaults, accepted with a warning) makes the headless bridge refuse to start; no result is sent.
+
+## Loom MCP pre-check (v0.32.0) — wire unchanged
+
+v0.32.0 adds a policy gate inside the local Loom MCP server (`packages/mcp-server`) — `policy.json` `loomTools` (`done`, `denyModes`), `mcp.deny` `loom__<tool>`, strict tool arguments — plus a per-room local `policy-audit.jsonl` and an advisory L-2 check in `apply_card_result` (user-facing in [`USER_GUIDE.md`](./USER_GUIDE.md) §17). Nothing new crosses the relay:
+
+- **No new envelope, field, or version.** `PROTOCOL_VERSION` and `CARD_CONTRACT_VERSION` are unchanged; `CardDispatchPayload` / `CardResultPayload` gain **0 fields**. A pre-check refusal is an MCP tool result (`isError: true`) to the local agent, never a relay message.
+- **Local-only board fields.** `dispatchPeerId` (the dispatch target's peer id, pinned only when the tower's peer list had exactly one canonical name match before and after the send) and `l2Mismatch` (set when a result's `fromPeerId` differs from that pin) live **only in the local board file**. Both are stripped from every board snapshot (`export_board`, `--with-board` / `withBoard` handoff attachments, imports); `dispatchPeerId` is also stripped from MCP and sticky `/rpc` output. Dispatch routing is unchanged (`to: "@<node>"`, no peer id).
+- **Same completion authority.** An L-2 mismatch never rejects: the result lands `blocked` exactly as in v0.31.0 (notes byte-identical), with the local flag and audit record added.
+- **Audit stays local.** `loomDir()/rooms/<roomKey>/policy-audit.jsonl` shares the room directory with the v0.29.0 room event log but is a separate file; it never carries relay `seq`/`eventId` and is never sent.
 
 ## Handoff routing
 

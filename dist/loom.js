@@ -5439,20 +5439,20 @@ var init_session_store = __esm(() => {
 // packages/relay/src/persist.ts
 import {
   existsSync as existsSync17,
-  mkdirSync as mkdirSync17,
+  mkdirSync as mkdirSync18,
   readFileSync as readFileSync11,
   writeFileSync as writeFileSync14,
-  renameSync as renameSync3,
+  renameSync as renameSync4,
   chmodSync as chmodSync10,
   copyFileSync as copyFileSync2,
-  readdirSync as readdirSync3,
+  readdirSync as readdirSync4,
   statSync as statSync6,
-  lstatSync as lstatSync2,
+  lstatSync as lstatSync3,
   realpathSync as realpathSync3,
-  unlinkSync as unlinkSync4,
+  unlinkSync as unlinkSync5,
   rmSync as rmSync3
 } from "fs";
-import { join as join24, dirname as dirname11, basename as basename4, resolve as resolve5, sep as sep5 } from "path";
+import { join as join24, dirname as dirname12, basename as basename4, resolve as resolve5, sep as sep5 } from "path";
 import { createHash as createHash10 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
@@ -5479,11 +5479,11 @@ function lockPidPath2(lockDir) {
   return join24(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
-  mkdirSync17(stateDir2, { recursive: true });
+  mkdirSync18(stateDir2, { recursive: true });
   const lockDir = processLockDir(stateDir2);
   const tryAcquire = () => {
     try {
-      mkdirSync17(lockDir);
+      mkdirSync18(lockDir);
     } catch {
       return false;
     }
@@ -5544,8 +5544,8 @@ function releaseStateDirLock(stateDir2) {
   } catch {}
 }
 function writeAtomicJson2(filePath, data) {
-  const parent = dirname11(resolve5(filePath));
-  mkdirSync17(parent, { recursive: true });
+  const parent = dirname12(resolve5(filePath));
+  mkdirSync18(parent, { recursive: true });
   let realParent;
   try {
     realParent = realpathSync3(parent);
@@ -5558,9 +5558,9 @@ function writeAtomicJson2(filePath, data) {
   }
   const finalPath = join24(realParent, base);
   try {
-    const st = lstatSync2(finalPath);
+    const st = lstatSync3(finalPath);
     if (st.isSymbolicLink()) {
-      unlinkSync4(finalPath);
+      unlinkSync5(finalPath);
     } else if (st.isDirectory()) {
       throw new Error(`Refusing to overwrite directory: ${finalPath}`);
     }
@@ -5576,14 +5576,14 @@ function writeAtomicJson2(filePath, data) {
 `;
   try {
     writeFileSync14(tmp, body, { encoding: "utf8", mode: 384 });
-    renameSync3(tmp, finalPath);
+    renameSync4(tmp, finalPath);
     try {
       chmodSync10(finalPath, 384);
     } catch {}
   } catch (e) {
     try {
       if (existsSync17(tmp))
-        unlinkSync4(tmp);
+        unlinkSync5(tmp);
     } catch {}
     throw e;
   }
@@ -5713,7 +5713,7 @@ function loadAllSnapshots(stateDir2) {
     return { snapshots, errors: errors2 };
   let names;
   try {
-    names = readdirSync3(stateDir2);
+    names = readdirSync4(stateDir2);
   } catch (e) {
     errors2.push(`Cannot read state dir ${stateDir2}: ${e instanceof Error ? e.message : e}`);
     return { snapshots, errors: errors2 };
@@ -5746,7 +5746,7 @@ function loadAllSnapshots(stateDir2) {
   return { snapshots, errors: errors2 };
 }
 function saveRoomSnapshot(stateDir2, snap) {
-  mkdirSync17(stateDir2, { recursive: true });
+  mkdirSync18(stateDir2, { recursive: true });
   let realState;
   try {
     realState = realpathSync3(stateDir2);
@@ -8667,8 +8667,29 @@ function normalizeTask(t) {
     notes: t.notes ? sanitizePeerText(t.notes).slice(0, MAX_NOTE) : undefined,
     createdAt,
     updatedAt: updatedFinal,
-    createdByPeerId: t.createdByPeerId ? sanitizePeerText(t.createdByPeerId).slice(0, 64) : undefined
+    createdByPeerId: t.createdByPeerId ? sanitizePeerText(t.createdByPeerId).slice(0, 64) : undefined,
+    ...typeof t.dispatchPeerId === "string" && isCanonicalPeerId(t.dispatchPeerId) ? { dispatchPeerId: t.dispatchPeerId } : {},
+    ...t.l2Mismatch === true ? { l2Mismatch: true } : {}
   };
+}
+var DISPATCH_PIN_MAX = 64;
+var RESERVED_PEER_TARGETS = new Set(["*"]);
+function hasControlChar(id) {
+  for (let i = 0;i < id.length; i++) {
+    const c = id.charCodeAt(i);
+    if (c <= 31 || c >= 127 && c <= 159)
+      return true;
+  }
+  return false;
+}
+function isCanonicalPeerId(id) {
+  return id.length > 0 && id.length <= DISPATCH_PIN_MAX && id.trim() === id && !hasControlChar(id) && !RESERVED_PEER_TARGETS.has(id) && sanitizePeerText(id) === id;
+}
+function withoutLocalFields(t) {
+  if (t.dispatchPeerId === undefined && t.l2Mismatch === undefined)
+    return t;
+  const { dispatchPeerId: _pin, l2Mismatch: _flag, ...rest } = t;
+  return rest;
 }
 function mutateBoard(roomId, roomName, mut) {
   const p = boardPathForRoom(roomId);
@@ -8727,6 +8748,14 @@ function updateTask(taskId, patch, roomId) {
       handoffId: patch.handoffId === null ? undefined : patch.handoffId !== undefined ? patch.handoffId : cur.handoffId,
       updatedAt: new Date().toISOString()
     };
+    if (patch.dispatchPeerId === null)
+      delete next.dispatchPeerId;
+    else if (patch.dispatchPeerId !== undefined)
+      next.dispatchPeerId = patch.dispatchPeerId;
+    if (patch.l2Mismatch === null)
+      delete next.l2Mismatch;
+    else if (patch.l2Mismatch === true)
+      next.l2Mismatch = true;
     board.tasks[idx] = normalizeTask(next);
     updated = board.tasks[idx];
   });
@@ -8810,7 +8839,7 @@ function exportBoardSnapshot(roomId) {
     exportedAt: new Date().toISOString(),
     sourceRoomId: board.roomId,
     sourceRoomName: board.roomName,
-    tasks: board.tasks.map(normalizeTask)
+    tasks: board.tasks.map((t) => withoutLocalFields(normalizeTask(t)))
   };
 }
 function boardToAttachments(board) {
@@ -8822,7 +8851,7 @@ function boardToAttachments(board) {
     exportedAt: new Date().toISOString(),
     sourceRoomId: board.roomId,
     sourceRoomName: board.roomName,
-    tasks: board.tasks.map(normalizeTask)
+    tasks: board.tasks.map((t) => withoutLocalFields(normalizeTask(t)))
   };
   return [
     {
@@ -8848,7 +8877,7 @@ function parseBoardSnapshot(raw) {
     exportedAt: normalizeTimestamp(typeof o.exportedAt === "string" ? o.exportedAt : undefined, now),
     sourceRoomId: sanitizePeerText(typeof o.sourceRoomId === "string" ? o.sourceRoomId : "unknown").slice(0, 80),
     sourceRoomName: typeof o.sourceRoomName === "string" ? sanitizePeerText(o.sourceRoomName).slice(0, 120) : undefined,
-    tasks: tasksRaw.filter((t) => t && typeof t === "object" && typeof t.id === "string" && typeof t.title === "string").map((t) => normalizeTask(t)).slice(0, MAX_TASKS)
+    tasks: tasksRaw.filter((t) => t && typeof t === "object" && typeof t.id === "string" && typeof t.title === "string").map((t) => withoutLocalFields(normalizeTask(t))).slice(0, MAX_TASKS)
   };
 }
 function importBoardSnapshot(snapshot, mode = "merge", roomId, opts) {
@@ -9852,7 +9881,7 @@ import {
   readSync as readSync2,
   statSync as statSync4
 } from "fs";
-import { join as join10 } from "path";
+import { dirname as dirname3, join as join10 } from "path";
 var RULE_FLAG_PREFIX = /^[-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/;
 var SHELL_META = /[;&|`><]|\$\(/;
 var SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -9884,6 +9913,14 @@ var LEGACY_D10_DENIED_TOOLS = [
 ];
 var LEGACY_D10_DENY_SET = new Set(LEGACY_D10_DENIED_TOOLS);
 var POLICY_MAX_BYTES = 64 * 1024;
+var LOOM_DENY_MODES = [
+  "board.replace",
+  "broadcast",
+  "conv.writes",
+  "conv.fetch",
+  "pack.embed"
+];
+var LOOM_DENY_MODE_SET = new Set(LOOM_DENY_MODES);
 function sortedUnique(values) {
   return [...new Set(values)].sort();
 }
@@ -9988,6 +10025,27 @@ function mcpDenyList(value) {
   }
   return items;
 }
+function loomToolsPolicy(value) {
+  const obj = assertRecord(value, "loomTools");
+  rejectUnknown(obj, ["done", "denyModes"], "loomTools");
+  const out = {};
+  if (Object.hasOwn(obj, "done")) {
+    if (obj.done !== "allow" && obj.done !== "propose") {
+      throw new Error(`loomTools.done: must be "allow" or "propose"`);
+    }
+    out.done = obj.done;
+  }
+  if (Object.hasOwn(obj, "denyModes")) {
+    const modes = stringArray(obj.denyModes, "loomTools.denyModes");
+    for (let i = 0;i < modes.length; i++) {
+      if (!LOOM_DENY_MODE_SET.has(modes[i])) {
+        throw new Error(`loomTools.denyModes[${i}]: unknown mode ${JSON.stringify(modes[i])}`);
+      }
+    }
+    out.denyModes = sortedUnique(modes);
+  }
+  return out;
+}
 function normalizeBashInner(inner, field) {
   if (inner.includes("\x00"))
     throw new Error(`${field}: contains NUL`);
@@ -10089,7 +10147,7 @@ function builtinPolicyDefaults() {
 }
 function parsePolicy(json) {
   const root = assertRecord(json, "policy");
-  rejectUnknown(root, ["version", "shell", "network", "mcp", "skills"], "policy");
+  rejectUnknown(root, ["version", "shell", "network", "mcp", "skills", "loomTools"], "policy");
   if (!Object.hasOwn(root, "version"))
     throw new Error("version: is required");
   if (typeof root.version !== "number" || root.version !== 1) {
@@ -10129,6 +10187,9 @@ function parsePolicy(json) {
   if (Object.hasOwn(skills, "allow")) {
     parsed.skills.allow = skillNames(skills.allow, "skills.allow");
   }
+  if (Object.hasOwn(root, "loomTools")) {
+    parsed.loomTools = loomToolsPolicy(root.loomTools);
+  }
   return parsed;
 }
 function errCode(err) {
@@ -10144,7 +10205,20 @@ function errDetail(err) {
 function lookupFailed(filePath, detail) {
   return new Error(`policy.json lookup failed ${filePath}: ${detail} (fail-closed)`);
 }
-function confirmAbsent(loomDir2, filePath, cause) {
+function confirmRealParent(loomDir2, filePath) {
+  const parent = dirname3(loomDir2);
+  let st;
+  try {
+    st = statSync4(parent);
+  } catch (err) {
+    throw lookupFailed(filePath, `loomDir is missing and its parent is missing or dangling: ${errDetail(err)}`);
+  }
+  if (!st.isDirectory()) {
+    throw lookupFailed(filePath, `loomDir is missing and its parent is not a directory: ${parent}`);
+  }
+  return st;
+}
+function absentDirState(loomDir2, filePath, cause) {
   let dirStat;
   try {
     dirStat = statSync4(loomDir2);
@@ -10153,8 +10227,10 @@ function confirmAbsent(loomDir2, filePath, cause) {
       try {
         lstatSync(loomDir2);
       } catch (lerr) {
-        if (errCode(lerr) === "ENOENT")
-          return;
+        if (errCode(lerr) === "ENOENT") {
+          const parent = confirmRealParent(loomDir2, filePath);
+          return `missing-under:${parent.dev}:${parent.ino}`;
+        }
         throw lookupFailed(filePath, `loomDir lstat ${errDetail(lerr)}`);
       }
       throw lookupFailed(filePath, `loomDir is a dangling symlink: ${errDetail(err)}`);
@@ -10164,18 +10240,46 @@ function confirmAbsent(loomDir2, filePath, cause) {
   if (!dirStat.isDirectory()) {
     throw lookupFailed(filePath, `loomDir is not a directory: ${errDetail(cause)}`);
   }
+  return `dir:${dirStat.dev}:${dirStat.ino}`;
 }
-function loadPolicy(loomDir2) {
-  const filePath = join10(loomDir2, "policy.json");
-  let link;
+var policyLoadTestHooks = {};
+function observeAbsence(loomDir2, filePath, cause) {
+  policyLoadTestHooks.afterFirstLstat?.();
+  const before = absentDirState(loomDir2, filePath, cause);
+  policyLoadTestHooks.afterAbsenceChecks?.();
   try {
-    link = lstatSync(filePath);
+    lstatSync(filePath);
+    return "changed";
   } catch (err) {
     if (errCode(err) !== "ENOENT")
       throw lookupFailed(filePath, errDetail(err));
-    confirmAbsent(loomDir2, filePath, err);
-    return null;
   }
+  let after;
+  try {
+    after = absentDirState(loomDir2, filePath, cause);
+  } catch {
+    return "changed";
+  }
+  return after === before ? "absent" : "changed";
+}
+function loadPolicy(loomDir2) {
+  const filePath = join10(loomDir2, "policy.json");
+  for (let attempt = 0;attempt < 2; attempt++) {
+    let link;
+    try {
+      link = lstatSync(filePath);
+    } catch (err) {
+      if (errCode(err) !== "ENOENT")
+        throw lookupFailed(filePath, errDetail(err));
+      if (observeAbsence(loomDir2, filePath, err) === "absent")
+        return null;
+      continue;
+    }
+    return readPolicyFile(filePath, link);
+  }
+  throw lookupFailed(filePath, "policy.json changed during load");
+}
+function readPolicyFile(filePath, link) {
   if (link.isSymbolicLink()) {
     try {
       statSync4(filePath);
@@ -11106,7 +11210,7 @@ import {
   chmodSync as chmodSync6,
   appendFileSync
 } from "fs";
-import { dirname as dirname3, join as join12 } from "path";
+import { dirname as dirname4, join as join12 } from "path";
 var appendFailCount = 0;
 var tornLineCount = 0;
 function quarantinePath(profile) {
@@ -11209,7 +11313,7 @@ class QuarantineStore {
   }
   append(rec) {
     try {
-      mkdirSync7(dirname3(this.path), { recursive: true });
+      mkdirSync7(dirname4(this.path), { recursive: true });
       const line = `${JSON.stringify(rec)}
 `;
       const fd = openSync3(this.path, "a", 384);
@@ -11695,7 +11799,7 @@ import {
   stat,
   unlink
 } from "fs/promises";
-import { dirname as dirname4, join as join14, resolve as resolve3, sep as sep2 } from "path";
+import { dirname as dirname5, join as join14, resolve as resolve3, sep as sep2 } from "path";
 var ROOM_EVENT_SEEN_CAP = 1024;
 var DEFAULT_LOCK_BUDGET_MS = 250;
 var LOCK_POLL_MS2 = 5;
@@ -11960,7 +12064,7 @@ async function reclaimStaleLock(lockPath) {
 }
 async function acquireLockBody(lockPath, budgetMs) {
   const start = Date.now();
-  await mkdir(dirname4(lockPath), { recursive: true });
+  await mkdir(dirname5(lockPath), { recursive: true });
   for (;; ) {
     try {
       const fh = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 384);
@@ -12068,7 +12172,7 @@ async function appendJsonl(file, line) {
     roomEventLogTestHooks.failAppendUnder = null;
     throw new Error("injected append failure");
   }
-  await mkdir(dirname4(file), { recursive: true });
+  await mkdir(dirname5(file), { recursive: true });
   let repair = false;
   try {
     const info = await stat(file);
@@ -12117,8 +12221,8 @@ async function loadSeen(path) {
   return parsed;
 }
 async function writeSeen(path, state) {
-  await mkdir(dirname4(path), { recursive: true });
-  const tmp = join14(dirname4(path), `.seen.tmp.${process.pid}`);
+  await mkdir(dirname5(path), { recursive: true });
+  const tmp = join14(dirname5(path), `.seen.tmp.${process.pid}`);
   const fh = await open(tmp, "w", 384);
   try {
     await fh.write(`${JSON.stringify(state)}
@@ -12398,7 +12502,7 @@ import { execFile, execFileSync as execFileSync2 } from "child_process";
 import { randomUUID as randomUUID3 } from "crypto";
 import { realpathSync as realpathSync2, statSync as statSync5 } from "fs";
 import { chmod as chmod4, mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "fs/promises";
-import { dirname as dirname8, isAbsolute as isAbsolute5, join as join17, sep as sep4 } from "path";
+import { dirname as dirname9, isAbsolute as isAbsolute5, join as join17, sep as sep4 } from "path";
 
 // packages/host/src/agent-stream-parsers.ts
 function isRecord2(value) {
@@ -12725,7 +12829,7 @@ function parseAgentStream(agent, jsonl) {
 import { createHash as createHash8, randomUUID } from "crypto";
 import { readdirSync as readdirSync2 } from "fs";
 import { chmod as chmod2, copyFile, mkdir as mkdir2, readFile as readFile2, rename as rename2, rm, writeFile } from "fs/promises";
-import { dirname as dirname5, join as join15 } from "path";
+import { dirname as dirname6, join as join15 } from "path";
 var cardSessionDiagnostics = { invalidRecords: 0 };
 function validRecord(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
@@ -12843,8 +12947,8 @@ async function readCardSessionAsync(opts) {
 }
 async function writeCardSessionAsync(opts, record) {
   const path = cardSessionPath({ ...record, ...opts });
-  await mkdir2(dirname5(path), { recursive: true });
-  const temp = join15(dirname5(path), `.session.json.tmp.${process.pid}.${randomUUID()}`);
+  await mkdir2(dirname6(path), { recursive: true });
+  const temp = join15(dirname6(path), `.session.json.tmp.${process.pid}.${randomUUID()}`);
   try {
     await writeFile(temp, `${JSON.stringify(record, null, 2)}
 `, { mode: 384 });
@@ -12867,7 +12971,7 @@ function writeCardSession(opts, record) {
 // packages/host/src/process-group.ts
 import { execFileSync, spawn as spawn5 } from "child_process";
 import { chmodSync as chmodSync8, closeSync as closeSync5, mkdirSync as mkdirSync9, openSync as openSync5 } from "fs";
-import { dirname as dirname6 } from "path";
+import { dirname as dirname7 } from "path";
 var cachedOwnPgid;
 function lookupPgid(pid) {
   if (!Number.isInteger(pid) || pid <= 1)
@@ -12912,7 +13016,7 @@ function killProcessGroup(pgid, signal) {
   }
 }
 function spawnDetachedWorker(opts) {
-  const dir = dirname6(opts.stdoutPath);
+  const dir = dirname7(opts.stdoutPath);
   mkdirSync9(dir, { recursive: true, mode: 448 });
   chmodSync8(dir, 448);
   let outFd;
@@ -13027,7 +13131,7 @@ import {
   rm as rm2,
   writeFile as writeFile2
 } from "fs/promises";
-import { dirname as dirname7, join as join16, resolve as resolve4, sep as sep3 } from "path";
+import { dirname as dirname8, join as join16, resolve as resolve4, sep as sep3 } from "path";
 
 // packages/host/skills/loom-card-report/SKILL.md
 var SKILL_default = "---\nname: loom-card-report\ndescription: Format the final report of a Loom card task. Use it when you write your last message.\n---\n\n# Loom card report\n\nYour final message is the card result. Write it in this shape:\n\n1. `Status:` one of `done`, `partial`, or `blocked`.\n2. `Summary:` two or three sentences on what you did.\n3. `Changes:` the files you changed, one per line, or `none`.\n4. `Checks:` the commands you ran to verify the work and their outcome, or `none`.\n5. `Open:` anything left undone or uncertain, or `none`.\n\nEnd the message with this line on its own:\n\nLOOM-REPORT-END\n\nWrite nothing after that line.\n";
@@ -13106,7 +13210,7 @@ function roomSkillsPath(loomDir2, roomId) {
   return join16(dir, "skills.json");
 }
 function cardSkillsDir(key) {
-  return join16(dirname7(cardSessionPath(key)), "skills");
+  return join16(dirname8(cardSessionPath(key)), "skills");
 }
 async function realLoomDir(loomDir2) {
   let real;
@@ -15031,7 +15135,7 @@ class HeadlessDispatcher {
     };
   }
   cardDir(card) {
-    return dirname8(cardSessionPath({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card }));
+    return dirname9(cardSessionPath({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card }));
   }
   transcriptPath(card, attempts) {
     return join17(this.cardDir(card), `transcript-${attempts}.jsonl`);
@@ -15447,6 +15551,25 @@ init_session_store();
 var STILL_RUNNING_MAX_MS = 5 * 60000;
 // packages/host/src/card-ops.ts
 init_src();
+
+// packages/host/src/mcp-precheck.ts
+import {
+  closeSync as closeSync6,
+  constants as constants2,
+  fchmodSync,
+  fstatSync as fstatSync3,
+  lstatSync as lstatSync2,
+  mkdirSync as mkdirSync10,
+  openSync as openSync6,
+  readdirSync as readdirSync3,
+  renameSync as renameSync3,
+  unlinkSync as unlinkSync4,
+  writeSync as writeSync2
+} from "fs";
+var POLICY_AUDIT_MAX_BYTES = 1024 * 1024;
+var OPEN_LIVE = constants2.O_WRONLY | constants2.O_APPEND | constants2.O_CREAT | constants2.O_NOFOLLOW;
+
+// packages/host/src/card-ops.ts
 init_session_store();
 // packages/host/src/conv-ops.ts
 init_src();
@@ -15459,7 +15582,7 @@ init_src();
 init_session_store();
 import {
   existsSync as existsSync14,
-  mkdirSync as mkdirSync10,
+  mkdirSync as mkdirSync11,
   chmodSync as chmodSync9,
   writeFileSync as writeFileSync7,
   readFileSync as readFileSync8
@@ -15515,7 +15638,7 @@ function loadConvNodeHosts() {
 }
 function saveConvNodeHosts(cfg) {
   ensureFableDir();
-  mkdirSync10(loomDir(), { recursive: true });
+  mkdirSync11(loomDir(), { recursive: true });
   const p = convNodeHostsPath();
   writeFileSync7(p, `${JSON.stringify(cfg, null, 2)}
 `, {
@@ -15598,7 +15721,7 @@ function loomSystemHint(agentLabel) {
 }
 
 // packages/adapters/src/claude.ts
-import { mkdirSync as mkdirSync11, writeFileSync as writeFileSync8 } from "fs";
+import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync8 } from "fs";
 import { join as join19 } from "path";
 var claudeAdapter = {
   id: "claude",
@@ -15635,7 +15758,7 @@ var claudeAdapter = {
   },
   async ensureMcpConfig(opts) {
     const dir = join19(opts.cwd, ".loom");
-    mkdirSync11(dir, { recursive: true });
+    mkdirSync12(dir, { recursive: true });
     const path = join19(dir, "claude.mcp.json");
     const config = {
       mcpServers: {
@@ -15656,8 +15779,8 @@ var claudeAdapter = {
 };
 
 // packages/adapters/src/user-mcp-config.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync12, readFileSync as readFileSync9, writeFileSync as writeFileSync9 } from "fs";
-import { dirname as dirname9 } from "path";
+import { existsSync as existsSync15, mkdirSync as mkdirSync13, readFileSync as readFileSync9, writeFileSync as writeFileSync9 } from "fs";
+import { dirname as dirname10 } from "path";
 var LOOM_BEGIN = "# --- Loom multiplayer (managed) BEGIN ---";
 var LOOM_END = "# --- Loom multiplayer (managed) END ---";
 var FABLE_BEGIN = "# --- Fable multiplayer (managed) BEGIN ---";
@@ -15759,7 +15882,7 @@ function stripAllLoomMcpSections(existing) {
 }
 function upsertUserMcpConfig(opts) {
   const { configPath, block: block2 } = opts;
-  mkdirSync12(dirname9(configPath), { recursive: true });
+  mkdirSync13(dirname10(configPath), { recursive: true });
   let existing = "";
   if (existsSync15(configPath)) {
     existing = readFileSync9(configPath, "utf8");
@@ -15802,7 +15925,7 @@ function projectMcpSnippetToml(opts) {
 }
 
 // packages/adapters/src/codex.ts
-import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync10 } from "fs";
+import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync10 } from "fs";
 import { join as join20 } from "path";
 import { homedir as homedir3 } from "os";
 var codexAdapter = {
@@ -15835,7 +15958,7 @@ var codexAdapter = {
   },
   async ensureMcpConfig(opts) {
     const projectDir = join20(opts.cwd, ".loom");
-    mkdirSync13(projectDir, { recursive: true });
+    mkdirSync14(projectDir, { recursive: true });
     const snippetPath = join20(projectDir, "codex.mcp.toml");
     writeFileSync10(snippetPath, projectMcpSnippetToml({
       header: `# Generated by Loom \u2014 Codex MCP (project).
@@ -15860,7 +15983,7 @@ var codexAdapter = {
 };
 
 // packages/adapters/src/grok.ts
-import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync11 } from "fs";
+import { mkdirSync as mkdirSync15, writeFileSync as writeFileSync11 } from "fs";
 import { join as join21 } from "path";
 import { homedir as homedir4 } from "os";
 var grokAdapter = {
@@ -15893,7 +16016,7 @@ var grokAdapter = {
   },
   async ensureMcpConfig(opts) {
     const projectDir = join21(opts.cwd, ".loom");
-    mkdirSync14(projectDir, { recursive: true });
+    mkdirSync15(projectDir, { recursive: true });
     const snippetPath = join21(projectDir, "grok.mcp.toml");
     writeFileSync11(snippetPath, projectMcpSnippetToml({
       header: "# Generated by Loom \u2014 Grok MCP (project). Use: loom run grok --write-user-config to install into ~/.grok/config.toml",
@@ -16005,8 +16128,11 @@ function capabilityMatrix() {
     capabilities: a.capabilities
   }));
 }
+
+// packages/mcp-server/src/tools.ts
+var MCP_HIDDEN_KEYS = new Set(["dispatchPeerId"]);
 // packages/mcp-server/src/config.ts
-import { mkdirSync as mkdirSync15, writeFileSync as writeFileSync12 } from "fs";
+import { mkdirSync as mkdirSync16, writeFileSync as writeFileSync12 } from "fs";
 import { join as join22 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function resolveMcpStdio() {
@@ -16015,7 +16141,7 @@ function resolveMcpStdio() {
 }
 function writeMcpConfig(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync15(dir, { recursive: true });
+  mkdirSync16(dir, { recursive: true });
   const path = join22(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
   const config = {
@@ -16033,7 +16159,7 @@ function writeMcpConfig(opts) {
 }
 function writeAgentHintFile(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync15(dir, { recursive: true });
+  mkdirSync16(dir, { recursive: true });
   const path = join22(dir, "AGENT_HINT.txt");
   const body = opts?.hint ?? [
     "Loom multiplayer room is active.",
@@ -16049,12 +16175,12 @@ function writeAgentHintFile(opts) {
 // packages/cli/src/index.ts
 import { spawn as nodeSpawn, spawnSync } from "child_process";
 import {
-  openSync as openSync6,
-  closeSync as closeSync6,
-  writeSync as writeSync2,
+  openSync as openSync7,
+  closeSync as closeSync7,
+  writeSync as writeSync3,
   readSync as readSync3,
   existsSync as existsSync18,
-  readdirSync as readdirSync4,
+  readdirSync as readdirSync5,
   readFileSync as readFileSync12,
   accessSync,
   constants as fsConstants4
@@ -16286,11 +16412,11 @@ function isLoopbackHost(host) {
 // packages/cli/src/inject-handoffs.ts
 import {
   existsSync as existsSync16,
-  mkdirSync as mkdirSync16,
+  mkdirSync as mkdirSync17,
   readFileSync as readFileSync10,
   writeFileSync as writeFileSync13
 } from "fs";
-import { dirname as dirname10, join as join23 } from "path";
+import { dirname as dirname11, join as join23 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -16326,7 +16452,7 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
     }
   }
   const merged = mergeClaudeStopHook(settings, claudeStopHookCommand(idleMarkerPath));
-  mkdirSync16(dirname10(settingsPath), { recursive: true });
+  mkdirSync17(dirname11(settingsPath), { recursive: true });
   writeFileSync13(settingsPath, `${JSON.stringify(merged, null, 2)}
 `, {
     encoding: "utf8",
@@ -16336,10 +16462,10 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.31.0";
+var VERSION = "0.32.0";
 function eprint(msg) {
   try {
-    writeSync2(2, msg);
+    writeSync3(2, msg);
   } catch {
     try {
       console.error(msg.replace(/\x1b\[[0-9;]*m/g, "").replace(/\n$/, ""));
@@ -16348,7 +16474,7 @@ function eprint(msg) {
 }
 function print(msg) {
   try {
-    writeSync2(1, msg);
+    writeSync3(1, msg);
   } catch {
     try {
       console.log(msg.replace(/\n$/, ""));
@@ -16551,7 +16677,7 @@ function profilesWithSession() {
   if (!existsSync18(dir))
     return [];
   const out = [];
-  for (const name of readdirSync4(dir)) {
+  for (const name of readdirSync5(dir)) {
     if (!name.endsWith(".json"))
       continue;
     if (name.endsWith(".host.json"))
@@ -18456,7 +18582,7 @@ function spawnOnDevTty(spec) {
   return new Promise((resolve6) => {
     const fds = [];
     try {
-      fds.push(openSync6("/dev/tty", "r"), openSync6("/dev/tty", "w"), openSync6("/dev/tty", "w"));
+      fds.push(openSync7("/dev/tty", "r"), openSync7("/dev/tty", "w"), openSync7("/dev/tty", "w"));
     } catch (e) {
       eprint(`\x1B[2m/dev/tty unavailable: ${e instanceof Error ? e.message : e}\x1B[0m
 `);
@@ -18471,7 +18597,7 @@ function spawnOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync6(fd);
+          closeSync7(fd);
         } catch {}
       }
     };
@@ -18523,7 +18649,7 @@ function spawnShellOnDevTty(spec) {
   return new Promise((resolve6) => {
     const fds = [];
     try {
-      fds.push(openSync6("/dev/tty", "r"), openSync6("/dev/tty", "w"), openSync6("/dev/tty", "w"));
+      fds.push(openSync7("/dev/tty", "r"), openSync7("/dev/tty", "w"), openSync7("/dev/tty", "w"));
     } catch {
       resolve6(0);
       return;
@@ -18536,7 +18662,7 @@ function spawnShellOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync6(fd);
+          closeSync7(fd);
         } catch {}
       }
       fds.length = 0;

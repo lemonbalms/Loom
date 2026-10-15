@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-15 (0.31.0 스킬 materialize · `policy.json` v1 → CLI별 권한 번역) |
+| **Last updated** | 2026-10-16 (0.32.0 Loom MCP 사전 점검) |
 
 ---
 
@@ -39,6 +39,45 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.32.0 — Loom MCP 사전 점검 (업그레이드 2단계 2부 마무리)
+
+PLAN §0.32.0 (R50 `approved-with-fixes` → `approved`) · 커밋 `58f3b02`(P1 red) → `7cb5048`(P1 `loomTools` · export) → `dfa6878`(P2 red) → `f53def9`(P2 판정 + 감사 기록기) → `96b57d3`·`2249d6e`·`e1eca3d`·`d7afef2`·`9118e0d`·`6ad43d7`·`600846a`·`933c9e1`(P2 검증 1~7b차 — 감사 기록기) → `5414329`(P3 red) → `a00837b`(P3 zod → 파생 `inputSchema` · 엄격 검증) → `0eb9530`(P3 검증 1차) → `c7592ec`(P4 red) → `ab12168`(P4 배선 · L-2) → `e6d0ad8`·`cdf5334`·`d1ff0a0`·`1f8542e`·`b3e9c2a`·`1ba074c`·`f5c59ce`(P4 검증 1~4차) → `1e97aa7`(P5 라이브 스모크 `docs/spikes/MCP-PRECHECK-SMOKE-0320.md`) → PATCH 5(문서·VERSION·dist).
+
+**설계 결정 기록 (구현 중 확정 — PLAN 문면 대비):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-16 | ② 판정 함수 시그니처 · D1 · R4 | **주입식 도구 레지스트리(아키텍트 수정, P2):** `evaluateMcpCall(gate, registry, name, args, ctx)` · `toolVisible(gate, registry, name)`. `ctx = {peerId, roomId, agentKind, now}`(시계 주입). 성공은 **검증된 인자**를 돌려주고(`{ok:true, args, audit?}`) 거부는 `message`를 싣는다. | host는 mcp-server의 zod 스키마를 import할 수 없다(의존 방향). 레지스트리를 주입하면 판정은 순수하게 남고, 5·6단계가 원시 인자가 아니라 zod를 통과한 값만 읽는다(R6). | PLAN ② 행 구현 정정 기재. |
+| 2026-10-16 | D5 `broadcast` · R2 | `handoff`에서 `to`가 없으면 브로드캐스트로 판정(디스패처 기본값 `"*"`). zod 스키마는 `to`를 요구하므로 실제로는 `invalid_args`가 먼저다. | 기본값 경로가 새지 않게 실효 대상으로 판정 — R2(`conv_close` 기본 reason)와 같은 원칙. | — |
+| 2026-10-16 | ② 감사 파일 · D8 · UK-3 | **감사 기록기 최종형(P2 검증 1~8차 · fable-advisor 판정 · 아키텍트 판정으로 종결) — 락 없음.** live 경로 lstat(없음 = 0 · 심볼릭 링크 = 기록 생략) → `size>0 && size+line>1 MiB`면 **쓰기 전에** 고유 세대 이름 `policy-audit.<YYYYMMDDTHHmmssSSSZ>-<pid10>-<rand6>.jsonl`로 원자적 rename(이름은 rename 직전 lstat으로 부재 확인 · 새 접미사로 최대 3회 재시도 · 다 차면 그 회전만 생략, live가 잠시 1 MiB 초과 가능 · ENOENT = 다른 기록기가 이미 회전 → 계속) → `O_WRONLY\|O_APPEND\|O_CREAT\|O_NOFOLLOW` 0600 + fd fchmod + 전체 쓰기 루프(짧은 쓰기 → stderr + false). **정리 규칙:** 자신이 방금 회전한 세대 · 이름순 최신 3개 · 이름 시각을 파싱할 수 없는 세대 · mtime·ctime(rename이 갱신 — live로 연 어떤 기록기의 open보다 이르지 않다)·이름 시각 중 가장 늦은 것이 60초 안인 세대는 지우지 않는다. 룸당 디스크 ≤ live + 3 + 최근 60초 안에 쓰이거나 회전된 세대(쓰기 속도 의존). 줄 ≤4,096바이트(LF 포함 — 단계적 절단 · 선택 필드 제거 · 그래도 넘으면 생략 + stderr). 필드 허용 목록 `v, ts, kind, tool, reason?, mode?, peerId, roomId, agentKind, cardId?, convId?`(PLAN 스키마에 `roomId` 추가). 읽기 = `listPolicyAuditGenerations(roomDir)`, ENOENT 허용 · 파싱 불가 줄 건너뜀. **PLAN의 "상한을 넘은 뒤 `.1`로 rename(이전 `.1` 대체)"을 대체한다.** link+unlink는 기각(더 새 live 파일을 지울 수 있다). | 덮어쓰기 0(rename 대상은 늘 부재 확인된 이름) · 절단 0. 프로세스 간 락은 정지한 락 보유자가 모든 기록기를 막는다 — 감사는 관문이 아니므로 락 없는 쪽이 보수적이다. | 유실 창 = Known limits. PLAN ② 행 구현 정정 기재. |
+| 2026-10-16 | D4 `import_board` 감사 | `import_board` 감사 `cardId` = 스냅숏의 done 카드 id를 이어 붙인 것(≤5개 + `+N`). | 감사 스키마에 배열 필드를 늘리지 않고 거부 문구와 같은 표기를 쓴다. | — |
+| 2026-10-16 | D2 · R3 · P3 검증 1차 | 명시적 `arguments: null`은 거부(생략만 `{}`) · 미지 키 되풀이 상한(이름 ≤3개 · 각 32자 · 합계 ≤128자) · 거부 문구 = 판정 함수 메시지 `invalid arguments at <path> (<code>)`, 사유 코드는 stderr·감사에. `docs/TEST_PLAN.md` 14.G1 갱신(`set_purpose verify` → 엄격 스키마가 먼저 거부, M-24는 host 직접 경로에서 유지). | `null`을 `{}`로 보면 "인자 없음"과 "명시적 무효"가 섞인다. 미지 키 이름은 호출자 입력이라 그대로 되풀이하면 응답·로그가 부풀 수 있다. | — |
+| 2026-10-16 | R5 · R6 · D9 단계 순서 | 미지 도구 + **무효 정책** → `isError` `policy_invalid`(1단계가 먼저) · 유효 정책에서 미지 도구 → JSON-RPC `-32601`. `dispatch_card`는 `list_peers`를 한 번 더 부른다(L-2 고정용). | 단계 순서를 문면 그대로 지킨다 — 무효 정책에서는 어떤 이름이든 이유가 같다. | — |
+| 2026-10-16 | D9 재-stat 재로드 → 캐시 없음 | **정책 캐시를 두지 않는다**(P4 검증 3차): `tools/list` · `tools/call`마다 `loadPolicy`(64 KiB 상한 · 재로드 ~43 µs). 한 호출 = 한 게이트. `loomDir`가 ENOENT이고 그 부모가 실제 디렉터리로 해석되지 않으면(매달림 · 부재 · 비디렉터리) fail-closed — 헤드리스 워커 로더도 같다(fingerprint 무변경). 부모 확인은 심볼릭 링크 홈을 따라간다(`1ba074c`). **부재 판정은 두 번의 일치하는 관측**(ENOENT + loomDir/부모 식별 토큰)이 있어야 기본값, 1회 재시도 후에도 어긋나면 `policy.json changed during load`로 fail-closed(`f5c59ce`). (1·2차의 lstat 키 캐시 · 부재 캐시는 폐기.) | `(mtime, size, ino)` 캐시는 같은 inode 제자리 재작성을 놓치고, 부재 캐시는 경합 중 오래된 게이트를 낸다. 매번 읽어도 싸다. | PLAN ② 재로드 행 구현 정정 기재. 잔여 L-1/L-2 = Known limits. |
+| 2026-10-16 | R7 · R50-M2 · D8 L-2 | **L-2는 거부가 아니라 fail-visible(P4 검증 2차 fable-advisor 판정 → 3차 형태 확정):** `fromPeerId`와 고정 `dispatchPeerId`가 다르면 결과는 평소처럼 `blocked`로 착지하고, **로컬 카드 플래그 `l2Mismatch: true`**(재디스패치 때 지움) + 감사 `l2_mismatch`(kind·reason 모두, 카드 id와 시각만 — 고정 id·주장 id 미기록) + stderr `[loom-tower] l2_mismatch cardId=…`. **노트는 0.31.0과 바이트 동일.** 라우팅은 0.31.0 이름 라우팅으로 복원(1차의 고정 peer id 라우팅 철회) · 고정은 정규 id만(≤64자 · 앞뒤 공백 없음 · 제어 문자 없음 · 예약어 아님 · 인박스 sanitize 후 비교) · 보내기 전후 두 조회가 같은 단일 일치일 때만. 고정 id는 MCP 출력(`mcpResultJson` replacer) · sticky `/rpc` · 오류/노트 텍스트에 노출하지 않는다 · 두 필드 모두 스냅숏에서 제거. **PLAN R7의 "불일치 = 거부"와 `l2_from_peer`를 대체한다.** | L-2는 권위가 아니다(모델이 베끼는 주장 · 생략 시 우회 — R50 수용) · 결과는 검사와 무관하게 `blocked` · fail-closed는 relay 이름 라우팅에서 비롯한 0.31.0 대비 오거부 회귀 2건을 냈다. | 배타적 peer-id 라우팅은 Non-goals로 이월. PLAN R7 · ② L-2 행 구현 정정 기재. |
+| 2026-10-16 | ② 감사 · 거부 코드 | `PolicyAuditRecord.kind`에 `l2_mismatch` 추가 · 사유 코드 `l2_from_peer` → `l2_mismatch`. | 위 행의 결과 — 거부가 아니므로 `refused`로 적지 않는다. | — |
+
+**Deviations (계획 대비 실행 방식):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-16 | PLAN ⑥ 레인(구현 `grok-implementer` 우선 · 검증 codex) | **(a) 레인** — 구현 P1~P5 = **Opus 5.5 서브에이전트**(0.31.0 P2부터의 오너 지시 연장). 독립 검증 = codex `gpt-6.1-sol` xhigh — **P2 8차까지 · P4 3차까지** · 이후(**P4 4차 `f5c59ce`부터**) **Opus 5.5 xhigh**(오너 지시 2026-10-16 — GPT-6.1 Sol을 모든 레인에서 제외). 자문 = fable-advisor. | 오너 지시. 발견자≠수정자 분리는 유지. | — |
+| 2026-10-16 | lessons (60) | **(b) PATCH별 검증 라운드:** P1 0회 교정 · **P2 8라운드**(`96b57d3` 회전 락 · nofollow · 필드 허용 목록 · 바이트 상한 → `2249d6e` 락 없는 고유 세대 회전(3개 유지) · 줄 ≤4096(LF 포함) → `e1eca3d` 전체 쓰기 루프 · mtime 정리 · 정지 기록기 한계 문서화 → `d7afef2` 자기 세대 비삭제 → `9118e0d` 이름순 + 60초 유예 → `6ad43d7` 유예 = max(mtime, 회전 시각) → `600846a` ctime 포함 → `933c9e1` rename 직전 이름 부재 확인 → **8차: 아키텍트 판정으로 종결**(벽시계 한계 수용, 아래)) · P3 1라운드(`0eb9530`) · **P4 4라운드**(`e6d0ad8` 조회 오류 fail-closed · 고정 · 비노출 → `cdf5334`·`d1ff0a0` 부재 캐시 · **L-2 fail-visible · 이름 라우팅 복원** → `1f8542e`·`b3e9c2a`·`1ba074c` 캐시 제거 · 부모 fail-closed · 카드 플래그 · 노트 바이트 동일 → `f5c59ce` 부재 이중 관측 · sticky RPC 로컬 필드 제거). | 동시성(감사 회전)·경합(정책 부재 판정)은 한 번에 닫히지 않았다 — 라운드마다 범위를 좁혀 재검증, 남은 계급은 명시 수용. | — |
+| 2026-10-16 | Done when (i) "실 `loom run claude` 세션" | **(c) 라이브 스모크 방식:** 대화형 `loom run` PTY 대신 `claude -p`에 `loom run claude`와 **같은 `--mcp-config` 배선**(+ `--strict-mcp-config`)을 주고 격리된 `LOOM_TEST_HOME`에서 돌렸다. codex(`exec` + `-c mcp_servers.loom.*`) · grok(ACP `session/new.mcpServers`)도 같은 실서버. | 실제 `loom run`은 실 `~/.loom` 세션에 묶인다 — 오너 상태를 건드리지 않는다. 서버 측 동작은 동일. | 문자 그대로의 대화형 실행은 오너가 원하면 남은 일(스모크 finding 3). |
+| 2026-10-16 | PLAN ④ 정직 표 "codex/grok 확인 없음(아키텍트 진술 · 미측정)" | **(d) 정직 표 정정(실측):** **codex는 MCP 호출에 승인을 요구한다** — 도구별/서버별 `approval_mode = "approve"`가 없고 `approval_policy = "never"`면 `MCP tool call requires approval, but approval policy is never`로 실패(Loom 도달 0). 오너의 승인 설정은 오너/codex "always allow"에서 온다(Loom은 쓰지 않음). grok(ACP)은 확인 없음 — 진술대로. UK-1 = 셋 다 `isError` 문구 그대로 표면화 · UK-4 = Loom은 권한 설정을 쓰지 않음, claude 확인 여부는 오너 권한 모드. | 미측정 진술을 실측으로 바꾼다(lessons (30)). | PLAN ④ · `USER_GUIDE.md` §17.7 정정. |
+| 2026-10-16 | UK-2 | **(e) UK-2 조사(P3):** 리포 호출자 중 엄격 검증에 걸린 것은 문서 예시 1건 — `TEST_PLAN.md` 14.G1 `set_purpose {verify:[…]}`(이제 `invalid_args`가 먼저, M-24는 host 경로에서 유지). 기존 smoke-uc 흐름은 **수정 0줄**(P4 red는 신규 케이스만 추가) · PATCH 5 시점 `bun run smoke:uc` OK. | 수정은 호출자 쪽(스키마 완화 아님) — PLAN UK-2 규칙대로. | UK-2 resolved. |
+
+**Known limits (이 버전이 보장하지 않는 것 — 수용한 잔여):**
+
+- **감사 기록 유실 계급(P2 종결):** 60초 정리 유예보다 오래 멈춘 기록기·회전기만 레코드를 잃을 수 있다. 유예는 벽시계(mtime · ctime · 이름 시각 · `Date.now`)를 쓰므로 진행 중인 쓰기 도중 시계가 유예 이상 **앞으로** 뛰면 기록기가 아직 열어 둔 세대를 정리가 지울 수 있다(레코드 1건) — 정지 기록기와 같은 계급으로 취급. 프로세스 간 이름 충돌은 같은 pid + 같은 ms + 같은 6자 접미사일 때만(같은 디렉터리를 공유하는 pid 네임스페이스).
+- **정책 부재 판정 L-1(ABAB):** 심볼릭 링크로 둔 `.loom` 대상을 한 로드 안에서 네 번 바꿔치기(치우고 되돌리기)하면 기본값이 나올 수 있다 — 경로 기반 검사는 `openat` 없이 닫을 수 없고, 그 접근을 가진 쓰기 주체는 어차피 `policy.json`을 지울 수 있다.
+- **정책 부재 판정 L-2(첫 실행 경합):** stat과 lstat 사이에 다른 프로세스가 `~/.loom`을 만들면 일시적 fail-closed 거부 1회 — 다음 호출은 정상.
+- **L-2는 조언 신호다.** `fromPeerId` 생략 시 우회(R50 수용) · peer 변동(참가-전송-이탈, 다른 peer의 `@name`과 같은 id)으로 드물게 잘못 표시될 수 있다 · 절대 거부하지 않는다.
+- **`propose`는 MCP 층만(R9)** — 대화형 셸의 `loom board set … done` 우회는 그대로. 사람 확인 채널 · 폴더 규칙 · 인계 대상 허용 목록 · 배타적 peer-id 라우팅은 이월.
+- **기본 `allow`는 꼭 지킴 완료 판정의 이월이다(D4)** — 감사 `done_via_mcp`만 남는다. 기본 전환은 7단계.
+- **목록 재조회 시점은 CLI 몫** — `mcp.deny` 변경 후 숨김은 늦을 수 있다(호출 거부는 즉시).
+- **grok ACP는 오너 MCP 서버도 로드한다**(세션 `mcpServers`는 더할 뿐 격리하지 않는다 — 스모크 finding 6).
 
 ### §0.31.0 — 스킬 materialize · `policy.json` v1 → CLI별 권한 번역 (업그레이드 2단계 2부)
 
