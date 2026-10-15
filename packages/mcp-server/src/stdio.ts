@@ -72,12 +72,13 @@ async function handle(req: JsonRpcReq) {
       return;
     case "tools/call": {
       const name = String(req.params?.name ?? "");
-      let args = (req.params?.arguments ?? {}) as Record<string, unknown>;
+      let args: Record<string, unknown> = {};
       // 0.32.0 P3 (D2): strict argument validation for known tools — wrong types / unknown
-      // keys are refused as isError text (path + zod code, never the value). Unknown tool
-      // names fall through to the -32601 path below (R5). P4 replaces this with the evaluator.
+      // keys are refused as isError text (path + zod code, never the value). Only omitted
+      // arguments default to {} (inside validate); explicit null is validated and refused.
+      // Unknown tool names fall through to the -32601 path below (R5). P4 replaces this hook.
       if (toolRegistry.has(name)) {
-        const checked = toolRegistry.validate(name, args);
+        const checked = toolRegistry.validate(name, req.params?.arguments);
         if (!checked.ok) {
           respond(req.id, {
             content: [

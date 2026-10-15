@@ -522,7 +522,7 @@ bun run desktop
 
 | # | 단계 | 기대 | 자동 |
 |---|------|------|------|
-| 14.G1 | MCP `set_purpose {verify:[…]}` | 거부: `verify[] cannot be set via MCP set_purpose (M-24). Use CLI: loom purpose set --verify …` | 🤖 + 🖐 |
+| 14.G1 | MCP `set_purpose {verify:[…]}` | 거부(isError): `Loom pre-check refused set_purpose: invalid_args at verify (unrecognized_keys). …` — 0.32.0 D2 엄격 스키마(`verify` 미광고 키)가 먼저 막는다. M-24(`verify[] cannot be set via MCP/set_purpose (M-24). Use CLI: loom purpose set --verify …`)는 host 직접 경로(`setPurpose` allowVerify 없이)를 계속 지킨다(`purpose.test.ts`) | 🤖 + 🖐 |
 | 14.G2 | MCP verify 도구 탐색 | **없음**(verify는 CLI 전용, MCP 미노출) | 🖐 선택 |
 | 14.G3 | `handoff @bob "p" --with-purpose` | purpose 있으면 `(purpose card attached)` / 비었으면 `(purpose empty — nothing attached)`, 첨부 `loom-purpose-v1` | 🖐 선택 |
 

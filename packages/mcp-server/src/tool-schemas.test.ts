@@ -214,6 +214,15 @@ describe("0.32.0 P3 — converter closed subset", () => {
     });
   });
 
+  test("a __proto__ property is advertised (prototype-free properties map)", () => {
+    const out = toJsonSchema(z.object({ ["__proto__"]: z.string() }).strict());
+    const props = out.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(["__proto__"]);
+    expect(Object.getOwnPropertyDescriptor(props, "__proto__")?.value).toEqual({ type: "string" });
+    expect(out.required).toEqual(["__proto__"]);
+    expect(JSON.parse(JSON.stringify(out)).properties).toHaveProperty(["__proto__"]);
+  });
+
   const unsupported: [string, z.ZodTypeAny][] = [
     ["union", z.union([z.string(), z.number()])],
     ["nullable", z.string().nullable()],
@@ -260,6 +269,60 @@ describe("0.32.0 P3 — toolRegistry strict validation", () => {
       expect(JSON.stringify(r)).not.toContain("SECRET_VALUE_1");
     });
   }
+
+  const NO_REQUIRED_ARG_TOOLS = [
+    "list_peers",
+    "get_context_pack",
+    "get_purpose",
+    "set_purpose",
+    "list_tasks",
+    "export_board",
+    "check_handoffs",
+    "conv_await",
+  ];
+  test("the 8 no-required-arg tools are exactly those without `required`", () => {
+    expect(derived.filter((t) => !("required" in t.inputSchema)).map((t) => t.name)).toEqual(
+      NO_REQUIRED_ARG_TOOLS,
+    );
+  });
+  for (const name of NO_REQUIRED_ARG_TOOLS) {
+    test(`${name}: explicit null args → invalid_type at (root) (not defaulted to {})`, () => {
+      expect(toolRegistry.validate(name, null)).toEqual({
+        ok: false,
+        path: "(root)",
+        code: "invalid_type",
+      });
+    });
+  }
+
+  test("unknown-key echo is capped: 200,000-char key → 32 chars + …", () => {
+    const huge = "k".repeat(200_000);
+    const r = toolRegistry.validate("list_peers", { [huge]: 1 });
+    expect(r).toEqual({ ok: false, path: `${"k".repeat(32)}…`, code: "unrecognized_keys" });
+  });
+
+  test("unknown-key echo is capped: 10 keys → first 3 names + +7, total ≤ 128", () => {
+    const args: Record<string, unknown> = {};
+    for (let i = 0; i < 10; i++) args[`key${i}_${"x".repeat(40)}`] = i;
+    const r = toolRegistry.validate("room_chat", { text: "t", ...args });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.code).toBe("unrecognized_keys");
+    const cut = (i: number) => `key${i}_${"x".repeat(40)}`.slice(0, 32);
+    expect(r.path).toBe(`${cut(0)}…,${cut(1)}…,${cut(2)}…,+7`);
+    expect(r.path.length).toBeLessThanOrEqual(128);
+  });
+
+  test("unknown-key echo stays ≤ 128 UTF-16 units with astral (emoji) keys", () => {
+    const args: Record<string, unknown> = {};
+    for (let i = 0; i < 5; i++) args[`${i}${"😀".repeat(100)}`] = i;
+    const r = toolRegistry.validate("list_tasks", args);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.path.length).toBeLessThanOrEqual(128);
+    expect(r.path).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    expect(r.path.endsWith(",+2")).toBe(true);
+  });
 
   test("args undefined is treated as {}", () => {
     expect(toolRegistry.validate("list_peers", undefined)).toEqual({ ok: true, args: {} });
@@ -346,7 +409,7 @@ async function rpcSession(requests: { method: string; params?: unknown }[]): Pro
 
 describe("0.32.0 P3 — stdio server (spawned, isolated LOOM_TEST_HOME)", () => {
   test("tools/list == derived; invalid args → isError invalid_args; unknown → -32601; valid → dispatch", async () => {
-    const [list, wrongType, unknownKey, unknownTool, valid] = await rpcSession([
+    const [list, wrongType, unknownKey, unknownTool, valid, nullArgs, omittedArgs] = await rpcSession([
       { method: "tools/list" },
       { method: "tools/call", params: { name: "room_chat", arguments: { text: 5 } } },
       {
@@ -358,6 +421,8 @@ describe("0.32.0 P3 — stdio server (spawned, isolated LOOM_TEST_HOME)", () => 
       },
       { method: "tools/call", params: { name: "no_such_tool", arguments: {} } },
       { method: "tools/call", params: { name: "get_purpose", arguments: {} } },
+      { method: "tools/call", params: { name: "get_purpose", arguments: null } },
+      { method: "tools/call", params: { name: "get_purpose" } },
     ]);
 
     expect(list.result?.tools).toEqual(TOOL_DEFINITIONS);
@@ -380,5 +445,11 @@ describe("0.32.0 P3 — stdio server (spawned, isolated LOOM_TEST_HOME)", () => 
     const t3 = valid.result?.content?.[0]?.text ?? "";
     expect(valid.result).toBeDefined();
     expect(t3).not.toContain("invalid_args");
+
+    // explicit `arguments: null` is validated (refused), only omitted arguments default to {}
+    expect(nullArgs.result?.isError).toBe(true);
+    expect(nullArgs.result?.content?.[0]?.text ?? "").toContain("invalid_args at (root) (invalid_type)");
+    expect(omittedArgs.result).toBeDefined();
+    expect(omittedArgs.result?.content?.[0]?.text ?? "").not.toContain("invalid_args");
   }, 30_000);
 });

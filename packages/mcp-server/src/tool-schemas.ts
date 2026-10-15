@@ -221,7 +221,8 @@ export function toJsonSchema(node: z.ZodTypeAny): JsonSchema {
   if (node instanceof z.ZodObject) {
     if (node._def.unknownKeys !== "strict") unsupported(node, "object must be .strict()");
     if (!(node._def.catchall instanceof z.ZodNever)) unsupported(node, "object catchall");
-    const properties: JsonSchema = {};
+    // Prototype-free: a `__proto__` property key is stored (and advertised) as an own key.
+    const properties: JsonSchema = Object.create(null) as JsonSchema;
     const required: string[] = [];
     for (const [key, prop] of Object.entries(node.shape as z.ZodRawShape)) {
       if (prop instanceof z.ZodOptional) {
@@ -292,6 +293,28 @@ export type ToolArgsValidation =
   | { ok: true; args: Record<string, unknown> }
   | { ok: false; path: string; code: string };
 
+const KEY_ECHO_MAX_KEYS = 3;
+const KEY_ECHO_MAX_CHARS = 32;
+const PATH_MAX = 128;
+
+/** Truncate to `max` UTF-16 units plus `…` (≤ max + 1); never splits a surrogate pair. */
+function capLength(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const last = s.charCodeAt(max - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+  return `${s.slice(0, end)}…`;
+}
+
+/**
+ * Caller-supplied unknown key names are the only caller text a refusal reflects: at most 3
+ * names, each ≤ 32 chars (+ `…`), `+N` for the rest — total path ≤ 128 chars.
+ */
+function capKeyEcho(keys: string[]): string {
+  const shown = keys.slice(0, KEY_ECHO_MAX_KEYS).map((k) => capLength(k, KEY_ECHO_MAX_CHARS));
+  const rest = keys.length - shown.length;
+  return rest > 0 ? [...shown, `+${rest}`].join(",") : shown.join(",");
+}
+
 function isToolName(name: string): name is LoomToolName {
   return Object.hasOwn(toolSchemas, name);
 }
@@ -314,10 +337,10 @@ export const toolRegistry: {
     if (!issue) return { ok: false, path: "(root)", code: "custom" };
     const path =
       issue.code === "unrecognized_keys"
-        ? issue.keys.join(",")
+        ? capKeyEcho(issue.keys)
         : issue.path.length > 0
           ? issue.path.join(".")
           : "(root)";
-    return { ok: false, path, code: issue.code };
+    return { ok: false, path: capLength(path, PATH_MAX - 1), code: issue.code };
   },
 };
