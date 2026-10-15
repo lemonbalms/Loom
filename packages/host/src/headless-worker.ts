@@ -28,7 +28,12 @@ import {
   writeCardSession,
   type CardSessionRecord,
 } from "./card-session-store";
-import { killProcessGroup, spawnDetachedWorker, type SpawnedWorker } from "./process-group";
+import {
+  killProcessGroup,
+  processGroupAlive,
+  spawnDetachedWorker,
+  type SpawnedWorker,
+} from "./process-group";
 
 const OUTPUT_CAP = 200_000;
 const SUMMARY_CAP = 900;
@@ -109,6 +114,8 @@ type SpawnPlan = {
 type SpawnOutcome =
   | { kind: "abandon" }
   | { kind: "spawn_error"; message: string }
+  | { kind: "setup_failed"; message: string }
+  | { kind: "cwd_denied" }
   | {
       kind: "done";
       timedOut: boolean;
@@ -180,12 +187,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Inherited env minus every LOOM_* and FABLE_* key, then LOOM_CARD only. */
+/**
+ * Inherited env minus every key whose uppercased name starts with LOOM_ or
+ * FABLE_ (`loom_secret` and `Fable_Token` included), then LOOM_CARD only.
+ */
 function scrubWorkerEnv(cardId: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (typeof value !== "string") continue;
-    if (key.startsWith("LOOM_") || key.startsWith("FABLE_")) continue;
+    const upper = key.toUpperCase();
+    if (upper.startsWith("LOOM_") || upper.startsWith("FABLE_")) continue;
     env[key] = value;
   }
   env.LOOM_CARD = cardId;
@@ -196,6 +207,11 @@ function isPathInside(root: string, target: string): boolean {
   if (target === root) return true;
   const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
   return target.startsWith(prefix);
+}
+
+function mkdir0700(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
 }
 
 function resolveWorkerCwd(
@@ -211,8 +227,10 @@ function resolveWorkerCwd(
   } catch {
     return { ok: false };
   }
-  for (const root of config.allowedRoots) {
-    if (!root || !isAbsolute(root)) continue;
+  // Missing allowedRoots is an empty allowlist, not a throw.
+  const roots = Array.isArray(config.allowedRoots) ? config.allowedRoots : [];
+  for (const root of roots) {
+    if (typeof root !== "string" || !root || !isAbsolute(root)) continue;
     let realRoot: string;
     try {
       realRoot = realpathSync(root);
@@ -449,14 +467,7 @@ export class HeadlessDispatcher {
   async dispatch(card: HeadlessDispatchCard): Promise<void> {
     const resolved = resolveWorkerCwd(card.cwd, this.deps.config);
     if (!resolved.ok) {
-      await this.deliver(card, new Date().toISOString(), {
-        status: "failed",
-        reason: "cwd_not_allowed",
-        output: "",
-        truncated: false,
-        summary: "",
-        note: "cwd realpath is outside worker.allowedRoots",
-      });
+      await this.deliver(card, new Date().toISOString(), this.cwdDeniedFields());
       return;
     }
     const key = cardKeyHash(card.roomId, card.agent, card.cardId);
@@ -472,11 +483,22 @@ export class HeadlessDispatcher {
     const owner = createOwner(card.dispatchHandoffId);
     this.byCard.set(key, owner);
     try {
-      await this.lead(card, resolved.cwd, owner);
+      await this.lead(card, owner);
     } finally {
       if (this.byCard.get(key) === owner) this.byCard.delete(key);
       owner.resolve();
     }
+  }
+
+  private cwdDeniedFields(): HeadlessResultFields {
+    return {
+      status: "failed",
+      reason: "cwd_not_allowed",
+      output: "",
+      truncated: false,
+      summary: "",
+      note: "cwd realpath is outside worker.allowedRoots",
+    };
   }
 
   private alreadyRunningFields(): HeadlessResultFields {
@@ -522,15 +544,19 @@ export class HeadlessDispatcher {
     writeCardSession({ loomDir: this.deps.loomDir }, record);
   }
 
-  private async lead(
-    card: HeadlessDispatchCard,
-    cwd: string,
-    owner: CardOwner,
-  ): Promise<void> {
+  private async lead(card: HeadlessDispatchCard, owner: CardOwner): Promise<void> {
     const lane = this.lanes[card.agent];
     await lane.acquire();
     try {
       if (owner.abandoned) return;
+      // Again after the semaphore wait: the path checked before the wait
+      // may have been replaced while this card was queued.
+      const fresh = resolveWorkerCwd(card.cwd, this.deps.config);
+      if (!fresh.ok) {
+        await this.deliver(card, new Date().toISOString(), this.cwdDeniedFields());
+        return;
+      }
+      const cwd = fresh.cwd;
       const fingerprint = currentFingerprint(this.deps.config);
       const existing = readCardSession({
         loomDir: this.deps.loomDir,
@@ -607,12 +633,27 @@ export class HeadlessDispatcher {
       }
 
       for (;;) {
-        const outcome = await this.spawnOnce(card, cwd, owner, plan);
+        const outcome = await this.spawnOnce(card, owner, plan);
         if (outcome.kind === "abandon") return;
         if (outcome.kind === "spawn_error") {
           await this.deliver(card, plan.startedAt, {
             status: "failed",
             reason: "needs_verification",
+            output: "",
+            truncated: false,
+            summary: "",
+            note: outcome.message.slice(0, 500),
+          });
+          return;
+        }
+        if (outcome.kind === "cwd_denied") {
+          await this.deliver(card, plan.startedAt, this.cwdDeniedFields());
+          return;
+        }
+        if (outcome.kind === "setup_failed") {
+          await this.deliver(card, plan.startedAt, {
+            status: "failed",
+            reason: "spawn_setup_failed",
             output: "",
             truncated: false,
             summary: "",
@@ -668,10 +709,10 @@ export class HeadlessDispatcher {
     },
   ): Promise<void> {
     if (outcome.parsed.sessionId) record.sessionId = outcome.parsed.sessionId;
-    const fullText =
-      outcome.timedOut && outcome.parsed.finalText.length === 0
-        ? outcome.raw
-        : outcome.parsed.finalText;
+    // Timeout keeps the whole partial transcript. Parsed finalText alone
+    // drops the remainder once any text has been parsed.
+    const fullText = outcome.timedOut ? outcome.raw : outcome.parsed.finalText;
+    const summary = summaryLine(fullText);
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const note = truncationNote(capped.truncated, outcome.transcriptPath, fullText);
     await this.sendAndMark(card, record, startedAt, {
@@ -679,7 +720,7 @@ export class HeadlessDispatcher {
       reason: outcome.timedOut ? "timeout" : "needs_verification",
       output: capped.text,
       truncated: capped.truncated,
-      summary: summaryLine(capped.text),
+      summary,
       ...(note ? { note } : {}),
     });
   }
@@ -718,19 +759,12 @@ export class HeadlessDispatcher {
       while (!owner.abandoned) {
         if (Date.now() >= deadline) {
           timedOut = true;
+          // Only start the kill when the recorded leader is still that
+          // process. Once SIGTERM is sent, reap the group even if the
+          // leader exits and a grandchild ignores SIGTERM.
           if (pidAlive(record.pid, record.procStartedAt)) {
-            killProcessGroup(record.pgid, "SIGTERM");
-            const killAt = Date.now() + GROUP_KILL_GRACE_MS;
-            while (
-              Date.now() < killAt &&
-              !owner.abandoned &&
-              pidAlive(record.pid, record.procStartedAt)
-            ) {
-              await sleep(50);
-            }
-            if (!owner.abandoned && pidAlive(record.pid, record.procStartedAt)) {
-              killProcessGroup(record.pgid, "SIGKILL");
-            }
+            this.signalTracked(flight, "SIGTERM");
+            await this.reapGroup(record.pgid, flight, owner, Date.now());
           }
           break;
         }
@@ -746,34 +780,80 @@ export class HeadlessDispatcher {
     }
   }
 
+  /** Signal only while this flight is tracked and the group probe succeeds. */
+  private signalTracked(flight: HeadlessFlight, signal: "SIGTERM" | "SIGKILL"): void {
+    const pgid = flight.pgid ?? 0;
+    if (!this.active.includes(flight)) return;
+    if (!processGroupAlive(pgid)) return;
+    killProcessGroup(pgid, signal);
+  }
+
+  /**
+   * After SIGTERM, wait out the grace period even if the leader has exited.
+   * SIGKILL follows when the group is still there. The permit stays held
+   * until this returns (the caller releases it afterwards).
+   */
+  private async reapGroup(
+    pgid: number,
+    flight: HeadlessFlight,
+    owner: CardOwner,
+    sigtermAt: number,
+  ): Promise<void> {
+    const killAt = sigtermAt + GROUP_KILL_GRACE_MS;
+    while (Date.now() < killAt && !owner.abandoned && processGroupAlive(pgid)) {
+      await sleep(50);
+    }
+    if (!owner.abandoned && this.active.includes(flight) && processGroupAlive(pgid)) {
+      killProcessGroup(pgid, "SIGKILL");
+      const giveUp = Date.now() + 1_000;
+      while (Date.now() < giveUp && processGroupAlive(pgid)) await sleep(30);
+    }
+  }
+
   private async spawnOnce(
     card: HeadlessDispatchCard,
-    cwd: string,
     owner: CardOwner,
     plan: SpawnPlan,
   ): Promise<SpawnOutcome> {
-    const dir = this.cardDir(card);
-    mkdirSync(dir, { recursive: true });
-    const transcriptPath = join(dir, `transcript-${plan.attempts}.jsonl`);
-    const stderrPath = join(dir, `transcript-${plan.attempts}.stderr`);
-    const wrapped = wrapDispatchedPrompt(card.prompt);
-    const promptBody = plan.resumeSessionId
-      ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`
-      : wrapped;
-    const promptFile = this.writeGrokPrompt(card.agent, dir, promptBody);
-    const built = buildAgentArgv({
-      agent: card.agent,
-      cwd,
-      sessionId: plan.sessionId,
-      resumeSessionId: plan.resumeSessionId,
-      hint: HEADLESS_WORKER_HINT,
-      prompt: card.prompt,
-      promptFile,
-      permissions: this.deps.config.permissions,
-    });
-    const command = this.deps.commands[card.agent];
-    let spawned: SpawnedWorker;
+    let spawned: SpawnedWorker | undefined;
+    let flight: HeadlessFlight | undefined;
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    let disarmed = false;
+    let sigtermAt = 0;
+    const disarmTimeout = (): void => {
+      disarmed = true;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      timeoutTimer = undefined;
+    };
     try {
+      const dir = this.cardDir(card);
+      mkdir0700(dir);
+      const transcriptPath = join(dir, `transcript-${plan.attempts}.jsonl`);
+      const stderrPath = join(dir, `transcript-${plan.attempts}.stderr`);
+      const wrapped = wrapDispatchedPrompt(card.prompt);
+      const promptBody = plan.resumeSessionId
+        ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`
+        : wrapped;
+      const promptFile = this.writeGrokPrompt(card.agent, dir, promptBody);
+      // Re-checked after the permit wait, immediately before spawn.
+      // Residual TOCTOU: the directory can still be replaced by a symlink
+      // between this realpath and the child's execve. Closing that window
+      // needs an fd-relative chdir; spawn's cwd is only a path string.
+      const checked = resolveWorkerCwd(card.cwd, this.deps.config);
+      if (!checked.ok) return { kind: "cwd_denied" };
+      const cwd = checked.cwd;
+      const built = buildAgentArgv({
+        agent: card.agent,
+        cwd,
+        sessionId: plan.sessionId,
+        resumeSessionId: plan.resumeSessionId,
+        hint: HEADLESS_WORKER_HINT,
+        prompt: card.prompt,
+        promptFile,
+        permissions: this.deps.config.permissions,
+      });
+      const command = this.deps.commands[card.agent];
       spawned = spawnDetachedWorker({
         bin: command.bin,
         args: [...command.args, ...built.argv],
@@ -782,81 +862,120 @@ export class HeadlessDispatcher {
         stdoutPath: transcriptPath,
         stderrPath: stderrPath,
       });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { kind: "spawn_error", message };
-    }
+      const child = spawned.child;
+      const leaderGone = (): boolean => child.exitCode !== null || child.signalCode !== null;
+      // Normal exit disarms the timeout synchronously, before any await,
+      // so a recycled pgid is not signaled during result delivery.
+      const onLeaderExit = (): void => {
+        if (!timedOut) disarmTimeout();
+      };
+      if (leaderGone()) onLeaderExit();
+      else child.once("exit", onLeaderExit);
 
-    const exitPromise = waitChild(spawned.child);
-    exitPromise.catch(() => {
-      /* abandon can leave this pending until the child exits */
-    });
-    const stdin = spawned.child.stdin;
-    if (stdin) {
-      stdin.on("error", () => {
-        /* child exited before stdin finished */
+      const exitPromise = waitChild(child);
+      exitPromise.catch(() => {
+        /* abandon can leave this pending until the child exits */
       });
-      const payload =
-        built.promptTransport === "stdin"
-          ? built.continuationMessage
-            ? `${built.continuationMessage}\n\n${wrapped}`
-            : wrapped
-          : "";
-      stdin.end(payload);
-    }
 
-    const procStartedAt = await captureLstart(spawned.pid, spawned.child);
-    const flight: HeadlessFlight = {
-      workerId: plan.sessionId,
-      cardId: card.cardId,
-      agent: card.agent,
-      pid: spawned.pid,
-      pgid: spawned.pgid,
-    };
-    this.active.push(flight);
-    const record: CardSessionRecord = {
-      agent: card.agent,
-      cwd,
-      sessionId: plan.sessionId,
-      promptFingerprint: currentFingerprint(this.deps.config),
-      attempts: plan.attempts,
-      pid: spawned.pid,
-      pgid: spawned.pgid,
-      startedAt: plan.startedAt,
-      state: "running",
-      resultSent: false,
-      roomId: card.roomId,
-      cardId: card.cardId,
-      fromPeerId: card.fromPeerId,
-      dispatchHandoffId: card.dispatchHandoffId,
-      procStartedAt,
-    };
-    writeCardSession({ loomDir: this.deps.loomDir }, record);
+      const tracked: HeadlessFlight = {
+        workerId: plan.sessionId,
+        cardId: card.cardId,
+        agent: card.agent,
+        pid: spawned.pid,
+        pgid: spawned.pgid,
+      };
+      flight = tracked;
+      this.active.push(tracked);
 
-    let timedOut = false;
-    let killTimer: ReturnType<typeof setTimeout> | undefined;
-    const timer = setTimeout(() => {
-      if (owner.abandoned) return;
-      timedOut = true;
-      killProcessGroup(spawned.pgid, "SIGTERM");
-      killTimer = setTimeout(() => {
-        if (owner.abandoned) return;
-        killProcessGroup(spawned.pgid, "SIGKILL");
-      }, GROUP_KILL_GRACE_MS);
-    }, timeoutMsOf(this.deps.config));
+      const stdin = child.stdin;
+      if (stdin) {
+        stdin.on("error", () => {
+          /* child exited before stdin finished */
+        });
+        const payload =
+          built.promptTransport === "stdin"
+            ? built.continuationMessage
+              ? `${built.continuationMessage}\n\n${wrapped}`
+              : wrapped
+            : "";
+        try {
+          stdin.end(payload);
+        } catch (err) {
+          // A leader that has already exited closes the pipe. A live leader
+          // whose stdin write throws is a setup failure: the catch kills it.
+          if (!leaderGone()) throw err;
+        }
+      }
 
-    try {
+      let markTimedOut: () => void = () => {};
+      const timedOutPromise = new Promise<void>((resolve) => {
+        markTimedOut = resolve;
+      });
+      if (!disarmed && !leaderGone()) {
+        timeoutTimer = setTimeout(() => {
+          if (disarmed || owner.abandoned || !this.active.includes(tracked)) return;
+          if (!processGroupAlive(tracked.pgid ?? 0)) return;
+          timedOut = true;
+          sigtermAt = Date.now();
+          this.signalTracked(tracked, "SIGTERM");
+          markTimedOut();
+        }, timeoutMsOf(this.deps.config));
+      }
+
+      const procStartedAt = await captureLstart(spawned.pid, child);
+      // Let a queued exit event disarm the timeout before the running
+      // record is persisted. One turn; not a grace period.
+      await sleep(0);
+      const record: CardSessionRecord = {
+        agent: card.agent,
+        cwd,
+        sessionId: plan.sessionId,
+        promptFingerprint: currentFingerprint(this.deps.config),
+        attempts: plan.attempts,
+        pid: spawned.pid,
+        pgid: spawned.pgid,
+        startedAt: plan.startedAt,
+        state: "running",
+        resultSent: false,
+        roomId: card.roomId,
+        cardId: card.cardId,
+        fromPeerId: card.fromPeerId,
+        dispatchHandoffId: card.dispatchHandoffId,
+        procStartedAt,
+      };
+      writeCardSession({ loomDir: this.deps.loomDir }, record);
+
       if (owner.abandoned) {
-        detachChild(spawned.child);
+        detachChild(child);
         return { kind: "abandon" };
       }
       const winner = await Promise.race([
-        exitPromise.then((code) => ({ kind: "exit" as const, code })),
+        exitPromise.then(
+          (code) => ({ kind: "exit" as const, code }),
+          () => ({ kind: "exit" as const, code: null as number | null }),
+        ),
         owner.abandonedPromise.then(() => ({ kind: "abandon" as const })),
+        timedOutPromise.then(() => ({ kind: "timeout" as const })),
       ]);
       if (winner.kind === "abandon" || owner.abandoned) {
-        detachChild(spawned.child);
+        detachChild(child);
         return { kind: "abandon" };
+      }
+      if (timedOut) {
+        await this.reapGroup(tracked.pgid ?? 0, tracked, owner, sigtermAt || Date.now());
+      }
+      if (owner.abandoned) {
+        detachChild(child);
+        return { kind: "abandon" };
+      }
+      if (!leaderGone()) {
+        await Promise.race([
+          exitPromise.then(
+            () => undefined,
+            () => undefined,
+          ),
+          sleep(1_000),
+        ]);
       }
       const raw = readTranscript(transcriptPath);
       const parsed = parseAgentStream(card.agent, raw);
@@ -873,11 +992,18 @@ export class HeadlessDispatcher {
         record,
         sessionId,
       };
+    } catch (err) {
+      if (spawned && processGroupAlive(spawned.pgid)) {
+        killProcessGroup(spawned.pgid, "SIGKILL");
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return { kind: "setup_failed", message };
     } finally {
-      clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
-      const index = this.active.indexOf(flight);
-      if (index >= 0) this.active.splice(index, 1);
+      disarmTimeout();
+      if (flight) {
+        const index = this.active.indexOf(flight);
+        if (index >= 0) this.active.splice(index, 1);
+      }
     }
   }
 

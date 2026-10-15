@@ -38,20 +38,33 @@ function ownPgid(): number {
   return cachedOwnPgid;
 }
 
-/** Signal the worker group. Never signals this process's own group. */
+/**
+ * True when `pgid` is still a live process group.
+ * Signal 0 is a probe: it does not deliver SIGTERM or SIGKILL.
+ * This process's own group is reported dead so callers never signal it.
+ */
+export function processGroupAlive(pgid: number): boolean {
+  if (!Number.isInteger(pgid) || pgid <= 1) return false;
+  if (pgid === ownPgid()) return false;
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Signal the worker group. Never signals this process's own group.
+ * Never falls back to a positive pid: that pid may already belong to
+ * an unrelated process. A dead or recycled group is left alone.
+ */
 export function killProcessGroup(pgid: number, signal: GroupSignal): void {
-  if (!Number.isInteger(pgid) || pgid <= 1) return;
-  if (pgid === ownPgid()) return;
+  if (!processGroupAlive(pgid)) return;
   try {
     process.kill(-pgid, signal);
-    return;
   } catch {
-    /* not a group leader, or already dead */
-  }
-  try {
-    process.kill(pgid, signal);
-  } catch {
-    /* already dead */
+    /* group disappeared between the probe and the signal */
   }
 }
 
@@ -67,10 +80,14 @@ export function spawnDetachedWorker(opts: {
   stdoutPath: string;
   stderrPath: string;
 }): SpawnedWorker {
-  mkdirSync(dirname(opts.stdoutPath), { recursive: true });
-  const outFd = openSync(opts.stdoutPath, "w", 0o600);
-  const errFd = openSync(opts.stderrPath, "w", 0o600);
+  const dir = dirname(opts.stdoutPath);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  let outFd: number | undefined;
+  let errFd: number | undefined;
   try {
+    outFd = openSync(opts.stdoutPath, "w", 0o600);
+    errFd = openSync(opts.stderrPath, "w", 0o600);
     chmodSync(opts.stdoutPath, 0o600);
     chmodSync(opts.stderrPath, 0o600);
     const child = spawn(opts.bin, opts.args, {
@@ -84,7 +101,20 @@ export function spawnDetachedWorker(opts: {
     const pgid = pid > 1 ? lookupPgid(pid) : 0;
     return { child, pid, pgid };
   } finally {
-    closeSync(outFd);
-    closeSync(errFd);
+    // stderr open can throw after stdout succeeded. Close whichever fd is open.
+    if (outFd !== undefined) {
+      try {
+        closeSync(outFd);
+      } catch {
+        /* already closed */
+      }
+    }
+    if (errFd !== undefined) {
+      try {
+        closeSync(errFd);
+      } catch {
+        /* already closed */
+      }
+    }
   }
 }
