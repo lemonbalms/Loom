@@ -8,7 +8,7 @@
  * Usage (repo root):
  *   bun run smoke:uc
  */
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn, type Subprocess } from "bun";
@@ -111,7 +111,7 @@ class McpClient {
             const msg = JSON.parse(line) as {
               id?: number | string | null;
               result?: unknown;
-              error?: { message?: string };
+              error?: { code?: number; message?: string };
             };
             if (msg.id === undefined || msg.id === null) continue;
             const id = Number(msg.id);
@@ -119,7 +119,11 @@ class McpClient {
             if (!w) continue;
             this.waiters.delete(id);
             if (msg.error) {
-              w.reject(new Error(msg.error.message ?? JSON.stringify(msg.error)));
+              const err = new Error(msg.error.message ?? JSON.stringify(msg.error)) as Error & {
+                code?: number;
+              };
+              err.code = msg.error.code;
+              w.reject(err);
             } else {
               w.resolve(msg.result);
             }
@@ -187,6 +191,29 @@ class McpClient {
     } catch {
       return { raw: text };
     }
+  }
+
+  /** P4: raw tools/call — returns isError + text instead of throwing on refusals. */
+  async toolsCallRaw(name: string, args: Record<string, unknown> = {}) {
+    const result = (await this.request("tools/call", { name, arguments: args })) as {
+      content?: Array<{ type?: string; text?: string }>;
+      isError?: boolean;
+    };
+    return { isError: result?.isError === true, text: result?.content?.[0]?.text ?? "" };
+  }
+
+  /** P4: JSON-RPC error code of a tools/call (null when it answered with a result). */
+  async toolsCallErrorCode(name: string, args: Record<string, unknown> = {}) {
+    try {
+      await this.request("tools/call", { name, arguments: args });
+      return null;
+    } catch (e) {
+      return (e as { code?: number }).code ?? -1;
+    }
+  }
+
+  async ping() {
+    return this.request("ping", {});
   }
 
   async close() {
@@ -684,6 +711,9 @@ async function main() {
     await mcpBob.close();
   }
 
+  // --- P4 (0.32.0): MCP pre-check wired at tools/list + tools/call ---
+  await smokeP4();
+
   // summary
   console.log("");
   if (failed > 0) {
@@ -691,6 +721,162 @@ async function main() {
     process.exitCode = 1;
   } else {
     console.log("smoke-uc OK");
+  }
+}
+
+/** Atomic policy.json swap (new inode) in the isolated LOOM_TEST_HOME; null removes it. */
+function setPolicy(over: Record<string, unknown> | string | null) {
+  const dir = join(home, ".loom");
+  const path = join(dir, "policy.json");
+  if (over === null) {
+    try {
+      unlinkSync(path);
+    } catch {
+      /* absent */
+    }
+    return;
+  }
+  const text =
+    typeof over === "string"
+      ? over
+      : JSON.stringify({
+          version: 1,
+          shell: { deny: [] },
+          network: false,
+          mcp: { deny: [] },
+          skills: { allowScripts: [] },
+          ...over,
+        });
+  const tmp = join(dir, `.policy-${Date.now()}.tmp`);
+  writeFileSync(tmp, text);
+  renameSync(tmp, path);
+}
+
+async function smokeP4() {
+  const mcp = new McpClient("alice");
+  try {
+    await mcp.initialize();
+    setPolicy(null);
+
+    // P4-1 default policy: tools/list = 20 (0.31.0 names) + board.replace refused.
+    let listed = ((await mcp.toolsList()) as { tools?: Array<{ name: string }> }).tools ?? [];
+    check("P4", "default tools/list = 20", listed.length === 20, String(listed.length));
+    const snap = (await mcp.toolsCall("export_board")) as { snapshot?: unknown };
+    let r = await mcp.toolsCallRaw("import_board", { snapshot: snap.snapshot, mode: "replace" });
+    check(
+      "P4",
+      "board.replace refused by default (import_board mode=replace)",
+      r.isError && r.text.includes("loomTools.denyModes board.replace"),
+      r.text,
+    );
+    r = await mcp.toolsCallRaw("import_board", { snapshot: snap.snapshot, mode: "merge" });
+    check("P4", "import_board mode=merge still allowed", !r.isError, r.text);
+
+    // P4-2 unknown tool name → JSON-RPC -32601 (R5).
+    const code = await mcp.toolsCallErrorCode("no_such_tool", {});
+    check("P4", "unknown tool name → -32601", code === -32601, String(code));
+
+    // P4-3 fromPeerId mismatch (L-2 · R7): dispatch to bob (exactly one name match).
+    const peers = (await mcp.toolsCall("list_peers")) as {
+      peers?: Array<{ id: string; displayName: string }>;
+    };
+    const bobId = peers.peers?.find((p) => p.displayName === "bob")?.id ?? "";
+    const added = (await mcp.toolsCall("add_task", { title: "p4 l2 card" })) as {
+      task?: { id: string };
+    };
+    const cardId = added.task?.id ?? "";
+    const dispatched = await mcp.toolsCallRaw("dispatch_card", {
+      taskId: cardId,
+      node: "bob",
+      prompt: "p4 l2 smoke",
+    });
+    check("P4", "dispatch_card to bob", !dispatched.isError && !!bobId, dispatched.text);
+    const resultJson = (seq: number) =>
+      JSON.stringify({
+        v: 1,
+        cardId,
+        status: "done",
+        node: "bob",
+        seq,
+        output: "o",
+        summary: "s",
+        finishedAt: new Date().toISOString(),
+      });
+    r = await mcp.toolsCallRaw("apply_card_result", {
+      resultJson: resultJson(1),
+      fromPeerId: "p_forged_peer",
+    });
+    check(
+      "P4",
+      "apply_card_result fromPeerId mismatch refused",
+      r.isError && r.text.includes("L-2: fromPeerId (p_forged_peer) does not match dispatch target"),
+      r.text,
+    );
+    r = await mcp.toolsCallRaw("apply_card_result", { resultJson: resultJson(2), fromPeerId: bobId });
+    check(
+      "P4",
+      "apply_card_result matching fromPeerId lands blocked",
+      !r.isError && r.text.includes('"blocked"'),
+      r.text,
+    );
+
+    // P4-4 denied tool: absent from tools/list AND refused on call (D3).
+    setPolicy({ mcp: { deny: ["loom__room_chat"] } });
+    listed = ((await mcp.toolsList()) as { tools?: Array<{ name: string }> }).tools ?? [];
+    check(
+      "P4",
+      "mcp.deny loom__room_chat hidden from tools/list",
+      listed.length === 19 && !listed.some((t) => t.name === "room_chat"),
+      listed.map((t) => t.name).join(","),
+    );
+    r = await mcp.toolsCallRaw("room_chat", { text: "should be refused" });
+    check(
+      "P4",
+      "denied tool refused on call",
+      r.isError && r.text.includes("denied by policy.json mcp.deny (loom__room_chat)"),
+      r.text,
+    );
+
+    // P4-5 propose refusal of update_task done; owner CLI still marks it done (R1).
+    setPolicy({ loomTools: { done: "propose" } });
+    const card2 = (await mcp.toolsCall("add_task", { title: "p4 propose card" })) as {
+      task?: { id: string };
+    };
+    const id2 = card2.task?.id ?? "";
+    r = await mcp.toolsCallRaw("update_task", { id: id2, status: "done" });
+    check(
+      "P4",
+      "propose: update_task done refused",
+      r.isError && r.text.includes(`loom board set ${id2} done`),
+      r.text,
+    );
+    const owner = await run("--profile", "alice", "board", "set", id2, "done");
+    check("P4", "propose: owner `loom board set <id> done` succeeds", owner.code === 0, owner.text);
+
+    // P4-6 invalid policy.json: every call refused with the loader message, list = 20, ping ok.
+    setPolicy({ bogus: true });
+    listed = ((await mcp.toolsList()) as { tools?: Array<{ name: string }> }).tools ?? [];
+    check("P4", "invalid policy: tools/list = 20", listed.length === 20, String(listed.length));
+    r = await mcp.toolsCallRaw("get_purpose", {});
+    check(
+      "P4",
+      "invalid policy: call refused with loader message",
+      r.isError && r.text.includes("policy.json is invalid") && r.text.includes("bogus"),
+      r.text,
+    );
+    let pinged = false;
+    try {
+      await mcp.ping();
+      pinged = true;
+    } catch {
+      pinged = false;
+    }
+    check("P4", "invalid policy: server still answers ping", pinged);
+  } catch (e) {
+    check("P4", "MCP pre-check session", false, e instanceof Error ? e.message : String(e));
+  } finally {
+    setPolicy(null);
+    await mcp.close();
   }
 }
 

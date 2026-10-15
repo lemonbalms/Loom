@@ -430,13 +430,12 @@ describe("0.32.0 P3 — stdio server (spawned, isolated LOOM_TEST_HOME)", () => 
 
     expect(wrongType.result?.isError).toBe(true);
     const t1 = wrongType.result?.content?.[0]?.text ?? "";
-    expect(t1).toContain("invalid_args");
-    expect(t1).toContain("text");
-    expect(t1).toContain("invalid_type");
+    // P4: refusal text is the evaluator's message (reason code invalid_args → stderr + audit).
+    expect(t1).toContain("Loom pre-check refused room_chat: invalid arguments at text (invalid_type)");
 
     expect(unknownKey.result?.isError).toBe(true);
     const t2 = unknownKey.result?.content?.[0]?.text ?? "";
-    expect(t2).toContain("invalid_args");
+    expect(t2).toContain("Loom pre-check refused update_task: invalid arguments at zzz");
     expect(t2).toContain("unrecognized_keys");
     expect(t2).not.toContain("SECRET_VALUE_2");
 
@@ -444,12 +443,12 @@ describe("0.32.0 P3 — stdio server (spawned, isolated LOOM_TEST_HOME)", () => 
 
     const t3 = valid.result?.content?.[0]?.text ?? "";
     expect(valid.result).toBeDefined();
-    expect(t3).not.toContain("invalid_args");
+    expect(t3).not.toContain("Loom pre-check refused");
 
     // explicit `arguments: null` is validated (refused), only omitted arguments default to {}
     expect(nullArgs.result?.isError).toBe(true);
-    expect(nullArgs.result?.content?.[0]?.text ?? "").toContain("invalid_args at (root) (invalid_type)");
+    expect(nullArgs.result?.content?.[0]?.text ?? "").toContain("invalid arguments at (root) (invalid_type)");
     expect(omittedArgs.result).toBeDefined();
-    expect(omittedArgs.result?.content?.[0]?.text ?? "").not.toContain("invalid_args");
+    expect(omittedArgs.result?.content?.[0]?.text ?? "").not.toContain("Loom pre-check refused");
   }, 30_000);
 });
