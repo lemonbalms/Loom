@@ -14,8 +14,11 @@
  *     inside JSON strings are stripped or escaped, then parsed (PROBE §7.1).
  *   Codex: thread.started.thread_id (absent -> sessionId null, no throw),
  *     last agent_message item.text, turn.completed.usage,
- *     command_execution with exit_code !== 0 -> denial. isError false unless
- *     some object has is_error:true.
+ *     command_execution with exit_code !== 0 is a denial only when
+ *     aggregated_output names a sandbox/permission block ("Operation not
+ *     permitted", "Permission denied", "sandbox", case-insensitive).
+ *     Other non-zero exits are ordinary command failures.
+ *     isError false unless some object has is_error:true.
  *   Grok: concatenate text.data, end.sessionId, end.usage,
  *     end.stopReason === "error" -> isError, else false.
  *     Each text chunk whose data includes "denied:" is a { text } denial.
@@ -205,6 +208,61 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
         command: "touch x",
         exitCode: 1,
         text: "Operation not permitted",
+      },
+    ]);
+  });
+
+  test("codex non-zero command_execution without a sandbox block is not a denial", () => {
+    const jsonl = [
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "rg --files",
+          aggregated_output: "",
+          exit_code: 1,
+        },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "true",
+          aggregated_output: "sandbox ok",
+          exit_code: 0,
+        },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "cat secret",
+          aggregated_output: "cat: secret: Permission denied",
+          exit_code: 1,
+        },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "command_execution",
+          command: "ls",
+          aggregated_output: "blocked by sandbox policy",
+          exit_code: 1,
+        },
+      }),
+    ].join("\n");
+    const parsed = parseAgentStream("codex", jsonl);
+    expect(parsed.isError).toBe(false);
+    expect(parsed.denials).toEqual([
+      {
+        command: "cat secret",
+        exitCode: 1,
+        text: "cat: secret: Permission denied",
+      },
+      {
+        command: "ls",
+        exitCode: 1,
+        text: "blocked by sandbox policy",
       },
     ]);
   });

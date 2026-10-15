@@ -335,8 +335,9 @@ function codexArgv(opts: BuildAgentArgvInput): string[] {
 function grokArgv(opts: BuildAgentArgvInput): string[] {
   const profile = requireProfile(opts.permissions.grok, "grok");
   if (!opts.promptFile) throw new Error("grok promptFile is required");
+  // grok 1.0.54: -p/--single <PROMPT> requires a non-flag value and exits
+  // when the next token is a flag. Headless prompt transport is --prompt-file.
   const argv = [
-    "-p",
     "--prompt-file",
     opts.promptFile,
     "--output-format",

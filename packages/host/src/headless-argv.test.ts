@@ -23,7 +23,9 @@
  *   in the tests below (PLAN D3, D10, D12, R4, R48-L2).
  */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import {
   ARGV_TEMPLATE_VERSION,
   HEADLESS_WORKER_HINT,
@@ -66,6 +68,7 @@ const CWD = "/tmp/loom-work";
 const SESSION = "11111111-1111-4111-8111-111111111111";
 const RESUME = "22222222-2222-4222-8222-222222222222";
 const PROMPT_FILE = "/tmp/loom-prompt.txt";
+const FAKE = join(import.meta.dir, "fake-agent-cli.ts");
 
 function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
@@ -246,7 +249,6 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     });
     expect(built.promptTransport).toBe("prompt-file");
     expect(built.argv).toEqual([
-      "-p",
       "--prompt-file",
       PROMPT_FILE,
       "--output-format",
@@ -281,6 +283,8 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     expect(built.promptTransport).toBe("prompt-file");
     expect(built.argv).toContain("-r");
     expect(built.argv).toContain(RESUME);
+    expect(built.argv).not.toContain("-p");
+    expect(built.argv).not.toContain("--single");
     expect(built.argv).not.toContain("--session-id");
     expect(built.argv).not.toContain("-s");
     expect(built.argv.join("\n")).not.toContain(PROMPT);
@@ -365,4 +369,66 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
       );
     }
   });
+
+  test("strict fake accepts builder argv for new and resume", () => {
+    for (const agent of ["claude", "codex", "grok"] as const) {
+      for (const resume of [false, true]) {
+        const built = buildAgentArgv({
+          agent,
+          cwd: CWD,
+          sessionId: SESSION,
+          resumeSessionId: resume ? RESUME : undefined,
+          hint: HEADLESS_WORKER_HINT,
+          prompt: PROMPT,
+          promptFile: PROMPT_FILE,
+          permissions: defaultWorkerPermissions(),
+        });
+        const result = runFake(agent, built.argv);
+        const label = `${agent} ${resume ? "resume" : "new"}`;
+        if (result.status !== 0) {
+          throw new Error(
+            `${label} exited ${String(result.status)}: ${result.stderr}`,
+          );
+        }
+        expect(result.status).toBe(0);
+      }
+    }
+  });
+
+  test("strict fake rejects grok -p --prompt-file and unknown flags", () => {
+    const grok = runFake("grok", ["-p", "--prompt-file", "x"]);
+    expect(grok.status).toBe(2);
+    expect(grok.stderr).toContain(
+      "a value is required for '--single <PROMPT>' but none was supplied",
+    );
+    const single = runFake("grok", ["--single", "--prompt-file", "x"]);
+    expect(single.status).toBe(2);
+    expect(single.stderr).toContain("--single");
+    for (const kind of ["claude", "codex", "grok"] as const) {
+      const argv =
+        kind === "codex" ? ["exec", "--not-a-real-flag"] : ["--not-a-real-flag"];
+      const result = runFake(kind, argv);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("unexpected argument");
+    }
+    const resumeCd = runFake("codex", ["exec", "resume", RESUME, "-C", CWD]);
+    expect(resumeCd.status).toBe(2);
+    expect(resumeCd.stderr).toContain("unexpected argument");
+  });
 });
+
+function runFake(
+  kind: "claude" | "codex" | "grok",
+  argv: string[],
+): { status: number | null; stderr: string } {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("FAKE_")) delete env[key];
+  }
+  const result = spawnSync(process.execPath, [FAKE, "--fake-kind", kind, ...argv], {
+    encoding: "utf8",
+    env,
+    input: "",
+  });
+  return { status: result.status, stderr: result.stderr ?? "" };
+}

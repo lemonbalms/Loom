@@ -224,11 +224,17 @@ function parseCodex(events: unknown[]): ParsedAgentStream {
     }
     if (item.type !== "command_execution") continue;
     if (typeof item.exit_code !== "number" || item.exit_code === 0) continue;
+    const output =
+      typeof item.aggregated_output === "string" ? item.aggregated_output : "";
+    // A non-zero exit is a normal command failure unless the output names a
+    // sandbox or permission block. `rg --files` exits 1 when it finds nothing.
+    if (!/operation not permitted|permission denied|sandbox/i.test(output)) {
+      continue;
+    }
     parsed.denials.push({
       command: typeof item.command === "string" ? item.command : "",
       exitCode: item.exit_code,
-      text:
-        typeof item.aggregated_output === "string" ? item.aggregated_output : "",
+      text: output,
     });
   }
   parsed.isError = events.some(objectHasIsError);

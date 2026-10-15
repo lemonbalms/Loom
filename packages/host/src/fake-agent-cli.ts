@@ -6,6 +6,12 @@
  * rest is treated as the real CLI argv. Fallback when the flag is absent:
  * env `FAKE_KIND`. Default kind is `claude`.
  *
+ * Argv after `--fake-kind` is checked per kind. Unknown flags exit 2 with
+ * an error on stderr. Grok `-p`/`--single` requires a non-flag value, so
+ * `-p --prompt-file <file>` is rejected. Claude `-p` is a boolean print
+ * flag (the prompt stays on stdin). Codex must be `exec` or `exec resume`;
+ * resume does not accept `-C` or `--sandbox`.
+ *
  * Knobs are env-only so argv stays the real CLI argv:
  * - FAKE_OUTPUT_BYTES       body length (default 32). Body is "x" repeated.
  * - FAKE_DURATION_MS        simulated wait before the final event (default 0).
@@ -150,8 +156,132 @@ function realSleepMs(): number {
   return duration / scale;
 }
 
+type FlagTake = "bool" | "value" | "variadic" | "optional";
+
+type FlagSpec = { take: FlagTake; label: string };
+
+/** A token that occupies a flag slot. `-` is the codex stdin positional. */
+function isFlag(arg: string): boolean {
+  return arg.startsWith("-") && arg !== "-";
+}
+
+function unexpectedArg(arg: string): string {
+  const shown = arg.length > 0 ? arg : "(missing)";
+  return `error: unexpected argument '${shown}' found\n\nFor more information, try '--help'.\n`;
+}
+
+function missingValue(label: string): string {
+  return `error: a value is required for '${label}' but none was supplied\n\nFor more information, try '--help'.\n`;
+}
+
+function flagMap(rows: Array<[string[], FlagSpec]>): Map<string, FlagSpec> {
+  const map = new Map<string, FlagSpec>();
+  for (const [names, spec] of rows) {
+    for (const name of names) map.set(name, spec);
+  }
+  return map;
+}
+
+/**
+ * Walk argv the way the real CLIs do for the flags buildAgentArgv emits.
+ * List flags (`--allow`, `--allowedTools`, …) consume every following
+ * non-flag token, which is how those builders pass the tool lists.
+ * Returns an error string, or null when the argv is accepted.
+ */
+function parseFlags(
+  argv: string[],
+  flags: Map<string, FlagSpec>,
+  maxPositionals: number,
+): string | null {
+  const positionals: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] ?? "";
+    if (!isFlag(arg)) {
+      positionals.push(arg);
+      if (positionals.length > maxPositionals) return unexpectedArg(arg);
+      continue;
+    }
+    const spec = flags.get(arg);
+    if (!spec) return unexpectedArg(arg);
+    if (spec.take === "bool") continue;
+    if (spec.take === "optional") {
+      const next = argv[i + 1];
+      if (next !== undefined && !isFlag(next)) i += 1;
+      continue;
+    }
+    if (spec.take === "value") {
+      const next = argv[i + 1];
+      if (next === undefined || isFlag(next)) return missingValue(spec.label);
+      i += 1;
+      continue;
+    }
+    const start = i + 1;
+    while (i + 1 < argv.length && !isFlag(argv[i + 1] ?? "")) i += 1;
+    if (i + 1 === start) return missingValue(spec.label);
+  }
+  return null;
+}
+
+const grokSingle: FlagSpec = { take: "value", label: "--single <PROMPT>" };
+const grokFlags = flagMap([
+  [["-p", "--single"], grokSingle],
+  [["--prompt-file"], { take: "value", label: "--prompt-file <PATH>" }],
+  [["--output-format"], { take: "value", label: "--output-format <OUTPUT_FORMAT>" }],
+  [["--cwd"], { take: "value", label: "--cwd <CWD>" }],
+  [["-s", "--session-id"], { take: "value", label: "--session-id <SESSION_ID>" }],
+  [["-r", "--resume"], { take: "optional", label: "--resume [<SESSION_ID>]" }],
+  [["--rules"], { take: "value", label: "--rules <RULES>" }],
+  [["--permission-mode"], { take: "value", label: "--permission-mode <MODE>" }],
+  [["--allow"], { take: "variadic", label: "--allow <RULE>" }],
+  [["--deny"], { take: "variadic", label: "--deny <RULE>" }],
+]);
+
+const claudeFlags = flagMap([
+  [["-p", "--print"], { take: "bool", label: "--print" }],
+  [["--output-format"], { take: "value", label: "--output-format <format>" }],
+  [["--verbose"], { take: "bool", label: "--verbose" }],
+  [["--session-id"], { take: "value", label: "--session-id <uuid>" }],
+  [["-r", "--resume"], { take: "optional", label: "--resume [value]" }],
+  [["--append-system-prompt"], { take: "value", label: "--append-system-prompt <prompt>" }],
+  [["--permission-mode"], { take: "value", label: "--permission-mode <mode>" }],
+  [["--allowedTools", "--allowed-tools"], { take: "variadic", label: "--allowedTools <tools...>" }],
+  [
+    ["--disallowedTools", "--disallowed-tools"],
+    { take: "variadic", label: "--disallowedTools <tools...>" },
+  ],
+]);
+
+const codexConfig: FlagSpec = { take: "value", label: "--config <key=value>" };
+const codexExecFlags = flagMap([
+  [["--json"], { take: "bool", label: "--json" }],
+  [["-C", "--cd"], { take: "value", label: "--cd <DIR>" }],
+  [["-s", "--sandbox"], { take: "value", label: "--sandbox <SANDBOX_MODE>" }],
+  [["-c", "--config"], codexConfig],
+  [["--skip-git-repo-check"], { take: "bool", label: "--skip-git-repo-check" }],
+]);
+const codexResumeFlags = flagMap([
+  [["--json"], { take: "bool", label: "--json" }],
+  [["-c", "--config"], codexConfig],
+  [["--skip-git-repo-check"], { take: "bool", label: "--skip-git-repo-check" }],
+]);
+
+function validateKindArgv(kind: Kind, argv: string[]): string | null {
+  if (kind === "grok") return parseFlags(argv, grokFlags, 2);
+  if (kind === "claude") return parseFlags(argv, claudeFlags, 1);
+  if (argv[0] !== "exec") return unexpectedArg(argv[0] ?? "");
+  const next = argv[1];
+  if (next === "fork" || next === "review" || next === "help") return unexpectedArg(next);
+  if (next === "resume") return parseFlags(argv.slice(2), codexResumeFlags, 2);
+  return parseFlags(argv.slice(1), codexExecFlags, 1);
+}
+
 async function main(): Promise<void> {
   const { kind, rest } = parseLaunch(process.argv.slice(2));
+  const argvError = validateKindArgv(kind, rest);
+  if (argvError) {
+    process.stderr.write(argvError);
+    process.exit(2);
+  }
   const { sessionId, resumeId } = resolveIds(rest);
   const bytes = outputBytes();
   const text = finalText(sessionId, resumeId, bytes);
