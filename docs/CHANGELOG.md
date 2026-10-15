@@ -32,6 +32,7 @@
 | 같은 프로필 bridge 둘이 동시에 뜰 수 있었다(문서상 "하나만 띄운다") | 두 번째는 **기동 거부**(exit 1, 보유자 pid) |
 | SIGTERM = 정리 없이 죽음(meta·격리 기록 잔존) | SIGTERM = 정리 후 exit 0 |
 | `loom bridge stop` 3초 뒤 SIGTERM | RPC `stop`이 ok면 **최대 12초** 대기 |
+| `--profile` 없이 띄우면 로그가 `~/.loom/bridge/default.stderr.log` | 프로필 이름 하나로 통일(활성 프로필 → 세션 displayName → `default`) — 로그 · 락 · 상태 파일 모두 `<displayName>.*` |
 | headless bridge도 herdr 필수 · conv는 pane으로 돌았다 | headless bridge는 herdr를 안 쓰고 **conv.open을 `conv_unavailable_headless`로 거절**(한 번 claim 후 거절) — conv는 pane backend bridge로 |
 
 ### 불변
