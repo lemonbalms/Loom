@@ -1522,15 +1522,25 @@ export async function startBridgeRuntime(opts?: {
         });
         return;
       }
-      await headlessDispatcher.dispatch({
-        roomId: session!.roomId,
-        cardId: payload.cardId,
-        agent: payload.agentKind,
-        prompt: payload.prompt,
-        fromPeerId,
-        dispatchHandoffId,
-        ...(payload.cwd ? { cwd: payload.cwd } : {}),
-      });
+      // Registration (join / queue / reject / spawn) happens synchronously
+      // inside dispatch before its first await. Waiting here holds the
+      // startup drain and the inbox poll until a live worker exits.
+      void headlessDispatcher
+        .dispatch({
+          roomId: session!.roomId,
+          cardId: payload.cardId,
+          agent: payload.agentKind,
+          prompt: payload.prompt,
+          fromPeerId,
+          dispatchHandoffId,
+          ...(payload.cwd ? { cwd: payload.cwd } : {}),
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          log(
+            `headless dispatch failed (${payload.cardId}): ${message.replace(/[\r\n]/g, " ")}`,
+          );
+        });
       return;
     }
 
