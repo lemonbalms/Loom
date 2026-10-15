@@ -45,6 +45,8 @@ const BRIDGE_RUNTIME = join(HOST_SRC, "bridge-runtime.ts");
 const HERDR_CLIENT = join(HOST_SRC, "herdr-client.ts");
 const FAKE_AGENT = join(HOST_SRC, "fake-agent-cli.ts");
 const PROFILE = "node";
+/** Pane backend profile on the shared fake herdr (P4: headless no longer touches herdr). */
+const PANE_PROFILE = "panenode";
 const BUN = process.execPath;
 
 type StatusView = {
@@ -294,6 +296,12 @@ describe("bridge lifecycle — real spawned bridge (PLAN 0.33.0 P2)", () => {
       }),
       "utf8",
     );
+    // Pane backend on the fake herdr socket (P4: R11 slow-ping seam · L1 · L2).
+    writeFileSync(
+      bridgeConfigPath(PANE_PROFILE),
+      JSON.stringify({ authorizedDispatchers: ["p_tower"], herdrSocketPath: herdrSock }),
+      "utf8",
+    );
     // Pane backend + absent herdr socket → startup failure (R10).
     writeFileSync(
       bridgeConfigPath("panefail"),
@@ -360,7 +368,8 @@ describe("bridge lifecycle — real spawned bridge (PLAN 0.33.0 P2)", () => {
     const b = spawnBridge();
     await waitRunning(b);
     expect(existsSync(bridgeLockPath(PROFILE))).toBe(true);
-    expect(readStatus()?.herdr).toBe("ok");
+    // PLAN 0.33.0 P4 D6: the headless profile never touches herdr.
+    expect(readStatus()?.herdr).toBe("skipped");
     // D5: the 5 s heartbeat runs on a live bridge (doctor stale-detection depends on it).
     const hb0 = readStatus()?.heartbeatAt;
     const advanced = await waitFor(() => {
@@ -544,18 +553,164 @@ describe("bridge lifecycle — real spawned bridge (PLAN 0.33.0 P2)", () => {
   }, 60_000);
 
   test("signal during startup stops right after startup (R11)", async () => {
-    const b = spawnBridge({ cmd: [BUN, "run", runner], extraEnv: { T_SLOW_PING_MS: "1500" } });
+    // P4 D6: a headless bridge never pings herdr, so the slow-ping seam needs the pane profile.
+    const b = spawnBridge({
+      cmd: [BUN, "run", runner],
+      extraEnv: { T_SLOW_PING_MS: "1500", LOOM_PROFILE: PANE_PROFILE },
+    });
     const sawStarting = await waitFor(
-      () => readStatus()?.state === "starting" && readStatus()?.pid === b.proc.pid,
+      () =>
+        readStatus(PANE_PROFILE)?.state === "starting" && readStatus(PANE_PROFILE)?.pid === b.proc.pid,
       10_000,
       5,
     );
     expect(sawStarting).toBe(true);
     b.proc.kill("SIGTERM");
     expect(await exitWithin(b.proc, 15_000)).toBe(0);
-    assertCleanStop(b);
+    assertCleanStop(b, PANE_PROFILE);
     expect(b.stderr()).toContain("state stopping (signal:SIGTERM)");
   }, 40_000);
+
+  test("pane backend: RPC stop reply {ok:true, op:\"stop\"} is delivered before teardown (P2 carry-over L1)", async () => {
+    for (let i = 0; i < 3; i += 1) {
+      const b = spawnBridge({ extraEnv: { LOOM_PROFILE: PANE_PROFILE } });
+      await waitRunning(b, PANE_PROFILE);
+      expect(readStatus(PANE_PROFILE)?.herdr).toBe("ok");
+      const meta = loadBridgeMeta(sessionFile);
+      if (!meta) throw new Error("no meta");
+      // Exactly what `stopBridgeProcess` sends; an ok body is what earns the CLI its 12 s wait.
+      const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${meta.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "stop" }),
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(res.ok).toBe(true);
+      expect(await res.json()).toEqual({ ok: true, op: "stop" });
+      expect(await exitWithin(b.proc, 12_000)).toBe(0);
+      assertCleanStop(b, PANE_PROFILE);
+      expect(b.stderr()).not.toContain("second signal");
+    }
+  }, 60_000);
+
+  test("pane backend: herdr status follows the event stream — down on loss, ok on reconnect (P2 carry-over L2)", async () => {
+    const b = spawnBridge({ extraEnv: { LOOM_PROFILE: PANE_PROFILE } });
+    await waitRunning(b, PANE_PROFILE);
+    const meta = loadBridgeMeta(sessionFile);
+    if (!meta) throw new Error("no meta");
+    const herdrNow = async (): Promise<{ herdr?: string; herdrOk?: boolean }> => {
+      const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${meta.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "status" }),
+      });
+      return (await res.json()) as { herdr?: string; herdrOk?: boolean };
+    };
+    const until = async (want: string, ms: number): Promise<boolean> => {
+      const deadline = Date.now() + ms;
+      while (Date.now() < deadline) {
+        if ((await herdrNow()).herdr === want) return true;
+        await Bun.sleep(25);
+      }
+      return false;
+    };
+    expect((await herdrNow()).herdr).toBe("ok");
+    expect((await herdrNow()).herdrOk).toBe(true);
+    expect(readStatus(PANE_PROFILE)?.herdr).toBe("ok");
+
+    // herdr goes away entirely → RPC status and the next heartbeat both say "down".
+    await fake.close();
+    expect(await until("down", 3_000)).toBe(true);
+    expect((await herdrNow()).herdrOk).toBe(false);
+    const fileDown = await waitFor(() => readStatus(PANE_PROFILE)?.herdr === "down", 7_000, 100);
+    expect(fileDown).toBe(true);
+
+    // herdr comes back on the same socket → the client's reconnect flips it back to "ok".
+    fake = await startFakeHerdr({ socketPath: herdrSock, autoStatus: "done", autoStatusDelayMs: 20 });
+    expect(await until("ok", 12_000)).toBe(true);
+    const fileUp = await waitFor(() => readStatus(PANE_PROFILE)?.herdr === "ok", 7_000, 100);
+    expect(fileUp).toBe(true);
+
+    b.proc.kill("SIGTERM");
+    expect(await exitWithin(b.proc, 12_000)).toBe(0);
+    assertCleanStop(b, PANE_PROFILE);
+  }, 60_000);
+
+  test("refused CLI start does not truncate the live holder's stderr log (P2 carry-over L3)", async () => {
+    const logPath = join(dir, ".loom", "bridge", `${PROFILE}.stderr.log`);
+    const first = await startBridgeProcess();
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.alreadyRunning).toBe(false);
+    const holder = first.meta.pid;
+    const holderLine = await waitFor(
+      () => (readFileSync(logPath, "utf8").includes("state running") ? true : null),
+      5_000,
+      25,
+    );
+    expect(holderLine).toBe(true);
+
+    const metaPath = bridgeMetaPath(sessionFile);
+    const hidden = `${metaPath}.hidden`;
+    renameSync(metaPath, hidden);
+    try {
+      const r = await startBridgeProcess();
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.error).toContain(`bridge already running for profile ${PROFILE} (pid ${holder}`);
+      }
+    } finally {
+      renameSync(hidden, metaPath);
+    }
+    const log = readFileSync(logPath, "utf8");
+    // The holder's own lines survive and the refusal is appended after them.
+    const iHolder = log.indexOf("state running");
+    const iRefusal = log.indexOf(`bridge already running for profile ${PROFILE} (pid ${holder}`);
+    expect(iHolder).toBeGreaterThanOrEqual(0);
+    expect(iRefusal).toBeGreaterThan(iHolder);
+    expect(readStatus()?.pid).toBe(holder);
+
+    const stop = await stopBridgeProcess();
+    expect(stop.message).toBe("bridge stopped");
+    expect(await waitFor(() => readStatus()?.state === "stopped", 12_000, 25)).toBe(true);
+    expect(await waitFor(() => !existsSync(bridgeLockPath(PROFILE)), 5_000, 25)).toBe(true);
+  }, 60_000);
+
+  test("no active profile: CLI log, lock and status all use the runtime profile name (P2 carry-over L3)", async () => {
+    // Runtime profile = getActiveProfile() ?? session.displayName ?? "default".
+    const runtimeProfile = session.displayName; // "node/wsl-1" → safe token "node-wsl-1"
+    mkdirSync(join(bridgeConfigPath(runtimeProfile), ".."), { recursive: true });
+    writeFileSync(bridgeConfigPath(runtimeProfile), readFileSync(bridgeConfigPath(PROFILE), "utf8"), "utf8");
+    const bridgeDir = join(dir, ".loom", "bridge");
+    const prev = process.env.LOOM_PROFILE;
+    delete process.env.LOOM_PROFILE;
+    setActiveProfile(null);
+    try {
+      const r = await startBridgeProcess();
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      const pid = r.meta.pid;
+      expect(readStatus(runtimeProfile)?.pid).toBe(pid);
+      expect(existsSync(bridgeLockPath(runtimeProfile))).toBe(true);
+      expect(bridgeStatusPath(runtimeProfile)).toBe(join(bridgeDir, "node-wsl-1.status.json"));
+      const logPath = join(bridgeDir, "node-wsl-1.stderr.log");
+      const logged = await waitFor(
+        () => (existsSync(logPath) && readFileSync(logPath, "utf8").includes("state running") ? true : null),
+        5_000,
+        25,
+      );
+      expect(logged).toBe(true);
+      expect(existsSync(join(bridgeDir, "default.stderr.log"))).toBe(false);
+      const stop = await stopBridgeProcess();
+      expect(stop.message).toBe("bridge stopped");
+      expect(await waitFor(() => readStatus(runtimeProfile)?.state === "stopped", 12_000, 25)).toBe(true);
+      expect(readStatus(runtimeProfile)?.pid).toBe(pid);
+      expect(await waitFor(() => !existsSync(bridgeLockPath(runtimeProfile)), 5_000, 25)).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.LOOM_PROFILE;
+      else process.env.LOOM_PROFILE = prev;
+    }
+  }, 60_000);
 
   test("startup failure → exit 1 + status stopped with lastError (R10)", async () => {
     const b = spawnBridge({ extraEnv: { LOOM_PROFILE: "panefail" } });
