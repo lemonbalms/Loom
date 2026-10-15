@@ -13,12 +13,12 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
 import { truncateTail, wrapDispatchedPrompt } from "@loom/protocol";
 import {
-  ARGV_TEMPLATE_VERSION,
   HEADLESS_WORKER_HINT,
   RESUME_CONTINUATION_MESSAGE,
   buildAgentArgv,
-  promptFingerprint,
+  effectiveWorkerPolicy,
   validateWorkerConfig,
+  workerFingerprint,
   type AgentKind,
   type WorkerConfig,
 } from "./agent-argv";
@@ -473,7 +473,8 @@ function streamFinished(agent: AgentKind, raw: string): boolean {
 }
 
 function currentFingerprint(config: WorkerConfig): string {
-  return promptFingerprint(HEADLESS_WORKER_HINT, config.permissions, ARGV_TEMPLATE_VERSION);
+  // D11: skills manifest hash stays "" until P3/P4 materialize skills.
+  return workerFingerprint(config);
 }
 
 function createOwner(handoffId: string): CardOwner {
@@ -1518,6 +1519,7 @@ export class HeadlessDispatcher {
         prompt: card.prompt,
         promptFile,
         permissions: this.deps.config.permissions,
+        policy: effectiveWorkerPolicy(this.deps.config).effective[card.agent],
       });
       const command = this.deps.commands[card.agent];
       const setup = await this.withCardLock<SpawnOutcome | undefined>(card, async () => {

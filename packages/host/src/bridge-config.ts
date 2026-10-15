@@ -17,6 +17,8 @@ import {
   type WorkerConfig,
   type WorkerPermissions,
 } from "./agent-argv";
+import { loadPolicy } from "./policy";
+import { resolveWorkerPolicy } from "./policy-compile";
 
 export type BridgeConfig = {
   /** M-1: tower peer ids allowed to dispatch. Empty ⇒ default deny. */
@@ -170,16 +172,28 @@ function stringArray(value: unknown, field: string): string[] {
   return [...value];
 }
 
+/**
+ * 0.31.0 D8 / R49-M2: tool lists are deprecated and optional. Raw presence is
+ * kept (omitted key stays omitted, `[]` stays present) for policy resolution.
+ */
 function parseClaudeProfile(raw: unknown): ClaudePermissionProfile {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("worker.permissions.claude must be an object");
   }
   const o = raw as Record<string, unknown>;
-  return {
+  const profile: ClaudePermissionProfile = {
     permissionMode: requiredString(o.permissionMode, "worker.permissions.claude.permissionMode"),
-    allowedTools: stringArray(o.allowedTools, "worker.permissions.claude.allowedTools"),
-    disallowedTools: stringArray(o.disallowedTools, "worker.permissions.claude.disallowedTools"),
   };
+  if (Object.hasOwn(o, "allowedTools")) {
+    profile.allowedTools = stringArray(o.allowedTools, "worker.permissions.claude.allowedTools");
+  }
+  if (Object.hasOwn(o, "disallowedTools")) {
+    profile.disallowedTools = stringArray(
+      o.disallowedTools,
+      "worker.permissions.claude.disallowedTools",
+    );
+  }
+  return profile;
 }
 
 function parseCodexProfile(raw: unknown): CodexPermissionProfile {
@@ -204,9 +218,14 @@ function parseGrokProfile(raw: unknown): GrokPermissionProfile {
   const o = raw as Record<string, unknown>;
   const profile: GrokPermissionProfile = {
     permissionMode: requiredString(o.permissionMode, "worker.permissions.grok.permissionMode"),
-    allow: stringArray(o.allow, "worker.permissions.grok.allow"),
-    deny: stringArray(o.deny, "worker.permissions.grok.deny"),
   };
+  // Deprecated, optional, raw presence kept (as for claude).
+  if (Object.hasOwn(o, "allow")) {
+    profile.allow = stringArray(o.allow, "worker.permissions.grok.allow");
+  }
+  if (Object.hasOwn(o, "deny")) {
+    profile.deny = stringArray(o.deny, "worker.permissions.grok.deny");
+  }
   if (o.extraArgs !== undefined) {
     profile.extraArgs = stringArray(o.extraArgs, "worker.permissions.grok.extraArgs");
   }
@@ -347,21 +366,37 @@ function workerConfigFromParts(src: {
   timeoutMs?: unknown;
   permissions?: unknown;
 }): WorkerConfig {
+  const permissions = parsePermissions(src.permissions);
   const config: WorkerConfig = {
     backend: "headless",
     cwd: parseCwd(src.cwd),
     allowedRoots: parseAllowedRoots(src.allowedRoots),
     maxConcurrent: parseMaxConcurrent(src.maxConcurrent),
     timeoutMs: parseTimeoutMs(src.timeoutMs),
-    permissions: parsePermissions(src.permissions),
+    permissions,
+    policy: workerPolicyFor(permissions),
   };
   validateWorkerConfig(config);
   return config;
 }
 
 /**
+ * PLAN 0.31.0 D7 / D8. `loomDir()/policy.json` (session-store loomDir, legacy
+ * fallback included) merged per agent with that agent's deprecated lists.
+ * An invalid policy.json or a deprecated allow next to `shell.allow` throws,
+ * so the headless bridge refuses to start (fail-closed).
+ */
+function workerPolicyFor(permissions: WorkerPermissions) {
+  const dir = loomDir();
+  return resolveWorkerPolicy(permissions, loadPolicy(dir), {
+    policyPath: join(dir, "policy.json"),
+  });
+}
+
+/**
  * WorkerConfig for a headless bridge. Throws a clear Error when the section
- * is missing, not headless, or fails agent-argv permission checks.
+ * is missing, not headless, fails agent-argv permission checks, or policy.json
+ * is invalid / conflicts with a deprecated allow (0.31.0 D7, R49-M2).
  * Omitted permissions and concurrency use agent-argv / D8–D9 defaults.
  */
 export function workerConfigFromBridge(cfg: BridgeConfig): WorkerConfig {

@@ -23,7 +23,6 @@ import {
   statSync,
 } from "node:fs";
 import { join } from "node:path";
-import { defaultWorkerPermissions } from "./agent-argv";
 
 /** First non-whitespace character is a flag-shaped dash (agent-argv RULE_FLAG_PREFIX). */
 const RULE_FLAG_PREFIX = /^[-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/;
@@ -32,6 +31,36 @@ const SKILL_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MCP_DENY = /^[A-Za-z0-9][A-Za-z0-9._-]*__[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const WEB_TOOLS = new Set(["WebFetch", "WebSearch"]);
 const NON_SHELL_TOOLS = new Set(["Read", "Edit", "Write", "Glob", "Grep", "WebFetch", "WebSearch"]);
+/**
+ * 0.30.0 D10 tool lists, verbatim (formerly agent-argv defaults). The builtin
+ * policy is derived from them; 0.31.0 never emits these strings as-is.
+ */
+export const LEGACY_D10_ALLOWED_TOOLS: readonly string[] = [
+  "Read",
+  "Edit",
+  "Write",
+  "Glob",
+  "Grep",
+  "Bash(git status*)",
+  "Bash(git diff*)",
+  "Bash(git log*)",
+  "Bash(bun test*)",
+  "Bash(bun run *)",
+  "Bash(npm test*)",
+];
+
+/** 0.30.0 D10 deny list, verbatim. acceptEdits still auto-allows plain rm inside cwd. */
+export const LEGACY_D10_DENIED_TOOLS: readonly string[] = [
+  "Bash(rm *)",
+  "Bash(rmdir *)",
+  "Bash(git push*)",
+  "Bash(git reset --hard*)",
+  "Bash(git clean*)",
+  "Bash(sudo *)",
+  "Bash(curl *)",
+  "Bash(wget *)",
+];
+
 /** policy.json read cap (bytes). Larger files fail closed. */
 export const POLICY_MAX_BYTES = 64 * 1024;
 
@@ -332,15 +361,14 @@ function projectDeprecated(
   return { shell, web, tools, narrowed };
 }
 
-/** D10 lists in agent-argv, normalized. curl/wget are not part of builtin deny (R4). */
+/** 0.30.0 D10 lists, normalized. curl/wget are not part of builtin deny (R4). */
 export function builtinPolicyDefaults(): PolicyDefaults {
-  const perms = defaultWorkerPermissions();
-  const allowTools = perms.claude?.allowedTools ?? [];
-  const denyTools = [...(perms.claude?.disallowedTools ?? []), ...(perms.grok?.deny ?? [])];
   return {
     shell: {
-      allow: sortedUnique(shellRulesFromTools(allowTools)),
-      deny: sortedUnique(shellRulesFromTools(denyTools).filter((rule) => !isCurlOrWget(rule))),
+      allow: sortedUnique(shellRulesFromTools(LEGACY_D10_ALLOWED_TOOLS)),
+      deny: sortedUnique(
+        shellRulesFromTools(LEGACY_D10_DENIED_TOOLS).filter((rule) => !isCurlOrWget(rule)),
+      ),
     },
     network: false,
     mcp: { deny: [], isolate: true },

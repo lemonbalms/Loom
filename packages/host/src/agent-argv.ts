@@ -1,10 +1,20 @@
 /**
- * PLAN 0.30.0 D3 / D10 / D12 / R4.
+ * PLAN 0.30.0 D3 / D10 / D12 / R4, 0.31.0 D8 / D9 / D11 / D13.
  * CLI argv builders. Third-party prompt text never enters argv.
+ * Tool allow/deny comes from the effective policy (policy-compile.ts); the
+ * profile lists below are deprecated owner input only.
  */
 import { createHash } from "node:crypto";
+import type { EffectivePolicy } from "./policy";
+import {
+  compileClaudePolicyArgv,
+  compileCodexPolicyArgv,
+  compileGrokPolicyArgv,
+  resolveWorkerPolicy,
+  type WorkerPolicy,
+} from "./policy-compile";
 
-export const ARGV_TEMPLATE_VERSION = "0.30.0-v1";
+export const ARGV_TEMPLATE_VERSION = "0.31.0-v1";
 
 /** Fixed resume suffix (D6). Allowed on argv; the card prompt is not. */
 export const RESUME_CONTINUATION_MESSAGE =
@@ -26,10 +36,14 @@ export const HEADLESS_WORKER_HINT = [
 
 export type AgentKind = "claude" | "codex" | "grok";
 
+/**
+ * D8: mode is authoritative. The tool lists are deprecated owner input with raw
+ * presence (omitted = absent); they feed policy resolution, never argv directly.
+ */
 export type ClaudePermissionProfile = {
   permissionMode: string;
-  allowedTools: string[];
-  disallowedTools: string[];
+  allowedTools?: string[];
+  disallowedTools?: string[];
 };
 
 export type CodexPermissionProfile = {
@@ -38,10 +52,11 @@ export type CodexPermissionProfile = {
   extraArgs?: string[];
 };
 
+/** D8: `allow` / `deny` are deprecated owner input with raw presence, as for claude. */
 export type GrokPermissionProfile = {
   permissionMode: string;
-  allow: string[];
-  deny: string[];
+  allow?: string[];
+  deny?: string[];
   extraArgs?: string[];
 };
 
@@ -58,51 +73,26 @@ export type WorkerConfig = {
   maxConcurrent: Record<AgentKind, number>;
   timeoutMs: number;
   permissions: WorkerPermissions;
+  /**
+   * 0.31.0 config-level policy (bridge-config: builtin < policy.json, plus the
+   * deprecated lists). Omitted = builtin merged with the profiles' own lists.
+   */
+  policy?: WorkerPolicy;
 };
 
-/** D10 default allow list (UK-5 measured prefix form). */
-const ALLOWED_TOOLS = [
-  "Read",
-  "Edit",
-  "Write",
-  "Glob",
-  "Grep",
-  "Bash(git status*)",
-  "Bash(git diff*)",
-  "Bash(git log*)",
-  "Bash(bun test*)",
-  "Bash(bun run *)",
-  "Bash(npm test*)",
-];
-
-/** D10 default deny list. acceptEdits still auto-allows plain rm inside cwd. */
-const DENIED_TOOLS = [
-  "Bash(rm *)",
-  "Bash(rmdir *)",
-  "Bash(git push*)",
-  "Bash(git reset --hard*)",
-  "Bash(git clean*)",
-  "Bash(sudo *)",
-  "Bash(curl *)",
-  "Bash(wget *)",
-];
-
+/**
+ * D8 profiles: mode / sandbox / approval only. Tool allow/deny is the builtin
+ * policy (policy.ts, derived from the 0.30.0 D10 lists) unless policy.json or a
+ * deprecated list says otherwise.
+ */
 export function defaultWorkerPermissions(): WorkerPermissions {
   return {
-    claude: {
-      permissionMode: "acceptEdits",
-      allowedTools: [...ALLOWED_TOOLS],
-      disallowedTools: [...DENIED_TOOLS],
-    },
+    claude: { permissionMode: "acceptEdits" },
     codex: {
       sandbox: "workspace-write",
       approvalPolicy: "never",
     },
-    grok: {
-      permissionMode: "acceptEdits",
-      allow: [...ALLOWED_TOOLS],
-      deny: [...DENIED_TOOLS],
-    },
+    grok: { permissionMode: "acceptEdits" },
   };
 }
 
@@ -232,9 +222,13 @@ function validatePermissions(permissions: WorkerPermissions): void {
   validatePermissionRuleLists(permissions);
 }
 
-/** Fail-closed. Dangerous modes never reach spawn. */
+/**
+ * Fail-closed. Dangerous modes never reach spawn. Without a config-level policy,
+ * the profiles' deprecated lists must still resolve (R49-M2 / no-space deny refusal).
+ */
 export function validateWorkerConfig(config: WorkerConfig): void {
   validatePermissions(config.permissions);
+  effectiveWorkerPolicy(config);
 }
 
 /** Arrays keep order. Object keys are sorted. Leaves use JSON.stringify. */
@@ -250,14 +244,41 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+/**
+ * D11: sha256(hint ‖ permissions ‖ template version ‖ skills manifest hash ‖ policy hash).
+ * The manifest hash is "" while skills are disabled (and until P3/P4 wire them).
+ */
 export function promptFingerprint(
   hint: string,
   permissions: WorkerPermissions,
   argvTemplateVersion: string,
+  skillsManifestHash: string,
+  policyHash: string,
 ): string {
   return createHash("sha256")
-    .update(`${hint}\0${stableStringify(permissions)}\0${argvTemplateVersion}`)
+    .update(
+      `${hint}\0${stableStringify(permissions)}\0${argvTemplateVersion}\0${skillsManifestHash}\0${policyHash}`,
+    )
     .digest("hex");
+}
+
+/** The config's policy, or builtin merged with the profiles' deprecated lists. */
+export function effectiveWorkerPolicy(config: Pick<WorkerConfig, "permissions" | "policy">): WorkerPolicy {
+  return config.policy ?? resolveWorkerPolicy(config.permissions, null);
+}
+
+/** Worker fingerprint with the config-level policy hash (D11 / R49-M3). */
+export function workerFingerprint(
+  config: Pick<WorkerConfig, "permissions" | "policy">,
+  skillsManifestHash = "",
+): string {
+  return promptFingerprint(
+    HEADLESS_WORKER_HINT,
+    config.permissions,
+    ARGV_TEMPLATE_VERSION,
+    skillsManifestHash,
+    effectiveWorkerPolicy(config).hash,
+  );
 }
 
 export type BuiltAgentArgv = {
@@ -276,6 +297,11 @@ export type BuildAgentArgvInput = {
   prompt: string;
   promptFile?: string;
   permissions: WorkerPermissions;
+  /**
+   * This agent's effective policy. Omitted = builtin merged with the profile's
+   * own deprecated lists (deny is never dropped).
+   */
+  policy?: EffectivePolicy;
 };
 
 function requireProfile<T>(profile: T | undefined, agent: AgentKind): T {
@@ -283,7 +309,7 @@ function requireProfile<T>(profile: T | undefined, agent: AgentKind): T {
   return profile;
 }
 
-function claudeArgv(opts: BuildAgentArgvInput): string[] {
+function claudeArgv(opts: BuildAgentArgvInput, policy: EffectivePolicy): string[] {
   const profile = requireProfile(opts.permissions.claude, "claude");
   const argv = ["-p", "--output-format", "stream-json", "--verbose"];
   if (opts.resumeSessionId) argv.push("-r", opts.resumeSessionId);
@@ -293,13 +319,9 @@ function claudeArgv(opts: BuildAgentArgvInput): string[] {
     opts.hint,
     "--permission-mode",
     profile.permissionMode,
-    "--allowedTools",
-    ...profile.allowedTools,
-    "--disallowedTools",
-    ...profile.disallowedTools,
+    ...compileClaudePolicyArgv(policy),
   );
-  // Both tool lists are variadic and swallow any later positional.
-  // Nothing may follow them; the prompt stays on stdin.
+  // D9: --settings takes one value (no variadic tool lists). The prompt stays on stdin.
   return argv;
 }
 
@@ -346,11 +368,12 @@ function codexAssign(key: string, value: string, alwaysBasic: boolean): string {
   return `${key}=${value}`;
 }
 
-function codexArgv(opts: BuildAgentArgvInput): string[] {
+function codexArgv(opts: BuildAgentArgvInput, policy: EffectivePolicy): string[] {
   const profile = requireProfile(opts.permissions.codex, "codex");
   if (opts.resumeSessionId) {
     // R4: exec resume has no -C and no -s. Sandbox is a -c override.
     // The fixed continuation is the positional; the card prompt stays on stdin.
+    // D9: network_access is passed on resume too (UK-3: re-pass every resume).
     return [
       "exec",
       "resume",
@@ -358,6 +381,7 @@ function codexArgv(opts: BuildAgentArgvInput): string[] {
       "--json",
       "-c",
       codexAssign("sandbox_mode", profile.sandbox, true),
+      ...compileCodexPolicyArgv(policy),
       "-c",
       codexAssign("approval_policy", profile.approvalPolicy, false),
       "-c",
@@ -373,6 +397,7 @@ function codexArgv(opts: BuildAgentArgvInput): string[] {
     opts.cwd,
     "--sandbox",
     profile.sandbox,
+    ...compileCodexPolicyArgv(policy),
     "-c",
     codexAssign("approval_policy", profile.approvalPolicy, false),
     "-c",
@@ -382,7 +407,7 @@ function codexArgv(opts: BuildAgentArgvInput): string[] {
   ];
 }
 
-function grokArgv(opts: BuildAgentArgvInput): string[] {
+function grokArgv(opts: BuildAgentArgvInput, policy: EffectivePolicy): string[] {
   const profile = requireProfile(opts.permissions.grok, "grok");
   if (!opts.promptFile) throw new Error("grok promptFile is required");
   // grok 1.0.54: -p/--single <PROMPT> requires a non-flag value and exits
@@ -400,20 +425,26 @@ function grokArgv(opts: BuildAgentArgvInput): string[] {
   // R4: --session-id starts a new conversation and is omitted on resume.
   if (opts.resumeSessionId) argv.push("-r", opts.resumeSessionId);
   else argv.push("--session-id", opts.sessionId);
-  argv.push("--rules", opts.hint, "--permission-mode", profile.permissionMode);
-  for (const rule of profile.allow) argv.push("--allow", rule);
-  for (const rule of profile.deny) argv.push("--deny", rule);
+  argv.push(
+    "--rules",
+    opts.hint,
+    "--permission-mode",
+    profile.permissionMode,
+    ...compileGrokPolicyArgv(policy),
+  );
   return argv;
 }
 
 export function buildAgentArgv(opts: BuildAgentArgvInput): BuiltAgentArgv {
   validatePermissions(opts.permissions);
+  const policy =
+    opts.policy ?? resolveWorkerPolicy(opts.permissions, null).effective[opts.agent];
   const argv =
     opts.agent === "claude"
-      ? claudeArgv(opts)
+      ? claudeArgv(opts, policy)
       : opts.agent === "codex"
-        ? codexArgv(opts)
-        : grokArgv(opts);
+        ? codexArgv(opts, policy)
+        : grokArgv(opts, policy);
   const promptTransport = opts.agent === "grok" ? "prompt-file" : "stdin";
   if (!opts.resumeSessionId) return { argv, promptTransport };
   return {

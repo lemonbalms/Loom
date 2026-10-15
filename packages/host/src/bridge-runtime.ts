@@ -691,6 +691,8 @@ export async function startBridgeRuntime(opts?: {
   const cfg = opts?.config ?? loadBridgeConfig(profile);
   // Fail closed before herdr or the room join. Pane configs skip this.
   const headlessConfig = cfg.worker?.backend === "headless" ? workerConfigFromBridge(cfg) : null;
+  // PLAN 0.31.0 D8: deprecated worker.permissions tool lists warn once at startup.
+  for (const warning of headlessConfig?.policy?.warnings ?? []) log(`warning: ${warning}`);
   let headlessCommands = headlessConfig ? headlessAgentCommands(cfg) : null;
   if (headlessCommands && opts?.headlessAgentCommandOverride) {
     headlessCommands = headlessCommandsFromOverride(opts.headlessAgentCommandOverride);
