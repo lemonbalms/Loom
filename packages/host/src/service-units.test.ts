@@ -453,7 +453,9 @@ describe("marker (② 마커)", () => {
 // ---------------------------------------------------------------------------------------------
 describe("classifyRunnerResult (R10 · R52-L2 — stderr pattern required; code alone → error)", () => {
   const r = (code: number, stderr = "", stdout = "") => ({ code, stdout, stderr });
-  const cases: Array<[string, "launchd" | "systemd", ReturnType<typeof r>, string]> = [
+  const cases: Array<
+    [string, "launchd" | "systemd", ReturnType<typeof r>, ReturnType<typeof classifyRunnerResult>]
+  > = [
     ["launchd success", "launchd", r(0), "ok"],
     ["launchd success with noise", "launchd", r(0, "Input/output error"), "ok"],
     ["launchd EIO text", "launchd", r(5, "Bootstrap failed: 5: Input/output error\n"), "no_domain"],
