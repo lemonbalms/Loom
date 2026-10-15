@@ -72,11 +72,7 @@ export function cardPayloadFromAttachments<S extends z.ZodTypeAny>(
   }
 }
 
-export function buildDispatchBody(opts: {
-  title: string;
-  cardId: string;
-  node: string;
-}): string {
+export function buildDispatchBody(opts: { title: string; cardId: string; node: string }): string {
   const title = opts.title.replace(/\r?\n/g, " ").slice(0, 200) || "card";
   return [
     `[GOAL] ${title}`,
@@ -86,33 +82,19 @@ export function buildDispatchBody(opts: {
   ].join("\n");
 }
 
-export function buildResultBody(opts: {
-  cardId: string;
-  seq: number;
-  summary: string;
-}): string {
+export function buildResultBody(opts: { cardId: string; seq: number; summary: string }): string {
   const summary = opts.summary.replace(/\r?\n/g, " ").slice(0, 200);
-  return [
-    "[DONE]",
-    "intent: card.done",
-    `task: ${opts.cardId}`,
-    `seq: ${opts.seq}`,
-    summary,
-  ].join("\n");
+  return ["[DONE]", "intent: card.done", `task: ${opts.cardId}`, `seq: ${opts.seq}`, summary].join(
+    "\n",
+  );
 }
 
-export function makeTextAttachment(
-  label: string,
-  content: string,
-): HandoffAttachment {
+export function makeTextAttachment(label: string, content: string): HandoffAttachment {
   return { kind: "text", label, content };
 }
 
 /** Pre-serialize + size-guard before send (L-3: relay rejects, does not truncate). */
-export function serializeCardAttachment(
-  label: string,
-  payload: unknown,
-): HandoffAttachment {
+export function serializeCardAttachment(label: string, payload: unknown): HandoffAttachment {
   const content = JSON.stringify(payload);
   if (content.length > MAX_ATTACHMENT_CONTENT_CHARS) {
     throw new Error(
@@ -123,12 +105,19 @@ export function serializeCardAttachment(
 }
 
 /** Tail-keep truncate for result output (HERDR_DESIGN §3.7). */
-export function truncateTail(text: string, max: number): {
+export function truncateTail(
+  text: string,
+  max: number,
+): {
   text: string;
   truncated: boolean;
 } {
   if (text.length <= max) return { text, truncated: false };
-  return { text: text.slice(text.length - max), truncated: true };
+  let out = text.slice(text.length - max);
+  // Never start on a lone low surrogate (the cut split a pair).
+  const first = out.charCodeAt(0);
+  if (first >= 0xdc00 && first <= 0xdfff) out = out.slice(1);
+  return { text: out, truncated: true };
 }
 
 export const DISPATCHED_TASK_MARKER =

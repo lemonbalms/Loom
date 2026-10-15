@@ -123,11 +123,7 @@ describe("card-contract v1", () => {
       agentKind: "claude" as const,
     };
     const att = serializeCardAttachment(CARD_DISPATCH_LABEL, payload);
-    const got = cardPayloadFromAttachments(
-      [att],
-      CARD_DISPATCH_LABEL,
-      CardDispatchPayloadSchema,
-    );
+    const got = cardPayloadFromAttachments([att], CARD_DISPATCH_LABEL, CardDispatchPayloadSchema);
     expect(got?.prompt).toBe("hi");
     expect(
       cardPayloadFromAttachments([att], CARD_RESULT_LABEL, CardResultPayloadSchema),
@@ -147,6 +143,12 @@ describe("card-contract v1", () => {
     const { text, truncated } = truncateTail("abcdefghij", 4);
     expect(truncated).toBe(true);
     expect(text).toBe("ghij");
+  });
+
+  test("truncateTail never starts on a lone low surrogate", () => {
+    const { text, truncated } = truncateTail(`😀${"a".repeat(5)}`, 6);
+    expect(truncated).toBe(true);
+    expect(text).toBe("aaaaa");
   });
 
   test("dispatched task marker preamble", () => {

@@ -5,10 +5,7 @@
 import { existsSync, mkdirSync, chmodSync, writeFileSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { loomDir, ensureFableDir } from "./session-store";
-import {
-  DEFAULT_HERDR_SOCKET,
-  HERDR_PROTOCOL_EXPECTED,
-} from "./herdr-client";
+import { DEFAULT_HERDR_SOCKET, HERDR_PROTOCOL_EXPECTED } from "./herdr-client";
 import type { DispatchAgentKind } from "@loom/protocol";
 import {
   defaultWorkerPermissions,
@@ -113,8 +110,7 @@ export function bridgeConfigPath(profile: string): string {
 export function defaultBridgeConfig(): BridgeConfig {
   return {
     authorizedDispatchers: [],
-    herdrSocketPath:
-      process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
+    herdrSocketPath: process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
     herdrProtocol: HERDR_PROTOCOL_EXPECTED,
     paneCleanup: "auto",
@@ -149,17 +145,11 @@ function sanitizeHookSensor(raw: unknown): boolean {
  *  Malformed entries are dropped — same as unregistered (fail-closed), never throws later
  *  in resolveAgentArgv (which would otherwise be swallowed by the bridge pollTimer catch,
  *  leaving a claimed card stuck in "doing" with no signal). */
-function sanitizeAgentArgv(
-  raw: unknown,
-): Partial<Record<DispatchAgentKind, string[]>> {
+function sanitizeAgentArgv(raw: unknown): Partial<Record<DispatchAgentKind, string[]>> {
   if (!raw || typeof raw !== "object") return {};
   const out: Partial<Record<DispatchAgentKind, string[]>> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (
-      Array.isArray(v) &&
-      v.length > 0 &&
-      v.every((x) => typeof x === "string" && x.length > 0)
-    ) {
+    if (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0)) {
       out[k as DispatchAgentKind] = v;
     }
   }
@@ -186,18 +176,9 @@ function parseClaudeProfile(raw: unknown): ClaudePermissionProfile {
   }
   const o = raw as Record<string, unknown>;
   return {
-    permissionMode: requiredString(
-      o.permissionMode,
-      "worker.permissions.claude.permissionMode",
-    ),
-    allowedTools: stringArray(
-      o.allowedTools,
-      "worker.permissions.claude.allowedTools",
-    ),
-    disallowedTools: stringArray(
-      o.disallowedTools,
-      "worker.permissions.claude.disallowedTools",
-    ),
+    permissionMode: requiredString(o.permissionMode, "worker.permissions.claude.permissionMode"),
+    allowedTools: stringArray(o.allowedTools, "worker.permissions.claude.allowedTools"),
+    disallowedTools: stringArray(o.disallowedTools, "worker.permissions.claude.disallowedTools"),
   };
 }
 
@@ -208,16 +189,10 @@ function parseCodexProfile(raw: unknown): CodexPermissionProfile {
   const o = raw as Record<string, unknown>;
   const profile: CodexPermissionProfile = {
     sandbox: requiredString(o.sandbox, "worker.permissions.codex.sandbox"),
-    approvalPolicy: requiredString(
-      o.approvalPolicy,
-      "worker.permissions.codex.approvalPolicy",
-    ),
+    approvalPolicy: requiredString(o.approvalPolicy, "worker.permissions.codex.approvalPolicy"),
   };
   if (o.extraArgs !== undefined) {
-    profile.extraArgs = stringArray(
-      o.extraArgs,
-      "worker.permissions.codex.extraArgs",
-    );
+    profile.extraArgs = stringArray(o.extraArgs, "worker.permissions.codex.extraArgs");
   }
   return profile;
 }
@@ -228,10 +203,7 @@ function parseGrokProfile(raw: unknown): GrokPermissionProfile {
   }
   const o = raw as Record<string, unknown>;
   const profile: GrokPermissionProfile = {
-    permissionMode: requiredString(
-      o.permissionMode,
-      "worker.permissions.grok.permissionMode",
-    ),
+    permissionMode: requiredString(o.permissionMode, "worker.permissions.grok.permissionMode"),
     allow: stringArray(o.allow, "worker.permissions.grok.allow"),
     deny: stringArray(o.deny, "worker.permissions.grok.deny"),
   };
@@ -276,9 +248,7 @@ function parseMaxConcurrent(raw: unknown): Record<AgentKind, number> {
     if (!Object.prototype.hasOwnProperty.call(src, agent)) continue;
     const value = src[agent];
     if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-      throw new Error(
-        `worker.maxConcurrent.${agent} must be an integer >= 1`,
-      );
+      throw new Error(`worker.maxConcurrent.${agent} must be an integer >= 1`);
     }
     out[agent] = value;
   }
@@ -289,6 +259,10 @@ function parseTimeoutMs(raw: unknown): number {
   if (raw === undefined) return DEFAULT_TIMEOUT_MS;
   if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
     throw new Error("worker.timeoutMs must be a positive number");
+  }
+  // setTimeout overflows above 2^31-1 ms and fires at once.
+  if (raw > 2_147_483_647) {
+    throw new Error("worker.timeoutMs must be at most 2147483647");
   }
   return raw;
 }
@@ -343,9 +317,7 @@ export function assertHeadlessCommandArgv(argv: readonly string[]): void {
 
 function parseAgentBinPath(agent: AgentKind, raw: unknown): string {
   if (typeof raw !== "string" || raw.length === 0) {
-    throw new Error(
-      `worker.agentBin.${agent} must be a single executable path`,
-    );
+    throw new Error(`worker.agentBin.${agent} must be a single executable path`);
   }
   if (basename(raw) !== agent) {
     throw new Error(`worker.agentBin.${agent} basename must be ${agent}`);
@@ -363,9 +335,7 @@ function parseAgentBin(raw: unknown): Record<AgentKind, string> {
   const out = {} as Record<AgentKind, string>;
   for (const agent of HEADLESS_AGENTS) {
     out[agent] =
-      src[agent] === undefined
-        ? DEFAULT_AGENT_BIN[agent]
-        : parseAgentBinPath(agent, src[agent]);
+      src[agent] === undefined ? DEFAULT_AGENT_BIN[agent] : parseAgentBinPath(agent, src[agent]);
   }
   return out;
 }
@@ -466,10 +436,7 @@ export function loadBridgeConfig(profile: string): BridgeConfig {
       ...DEFAULT_AGENT_ARGV,
       ...sanitizeAgentArgv(raw.agentArgv),
     },
-    herdrProtocol:
-      typeof raw.herdrProtocol === "number"
-        ? raw.herdrProtocol
-        : base.herdrProtocol,
+    herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol,
     paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
     panePlacement: sanitizePanePlacement(raw.panePlacement),
     paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),
@@ -495,19 +462,13 @@ export function saveBridgeConfig(profile: string, cfg: BridgeConfig): void {
 }
 
 /** M-1: authorize dispatch fromPeerId against allowlist. Missing config ⇒ deny. */
-export function isAuthorizedDispatcher(
-  cfg: BridgeConfig,
-  fromPeerId: string | undefined,
-): boolean {
+export function isAuthorizedDispatcher(cfg: BridgeConfig, fromPeerId: string | undefined): boolean {
   if (!fromPeerId) return false;
   if (!cfg.authorizedDispatchers.length) return false;
   return cfg.authorizedDispatchers.includes(fromPeerId);
 }
 
-export function resolveAgentArgv(
-  cfg: BridgeConfig,
-  kind: DispatchAgentKind,
-): string[] | null {
+export function resolveAgentArgv(cfg: BridgeConfig, kind: DispatchAgentKind): string[] | null {
   const argv = cfg.agentArgv[kind];
   if (!argv?.length) return null;
   // Permanent: shell never allowed even if misconfigured

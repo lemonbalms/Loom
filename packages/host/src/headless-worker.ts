@@ -37,6 +37,7 @@ import {
   spawnDetachedWorker,
   type SpawnedWorker,
 } from "./process-group";
+import { redactSecrets } from "./redact";
 
 const OUTPUT_CAP = 200_000;
 const SUMMARY_CAP = 900;
@@ -258,12 +259,12 @@ async function readTranscript(path: string): Promise<string> {
 
 const STDERR_LINE_CAP = 300;
 
-/** Last non-empty stderr line: controls stripped, trimmed, capped. */
+/** Last non-empty stderr line: controls stripped, trimmed, secrets redacted, then capped. */
 function lastStderrLine(raw: string): string {
   const lines = raw.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
     const cleaned = lines[i]!.replace(/\p{Cc}/gu, "").trim();
-    if (cleaned.length > 0) return cleaned.slice(0, STDERR_LINE_CAP);
+    if (cleaned.length > 0) return redactSecrets(cleaned).slice(0, STDERR_LINE_CAP);
   }
   return "";
 }

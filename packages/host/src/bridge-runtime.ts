@@ -1137,8 +1137,12 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
-  // Poll inbox periodically (covers online notify without durable push of full body)
+  // Poll inbox periodically (covers online notify without durable push of full body).
+  // Single-flight: a slow tick must not overlap the next 1.5s poll.
+  let inboxPollInFlight = false;
   const pollTimer = setInterval(() => {
+    if (inboxPollInFlight) return;
+    inboxPollInFlight = true;
     void (async () => {
       try {
         const entries = await client.listInbox();
@@ -1147,6 +1151,8 @@ export async function startBridgeRuntime(opts?: {
         }
       } catch {
         /* reconnect will handle */
+      } finally {
+        inboxPollInFlight = false;
       }
     })();
   }, 1500);

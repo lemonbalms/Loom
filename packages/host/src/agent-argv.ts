@@ -160,9 +160,13 @@ function assertExact(
 
 /**
  * Permission-rule operands (claude tool lists, grok allow/deny, any rule list).
- * A leading dash is flag-shaped (`--yolo` must not become another argv flag).
- * Empty, NUL, and newline cannot be a single rule value.
+ * A value whose first non-whitespace character is "-" or a Unicode dash is
+ * flag-shaped (`--yolo` must not become another argv flag). A dash later in
+ * the value is fine (`Bash(git reset --hard*)`).
+ * Empty, whitespace-only, NUL, CR, and newline cannot be a single rule value.
  */
+const RULE_FLAG_PREFIX = /^[-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/;
+
 function assertPermissionRuleList(field: string, rules: unknown): void {
   if (!Array.isArray(rules)) {
     const shown = typeof rules === "string" ? JSON.stringify(rules) : String(rules);
@@ -172,9 +176,11 @@ function assertPermissionRuleList(field: string, rules: unknown): void {
     const invalid =
       typeof rule !== "string" ||
       rule.length === 0 ||
-      rule.startsWith("-") ||
       rule.includes("\0") ||
-      rule.includes("\n");
+      rule.includes("\n") ||
+      rule.includes("\r") ||
+      rule.trim().length === 0 ||
+      RULE_FLAG_PREFIX.test(rule.trim());
     if (!invalid) continue;
     const shown = typeof rule === "string" ? JSON.stringify(rule) : String(rule);
     throw new Error(`worker.permissions.${field} rejected: ${shown}`);

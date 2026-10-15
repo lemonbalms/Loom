@@ -35,11 +35,7 @@ import { startBridgeRuntime } from "./bridge-runtime";
 import { startFakeHerdr } from "./fake-herdr";
 import { HerdrClient } from "./herdr-client";
 import { RelayClient } from "./relay-client";
-import {
-  type FableSession,
-  resetStateHomeDirCache,
-  setActiveProfile,
-} from "./session-store";
+import { type FableSession, resetStateHomeDirCache, setActiveProfile } from "./session-store";
 
 const FAKE = join(import.meta.dir, "fake-agent-cli.ts");
 const LOCK = join(tmpdir(), "loom-v030-p2-fake.lock");
@@ -184,6 +180,18 @@ describe("bridge-config worker section (v0.30.0 P6a)", () => {
       "utf8",
     );
     expect(() => loadBridgeConfig(profile)).toThrow(/worker\.cwd/);
+  });
+
+  test("headless timeoutMs above the timer limit rejects", () => {
+    const profile = "bigtimeout";
+    writeFileSync(
+      bridgeConfigPath(profile),
+      JSON.stringify({
+        worker: { backend: "headless", cwd, allowedRoots: [cwd], timeoutMs: 2_147_483_648 },
+      }),
+      "utf8",
+    );
+    expect(() => loadBridgeConfig(profile)).toThrow(/at most 2147483647/);
   });
 
   test("pane backend ignores junk worker keys", () => {
@@ -387,103 +395,100 @@ describe("headless bridge runtime (v0.30.0 P6a)", () => {
     expect(headless.queueDepth).toEqual({ claude: 0, codex: 0, grok: 0 });
   });
 
-  test(
-    "dispatch delivers the full fake output and spawns no herdr pane",
-    async () => {
-      await withFakeLock(async () => {
-        const restore = pushEnv({
-          FAKE_OUTPUT_BYTES: String(OUTPUT_BYTES),
-          FAKE_DURATION_MS: "0",
-          FAKE_TIME_SCALE: "1",
-          FAKE_ARGV_DUMP: argvDump,
-          FAKE_HANG: undefined,
-          FAKE_DENIAL: undefined,
-          FAKE_EXIT_ONCE_MARKER: undefined,
-          FAKE_ENV_DUMP: undefined,
-          FAKE_SPAWN_GRANDCHILD: undefined,
-          FAKE_PROMPT_DUMP: undefined,
-          FAKE_KIND: undefined,
-        });
-        try {
-          const spawnsBefore = fake.calls.filter(
-            (call) =>
-              call.method === "agent.start" ||
-              call.method === "tab.create" ||
-              call.method === "pane.split",
-          ).length;
-          const cardId = "task_a0306a0000000001";
-          const ack = await tower!.handoff({
-            to: "@node/wsl-1",
-            body: buildDispatchBody({
-              title: "headless card",
-              cardId,
-              node: "node/wsl-1",
-            }),
-            mode: "task",
-            attachments: [
-              serializeCardAttachment(CARD_DISPATCH_LABEL, {
-                v: CARD_CONTRACT_VERSION,
-                cardId,
-                sourceRoomId: session.roomId,
-                prompt: "write the bytes",
-                agentKind: "claude" as const,
-              }),
-            ],
-          });
-          expect(["queued", "delivered"]).toContain(ack.status);
-
-          let output = "";
-          let truncated: boolean | undefined;
-          let found = false;
-          for (let i = 0; i < 50; i++) {
-            await Bun.sleep(200);
-            const inbox = await tower!.listInbox();
-            for (const entry of inbox) {
-              for (const attachment of entry.handoff.attachments ?? []) {
-                if (attachment.label !== CARD_RESULT_LABEL) continue;
-                const result = JSON.parse(attachment.content) as {
-                  cardId?: string;
-                  status?: string;
-                  reason?: string;
-                  output?: string;
-                  truncated?: boolean;
-                  node?: string;
-                };
-                if (result.cardId !== cardId) continue;
-                expect(result.status).toBe("failed");
-                expect(result.reason).toBe("needs_verification");
-                expect(result.node).toBe("node/wsl-1");
-                output = result.output ?? "";
-                truncated = result.truncated;
-                found = true;
-              }
-            }
-            if (found) break;
-          }
-          expect(found).toBe(true);
-          const recorded = JSON.parse(
-            readFileSync(argvDump, "utf8").trim().split("\n")[0]!,
-          ) as { sessionId: string; pid?: number };
-          const expected = `PARTIAL_READY\nsession:${recorded.sessionId}\nresume:-\n${"x".repeat(OUTPUT_BYTES)}`;
-          expect(output).toBe(expected);
-          expect(truncated).toBe(false);
-          const spawnsAfter = fake.calls.filter(
-            (call) =>
-              call.method === "agent.start" ||
-              call.method === "tab.create" ||
-              call.method === "pane.split",
-          ).length;
-          expect(spawnsAfter).toBe(spawnsBefore);
-          expect(fake.listPaneIds()).toEqual([]);
-          killPid(recorded.pid);
-        } finally {
-          killDump(argvDump);
-          restore();
-        }
+  test("dispatch delivers the full fake output and spawns no herdr pane", async () => {
+    await withFakeLock(async () => {
+      const restore = pushEnv({
+        FAKE_OUTPUT_BYTES: String(OUTPUT_BYTES),
+        FAKE_DURATION_MS: "0",
+        FAKE_TIME_SCALE: "1",
+        FAKE_ARGV_DUMP: argvDump,
+        FAKE_HANG: undefined,
+        FAKE_DENIAL: undefined,
+        FAKE_EXIT_ONCE_MARKER: undefined,
+        FAKE_ENV_DUMP: undefined,
+        FAKE_SPAWN_GRANDCHILD: undefined,
+        FAKE_PROMPT_DUMP: undefined,
+        FAKE_KIND: undefined,
       });
-    },
-    30_000,
-  );
+      try {
+        const spawnsBefore = fake.calls.filter(
+          (call) =>
+            call.method === "agent.start" ||
+            call.method === "tab.create" ||
+            call.method === "pane.split",
+        ).length;
+        const cardId = "task_a0306a0000000001";
+        const ack = await tower!.handoff({
+          to: "@node/wsl-1",
+          body: buildDispatchBody({
+            title: "headless card",
+            cardId,
+            node: "node/wsl-1",
+          }),
+          mode: "task",
+          attachments: [
+            serializeCardAttachment(CARD_DISPATCH_LABEL, {
+              v: CARD_CONTRACT_VERSION,
+              cardId,
+              sourceRoomId: session.roomId,
+              prompt: "write the bytes",
+              agentKind: "claude" as const,
+            }),
+          ],
+        });
+        expect(["queued", "delivered"]).toContain(ack.status);
+
+        let output = "";
+        let truncated: boolean | undefined;
+        let found = false;
+        for (let i = 0; i < 50; i++) {
+          await Bun.sleep(200);
+          const inbox = await tower!.listInbox();
+          for (const entry of inbox) {
+            for (const attachment of entry.handoff.attachments ?? []) {
+              if (attachment.label !== CARD_RESULT_LABEL) continue;
+              const result = JSON.parse(attachment.content) as {
+                cardId?: string;
+                status?: string;
+                reason?: string;
+                output?: string;
+                truncated?: boolean;
+                node?: string;
+              };
+              if (result.cardId !== cardId) continue;
+              expect(result.status).toBe("failed");
+              expect(result.reason).toBe("needs_verification");
+              expect(result.node).toBe("node/wsl-1");
+              output = result.output ?? "";
+              truncated = result.truncated;
+              found = true;
+            }
+          }
+          if (found) break;
+        }
+        expect(found).toBe(true);
+        const recorded = JSON.parse(readFileSync(argvDump, "utf8").trim().split("\n")[0]!) as {
+          sessionId: string;
+          pid?: number;
+        };
+        const expected = `PARTIAL_READY\nsession:${recorded.sessionId}\nresume:-\n${"x".repeat(OUTPUT_BYTES)}`;
+        expect(output).toBe(expected);
+        expect(truncated).toBe(false);
+        const spawnsAfter = fake.calls.filter(
+          (call) =>
+            call.method === "agent.start" ||
+            call.method === "tab.create" ||
+            call.method === "pane.split",
+        ).length;
+        expect(spawnsAfter).toBe(spawnsBefore);
+        expect(fake.listPaneIds()).toEqual([]);
+        killPid(recorded.pid);
+      } finally {
+        killDump(argvDump);
+        restore();
+      }
+    });
+  }, 30_000);
 });
 
 describe("pane backend status has no headless key", () => {

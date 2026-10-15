@@ -370,14 +370,34 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     }
   });
 
-  test("permission rule lists reject flag-shaped, empty, NUL, and newline values", () => {
+  test("permission rule lists reject flag-shaped, empty, whitespace, NUL, CR, and newline values", () => {
     const samples = [
       "--yolo",
       "--always-approve",
       "-x",
       "",
+      "   ",
+      "\t",
+      "\f",
+      "\v",
+      " \t ",
+      "\u00A0",
       "has\nnewline",
       "has\0nul",
+      "has\rcr",
+      " --yolo",
+      "\t-x",
+      "\u2010dash",
+      "\u2011dash",
+      "\u2012dash",
+      "\u2013dash",
+      "\u2014dash",
+      "\u2015dash",
+      "\u2212minus",
+      "\uFE58dash",
+      "\uFE63dash",
+      "\uFF0Ddash",
+      " \u2014leading",
     ];
     const lists: Array<{
       field: string;
@@ -435,6 +455,26 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
           }),
         ).toThrow(/worker\.permissions/);
       }
+    }
+  });
+
+  test("Bash(git reset --hard*) stays a valid permission rule", () => {
+    const permissions = defaultWorkerPermissions();
+    expect(permissions.claude!.disallowedTools).toContain("Bash(git reset --hard*)");
+    expect(permissions.grok!.deny).toContain("Bash(git reset --hard*)");
+    expect(() => validateWorkerConfig(baseConfig(permissions))).not.toThrow();
+    for (const agent of ["claude", "grok"] as const) {
+      expect(() =>
+        buildAgentArgv({
+          agent,
+          cwd: CWD,
+          sessionId: SESSION,
+          hint: HEADLESS_WORKER_HINT,
+          prompt: PROMPT,
+          promptFile: PROMPT_FILE,
+          permissions,
+        }),
+      ).not.toThrow();
     }
   });
 

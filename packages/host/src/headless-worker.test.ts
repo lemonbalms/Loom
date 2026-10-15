@@ -1186,4 +1186,17 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
     },
     { timeout: 20_000 },
   );
+
+  test(
+    "(g) give-up stderr note redacts secrets before they reach the result",
+    async () => {
+      const calls = await grokStderrGiveUp("OPENAI_API_KEY=synthetic-secret-123\n");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.fields.note).toBe(
+        "attempts 2 exhausted; not resuming; last stderr: OPENAI_API_KEY=[REDACTED]",
+      );
+      expect(calls[0]!.fields.note).not.toContain("synthetic-secret-123");
+    },
+    { timeout: 20_000 },
+  );
 });

@@ -162,12 +162,24 @@ function textBlocks(event: Record<string, unknown>): string {
   return out;
 }
 
+/** Newlines still needed for one blank line. Existing boundary newlines are kept, not duplicated. */
+function blankLineGap(soFar: string, next: string): string {
+  let trailing = 0;
+  for (let i = soFar.length - 1; i >= 0 && soFar[i] === "\n"; i--) trailing++;
+  let leading = 0;
+  for (let i = 0; i < next.length && next[i] === "\n"; i++) leading++;
+  const missing = 2 - trailing - leading;
+  if (missing <= 0) return "";
+  return "\n".repeat(missing);
+}
+
 function parseClaude(events: unknown[]): ParsedAgentStream {
   const parsed = emptyParse();
   let sawResult = false;
   let initSession: string | null = null;
   let assistantSession: string | null = null;
   let assistantText = "";
+  let lastMessageId: string | null = null;
   for (const event of events) {
     if (!isRecord(event)) continue;
     if (
@@ -178,15 +190,28 @@ function parseClaude(events: unknown[]): ParsedAgentStream {
       initSession = event.session_id;
     }
     if (event.type === "assistant") {
-      assistantText += textBlocks(event);
+      const chunk = textBlocks(event);
+      // Claude Code emits one event per content block sharing message.id; only a new message id starts a new paragraph.
+      const messageId =
+        isRecord(event.message) && typeof event.message.id === "string" ? event.message.id : null;
+      if (
+        assistantText.length > 0 &&
+        chunk.length > 0 &&
+        messageId !== null &&
+        lastMessageId !== null &&
+        messageId !== lastMessageId
+      ) {
+        assistantText += blankLineGap(assistantText, chunk);
+      }
+      if (messageId !== null) lastMessageId = messageId;
+      assistantText += chunk;
       if (assistantSession === null && typeof event.session_id === "string") {
         assistantSession = event.session_id;
       }
     }
     if (event.type !== "result") continue;
     sawResult = true;
-    parsed.sessionId =
-      typeof event.session_id === "string" ? event.session_id : null;
+    parsed.sessionId = typeof event.session_id === "string" ? event.session_id : null;
     parsed.finalText = typeof event.result === "string" ? event.result : "";
     parsed.isError = event.is_error === true;
     parsed.usage = event.usage ?? null;
@@ -224,15 +249,10 @@ function parseCodex(events: unknown[]): ParsedAgentStream {
     }
     if (item.type !== "command_execution") continue;
     if (typeof item.exit_code !== "number" || item.exit_code === 0) continue;
-    const output =
-      typeof item.aggregated_output === "string" ? item.aggregated_output : "";
+    const output = typeof item.aggregated_output === "string" ? item.aggregated_output : "";
     // A non-zero exit is a normal command failure unless the output names a
     // sandbox or permission block. `rg --files` exits 1 when it finds nothing.
-    if (
-      !/operation not permitted|permission denied|read-only file system|sandbox/i.test(
-        output,
-      )
-    ) {
+    if (!/operation not permitted|permission denied|read-only file system|sandbox/i.test(output)) {
       continue;
     }
     parsed.denials.push({
@@ -264,9 +284,7 @@ function denialEntries(
     const idx = text.indexOf(needle, from);
     if (idx === -1) break;
     const end = idx + needle.length;
-    const spanIndex = spans.findIndex(
-      (span) => idx >= span.start && end <= span.end,
-    );
+    const spanIndex = spans.findIndex((span) => idx >= span.start && end <= span.end);
     if (spanIndex >= 0) {
       if (!pushedSpan.has(spanIndex)) {
         pushedSpan.add(spanIndex);
@@ -283,17 +301,23 @@ function denialEntries(
 function parseGrok(events: unknown[]): ParsedAgentStream {
   const parsed = emptyParse();
   let text = "";
+  let separateNextText = false;
   const spans: { start: number; end: number; data: string }[] = [];
   for (const event of events) {
     if (!isRecord(event)) continue;
     if (event.type === "text" && typeof event.data === "string") {
+      if (separateNextText && text.length > 0 && event.data.length > 0) {
+        text += blankLineGap(text, event.data);
+      }
+      if (event.data.length > 0) separateNextText = false;
       const start = text.length;
       text += event.data;
       spans.push({ start, end: text.length, data: event.data });
+    } else if (event.type !== "text") {
+      separateNextText = true;
     }
     if (event.type !== "end") continue;
-    parsed.sessionId =
-      typeof event.sessionId === "string" ? event.sessionId : null;
+    parsed.sessionId = typeof event.sessionId === "string" ? event.sessionId : null;
     if ("usage" in event) parsed.usage = event.usage;
     parsed.isError = event.stopReason === "error";
   }
@@ -302,10 +326,7 @@ function parseGrok(events: unknown[]): ParsedAgentStream {
   return parsed;
 }
 
-export function parseAgentStream(
-  agent: AgentKind,
-  jsonl: string,
-): ParsedAgentStream {
+export function parseAgentStream(agent: AgentKind, jsonl: string): ParsedAgentStream {
   const events = eventsOf(jsonl);
   if (agent === "claude") return parseClaude(events);
   if (agent === "codex") return parseCodex(events);

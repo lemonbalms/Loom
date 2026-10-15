@@ -141,9 +141,7 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
         is_error: false,
         session_id: "result-sid",
         usage: { input_tokens: 3, output_tokens: 4 },
-        permission_denials: [
-          { tool_name: "Bash", tool_input: { command: "python3 -c 1" } },
-        ],
+        permission_denials: [{ tool_name: "Bash", tool_input: { command: "python3 -c 1" } }],
       }),
       "",
     ].join("\n");
@@ -152,9 +150,7 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
     expect(parsed.finalText).toBe("final-answer");
     expect(parsed.isError).toBe(false);
     expect(parsed.usage).toEqual({ input_tokens: 3, output_tokens: 4 });
-    expect(parsed.denials).toEqual([
-      { toolName: "Bash", toolInput: { command: "python3 -c 1" } },
-    ]);
+    expect(parsed.denials).toEqual([{ toolName: "Bash", toolInput: { command: "python3 -c 1" } }]);
   });
 
   test("PROBE §7.1 claude JSON with a raw control character still parses", () => {
@@ -165,6 +161,17 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
     expect(parsed.isError).toBe(false);
     expect(parsed.finalText).toContain("ok");
     expect(parsed.finalText).toContain("still");
+  });
+
+  test("claude fallback joins separate assistant messages with one blank line, same message as-is", () => {
+    const ev = (id: string, text: string) =>
+      JSON.stringify({
+        type: "assistant",
+        message: { id, role: "assistant", content: [{ type: "text", text }] },
+      });
+    const jsonl = [ev("m1", "A"), ev("m1", "a"), ev("m2", "B")].join("\n");
+    const parsed = parseAgentStream("claude", jsonl);
+    expect(parsed.finalText).toBe("Aa\n\nB");
   });
 
   test("codex stream extracts thread_id, final text, usage, and failed command_execution only", () => {
@@ -355,6 +362,31 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
     expect(parsed.sessionId).toBe("g-2");
   });
 
+  test("grok keeps consecutive text chunks together and separates runs around a non-text event", () => {
+    const jsonl = [
+      JSON.stringify({ type: "text", data: "foo" }),
+      JSON.stringify({ type: "text", data: "bar" }),
+      JSON.stringify({ type: "thought", data: "planning" }),
+      JSON.stringify({ type: "tool_call", name: "bash", arguments: {} }),
+      JSON.stringify({ type: "text", data: "baz" }),
+    ].join("\n");
+    const parsed = parseAgentStream("grok", jsonl);
+    expect(parsed.finalText).toBe("foobar\n\nbaz");
+  });
+
+  const GROK_NUMBERED_TRANSCRIPT =
+    "/private/tmp/claude-501/-Users-kyoungsiklee-projects-zev-cua/b8261c95-a6b2-47c4-b2ee-61c1ea58caaa/scratchpad/smoke0300/grok/loom/cards/dd360c01a0b5a6a3/3aa4ab10755f0554/transcript-1.jsonl";
+
+  test.skipIf(!existsSync(GROK_NUMBERED_TRANSCRIPT))(
+    "grok transcript text runs stay separated and keep 400 numbered lines",
+    () => {
+      const parsed = parseAgentStream("grok", readFileSync(GROK_NUMBERED_TRANSCRIPT, "utf8"));
+      const lines = parsed.finalText.split("\n");
+      expect(lines.some((line) => line.startsWith("Line 1:"))).toBe(true);
+      expect(lines.filter((line) => /^Line \d+:/.test(line))).toHaveLength(400);
+    },
+  );
+
   test(
     "(b) >=50KB fake output is captured whole, truncated false, byte-equal",
     async () => {
@@ -364,8 +396,13 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
         const dump = join(loomDir, "argv.jsonl");
         const promptDump = join(loomDir, "prompt.txt");
         const sentinel = "UNIQUE_PROMPT_SENTINEL_9f3a";
-        const calls: { status?: string; reason?: string; output: string; truncated: boolean; summary: string }[] =
-          [];
+        const calls: {
+          status?: string;
+          reason?: string;
+          output: string;
+          truncated: boolean;
+          summary: string;
+        }[] = [];
         const restore = pushEnv({
           LOOM_DIR: loomDir,
           FAKE_OUTPUT_BYTES: "60000",
