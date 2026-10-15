@@ -448,7 +448,7 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
           },
         });
         try {
-          expect(ARGV_TEMPLATE_VERSION).toBe("0.30.0-v1");
+          expect(ARGV_TEMPLATE_VERSION).toBe("0.31.0-v1");
           expect(HEADLESS_WORKER_HINT.length).toBeGreaterThan(0);
           await dispatcher.dispatch({
             roomId: "room_b",

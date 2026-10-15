@@ -2,7 +2,7 @@
  * assumed API (v0.30.0 P2 — modules are not implemented; this file is expected-red)
  *
  * from "./agent-argv":
- *   HEADLESS_WORKER_HINT, ARGV_TEMPLATE_VERSION = "0.30.0-v1",
+ *   HEADLESS_WORKER_HINT, ARGV_TEMPLATE_VERSION = "0.31.0-v1" (0.31.0: workerFingerprint),
  *   RESUME_CONTINUATION_MESSAGE =
  *     "Interrupted. Inspect the working tree before continuing; do not redo completed steps."
  *   defaultWorkerPermissions(), promptFingerprint(hint, permissions, version)
@@ -46,11 +46,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  ARGV_TEMPLATE_VERSION,
-  HEADLESS_WORKER_HINT,
   RESUME_CONTINUATION_MESSAGE,
   defaultWorkerPermissions,
-  promptFingerprint,
+  workerFingerprint,
   type WorkerConfig,
 } from "./agent-argv";
 import { readCardSession, writeCardSession, type CardSessionRecord } from "./card-session-store";
@@ -460,11 +458,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           fromPeerId: "peer_mm",
           dispatchHandoffId: "hmm",
         };
-        const fingerprint = promptFingerprint(
-          HEADLESS_WORKER_HINT,
-          defaultWorkerPermissions(),
-          ARGV_TEMPLATE_VERSION,
-        );
+        const fingerprint = workerFingerprint({ permissions: defaultWorkerPermissions() });
         writeCardSession(
           { loomDir, localPeerId: "test-local-peer" },
           deadSession({

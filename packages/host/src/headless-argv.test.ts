@@ -1,26 +1,25 @@
 /**
- * assumed API (v0.30.0 P2 — modules are not implemented; this file is expected-red)
+ * v0.30.0 P2 argv pins, updated for v0.31.0 P2 (PLAN §0.31.0 D9 / D11 / R49-H1).
  *
  * from "./agent-argv":
  *   HEADLESS_WORKER_HINT: string                         // includes "Loom card worker"; no "claim_handoff"
- *   ARGV_TEMPLATE_VERSION = "0.30.0-v1"
+ *   ARGV_TEMPLATE_VERSION = "0.31.0-v1"
  *   RESUME_CONTINUATION_MESSAGE =
  *     "Interrupted. Inspect the working tree before continuing; do not redo completed steps."
  *   AgentKind = "claude" | "codex" | "grok"
- *   ClaudePermissionProfile { permissionMode, allowedTools, disallowedTools }
+ *   ClaudePermissionProfile { permissionMode, allowedTools?, disallowedTools? }  // lists deprecated
  *   CodexPermissionProfile { sandbox, approvalPolicy, extraArgs? }
- *   GrokPermissionProfile { permissionMode, allow, deny, extraArgs? }
+ *   GrokPermissionProfile { permissionMode, allow?, deny?, extraArgs? }          // lists deprecated
  *   WorkerPermissions { claude?, codex?, grok? }
- *   WorkerConfig { backend, cwd, allowedRoots, maxConcurrent, timeoutMs, permissions }
- *   defaultWorkerPermissions(): WorkerPermissions
+ *   WorkerConfig { backend, cwd, allowedRoots, maxConcurrent, timeoutMs, permissions, policy? }
+ *   defaultWorkerPermissions(): WorkerPermissions        // no tool lists (D8)
  *   validateWorkerConfig(config: WorkerConfig): void     // throws, fail-closed
- *   promptFingerprint(hint, permissions, argvTemplateVersion): string
- *     sha256(utf8(hint + "\0" + stableStringify(permissions) + "\0" + argvTemplateVersion))
+ *   promptFingerprint(hint, permissions, argvTemplateVersion, skillsManifestHash, policyHash): string
+ *     sha256(utf8(hint \0 stableStringify(permissions) \0 version \0 manifestHash \0 policyHash))
  *     stableStringify: arrays keep order, object keys sorted, leaves JSON.stringify
- *   buildAgentArgv({ agent, cwd, sessionId, resumeSessionId?, hint, prompt, promptFile?, permissions })
+ *   buildAgentArgv({ agent, cwd, sessionId, resumeSessionId?, hint, prompt, promptFile?, permissions, policy? })
  *     -> { argv, promptTransport: "stdin" | "prompt-file", continuationMessage? }
- *   Claude allowedTools / disallowedTools and codex/grok argv shapes are pinned
- *   in the tests below (PLAN D3, D10, D12, R4, R48-L2).
+ *   Claude --settings JSON and codex/grok argv shapes are pinned below.
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -37,6 +36,7 @@ import {
   type WorkerConfig,
   type WorkerPermissions,
 } from "./agent-argv";
+import { compileClaudeSettings, compileGrokPolicyArgv, resolveWorkerPolicy } from "./policy-compile";
 
 const ALLOWED = [
   "Read",
@@ -61,6 +61,48 @@ const DENIED = [
   "Bash(sudo *)",
   "Bash(curl *)",
   "Bash(wget *)",
+];
+
+/** 0.31.0 compiled default: R8 base tools + normalized D10 allow (no-space `p*` → `p` + `p *`). */
+const SETTINGS_ALLOW = [
+  "Read",
+  "Edit",
+  "Write",
+  "Glob",
+  "Grep",
+  "Bash(bun run *)",
+  "Bash(bun test)",
+  "Bash(bun test *)",
+  "Bash(git diff)",
+  "Bash(git diff *)",
+  "Bash(git log)",
+  "Bash(git log *)",
+  "Bash(git status)",
+  "Bash(git status *)",
+  "Bash(npm test)",
+  "Bash(npm test *)",
+];
+
+/** 0.31.0 compiled default deny: every prefix as Bash(p) + Bash(p *) (R49-H1), plus R4 web deny. */
+const SETTINGS_DENY = [
+  "Bash(curl)",
+  "Bash(curl *)",
+  "Bash(git clean)",
+  "Bash(git clean *)",
+  "Bash(git push)",
+  "Bash(git push *)",
+  "Bash(git reset --hard)",
+  "Bash(git reset --hard *)",
+  "Bash(rm)",
+  "Bash(rm *)",
+  "Bash(rmdir)",
+  "Bash(rmdir *)",
+  "Bash(sudo)",
+  "Bash(sudo *)",
+  "Bash(wget)",
+  "Bash(wget *)",
+  "WebFetch",
+  "WebSearch",
 ];
 
 const PROMPT = "UNIQUE_PROMPT_SENTINEL_9f3a";
@@ -100,30 +142,33 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     expect(HEADLESS_WORKER_HINT).not.toContain("claim_handoff");
   });
 
-  test("(g) D12 fingerprint is sha256(hint, permissions, argv template version)", () => {
+  test("(g) D11 fingerprint is sha256(hint, permissions, version, manifest hash, policy hash)", () => {
     const permissions = defaultWorkerPermissions();
-    const fp = promptFingerprint(
-      HEADLESS_WORKER_HINT,
-      permissions,
-      ARGV_TEMPLATE_VERSION,
-    );
+    const policyHash = resolveWorkerPolicy(permissions, null).hash;
+    const fp = promptFingerprint(HEADLESS_WORKER_HINT, permissions, ARGV_TEMPLATE_VERSION, "", policyHash);
     const expected = createHash("sha256")
       .update(
-        `${HEADLESS_WORKER_HINT}\0${stableStringify(permissions)}\0${ARGV_TEMPLATE_VERSION}`,
+        `${HEADLESS_WORKER_HINT}\0${stableStringify(permissions)}\0${ARGV_TEMPLATE_VERSION}\0\0${policyHash}`,
       )
       .digest("hex");
     expect(fp).toBe(expected);
     const mutated = structuredClone(permissions);
     mutated.claude!.permissionMode = "default";
     expect(
-      promptFingerprint(HEADLESS_WORKER_HINT, mutated, ARGV_TEMPLATE_VERSION),
+      promptFingerprint(HEADLESS_WORKER_HINT, mutated, ARGV_TEMPLATE_VERSION, "", policyHash),
     ).not.toBe(fp);
     expect(
-      promptFingerprint(HEADLESS_WORKER_HINT, permissions, "0.30.0-v2"),
+      promptFingerprint(HEADLESS_WORKER_HINT, permissions, "0.30.0-v1", "", policyHash),
+    ).not.toBe(fp);
+    expect(
+      promptFingerprint(HEADLESS_WORKER_HINT, permissions, ARGV_TEMPLATE_VERSION, "m", policyHash),
+    ).not.toBe(fp);
+    expect(
+      promptFingerprint(HEADLESS_WORKER_HINT, permissions, ARGV_TEMPLATE_VERSION, "", "other"),
     ).not.toBe(fp);
   });
 
-  test("(g) claude new argv is the static acceptEdits profile and stdin prompt", () => {
+  test("(g) claude new argv is the acceptEdits profile, --settings policy, and stdin prompt", () => {
     const permissions = defaultWorkerPermissions();
     const built = buildAgentArgv({
       agent: "claude",
@@ -145,19 +190,18 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
       HEADLESS_WORKER_HINT,
       "--permission-mode",
       "acceptEdits",
-      "--allowedTools",
-      ...ALLOWED,
-      "--disallowedTools",
-      ...DENIED,
+      "--settings",
+      JSON.stringify({ permissions: { allow: SETTINGS_ALLOW, deny: SETTINGS_DENY } }),
+      "--strict-mcp-config",
     ]);
-    // Variadic tool flags swallow a later positional. Nothing follows them.
-    expect(built.argv.slice(built.argv.indexOf("--disallowedTools") + 1)).toEqual(DENIED);
+    // 0.31.0: no variadic tool flags remain.
+    expect(built.argv).not.toContain("--allowedTools");
+    expect(built.argv).not.toContain("--disallowedTools");
     expect(built.argv).not.toContain("-r");
     expect(built.argv.join("\n")).not.toContain(PROMPT);
-    expect(permissions.claude).toEqual({
-      permissionMode: "acceptEdits",
-      allowedTools: ALLOWED,
-      disallowedTools: DENIED,
+    expect(permissions.claude).toEqual({ permissionMode: "acceptEdits" });
+    expect(compileClaudeSettings(resolveWorkerPolicy(permissions, null).effective.claude)).toEqual({
+      permissions: { allow: SETTINGS_ALLOW, deny: SETTINGS_DENY },
     });
   });
 
@@ -198,6 +242,8 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
       "--sandbox",
       "workspace-write",
       "-c",
+      "sandbox_workspace_write.network_access=false",
+      "-c",
       "approval_policy=never",
       "-c",
       `developer_instructions=${HEADLESS_WORKER_HINT}`,
@@ -227,6 +273,8 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
       "-c",
       'sandbox_mode="workspace-write"',
       "-c",
+      "sandbox_workspace_write.network_access=false",
+      "-c",
       "approval_policy=never",
       "-c",
       `developer_instructions=${HEADLESS_WORKER_HINT}`,
@@ -239,7 +287,7 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     expect(built.argv.join("\n")).not.toContain(PROMPT);
   });
 
-  test("(g) grok new argv uses --prompt-file and the static allow/deny lists", () => {
+  test("(g) grok new argv uses --prompt-file and one --allow/--deny per compiled rule", () => {
     const built = buildAgentArgv({
       agent: "grok",
       cwd: CWD,
@@ -263,9 +311,16 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
       HEADLESS_WORKER_HINT,
       "--permission-mode",
       "acceptEdits",
-      ...ALLOWED.flatMap((rule) => ["--allow", rule]),
-      ...DENIED.flatMap((rule) => ["--deny", rule]),
+      ...SETTINGS_ALLOW.flatMap((rule) => ["--allow", rule]),
+      ...SETTINGS_DENY.filter((rule) => rule.startsWith("Bash(")).flatMap((rule) => [
+        "--deny",
+        rule,
+      ]),
+      "--disable-web-search",
     ]);
+    expect(built.argv.slice(12)).toEqual(
+      compileGrokPolicyArgv(resolveWorkerPolicy(defaultWorkerPermissions(), null).effective.grok),
+    );
     expect(built.argv.join("\n")).not.toContain(PROMPT);
   });
 
@@ -458,10 +513,14 @@ describe("v0.30.0 P2 expected-red: headless argv", () => {
     }
   });
 
-  test("Bash(git reset --hard*) stays a valid permission rule", () => {
+  test("Bash(git reset --hard*) is covered as Bash(git reset --hard) + Bash(git reset --hard *)", () => {
     const permissions = defaultWorkerPermissions();
-    expect(permissions.claude!.disallowedTools).toContain("Bash(git reset --hard*)");
-    expect(permissions.grok!.deny).toContain("Bash(git reset --hard*)");
+    expect(SETTINGS_DENY).toContain("Bash(git reset --hard)");
+    expect(SETTINGS_DENY).toContain("Bash(git reset --hard *)");
+    expect(SETTINGS_DENY).not.toContain("Bash(git reset --hard*)");
+    // A space-star rule with a dash later in the value is still a valid rule value.
+    permissions.claude!.disallowedTools = ["Bash(git reset --hard *)"];
+    permissions.grok!.deny = ["Bash(git reset --hard *)"];
     expect(() => validateWorkerConfig(baseConfig(permissions))).not.toThrow();
     for (const agent of ["claude", "grok"] as const) {
       expect(() =>

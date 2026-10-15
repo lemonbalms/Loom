@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { defaultWorkerPermissions } from "./agent-argv";
 import {
   builtinPolicyDefaults,
   type DeprecatedToolLists,
+  LEGACY_D10_DENIED_TOOLS,
   type EffectivePolicy,
   loadPolicy,
   mergePolicy,
@@ -187,9 +187,8 @@ describe("parsePolicy fail-closed", () => {
 describe("builtin defaults from D10", () => {
   test("normalizes no-space Bash forms to p and p *, and drops curl/wget", () => {
     const defaults = builtinPolicyDefaults();
-    const perms = defaultWorkerPermissions();
-    expect(perms.claude?.disallowedTools).toContain("Bash(git push*)");
-    expect(perms.claude?.disallowedTools).toContain("Bash(curl *)");
+    expect(LEGACY_D10_DENIED_TOOLS).toContain("Bash(git push*)");
+    expect(LEGACY_D10_DENIED_TOOLS).toContain("Bash(curl *)");
     expect(defaults.network).toBe(false);
     expect(defaults.mcp.isolate).toBe(true);
     expect(defaults.mcp.deny).toEqual([]);

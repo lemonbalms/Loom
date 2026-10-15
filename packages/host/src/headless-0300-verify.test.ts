@@ -10,10 +10,8 @@ import {
 } from "@loom/protocol";
 import { RelayServer } from "@loom/relay";
 import {
-  ARGV_TEMPLATE_VERSION,
-  HEADLESS_WORKER_HINT,
   defaultWorkerPermissions,
-  promptFingerprint,
+  workerFingerprint,
   type AgentKind,
   type WorkerConfig,
 } from "./agent-argv";
@@ -122,11 +120,7 @@ class Harness {
       cwd: this.root,
       requestedCwd: null,
       sessionId: "saved-session",
-      promptFingerprint: promptFingerprint(
-        HEADLESS_WORKER_HINT,
-        this.config.permissions,
-        ARGV_TEMPLATE_VERSION,
-      ),
+      promptFingerprint: workerFingerprint(this.config),
       attempts: 1,
       pid: 2_000_000_000,
       pgid: 2_000_000_000,

@@ -1,5 +1,6 @@
 /**
- * Fake agent CLI for v0.30.0 P2 (PLAN D15). Test infrastructure only.
+ * Fake agent CLI for v0.30.0 P2 (PLAN D15), stricter for v0.31.0 P2 (R49-M4).
+ * Test infrastructure only.
  *
  * Run: `bun <thisfile> <real CLI argv...>`
  * Strip `--fake-kind claude|codex|grok` (or `--fake-kind=<kind>`) before the
@@ -12,9 +13,20 @@
  * `--permission-mode`, `--cwd`, `--prompt-file`, `--output-format`,
  * `--session-id`, and `-r` each take exactly one value. A stray non-flag
  * token exits 2 (`error: unexpected argument '<tok>' found`). Claude `-p`
- * is a boolean print flag (the prompt stays on stdin) and its
- * `--allowedTools`/`--disallowedTools` stay variadic. Codex must be `exec`
+ * is a boolean print flag (the prompt stays on stdin). Codex must be `exec`
  * or `exec resume`; resume does not accept `-C` or `--sandbox`.
+ *
+ * 0.31.0 P2 strictness (stricter than the real CLIs):
+ * - claude rejects `--allowedTools`/`--disallowedTools` (and kebab forms).
+ *   `--settings` must appear at most once and be inline JSON of exactly
+ *   `{permissions:{allow:string[],deny:string[]}}`. `--strict-mcp-config` is a bool.
+ * - codex `-c` keys are an allow-list per mode (exec: approval_policy,
+ *   developer_instructions, sandbox_workspace_write.network_access; resume adds
+ *   sandbox_mode). `sandbox_workspace_write.network_access` must be present
+ *   exactly once with `true` or `false`.
+ * - grok `--disable-web-search` is a bool. Env `GROK_FOLDER_TRUST` is rejected.
+ * - claude and grok permission rules with a `*` right after a non-space
+ *   character (the `p*` form, PLAN §0.31.0 UK-1) are rejected.
  *
  * Knobs are env-only so argv stays the real CLI argv:
  * - FAKE_OUTPUT_BYTES       body length (default 32). Body is "x" repeated.
@@ -192,8 +204,8 @@ function flagMap(rows: Array<[string[], FlagSpec]>): Map<string, FlagSpec> {
 
 /**
  * Walk argv the way the real CLIs do for the flags buildAgentArgv emits.
- * Claude list flags (`--allowedTools`, `--disallowedTools`) consume every
- * following non-flag token. Grok `--allow` and `--deny` each take one value;
+ * A "variadic" flag consumes every following non-flag token (none of the
+ * 0.31.0 flags are variadic). Grok `--allow` and `--deny` each take one value;
  * a later non-flag token is a stray positional.
  * Returns an error string, or null when the argv is accepted.
  */
@@ -243,6 +255,7 @@ const grokFlags = flagMap([
   [["--permission-mode"], { take: "value", label: "--permission-mode <MODE>" }],
   [["--allow"], { take: "value", label: "--allow <RULE>" }],
   [["--deny"], { take: "value", label: "--deny <RULE>" }],
+  [["--disable-web-search"], { take: "bool", label: "--disable-web-search" }],
 ]);
 
 const claudeFlags = flagMap([
@@ -253,12 +266,20 @@ const claudeFlags = flagMap([
   [["-r", "--resume"], { take: "optional", label: "--resume [value]" }],
   [["--append-system-prompt"], { take: "value", label: "--append-system-prompt <prompt>" }],
   [["--permission-mode"], { take: "value", label: "--permission-mode <mode>" }],
-  [["--allowedTools", "--allowed-tools"], { take: "variadic", label: "--allowedTools <tools...>" }],
-  [
-    ["--disallowedTools", "--disallowed-tools"],
-    { take: "variadic", label: "--disallowedTools <tools...>" },
-  ],
+  [["--settings"], { take: "value", label: "--settings <file-or-json>" }],
+  [["--strict-mcp-config"], { take: "bool", label: "--strict-mcp-config" }],
 ]);
+
+/** 0.30.0 claude tool-list flags. 0.31.0 compiles permissions into --settings. */
+const CLAUDE_REMOVED_FLAGS = new Set([
+  "--allowedTools",
+  "--allowed-tools",
+  "--disallowedTools",
+  "--disallowed-tools",
+]);
+
+/** `*` right after a non-space character: the banned `p*` rule form. */
+const NO_SPACE_STAR = /[^ ]\*/;
 
 const codexConfig: FlagSpec = { take: "value", label: "--config <key=value>" };
 const codexExecFlags = flagMap([
@@ -274,14 +295,125 @@ const codexResumeFlags = flagMap([
   [["--skip-git-repo-check"], { take: "bool", label: "--skip-git-repo-check" }],
 ]);
 
+const CODEX_NETWORK_KEY = "sandbox_workspace_write.network_access";
+const CODEX_EXEC_KEYS = new Set(["approval_policy", "developer_instructions", CODEX_NETWORK_KEY]);
+const CODEX_RESUME_KEYS = new Set([...CODEX_EXEC_KEYS, "sandbox_mode"]);
+
+/** Values of a value-taking flag, in order. Call only after parseFlags accepted argv. */
+function flagValues(argv: string[], names: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (names.includes(argv[i] ?? "")) out.push(argv[i + 1] ?? "");
+  }
+  return out;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function badRule(flag: string, rule: string): string | null {
+  if (!NO_SPACE_STAR.test(rule)) return null;
+  return `error: ${flag} rule ${JSON.stringify(rule)} uses a no-space '*' form\n`;
+}
+
+function settingsError(detail: string): string {
+  return `error: invalid --settings: ${detail}\n`;
+}
+
+function checkClaudeSettings(argv: string[]): string | null {
+  const values = flagValues(argv, ["--settings"]);
+  if (values.length > 1) return settingsError("given more than once");
+  if (values.length === 0) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(values[0] ?? "");
+  } catch {
+    return settingsError("not inline JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return settingsError("not a JSON object");
+  }
+  const root = parsed as Record<string, unknown>;
+  const keys = Object.keys(root);
+  if (keys.length !== 1 || keys[0] !== "permissions") {
+    return settingsError(`keys must be exactly ["permissions"], got ${JSON.stringify(keys)}`);
+  }
+  const perms = root.permissions;
+  if (!perms || typeof perms !== "object" || Array.isArray(perms)) {
+    return settingsError("permissions must be an object");
+  }
+  const p = perms as Record<string, unknown>;
+  const permKeys = Object.keys(p).sort();
+  if (permKeys.length !== 2 || permKeys[0] !== "allow" || permKeys[1] !== "deny") {
+    return settingsError(`permissions keys must be allow and deny, got ${JSON.stringify(permKeys)}`);
+  }
+  if (!isStringArray(p.allow)) return settingsError("permissions.allow must be a string[]");
+  if (!isStringArray(p.deny)) return settingsError("permissions.deny must be a string[]");
+  for (const rule of [...p.allow, ...p.deny]) {
+    const err = badRule("--settings", rule);
+    if (err) return err;
+  }
+  return null;
+}
+
+function checkClaude(argv: string[]): string | null {
+  for (const arg of argv) {
+    if (CLAUDE_REMOVED_FLAGS.has(arg)) {
+      return `error: ${arg} is not accepted (0.31.0 compiles permissions into --settings)\n`;
+    }
+  }
+  const flagError = parseFlags(argv, claudeFlags, 1);
+  if (flagError) return flagError;
+  return checkClaudeSettings(argv);
+}
+
+function checkCodexConfig(argv: string[], allowed: ReadonlySet<string>): string | null {
+  let network = 0;
+  for (const assignment of flagValues(argv, ["-c", "--config"])) {
+    const eq = assignment.indexOf("=");
+    const key = eq < 0 ? assignment : assignment.slice(0, eq);
+    if (!allowed.has(key)) return `error: unknown config key '${key}'\n`;
+    if (key !== CODEX_NETWORK_KEY) continue;
+    network += 1;
+    const value = assignment.slice(eq + 1);
+    if (value !== "true" && value !== "false") {
+      return `error: ${CODEX_NETWORK_KEY} must be true or false, got '${value}'\n`;
+    }
+  }
+  if (network !== 1) {
+    return `error: ${CODEX_NETWORK_KEY} must be set exactly once (got ${network})\n`;
+  }
+  return null;
+}
+
+function checkGrok(argv: string[]): string | null {
+  if (process.env.GROK_FOLDER_TRUST !== undefined) {
+    return "error: GROK_FOLDER_TRUST must not be set for a Loom worker\n";
+  }
+  const flagError = parseFlags(argv, grokFlags, 0);
+  if (flagError) return flagError;
+  for (const flag of ["--allow", "--deny"]) {
+    for (const rule of flagValues(argv, [flag])) {
+      const err = badRule(flag, rule);
+      if (err) return err;
+    }
+  }
+  return null;
+}
+
 function validateKindArgv(kind: Kind, argv: string[]): string | null {
-  if (kind === "grok") return parseFlags(argv, grokFlags, 0);
-  if (kind === "claude") return parseFlags(argv, claudeFlags, 1);
+  if (kind === "grok") return checkGrok(argv);
+  if (kind === "claude") return checkClaude(argv);
   if (argv[0] !== "exec") return unexpectedArg(argv[0] ?? "");
   const next = argv[1];
   if (next === "fork" || next === "review" || next === "help") return unexpectedArg(next);
-  if (next === "resume") return parseFlags(argv.slice(2), codexResumeFlags, 2);
-  return parseFlags(argv.slice(1), codexExecFlags, 1);
+  if (next === "resume") {
+    const rest = argv.slice(2);
+    return parseFlags(rest, codexResumeFlags, 2) ?? checkCodexConfig(rest, CODEX_RESUME_KEYS);
+  }
+  const rest = argv.slice(1);
+  return parseFlags(rest, codexExecFlags, 1) ?? checkCodexConfig(rest, CODEX_EXEC_KEYS);
 }
 
 async function main(): Promise<void> {

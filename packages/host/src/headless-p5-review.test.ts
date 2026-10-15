@@ -5,7 +5,7 @@ import * as fsPromises from "node:fs/promises";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { ARGV_TEMPLATE_VERSION, HEADLESS_WORKER_HINT, defaultWorkerPermissions, promptFingerprint, type AgentKind, type WorkerConfig } from "./agent-argv";
+import { defaultWorkerPermissions, type AgentKind, type WorkerConfig, workerFingerprint } from "./agent-argv";
 import * as sessions from "./card-session-store";
 import { cardSessionPath, readCardSession, writeCardSession, type CardSessionRecord } from "./card-session-store";
 import { HeadlessDispatcher, type HeadlessDispatchCard, type HeadlessResultFields } from "./headless-worker";
@@ -64,7 +64,7 @@ function commands(script?: string): Record<AgentKind, { bin: string; args: strin
   ])) as Record<AgentKind, { bin: string; args: string[] }>;
 }
 function fingerprint(config: WorkerConfig): string {
-  return promptFingerprint(HEADLESS_WORKER_HINT, config.permissions, ARGV_TEMPLATE_VERSION);
+  return workerFingerprint(config);
 }
 function terminal(agent: AgentKind, usage = true): string {
   const event = agent === "claude" ? { type: "result", result: "saved terminal", session_id: "real-session" }

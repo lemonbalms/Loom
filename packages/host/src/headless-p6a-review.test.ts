@@ -26,10 +26,8 @@ import {
 } from "@loom/protocol";
 import { RelayServer } from "@loom/relay";
 import {
-  ARGV_TEMPLATE_VERSION,
-  HEADLESS_WORKER_HINT,
   defaultWorkerPermissions,
-  promptFingerprint,
+  workerFingerprint,
 } from "./agent-argv";
 import {
   bridgeConfigDir,
@@ -379,11 +377,7 @@ describe("P6a live adopt does not block startup", () => {
             cwd,
             requestedCwd: null,
             sessionId: "live-session",
-            promptFingerprint: promptFingerprint(
-              HEADLESS_WORKER_HINT,
-              parsed.permissions,
-              ARGV_TEMPLATE_VERSION,
-            ),
+            promptFingerprint: workerFingerprint(parsed),
             attempts: 1,
             pid: workerPid,
             pgid: workerPid,
@@ -602,11 +596,7 @@ describe("P6a redelivered dispatches do not block startup", () => {
           },
         };
         const parsed = workerConfigFromBridge(cfg);
-        const fingerprint = promptFingerprint(
-          HEADLESS_WORKER_HINT,
-          parsed.permissions,
-          ARGV_TEMPLATE_VERSION,
-        );
+        const fingerprint = workerFingerprint(parsed);
         for (let i = 0; i < cardIds.length; i++) {
           const cardId = cardIds[i]!;
           const recordPath = cardSessionPath({
