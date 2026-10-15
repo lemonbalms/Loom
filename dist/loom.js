@@ -5438,29 +5438,29 @@ var init_session_store = __esm(() => {
 
 // packages/relay/src/persist.ts
 import {
-  existsSync as existsSync17,
-  mkdirSync as mkdirSync18,
-  readFileSync as readFileSync11,
-  writeFileSync as writeFileSync14,
-  renameSync as renameSync4,
-  chmodSync as chmodSync10,
+  existsSync as existsSync18,
+  mkdirSync as mkdirSync19,
+  readFileSync as readFileSync14,
+  writeFileSync as writeFileSync15,
+  renameSync as renameSync5,
+  chmodSync as chmodSync11,
   copyFileSync as copyFileSync2,
   readdirSync as readdirSync4,
-  statSync as statSync6,
+  statSync as statSync7,
   lstatSync as lstatSync3,
   realpathSync as realpathSync3,
-  unlinkSync as unlinkSync5,
-  rmSync as rmSync3
+  unlinkSync as unlinkSync6,
+  rmSync as rmSync4
 } from "fs";
-import { join as join24, dirname as dirname12, basename as basename4, resolve as resolve5, sep as sep5 } from "path";
+import { join as join27, dirname as dirname13, basename as basename4, resolve as resolve5, sep as sep5 } from "path";
 import { createHash as createHash10 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
-  return join24(homedir5(), ".loom", "relay-state");
+  return join27(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
   const h = createHash10("sha256").update(roomId).digest("hex").slice(0, 16);
-  return join24(stateDir2, `${h}.json`);
+  return join27(stateDir2, `${h}.json`);
 }
 function isPidAlive4(pid) {
   if (!Number.isFinite(pid) || pid <= 0)
@@ -5473,22 +5473,22 @@ function isPidAlive4(pid) {
   }
 }
 function processLockDir(stateDir2) {
-  return join24(stateDir2, ".relay-writer.lock");
+  return join27(stateDir2, ".relay-writer.lock");
 }
 function lockPidPath2(lockDir) {
-  return join24(lockDir, "owner.pid");
+  return join27(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
-  mkdirSync18(stateDir2, { recursive: true });
+  mkdirSync19(stateDir2, { recursive: true });
   const lockDir = processLockDir(stateDir2);
   const tryAcquire = () => {
     try {
-      mkdirSync18(lockDir);
+      mkdirSync19(lockDir);
     } catch {
       return false;
     }
     try {
-      writeFileSync14(lockPidPath2(lockDir), `${process.pid}
+      writeFileSync15(lockPidPath2(lockDir), `${process.pid}
 `, {
         encoding: "utf8",
         mode: 384
@@ -5496,7 +5496,7 @@ function acquireStateDirLock(stateDir2) {
       return true;
     } catch {
       try {
-        rmSync3(lockDir, { recursive: true, force: true });
+        rmSync4(lockDir, { recursive: true, force: true });
       } catch {}
       return false;
     }
@@ -5504,10 +5504,10 @@ function acquireStateDirLock(stateDir2) {
   if (tryAcquire())
     return;
   try {
-    const age = Date.now() - statSync6(lockDir).mtimeMs;
+    const age = Date.now() - statSync7(lockDir).mtimeMs;
     let owner = null;
     try {
-      const raw = readFileSync11(lockPidPath2(lockDir), "utf8").trim();
+      const raw = readFileSync14(lockPidPath2(lockDir), "utf8").trim();
       const n = Number(raw);
       owner = Number.isFinite(n) ? n : null;
     } catch {
@@ -5515,7 +5515,7 @@ function acquireStateDirLock(stateDir2) {
     }
     if (age >= LOCK_STALE_MS3 && (owner === null || !isPidAlive4(owner))) {
       try {
-        rmSync3(lockDir, { recursive: true, force: true });
+        rmSync4(lockDir, { recursive: true, force: true });
       } catch {}
       if (tryAcquire())
         return;
@@ -5531,21 +5531,21 @@ function acquireStateDirLock(stateDir2) {
 }
 function releaseStateDirLock(stateDir2) {
   const lockDir = processLockDir(stateDir2);
-  if (!existsSync17(lockDir))
+  if (!existsSync18(lockDir))
     return;
   try {
-    const raw = readFileSync11(lockPidPath2(lockDir), "utf8").trim();
+    const raw = readFileSync14(lockPidPath2(lockDir), "utf8").trim();
     const owner = Number(raw);
     if (Number.isFinite(owner) && owner !== process.pid)
       return;
   } catch {}
   try {
-    rmSync3(lockDir, { recursive: true, force: true });
+    rmSync4(lockDir, { recursive: true, force: true });
   } catch {}
 }
 function writeAtomicJson2(filePath, data) {
-  const parent = dirname12(resolve5(filePath));
-  mkdirSync18(parent, { recursive: true });
+  const parent = dirname13(resolve5(filePath));
+  mkdirSync19(parent, { recursive: true });
   let realParent;
   try {
     realParent = realpathSync3(parent);
@@ -5556,11 +5556,11 @@ function writeAtomicJson2(filePath, data) {
   if (!base || base === "." || base === "..") {
     throw new Error(`Invalid snapshot basename: ${filePath}`);
   }
-  const finalPath = join24(realParent, base);
+  const finalPath = join27(realParent, base);
   try {
     const st = lstatSync3(finalPath);
     if (st.isSymbolicLink()) {
-      unlinkSync5(finalPath);
+      unlinkSync6(finalPath);
     } else if (st.isDirectory()) {
       throw new Error(`Refusing to overwrite directory: ${finalPath}`);
     }
@@ -5571,29 +5571,29 @@ function writeAtomicJson2(filePath, data) {
         throw e;
     }
   }
-  const tmp = join24(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
+  const tmp = join27(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
   try {
-    writeFileSync14(tmp, body, { encoding: "utf8", mode: 384 });
-    renameSync4(tmp, finalPath);
+    writeFileSync15(tmp, body, { encoding: "utf8", mode: 384 });
+    renameSync5(tmp, finalPath);
     try {
-      chmodSync10(finalPath, 384);
+      chmodSync11(finalPath, 384);
     } catch {}
   } catch (e) {
     try {
-      if (existsSync17(tmp))
-        unlinkSync5(tmp);
+      if (existsSync18(tmp))
+        unlinkSync6(tmp);
     } catch {}
     throw e;
   }
 }
 function readJsonFile2(filePath) {
-  if (!existsSync17(filePath))
+  if (!existsSync18(filePath))
     return null;
   let raw;
   try {
-    raw = readFileSync11(filePath, "utf8");
+    raw = readFileSync14(filePath, "utf8");
   } catch (e) {
     throw new Error(`Failed to read ${filePath}: ${e instanceof Error ? e.message : e}`);
   }
@@ -5709,7 +5709,7 @@ function parseRoomSnapshot(raw) {
 function loadAllSnapshots(stateDir2) {
   const snapshots = [];
   const errors2 = [];
-  if (!existsSync17(stateDir2))
+  if (!existsSync18(stateDir2))
     return { snapshots, errors: errors2 };
   let names;
   try {
@@ -5721,9 +5721,9 @@ function loadAllSnapshots(stateDir2) {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith("."))
       continue;
-    const path = join24(stateDir2, name);
+    const path = join27(stateDir2, name);
     try {
-      const st = statSync6(path);
+      const st = statSync7(path);
       if (!st.isFile())
         continue;
     } catch {
@@ -5746,7 +5746,7 @@ function loadAllSnapshots(stateDir2) {
   return { snapshots, errors: errors2 };
 }
 function saveRoomSnapshot(stateDir2, snap) {
-  mkdirSync18(stateDir2, { recursive: true });
+  mkdirSync19(stateDir2, { recursive: true });
   let realState;
   try {
     realState = realpathSync3(stateDir2);
@@ -8402,7 +8402,8 @@ import {
   chmodSync as chmodSync3,
   copyFileSync,
   statSync as statSync2,
-  rmSync as rmSync2
+  rmSync as rmSync2,
+  unlinkSync as unlinkSync3
 } from "fs";
 import { dirname as dirname2, basename, join as join4 } from "path";
 var LOCK_STALE_MS = 5000;
@@ -8413,8 +8414,15 @@ function writeAtomicJson(filePath, data) {
   const tmp = join4(dirname2(filePath), `.${basename(filePath)}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
-  writeFileSync4(tmp, body, { encoding: "utf8", mode: 384 });
-  renameSync2(tmp, filePath);
+  try {
+    writeFileSync4(tmp, body, { encoding: "utf8", mode: 384 });
+    renameSync2(tmp, filePath);
+  } catch (err) {
+    try {
+      unlinkSync3(tmp);
+    } catch {}
+    throw err;
+  }
   try {
     chmodSync3(filePath, 384);
   } catch {}
@@ -11135,7 +11143,7 @@ import {
   mkdirSync as mkdirSync6,
   readFileSync as readFileSync6,
   writeFileSync as writeFileSync6,
-  unlinkSync as unlinkSync3,
+  unlinkSync as unlinkSync4,
   chmodSync as chmodSync5
 } from "fs";
 init_session_store();
@@ -11163,7 +11171,7 @@ function clearBridgeMeta(forSessionPath) {
   const p = bridgeMetaPath(forSessionPath);
   if (existsSync11(p)) {
     try {
-      unlinkSync3(p);
+      unlinkSync4(p);
     } catch {}
   }
 }
@@ -11191,7 +11199,7 @@ function resolveAliveBridgeMeta(forSessionPath) {
 }
 // packages/host/src/bridge-spawn.ts
 var {spawn: spawn4 } = globalThis.Bun;
-import { existsSync as existsSync13, mkdirSync as mkdirSync8, openSync as openSync4, closeSync as closeSync4, chmodSync as chmodSync7 } from "fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync8, openSync as openSync4, closeSync as closeSync4, chmodSync as chmodSync7, readFileSync as readFileSync8 } from "fs";
 import { join as join13 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 init_session_store();
@@ -11552,6 +11560,27 @@ function sanitizeProfileLogName(profile) {
   s = s.replace(/^[.\-]+/, (m) => "_".repeat(m.length));
   return s.length > 0 ? s : "default";
 }
+function resolveBridgeProfile(session) {
+  const active = getActiveProfile();
+  if (active)
+    return active;
+  const s = session === undefined ? loadSession() : session;
+  return s?.displayName || "default";
+}
+function bridgeLogPath(profile, bridgeDir) {
+  return join13(bridgeDir ?? join13(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.stderr.log`);
+}
+function bridgeLockLooksHeld(profile) {
+  const lockDir = join13(loomDir(), "bridge", `${sanitizeProfileLogName(profile)}.lock`);
+  if (!existsSync13(lockDir))
+    return false;
+  try {
+    const owner = JSON.parse(readFileSync8(join13(lockDir, "owner.json"), "utf8"));
+    return typeof owner.pid === "number" && isPidAlive(owner.pid);
+  } catch {
+    return true;
+  }
+}
 function bridgeMainPath() {
   const here = fileURLToPath3(new URL(".", import.meta.url));
   const candidate = join13(here, "bridge-main.ts");
@@ -11561,6 +11590,20 @@ function bridgeMainPath() {
   if (existsSync13(fromCwd))
     return fromCwd;
   throw new Error("Cannot find bridge-main.ts");
+}
+var STOP_BOUND_MS = 1e4;
+function bridgeStopWaitMs(rpcOk) {
+  return rpcOk ? STOP_BOUND_MS + 2000 : 3000;
+}
+function lastLogLine(path) {
+  try {
+    const lines = readFileSync8(path, "utf8").split(`
+`).map((l) => l.trim()).filter(Boolean);
+    const last = lines[lines.length - 1];
+    return last ? last.slice(0, 400) : null;
+  } catch {
+    return null;
+  }
 }
 async function bridgePing(meta) {
   try {
@@ -11587,16 +11630,16 @@ async function startBridgeProcess() {
     ...process.env,
     LOOM_SESSION: sp
   };
-  const profile = getActiveProfile() ?? "default";
-  if (getActiveProfile())
-    env2.LOOM_PROFILE = profile;
-  const safeProfile = sanitizeProfileLogName(profile);
+  const profile = resolveBridgeProfile();
+  const active = getActiveProfile();
+  if (active)
+    env2.LOOM_PROFILE = active;
   const logDir = join13(loomDir(), "bridge");
   mkdirSync8(logDir, { recursive: true });
-  const stderrPath = join13(logDir, `${safeProfile}.stderr.log`);
+  const stderrPath = bridgeLogPath(profile, logDir);
   let stderrFd;
   try {
-    stderrFd = openSync4(stderrPath, "w", 384);
+    stderrFd = openSync4(stderrPath, bridgeLockLooksHeld(profile) ? "a" : "w", 384);
     try {
       chmodSync7(stderrPath, 384);
     } catch {}
@@ -11626,9 +11669,10 @@ async function startBridgeProcess() {
       }
     }
     if (proc.exitCode !== null && proc.exitCode !== undefined) {
+      const last = stderrFd !== undefined ? lastLogLine(stderrPath) : null;
       return {
         ok: false,
-        error: `bridge exited early (code ${proc.exitCode}). herdr up? session active? authorizedDispatchers set?`
+        error: `bridge exited early (code ${proc.exitCode}). herdr up? session active? authorizedDispatchers set?${last ? ` \u2014 last log: ${last}` : ""}`
       };
     }
   }
@@ -11640,8 +11684,9 @@ async function stopBridgeProcess() {
     clearBridgeMeta(sessionPath());
     return { ok: true, message: "no bridge running" };
   }
+  let rpcOk = false;
   try {
-    await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+    const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${meta.token}`,
@@ -11650,8 +11695,12 @@ async function stopBridgeProcess() {
       body: JSON.stringify({ op: "stop" }),
       signal: AbortSignal.timeout(2000)
     });
+    if (res.ok) {
+      const body = await res.json().catch(() => null);
+      rpcOk = body?.ok === true;
+    }
   } catch {}
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + bridgeStopWaitMs(rpcOk);
   while (Date.now() < deadline && isPidAlive(meta.pid)) {
     await Bun.sleep(50);
   }
@@ -11670,6 +11719,75 @@ async function stopBridgeProcess() {
   }
   clearBridgeMeta(sessionPath());
   return { ok: true, message: "bridge stopped" };
+}
+var DRAIN_PROGRESS_MS = 2000;
+var DRAIN_EXIT_SLACK_MS = 5000;
+async function postBridgeRpc(meta, body) {
+  return fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${meta.token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(2000)
+  });
+}
+function formatDrainProgress(state, remaining, deadlineAt) {
+  const r = remaining ?? {};
+  const n = (v) => typeof v === "number" ? v : "?";
+  const parts = [
+    `${typeof state === "string" ? state : "unknown"}:`,
+    `paneCards=${n(r.paneCards)}`,
+    `convs=${n(r.convs)}`,
+    `headlessRunning=${n(r.headlessRunning)}`,
+    `headlessQueued=${n(r.headlessQueued)}`
+  ];
+  if (typeof deadlineAt === "string")
+    parts.push(`deadline=${deadlineAt}`);
+  return parts.join(" ");
+}
+async function drainBridgeProcess(opts) {
+  const meta = resolveAliveBridgeMeta();
+  if (!meta)
+    return { kind: "no_bridge" };
+  const say = opts.onProgress ?? (() => {});
+  let deadlineAt = null;
+  try {
+    const res = await postBridgeRpc(meta, {
+      op: "drain",
+      ...opts.timeoutSec !== undefined ? { timeoutSec: opts.timeoutSec } : {}
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || body?.ok !== true) {
+      const why = typeof body?.message === "string" ? body.message : `HTTP ${res.status}`;
+      return { kind: "rpc_failed", pid: meta.pid, error: why };
+    }
+    deadlineAt = typeof body.deadlineAt === "string" ? body.deadlineAt : null;
+    say(formatDrainProgress(body.state, body.remaining, body.deadlineAt));
+  } catch (e) {
+    if (isPidAlive(meta.pid)) {
+      return { kind: "rpc_failed", pid: meta.pid, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  const deadlineMs = deadlineAt ? Date.parse(deadlineAt) : Date.now();
+  const bound = (Number.isFinite(deadlineMs) ? deadlineMs : Date.now()) + STOP_BOUND_MS + DRAIN_EXIT_SLACK_MS;
+  let nextProgress = Date.now() + DRAIN_PROGRESS_MS;
+  while (Date.now() < bound && isPidAlive(meta.pid)) {
+    if (Date.now() >= nextProgress) {
+      nextProgress = Date.now() + DRAIN_PROGRESS_MS;
+      try {
+        const res = await postBridgeRpc(meta, { op: "status" });
+        const st = await res.json().catch(() => null);
+        if (st)
+          say(formatDrainProgress(st.state, st.remaining, st.drain?.deadlineAt));
+      } catch {}
+    }
+    await Bun.sleep(50);
+  }
+  if (isPidAlive(meta.pid))
+    return { kind: "still_alive", pid: meta.pid };
+  return { kind: "stopped", pid: meta.pid };
 }
 async function bridgeStatus() {
   const meta = resolveAliveBridgeMeta();
@@ -11756,7 +11874,7 @@ async function bridgeQuarantineAck(args) {
       };
     }
   }
-  const profile = args.profile ?? getActiveProfile() ?? "default";
+  const profile = args.profile ?? resolveBridgeProfile();
   const store = new QuarantineStore({ profile });
   store.load();
   const result = store.ackOperator({
@@ -11774,6 +11892,7 @@ async function bridgeQuarantineAck(args) {
 // packages/host/src/bridge-runtime.ts
 init_src();
 init_src();
+import { join as join20 } from "path";
 
 // packages/host/src/conv-state.ts
 init_session_store();
@@ -12498,7 +12617,7 @@ init_src();
 // packages/host/src/headless-worker.ts
 init_src();
 import { AsyncLocalStorage } from "async_hooks";
-import { execFile, execFileSync as execFileSync2 } from "child_process";
+import { execFile } from "child_process";
 import { randomUUID as randomUUID3 } from "crypto";
 import { realpathSync as realpathSync2, statSync as statSync5 } from "fs";
 import { chmod as chmod4, mkdir as mkdir4, readFile as readFile3, writeFile as writeFile3 } from "fs/promises";
@@ -13048,6 +13167,39 @@ function spawnDetachedWorker(opts) {
       } catch {}
     }
   }
+}
+
+// packages/host/src/process-lstart.ts
+import { execFileSync as execFileSync2 } from "child_process";
+function readProcessLstart(pid) {
+  if (!Number.isInteger(pid) || pid <= 1)
+    return null;
+  try {
+    const out = execFileSync2("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" }
+    });
+    const text = out.trim();
+    return text.length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function parseLstart(value) {
+  const text = value.trim().replace(/\s+/g, " ");
+  const parts = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(text);
+  if (!parts)
+    return null;
+  const month = MONTHS.indexOf(parts[1]);
+  const day = Number(parts[2]), hour = Number(parts[3]), minute = Number(parts[4]);
+  const second = Number(parts[5]), year = Number(parts[6]);
+  const date = new Date(Date.UTC(year, month, day, hour, minute, second));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month || date.getUTCDate() !== day || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second)
+    return null;
+  return date.getTime();
 }
 
 // packages/host/src/redact.ts
@@ -14228,22 +14380,6 @@ function denialNote(parsed) {
     listed.push("\u2026");
   return `denials: ${parsed.denials.length}${listed.length ? ` (${listed.join(", ")})` : ""}`;
 }
-function processLstart(pid) {
-  if (!Number.isInteger(pid) || pid <= 1)
-    return null;
-  try {
-    const out = execFileSync2("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
-      encoding: "utf8",
-      timeout: 2000,
-      stdio: ["ignore", "pipe", "ignore"],
-      env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" }
-    });
-    const text = out.trim();
-    return text.length > 0 ? text : null;
-  } catch {
-    return null;
-  }
-}
 function observeProcess(record) {
   if (record.state === "exited" || !(record.pid > 1)) {
     return { liveness: "dead", leaderExited: false };
@@ -14254,35 +14390,9 @@ function observeProcess(record) {
     const leaderExited = err.code === "ESRCH";
     return { liveness: leaderExited ? "dead" : "unknown", leaderExited };
   }
-  const live = processLstart(record.pid);
-  const normalize = (value) => {
-    const text = value.trim().replace(/\s+/g, " ");
-    const parts = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(text);
-    if (!parts)
-      return null;
-    const month = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec"
-    ].indexOf(parts[1]);
-    const day = Number(parts[2]), hour = Number(parts[3]), minute = Number(parts[4]);
-    const second = Number(parts[5]), year = Number(parts[6]);
-    const date = new Date(Date.UTC(year, month, day, hour, minute, second));
-    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month || date.getUTCDate() !== day || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second)
-      return null;
-    return date.getTime();
-  };
-  const expected = normalize(record.procStartedAt);
-  const observed = live ? normalize(live) : null;
+  const live = readProcessLstart(record.pid);
+  const expected = parseLstart(record.procStartedAt);
+  const observed = live ? parseLstart(live) : null;
   if (expected === null || observed === null)
     return { liveness: "unknown", leaderExited: false };
   return { liveness: expected === observed ? "alive" : "dead", leaderExited: false };
@@ -15547,7 +15657,213 @@ ${wrapped}` : firstTurn : "";
 
 // packages/host/src/bridge-runtime.ts
 init_src();
+
+// packages/host/src/bridge-lock.ts
+import {
+  chmodSync as chmodSync9,
+  existsSync as existsSync14,
+  mkdirSync as mkdirSync10,
+  readFileSync as readFileSync9,
+  renameSync as renameSync3,
+  rmSync as rmSync3,
+  statSync as statSync6,
+  writeFileSync as writeFileSync7
+} from "fs";
+import { dirname as dirname10, join as join18 } from "path";
 init_session_store();
+var LOCK_INCOMPLETE_GRACE_MS = 5000;
+function bridgeLockPath(profile, bridgeDir) {
+  return join18(bridgeDir ?? join18(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.lock`);
+}
+function ownerPath(lockPath) {
+  return join18(lockPath, "owner.json");
+}
+function parseOwner(raw) {
+  if (!raw || typeof raw !== "object")
+    return null;
+  const o = raw;
+  if (o.v !== 1)
+    return null;
+  if (typeof o.pid !== "number" || !Number.isInteger(o.pid) || o.pid < 1)
+    return null;
+  if (typeof o.lstart !== "string")
+    return null;
+  if (typeof o.startedAt !== "string")
+    return null;
+  if (typeof o.version !== "string")
+    return null;
+  return { v: 1, pid: o.pid, lstart: o.lstart, startedAt: o.startedAt, version: o.version };
+}
+function readOwnerAt(lockPath) {
+  try {
+    return parseOwner(JSON.parse(readFileSync9(ownerPath(lockPath), "utf8")));
+  } catch {
+    return null;
+  }
+}
+function inspectBridgeLockAt(lockPath, probe = {}) {
+  const v = inspect(lockPath, {
+    kill: probe.kill ?? ((pid, sig) => process.kill(pid, sig)),
+    readLstart: probe.readLstart ?? readProcessLstart
+  });
+  switch (v.kind) {
+    case "gone":
+      return { kind: "none" };
+    case "incomplete":
+      return { kind: "incomplete" };
+    case "stale":
+      return { kind: "stale", pid: v.owner?.pid ?? null };
+    case "live":
+      return { kind: "held", pid: v.owner.pid, startedAt: v.owner.startedAt, verified: v.verified };
+  }
+}
+function compareLstart(recorded, observed) {
+  if (recorded.trim() === "" || observed === null)
+    return "unknown";
+  const a = parseLstart(recorded);
+  const b = parseLstart(observed);
+  if (a !== null && b !== null)
+    return a === b ? "same" : "different";
+  const norm = (s) => s.trim().replace(/\s+/g, " ");
+  return norm(recorded) === norm(observed) ? "same" : "different";
+}
+function ageMs(path, missing = 0) {
+  try {
+    return Date.now() - statSync6(path).mtimeMs;
+  } catch {
+    return missing;
+  }
+}
+function inspect(lockPath, probe) {
+  if (!existsSync14(lockPath))
+    return { kind: "gone" };
+  const owner = readOwnerAt(lockPath);
+  if (!owner) {
+    return ownerlessOlderThan(lockPath, LOCK_INCOMPLETE_GRACE_MS) ? { kind: "stale", owner: null } : { kind: "incomplete" };
+  }
+  const state = holderState(owner, probe);
+  if (state === "stale")
+    return { kind: "stale", owner };
+  return { kind: "live", owner, verified: state === "verified" };
+}
+function ownerlessOlderThan(dir, ms) {
+  const youngest = Math.min(ageMs(dir), ageMs(ownerPath(dir), Number.POSITIVE_INFINITY));
+  return youngest >= ms;
+}
+function holderState(owner, probe) {
+  try {
+    probe.kill(owner.pid, 0);
+  } catch (err) {
+    if (err.code === "ESRCH")
+      return "stale";
+  }
+  const cmp = compareLstart(owner.lstart, probe.readLstart(owner.pid));
+  if (cmp === "different")
+    return "stale";
+  return cmp === "same" ? "verified" : "unverified";
+}
+var releasedHandles = new WeakSet;
+
+// packages/host/src/bridge-status.ts
+import { readFileSync as readFileSync10 } from "fs";
+import { join as join19 } from "path";
+init_session_store();
+var HEARTBEAT_MS = 5000;
+var STATUS_STALE_MS = 3 * HEARTBEAT_MS;
+var LAST_ERROR_MAX_BYTES = 512;
+var BRIDGE_STATES = ["starting", "running", "draining", "stopping", "stopped"];
+function bridgeStatusPath(profile, bridgeDir) {
+  return join19(bridgeDir ?? join19(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.status.json`);
+}
+function shortValue(v) {
+  const s = typeof v === "string" ? JSON.stringify(v) : String(v);
+  return s.length > 24 ? `${s.slice(0, 24)}\u2026` : s;
+}
+function readBridgeStatusFileResult(path) {
+  let text;
+  try {
+    text = readFileSync10(path, "utf8");
+  } catch (e) {
+    const code = e?.code;
+    if (code === "ENOENT")
+      return { kind: "absent" };
+    return { kind: "invalid", reason: `read error ${code ?? "unknown"}` };
+  }
+  if (text.trim() === "")
+    return { kind: "invalid", reason: "empty file" };
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { kind: "invalid", reason: "invalid JSON" };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { kind: "invalid", reason: "not an object" };
+  }
+  const o = raw;
+  if (o.v !== 1)
+    return { kind: "invalid", reason: `unknown version v=${shortValue(o.v)}` };
+  if (typeof o.state !== "string" || !BRIDGE_STATES.includes(o.state)) {
+    return { kind: "invalid", reason: `unknown state ${shortValue(o.state)}` };
+  }
+  const str = (v) => typeof v === "string" ? v : "";
+  const num = (v) => typeof v === "number" && Number.isFinite(v) ? v : 0;
+  const f = o.inFlight && typeof o.inFlight === "object" ? o.inFlight : {};
+  const herdr = o.herdr === "ok" || o.herdr === "skipped" || o.herdr === "down" ? o.herdr : "down";
+  const out = {
+    v: 1,
+    pid: num(o.pid),
+    version: str(o.version),
+    srcPath: str(o.srcPath),
+    profile: str(o.profile),
+    startedAt: str(o.startedAt),
+    heartbeatAt: str(o.heartbeatAt),
+    state: o.state,
+    inFlight: {
+      paneCards: num(f.paneCards),
+      convs: num(f.convs),
+      headlessRunning: num(f.headlessRunning),
+      headlessQueued: num(f.headlessQueued)
+    },
+    herdr
+  };
+  const d = o.drain;
+  if (d && typeof d === "object" && typeof d.deadlineAt === "string") {
+    out.drain = { startedAt: str(d.startedAt), deadlineAt: d.deadlineAt };
+  }
+  if (typeof o.stoppedAt === "string")
+    out.stoppedAt = o.stoppedAt;
+  if (typeof o.lastError === "string")
+    out.lastError = truncateLastError(o.lastError);
+  return { kind: "ok", status: out };
+}
+function truncateLastError(text, max = LAST_ERROR_MAX_BYTES) {
+  if (Buffer.byteLength(text, "utf8") <= max)
+    return text;
+  let out = "";
+  let bytes2 = 0;
+  for (const ch of text) {
+    const n = Buffer.byteLength(ch, "utf8");
+    if (bytes2 + n > max)
+      break;
+    out += ch;
+    bytes2 += n;
+  }
+  return out;
+}
+// packages/host/src/bridge-runtime.ts
+var DRAIN_DEFAULT_TIMEOUT_SEC = 600;
+var DRAIN_MAX_TIMEOUT_SEC = 86400;
+function parseDrainTimeoutSec(raw) {
+  if (raw === undefined)
+    return DRAIN_DEFAULT_TIMEOUT_SEC;
+  if (typeof raw !== "number" || !Number.isInteger(raw))
+    return null;
+  if (raw < 1 || raw > DRAIN_MAX_TIMEOUT_SEC)
+    return null;
+  return raw;
+}
+var DEFAULT_BRIDGE_MAIN_PATH = join20(import.meta.dir, "bridge-main.ts");
 var STILL_RUNNING_MAX_MS = 5 * 60000;
 // packages/host/src/card-ops.ts
 init_src();
@@ -15559,11 +15875,11 @@ import {
   fchmodSync,
   fstatSync as fstatSync3,
   lstatSync as lstatSync2,
-  mkdirSync as mkdirSync10,
+  mkdirSync as mkdirSync11,
   openSync as openSync6,
   readdirSync as readdirSync3,
-  renameSync as renameSync3,
-  unlinkSync as unlinkSync4,
+  renameSync as renameSync4,
+  unlinkSync as unlinkSync5,
   writeSync as writeSync2
 } from "fs";
 var POLICY_AUDIT_MAX_BYTES = 1024 * 1024;
@@ -15581,13 +15897,13 @@ init_src();
 // packages/host/src/conv-node-hosts.ts
 init_session_store();
 import {
-  existsSync as existsSync14,
-  mkdirSync as mkdirSync11,
-  chmodSync as chmodSync9,
-  writeFileSync as writeFileSync7,
-  readFileSync as readFileSync8
+  existsSync as existsSync15,
+  mkdirSync as mkdirSync12,
+  chmodSync as chmodSync10,
+  writeFileSync as writeFileSync8,
+  readFileSync as readFileSync11
 } from "fs";
-import { join as join18 } from "path";
+import { join as join21 } from "path";
 var CONV_NODE_PEER_ID_RE = /^p_[a-f0-9]{16}$/;
 var CONV_NODE_HOST_RE = /^[A-Za-z0-9._@-]+$/;
 function validateConvNodePeerId(peerId) {
@@ -15616,14 +15932,14 @@ function isWellFormedConvNodeMapping(peerId, host) {
   return validateConvNodePeerId(peerId) === null && validateConvNodeHost(host) === null;
 }
 function convNodeHostsPath() {
-  return join18(loomDir(), "conv-node-hosts.json");
+  return join21(loomDir(), "conv-node-hosts.json");
 }
 function loadConvNodeHosts() {
   const p = convNodeHostsPath();
-  if (!existsSync14(p))
+  if (!existsSync15(p))
     return {};
   try {
-    const raw = JSON.parse(readFileSync8(p, "utf8"));
+    const raw = JSON.parse(readFileSync11(p, "utf8"));
     if (!raw || typeof raw !== "object")
       return {};
     const out = {};
@@ -15638,15 +15954,15 @@ function loadConvNodeHosts() {
 }
 function saveConvNodeHosts(cfg) {
   ensureFableDir();
-  mkdirSync11(loomDir(), { recursive: true });
+  mkdirSync12(loomDir(), { recursive: true });
   const p = convNodeHostsPath();
-  writeFileSync7(p, `${JSON.stringify(cfg, null, 2)}
+  writeFileSync8(p, `${JSON.stringify(cfg, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
   });
   try {
-    chmodSync9(p, 384);
+    chmodSync10(p, 384);
   } catch {}
 }
 function setConvNodeHost(peerId, host) {
@@ -15721,8 +16037,8 @@ function loomSystemHint(agentLabel) {
 }
 
 // packages/adapters/src/claude.ts
-import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync8 } from "fs";
-import { join as join19 } from "path";
+import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync9 } from "fs";
+import { join as join22 } from "path";
 var claudeAdapter = {
   id: "claude",
   label: "Claude Code",
@@ -15757,9 +16073,9 @@ var claudeAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const dir = join19(opts.cwd, ".loom");
-    mkdirSync12(dir, { recursive: true });
-    const path = join19(dir, "claude.mcp.json");
+    const dir = join22(opts.cwd, ".loom");
+    mkdirSync13(dir, { recursive: true });
+    const path = join22(dir, "claude.mcp.json");
     const config = {
       mcpServers: {
         loom: {
@@ -15769,7 +16085,7 @@ var claudeAdapter = {
         }
       }
     };
-    writeFileSync8(path, JSON.stringify(config, null, 2) + `
+    writeFileSync9(path, JSON.stringify(config, null, 2) + `
 `, "utf8");
     return null;
   },
@@ -15779,8 +16095,8 @@ var claudeAdapter = {
 };
 
 // packages/adapters/src/user-mcp-config.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync13, readFileSync as readFileSync9, writeFileSync as writeFileSync9 } from "fs";
-import { dirname as dirname10 } from "path";
+import { existsSync as existsSync16, mkdirSync as mkdirSync14, readFileSync as readFileSync12, writeFileSync as writeFileSync10 } from "fs";
+import { dirname as dirname11 } from "path";
 var LOOM_BEGIN = "# --- Loom multiplayer (managed) BEGIN ---";
 var LOOM_END = "# --- Loom multiplayer (managed) END ---";
 var FABLE_BEGIN = "# --- Fable multiplayer (managed) BEGIN ---";
@@ -15882,10 +16198,10 @@ function stripAllLoomMcpSections(existing) {
 }
 function upsertUserMcpConfig(opts) {
   const { configPath, block: block2 } = opts;
-  mkdirSync13(dirname10(configPath), { recursive: true });
+  mkdirSync14(dirname11(configPath), { recursive: true });
   let existing = "";
-  if (existsSync15(configPath)) {
-    existing = readFileSync9(configPath, "utf8");
+  if (existsSync16(configPath)) {
+    existing = readFileSync12(configPath, "utf8");
   }
   const hadLegacy = existing.includes("[mcp_servers.fable]") || existing.includes("[mcp_servers.loom]") || existing.includes(FABLE_BEGIN) || existing.includes(LOOM_BEGIN) || /Fable multiplayer/i.test(existing) || /Loom multiplayer/i.test(existing);
   const base = stripAllLoomMcpSections(existing);
@@ -15897,7 +16213,7 @@ function upsertUserMcpConfig(opts) {
   if (next === existing) {
     return { written: false, path: configPath, strippedLegacy: false };
   }
-  writeFileSync9(configPath, next, "utf8");
+  writeFileSync10(configPath, next, "utf8");
   return {
     written: true,
     path: configPath,
@@ -15925,8 +16241,8 @@ function projectMcpSnippetToml(opts) {
 }
 
 // packages/adapters/src/codex.ts
-import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync10 } from "fs";
-import { join as join20 } from "path";
+import { mkdirSync as mkdirSync15, writeFileSync as writeFileSync11 } from "fs";
+import { join as join23 } from "path";
 import { homedir as homedir3 } from "os";
 var codexAdapter = {
   id: "codex",
@@ -15957,17 +16273,17 @@ var codexAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join20(opts.cwd, ".loom");
-    mkdirSync14(projectDir, { recursive: true });
-    const snippetPath = join20(projectDir, "codex.mcp.toml");
-    writeFileSync10(snippetPath, projectMcpSnippetToml({
+    const projectDir = join23(opts.cwd, ".loom");
+    mkdirSync15(projectDir, { recursive: true });
+    const snippetPath = join23(projectDir, "codex.mcp.toml");
+    writeFileSync11(snippetPath, projectMcpSnippetToml({
       header: `# Generated by Loom \u2014 Codex MCP (project).
 ` + "# Session entry: read repo AGENTS.md + HANDOFF.md (or `bun run status`); brief user before large work.\n" + "# Prefer: loom run codex",
       mcpStdioPath: opts.mcpStdioPath,
       sessionEnv: opts.sessionEnv
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join20(homedir3(), ".codex", "config.toml");
+      const configPath = join23(homedir3(), ".codex", "config.toml");
       const block2 = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv
@@ -15983,8 +16299,8 @@ var codexAdapter = {
 };
 
 // packages/adapters/src/grok.ts
-import { mkdirSync as mkdirSync15, writeFileSync as writeFileSync11 } from "fs";
-import { join as join21 } from "path";
+import { mkdirSync as mkdirSync16, writeFileSync as writeFileSync12 } from "fs";
+import { join as join24 } from "path";
 import { homedir as homedir4 } from "os";
 var grokAdapter = {
   id: "grok",
@@ -16015,17 +16331,17 @@ var grokAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join21(opts.cwd, ".loom");
-    mkdirSync15(projectDir, { recursive: true });
-    const snippetPath = join21(projectDir, "grok.mcp.toml");
-    writeFileSync11(snippetPath, projectMcpSnippetToml({
+    const projectDir = join24(opts.cwd, ".loom");
+    mkdirSync16(projectDir, { recursive: true });
+    const snippetPath = join24(projectDir, "grok.mcp.toml");
+    writeFileSync12(snippetPath, projectMcpSnippetToml({
       header: "# Generated by Loom \u2014 Grok MCP (project). Use: loom run grok --write-user-config to install into ~/.grok/config.toml",
       mcpStdioPath: opts.mcpStdioPath,
       sessionEnv: opts.sessionEnv,
       extraServerLines: ["enabled = true"]
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join21(homedir4(), ".grok", "config.toml");
+      const configPath = join24(homedir4(), ".grok", "config.toml");
       const block2 = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv,
@@ -16132,17 +16448,17 @@ function capabilityMatrix() {
 // packages/mcp-server/src/tools.ts
 var MCP_HIDDEN_KEYS = new Set(["dispatchPeerId"]);
 // packages/mcp-server/src/config.ts
-import { mkdirSync as mkdirSync16, writeFileSync as writeFileSync12 } from "fs";
-import { join as join22 } from "path";
+import { mkdirSync as mkdirSync17, writeFileSync as writeFileSync13 } from "fs";
+import { join as join25 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function resolveMcpStdio() {
   const here = fileURLToPath4(new URL(".", import.meta.url));
-  return join22(here, "stdio.ts");
+  return join25(here, "stdio.ts");
 }
 function writeMcpConfig(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync16(dir, { recursive: true });
-  const path = join22(dir, "mcp.json");
+  mkdirSync17(dir, { recursive: true });
+  const path = join25(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
   const config = {
     mcpServers: {
@@ -16153,14 +16469,14 @@ function writeMcpConfig(opts) {
       }
     }
   };
-  writeFileSync12(path, JSON.stringify(config, null, 2) + `
+  writeFileSync13(path, JSON.stringify(config, null, 2) + `
 `, "utf8");
   return path;
 }
 function writeAgentHintFile(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync16(dir, { recursive: true });
-  const path = join22(dir, "AGENT_HINT.txt");
+  mkdirSync17(dir, { recursive: true });
+  const path = join25(dir, "AGENT_HINT.txt");
   const body = opts?.hint ?? [
     "Loom multiplayer room is active.",
     "MCP tools: list_peers, handoff, check_handoffs, claim_handoff, room_chat",
@@ -16169,7 +16485,7 @@ function writeAgentHintFile(opts) {
   ].filter(Boolean).join(`
 `) + `
 `;
-  writeFileSync12(path, body, "utf8");
+  writeFileSync13(path, body, "utf8");
   return path;
 }
 // packages/cli/src/index.ts
@@ -16179,9 +16495,9 @@ import {
   closeSync as closeSync7,
   writeSync as writeSync3,
   readSync as readSync3,
-  existsSync as existsSync18,
+  existsSync as existsSync19,
   readdirSync as readdirSync5,
-  readFileSync as readFileSync12,
+  readFileSync as readFileSync15,
   accessSync,
   constants as fsConstants4
 } from "fs";
@@ -16373,6 +16689,124 @@ function hostSection(input) {
   }
   return { title: "Host", lines };
 }
+var BRIDGE_STALE_MS_DEFAULT = 15000;
+function ageSec(iso, nowMs) {
+  if (!iso)
+    return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t))
+    return null;
+  return Math.max(0, Math.round((nowMs - t) / 1000));
+}
+function lockText(lock) {
+  switch (lock.kind) {
+    case "none":
+      return "lock holder: none";
+    case "incomplete":
+      return "lock holder: lock dir without owner (being acquired or foreign)";
+    case "stale":
+      return `lock holder: ${lock.pid !== null ? `pid ${lock.pid} ` : ""}stale (dead or pid reused \u2014 next start reclaims it)`;
+    case "held":
+      return `lock holder: pid ${lock.pid} (alive, started ${lock.startedAt}${lock.verified ? "" : ", start time unverified"})`;
+  }
+}
+function unreadableText(input) {
+  return `bridge status file unreadable: ${input.statusPath} (${input.statusInvalid})`;
+}
+function drainText(st) {
+  if (st.state !== "draining" || !st.drain?.deadlineAt)
+    return null;
+  const f = st.inFlight ?? {};
+  const n = (v) => typeof v === "number" ? v : "?";
+  return `drain: deadline ${st.drain.deadlineAt} \xB7 paneCards=${n(f.paneCards)} convs=${n(f.convs)} headlessRunning=${n(f.headlessRunning)} headlessQueued=${n(f.headlessQueued)}`;
+}
+function bridgeSection(input) {
+  const staleMs = input.staleMs ?? BRIDGE_STALE_MS_DEFAULT;
+  const lines = [];
+  const st = input.status;
+  if (!st) {
+    lines.push(input.statusInvalid !== undefined ? { status: "warn", message: unreadableText(input) } : {
+      status: "info",
+      message: `bridge never started under this profile (no status file: ${input.statusPath})`
+    });
+    if (input.lock.kind !== "none")
+      lines.push({ status: "info", message: lockText(input.lock) });
+    lines.push({ status: "info", message: `log: ${input.logPath}` });
+    return { title: "Bridge", lines };
+  }
+  const state = st.state ?? "unknown";
+  const stopped = state === "stopped";
+  const pid = typeof st.pid === "number" ? st.pid : null;
+  const hbAge = ageSec(st.heartbeatAt, input.nowMs);
+  if (input.pidAlive) {
+    lines.push({ status: "ok", message: `bridge pid ${pid ?? "?"} alive` });
+    if (hbAge === null) {
+      lines.push({ status: "warn", message: "heartbeat missing in status file" });
+    } else if (hbAge * 1000 <= staleMs) {
+      lines.push({ status: "ok", message: `heartbeat fresh (${hbAge}s ago)` });
+    } else {
+      lines.push({
+        status: "warn",
+        message: `stale heartbeat (${hbAge}s ago > ${Math.round(staleMs / 1000)}s, pid ${pid ?? "?"} alive)`
+      });
+    }
+  } else if (stopped) {
+    const at = ageSec(st.stoppedAt, input.nowMs);
+    lines.push({
+      status: "info",
+      message: `bridge not running \u2014 stopped at ${st.stoppedAt ?? "?"}${at !== null ? ` (${at}s ago)` : ""}`
+    });
+  } else {
+    lines.push({
+      status: "warn",
+      message: `bridge died without clean stop \u2014 stale status (pid ${pid ?? "?"} dead, last state ${state}, last heartbeat ${hbAge !== null ? `${hbAge}s ago` : "unknown"})`
+    });
+  }
+  lines.push({ status: "info", message: `state: ${state}` });
+  lines.push({ status: "info", message: `herdr: ${st.herdr ?? "unknown"}` });
+  const drain = drainText(st);
+  if (drain)
+    lines.push({ status: "info", message: drain });
+  if (st.lastError)
+    lines.push({ status: "warn", message: `lastError: ${st.lastError}` });
+  lines.push({ status: "info", message: lockText(input.lock) });
+  lines.push({ status: "info", message: `status file: ${input.statusPath}` });
+  lines.push({ status: "info", message: `log: ${input.logPath}` });
+  return { title: "Bridge", lines };
+}
+function offlineBridgeStatusLines(input) {
+  const st = input.status;
+  if (!st) {
+    if (input.statusInvalid === undefined)
+      return [];
+    return [`  ${unreadableText(input)}`, `  ${lockText(input.lock)}`, `  log: ${input.logPath}`];
+  }
+  const state = st.state ?? "unknown";
+  const pid = typeof st.pid === "number" ? st.pid : null;
+  const out = [`  status file: ${input.statusPath}`];
+  let stateLine = `  state: ${state}`;
+  if (pid !== null) {
+    if (input.pidAlive)
+      stateLine += ` (pid ${pid} alive \u2014 not answering as this session's bridge)`;
+    else if (state !== "stopped")
+      stateLine += ` (pid ${pid} dead \u2014 no clean stop)`;
+  }
+  out.push(stateLine);
+  const hb = ageSec(st.heartbeatAt, input.nowMs);
+  if (st.heartbeatAt)
+    out.push(`  heartbeatAt: ${st.heartbeatAt}${hb !== null ? ` (${hb}s ago)` : ""}`);
+  const sa = ageSec(st.stoppedAt, input.nowMs);
+  if (st.stoppedAt)
+    out.push(`  stoppedAt: ${st.stoppedAt}${sa !== null ? ` (${sa}s ago)` : ""}`);
+  const drain = drainText(st);
+  if (drain)
+    out.push(`  ${drain}`);
+  if (st.lastError)
+    out.push(`  lastError: ${st.lastError}`);
+  out.push(`  ${lockText(input.lock)}`);
+  out.push(`  log: ${input.logPath}`);
+  return out;
+}
 function summarizeDoctor(sections) {
   const summary = {
     ok: 0,
@@ -16411,12 +16845,12 @@ function isLoopbackHost(host) {
 
 // packages/cli/src/inject-handoffs.ts
 import {
-  existsSync as existsSync16,
-  mkdirSync as mkdirSync17,
-  readFileSync as readFileSync10,
-  writeFileSync as writeFileSync13
+  existsSync as existsSync17,
+  mkdirSync as mkdirSync18,
+  readFileSync as readFileSync13,
+  writeFileSync as writeFileSync14
 } from "fs";
-import { dirname as dirname11, join as join23 } from "path";
+import { dirname as dirname12, join as join26 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -16442,18 +16876,18 @@ function mergeClaudeStopHook(settings, command) {
   return next;
 }
 function ensureClaudeStopHook(cwd, idleMarkerPath) {
-  const settingsPath = join23(cwd, ".claude", "settings.local.json");
+  const settingsPath = join26(cwd, ".claude", "settings.local.json");
   let settings = {};
-  if (existsSync16(settingsPath)) {
+  if (existsSync17(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync10(settingsPath, "utf8"));
+      settings = JSON.parse(readFileSync13(settingsPath, "utf8"));
     } catch {
       settings = {};
     }
   }
   const merged = mergeClaudeStopHook(settings, claudeStopHookCommand(idleMarkerPath));
-  mkdirSync17(dirname11(settingsPath), { recursive: true });
-  writeFileSync13(settingsPath, `${JSON.stringify(merged, null, 2)}
+  mkdirSync18(dirname12(settingsPath), { recursive: true });
+  writeFileSync14(settingsPath, `${JSON.stringify(merged, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
@@ -16462,7 +16896,24 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.32.0";
+var VERSION = "0.33.0";
+function readBridgeView(profile, bridgeDir) {
+  const statusPath = bridgeStatusPath(profile, bridgeDir);
+  const lockPath = bridgeLockPath(profile, bridgeDir);
+  const read = readBridgeStatusFileResult(statusPath);
+  const status = read.kind === "ok" ? read.status : null;
+  return {
+    statusPath,
+    lockPath,
+    logPath: bridgeLogPath(profile, bridgeDir),
+    status,
+    ...read.kind === "invalid" ? { statusInvalid: read.reason } : {},
+    pidAlive: status !== null && status.pid > 0 ? isPidAlive(status.pid) : false,
+    lock: inspectBridgeLockAt(lockPath),
+    nowMs: Date.now(),
+    staleMs: STATUS_STALE_MS
+  };
+}
 function eprint(msg) {
   try {
     writeSync3(2, msg);
@@ -16674,7 +17125,7 @@ async function autoHostAfterSession(flags) {
 }
 function profilesWithSession() {
   const dir = pathJoin(loomDir(), "profiles");
-  if (!existsSync18(dir))
+  if (!existsSync19(dir))
     return [];
   const out = [];
   for (const name of readdirSync5(dir)) {
@@ -16717,7 +17168,7 @@ async function cmdUp(flags) {
   console.log("loom up \u2014 sticky hosts:");
   for (const profile of profiles) {
     setActiveProfile(profile, { explicit: true });
-    if (!existsSync18(sessionPath()) || !loadSession()) {
+    if (!existsSync19(sessionPath()) || !loadSession()) {
       console.log(`  ${profile.padEnd(14)} skipped  (no session)`);
       continue;
     }
@@ -17740,13 +18191,50 @@ async function cmdBridge(sub, rest, flags) {
       process.exit(1);
     }
     console.log(r.alreadyRunning ? `Bridge already running (pid ${r.meta.pid}, port ${r.meta.port})` : `Bridge started (pid ${r.meta.pid}, port ${r.meta.port})`);
-    console.log(`herdr: ${r.meta.herdrSocketPath}`);
+    const live = await bridgeStatus();
+    const liveHerdr = live.health && typeof live.health === "object" ? live.health.herdr : undefined;
+    const headless = typeof liveHerdr === "string" ? liveHerdr === "skipped" : cfg.worker?.backend === "headless";
+    console.log(`herdr: ${headless ? "skipped (headless)" : r.meta.herdrSocketPath}`);
     console.log(`Stop with: ${loomCmd()} bridge stop`);
     return;
   }
   if (sub === "stop") {
     const r = await stopBridgeProcess();
     console.log(r.message);
+    return;
+  }
+  if (sub === "drain") {
+    let timeoutSec;
+    if (flags.timeout !== undefined) {
+      const raw = flags.timeout;
+      const n = typeof raw === "string" && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN;
+      const parsed = parseDrainTimeoutSec(n);
+      if (parsed === null) {
+        console.error("Usage: loom bridge drain [--timeout <seconds 1..86400>]");
+        process.exit(1);
+      }
+      timeoutSec = parsed;
+    }
+    const r = await drainBridgeProcess({
+      ...timeoutSec !== undefined ? { timeoutSec } : {},
+      onProgress: (line) => console.log(line)
+    });
+    if (r.kind === "no_bridge") {
+      console.log("no bridge running");
+      return;
+    }
+    const profile = getActiveProfile() ?? loadSession()?.displayName ?? "default";
+    if (r.kind === "rpc_failed") {
+      console.error(`drain request failed (pid ${r.pid}): ${r.error}`);
+      console.error(`  status file: ${bridgeStatusPath(profile)}`);
+      process.exit(1);
+    }
+    if (r.kind === "still_alive") {
+      console.error(`bridge still running after the drain bound (pid ${r.pid})`);
+      console.error(`  status file: ${bridgeStatusPath(profile)}`);
+      process.exit(1);
+    }
+    console.log(`bridge drained and stopped (pid ${r.pid})`);
     return;
   }
   if (sub === "quarantine") {
@@ -17814,12 +18302,22 @@ async function cmdBridge(sub, rest, flags) {
         console.log(`  paneCleanup: ${cfg.paneCleanup ?? "auto"} (conv-only; card panes kept)`);
       } catch {}
       console.log("  preservedCardPanes: unavailable (bridge offline)");
+      for (const line of offlineBridgeStatusLines(readBridgeView(profile)))
+        console.log(line);
       console.log(`Tip: ${loomCmd()} bridge start --allow <towerPeerId>`);
       return;
     }
     console.log(`bridge: online pid=${st.meta?.pid} port=${st.meta?.port} peer=${st.meta?.displayName}`);
-    console.log(`  herdr: ${st.meta?.herdrSocketPath}`);
     const health = st.health && typeof st.health === "object" && st.health !== null ? st.health : null;
+    console.log(`  herdr: ${health?.herdr === "skipped" ? "skipped (headless)" : st.meta?.herdrSocketPath}`);
+    if (health && typeof health.state === "string") {
+      console.log(`  state: ${health.state}`);
+      const drainInfo = health.drain;
+      const rem = health.remaining;
+      if (drainInfo && typeof drainInfo.deadlineAt === "string") {
+        console.log(`  drain: deadline=${drainInfo.deadlineAt} paneCards=${rem?.paneCards ?? "?"} convs=${rem?.convs ?? "?"} headlessRunning=${rem?.headlessRunning ?? "?"} headlessQueued=${rem?.headlessQueued ?? "?"}`);
+      }
+    }
     if (health && typeof health.quarantineUnresolved === "number") {
       console.log(`  quarantineUnresolved: ${health.quarantineUnresolved}`);
     }
@@ -17833,7 +18331,7 @@ async function cmdBridge(sub, rest, flags) {
     }
     return;
   }
-  console.error("Usage: loom bridge start|stop|status|quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]");
+  console.error("Usage: loom bridge start|stop|drain [--timeout <s>]|status|quarantine ack <cardId> <dispatchHandoffId> [--seq N|--presence]");
   process.exit(1);
 }
 async function cmdHost(sub) {
@@ -17930,10 +18428,10 @@ function readOnlySessionPath(home, flags) {
   return pathJoin(home, "session.json");
 }
 function loadSessionReadOnly(file) {
-  if (!existsSync18(file))
+  if (!existsSync19(file))
     return null;
   try {
-    const text = readFileSync12(file, "utf8").trim();
+    const text = readFileSync15(file, "utf8").trim();
     if (!text)
       return null;
     return normalizeSession(JSON.parse(text));
@@ -17942,7 +18440,7 @@ function loadSessionReadOnly(file) {
   }
 }
 function homeWritableStatus(home) {
-  const homeExists = existsSync18(home);
+  const homeExists = existsSync19(home);
   if (!homeExists)
     return { homeExists, homeWritable: null };
   try {
@@ -18034,7 +18532,8 @@ async function cmdDoctor(flags) {
       meta,
       pidAlive,
       rpc: hostRpc
-    })
+    }),
+    bridgeSection(readBridgeView(profile ?? (session?.displayName || "default"), pathJoin(home, "bridge")))
   ];
   process.stdout.write(renderDoctor(sections));
   process.exit(doctorExitCode(sections));
@@ -18537,7 +19036,7 @@ async function runTuiAgent(spec) {
   const attempts = [];
   const ptyHelper = pathJoin(import.meta.dir, "../../../scripts/run-with-pty.py");
   const ptyHelperAlt = pathJoin(import.meta.dir, "../../scripts/run-with-pty.py");
-  const helperPath = existsSync18(ptyHelper) ? ptyHelper : existsSync18(ptyHelperAlt) ? ptyHelperAlt : null;
+  const helperPath = existsSync19(ptyHelper) ? ptyHelper : existsSync19(ptyHelperAlt) ? ptyHelperAlt : null;
   if (helperPath && process.platform !== "win32") {
     attempts.push({
       label: "python-pty-winch",

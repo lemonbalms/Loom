@@ -2,7 +2,7 @@
 
 **철학 (첫 문단):** 이 문서는 Loom **relay WebSocket 와이어(protocol v1)** 만 다룬다 — room·handoff·inbox·presence의 봉투와 라우팅. **herdr 로컬 소켓 RPC**(agent/pane/tab)는 이 파일의 범위가 아니며, as-built 정본은 [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md)다. 이름을 섞어 쓰지 않는다.
 
-**As-built pin:** product / PLAN **v0.32.0** (2026-10-16) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.32.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0, v0.31.0 and v0.32.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged), [Skills and policy](#skills-and-policy-v0310--wire-unchanged) and [Loom MCP pre-check](#loom-mcp-pre-check-v0320--wire-unchanged)).
+**As-built pin:** product / PLAN **v0.33.0** (2026-10-16) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.33.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0, v0.31.0, v0.32.0 and v0.33.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged), [Skills and policy](#skills-and-policy-v0310--wire-unchanged), [Loom MCP pre-check](#loom-mcp-pre-check-v0320--wire-unchanged) and [Bridge lifecycle](#bridge-lifecycle-v0330--wire-unchanged)).
 
 Wire Version: **1** (`v: 1` on every envelope) — not product SemVer; historical origin: M1.1 + M-7 + Loom rename under PLAN 0.9.0
 
@@ -125,6 +125,15 @@ v0.32.0 adds a policy gate inside the local Loom MCP server (`packages/mcp-serve
 - **Local-only board fields.** `dispatchPeerId` (the dispatch target's peer id, pinned only when the tower's peer list had exactly one canonical name match before and after the send) and `l2Mismatch` (set when a result's `fromPeerId` differs from that pin) live **only in the local board file**. Both are stripped from every board snapshot (`export_board`, `--with-board` / `withBoard` handoff attachments, imports); `dispatchPeerId` is also stripped from MCP and sticky `/rpc` output. Dispatch routing is unchanged (`to: "@<node>"`, no peer id).
 - **Same completion authority.** An L-2 mismatch never rejects: the result lands `blocked` exactly as in v0.31.0 (notes byte-identical), with the local flag and audit record added.
 - **Audit stays local.** `loomDir()/rooms/<roomKey>/policy-audit.jsonl` shares the room directory with the v0.29.0 room event log but is a separate file; it never carries relay `seq`/`eventId` and is never sent.
+
+## Bridge lifecycle (v0.33.0) — wire unchanged
+
+v0.33.0 gives the per-profile bridge a lifecycle — profile lock, status file + heartbeat, graceful SIGTERM/SIGINT stop, `drain`, headless start without herdr (user-facing in [`USER_GUIDE.md`](./USER_GUIDE.md) §18). Nothing new crosses the relay:
+
+- **No new envelope, field, or version.** `PROTOCOL_VERSION` and `CARD_CONTRACT_VERSION` are unchanged; card and conv payload schemas gain **0 fields**.
+- **`drain` is bridge-local.** It is an op on the bridge's own `127.0.0.1` `/rpc` control plane (bearer token, same trust as `stop` / `status`), not a relay message. While draining the bridge simply does not claim new handoffs — they stay in the relay inbox unchanged.
+- **Headless conv.open reject uses the existing schema.** A `worker.backend:"headless"` bridge answers conv.open once with the existing conv reject attachment (`ConvRejectPayloadSchema`, `reason: string`); the only new thing is the reason string `conv_unavailable_headless`. No new label, no new field.
+- **Status file / lock are local files** under `loomDir()/bridge/` (`<profile>.status.json`, `<profile>.lock/owner.json`); they never carry tokens and are never sent.
 
 ## Handoff routing
 

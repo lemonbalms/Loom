@@ -42,14 +42,14 @@
 
 ## Gate log
 
-### 0.33.0 — bridge 생명주기 보강 (`approved` — R51 approved-with-fixes)
+### 0.33.0 — bridge 생명주기 보강 (`approved` — R51 approved-with-fixes · implemented 2026-10-16)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.33.0 (`approved` — R51 approved-with-fixes, 반영 완료 · no R51b) · 업그레이드 3단계 1부 · 요구 `UPGRADE-PLAN.md:81-85` · 3단계 = 0.33.0(생명주기 보강, CI 검증 가능) + 0.34.0 후보(`loom service` launchd/systemd 설치 — 실 등록 스모크는 오너 승인 게이트) |
 | **Date** | 2026-10-16 |
 | **Review** | R51 **done 2026-10-16** (새 MINOR + 신뢰·내구성 경계 변경 — bridge 프로세스 생명주기 상태기계 · 프로세스 간 락 · 종료 시 수용 손실 계급 공식화) |
-| **Evidence** | 코드 실측 `main @ 9567f87` (PLAN §0.33.0 Why · 추정/실측 표) · UK-4 = `bridge-main.ts` 정적 import 폐포 조사(R51 확인 → resolved) · R51 대조: `bridge-runtime.ts:1136` · `:1167-1175` · `:1180-1187` · `fake-herdr.ts:296` |
+| **Evidence** | 코드 실측 `main @ 9567f87` (PLAN §0.33.0 Why · 추정/실측 표) · UK-4 = `bridge-main.ts` 정적 import 폐포 조사(R51 확인 → resolved) · R51 대조: `bridge-runtime.ts:1136` · `:1167-1175` · `:1180-1187` · `fake-herdr.ts:296` · 스모크 [`docs/spikes/BRIDGE-LIFECYCLE-SMOKE-0330.md`](spikes/BRIDGE-LIFECYCLE-SMOKE-0330.md) (2026-10-16 · macOS · bun 1.3.11 · 코드 `38933f1`) · UK-1 = `implementation-notes.md` §0.33.0 Deviation (7) |
 
 | 분면 | 내용 |
 |------|------|
@@ -62,12 +62,12 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R51 판정 |
 |---|------|-------------|----------|
-| UK-1 | bun에서 `process.on("SIGTERM")`이 bridge 이벤트 루프(서버 · 폴 타이머 · relay WS · 유닉스 소켓)에서 확실히 발화하는가 | sticky host가 같은 방식 운용 중 · P2 실프로세스 테스트가 측정 · 불발이면 P2 차단 → 아키텍트 판단 | **open, 비차단** |
-| UK-2 | stale 락 pid 재사용 판별용 시작 시각 출처 — macOS `ps -o lstart=`(운용 중) · Linux `ps`(procps) 또는 `/proc/<pid>/stat` 22번째 필드 | P1은 `ps -o lstart=` 하나 · 읽기 실패 + pid 생존 → 거부(PLAN R8) · Linux 형식은 P5 확인(환경 있으면) | **open, 비차단** |
-| UK-3 | drain 기본 마감 값 | 출발값 600초 · `--timeout`으로 덮음 · grok 헤드리스 ~9분 실측(`PLAN.md:601`)상 짧을 수 있음 · P5 재평가 | **open, 비차단** |
+| UK-1 | bun에서 `process.on("SIGTERM")`이 bridge 이벤트 루프(서버 · 폴 타이머 · relay WS · 유닉스 소켓)에서 확실히 발화하는가 | sticky host가 같은 방식 운용 중 · P2 실프로세스 테스트가 측정 · 불발이면 P2 차단 → 아키텍트 판단 | **resolved(P2 · P5 스모크)** — bun 1.3.11에서 확실히 발화: P2 bridge SIGTERM → exit 0 18 ms(×3) · P5 스모크 6–7 ms(×3) |
+| UK-2 | stale 락 pid 재사용 판별용 시작 시각 출처 — macOS `ps -o lstart=`(운용 중) · Linux `ps`(procps) 또는 `/proc/<pid>/stat` 22번째 필드 | P1은 `ps -o lstart=` 하나 · 읽기 실패 + pid 생존 → 거부(PLAN R8) · Linux 형식은 P5 확인(환경 있으면) | **macOS resolved · Linux 미실측** — macOS `LC_ALL=C TZ=UTC ps -o lstart=` = `Thu Oct 15 22:52:06 2026` 형식 · `owner.json` lstart와 바이트 동일 · 스모크 ④ stale 회수 일치. **Linux format unverified (no Linux env used)** — 못 읽으면 거부(fail-safe) + 수동 제거 안내 |
+| UK-3 | drain 기본 마감 값 | 출발값 600초 · `--timeout`으로 덮음 · grok 헤드리스 ~9분 실측(`PLAN.md:601`)상 짧을 수 있음 · P5 재평가 | **resolved-by-decision(P5)** — 600초 유지(코드 무변경): grok ~9분은 카드 시작 직후 drain일 때만 안에 든다 · grok 노드 운영자는 `--timeout 1200` · 수용 손실 계급 = 마감에 잘린 카드(워커 생존 → 다음 기동 입양) |
 | UK-4 | bridge 경로가 `ensureRelay`를 부르는가(0.34.0 D1 런타임 가드 필요 여부) | **실측: 부르지 않는다** — `bridge-main.ts` 정적 import 폐포에 `room-ops.ts`/`relay-daemon.ts`/`sticky-server.ts` 없음 · 동적 import 0 · `loom bridge start`도 미호출 · 단 `loom status`(`cli/src/index.ts:1995`)는 호출 → 0.34.0 루프백 거부는 설치 시점 검사로 충분(PLAN R12) | **resolved(R51)** |
 
-**Current decision:** D1~D6 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16) · **R51 `approved-with-fixes` → M1·M2·M3·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-16, no R51b)** · R1~R12 수용(R5→M1 · R2→M3 · R1→L3) · 수용 손실 계급 1~7 + L4 3항 + stale 락 best effort + 하트비트 조언(PLAN §0.33.0 ④) · **UK-4 resolved** · UK-1~UK-3 open(비차단). 오너 "진행해"(2026-10-16) = 3단계 전체 승인 · 0.34.0 실 OS 등록·라이브 스모크는 별도 명시 승인. 구현 착수 = **P1**(락 + 상태 파일 writer, red 선행 — 테스트 파일만). 다음 후보 = 0.34.0 `loom service`(3단계 2부).
+**Current decision:** D1~D6 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16) · **R51 `approved-with-fixes` → M1·M2·M3·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-16, no R51b)** · R1~R12 수용(R5→M1 · R2→M3 · R1→L3) · 수용 손실 계급 1~7 + L4 3항 + stale 락 best effort + 하트비트 조언(PLAN §0.33.0 ④) · **UK-4 resolved**(R51) · **UK-1 resolved**(P2 · 스모크) · **UK-2 macOS resolved / Linux 미실측** · **UK-3 resolved-by-decision**(600초 유지 · grok `--timeout 1200`). **implemented 2026-10-16** — P1~P5(`b8739d9` → … → `bb97ffd` → PATCH 5 문서) · 스모크 `smoke:bridge-lifecycle` ①~④ PASS. 다음 후보 = 0.34.0 `loom service`(3단계 2부 — PLAN + R52 뒤 착수 · 실 OS 등록·라이브 스모크는 별도 오너 명시 승인).
 
 ### 0.32.0 — Loom MCP 사전 점검 (`approved` — R50 approved-with-fixes · implemented 2026-10-16)
 
@@ -453,3 +453,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-16 | 0.32.0 ship 반영 (UK-1·UK-3·UK-4 resolved — `MCP-PRECHECK-SMOKE-0320.md` · UK-2 resolved — P3 조사 · 정직 표 codex 행 정정) |
 | 2026-10-16 | 0.33.0 bridge 생명주기 보강 unknowns (UK-1~UK-4 요약 · UK-1~UK-3 비차단 제안 · UK-4 실측 — bridge 경로 `ensureRelay` 미호출 · `pending-review` R51) |
 | 2026-10-16 | 0.33.0 R51 판정 반영 (UK-4 resolved · UK-1~UK-3 open 비차단 · M1·M2·M3 교훈 Unknown knowns 기재 · PLAN `approved`) |
+| 2026-10-16 | 0.33.0 ship 반영 (UK-1 resolved — P2 + `BRIDGE-LIFECYCLE-SMOKE-0330.md` · UK-2 macOS resolved / Linux 미실측 · UK-3 resolved-by-decision — 600초 유지) |

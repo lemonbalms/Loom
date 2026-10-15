@@ -14,8 +14,8 @@
      - [x] **v0.32.0 Loom MCP 사전 점검** — `58f3b02` P1 → … → `f5c59ce` → `1e97aa7` 스모크 → PATCH 5(USER_GUIDE §17 · PROTOCOL · implementation-notes §0.32.0 · VERSION 0.32.0 · 스모크 `MCP-PRECHECK-SMOKE-0320.md`). Done when (a)~(i) green · (j) ship 검사.
    2단계 완료.
 3. [ ] **3단계 — host를 OS 서비스로** (오너 "진행해" 2026-10-16 — 3단계 전체 승인 · 두 릴리스로 분할)
-   - [ ] **1부 — v0.33.0 bridge 생명주기 보강** — PLAN §0.33.0 `approved`(R51 approved-with-fixes, M1~M3·L1~L4 반영, no R51b). 다음 = **P1**(락 + 상태 파일 writer, red = 테스트 파일만) → P2 신호 → P3 drain → P4 headless herdr 생략 + doctor → P5 문서·스모크. PATCH마다 Opus 5.5 xhigh 독립 검증.
-   - [ ] **2부 — v0.34.0 `loom service` launchd/systemd 설치**(후보) — PLAN + R52 뒤 착수 · **실 OS 등록·라이브 스모크는 별도 오너 명시 승인**.
+   - [x] **1부 — v0.33.0 bridge 생명주기 보강** — `b8739d9` P1 → … → `236a8c1` P4 → `38933f1` P4 검증 교정 → `bb97ffd` 스모크 → PATCH 5(USER_GUIDE §18 · PROTOCOL · implementation-notes §0.33.0 · VERSION 0.33.0 · 스모크 `BRIDGE-LIFECYCLE-SMOKE-0330.md`). Done when (a)~(i) green · (j) ship 검사.
+   - [ ] **2부 — v0.34.0 `loom service` launchd/systemd 설치**(**다음** 후보) — PLAN + R52 뒤 착수 · **실 OS 등록·라이브 스모크는 별도 오너 명시 승인**.
 4. [ ] **4단계 — memory / rules / skills 저장소** (미착수)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)

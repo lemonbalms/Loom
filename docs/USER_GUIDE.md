@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.32.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.33.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -104,7 +104,8 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 15 | 헤드리스 카드 워커 (0.30.0, opt-in) — pane 대신 비대화형 CLI | bridge `worker` 설정 · 카드별 세션 · 재개/입양 |
 | 16 | 스킬과 정책 (0.31.0) — 헤드리스 워커의 권한을 한 파일로, 룸이 고른 스킬을 카드에 | `policy.json` · `worker.skills` · 룸 `skills.json` · 정직 표 |
 | 17 | Loom MCP 사전 점검 (0.32.0) — 대화형 에이전트의 Loom 도구 호출을 정책으로 검사 | `loomTools` · `mcp.deny` `loom__<tool>` · 감사 파일 · 정직 표 |
-| 18 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
+| 18 | bridge 생명주기 (0.33.0) — 프로필당 하나 · 우아한 정지 · drain · 꺼진 뒤 진단 | 프로필 락 · 상태 파일 · `loom bridge drain` · doctor Bridge 절 |
+| 19 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -840,7 +841,7 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 
 - 디렉터리 0700 · 파일 0600. **redaction 없는 평문** — 카드 프롬프트·도구 출력·코드가 그대로 남는다. 업로드 경로는 없다. 회전·GC도 아직 없다(직접 지운다).
 - **완료된 cardId를 다시 디스패치하면 같은 카드 디렉터리를 재사용하고 이전 `transcript-N.jsonl`을 덮어쓴다.** 보존하려면 먼저 복사해 둔다.
-- 같은 머신의 프로필마다 peer id가 달라 디렉터리가 나뉜다. **프로필 하나에 bridge는 하나만** 띄운다 — 같은 프로필 bridge 둘을 막는 프로세스 간 락은 없다.
+- 같은 머신의 프로필마다 peer id가 달라 디렉터리가 나뉜다. **프로필 하나에 bridge는 하나만** 돈다 — 0.33.0부터 프로필 락이 두 번째 bridge를 보유자 pid와 함께 거부한다(§18.1).
 
 ### 15.4 중단·재시작 시 동작 (재개 / 입양)
 
@@ -1210,7 +1211,94 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 
 ---
 
-## 18. 명령 치트시트
+## 18. bridge 생명주기 (v0.33.0)
+
+**하고 싶은 일:** 카드를 돌리는 bridge를 **안전하게 멈추고(신호 · `bridge stop`) · 돌던 카드만 끝내고 내리고(drain) · 꺼진 뒤에도 왜 꺼졌는지 보고 · 같은 프로필에 둘이 뜨지 않게** 한다. 0.34.0 `loom service`(launchd/systemd 자동 기동)의 바탕이다.
+
+**범위는 프로필별 bridge 하나다.** sticky host(`host start`)와 로컬(루프백) relay는 지금처럼 따로 돈다 — 이 절과 무관하다. 와이어 · 카드 계약 · 완료 권한 · 워커 argv/fingerprint는 0.32.0과 같다.
+
+### 18.1 프로필당 하나 — 락
+
+- bridge는 기동 때(herdr·relay 연결 **전**) `~/.loom/bridge/<profile>.lock/`(디렉터리 0700 + `owner.json` 0600 `{v, pid, lstart, startedAt, version}`)을 잡는다.
+- 같은 프로필 두 번째 bridge는 **exit 1**로 거부된다: `bridge already running for profile <p> (pid <n>, started <t>) — lock <path>`. `loom bridge start`는 살아 있는 bridge가 있으면 오늘처럼 `Bridge already running (pid …)`만 말하고, 보유자의 stderr 로그를 지우지 않는다.
+- **stale 락은 다음 기동이 회수한다** — 보유 pid가 죽었거나, 살아 있어도 시작 시각(`ps -o lstart=`)이 다르면(pid 재사용) stderr에 `[bridge] reclaimed stale lock pid=<n>` 한 줄. 회수는 디렉터리만 치우고 **어떤 프로세스에도 신호를 보내지 않는다.**
+- 시작 시각을 못 읽는데 pid가 살아 있으면 **거부**한다(메시지에 락 경로 — 그 pid가 loom bridge가 아니면 디렉터리를 직접 지운다).
+
+### 18.2 상태 파일 + 하트비트
+
+`~/.loom/bridge/<profile>.status.json`(0600, 원자 쓰기) — **멈춘 뒤에도 남는다**(meta 파일은 정지 때 지워진다). 토큰·세션 비밀·카드 본문은 없다.
+
+| 필드 | 뜻 |
+|------|-----|
+| `state` | `starting` → `running` → (`draining`) → `stopping` → `stopped` |
+| `heartbeatAt` | 5초마다 갱신. **15초** 넘게 멈추면 doctor가 stale로 본다(조언용 — 어떤 자동 판정도 하트비트를 근거로 하지 않는다) |
+| `herdr` | `ok` · `skipped`(headless) · `down` |
+| `inFlight` | `paneCards` · `convs` · `headlessRunning` · `headlessQueued` |
+| `drain` | drain 중일 때 `{startedAt, deadlineAt}` |
+| `stoppedAt` · `lastError` | 정지 시각 · 마지막 오류(≤512바이트, 예 `stop_bound_exceeded`) |
+| `version` · `srcPath` | 어떤 버전·소스(`bridge-main.ts` 절대경로)가 돌았는지 — 업그레이드 확인용 |
+
+### 18.3 우아한 정지 — SIGTERM · SIGINT · `loom bridge stop`
+
+- 신호 또는 RPC `stop` → `stopping` → 정리(`stop()`, **10초 상한**) → `stopped` 기록 → **exit 0**. meta 삭제 · 격리 기록 마감 · 락 해제가 상한을 넘겨도 실행된다(넘기면 `lastError:"stop_bound_exceeded"`).
+- **headless 워커는 죽이지 않는다** — 다음 기동이 입양해 결과를 정확히 한 번 보낸다(§15.4).
+- **`stopping` 중 두 번째 신호 = 즉시 종료**(exit 0). 상태 파일은 `stopping`에 남고 doctor가 "died without clean stop" `warn`을 보인다 — 설계상 그렇다. 락·meta는 다음 기동이 회수한다.
+- 기동 중(`starting`)에 온 신호는 기동이 끝나는 대로 정지한다.
+- `loom bridge stop`은 RPC `stop`이 ok로 응답하면 **최대 12초** 기다린다(0.32.0까지 3초). 응답이 없으면 오늘처럼 3초 뒤 SIGTERM.
+- **exit 코드:** 정지 요청(신호 · stop · drain) = 0 · 기동 실패(락 거부 · pane backend herdr 부재 · 세션 없음) = 1.
+
+### 18.4 drain — 돌던 카드만 끝내고 내리기
+
+```bash
+bun run loom --profile <p> bridge drain                # 기본 마감 600초
+bun run loom --profile <p> bridge drain --timeout 1200 # grok 긴 카드
+```
+
+- `draining`이 되면 **새 handoff를 claim하지 않는다** — 카드 · conv.open 모두 relay inbox에 남아 다음 bridge가 받는다. 이미 claim한 pane 카드 · conv · 실행 중 headless 카드는 끝까지 간다(진행 중 conv의 turn·close도 처리).
+- pane 카드 + conv + 실행 중 headless가 0이 되면 정지 → exit 0. CLI는 2초마다 남은 건수를 찍고 bridge가 끝나면 `bridge drained and stopped (pid …)`.
+- **마감에 닿아도 exit 0** — headless 워커는 살아 남아 다음 기동이 입양하고, pane 카드·conv는 잃는다(§18.7). 허가 대기 headless 카드(`headlessQueued`)는 claim 전이므로 inbox에 남는다.
+- **멱등:** 두 번째 `drain`은 마감을 바꾸지 않는다. bridge가 없으면 `no bridge running` exit 0. bridge가 상한(마감 + 15초)을 넘겨 살아 있으면 pid와 상태 파일 경로를 찍고 exit 1(CLI는 신호를 보내지 않는다).
+- `--timeout`은 1..86400초. **grok 헤드리스 카드는 ~9분 걸린 실측이 있다** — 카드 시작 직후가 아니면 기본 600초에 잘릴 수 있으니 grok을 돌리는 노드는 `--timeout 1200`을 쓴다.
+- **업그레이드 순서:** `bridge drain` → 소스 갱신(`git pull` 등) → `bridge start`. 상태 파일 `version`·`srcPath`로 새 코드가 떴는지 확인한다.
+
+### 18.5 headless bridge는 herdr 없이 뜬다
+
+- `worker.backend: "headless"`(§15.1)면 bridge가 herdr에 **아예 연결하지 않는다** — 소켓이 없어도 기동하고, 상태·`bridge status`에 `herdr: skipped (headless)`.
+- **headless bridge에서 conv.open은 거절된다** — handoff를 한 번 claim하고 `conv_unavailable_headless` 사유로 conv reject를 보낸다(재기동해도 다시 거절하지 않는다). conv는 pane backend bridge로 연다. drain 중에는 claim하지 않으므로 다음 bridge가 거절한다.
+- pane backend(기본)는 오늘처럼 herdr가 없으면 `herdr unreachable (…)`로 exit 1.
+
+### 18.6 진단 — `loom doctor` Bridge 절 · 꺼진 `bridge status`
+
+`loom doctor`는 Bridge 절을 파일과 pid만으로 읽는다(네트워크·RPC 0). **`fail`은 내지 않는다** — bridge를 안 쓰는 사람의 doctor exit 코드는 그대로다.
+
+| 상황 | 줄 |
+|------|-----|
+| 상태 파일 없음 | `info bridge never started under this profile (no status file: <path>)` |
+| 상태 파일이 있는데 못 읽음(빈 파일 · 잘린 JSON · 모르는 `v`/`state`) | `warn bridge status file unreadable: <path> (<사유>)` |
+| 살아 있고 하트비트 ≤15초 | `ok bridge pid <n> alive` · `ok heartbeat fresh (Ns ago)` |
+| 살아 있는데 하트비트 >15초 | `warn stale heartbeat (…)` |
+| pid가 죽었는데 state≠`stopped` | `warn bridge died without clean stop — stale status (…)` (SIGKILL · 두 번째 신호 · 크래시) |
+| 정상 정지 | `info bridge not running — stopped at …` |
+| `lastError` 있음 | `warn lastError: …` |
+
+그 밖에 `state` · `herdr` · 락 보유자(`none` / `pid <n> (alive …)` / `stale — next start reclaims it`) · 상태 파일 · stderr 로그 경로를 `info`로 보인다.
+
+`loom bridge status`는 bridge가 꺼져 있으면 기존 `bridge: offline` 줄 뒤에 상태 파일 요약(`state` · `heartbeatAt`/`stoppedAt` · `lastError` · 락 보유자 · 로그 경로)을 붙인다. 파일이 없으면 오늘 출력 그대로, 못 읽으면 위와 같은 `bridge status file unreadable: …` 줄. 켜져 있으면 `state`와 drain 마감·남은 건수가 더해진다.
+
+### 18.7 한계 — 정지 때 잃는 것 (설계상 수용)
+
+- **pane 카드·conv flight는 메모리에만 있다** — SIGTERM이나 drain 마감 때 진행 중이던 pane 카드·conv는 이어받지 못한다(claim된 handoff는 relay에 claimed로 남고 실패 결과도 보내지 않는다). drain을 마감 전에 끝내는 것이 이 손실을 피하는 길이다.
+- **업그레이드 전에 뜬 headless 워커는 끝날 때까지 옛 워커 코드로 돈다** — 입양은 프로세스를 다시 띄우지 않는다.
+- **SIGKILL 복구는 그대로다** — 상태 파일은 마지막 `running` + 멈춘 하트비트로 남고(doctor `warn`), 락은 다음 기동이 회수하고 meta는 다음 기동이 덮어쓴다.
+- **두 번째 신호 · CLI의 3초 뒤 SIGTERM 뒤에는 상태 파일이 `stopping`에 남는다** — doctor `warn`은 설계상이다.
+- **drain 중 claim하지 않은 handoff는 폴마다 다시 관측되어 handoff당 stderr 한 줄**이 쌓인다.
+- **stale 락 판정은 pid + 시작 시각 best effort** — 시작 시각을 못 읽으면 거부하고 수동 제거를 안내한다. Linux의 `ps -o lstart=` 형식은 아직 실측하지 않았다(macOS만 확인).
+- **pid가 재사용된 `stopped` bridge를 doctor가 "alive"로 볼 수 있다**(조언용 pid 확인의 한계).
+- **루프백 relay와 sticky host는 감독하지 않는다.** 자동 기동·재시작은 0.34.0 `loom service`(별도 오너 승인).
+
+---
+
+## 19. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -1219,7 +1307,7 @@ bun run loom --profile <p> handoff @name|id|* "body" [--with-pack] [--with-pack-
 bun run loom --profile <p> inbox | inbox accept <id>
 bun run loom --profile <p> listen
 bun run loom --profile <p> host start|stop|status
-bun run loom --profile <p> bridge start|stop|status
+bun run loom --profile <p> bridge start|stop|status|drain [--timeout <s>]
 bun run loom --profile <p> pack show|set|add|note|…
 bun run loom --profile <p> board | board add|set|assign|export|import|…
 bun run loom --profile <p> run [claude|codex|grok|shell]
@@ -1234,7 +1322,7 @@ bun test
 
 ---
 
-## 19. 자주 하는 실수
+## 20. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -1258,10 +1346,13 @@ bun test
 | `import_board mode=replace`가 `mode=replace is denied` | 0.32.0 내장 기본 `board.replace` 거부(정책으로 풀 수 없다) | `mode=merge` 또는 사람이 `loom board import --replace <file>` (§17.2) |
 | 모든 Loom 도구가 `policy.json is invalid (…)`로 거부 · 숨긴 도구가 다시 보임 | `policy.json` 무효 또는 조회 실패 — 이때 목록은 거르지 않음 | 메시지의 파일·필드 경로를 고친다. 다음 호출부터 정상(재시작 불요) (§17.5) |
 | `loomTools`를 넣었더니 0.31.0 헤드리스 bridge 기동 거부 `unknown key "loomTools"` | 구 바이너리는 새 키를 모른다(fail-closed) | bridge도 0.32.0으로 올린다 (§17.1) |
+| `bridge already running for profile <p> (pid N, …)`로 bridge가 exit 1 | 같은 프로필 bridge가 이미 돈다(0.33.0 프로필 락) | `bridge status`로 확인 · 정말 바꾸려면 `bridge stop`(또는 `drain`) 뒤 다시 start (§18.1) |
+| headless bridge에서 conv가 `conv_unavailable_headless`로 거절 | 0.33.0부터 headless bridge는 herdr를 쓰지 않아 conv pane을 못 띄운다 | conv는 pane backend bridge로 연다 (§18.5) |
+| doctor `warn bridge died without clean stop` | SIGKILL · 크래시 · 두 번째 신호로 끝남 | 다음 `bridge start`가 stale 락을 회수한다. 정상 정지는 `bridge stop` / `drain` (§18.3·§18.6) |
 
 ---
 
-## 20. 지금 버전에서 **아직** 못 하는 것
+## 21. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
@@ -1271,11 +1362,11 @@ bun test
 - 원격 result만으로 타워 board **`done`** (0.28.0 이후 의도적 금지 — `blocked` 후 로컬 확정)  
 - 전역 `loom` 설치가 OS 패키지 매니저 기본 제공 (원하면 `scripts/install.sh` · `link:loom`)
 
-**할 수 있는 것 (0.32.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · **Loom MCP 사전 점검(0.32.0 — §17)** · dogfood 3-kind · 완료 권한 분리 운영.
+**할 수 있는 것 (0.33.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · **Loom MCP 사전 점검(0.32.0 — §17)** · **bridge 생명주기 — 프로필 락 · 우아한 정지 · drain · doctor Bridge 절(0.33.0 — §18)** · dogfood 3-kind · 완료 권한 분리 운영.
 
 ---
 
-## 21. 더 읽을 문서
+## 22. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|

@@ -5,8 +5,43 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.32.0**) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.33.0**) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.33.0 — 2026-10-16
+
+**bridge 생명주기 보강** (업그레이드 3단계 1부) — 카드를 돌리는 bridge가 프로필당 하나만 돌고, 신호에 우아하게 멈추고, 돌던 카드만 끝내고 내릴 수 있고, 꺼진 뒤에도 왜 꺼졌는지 보인다.
+
+### 가능해진 것
+
+- **프로필 락** `~/.loom/bridge/<profile>.lock/` — 같은 프로필 두 번째 bridge는 `bridge already running for profile <p> (pid N, …)`로 exit 1. 죽은 보유자(또는 pid 재사용)의 stale 락은 다음 기동이 회수한다(신호 0).
+- **우아한 정지** — SIGTERM · SIGINT · RPC `stop` → `stopping` → 정리(10초 상한) → `stopped` → **exit 0**. headless 워커는 살아 남아 다음 기동이 입양한다. `stopping` 중 두 번째 신호 = 즉시 종료.
+- **`loom bridge drain [--timeout <s>]`**(기본 600초) — 새 claim을 멈추고(relay inbox에 남김) 실행 중 pane 카드·conv·headless 카드가 끝나면 정지 · 마감에 닿아도 exit 0 · 멱등.
+- **상태 파일** `~/.loom/bridge/<profile>.status.json` — 5초 하트비트 · `state` · `herdr` · 진행 건수 · `stoppedAt` · `lastError` · `version`/`srcPath`. 정지 뒤에도 남는다(토큰 없음).
+- **`loom doctor` Bridge 절** — pid 생존 · 하트비트 신선도(15초) · 죽은 bridge · 못 읽는 상태 파일 · 락 보유자 · 로그 경로. ok/warn/info만 — doctor exit 코드는 그대로.
+- **꺼진 `loom bridge status`** — `bridge: offline` 뒤에 상태 파일 요약(state · lastError · 로그 경로).
+- **headless bridge는 herdr 없이 뜬다** — `worker.backend:"headless"`면 herdr 연결 0 · `herdr: skipped (headless)`.
+- 실 spawn bridge 스모크 `bun run smoke:bridge-lifecycle`(SIGTERM · 이중 기동 · drain · SIGKILL→doctor→회수).
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.32.0) | 지금 (0.33.0) |
+|---------------|---------------|
+| 같은 프로필 bridge 둘이 동시에 뜰 수 있었다(문서상 "하나만 띄운다") | 두 번째는 **기동 거부**(exit 1, 보유자 pid) |
+| SIGTERM = 정리 없이 죽음(meta·격리 기록 잔존) | SIGTERM = 정리 후 exit 0 |
+| `loom bridge stop` 3초 뒤 SIGTERM | RPC `stop`이 ok면 **최대 12초** 대기 |
+| headless bridge도 herdr 필수 · conv는 pane으로 돌았다 | headless bridge는 herdr를 안 쓰고 **conv.open을 `conv_unavailable_headless`로 거절**(한 번 claim 후 거절) — conv는 pane backend bridge로 |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · 완료 권한 · 워커 argv/fingerprint(`agent-argv.ts` · `policy-compile.ts` diff 0) · sticky host · relay 무변경. `drain`은 bridge 로컬 RPC, 거절 사유는 기존 conv reject 스키마의 문자열.
+- **정직 고지(설계상 수용 손실):** 정지·drain 마감 때 진행 중 pane 카드·conv는 잃는다(메모리 flight) · 업그레이드 전 headless 워커는 옛 코드로 끝난다 · SIGKILL 복구는 오늘 그대로(doctor `warn` + 다음 기동 회수) · 두 번째 신호 뒤 상태 파일은 `stopping`에 남는다 · grok 긴 카드(~9분)는 기본 600초 drain에 잘릴 수 있다 — `--timeout 1200` · Linux `ps -o lstart=` 형식은 미실측.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §18 · PLAN 0.33.0 · R51 · `implementation-notes.md` §0.33.0 · [`spikes/BRIDGE-LIFECYCLE-SMOKE-0330.md`](./spikes/BRIDGE-LIFECYCLE-SMOKE-0330.md)
 
 ---
 

@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-16 (0.32.0 Loom MCP 사전 점검) |
+| **Last updated** | 2026-10-16 (0.33.0 bridge 생명주기 보강) |
 
 ---
 
@@ -39,6 +39,37 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.33.0 — bridge 생명주기 보강 (업그레이드 3단계 1부)
+
+PLAN §0.33.0 (R51 `approved-with-fixes` → `approved`) · 커밋 `f68fe68`(R51 게이트) → `b8739d9`(P1 red) → `7efbb1d`(P1 락 + 상태 파일 writer) → `ff0a454`(P1 검증 교정) → `20c4e46`(P2 red) → `7de46a7`(P2 신호 · 상한 · 락/상태 배선) → `933ddb3`(P3 red) → `36b169d`(P3 drain) → `5383145`(P4 red — P2·P3 이월 포함) → `236a8c1`(P4 headless herdr 생략 · conv 거절 · doctor · 꺼진 status) → `59572e2`(P5 red) → `38933f1`(P5 P4-검증 교정) → `bb97ffd`(스모크 + 기록) → PATCH 5 문서(이 절).
+
+**Deviations (계획 대비 실행 방식):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-16 | ⑤ 영향 파일 · D3 · R8 | **(1) P1 락:** 공용 lstart 읽기를 `process-lstart.ts`로 꺼냈다(⑤ 목록 밖 신규 파일 — `headless-worker.ts` 동작 무변경). owner 없는 락 디렉터리(<5초 거부 / ≥5초 회수)는 레거시·외부 디렉터리에만 해당 — 우리 획득은 비공개 디렉터리에 `owner.json`을 먼저 쓰고 rename한다(`ff0a454`). 회수 뮤텍스는 pid+lstart 소유자를 싣고 그 소유자가 죽었거나 pid가 재사용됐을 때만 깨진다. pid ≥ 1 허용. **잔여:** 존재 확인과 rename 사이에 외부 프로세스가 **빈** 락 디렉터리를 mkdir하면 교체될 수 있다(우리 디렉터리는 비지 않는다). | 측정 방식 하나(R8) · 반쯤 만든 락이 남의 것으로 보이지 않게. | — |
+| 2026-10-16 | ② 상태기계 · R11 | **(2) 전이 표:** `starting→stopping`(R11) · `starting→stopped`(기동 실패) 허용 · `running→stopped` · `draining→stopped` · 역행 · 반복 금지. 거부된 전이는 stderr 1줄. `stopped` 뒤 heartbeat/startHeartbeat 무동작 · `atomic-json` 실패 시 tmp 삭제. | 정지 경로가 `stopping`을 건너뛰지 않게 · 진단은 판정을 바꾸지 않는다. | — |
+| 2026-10-16 | R2 · R51-M3 | **(3) `finally` 꼬리 순서:** 격리 `onProcessExit` → `clearBridgeMeta` → `stopped` 기록 → 락 해제(R2 문면은 락이 `stopped` 앞). | 락을 먼저 풀면 후계자의 `starting`을 우리 `stopped`가 덮을 수 있다. | — |
+| 2026-10-16 | ② 상태기계 · R10 | **(4) 락 전 실패**(세션 없음 · 무효 bridge 설정)는 상태 파일을 쓰지 않는다 · 락 뒤 실패는 `stopped` + `lastError`. | 락 전에는 살아 있는 보유자의 파일일 수 있다. | — |
+| 2026-10-16 | ② 버전 · import 순환 | **(5)** `BRIDGE_VERSION` 상수를 `bridge-runtime.ts`에 두고 테스트가 CLI `VERSION`과 같음을 고정(P5가 둘 다 0.33.0으로) · `STOP_BOUND_MS`는 `bridge-spawn.ts`(import 순환 회피). | CLI 패키지를 host가 import할 수 없다. | — |
+| 2026-10-16 | R11 | **(6) 기동 중 신호**는 보류 → 상태 `starting → running → stopping` · 기동 중 두 번째 신호는 즉시 exit 0. | 반쯤 뜬 bridge를 정리 없이 버리지 않는다. | — |
+| 2026-10-16 | UK-1 | **(7) UK-1 resolved:** bun 1.3.11에서 `process.on('SIGTERM')` 확실히 발화 — P2 bridge exit 0까지 18 ms(×3 안정) · P5 스모크 6–7 ms(×3). | 실측. | — |
+| 2026-10-16 | P2 검증 (Opus 5.5 xhigh, accept) | **(8) P2 이월 → P4:** L1 pane RPC `stop` 응답이 flush 전에 닫힘(`server.stop` 전 yield) · L2 herdr 상태가 기동 때 고정(끊김·재연결 반영) · L3 거부된 start가 보유자 stderr 로그를 절단("w"를 락 전에 염) + CLI 로그 이름(default) vs 락/상태 이름(displayName) 불일치 — 모두 P4에서 해소. 이론상: 회수자 ≥3명일 때 `breakStaleMutex` 되돌리기 실패 — 수용(현실 범위 밖). | 발견자≠수정자 유지. | — |
+| 2026-10-16 | D4 · R4 · UK-3 | **(9) P3 drain:** RPC `timeoutSec`(1..86400, 기본 600 = UK-3 출발값). drain은 `claimedStarting` 카운터(등록 전 claim된 pane/conv 인계)도 기다린다 — remaining/inFlight에는 안 보인다(잠깐 0으로 읽힐 수 있음). ② 검사에서 거부된 claim은 `processedHandoffs`에서 빼 다시 관측되게 한다. 유휴 drain은 첫 100 ms 틱에 정지(응답 전달 보장). `index.ts`가 `bridgeStatusPath` export. CLI drain은 신호를 보내지 않는다 · 상한 넘어 살아 있으면 exit 1 + pid + 상태 경로. | drain이 claim 직후 인계를 놓치지 않게 · CLI가 정지 권한을 넘지 않게. | — |
+| 2026-10-16 | P3 검증 (Opus 5.5 xhigh, `36b169d` accept, H/M 0) | **(10) P3 이월 → P4:** P3-L1 `payload_invalid` claim+실패 결과 송신이 `claimedStarting` 밖 → drain이 실패 결과 전에 정지 가능(카운터 + `finally`로 감쌈) · P3-L2 conv blocked 알림(`pane_closed` · `events_subscribe_failed`)이 fire-and-forget → drain 정지 전 송신을 기다림 · 커버리지: drain 중 신호/RPC stop 테스트 추가. | — | P4에서 해소. |
+| 2026-10-16 | D6 · R5 · R51-M1 · D5 | **(11) P4**(`5383145` red에 P3 이월 테스트 포함 / `236a8c1` green): headless herdr 스텁(`herdr:"skipped"`) · conv.open claim 1회 거절 `conv_unavailable_headless` · doctor bridge 절 · 꺼진 bridge status · P2-L1/L2/L3 + P3-L1/L2. red에서 바뀐 기존 테스트: SIGTERM 테스트가 herdr `skipped` 기대 · 기동 중 신호(R11) 테스트를 새 pane 프로필 `panenode`로 이동. 격리 오프라인 폴백 → `resolveBridgeProfile()`. 살아 있는 herdr 건강 = 기동 핑 ok **그리고** 이벤트 스트림 연결(상태 파일은 ≤5초 늦을 수 있음). stale 락 = doctor `info`(died `warn`이 덮음) · `lastError` = `warn`. UK-7 증거: herdr 소켓 부재 → headless bridge running + 카드 왕복(`bridge-headless-noherdr.test.ts` 첫 테스트). | — | — |
+| 2026-10-16 | P4 검증 (Opus 5.5 xhigh, `236a8c1` accept, H/M 0 · host+cli 1220/0) | **(12) P5 Step A — P4 검증 교정**(`59572e2` red / `38933f1` green): **L1** 깨진/모르는 버전 상태 파일을 doctor가 "never started (no status file)"로 보이던 것 → `readBridgeStatusFileResult`(`absent` \| `invalid`+사유 \| `ok`)를 더하고 기존 `readBridgeStatusFile`은 그 위의 래퍼로 유지. 파일이 있는데 못 쓰면(빈 파일 · 잘린 JSON · `null` · 배열 · 모르는 `v` · 모르는 `state` · 읽기 오류) doctor `warn bridge status file unreadable: <path> (<사유>)` · 꺼진 `bridge status`도 같은 줄. 읽기 전용 · exit 코드 무변경. **cosmetic:** headless에서 `loom bridge start` · 켜진 `bridge status`가 소켓 경로 대신 `herdr: skipped (headless)`(켜진 쪽은 RPC `herdr` 필드, start는 RPC 우선 · 설정 폴백). **수용:** L2 pid가 재사용된 `stopped` bridge를 alive로 표시(조언용 pid 계급) · 거절 송신 실패 후 재시도 없음(R51-M1 패턴). red 커밋은 내 커밋을 한 번 고쳐 씀(켜진 status의 `health:` JSON 덤프에 소켓 경로가 남아 단언을 `  herdr: <path>` 줄로 좁힘). | 없음과 망가짐을 같은 말로 보이지 않는다. | — |
+| 2026-10-16 | Done when (i) · UK-2 · UK-3 | **(13) P5 Step B — 스모크** `bun run smoke:bridge-lifecycle`(`bb97ffd`, `docs/spikes/BRIDGE-LIFECYCLE-SMOKE-0330.md`): ①~④ PASS ×3(macOS · bun 1.3.11 · ~23초). ②는 보유자를 CLI `bridge start`로 띄우고 두 번째 프로세스는 같은 spawn 명령(`bun run bridge-main.ts`)으로 — 로그 비절단은 CLI 두 번째 start 경로로 확인. **UK-2:** macOS `ps -o lstart=` = `owner.json` lstart 바이트 동일 · **Linux 형식 미실측(Linux 환경 미사용)**. **UK-3 resolved-by-decision:** 기본 600초 유지(코드 무변경) — grok 헤드리스 ~9분(PLAN.md:601)은 카드 시작 직후 drain일 때만 600초 안 · grok 노드는 `--timeout 1200` · 수용 손실 계급 = 마감에 잘린 카드. | 실 `~/.loom` 무접촉(임시 `LOOM_TEST_HOME` 강제 · 실패 시에도 삭제). | Linux lstart 형식은 Linux 환경이 생기면 확인. |
+| 2026-10-16 | PLAN ⑥ 레인 | **(14) 레인:** 구현 P1~P5 = **Opus 5.5 서브에이전트** · 독립 검증 = **Opus 5.5 xhigh**(P1~P4 각 1회) · 자문 = fable-advisor · **GPT-6.1 Sol 제외**(오너 2026-10-16). | 오너 지시. 발견자≠수정자 분리 유지. | — |
+
+**Known limits (이 버전이 보장하지 않는 것 — PLAN ④ 수용 손실 계급):**
+
+- **pane 카드·conv flight 유실**(계급 1) — SIGTERM · drain 마감 때 진행 중 pane 카드·conv는 이어받지 못한다 · claim된 handoff는 relay에 claimed로 남고 실패 결과도 없다.
+- **업그레이드 전 headless 워커는 옛 코드로 끝난다**(계급 2) · **SIGKILL = 오늘 `recover()`**(계급 3 — doctor `warn` · 다음 기동 회수).
+- **두 번째 신호 · CLI 3초 SIGTERM 뒤 상태 파일 `stopping` 잔존**(doctor `warn` 설계상) · **drain 중 미claim handoff 재관측 stderr 1줄/handoff**.
+- **stale 락 판정 best effort**(pid + lstart · 못 읽으면 거부) · Linux lstart 미실측 · 빈 외부 락 디렉터리 경합 잔여(1).
+- **하트비트 stale은 조언** · 재사용 pid의 `stopped` bridge alive 표시 · 루프백 relay·sticky host 비감독(계급 4) · pane backend + herdr 부재 = fail-fast(계급 5).
 
 ### §0.32.0 — Loom MCP 사전 점검 (업그레이드 2단계 2부 마무리)
 
