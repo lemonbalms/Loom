@@ -176,6 +176,35 @@ describe("sticky host IPC (Phase 4.0a)", () => {
     }
   });
 
+  test("0.32.0 P4 round 4: sticky list_tasks / update_task never expose the dispatch pin (l2Mismatch stays visible)", async () => {
+    const { addTask, updateTask } = await import("./task-board");
+    const seeded = addTask({ title: "pinned via sticky", assignee: "bob", status: "doing" });
+    updateTask(seeded.id, { dispatchPeerId: "p_sticky_secret_pin", l2Mismatch: true });
+
+    const listed = await stickyRpc({ op: "list_tasks" }, { meta: sticky!.meta });
+    expect(listed.ok).toBe(true);
+    const listedText = JSON.stringify(listed);
+    expect(listedText).toContain(seeded.id);
+    expect(listedText).not.toContain("p_sticky_secret_pin");
+    expect(listedText).not.toContain("dispatchPeerId");
+    expect(listedText).toContain('"l2Mismatch":true');
+
+    const upd = await stickyRpc(
+      { op: "update_task", id: seeded.id, notes: "touched via sticky" },
+      { meta: sticky!.meta },
+    );
+    expect(upd.ok).toBe(true);
+    const updText = JSON.stringify(upd);
+    expect(updText).toContain("touched via sticky");
+    expect(updText).not.toContain("p_sticky_secret_pin");
+    expect(updText).not.toContain("dispatchPeerId");
+    expect(updText).toContain('"l2Mismatch":true');
+
+    // The pin is still on the local board (only outputs strip it).
+    const { findTask } = await import("./task-board");
+    expect(findTask(seeded.id)?.dispatchPeerId).toBe("p_sticky_secret_pin");
+  });
+
   test("F-2: resolveLiveHostMeta null when session room/peer diverges", () => {
     const alive = resolveAliveHostMeta(sessionFile);
     expect(alive).not.toBeNull();

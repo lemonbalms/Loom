@@ -6,10 +6,43 @@
  * the headless worker alike (same loader).
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as policyModule from "./policy";
 import { loadPolicy } from "./policy";
+
+type LoadHooks = { afterFirstLstat?: () => void; afterAbsenceChecks?: () => void };
+function hooks(): LoadHooks {
+  const h = (policyModule as unknown as { policyLoadTestHooks?: LoadHooks }).policyLoadTestHooks;
+  expect(h).toBeDefined();
+  return h as LoadHooks;
+}
+
+const RESTRICTIVE = {
+  version: 1,
+  shell: { deny: [] },
+  network: false,
+  mcp: { deny: ["loom__room_chat"] },
+  skills: { allowScripts: [] },
+};
+
+/** Outcome of one load: the policy (null = defaults) or the thrown message. */
+function outcome(dir: string): { policy: ReturnType<typeof loadPolicy> } | { error: string } {
+  try {
+    return { policy: loadPolicy(dir) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 const roots: string[] = [];
 function root(): string {
@@ -19,6 +52,11 @@ function root(): string {
 }
 
 afterEach(() => {
+  const h = (policyModule as unknown as { policyLoadTestHooks?: LoadHooks }).policyLoadTestHooks;
+  if (h) {
+    h.afterFirstLstat = undefined;
+    h.afterAbsenceChecks = undefined;
+  }
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
 });
 
@@ -98,5 +136,106 @@ describe("loadPolicy — missing loomDir is absent only when its parent resolves
       }),
     );
     expect(loadPolicy(join(home, ".loom"))?.mcp.deny).toEqual(["loom__room_chat"]);
+  });
+});
+
+describe("loadPolicy — absence is decided from two consistent observations (P4 verify round 4 H)", () => {
+  test("reported interleaving: lstat(policy.json) ENOENT under a dangling .loom, then .loom becomes a real dir with a restrictive policy → restrictive policy or refusal, never defaults", () => {
+    const home = root();
+    const loom = join(home, ".loom");
+    symlinkSync(join(home, "gone"), loom);
+    let fired = false;
+    hooks().afterFirstLstat = () => {
+      if (fired) return;
+      fired = true;
+      unlinkSync(loom);
+      mkdirSync(loom);
+      writeFileSync(join(loom, "policy.json"), JSON.stringify(RESTRICTIVE));
+    };
+    const r = outcome(loom);
+    expect(fired).toBe(true);
+    if ("policy" in r) {
+      expect(r.policy).not.toBeNull();
+      expect(r.policy?.mcp.deny).toEqual(["loom__room_chat"]);
+    } else {
+      expect(r.error).toContain("fail-closed");
+    }
+  });
+
+  test("policy.json appears after the absence checks → retried once → restrictive policy", () => {
+    const home = root();
+    const loom = join(home, ".loom");
+    mkdirSync(loom);
+    let fired = false;
+    hooks().afterAbsenceChecks = () => {
+      if (fired) return;
+      fired = true;
+      writeFileSync(join(loom, "policy.json"), JSON.stringify(RESTRICTIVE));
+    };
+    expect(loadPolicy(loom)?.mcp.deny).toEqual(["loom__room_chat"]);
+    expect(fired).toBe(true);
+  });
+
+  test("loomDir swapped (dir → dangling) between the two observations → never defaults", () => {
+    const home = root();
+    const loom = join(home, ".loom");
+    mkdirSync(loom);
+    let fired = false;
+    hooks().afterAbsenceChecks = () => {
+      if (fired) return;
+      fired = true;
+      rmSync(loom, { recursive: true });
+      symlinkSync(join(home, "gone"), loom);
+    };
+    const r = outcome(loom);
+    expect(fired).toBe(true);
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toContain("fail-closed");
+  });
+
+  /** Swap `.loom` with a sibling real dir (distinct inodes guaranteed — both exist at once). */
+  function swapper(home: string): () => void {
+    const loom = join(home, ".loom");
+    const alt = join(home, ".loom-alt");
+    const tmp = join(home, ".loom-tmp");
+    mkdirSync(alt);
+    return () => {
+      renameSync(loom, tmp);
+      renameSync(alt, loom);
+      renameSync(tmp, alt);
+    };
+  }
+
+  test("loomDir replaced by a different real dir between observations → retried; consistent second view → defaults", () => {
+    const home = root();
+    const loom = join(home, ".loom");
+    mkdirSync(loom);
+    const swap = swapper(home);
+    let n = 0;
+    hooks().afterAbsenceChecks = () => {
+      n++;
+      if (n === 1) swap();
+    };
+    expect(loadPolicy(loom)).toBeNull();
+    expect(n).toBe(2);
+  });
+
+  test("inconsistent on both attempts → throws `policy.json changed during load (fail-closed)`", () => {
+    const home = root();
+    const loom = join(home, ".loom");
+    mkdirSync(loom);
+    const swap = swapper(home);
+    let n = 0;
+    hooks().afterAbsenceChecks = () => {
+      n++;
+      swap();
+    };
+    const r = outcome(loom);
+    expect(n).toBe(2);
+    expect("error" in r).toBe(true);
+    if ("error" in r) {
+      expect(r.error).toContain("policy.json changed during load");
+      expect(r.error).toContain("fail-closed");
+    }
   });
 });

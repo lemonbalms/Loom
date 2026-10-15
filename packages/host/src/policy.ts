@@ -25,6 +25,7 @@ import {
   lstatSync,
   openSync,
   readSync,
+  type Stats,
   statSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -539,19 +540,13 @@ function lookupFailed(filePath: string, detail: string): Error {
 }
 
 /**
- * ENOENT on `<loomDir>/policy.json`: absent only when loomDir is a real directory
- * (or loomDir itself does not exist, i.e. not created yet — and then only when its
- * parent resolves to a directory, symlinks followed; PLAN 0.32.0 P4 verify round 3 H2:
- * a dangling / missing / non-directory parent fails closed). Anything else throws.
- */
-/**
  * loomDir not created yet: its parent must resolve (stat, following symlinks — a
  * symlinked $HOME is common on Linux) to a directory. A dangling, missing or
- * non-directory parent, or any lookup error, fails closed.
+ * non-directory parent, or any lookup error, fails closed. Returns the parent's stat.
  */
-function confirmRealParent(loomDir: string, filePath: string): void {
+function confirmRealParent(loomDir: string, filePath: string): Stats {
   const parent = dirname(loomDir);
-  let st: ReturnType<typeof statSync>;
+  let st: Stats;
   try {
     st = statSync(parent);
   } catch (err) {
@@ -563,10 +558,19 @@ function confirmRealParent(loomDir: string, filePath: string): void {
   if (!st.isDirectory()) {
     throw lookupFailed(filePath, `loomDir is missing and its parent is not a directory: ${parent}`);
   }
+  return st;
 }
 
-function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void {
-  let dirStat: ReturnType<typeof statSync>;
+/**
+ * ENOENT on `<loomDir>/policy.json`: absent only when loomDir is a real directory
+ * (or loomDir itself does not exist, i.e. not created yet — and then only when its
+ * parent resolves to a directory, symlinks followed; PLAN 0.32.0 P4 verify round 3 H2:
+ * a dangling / missing / non-directory parent fails closed). Anything else throws.
+ * Returns a token identifying the observed state (directory identity) so two
+ * observations can be compared (round 4).
+ */
+function absentDirState(loomDir: string, filePath: string, cause: unknown): string {
+  let dirStat: Stats;
   try {
     dirStat = statSync(loomDir);
   } catch (err) {
@@ -575,8 +579,8 @@ function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void 
         lstatSync(loomDir);
       } catch (lerr) {
         if (errCode(lerr) === "ENOENT") {
-          confirmRealParent(loomDir, filePath);
-          return;
+          const parent = confirmRealParent(loomDir, filePath);
+          return `missing-under:${parent.dev}:${parent.ino}`;
         }
         throw lookupFailed(filePath, `loomDir lstat ${errDetail(lerr)}`);
       }
@@ -587,12 +591,46 @@ function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void 
   if (!dirStat.isDirectory()) {
     throw lookupFailed(filePath, `loomDir is not a directory: ${errDetail(cause)}`);
   }
+  return `dir:${dirStat.dev}:${dirStat.ino}`;
+}
+
+/** Test seams (P4 verify round 4): interleave filesystem changes inside the absence path. */
+export const policyLoadTestHooks: {
+  /** After lstat(policy.json) reported ENOENT, before the loomDir / parent checks. */
+  afterFirstLstat?: () => void;
+  /** After the first loomDir / parent check passed, before the confirming observation. */
+  afterAbsenceChecks?: () => void;
+} = {};
+
+/**
+ * P4 verify round 4 (H): absence is decided only from two consecutive, agreeing
+ * observations — lstat(policy.json) ENOENT + a valid loomDir state, then
+ * lstat(policy.json) ENOENT again + the same loomDir state. Anything else is "changed".
+ */
+function observeAbsence(loomDir: string, filePath: string, cause: unknown): "absent" | "changed" {
+  policyLoadTestHooks.afterFirstLstat?.();
+  const before = absentDirState(loomDir, filePath, cause);
+  policyLoadTestHooks.afterAbsenceChecks?.();
+  try {
+    lstatSync(filePath);
+    return "changed";
+  } catch (err) {
+    if (errCode(err) !== "ENOENT") throw lookupFailed(filePath, errDetail(err));
+  }
+  let after: string;
+  try {
+    after = absentDirState(loomDir, filePath, cause);
+  } catch {
+    return "changed";
+  }
+  return after === before ? "absent" : "changed";
 }
 
 /**
  * Reads `<loomDir>/policy.json`. `loomDir` is the already-resolved Loom dir.
  * Absent file → null (only ENOENT on the final path with a real loomDir, or no loomDir
- * under a parent that resolves to a directory).
+ * under a parent that resolves to a directory — confirmed by two agreeing observations;
+ * if the state changes during the load it is retried once, then fails closed).
  * Dangling/looping symlink, EACCES, ENOTDIR, any other lookup error, a non-regular
  * file (dir/FIFO/device), or a file over POLICY_MAX_BYTES → throws (fail-closed).
  * A symlink is followed only when its target is a regular file.
@@ -600,14 +638,21 @@ function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void 
  */
 export function loadPolicy(loomDir: string): PolicyV1 | null {
   const filePath = join(loomDir, "policy.json");
-  let link: ReturnType<typeof lstatSync>;
-  try {
-    link = lstatSync(filePath);
-  } catch (err) {
-    if (errCode(err) !== "ENOENT") throw lookupFailed(filePath, errDetail(err));
-    confirmAbsent(loomDir, filePath, err);
-    return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let link: Stats;
+    try {
+      link = lstatSync(filePath);
+    } catch (err) {
+      if (errCode(err) !== "ENOENT") throw lookupFailed(filePath, errDetail(err));
+      if (observeAbsence(loomDir, filePath, err) === "absent") return null;
+      continue;
+    }
+    return readPolicyFile(filePath, link);
   }
+  throw lookupFailed(filePath, "policy.json changed during load");
+}
+
+function readPolicyFile(filePath: string, link: Stats): PolicyV1 {
   if (link.isSymbolicLink()) {
     try {
       statSync(filePath);

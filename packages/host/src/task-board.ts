@@ -253,6 +253,16 @@ export function isCanonicalPeerId(id: string): boolean {
   );
 }
 
+/**
+ * PLAN 0.32.0 P4 verify round 4 (M): the L-2 dispatch pin never leaves the host through
+ * an RPC / tool response (sticky `/rpc`, desktop). `l2Mismatch` stays visible, as in MCP.
+ */
+export function withoutDispatchPin(t: TaskItem): TaskItem {
+  if (t.dispatchPeerId === undefined) return t;
+  const { dispatchPeerId: _pin, ...rest } = t;
+  return rest;
+}
+
 /** PLAN 0.32.0 R7: local-only fields never leave the board file (snapshots, attachments, imports). */
 function withoutLocalFields(t: TaskItem): TaskItem {
   if (t.dispatchPeerId === undefined && t.l2Mismatch === undefined) return t;

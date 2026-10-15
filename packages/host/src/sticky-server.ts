@@ -27,6 +27,7 @@ import {
   parseTaskStatus,
   updateTask,
   type TaskStatus,
+  withoutDispatchPin,
 } from "./task-board";
 
 function clientEventIdOrDrop(value: unknown): string | undefined {
@@ -204,8 +205,9 @@ export async function startStickyServer(opts?: {
             roomName: board.roomName
               ? sanitizePeerText(board.roomName)
               : board.roomName,
+            // 0.32.0 P4 round 4: the L-2 pin is local-only — never in RPC output.
             tasks: board.tasks.map((t) => ({
-              ...t,
+              ...withoutDispatchPin(t),
               title: sanitizePeerText(t.title),
               notes: t.notes ? sanitizePeerText(t.notes) : t.notes,
               assignee: t.assignee
@@ -241,7 +243,7 @@ export async function startStickyServer(opts?: {
             ok: true,
             op: "add_task",
             task: {
-              ...task,
+              ...withoutDispatchPin(task),
               title: sanitizePeerText(task.title),
               notes: task.notes ? sanitizePeerText(task.notes) : task.notes,
             },
@@ -269,7 +271,7 @@ export async function startStickyServer(opts?: {
               ok: true,
               op: "update_task",
               task: {
-                ...task,
+                ...withoutDispatchPin(task),
                 title: sanitizePeerText(task.title),
                 notes: task.notes ? sanitizePeerText(task.notes) : task.notes,
               },
