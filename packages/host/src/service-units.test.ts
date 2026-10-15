@@ -117,7 +117,7 @@ describe("D8 — profile name sanitizers must agree (bridge-config `_` vs lock/l
     });
   }
 
-  for (const p of ["a b", ".x", "-x", "a/b", "한글"]) {
+  for (const p of ["a b", ".x", "-x", "a/b"]) {
     test(`differ → refused: ${JSON.stringify(p)}`, () => {
       const a = bridgeConfigSafeName(p);
       const b = sanitizeProfileLogName(p);
@@ -127,6 +127,25 @@ describe("D8 — profile name sanitizers must agree (bridge-config `_` vs lock/l
       if (!r.ok) {
         expect(r.message).toBe(
           `profile name "${p}" maps to different file names (config "${a}" vs lock/log "${b}") — rename the profile`,
+        );
+      }
+    });
+  }
+
+  // PLAN D8 table lists "한글" as refused, but both sanitizers map it to "__" (the lock/log
+  // sanitizer turns the leading "--" run into "_"), so `config !== lockLog` alone admits it.
+  // ② also states "same ⇒ sanitized == original"; enforcing that invariant refuses it (and any
+  // name whose leading chars are out of range: " x", "/x").
+  for (const p of ["한글", " x", "/x"]) {
+    test(`sanitizers agree but rewrite the name → refused: ${JSON.stringify(p)}`, () => {
+      const b = sanitizeProfileLogName(p);
+      expect(bridgeConfigSafeName(p)).toBe(b);
+      expect(b).not.toBe(p);
+      const r = serviceProfileNameCheck(p);
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.message).toBe(
+          `profile name "${p}" is not a valid service name (its files would be named "${b}") — rename the profile`,
         );
       }
     });
