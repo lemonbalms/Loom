@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-10-15 |
+| **Last updated** | 2026-10-16 |
 
 ---
 
@@ -41,6 +41,34 @@
 ---
 
 ## Gate log
+
+### 0.32.0 — Loom MCP 사전 점검 (`approved` — R50 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.32.0 (`approved` — R50 approved-with-fixes, 반영 완료 · no R50b) · 업그레이드 2단계 2부 마무리 · §0.31.0 범위 분할 이월분 · 요구 `UPGRADE-PLAN.md:156`·`:161` |
+| **Date** | 2026-10-16 |
+| **Review** | R50 **done 2026-10-16** (새 MINOR + 보안·신뢰 경계 변경 — 대화형 에이전트의 Loom 상태 쓰기에 정책 판정 계층 신설 · 완료 판정 규칙 이월(D4) 공식화) |
+| **Evidence** | 코드 실측 `main @ a2e0d99` (PLAN §0.32.0 Why · 추정/실측 표) · 라이브 스모크는 P5 예정 |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 코드 실측(`a2e0d99`): (1) Loom MCP 도구 20개 · 단일 길목 `stdio.ts:412-415` · `inputSchema` 광고만, 인자는 `String()`/`Boolean()`/`Number()` 강제 변환 · 미지 도구 JSON-RPC `-32601`(`:613`) · try 예외는 `isError`(`:620-626`). (2) 정책 `mcp.deny`(`policy.ts:34`)는 헤드리스 워커 argv에만 컴파일 — Loom 서버는 무시. (3) 로컬 done 경로 넷(`update_task` · `add_task` · `import_board` · `conv_close` — reason 기본 `done`, `stdio.ts:346`) · 원격 결과는 `blocked`(`card-ops.ts:321-326`). (4) `apply_card_result` `fromPeerId` 미대조(`card-ops.ts:284-303`) · 작업에 상대 peer id 필드 없음. (5) 사람 경로 실재 — `loom board set <id> done`(`cli/src/index.ts:1214-1234`) · `loom board import --replace`(`:1315-1337`) · conv 닫기 CLI 없음. (6) `policyHash` 입력 = `EffectivePolicy`(`policy.ts:127` · `:695`). (7) `packages/mcp-server` 테스트 0 · smoke-uc `McpClient`(`:69-185`). (8) zod `^3.24.2`는 `@loom/protocol`에만(JSON Schema 변환 없음). (9) R50-M2 실측: `dispatch_card` ack(`opsHandoff`, `room-ops.ts:114-125`)는 해석된 peer id를 담지 않는다 — `to`는 입력 에코 · relay `findPeerByName`은 표시 이름 중복 시 온라인 peer 우선(`relay/src/room.ts:382-387`) · `fromPeerId`는 relay가 연결 신원으로 채우지만(`room.ts:635-660`) 에이전트가 `InboxEntry`에서 베껴 넘긴다(생략 시 L-2 우회 — `blocked` 착지로 수용). |
+| Known unknowns | **UK-1~UK-4**(아래 표, 정본 = PLAN §0.32.0 · UK-5는 R50-M2로 실측 → 제외). 요지: codex/grok의 `isError` 표면화 · 엄격 D2가 새로 거부할 기존 호출자 · 감사 파일 상한 값 · claude MCP 권한 프롬프트의 억제 여부. |
+| Unknown knowns | "MCP에서 막았다"는 "에이전트가 못 한다"가 아니다 — 대화형 에이전트 셸은 `LOOM_SESSION`을 상속해 `loom board set … done`을 직접 부를 수 있고, 정책 `shell` 규칙은 대화형 세션에 컴파일되지 않는다(PLAN R9). 숨김만 하는 deny는 이름을 아는 모델에게 무력하다(D3). 기본값이 있는 인자(`conv_close` reason)는 명시값만 보면 샌다(PLAN R2). 기본 `allow`는 꼭 지킴 완료 판정의 **이월**이지 준수가 아니다(D4). |
+| Unknown unknowns | MCP 클라이언트(claude·codex·grok)가 `tools/list`를 언제 다시 읽는지 — 세션 도중 `policy.json` 변경이 목록에 늦게 반영될 가능성(호출 거부는 즉시); 엄격 검증 거부를 받은 모델이 재시도 대신 셸 우회로 빠지는 행동 변화; 같은 룸 여러 `loom run` 세션의 감사 append 경합이 회전 경계에서 보이는 모습; 7단계 기본 `propose` 전환 시 실제 사람 done 부하. |
+
+**Unknowns 요약 (정본 = PLAN §0.32.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R50 판정 |
+|---|------|-------------|----------|
+| UK-1 | codex/grok이 MCP `isError` 텍스트를 claude처럼 모델에 보여 주는가(거부 문구의 다음 행동 안내가 닿는가) | P5 스모크에서 측정 · 보이지 않으면 정직 표 행 갱신 | **open, 비차단(R50)** |
+| UK-2 | 엄격 D2가 새로 거부할 기존 호출자(비문자열 인자 · `"true"` 문자열 불리언 · 미지 키) | P3에서 리포 grep + smoke-uc 실행으로 조사 · 수정은 호출자 쪽(스키마 완화 아님) | **open, 비차단(R50)** |
+| UK-3 | 감사 파일 상한 값 — 1 MiB + `.1` 한 세대가 바쁜 룸에서 충분한가 | 출발값 1 MiB · 절단 없음 · P5 레코드 크기로 재평가 | **open, 비차단(R50)** |
+| UK-4 | claude MCP 권한 프롬프트가 Loom이 쓴 설정으로 억제되는가 — 정적으로는 `adapters/src`에 `permissions` 쓰기 0 · 오너 전역 사전 허용은 미측정 | 정직 표 "실행 전 사람 확인" 행 문구에만 영향 · P5 관측 | **open, 비차단(R50)** |
+| ~~UK-5~~ *(작성자)* | `dispatch_card` ack가 해석된 대상 peer id를 담는가(PLAN R7 `dispatchPeerId` 비교 대상) | 없으면 디스패치 시점 룸 peer 목록 해석 · 레거시 카드는 오늘 동작 + `l2_unverifiable` | **R50-M2: unknown에서 제외 → 실측** — ack `{status, to, handoffId, notified, recipientCount, message?, …}`(`room-ops.ts:114-125`) · `to` = 입력 에코 → R7 = 로컬 peer 목록 이름 일치 **정확히 1개**일 때만 기록, 0개/2개 이상 → 미기록(`l2_unverifiable`) |
+
+**Current decision:** D1~D10 아키텍트 락(fable-advisor 자문 2026-10-16) · **R50 `approved-with-fixes` → M1·M2·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R50b)** · R1~R9 수용(R7은 M2로 수정 · R9 문서화로 충분 — 0.31.0과 같은 기존 우회 · `propose` 옵트인 · 위협 = 오너 자신의 에이전트) · **UK-5 실측으로 제외**(M2) · UK-1~UK-4 open(비차단). 구현 착수 = **P1**(정책 `loomTools` · fingerprint 투영, red 선행).
 
 ### 0.31.0 — 스킬 materialize + policy.json v1 → CLI별 권한 번역 (`approved` — R49 approved-with-fixes)
 
@@ -393,3 +421,5 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-15 | 0.31.0 R49 판정 반영 (UK-1 → P2 deny 경로 차단 · UK-6 비차단 유지(D13 기본 true) · UK-7 메커니즘 명시 · PLAN `approved`) |
 | 2026-10-15 | 0.31.0 UK-1 실측 resolved (`SKILLS-POLICY-PROBE.md` §G — grok `Bash(p *)` 맨 명령 미차단 → 이중 형식 유지 · claude `p*` 과매칭 → `p*` 형 금지) |
 | 2026-10-15 | 0.31.0 ship 반영 (UK-5 resolved — §H `--settings` MCP deny = 툴 숨김·신호 없음 · UK-7 resolved — dist에 내장 스킬 포함 · UK-2/3/4/6 open 비차단) |
+| 2026-10-16 | 0.32.0 Loom MCP 사전 점검 unknowns (UK-1~UK-5 요약 · 전부 비차단 제안 · 코드 실측 Known knowns · `pending-review` R50) |
+| 2026-10-16 | 0.32.0 R50 판정 반영 (UK-5 → M2 실측으로 제외 · UK-1~UK-4 open 비차단 · PLAN `approved`) |
