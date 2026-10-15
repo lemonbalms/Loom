@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
+  ClientPeerSchema,
   generateTaskId,
   sanitizePeerText,
   sanitizePeerName,
@@ -207,10 +208,19 @@ function normalizeTask(t: TaskItem): TaskItem {
     createdByPeerId: t.createdByPeerId
       ? sanitizePeerText(t.createdByPeerId).slice(0, 64)
       : undefined,
-    ...(typeof t.dispatchPeerId === "string" && t.dispatchPeerId.length > 0
-      ? { dispatchPeerId: sanitizePeerText(t.dispatchPeerId).slice(0, 64) }
+    ...(typeof t.dispatchPeerId === "string" && isPinnablePeerId(t.dispatchPeerId)
+      ? { dispatchPeerId: t.dispatchPeerId }
       : {}),
   };
+}
+
+/**
+ * PLAN 0.32.0 R7 (P4 verify round 1): a dispatch pin is stored verbatim or not at all.
+ * Same rule as the relay's peer id (`ClientPeerSchema.shape.id` — min 1, no max) plus an
+ * exact round-trip through the board sanitizer, so a pin is never truncated or altered.
+ */
+export function isPinnablePeerId(id: string): boolean {
+  return ClientPeerSchema.shape.id.safeParse(id).success && sanitizePeerText(id) === id;
 }
 
 /** PLAN 0.32.0 R7: local-only fields never leave the board file (snapshots, attachments, imports). */

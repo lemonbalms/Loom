@@ -15,12 +15,21 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parsePolicy, resolveLoomToolsGate, toolVisible } from "@loom/host";
+import {
+  addTask,
+  parsePolicy,
+  resetStateHomeDirCache,
+  resolveLoomToolsGate,
+  setActiveProfile,
+  toolVisible,
+  updateTask,
+} from "@loom/host";
 import { TOOL_DEFINITIONS, toolRegistry } from "./tool-schemas";
 
 type RpcMsg = {
@@ -313,6 +322,131 @@ describe("0.32.0 P4 — policy re-stat on every call (D9)", () => {
 
     expect((await s.request("ping")).result).toBeDefined();
   }, 60_000);
+});
+
+describe("0.32.0 P4 verify round 1 — policy lookup errors fail closed (H)", () => {
+  test("absent → dangling symlink refuses every call → dangling removed allows again", async () => {
+    const { home, loom } = makeHome();
+    const s = startServer(home);
+    const link = join(loom, "policy.json");
+
+    let r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+
+    symlinkSync(join(loom, "does-not-exist.json"), link);
+    r = await s.call("get_purpose", {});
+    expect(r.result?.isError).toBe(true);
+    expect(textOf(r)).toContain("Loom pre-check refused get_purpose: policy.json is invalid");
+    expect(textOf(r)).toContain("dangling symlink");
+    expect((await s.listNames()).length).toBe(20);
+    // Still refused on the next call (invalid gate is re-evaluated, never trusted from cache).
+    r = await s.call("get_purpose", {});
+    expect(r.result?.isError).toBe(true);
+
+    unlinkSync(link);
+    r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+    expect((await s.request("ping")).result).toBeDefined();
+  }, 30_000);
+
+  test("dangling symlink present at server start → refused from the first call", async () => {
+    const { home, loom } = makeHome();
+    symlinkSync(join(loom, "nowhere.json"), join(loom, "policy.json"));
+    const s = startServer(home);
+    const r = await s.call("get_purpose", {});
+    expect(r.result?.isError).toBe(true);
+    expect(textOf(r)).toContain("policy.json is invalid");
+  }, 30_000);
+
+  test("symlink to a valid regular file is followed (loadPolicy accepts it) and target edits are seen", async () => {
+    const { home, loom } = makeHome();
+    const target = join(loom, "real-policy.json");
+    writeFileSync(target, JSON.stringify(policyBody({ mcp: { deny: ["loom__get_purpose"] } })));
+    symlinkSync(target, join(loom, "policy.json"));
+    const s = startServer(home);
+
+    expect(await s.listNames()).not.toContain("get_purpose");
+    let r = await s.call("get_purpose", {});
+    expect(textOf(r)).toContain("denied by policy.json mcp.deny (loom__get_purpose)");
+
+    // Retarget content (new inode at the target path) — the symlink itself is unchanged.
+    const tmp = join(loom, ".real.tmp");
+    writeFileSync(tmp, JSON.stringify(policyBody({ mcp: { deny: ["loom__room_chat"] } })));
+    renameSync(tmp, target);
+    r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+    expect(await s.listNames()).not.toContain("room_chat");
+  }, 30_000);
+
+  test("policy.json as a directory (non-regular) → refused", async () => {
+    const { home, loom } = makeHome();
+    const s = startServer(home);
+    mkdirSync(join(loom, "policy.json"));
+    const r = await s.call("get_purpose", {});
+    expect(r.result?.isError).toBe(true);
+    expect(textOf(r)).toContain("policy.json is invalid");
+  }, 30_000);
+});
+
+describe("0.32.0 P4 verify round 1 — dispatchPeerId never exposed over MCP (L)", () => {
+  test("list_tasks / add_task / update_task / import_board / export_board / apply_card_result omit the pin", async () => {
+    const { home, loom } = makeHome();
+    const session = writeSession(loom, "room_p4_pin");
+    // Seed a pinned card in-process against the same isolated home.
+    const prevHome = process.env.LOOM_TEST_HOME;
+    const prevSession = process.env.LOOM_SESSION;
+    process.env.LOOM_TEST_HOME = home;
+    process.env.LOOM_SESSION = session;
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    let taskId = "";
+    try {
+      taskId = addTask({ title: "pinned", assignee: "node/one", status: "doing" }).id;
+      updateTask(taskId, { dispatchPeerId: "p_secret_pin" } as Parameters<typeof updateTask>[1]);
+      const raw = readdirSync(join(loom, "boards"))
+        .map((f) => readFileSync(join(loom, "boards", f), "utf8"))
+        .join("");
+      expect(raw).toContain("p_secret_pin");
+    } finally {
+      if (prevHome === undefined) delete process.env.LOOM_TEST_HOME;
+      else process.env.LOOM_TEST_HOME = prevHome;
+      if (prevSession === undefined) delete process.env.LOOM_SESSION;
+      else process.env.LOOM_SESSION = prevSession;
+      resetStateHomeDirCache();
+    }
+
+    const s = startServer(home, session);
+    const responses = [
+      await s.call("list_tasks", {}),
+      await s.call("add_task", { title: "another" }),
+      await s.call("update_task", { id: taskId, notes: "n" }),
+      await s.call("export_board", {}),
+      await s.call("import_board", {
+        snapshot: { kind: "loom-board-snapshot", sourceRoomId: "room_p4_pin", tasks: [] },
+        mode: "merge",
+      }),
+      await s.call("apply_card_result", {
+        resultJson: JSON.stringify({
+          v: 1,
+          cardId: taskId,
+          status: "done",
+          node: "node/one",
+          seq: 1,
+          output: "o",
+          summary: "s",
+          finishedAt: new Date().toISOString(),
+        }),
+        fromPeerId: "p_secret_pin",
+      }),
+      await s.call("list_tasks", {}),
+    ];
+    for (const r of responses) {
+      expect(r.result?.isError).toBe(false);
+      expect(textOf(r)).not.toContain("dispatchPeerId");
+      expect(textOf(r)).not.toContain("p_secret_pin");
+    }
+    expect(textOf(responses[0] as RpcMsg)).toContain(taskId);
+  }, 30_000);
 });
 
 describe("0.32.0 P4 — unknown tool names (R5)", () => {

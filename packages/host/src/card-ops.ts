@@ -20,6 +20,7 @@ import { appendPolicyAudit, type PolicyAuditRecord } from "./mcp-precheck";
 import { loadSession, loomDir } from "./session-store";
 import { opsHandoff, opsListPeers } from "./room-ops";
 import {
+  isPinnablePeerId,
   loadTaskBoard,
   updateTask,
   findTask,
@@ -33,6 +34,7 @@ import {
  * display name matches `node` (same comparison as relay `findPeerByName`: leading `@`
  * stripped, case-insensitive). Zero or several matches → undefined (not recorded) —
  * relay prefers an online peer among duplicates, so an ambiguous name is never pinned.
+ * A unique match whose id would not be stored verbatim (isPinnablePeerId) is not pinned.
  */
 export function resolveDispatchPeerId(
   peers: ReadonlyArray<{ id: string; displayName: string }>,
@@ -41,8 +43,12 @@ export function resolveDispatchPeerId(
   const n = node.replace(/^@/, "").trim().toLowerCase();
   if (!n) return undefined;
   const matches = peers.filter((p) => p.displayName.toLowerCase() === n);
-  return matches.length === 1 ? matches[0]?.id : undefined;
+  const id = matches.length === 1 ? matches[0]?.id : undefined;
+  return id !== undefined && isPinnablePeerId(id) ? id : undefined;
 }
+
+/** Test seam (P4 verify round 1): fires between the peer lookup and the dispatch send. */
+export const dispatchCardTestHooks: { afterPeerLookup?: () => Promise<void> | void } = {};
 
 /** Best-effort peer lookup at dispatch time; any failure → not recorded (l2_unverifiable later). */
 async function lookupDispatchPeerId(node: string): Promise<string | undefined> {
@@ -158,8 +164,12 @@ export async function dispatchCard(args: {
 
   try {
     const dispatchPeerId = await lookupDispatchPeerId(node);
+    await dispatchCardTestHooks.afterPeerLookup?.();
+    // P4 verify round 1: routing == pin. With a pin, send to that peer id (relay
+    // resolveTargets tries getPeer(to) before the name), so a same-name peer joining
+    // after the lookup cannot receive the card. Without a pin, today's name routing.
     const ack = await opsHandoff({
-      to: `@${node}`,
+      to: dispatchPeerId ?? `@${node}`,
       body,
       mode: "task",
       attachments: [attachment],

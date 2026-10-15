@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, te
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CARD_CONTRACT_VERSION } from "@loom/protocol";
+import { CARD_CONTRACT_VERSION, ClientPeerSchema } from "@loom/protocol";
 import { RelayServer } from "@loom/relay";
 import * as cardOps from "./card-ops";
 import { RelayClient } from "./relay-client";
@@ -38,6 +38,23 @@ function setDispatchPeerId(taskId: string, peerId: string | null): board.TaskIte
     { dispatchPeerId: peerId } as unknown as Parameters<typeof board.updateTask>[1],
   );
 }
+
+/** Round 1 M (exact pin): same id rule as ClientPeerSchema.id + exact round-trip. */
+function isPinnablePeerId(id: string): boolean {
+  const fn = (board as unknown as { isPinnablePeerId?: (id: string) => boolean }).isPinnablePeerId;
+  expect(typeof fn).toBe("function");
+  return (fn as (id: string) => boolean)(id);
+}
+
+type DispatchHooks = { afterPeerLookup?: () => Promise<void> | void };
+function dispatchHooks(): DispatchHooks {
+  const hooks = (cardOps as unknown as { dispatchCardTestHooks?: DispatchHooks }).dispatchCardTestHooks;
+  expect(hooks).toBeDefined();
+  return hooks as DispatchHooks;
+}
+
+/** 82 chars — longer than the old 64-char storage cap; ClientPeerSchema.id has no max. */
+const LONG_PEER_ID = `p_${"a1b2c3d4e5".repeat(8)}`;
 
 function dispatchPeerIdOf(task: board.TaskItem | undefined): string | undefined {
   return (task as (board.TaskItem & { dispatchPeerId?: string }) | undefined)?.dispatchPeerId;
@@ -81,6 +98,34 @@ describe("resolveDispatchPeerId — exactly one display-name match (R50-M2)", ()
 
   test("a peer id is not a display name", () => {
     expect(resolveDispatchPeerId(peers, "p_one")).toBeUndefined();
+  });
+
+  test("82-char peer id resolves exactly (no truncation)", () => {
+    expect(LONG_PEER_ID).toHaveLength(82);
+    expect(resolveDispatchPeerId([{ id: LONG_PEER_ID, displayName: "node/long" }], "node/long")).toBe(
+      LONG_PEER_ID,
+    );
+  });
+
+  test("a unique match whose id would not round-trip exactly is not pinned", () => {
+    expect(resolveDispatchPeerId([{ id: "p_bad\u0007id", displayName: "node/bad" }], "node/bad")).toBeUndefined();
+  });
+});
+
+describe("isPinnablePeerId — same limit as ClientPeerSchema.id, exact round-trip only", () => {
+  test("agrees with ClientPeerSchema.shape.id for well-formed ids (incl. 82 chars) and rejects empty", () => {
+    for (const id of ["p_x", "p_tower", LONG_PEER_ID, "x".repeat(4096)]) {
+      expect(ClientPeerSchema.shape.id.safeParse(id).success).toBe(true);
+      expect(isPinnablePeerId(id)).toBe(true);
+    }
+    expect(ClientPeerSchema.shape.id.safeParse("").success).toBe(false);
+    expect(isPinnablePeerId("")).toBe(false);
+  });
+
+  test("ids the board sanitizer would alter are never pinned (no lossy pin)", () => {
+    expect(isPinnablePeerId("p_ctl\u0001x")).toBe(false);
+    expect(isPinnablePeerId("p_esc\u001b[31mx")).toBe(false);
+    expect(isPinnablePeerId("p_del\u007fx")).toBe(false);
   });
 });
 
@@ -128,6 +173,23 @@ describe("apply_card_result L-2 fromPeerId vs dispatchPeerId", () => {
     delete process.env.LOOM_SESSION;
     resetStateHomeDirCache();
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("82-char pin is stored and read back exactly", () => {
+    const task = board.addTask({ title: "long-pin", assignee: "node/long", status: "doing" });
+    expect(dispatchPeerIdOf(setDispatchPeerId(task.id, LONG_PEER_ID))).toBe(LONG_PEER_ID);
+    expect(dispatchPeerIdOf(board.findTask(task.id))).toBe(LONG_PEER_ID);
+    const r = cardOps.applyCardResult({
+      resultJson: result(task.id, "node/long", 1),
+      fromPeerId: LONG_PEER_ID,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  test("a pin that would not round-trip exactly is dropped, never truncated or altered", () => {
+    const task = board.addTask({ title: "bad-pin", assignee: "node/one", status: "doing" });
+    expect(dispatchPeerIdOf(setDispatchPeerId(task.id, "p_bad\u0007id"))).toBeUndefined();
+    expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
   });
 
   test("updateTask persists dispatchPeerId; null clears it", () => {
@@ -241,6 +303,7 @@ describe("dispatch_card records dispatchPeerId only on exactly one name match (i
   const relay = new RelayServer({ host: "127.0.0.1", port });
   const clients: RelayClient[] = [];
   const peerIds: Record<string, string> = {};
+  const inviteCodeRef = { value: "" };
 
   async function join_(displayName: string, inviteCode: string): Promise<string> {
     const peerId = `p_${displayName.replace(/[^a-z0-9]/gi, "")}_${Math.random().toString(36).slice(2, 8)}`;
@@ -269,6 +332,7 @@ describe("dispatch_card records dispatchPeerId only on exactly one name match (i
     });
     if (created.type !== "room.state") throw new Error("create failed");
     const inviteCode = created.inviteCode ?? "";
+    inviteCodeRef.value = inviteCode;
     const towerSecret = created.peerSecret ?? bootstrap.peerSecret;
     bootstrap.close();
     const session: FableSession = {
@@ -324,5 +388,60 @@ describe("dispatch_card records dispatchPeerId only on exactly one name match (i
     const second = await cardOps.dispatchCard({ taskId: task.id, node: "node/dup", prompt: "p" });
     expect(second.ok).toBe(true);
     expect(dispatchPeerIdOf(board.findTask(task.id))).toBeUndefined();
+  }, 30_000);
+
+  test("pinned dispatch is routed to the pinned peer id (handoff.to === peerId)", async () => {
+    const task = board.addTask({ title: "route-by-id", status: "todo" });
+    const r = await cardOps.dispatchCard({ taskId: task.id, node: "node/one", prompt: "p" });
+    expect(r.ok).toBe(true);
+    const inbox = await (clients[0] as RelayClient).listInbox();
+    const entry = inbox.find((e) => e.handoff.body.includes(task.id));
+    expect(entry).toBeDefined();
+    expect(entry?.handoff.to).toBe(peerIds.one);
+  }, 30_000);
+
+  test("race: lookup pins offline p_a, same-name p_b joins before send → still routed to p_a; p_a's result lands", async () => {
+    const offline = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
+    const aId = `p_racea_${Math.random().toString(36).slice(2, 8)}`;
+    const joinedA = await offline.joinRoom({
+      inviteCode: inviteCodeRef.value,
+      displayName: "node/race",
+      agentKind: "shell",
+      peerId: aId,
+    });
+    expect(joinedA.type).not.toBe("error");
+    offline.close();
+    await Bun.sleep(100);
+
+    let bClient: RelayClient | null = null;
+    const hooks = dispatchHooks();
+    hooks.afterPeerLookup = async () => {
+      bClient = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
+      clients.push(bClient);
+      await bClient.joinRoom({
+        inviteCode: inviteCodeRef.value,
+        displayName: "node/race",
+        agentKind: "shell",
+        peerId: `p_raceb_${Math.random().toString(36).slice(2, 8)}`,
+      });
+    };
+    try {
+      const task = board.addTask({ title: "race", status: "todo" });
+      const r = await cardOps.dispatchCard({ taskId: task.id, node: "node/race", prompt: "p" });
+      expect(r.ok).toBe(true);
+      expect(dispatchPeerIdOf(board.findTask(task.id))).toBe(aId);
+      expect(bClient).not.toBeNull();
+      const bInbox = await (bClient as unknown as RelayClient).listInbox();
+      expect(bInbox.some((e) => e.handoff.body.includes(task.id))).toBe(false);
+
+      const landed = cardOps.applyCardResult({
+        resultJson: result(task.id, "node/race", 1),
+        fromPeerId: aId,
+      });
+      expect(landed.ok).toBe(true);
+      if (landed.ok) expect(landed.status).toBe("blocked");
+    } finally {
+      hooks.afterPeerLookup = undefined;
+    }
   }, 30_000);
 });

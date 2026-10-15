@@ -23,8 +23,9 @@ import {
   toolConvAwait,
   toolConvClose,
   toolConvFetch,
+  mcpResultJson,
 } from "./tools";
-import { statSync } from "node:fs";
+import { lstatSync, type Stats, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   appendPolicyAudit,
@@ -52,9 +53,18 @@ type JsonRpcReq = {
 const TOOLS = TOOL_DEFINITIONS;
 
 // ---------------------------------------------------------------------------
-// 0.32.0 D9: policy gate — loaded at start, re-stat'ed (mtime+size+ino) before every
-// tools/list and tools/call, reloaded on change. A loader failure becomes an invalid
-// gate (every call refused with the loader message, list unfiltered) — never an exit.
+// 0.32.0 D9: policy gate — loaded at start, re-stat'ed before every tools/list and
+// tools/call, reloaded on change. A loader failure becomes an invalid gate (every call
+// refused with the loader message, list unfiltered) — never an exit.
+//
+// P4 verify round 1 (fail closed): the cache key comes from lstat of policy.json (entry
+// type + ino + mtimeMs + ctimeMs + size; for a symlink also the target's stat or its
+// error), so a dangling symlink never shares the "absent" key. Only an lstat ENOENT is
+// "absent"; every other state goes through loadPolicy, which decides (and throws for
+// dangling links, non-regular files, lookup errors). An invalid gate is never trusted
+// from cache — loadPolicy re-runs on every list/call until it succeeds.
+// Remaining limit: an in-place rewrite that keeps inode, size, mtimeMs and ctimeMs all
+// identical (same filesystem timestamp tick) is not seen until the next real change.
 // ---------------------------------------------------------------------------
 
 let policyState: { key: string; gate: LoomToolsGate } | null = null;
@@ -63,14 +73,39 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+function errCode(e: unknown): string {
+  return e && typeof e === "object" && "code" in e ? String(e.code) : "error";
+}
+
+function entryType(st: Stats): string {
+  if (st.isFile()) return "file";
+  if (st.isSymbolicLink()) return "symlink";
+  if (st.isDirectory()) return "dir";
+  return "other";
+}
+
+function statPart(st: Stats): string {
+  return `${entryType(st)}:${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
+}
+
 function policyStatKey(dir: string): string {
+  const path = join(dir, "policy.json");
+  let link: Stats;
   try {
-    const st = statSync(join(dir, "policy.json"));
-    return `${dir}\0${st.mtimeMs}:${st.size}:${st.ino}`;
+    link = lstatSync(path);
   } catch (e) {
-    const code = e && typeof e === "object" && "code" in e ? String(e.code) : "error";
-    return `${dir}\0err:${code}`;
+    const code = errCode(e);
+    return `${dir}\0${code === "ENOENT" ? "absent" : `lstat-err:${code}`}`;
   }
+  let key = `${dir}\0${statPart(link)}`;
+  if (link.isSymbolicLink()) {
+    try {
+      key += `->${statPart(statSync(path))}`;
+    } catch (e) {
+      key += `->stat-err:${errCode(e)}`;
+    }
+  }
+  return key;
 }
 
 function loadGate(dir: string): LoomToolsGate {
@@ -90,7 +125,7 @@ function currentGate(): LoomToolsGate {
     return resolveLoomToolsGate({ invalid: `Loom state dir unavailable: ${errText(e)}` });
   }
   const key = policyStatKey(dir);
-  if (policyState === null || policyState.key !== key) {
+  if (policyState === null || policyState.key !== key || policyState.gate.invalid !== undefined) {
     policyState = { key, gate: loadGate(dir) };
   }
   return policyState.gate;
@@ -192,9 +227,9 @@ async function handle(req: JsonRpcReq) {
       try {
         let text: string;
         if (name === "list_peers") {
-          text = JSON.stringify(await toolListPeers(), null, 2);
+          text = mcpResultJson(await toolListPeers(), 2);
         } else if (name === "handoff") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolHandoff({
               to: String(args.to ?? "*"),
               body: String(args.body ?? ""),
@@ -209,11 +244,11 @@ async function handle(req: JsonRpcReq) {
             }),
           );
         } else if (name === "get_context_pack") {
-          text = JSON.stringify(await toolGetContextPack(), null, 2);
+          text = mcpResultJson(await toolGetContextPack(), 2);
         } else if (name === "get_purpose") {
-          text = JSON.stringify(await toolGetPurpose(), null, 2);
+          text = mcpResultJson(await toolGetPurpose(), 2);
         } else if (name === "set_purpose") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolSetPurpose({
               purpose:
                 args.purpose !== undefined ? String(args.purpose) : undefined,
@@ -230,13 +265,12 @@ async function handle(req: JsonRpcReq) {
                   ? [String(args.verify)]
                   : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "list_tasks") {
-          text = JSON.stringify(await toolListTasks(), null, 2);
+          text = mcpResultJson(await toolListTasks(), 2);
         } else if (name === "add_task") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolAddTask({
               title: String(args.title ?? ""),
               assignee:
@@ -249,11 +283,10 @@ async function handle(req: JsonRpcReq) {
               notes:
                 args.notes !== undefined ? String(args.notes) : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "update_task") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolUpdateTask({
               id: String(args.id ?? ""),
               status:
@@ -267,35 +300,32 @@ async function handle(req: JsonRpcReq) {
               notes:
                 args.notes !== undefined ? String(args.notes) : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "export_board") {
-          text = JSON.stringify(await toolExportBoard(), null, 2);
+          text = mcpResultJson(await toolExportBoard(), 2);
         } else if (name === "import_board") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolImportBoard({
               snapshot: args.snapshot,
               mode: args.mode === "replace" ? "replace" : "merge",
               force: Boolean(args.force),
             }),
-            null,
             2,
           );
         } else if (name === "room_chat") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolRoomChat({ text: String(args.text ?? "") }),
           );
         } else if (name === "check_handoffs") {
-          text = JSON.stringify(await toolCheckHandoffs(), null, 2);
+          text = mcpResultJson(await toolCheckHandoffs(), 2);
         } else if (name === "claim_handoff") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolClaimHandoff({ id: String(args.id ?? "") }),
-            null,
             2,
           );
         } else if (name === "dispatch_card") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolDispatchCard({
               taskId: String(args.taskId ?? ""),
               node: String(args.node ?? ""),
@@ -305,11 +335,10 @@ async function handle(req: JsonRpcReq) {
                   ? String(args.agentKind)
                   : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "apply_card_result") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolApplyCardResult({
               resultJson: String(args.resultJson ?? ""),
               fromPeerId:
@@ -321,11 +350,10 @@ async function handle(req: JsonRpcReq) {
                   ? String(args.fromNode)
                   : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "conv_open") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolConvOpen({
               node: String(args.node ?? ""),
               goal: String(args.goal ?? ""),
@@ -340,11 +368,10 @@ async function handle(req: JsonRpcReq) {
                   ? String(args.agentKind)
                   : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "conv_send") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolConvSend({
               convId: String(args.convId ?? ""),
               text: String(args.text ?? ""),
@@ -353,37 +380,33 @@ async function handle(req: JsonRpcReq) {
                 ? (args.artifacts as unknown as ArtifactRefEntry[])
                 : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "conv_await") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolConvAwait({
               convId: args.convId !== undefined ? String(args.convId) : undefined,
               timeoutSec:
                 typeof args.timeoutSec === "number" ? args.timeoutSec : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "conv_close") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolConvClose({
               convId: String(args.convId ?? ""),
               reason: args.reason !== undefined ? String(args.reason) : undefined,
             }),
-            null,
             2,
           );
         } else if (name === "conv_fetch") {
-          text = JSON.stringify(
+          text = mcpResultJson(
             await toolConvFetch({
               convId: String(args.convId ?? ""),
               seq: typeof args.seq === "number" ? args.seq : Number(args.seq),
               index:
                 typeof args.index === "number" ? args.index : Number(args.index),
             }),
-            null,
             2,
           );
         } else {

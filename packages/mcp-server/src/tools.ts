@@ -40,6 +40,17 @@ import type {
   DispatchAgentKind,
 } from "@loom/protocol";
 
+/**
+ * PLAN 0.32.0 P4 verify round 1 (L): the L-2 dispatch pin is a local-only board field.
+ * Exposing it would let the local agent copy it into apply_card_result `fromPeerId`, so
+ * every MCP tool result is serialized through this one helper, which drops it at any depth.
+ */
+const MCP_HIDDEN_KEYS: ReadonlySet<string> = new Set(["dispatchPeerId"]);
+
+export function mcpResultJson(value: unknown, space?: number): string {
+  return JSON.stringify(value, (key, v) => (MCP_HIDDEN_KEYS.has(key) ? undefined : v), space);
+}
+
 export async function toolListPeers(): Promise<{
   peers: PeerInfo[];
   roomName: string;
