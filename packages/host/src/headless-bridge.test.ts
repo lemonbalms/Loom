@@ -130,6 +130,39 @@ function fakeSession(over: Partial<FableSession> = {}): FableSession {
   };
 }
 
+type CardResultView = { cardId?: string; status?: string; reason?: string; output?: string };
+
+async function pollCardResult(client: RelayClient, cardId: string): Promise<CardResultView | null> {
+  for (let i = 0; i < 50; i++) {
+    await Bun.sleep(200);
+    for (const entry of await client.listInbox()) {
+      for (const attachment of entry.handoff.attachments ?? []) {
+        if (attachment.label !== CARD_RESULT_LABEL) continue;
+        const result = JSON.parse(attachment.content) as CardResultView;
+        if (result.cardId === cardId) return result;
+      }
+    }
+  }
+  return null;
+}
+
+function codexDispatch(cardId: string) {
+  return {
+    to: "@node/wsl-1",
+    body: buildDispatchBody({ title: "codex card", cardId, node: "node/wsl-1" }),
+    mode: "task" as const,
+    attachments: [
+      serializeCardAttachment(CARD_DISPATCH_LABEL, {
+        v: CARD_CONTRACT_VERSION,
+        cardId,
+        sourceRoomId: "",
+        prompt: "write the bytes",
+        agentKind: "codex" as const,
+      }),
+    ],
+  };
+}
+
 describe("bridge-config worker section (v0.30.0 P6a)", () => {
   const dir = mkdtempSync(join(tmpdir(), "loom-wcfg-"));
   const cwd = realpathSync(dir);
@@ -485,6 +518,144 @@ describe("headless bridge runtime (v0.30.0 P6a)", () => {
         killPid(recorded.pid);
       } finally {
         killDump(argvDump);
+        restore();
+      }
+    });
+  }, 30_000);
+  test("codex card without agentArgv.codex is rejected agent_kind_not_allowed", async () => {
+    const cardId = "task_a0306a0000000002";
+    const req = codexDispatch(cardId);
+    req.attachments = [
+      serializeCardAttachment(CARD_DISPATCH_LABEL, {
+        v: CARD_CONTRACT_VERSION,
+        cardId,
+        sourceRoomId: session.roomId,
+        prompt: "write the bytes",
+        agentKind: "codex" as const,
+      }),
+    ];
+    await tower!.handoff(req);
+    const result = await pollCardResult(tower!, cardId);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("failed");
+    expect(result!.reason).toBe("agent_kind_not_allowed");
+  }, 30_000);
+});
+
+describe("headless bridge runtime with agentArgv.codex", () => {
+  const port = 32000 + Math.floor(Math.random() * 20000);
+  const dir = mkdtempSync(join(tmpdir(), "loom-hbr-codex-"));
+  const cwd = realpathSync(dir);
+  const sessionFile = join(dir, "session.json");
+  const herdrSock = join(dir, "h.sock");
+  const relay = new RelayServer({ host: "127.0.0.1", port });
+  let fake: Awaited<ReturnType<typeof startFakeHerdr>>;
+  let bridge: Awaited<ReturnType<typeof startBridgeRuntime>> | null = null;
+  let tower: RelayClient | null = null;
+  let session: FableSession;
+
+  beforeAll(async () => {
+    process.env.LOOM_TEST_HOME = dir;
+    process.env.LOOM_SESSION = sessionFile;
+    process.env.LOOM_NO_AUTO_HOST = "1";
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    relay.start();
+    fake = await startFakeHerdr({
+      socketPath: herdrSock,
+      autoStatus: "done",
+      autoStatusDelayMs: 20,
+    });
+    tower = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
+    const created = await tower.createRoom({
+      roomName: "headless-codex",
+      displayName: "tower",
+      agentKind: "shell",
+      peerId: "p_tower",
+    });
+    if (created.type !== "room.state") throw new Error("create failed");
+    session = {
+      roomId: created.roomId,
+      roomName: created.roomName ?? "headless-codex",
+      inviteCode: created.inviteCode ?? "",
+      peerId: "p_node",
+      displayName: "node/wsl-1",
+      color: "#0f0",
+      agentKind: "shell",
+      relayUrl: `ws://127.0.0.1:${port}/ws`,
+      updatedAt: new Date().toISOString(),
+    };
+    writeFileSync(sessionFile, JSON.stringify(session), "utf8");
+    bridge = await startBridgeRuntime({
+      session,
+      profile: "node",
+      config: {
+        authorizedDispatchers: ["p_tower"],
+        herdrSocketPath: herdrSock,
+        agentArgv: { claude: ["claude"], codex: ["codex"] },
+        herdrProtocol: 17,
+        worker: {
+          backend: "headless",
+          cwd,
+          allowedRoots: [cwd],
+          timeoutMs: 30_000,
+          permissions: defaultWorkerPermissions(),
+        },
+      },
+      herdr: new HerdrClient({ socketPath: herdrSock }),
+      submitVerify: { waitMs: 50, retries: 0 },
+      headlessAgentCommandOverride: {
+        claude: ["bun", FAKE, "--fake-kind", "claude"],
+        codex: ["bun", FAKE, "--fake-kind", "codex"],
+        grok: ["bun", FAKE, "--fake-kind", "grok"],
+      },
+    });
+  });
+
+  afterAll(async () => {
+    if (bridge) await bridge.stop();
+    tower?.close();
+    await fake.close();
+    relay.stop();
+    delete process.env.LOOM_TEST_HOME;
+    delete process.env.LOOM_SESSION;
+    resetStateHomeDirCache();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("codex card dispatches through the fake CLI and yields a result", async () => {
+    await withFakeLock(async () => {
+      const restore = pushEnv({
+        FAKE_OUTPUT_BYTES: "1000",
+        FAKE_DURATION_MS: "0",
+        FAKE_TIME_SCALE: "1",
+        FAKE_ARGV_DUMP: undefined,
+        FAKE_HANG: undefined,
+        FAKE_DENIAL: undefined,
+        FAKE_EXIT_ONCE_MARKER: undefined,
+        FAKE_ENV_DUMP: undefined,
+        FAKE_SPAWN_GRANDCHILD: undefined,
+        FAKE_PROMPT_DUMP: undefined,
+        FAKE_KIND: undefined,
+      });
+      try {
+        const cardId = "task_a0306a0000000003";
+        const req = codexDispatch(cardId);
+        req.attachments = [
+          serializeCardAttachment(CARD_DISPATCH_LABEL, {
+            v: CARD_CONTRACT_VERSION,
+            cardId,
+            sourceRoomId: session.roomId,
+            prompt: "write the bytes",
+            agentKind: "codex" as const,
+          }),
+        ];
+        await tower!.handoff(req);
+        const result = await pollCardResult(tower!, cardId);
+        expect(result).not.toBeNull();
+        expect(result!.reason).not.toBe("agent_kind_not_allowed");
+        expect(result!.output ?? "").toContain("x".repeat(100));
+      } finally {
         restore();
       }
     });

@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-15 (0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신) |
+| **Last updated** | 2026-10-15 (0.30.0 헤드리스 카드 워커 · 카드별 세션 · 재개/입양 · 동시성 · 정적 권한 프로필) |
 
 ---
 
@@ -39,6 +39,61 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.30.0 — 헤드리스 카드 워커 · 카드별 세션 · 재개/입양 · 동시성 · 정적 권한 프로필 (업그레이드 2단계 1부)
+
+PLAN §0.30.0 (R48 `approved-with-fixes` → `approved`) · 커밋 `2d1bc3b`(P1 결과 코어) → `26b8c43`(P2 red) → `e242822`(P3) → `706eda9`·`39c7acb`(P3 codex 교정) → `587f8bf`(P1 codex 교정) → `3098804`(P4) → `ab97309`(P4 codex 교정) → `3373992`(P5) → `8f36be6`·`bcc9d16`(P5 교정 2·3차) → `471226d`(P6a 배선) → `587539e`·`5fae1fe`(라이브 스모크 교정) → `513a79d`·`c59ced5`(P6a codex 교정) → PATCH 6(문서·VERSION).
+
+**설계 결정 기록 (구현 중 확정 — PLAN 문면 대비):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-15 | PLAN ② 세션 기록 경로 · D5 | 경로 = `loomDir()/cards/<sha16(localPeerId)>/<sha16(room NUL agent NUL cardId)>/session.json` — **로컬 peer 네임스페이스** 한 단 추가(`localPeerId` 필수). `recover()`는 자기 peer 기록만 본다. | 한 PC의 프로필들이 `loomDir()`를 공유한다 — 네임스페이스 없이는 다른 프로필 bridge가 남의 워커를 입양·재개한다(0.29.0 c778d4d 공유 소비자 키와 같은 계열). 프로세스 간 락 대신 네임스페이스 + "프로필당 bridge 1개" 문서화(fable-advisor 판정). | 프로세스 간 락은 3단계(host 서비스화) 때 재검토. |
+| 2026-10-15 | D6 · R48-M3 | 기록 `state=spawning` ∧ pid 없음 → **절대 spawn하지 않고** `failed` reason `spawn_state_unknown` 1건. attempts·state는 spawn **전** 선기록(write-ahead), pid/pgid/시작 시각은 spawn 직후 동기 기록. | pid 없는 기록은 exec가 안 일어났다는 증거가 아니다 — 재spawn은 같은 트리에 워커 둘을 만들 수 있다. | 잔여 창(서브 ms) — Known limits. |
+| 2026-10-15 | D6 **수정**(fable-advisor 승인) | **복구 중** fingerprint 변경 → 새 세션이 아니라 `failed`/`needs_verification`, note `fingerprint_changed; not resuming`. 라이브 재전달(프롬프트 있음)은 PLAN대로 새 세션. | 복구 경로에는 원 프롬프트가 없다 — "새 세션"은 빈 프롬프트로 CLI를 돌리는 것이 된다. | — |
+| 2026-10-15 | D6 · R6 | 생존성 3상태(alive/dead/unknown) — `ps -o lstart`(LC_ALL=C·TZ=UTC 정규화)로 pid + 시작 시각 대조, unknown이면 spawn·kill 모두 안 하고 유한 감시 후 `liveness_unknown`. pid ≤1 · exited = dead. | UK-4 pid 재사용 오인 kill·이중 spawn을 막는 fail-closed 판정. | — |
+| 2026-10-15 | D5 · M2 | `pendingResult`를 첫 전송 **전** 기록, 재전송은 그 원문 재생(시도 ≤2). `completedHandoffIds`(최근 16) 우선 확인 → 늦게 온 완료 디스패치 재전달 억제. 재개 전 transcript를 먼저 파싱(끝난 일은 결과만 전송). | 결과 재구성·이중 전송·완료 작업 재실행을 막는다. | — |
+| 2026-10-15 | D10 · 설정 | `worker.agentBin.<agent>` = **실행 파일 경로 하나**, basename == 에이전트 이름. 배열·인자·셸 거부. 가짜 CLI는 코드 레벨 옵션 `headlessAgentCommandOverride`로만(설정 불가), 그것도 위험 플래그 검사 통과 필요. | 설정 파일 한 줄로 임의 명령·우회 플래그를 실행시키는 경로 차단. | — |
+| 2026-10-15 | R5 · R48-M2 | 직렬화 예산 절단 = 앞에서 `max(초과분,1)`씩 서로게이트 안전 절단을 맞을 때까지 반복, 그래도 넘으면 `output ""` + note `output dropped: exceeds attachment budget` — issuer 획득 후 throw 없음. pane 경로도 같은 코어를 탄다(맞는 출력은 무변경). | 결과 유실(acquire 소진 후 throw) 차단이 R48-M2의 목적. | — |
+| 2026-10-15 | D3 · UK-6 | grok argv = `--prompt-file <file>` 단독(`-p`는 `--single <PROMPT>`라 값 필요) · `--allow`/`--deny`는 **규칙마다 한 번**(1.0.54 단일 값). 규칙 값은 빈 값·`-` 시작·NUL/개행 거부. | 라이브 스모크 실측(아래 (d)). | grok 버전 드리프트는 argv 테스트 + 엄격한 가짜 CLI로 감지. |
+| 2026-10-15 | D8 **수정**(fable-advisor 승인) | 핸드오프 **claim을 receipt가 아니라 에이전트별 동시성 허가 획득 후**(`lead()`의 `lane.acquire` 뒤)로 이동. 대기 카드는 relay inbox에 남아 bridge 크래시·재시작 뒤에도 다시 전달된다. | 수신 즉시 claim하면 큐 대기 중 크래시가 카드를 소실시킨다. | inbox 상한(`MAX_INBOX_ENTRIES_PER_PEER`=100) 초과 시 가장 오래된 대기 항목 축출 가능 — Known limits. |
+| 2026-10-15 | D9 **수정**(fable-advisor 승인) | 타임아웃 = **카드 단위**: 각 시도(신규 포함)가 카드 `startedAt`부터의 잔여 시간을 받되 **하한 60 s**, 상한 2^31-1 ms(`timeoutMs` 설정 최댓값 동일). | 재개마다 2h를 새로 주면 카드 총 시간이 무한히 늘어난다. 하한은 잔여가 0에 가까운 재개 시도의 즉시 kill 방지. | 시도당 최소 60 s — Known limits. |
+| 2026-10-15 | D10 | 거부 내역을 결과 note **선두**에 `denials: N (tool, …)`로 표면화(500자 상한; 이어서 attempts · stderr · transcript). | PLAN D10 "결과 요약에 표면화" 이행 — 잘리는 note에서도 거부가 먼저 보이게. | — |
+| 2026-10-15 | D7 | 리더 종료 시 프로세스 그룹의 **잔존 구성원을 회수(reap)** 한 뒤 재개/결과로 진행. | 리더만 죽고 자식이 남아 있으면 재개가 같은 트리에 워커를 겹친다. | — |
+| 2026-10-15 | D5/D6 · 재생 | `pendingResult` 재생 대기 중 **다른** 핸드오프가 와도 버리지 않는다: 이전 결과를 먼저 재생한 뒤 새 핸드오프를 정상 경로로. 재생이 실패하면 새 핸드오프는 즉시 `needs_verification`. | 드롭은 카드 소실. | 재생 실패 시 새 핸드오프 응답은 내구 기록 없음 — Known limits. |
+| 2026-10-15 | 비밀 마스킹 | 결과 note의 stderr 마지막 줄은 `packages/host/src/redact.ts` `redactSecrets`를 통과: `NAME=value`/`NAME: value`/JSON 쌍(민감 이름), Bearer/Basic, 알려진 키 형태(`sk-`·`sk-ant-`·`xai-`·`gh*_`·`github_pat_`·`AKIA`·`AIza`·`xox*`·JWT), URL userinfo, 민감 이름 env 변수 값(≥8자). | 오너 로컬 CLI stderr가 디스패처에게 가는 경로의 누출 완화. | 패턴 기반 best-effort — Known limits. |
+
+**Deviations (계획 대비 실행 방식):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-15 | `CLAUDE.md` 규칙 5 · PLAN ⑤ 레인 | **(a) 작업 표면** — 0.29.0과 같이 herdr pane 카드 대신 **in-harness 서브에이전트 레인**(`grok-implementer` Grok 4.7 구현 · codex 검증 · fable-advisor 자문). | pane 레인은 긴 카드에서 죽는다 — 이 버전이 메우는 공백 그 자체. 발견자≠수정자 분리는 유지. | 0.30.0 헤드리스 표면으로 dogfood 레인 이전 검토. |
+| 2026-10-15 | PLAN ⑤ P5 레인 | **(b) P5 재개/입양을 grok → `sol-implementer`(GPT-6.1 Sol, xhigh)로 상향** — grok P5(`3373992`)가 codex fix-first(High 6 · Med 5)를 받은 뒤. P5는 **3라운드**: ① grok 구현 → ② sol `8f36be6`(fail-closed 생존성 · write-ahead · transcript 우선 복구) → ③ codex gpt-6.1-sol fix-first(H-A~H-D · M-A~M-C) → **fable-advisor 판정**으로 `bcc9d16`: 락 대신 per-peer 네임스페이스 · pid 없는 spawning → `spawn_state_unknown` · 복구 fingerprint 불일치 → 재개 안 함(D6 수정) · `pendingResult` 재생. | 크래시 일관성 작업은 판단 밀도가 높다 — routine 레인 반복보다 상향이 싸다(lessons). 3라운드 판정을 아키텍트가 아니라 자문에 맡겨 락 문면 수정의 근거를 남겼다. | — |
+| 2026-10-15 | 검증 레인 모델 | **(c) codex 검증 모델을 릴리스 도중 GPT-5.6(플러그인 기본) → `gpt-6.1-sol` xhigh로 교체**(오너 지시). PATCH 1~5 **1차 검증은 GPT-5.6**, P5 3차 · P6a · 스모크 후속은 gpt-6.1-sol. | 오너 지시 — 교체 시점 이후 라운드부터 적용. 어느 PATCH가 어느 모델로 1차 검증됐는지 남겨 검증 강도를 추적 가능하게 한다. | — |
+| 2026-10-15 | Done when (h) · D15 | **(d) 라이브 스모크가 가짜 CLI가 놓친 grok argv 결함 2건을 찾았다:** ① `-p`는 값이 필요(`--single <PROMPT>`) → 즉시 exit · ② `--allow`/`--deny`는 단일 값(여러 규칙을 한 플래그에 → "unexpected argument 'Write'"). → `587539e`·`5fae1fe` 교정 + **가짜 CLI를 엄격 파싱으로**(모르는 플래그 = exit 2, 빌더 argv 전 조합 수용 테스트). 같은 스모크에서 codex `rg --files` exit 1이 **거부 오탐** → 출력에 샌드박스/권한 차단이 있을 때만 거부(`587539e`, "Read-only file system" 추가 `5fae1fe`). grok 텍스트 런 **이어붙임 결함**(런이 붙어 `^Line \d+:` 399건 매치)은 `a2e9eec`에서 교정 — 비텍스트 이벤트로 갈라진 텍스트 런을 빈 줄로 잇고(claude 폴백은 `message.id`가 바뀔 때만), 실 grok transcript가 400개 `Line N:`으로 파싱되는 테스트(`headless-stream.test.ts`). | 관대한 가짜는 실 CLI의 거부를 재현하지 못한다 — 가짜를 실 CLI보다 엄격하게. | 새 CLI 버전마다 `scripts/smoke-headless.ts` 재실행. |
+| 2026-10-15 | lessons (60) | **(e) 모든 production PATCH가 다음 PATCH 전 독립 검증 1회.** fix-first 라운드: P1 Low×2(`587f8bf`) · P3 fix-first + High(`706eda9`·`39c7acb` — 권한 enum · TOML 이스케이프 · 관용 파서 · 서로게이트 안전 절단) · P4 fix-first(`ab97309` — 그룹 SIGKILL · env 대소문자 · 설정 실패 정리 · 0700) · P5 ×2(`8f36be6`·`bcc9d16`) · P6a fix-first + High(`513a79d` agentBin 잠금 · 비차단 복구, `c59ced5` 기동이 재전달 디스패치 완료를 기다리지 않음) · 스모크 후속 Med/Low(`5fae1fe`). P2는 tests-only red. | 발견자(codex)와 수정자(grok/sol) 분리. | — |
+| 2026-10-15 | 전 릴리스 재검증 · fable-advisor 트리아지 | **(f) 전 릴리스 GPT-6.1 Sol xhigh 재검증: High 3 / Med 5 / Low 1. fable-advisor 트리아지: 7건 수정 · 2건 문서화.** 수정 `a2e9eec`(grok 텍스트 런 결합 · stderr 마지막 줄 `redactSecrets` · inbox poll 단일 비행 · 규칙 값 공백/CR/선행 대시 거부 · `timeoutMs` ≤ 2147483647 · `truncateTail` 서로게이트 안전) + `da9f6f9` crash-consistency hardening rounds 1–5(`packages/host`, 아래 결정 행). 문서화 2건 = Known limits. | 발견자≠수정자 분리 유지. 설계 락 문면을 건드리는 항목은 자문 판정으로 남긴다. | — |
+| 2026-10-15 | 크래시 일관성 강화 재검증 라운드 1~5 | **(g) crash-consistency hardening took 5 more fix/verify rounds after the triage (rounds 1–5). Round 3 was a structural redesign ruled by fable-advisor after two failed patch rounds.** 결과: 그룹 신원 검증 규칙(R1/R2/R3 — 검증된 그룹에만 신호 · 살아 있는 그룹 옆 spawn/재개 금지 · 미검증 생존 그룹 → `orphan_group_alive` · 콜드 복구 리더 사망+그룹 생존 → 신호 0) · obligation-before-claim(미전송 이전 결과 재생 후에만 claim) · 카드별 전이 락 `withCardLock` + 보호 `pendingResult` writer · `bridge_shutdown_after_claim` 영속·재생 · `close()` 마감 `closeDeadlineMs` · 결과 sink 재진입 거부. | 패치 반복 2회 실패 뒤 구조(의무 먼저, claim 나중)로 닫는 쪽이 보수적이다. 신원 미확인 프로세스에는 신호를 보내지 않는다. | 아래 Known limits 3건. |
+
+**Known limits (이 버전이 보장하지 않는 것):**
+
+- **프로필당 bridge 1개.** 같은 프로필 bridge 둘을 막는 프로세스 간 락이 없다(per-peer 네임스페이스는 프로필 간 격리만).
+- **spawn 직후 잔여 창(서브 ms).** spawn과 pid 기록 사이에 bridge가 죽으면 다음 기동은 `spawn_state_unknown`으로 포기한다(재실행 없음 — 사람이 확인).
+- **deny 접두 규칙의 우회:** `/bin/rm` · `command rm` · `find -delete` · 인터프리터 한 줄은 잡히지 않는다 — cwd 경계(`allowedRoots`) + `needs_verification` 착지가 최종 방어선(USER_GUIDE §15.2).
+- **codex `workspace-write`는 네트워크를 막는다** — 설치가 필요한 카드는 실패한다.
+- **grok은 alpha + 느림** — 스모크 카드 1건에 ~9분(532 s). 완료 기준은 grok에 의존하지 않는다(D14).
+- **result note의 마지막 stderr 줄은 `redactSecrets`로 마스킹되지만 패턴 기반 best-effort다** — 알려진 형태 밖의 비밀은 통과할 수 있다(오너 로컬 CLI 출력이 디스패처에게 간다).
+- **inbox 상한 축출.** 허가 대기 카드는 relay inbox에 남지만 `MAX_INBOX_ENTRIES_PER_PEER`=100 초과 시 가장 오래된 대기 항목이 밀려날 수 있다.
+- **pid 없는 창 뒤 늦은 핸드오프.** `spawn_state_unknown` 포기 뒤 같은 카드의 *다른* 핸드오프가 오면 (두 문장 창의) 잔존 워커 옆에 spawn할 수 있다(자문 판정: 문서화).
+- **`replay_exhausted` 카드는 운영자 조치 전까지 막힌다.** 미전송 결과 재생이 실패·소진(전송 2회)되면 그 카드의 이후 핸드오프는 claim되지 않고 relay inbox에 남으며 로그에 `[headless] replay_exhausted <card>`. 카드 세션 기록 `~/.loom/cards/<sha16(peer)>/<sha16(room×agent×card)>/session.json`을 운영자가 지워야 풀린다(USER_GUIDE §15.4).
+- **`close()` 마감 뒤 claim.** `closeDeadlineMs`(기본 10 s) 안에 끝나지 않은 claim이 있는 채 프로세스가 종료되면 핸드오프가 기록 없이 claim된 채 남을 수 있다 — 실제로는 relay 연결 정체 시에만.
+- **결과 sink 계약.** sink는 카드 락 아래에서 실행되므로 같은 카드의 `dispatch()`를 await하면 안 된다(재진입은 `re-entrant dispatch from result sink`로 거부). 프로덕션 sink는 relay 전송만 한다.
+- **완료된 cardId 재디스패치는 카드 디렉터리를 재사용한다** — 이전 `transcript-N.jsonl`을 덮어쓴다(경로에 generation 도입은 보류).
+- **재생 실패 시 새 핸드오프 응답은 내구 기록이 없다**(`needs_verification`을 직접 보냄; D2 재생 실패 경로).
+- **시도당 최소 60 s** — 카드 잔여 시간이 60 s 미만이어도 각 시도는 60 s를 받는다.
+- **`agentBin` basename 검사는 위생이지 진위 확인이 아니다** — PATH를 믿을 수 없으면 절대경로로 고정한다.
+- **herdr는 여전히 bridge 기동에 필수**(UK-7) · **`AGENT_HINT.txt` 제거는 5단계로 보류** · **UK-2(claude 60k자 stdin) 미측정**.
+- transcript 회전·GC·redaction 없음(평문 0600; 위 note stderr 마스킹은 transcript에는 적용되지 않는다) · 기존 red 테스트 `handoff-checkpoint` "live HANDOFF ... V2 information" Evidence 핀은 범위 밖.
 
 ### §0.29.0 — 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신 (`clientEventId`)
 

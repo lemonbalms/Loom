@@ -2,7 +2,7 @@
 
 **철학 (첫 문단):** 이 문서는 Loom **relay WebSocket 와이어(protocol v1)** 만 다룬다 — room·handoff·inbox·presence의 봉투와 라우팅. **herdr 로컬 소켓 RPC**(agent/pane/tab)는 이 파일의 범위가 아니며, as-built 정본은 [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md)다. 이름을 섞어 쓰지 않는다.
 
-**As-built pin:** product / PLAN **v0.29.0** (2026-10-15) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.29.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290)).
+**As-built pin:** product / PLAN **v0.30.0** (2026-10-15) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.30.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0 changes **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged)).
 
 Wire Version: **1** (`v: 1` on every envelope) — not product SemVer; historical origin: M1.1 + M-7 + Loom rename under PLAN 0.9.0
 
@@ -94,6 +94,16 @@ Every envelope may carry two optional **relay-issued** fields on `BaseEnvelope`.
 - **Repeat chat** → absorbed silently, not re-broadcast (chat has no reply envelope).
 - **Same `clientEventId`, different body** → still the original result; no new error code. The relay counts the body-hash mismatch and logs one stderr line.
 - A `routeHandoff` whose persist rolled back records nothing, so a legitimate retry routes normally. Fan-out envelopes never carry `clientEventId`.
+
+## Headless card workers (v0.30.0) — wire unchanged
+
+v0.30.0 adds a bridge-local **headless** worker backend (opt-in `worker.backend: "headless"`, default `pane`; user-facing config in [`USER_GUIDE.md`](./USER_GUIDE.md) §15). It changes how a bridge **runs** a card, not what crosses the relay:
+
+- **No new envelope, field, or version.** `CardDispatchPayload` / `CardResultPayload` gain **0 fields**; `PROTOCOL_VERSION` and `CARD_CONTRACT_VERSION` are unchanged. The dispatch still never carries argv, executable, or permission mode — those come only from the bridge's local config.
+- **Same result payload, same completion authority.** Headless results go through the same result core (issuer · strict ACK · quarantine) as pane results and propose only `status: "failed"` with `reason: "needs_verification"` (or an existing-style reason string ≤200, e.g. `timeout`, `card_already_running`, `cwd_not_allowed`, `spawn_state_unknown`, `liveness_unknown`). The tower still lands them as `blocked`. `paneId` is omitted.
+- **`output`** = the CLI's final text verbatim (no TUI stripping), ≤ **200,000** chars; longer text keeps the **tail** with `truncated: true` and `note` naming the local transcript path + byte count.
+- **Serialize-budget cut (both backends).** If the serialized result attachment would exceed the **256,000**-char attachment cap (JSON escaping of `\r\n` / `"` can inflate a 200k output), the core cuts `output` from the **front** (surrogate-safe, repeated until it fits) and sets `truncated: true`; if nothing fits, `output` is `""` with note `output dropped: exceeds attachment budget`. A result is never lost to a serialize throw. Outputs that already fit are unchanged.
+- **`summary`** (headless) = the first non-blank line of the final text, ≤ **900** chars. `note` ≤ 500.
 
 ## Handoff routing
 

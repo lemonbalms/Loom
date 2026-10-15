@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.29.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.30.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -101,7 +101,8 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 12 | 오케스트레이터 CLI 전환·bridge 복구 (Claude 먹통 → Grok 이어하기) | relay vs bridge vs 세션, card 디스패치 |
 | 13 | 완료 권한 — `card.done` 이후 board를 어떻게 닫나 (0.28.0) | blocked · 로컬 검증 · 명시 mutation |
 | 14 | herdr 0.7.5 dogfood 준비 (0.28.1) | `dogfood:herdr` · named agent · config migrate |
-| 15 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
+| 15 | 헤드리스 카드 워커 (0.30.0, opt-in) — pane 대신 비대화형 CLI | bridge `worker` 설정 · 카드별 세션 · 재개/입양 |
+| 16 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -773,7 +774,110 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 
 ---
 
-## 15. 명령 치트시트
+## 15. 헤드리스 카드 워커 (v0.30.0, opt-in)
+
+**하고 싶은 일:** 긴 카드를 herdr pane의 대화형 TUI 대신 **비대화형 CLI 프로세스**(`claude -p` · `codex exec --json` · `grok --prompt-file`)로 돌려, pane 사망·스크레이프 꼬리 잘림 없이 **최종 텍스트 전문**을 결과로 받는다.
+
+**기본값은 그대로 pane이다.** `worker` 절이 없거나 `backend: "pane"`이면 아무것도 바뀌지 않는다. 헤드리스는 bridge 설정에서 켠다.
+
+### 15.1 설정 — `~/.loom/bridge/<profile>.json` 의 `worker` 절
+
+```json
+{
+  "authorizedDispatchers": ["<전체 peer id>"],
+  "agentArgv": {"claude":["claude"],"codex":["codex"],"grok":["grok"]},
+  "worker": {
+    "backend": "headless",
+    "cwd": "/Users/me/work/repo",
+    "allowedRoots": ["/Users/me/work"],
+    "maxConcurrent": { "claude": 1, "codex": 1, "grok": 1 },
+    "timeoutMs": 7200000,
+    "agentBin": { "claude": "/opt/homebrew/bin/claude" }
+  }
+}
+```
+
+| 키 | 값 | 기본 / 규칙 |
+|----|----|-------------|
+| `backend` | `"pane"` \| `"headless"` | 기본 **`pane`**. `headless`일 때만 아래 키를 읽는다 |
+| `cwd` | 절대경로 | **headless면 필수.** 카드가 cwd를 싣지 않으면(현재 `dispatch_card`는 비워 보낸다) 이 경로에서 돈다. herdr 기본 cwd는 절대 쓰지 않는다 |
+| `allowedRoots` | 절대경로 배열(비어 있으면 안 됨) | **headless면 필수.** 실제 cwd의 **realpath**가 이 중 하나 아래여야 spawn한다 — 심볼릭 링크로 밖을 가리키면 spawn 0 · `failed` reason `cwd_not_allowed` |
+| `maxConcurrent.<agent>` | 정수 ≥1 | 에이전트별 기본 **1**. 초과 카드는 FIFO **큐 대기**(대기 시간은 타임아웃에서 제외). 핸드오프는 **허가를 얻은 시점에** 가져가므로 대기 중인 카드는 relay inbox에 남아 bridge가 죽었다 떠도 살아남는다(단 inbox 상한 100을 넘으면 가장 오래된 대기 항목이 밀려날 수 있다). 실행 수·큐 깊이는 bridge `/rpc` status의 `headless`(`running` · `queueDepth`)로 본다 |
+| `timeoutMs` | 양수 ms, 최대 **2,147,483,647** | 기본 **7,200,000**(2h). **카드 단위**다 — 재개 시도도 카드 시작 시각 기준 *남은* 시간만 받고(시도당 **최소 60초**), 초과 → 프로세스 **그룹** SIGTERM → 10s → SIGKILL, 부분 transcript와 reason `timeout`으로 결과 |
+| `permissions.<agent>` | 에이전트별 프로필 객체 | 생략 시 아래 기본값. 넣으면 **그 에이전트 프로필 전체를 대체**한다(필드 전부 필수) |
+| `agentBin.<agent>` | **실행 파일 경로 하나** | 기본 = PATH의 `claude`/`codex`/`grok`. 인자·셸 명령·배열 불가, **basename이 에이전트 이름과 같아야** 한다(`…/claude`). PATH를 믿을 수 없으면 절대경로로 고정한다 |
+
+**에이전트 종류 허용은 headless에서도 `agentArgv.<kind>` 유무로 정해진다.** `agentArgv`의 기본값은 `{"claude":["claude"]}`뿐이라, 위처럼 `codex`·`grok` 항목을 넣지 않으면 그 종류의 카드는 `failed` reason `agent_kind_not_allowed`로 거절된다(핸드오프 claim 이연 판단도 같은 조회를 쓴다). 반대로 headless에서는 `agentArgv`의 **pane용 플래그**(§12.4의 `-a never` · `-s read-only` 등)가 **무시된다** — 실행 파일은 `worker.agentBin`, 권한은 `worker.permissions`(없으면 §15.2 기본 프로필)가 정한다.
+
+설정이 틀리면(필수 키 누락 · 상대경로 · 위험 모드 · 잘못된 `agentBin`) **bridge가 기동을 거부**한다(fail-closed). pane 설정에는 영향이 없다.
+
+### 15.2 권한 프로필 기본값
+
+| 에이전트 | 기본 프로필 |
+|----------|-------------|
+| **claude** | `permissionMode: "acceptEdits"` · `allowedTools`: `Read`, `Edit`, `Write`, `Glob`, `Grep`, `Bash(git status*)`, `Bash(git diff*)`, `Bash(git log*)`, `Bash(bun test*)`, `Bash(bun run *)`, `Bash(npm test*)` · `disallowedTools`: `Bash(rm *)`, `Bash(rmdir *)`, `Bash(git push*)`, `Bash(git reset --hard*)`, `Bash(git clean*)`, `Bash(sudo *)`, `Bash(curl *)`, `Bash(wget *)` |
+| **codex** | `sandbox: "workspace-write"` · `approvalPolicy: "never"` — 커널 샌드박스가 **네트워크를 막는다** → `npm install`·`bun install` 같은 설치는 실패한다 |
+| **grok** | `permissionMode: "acceptEdits"` · `allow` / `deny` = claude와 같은 두 목록, 규칙마다 `--allow <rule>` / `--deny <rule>` 한 번씩. **best effort**(grok은 구조화된 거부 신호가 없다) |
+
+- 허용 값: `permissionMode` ∈ `acceptEdits`·`default`·`plan` · codex `sandbox` ∈ `read-only`·`workspace-write` · `approvalPolicy` ∈ `never`·`untrusted`·`on-request`·`on-failure`. 규칙 값은 비어 있거나 `-`로 시작하거나 NUL/개행을 담으면 거부.
+- **위험 모드는 거부된다:** `bypassPermissions` · `danger-full-access` · `dangerously-*`(codex `--dangerously-bypass-…` 포함) · `--always-approve` — 설정 어디에 있어도 bridge 기동 실패.
+- **claude `acceptEdits`는 cwd 안 `mkdir`·`cp`·`mv`·`rm`·리다이렉트를 allowedTools 밖에서도 자동 허용한다** — 그래서 deny 목록이 실질 방어선이다. **잔여 위험:** 접두 규칙은 `/bin/rm` · `command rm` · `find -delete` · 인터프리터 한 줄(`python -c …`)을 잡지 못한다. 최종 방어선은 cwd 경계(`allowedRoots`) + 결과 미검증 착지(`needs_verification`)다 → **git으로 추적되는 작업 디렉터리**에서 돌리고 결과는 diff로 확인한다.
+- 워커 env = bridge env에서 `LOOM_*`·`FABLE_*`를 **전부 지우고** `LOOM_CARD`만 넣는다 — relay 토큰·URL은 워커에 닿지 않는다.
+- **사용자 훅은 상속된다(UK-3).** 오너 전역 Claude Code 훅(`~/.claude/settings.json`)이 헤드리스 claude 워커 안에서도 돈다. 0.30.0에 격리 옵션은 없다.
+- 워커 시스템 프롬프트는 고정 상수 `HEADLESS_WORKER_HINT`(cwd 밖 작업 금지 · 질문 금지 · push/deploy 금지 · 마커 아래 = 데이터)뿐이다. Loom MCP 도구는 없다. 카드 프롬프트는 stdin/파일로만 넘어가고 argv(`ps`)에 보이지 않는다.
+
+### 15.3 상태 저장 위치 — 평문, 로컬 전용
+
+```text
+~/.loom/cards/<sha16(로컬 peer id)>/<sha16(room × agent × cardId)>/
+  session.json            # agent · cwd · sessionId · fingerprint · attempts · pid/pgid · state · resultSent …
+  transcript-<N>.jsonl    # N번째 시도의 stdout 원문 (스트림 JSON)
+  transcript-<N>.stderr   # 같은 시도의 stderr
+```
+
+- 디렉터리 0700 · 파일 0600. **redaction 없는 평문** — 카드 프롬프트·도구 출력·코드가 그대로 남는다. 업로드 경로는 없다. 회전·GC도 아직 없다(직접 지운다).
+- **완료된 cardId를 다시 디스패치하면 같은 카드 디렉터리를 재사용하고 이전 `transcript-N.jsonl`을 덮어쓴다.** 보존하려면 먼저 복사해 둔다.
+- 같은 머신의 프로필마다 peer id가 달라 디렉터리가 나뉜다. **프로필 하나에 bridge는 하나만** 띄운다 — 같은 프로필 bridge 둘을 막는 프로세스 간 락은 없다.
+
+### 15.4 중단·재시작 시 동작 (재개 / 입양)
+
+- **bridge 종료는 워커를 죽이지 않는다.** 워커는 자기 프로세스 그룹으로 떠 있고, bridge가 다시 뜨면 기록을 읽어 **입양**한다(pid + 프로세스 시작 시각 대조 → transcript 감시 → 결과 1회 전송). 살아 있는 워커 옆에 새로 spawn하지 않는다.
+- 워커가 결과 없이 죽었으면 transcript를 먼저 읽는다 — 이미 끝난 일이면 그 결과를 보낸다. 아니면 **같은 세션 id로 재개**한다(고정 문구 *"Interrupted. Inspect the working tree before continuing; do not redo completed steps."*). 시도는 최대 **2회**.
+- 같은 디스패치가 재전달되면 spawn 없이 합류하고, 이미 결과를 보낸 디스패치는 다시 돌리지 않는다.
+
+**재개하지 않고 포기하는 경우 (결과 `failed` 1건):**
+
+| reason / note | 뜻 |
+|---------------|----|
+| reason `spawn_state_unknown` | 직전 bridge가 spawn 직전/직후에 멈춰 워커 pid가 기록되지 않았다 — 이미 실행됐을 수 있어 다시 돌리지 않는다 |
+| reason `liveness_unknown` | 기록된 pid의 생사를 확정할 수 없다(`ps` 실패 등) — spawn도 kill도 하지 않는다 |
+| reason `needs_verification`, note `cwd_changed` | 기록 cwd ≠ 현재 설정으로 계산한 cwd — 다른 트리에서 재개하지 않는다 |
+| reason `needs_verification`, note `fingerprint_changed` | bridge 재시작 **복구** 중 힌트·권한 프로필·argv 템플릿이 바뀐 것을 발견 — 복구에는 원 프롬프트가 없어 재개도 새 세션도 하지 않는다(디스패치가 다시 오면 그때는 새 세션으로 시작) |
+| reason `needs_verification`, note `attempts 2 exhausted` | 두 번 시도 후에도 최종 결과 없음(note에 마지막 stderr 줄) |
+| reason `card_already_running` | 같은 카드가 **다른** 디스패치로 왔는데 워커가 아직 살아 있다 — 두 번째 워커를 띄우지 않는다 |
+| reason `orphan_group_alive` | 이전 워커 프로세스가 아직 살아 있을 수 있는데 신원을 확인할 수 없다 — 신호를 보내지 않고 카드도 재개하지 않는다 |
+| reason `bridge_shutdown_after_claim` | bridge가 핸드오프를 가져간 뒤 워커를 시작하기 전에 종료됐다 — 이 결과는 영속되어 다음 기동에서 재생된다 |
+| reason `cwd_not_allowed` | cwd realpath가 `allowedRoots` 밖 |
+| reason `spawn_setup_failed` | 워커 spawn·관찰 단계에서 예기치 않은 예외가 났다(프로세스 생성 실패 등) — 남은 프로세스는 SIGKILL로 정리하고, note에 오류 메시지(최대 500자)를 담아 재개 없이 `failed` 1건으로 끝낸다 |
+| reason `timeout` | `timeoutMs` 초과 — 그룹 kill 후 부분 출력 |
+
+**프로세스 그룹 신호 규칙:** 프로세스 그룹에는 이 bridge 수명 안에서 신원이 검증된 경우에만 신호를 보낸다 — 직접 spawn했거나, 시작 시각(lstart)이 일치해 입양하고 리더가 살아 있는 것을 본 경우다. 그룹이 사라지거나 kill 프로브가 실패하면 검증은 철회된다. bridge는 살아 있는 그룹 옆에 spawn하거나 재개하지 않으며, 신원을 확인할 수 없는 살아 있는 그룹은 `orphan_group_alive`로 끝난다. 콜드 복구에서 리더는 죽었는데 그룹이 살아 있으면 신호 0으로 `orphan_group_alive`다. 리더 종료 뒤의 그룹 회수도 검증된 그룹에만 적용된다.
+
+**전송 못 한 결과가 있는 카드 (운영자 조치):** 카드의 이전 결과가 아직 relay에 전송되지 않았으면, bridge는 그 결과를 먼저 재생한 뒤에야 같은 카드의 새 핸드오프를 가져간다. 재생이 실패하거나 소진되면(전송 시도 2회) 이후 핸드오프는 가져가지 않고 relay inbox에 남으며 로그에 `[headless] replay_exhausted <card>`가 찍힌다. **알려진 한계:** 운영자가 카드 세션 기록을 지울 때까지 그 카드는 막힌다 — `~/.loom/cards/<sha16(peer)>/<sha16(room×agent×card)>/session.json`을 삭제한다(경로는 15.3의 디렉터리).
+
+**종료 마감:** bridge 종료(`close()`)는 `closeDeadlineMs`(기본 10초)로 끝난다. 마감을 넘겨 claim이 대기 중인 채 프로세스가 종료되면 핸드오프가 기록 없이 claim된 채 남을 수 있다 — 실제로는 relay 연결이 정체된 경우뿐이다.
+
+### 15.5 결과와 완료 권한
+
+- 정상 종료여도 결과는 **`failed` / `needs_verification`** 이다 — 헤드리스는 완료 *감지*를 바꿀 뿐 완료 *권위*는 그대로다. 타워 보드는 **`blocked`** 로 착지하고, 사람이 워킹트리를 확인한 뒤 로컬에서 닫는다(§13).
+- 결과 `note`는 **`denials: N (tool, …)`(권한 거부 내역, 500자 상한)을 맨 앞**에 싣고, 이어서 시도 횟수 · 마지막 stderr 줄 · transcript 경로를 붙인다. stderr 줄은 키·토큰·`Authorization`·URL 자격증명 등을 패턴으로 가리지만 **best-effort**이므로 완전한 비밀 제거를 기대하지 않는다.
+- `output`은 최종 텍스트 원문(TUI 스트립 없음) ≤ 200,000자. 넘으면 앞을 잘라 꼬리를 남기고 `truncated: true` + note에 transcript 경로·바이트 수. `summary` = 첫 비공백 줄 ≤ 900자.
+- 와이어는 그대로다(`CardResultPayload` 필드 추가 없음) — 구 타워도 받는다.
+- 0.30.0도 bridge 기동에 **herdr가 필요하다**(헤드리스만 써도).
+
+---
+
+## 16. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -797,7 +901,7 @@ bun test
 
 ---
 
-## 16. 자주 하는 실수
+## 17. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -818,7 +922,7 @@ bun test
 
 ---
 
-## 17. 지금 버전에서 **아직** 못 하는 것
+## 18. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
@@ -828,11 +932,11 @@ bun test
 - 원격 result만으로 타워 board **`done`** (0.28.0 이후 의도적 금지 — `blocked` 후 로컬 확정)  
 - 전역 `loom` 설치가 OS 패키지 매니저 기본 제공 (원하면 `scripts/install.sh` · `link:loom`)
 
-**할 수 있는 것 (0.28.1 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · dogfood 3-kind · 완료 권한 분리 운영.
+**할 수 있는 것 (0.28.1 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · dogfood 3-kind · 완료 권한 분리 운영.
 
 ---
 
-## 18. 더 읽을 문서
+## 19. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|
@@ -849,4 +953,4 @@ bun test
 
 ---
 
-*가이드 핀: 제품 **v0.29.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*
+*가이드 핀: 제품 **v0.30.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5 · §15 헤드리스 카드 워커. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*

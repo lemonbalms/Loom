@@ -5,39 +5,39 @@
 
 ## One-line resume
 
-> v0.30.0 **approved** (R48 w/ fixes) · P1 next (result-core refactor) · headless workers · topology full
+> v0.30.0 **shipped** · headless workers (step 2.1) · **next = v0.31.0** (step 2.2, owner pick) · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.30.0 `approved`** (R48 w/ fixes) · P1 next · headless workers | `docs/PLAN.md` |
+| Product | **v0.30.0 `approved`** · shipped through PATCH 6 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.30.0 approved (R48 w/ fixes) · P1 next (result-core refactor) · headless workers
+### v0.30.0 shipped · next = v0.31.0 (step 2 part 2, owner pick)
 
-**Goal:** step 2 part 1 — headless card workers (D1–D15). R48 approved-with-fixes: H1 env scrub (`LOOM_*`/`FABLE_*` out, `LOOM_CARD` only) · M1 `composeAndSend` core · M2 serialize-budget tail cut · M3 `card_already_running`; UK-5 measured → D10 deny list. Authority `docs/PLAN.md` §0.30.0 · `HEADLESS-WORKER-PROBE.md` §7.
+**Goal:** step 2 part 1 done — opt-in `worker.backend: "headless"` (per-card session · resume/adopt · concurrency · timeout · static permission profiles). Authority `docs/PLAN.md` §0.30.0 · `implementation-notes.md` §0.30.0 · `USER_GUIDE.md` §15.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check`
-2. P1 result-core refactor (no behavior change, existing tests unmodified green) → P2 tests-first red (incl. R48 M2/M3/H1/L1)
-3. Known limits to carry: deny-prefix bypass (`/bin/rm`, `find -delete`) · UK-2 60k stdin unmeasured · 0.29.0 UK-4 caps estimate
+2. Owner picks v0.31.0 (skills materialize · `policy.json` → CLI permissions · MCP pre-checks) → PLAN MINOR + R{n} before code
+3. Carry: one bridge per profile · deny-prefix bypass · inbox-cap eviction / pidless-window / transcript overwrite on re-dispatch (see impl-notes) · UK-2 unmeasured
 
-**Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `packages/*` product meaning, `DOGFOOD_LOOP.md` §0.5.3)
+**Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** P1 landed with independent verify; P2 red committed (red/green labelled).
+**Done when (this handoff):** v0.31.0 PLAN drafted and gated (R{n}).
 
-**Must not:** touch pane path in P1 · inherit bridge env into headless workers (R48-H1) · inject `loomSystemHint` (R48 R3) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** start v0.31.0 code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.29.0 | **shipped** | step 1 done | `docs/PLAN.md` |
+| v0.30.0 | **shipped** | step 2 part 1 done | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
 | 3.3–3.4b live | **false** | blocked | consts false · RESULT |
@@ -59,7 +59,7 @@
 ## Invariants
 
 - Nine headings; D1 ≤8192B; no `<details>`; traps only in `tasks/traps.md`.
-- Topology `full` for v0.29.0 (promoted 2026-10-15); demote = owner only.
+- Topology `full` (promoted 2026-10-15); demote = owner only.
 - HARD_CAP 9500; owner brief = `bun run status` only.
 - PREREG seal before canary; sealed F1*/3.0–3.4b **immutable**.
 - Phase 3 soft: live **3.0–3.2 only** · default-on **no**.
@@ -76,5 +76,5 @@
 ## Don't redo
 
 - 3.3–3.4b remeasure / COMPLY soften / live without T1(a).  
-- default-on JIT · silent product MINOR (v0.29.0 = owner-picked).  
+- default-on JIT · silent product MINOR (owner picks each step).  
 - B-4 as B-7 closed · UC-3 leave while sticky live.
