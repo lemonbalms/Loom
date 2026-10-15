@@ -2,7 +2,7 @@
 
 ## Current — Loom 업그레이드 계획 (오너 지명 2026-10-15)
 
-> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) shipped + v0.32.0 후보. 단계마다 새 PLAN 버전 + R{n} 게이트.
+> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) shipped + v0.32.0 후보. 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
 
 1. [x] **1단계 — v0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신(`clientEventId`)** —
    `ae60cdb` → … → `c183c92` → PATCH 6 · 최종 리뷰 `c778d4d`. shipped.
@@ -17,7 +17,7 @@
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.
-   (후보 — 오너 확인 대기 · 미착수)
+   (확정 2026-10-16 · 미착수 · 설계 `docs/UPGRADE-PLAN.md`)
 
 ## Previous — owner pick next (2026-07-28, superseded by 업그레이드 계획)
 

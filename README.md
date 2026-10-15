@@ -28,6 +28,7 @@ Full team dry-run (Windows/WSL, remote relay, smoke): [`docs/DRY_RUN_RUNBOOK.md`
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) — product plan SSOT (versioned) |
 | **Changelog** | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — **what shipped** (user language, 0.22–0.31.0) |
 | **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
+| **Upgrade plan** | [`docs/UPGRADE-PLAN.md`](docs/UPGRADE-PLAN.md) — 고도화 단계 1~7 전체 계획 |
 | **Docs index** | [`index.md`](index.md) — 문서 지도와 권장 읽기 순서 |
 | **Glossary** | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — Loom 약어·내부 용어 설명 (non-normative) |
 | **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어, v0.31.0) |

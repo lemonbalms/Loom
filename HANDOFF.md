@@ -1,6 +1,6 @@
 # HANDOFF — Loom
 
-**Updated:** 2026-10-15
+**Updated:** 2026-10-16
 **Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`
 
 ## One-line resume
@@ -48,7 +48,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| Step 7 orchestrator agent | candidate, unconfirmed | not started | `tasks/todo.md` |
+| Step 7 orchestrator agent | confirmed 2026-10-16 · awaiting PLAN MINOR (do not re-ask) | not started | `docs/UPGRADE-PLAN.md` |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
