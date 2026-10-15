@@ -4,6 +4,17 @@
  * Resume and adopt read the durable session record. A live pid whose
  * `ps -o lstart=` matches `procStartedAt` is adopted — never spawned beside.
  * `resultSent=true` is written only after composeAndSend returns.
+ *
+ * PLAN 0.31.0 P4 (D3 · D4 · D5 · D11 · R6 · R49-M3). With `worker.skills.enabled`:
+ * a fresh first turn materializes the room's skills into the card copy under the
+ * per-card lock (after the live-group check, before the write-ahead record); claude
+ * gets `--plugin-dir` when at least one skill is available, codex/grok get the
+ * listing, and all three get unavailable lines — before the dispatched-task marker,
+ * first turn only. The record fingerprint carries the copy's manifest hash. Resume
+ * and recovery re-hash the copy (verifyCardSkillsCopy, under the lock, no source
+ * read): an invalid copy or a different hash is fingerprint_changed →
+ * needs_verification. A live pid is never killed for it; its result is pre-empted.
+ * Disabled = the 0.30.0/P2 argv, prompt, and fingerprint (manifest hash "").
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile, execFileSync, type ChildProcess } from "node:child_process";
@@ -19,7 +30,9 @@ import {
   effectiveWorkerPolicy,
   validateWorkerConfig,
   workerFingerprint,
+  workerSkillsEnabled,
   type AgentKind,
+  type BuiltAgentArgv,
   type WorkerConfig,
 } from "./agent-argv";
 import { parseAgentStream, type ParsedAgentStream } from "./agent-stream-parsers";
@@ -40,6 +53,8 @@ import {
   type SpawnedWorker,
 } from "./process-group";
 import { redactSecrets } from "./redact";
+import { materializeCardSkills, verifyCardSkillsCopy } from "./skill-materialize";
+import { composeFirstTurnPrompt, renderSkillListing } from "./skill-prompt";
 
 const OUTPUT_CAP = 200_000;
 const SUMMARY_CAP = 900;
@@ -117,6 +132,18 @@ type CardOwner = {
   abandonedPromise: Promise<void>;
 };
 
+/** 0.31.0 P4. What the card copy contributes to one spawn. */
+type CardSkills = {
+  /** D11 fingerprint input. "" while skills are disabled. */
+  manifestHash: string;
+  /** claude `--plugin-dir`; null when disabled, not claude, or nothing available. */
+  pluginDir: string | null;
+  /** First-turn listing (R6); "" on resume or when nothing is listed. */
+  listing: string;
+};
+
+const NO_SKILLS: CardSkills = Object.freeze({ manifestHash: "", pluginDir: null, listing: "" });
+
 type SpawnPlan = {
   cwd: string;
   completedHandoffIds: string[];
@@ -124,6 +151,8 @@ type SpawnPlan = {
   attempts: number;
   resumeSessionId?: string;
   startedAt: string;
+  /** Resume with skills enabled: the copy verified under the card lock (nextPlan). */
+  skills?: CardSkills;
 };
 
 type SpawnOutcome =
@@ -472,9 +501,15 @@ function streamFinished(agent: AgentKind, raw: string): boolean {
   return false;
 }
 
-function currentFingerprint(config: WorkerConfig): string {
-  // D11: skills manifest hash stays "" until P3/P4 materialize skills.
-  return workerFingerprint(config);
+function fingerprintChangedFields(): HeadlessResultFields {
+  return {
+    status: "failed",
+    reason: "needs_verification",
+    output: "",
+    truncated: false,
+    summary: "fingerprint changed",
+    note: "fingerprint_changed; not resuming",
+  };
 }
 
 function createOwner(handoffId: string): CardOwner {
@@ -809,7 +844,8 @@ export class HeadlessDispatcher {
           cwd: checked.ok ? checked.cwd : (card.cwd ?? this.deps.config.cwd),
           requestedCwd: card.cwd ?? null,
           sessionId: randomUUID(),
-          promptFingerprint: currentFingerprint(this.deps.config),
+          // Never spawned: no card copy belongs to this record (manifest hash "").
+          promptFingerprint: workerFingerprint(this.deps.config, ""),
           attempts: 1,
           pid: 0,
           pgid: 0,
@@ -964,7 +1000,24 @@ export class HeadlessDispatcher {
         await this.sendGiveUpLocked(record);
         return null;
       }
-      const unchanged = record.promptFingerprint === currentFingerprint(this.deps.config);
+      if (workerSkillsEnabled(this.deps.config)) {
+        // D3 / R49-M3: resume only on the verified, unchanged card copy.
+        const copy = await this.cardFingerprintLocked(record);
+        if (!copy || copy.fingerprint !== record.promptFingerprint) {
+          await this.sendAndMarkLocked(record, fingerprintChangedFields());
+          return null;
+        }
+        return {
+          cwd: current.cwd,
+          completedHandoffIds: record.completedHandoffIds,
+          sessionId: record.sessionId,
+          attempts: record.attempts + 1,
+          resumeSessionId: record.sessionId,
+          startedAt: record.startedAt,
+          skills: copy.skills,
+        };
+      }
+      const unchanged = record.promptFingerprint === workerFingerprint(this.deps.config, "");
       return {
         cwd: current.cwd,
         completedHandoffIds: record.completedHandoffIds,
@@ -1060,11 +1113,13 @@ export class HeadlessDispatcher {
         }
         // These decisions precede every liveness probe: no pid cannot prove that
         // exec did not happen, and a reserved result must never be reconstructed.
+        // D11 / R49-M3: recovery compares against the card copy re-hashed now.
+        const fingerprintChanged =
+          recovering && existing ? await this.fingerprintChangedLocked(existing) : false;
         if (existing) {
           const liveness = processLiveness(existing);
           const skipWatch =
-            existing.dispatchHandoffId !== card.dispatchHandoffId ||
-            (recovering && existing.promptFingerprint !== currentFingerprint(this.deps.config));
+            existing.dispatchHandoffId !== card.dispatchHandoffId || fingerprintChanged;
           if (
             processGroupAlive(existing.pgid) &&
             (liveness === "dead" || (liveness === "unknown" && skipWatch))
@@ -1084,23 +1139,11 @@ export class HeadlessDispatcher {
           });
           return;
         }
-        if (
-          recovering &&
-          existing &&
-          existing.promptFingerprint !== currentFingerprint(this.deps.config)
-        ) {
-          await this.sendAndMarkLocked(
-            existing,
-            {
-              status: "failed",
-              reason: "needs_verification",
-              output: "",
-              truncated: false,
-              summary: "fingerprint changed",
-              note: "fingerprint_changed; not resuming",
-            },
-            { preserveWorkerState: processLiveness(existing) !== "dead" },
-          );
+        if (existing && fingerprintChanged) {
+          // R49-M3: a live worker is not killed; its result is pre-empted.
+          await this.sendAndMarkLocked(existing, fingerprintChangedFields(), {
+            preserveWorkerState: processLiveness(existing) !== "dead",
+          });
           return;
         }
         if (existing && (!existing.resultSent || processLiveness(existing) !== "dead")) {
@@ -1322,6 +1365,76 @@ export class HeadlessDispatcher {
     });
   }
 
+  private skillsKey(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">) {
+    return {
+      loomDir: this.deps.loomDir,
+      localPeerId: this.deps.localPeerId,
+      roomId: card.roomId,
+      agent: card.agent,
+      cardId: card.cardId,
+    };
+  }
+
+  /**
+   * Caller holds the card lock. D11 / R49-M3: the card's fingerprint now, from the
+   * config and the card copy re-hashed in place (no source read). null = the copy
+   * is missing or does not match its manifest. Disabled → manifest hash "".
+   */
+  private async cardFingerprintLocked(
+    card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">,
+  ): Promise<{ fingerprint: string; skills: CardSkills } | null> {
+    if (!workerSkillsEnabled(this.deps.config)) {
+      return { fingerprint: workerFingerprint(this.deps.config, ""), skills: NO_SKILLS };
+    }
+    const verified = await verifyCardSkillsCopy(this.skillsKey(card));
+    if (!verified.ok) {
+      process.stderr.write(
+        `[headless] skills copy check failed (${card.cardId}): ${verified.reason.replace(/[\r\n]/g, " ")}\n`,
+      );
+      return null;
+    }
+    return {
+      fingerprint: workerFingerprint(this.deps.config, verified.manifestHash),
+      skills: {
+        manifestHash: verified.manifestHash,
+        pluginDir:
+          card.agent === "claude" && verified.manifest.length > 0 ? verified.pluginDir : null,
+        listing: "",
+      },
+    };
+  }
+
+  /** Caller holds the card lock. */
+  private async fingerprintChangedLocked(record: CardSessionRecord): Promise<boolean> {
+    if (!isAgent(record.agent)) return true;
+    const current = await this.cardFingerprintLocked({ ...record, agent: record.agent });
+    return current === null || current.fingerprint !== record.promptFingerprint;
+  }
+
+  /**
+   * Caller holds the card lock. A resume reuses the copy nextPlan verified; a fresh
+   * first turn materializes the room's selection (D1–D3) and renders the listing.
+   */
+  private async skillsForSpawnLocked(
+    card: HeadlessDispatchCard,
+    plan: SpawnPlan,
+  ): Promise<CardSkills> {
+    if (plan.skills) return plan.skills;
+    if (!workerSkillsEnabled(this.deps.config)) return NO_SKILLS;
+    if (plan.resumeSessionId) throw new Error("skills copy was not verified before resume");
+    const result = await materializeCardSkills({
+      ...this.skillsKey(card),
+      enabled: true,
+      policy: effectiveWorkerPolicy(this.deps.config).effective[card.agent].skills,
+    });
+    return {
+      manifestHash: result.manifestHash,
+      pluginDir:
+        card.agent === "claude" && result.available.length > 0 ? result.pluginDir : null,
+      listing: renderSkillListing(card.agent, result),
+    };
+  }
+
   private cardDir(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">): string {
     return dirname(
       cardSessionPath({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card }),
@@ -1505,22 +1618,11 @@ export class HeadlessDispatcher {
       const transcriptPath = join(dir, `transcript-${plan.attempts}.jsonl`);
       const stderrPath = join(dir, `transcript-${plan.attempts}.stderr`);
       const wrapped = wrapDispatchedPrompt(card.prompt);
-      const promptBody = plan.resumeSessionId
-        ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`
-        : wrapped;
-      const promptFile = await this.writeGrokPrompt(card.agent, dir, promptBody);
+      // Set under the card lock below (0.31.0 P4: skills decide argv and prompt).
+      let firstTurn = wrapped;
+      let built: BuiltAgentArgv | undefined;
+      let manifestHash = "";
       const cwd = plan.cwd;
-      const built = buildAgentArgv({
-        agent: card.agent,
-        cwd,
-        sessionId: plan.sessionId,
-        resumeSessionId: plan.resumeSessionId,
-        hint: HEADLESS_WORKER_HINT,
-        prompt: card.prompt,
-        promptFile,
-        permissions: this.deps.config.permissions,
-        policy: effectiveWorkerPolicy(this.deps.config).effective[card.agent],
-      });
       const command = this.deps.commands[card.agent];
       const setup = await this.withCardLock<SpawnOutcome | undefined>(card, async () => {
         if (owner.abandoned) {
@@ -1531,6 +1633,33 @@ export class HeadlessDispatcher {
         if (previous && processGroupAlive(previous.pgid)) {
           return { kind: "group_alive", record: previous };
         }
+        // D3: never swap the copy under a live group. A failure here is a setup
+        // failure before the write-ahead record (no spawn).
+        const skills = await this.skillsForSpawnLocked(card, plan);
+        manifestHash = skills.manifestHash;
+        // R6: the listing precedes the marker, first turn only.
+        firstTurn = composeFirstTurnPrompt(skills.listing, wrapped);
+        const promptBody = plan.resumeSessionId
+          ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`
+          : firstTurn;
+        const promptFile = await this.writeGrokPrompt(card.agent, dir, promptBody);
+        built = buildAgentArgv({
+          agent: card.agent,
+          cwd,
+          sessionId: plan.sessionId,
+          resumeSessionId: plan.resumeSessionId,
+          hint: HEADLESS_WORKER_HINT,
+          prompt: card.prompt,
+          promptFile,
+          permissions: this.deps.config.permissions,
+          policy: effectiveWorkerPolicy(this.deps.config).effective[card.agent],
+          ...(skills.pluginDir ? { pluginDir: skills.pluginDir } : {}),
+        });
+        // The skills step awaits; keep close()'s pre-write-ahead reservation exact.
+        if (owner.abandoned) {
+          if (card.claim) await this.reserveShutdownAfterClaimLocked(card);
+          return { kind: "abandon" };
+        }
         // Write-ahead: a crash from this point consumes this attempt. There is
         // still a residual orphan window between spawn and the pid write; a
         // spawning record without a pid cannot prove whether exec happened.
@@ -1539,7 +1668,7 @@ export class HeadlessDispatcher {
           cwd,
           requestedCwd: card.cwd ?? null,
           sessionId: plan.sessionId,
-          promptFingerprint: currentFingerprint(this.deps.config),
+          promptFingerprint: workerFingerprint(this.deps.config, manifestHash),
           attempts: plan.attempts,
           pid: 0,
           pgid: 0,
@@ -1575,7 +1704,7 @@ export class HeadlessDispatcher {
         }
         spawned = spawnDetachedWorker({
           bin: command.bin,
-          args: [...command.args, ...built.argv],
+          args: [...command.args, ...built!.argv],
           cwd,
           env: scrubWorkerEnv(card.cardId),
           stdoutPath: transcriptPath,
@@ -1604,7 +1733,10 @@ export class HeadlessDispatcher {
         );
       });
       if (setup) return setup;
-      if (!spawned || !record || !flight) throw new Error("worker setup did not complete");
+      if (!spawned || !record || !flight || !built) {
+        throw new Error("worker setup did not complete");
+      }
+      const argv = built;
       const tracked = flight;
       const child = spawned.child;
       const exitPromise = waitChild(child);
@@ -1664,10 +1796,10 @@ export class HeadlessDispatcher {
           /* child exited before stdin finished */
         });
         const payload =
-          built.promptTransport === "stdin"
-            ? built.continuationMessage
-              ? `${built.continuationMessage}\n\n${wrapped}`
-              : wrapped
+          argv.promptTransport === "stdin"
+            ? argv.continuationMessage
+              ? `${argv.continuationMessage}\n\n${wrapped}`
+              : firstTurn
             : "";
         try {
           stdin.end(payload);

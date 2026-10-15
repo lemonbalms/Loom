@@ -5,6 +5,7 @@
  * profile lists below are deprecated owner input only.
  */
 import { createHash } from "node:crypto";
+import { isAbsolute } from "node:path";
 import type { EffectivePolicy } from "./policy";
 import {
   compileClaudePolicyArgv,
@@ -78,7 +79,14 @@ export type WorkerConfig = {
    * deprecated lists). Omitted = builtin merged with the profiles' own lists.
    */
   policy?: WorkerPolicy;
+  /** 0.31.0 D1 bridge config `worker.skills`. Omitted or `enabled: false` = no skills. */
+  skills?: { enabled: boolean };
 };
+
+/** D1: skills are off unless the bridge config turns them on. */
+export function workerSkillsEnabled(config: Pick<WorkerConfig, "skills">): boolean {
+  return config.skills?.enabled === true;
+}
 
 /**
  * D8 profiles: mode / sandbox / approval only. Tool allow/deny is the builtin
@@ -302,6 +310,11 @@ export type BuildAgentArgvInput = {
    * own deprecated lists (deny is never dropped).
    */
   policy?: EffectivePolicy;
+  /**
+   * 0.31.0 D4, claude only: the card copy's plugin root (`<card>/skills/plugin`).
+   * Set only when skills are enabled and at least one skill is available.
+   */
+  pluginDir?: string;
 };
 
 function requireProfile<T>(profile: T | undefined, agent: AgentKind): T {
@@ -321,6 +334,8 @@ function claudeArgv(opts: BuildAgentArgvInput, policy: EffectivePolicy): string[
     profile.permissionMode,
     ...compileClaudePolicyArgv(policy),
   );
+  // D4: one-value flag; never --add-dir (it widens access beyond cwd).
+  if (opts.pluginDir !== undefined) argv.push("--plugin-dir", opts.pluginDir);
   // D9: --settings takes one value (no variadic tool lists). The prompt stays on stdin.
   return argv;
 }
@@ -435,8 +450,18 @@ function grokArgv(opts: BuildAgentArgvInput, policy: EffectivePolicy): string[] 
   return argv;
 }
 
+/** Absolute, control-free, and not flag-shaped (an absolute path starts with "/"). */
+function validatePluginDir(agent: AgentKind, pluginDir: string | undefined): void {
+  if (pluginDir === undefined) return;
+  if (agent !== "claude") throw new Error(`pluginDir is claude-only (got ${agent})`);
+  if (!isAbsolute(pluginDir) || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(pluginDir)) {
+    throw new Error("pluginDir must be an absolute path without control characters");
+  }
+}
+
 export function buildAgentArgv(opts: BuildAgentArgvInput): BuiltAgentArgv {
   validatePermissions(opts.permissions);
+  validatePluginDir(opts.agent, opts.pluginDir);
   const policy =
     opts.policy ?? resolveWorkerPolicy(opts.permissions, null).effective[opts.agent];
   const argv =

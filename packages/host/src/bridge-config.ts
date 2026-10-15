@@ -86,6 +86,11 @@ export type BridgeWorkerConfig = {
    * must equal the agent kind. Arguments, shells, and other names are rejected.
    */
   agentBin?: Partial<Record<AgentKind, string>>;
+  /**
+   * PLAN 0.31.0 D1. `{enabled: boolean}` only; absent = disabled (0.30.0 behavior).
+   * Selection itself lives in the room's skills.json, never here or on the wire.
+   */
+  skills?: { enabled: boolean };
 };
 
 const HEADLESS_AGENTS: readonly AgentKind[] = ["claude", "codex", "grok"];
@@ -359,13 +364,31 @@ function parseAgentBin(raw: unknown): Record<AgentKind, string> {
   return out;
 }
 
+/** 0.31.0 D1: fail closed on anything but `{enabled: boolean}`. */
+function parseSkills(raw: unknown): { enabled: boolean } | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.skills must be an object");
+  }
+  const src = raw as Record<string, unknown>;
+  for (const key of Object.keys(src)) {
+    if (key !== "enabled") throw new Error(`worker.skills.${key} is not a known key`);
+  }
+  if (typeof src.enabled !== "boolean") {
+    throw new Error("worker.skills.enabled must be a boolean");
+  }
+  return { enabled: src.enabled };
+}
+
 function workerConfigFromParts(src: {
   cwd?: unknown;
   allowedRoots?: unknown;
   maxConcurrent?: unknown;
   timeoutMs?: unknown;
   permissions?: unknown;
+  skills?: unknown;
 }): WorkerConfig {
+  const skills = parseSkills(src.skills);
   const permissions = parsePermissions(src.permissions);
   const config: WorkerConfig = {
     backend: "headless",
@@ -375,6 +398,7 @@ function workerConfigFromParts(src: {
     timeoutMs: parseTimeoutMs(src.timeoutMs),
     permissions,
     policy: workerPolicyFor(permissions),
+    ...(skills ? { skills } : {}),
   };
   validateWorkerConfig(config);
   return config;
@@ -441,6 +465,7 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
     timeoutMs: parsed.timeoutMs,
     permissions: parsed.permissions,
     agentBin,
+    ...(parsed.skills ? { skills: { ...parsed.skills } } : {}),
   };
 }
 
