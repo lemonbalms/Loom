@@ -87,22 +87,57 @@ export function bridgeStatusPath(profile: string, bridgeDir?: string): string {
   return join(bridgeDir ?? join(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.status.json`);
 }
 
+/** P5: absent vs present-but-unusable vs parsed (doctor / `bridge status` tell them apart). */
+export type BridgeStatusReadResult =
+  | { kind: "absent" }
+  | { kind: "invalid"; reason: string }
+  | { kind: "ok"; status: BridgeStatus };
+
+/** Short, single-line value for an invalid-reason (hand-edited files: no long / multi-line echo). */
+function shortValue(v: unknown): string {
+  const s = typeof v === "string" ? JSON.stringify(v) : String(v);
+  return s.length > 24 ? `${s.slice(0, 24)}…` : s;
+}
+
 /**
  * PLAN 0.33.0 P4 — D5 reader. Parse a status file read-only; null when absent, unreadable or
  * not a v1 status record. Only the ② keys are returned (a hand-edited file cannot inject
  * extra fields into doctor / `bridge status` output).
  */
 export function readBridgeStatusFile(path: string): BridgeStatus | null {
+  const r = readBridgeStatusFileResult(path);
+  return r.kind === "ok" ? r.status : null;
+}
+
+/**
+ * PLAN 0.33.0 P5 (P4-verify L1) — same reader, but tells `absent` (ENOENT) apart from a file
+ * that exists and cannot be used (empty / truncated / `null` / array / unknown v / unknown
+ * state / read error) with a short reason. Read-only.
+ */
+export function readBridgeStatusFileResult(path: string): BridgeStatusReadResult {
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT") return { kind: "absent" };
+    return { kind: "invalid", reason: `read error ${code ?? "unknown"}` };
+  }
+  if (text.trim() === "") return { kind: "invalid", reason: "empty file" };
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(path, "utf8"));
+    raw = JSON.parse(text);
   } catch {
-    return null;
+    return { kind: "invalid", reason: "invalid JSON" };
   }
-  if (!raw || typeof raw !== "object") return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { kind: "invalid", reason: "not an object" };
+  }
   const o = raw as Record<string, unknown>;
-  if (o.v !== 1) return null;
-  if (typeof o.state !== "string" || !(BRIDGE_STATES as readonly string[]).includes(o.state)) return null;
+  if (o.v !== 1) return { kind: "invalid", reason: `unknown version v=${shortValue(o.v)}` };
+  if (typeof o.state !== "string" || !(BRIDGE_STATES as readonly string[]).includes(o.state)) {
+    return { kind: "invalid", reason: `unknown state ${shortValue(o.state)}` };
+  }
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
   const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   const f = (o.inFlight && typeof o.inFlight === "object" ? o.inFlight : {}) as Record<string, unknown>;
@@ -130,7 +165,7 @@ export function readBridgeStatusFile(path: string): BridgeStatus | null {
   }
   if (typeof o.stoppedAt === "string") out.stoppedAt = o.stoppedAt;
   if (typeof o.lastError === "string") out.lastError = truncateLastError(o.lastError);
-  return out;
+  return { kind: "ok", status: out };
 }
 
 /** Cut to ≤ `max` UTF-8 bytes on a code-point boundary. */

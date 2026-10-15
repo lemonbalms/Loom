@@ -27,6 +27,7 @@ export * from "./bridge-runtime";
 export {
   bridgeStatusPath,
   readBridgeStatusFile,
+  readBridgeStatusFileResult,
   STATUS_STALE_MS,
   type BridgeStatus,
 } from "./bridge-status";

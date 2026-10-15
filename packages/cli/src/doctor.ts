@@ -312,6 +312,8 @@ export type BridgeReadInput = {
   logPath: string;
   /** Parsed status file, or null when absent / unreadable. */
   status: BridgeStatusFileView | null;
+  /** P5: set when the status file exists but is unusable (short reason); absent → undefined. */
+  statusInvalid?: string;
   /** kill(status.pid, 0) succeeded. */
   pidAlive: boolean;
   lock: BridgeLockView;
@@ -342,6 +344,10 @@ function lockText(lock: BridgeLockView): string {
   }
 }
 
+function unreadableText(input: BridgeReadInput): string {
+  return `bridge status file unreadable: ${input.statusPath} (${input.statusInvalid})`;
+}
+
 function drainText(st: BridgeStatusFileView): string | null {
   if (st.state !== "draining" || !st.drain?.deadlineAt) return null;
   const f = st.inFlight ?? {};
@@ -359,10 +365,14 @@ export function bridgeSection(input: BridgeReadInput): DoctorSection {
   const lines: DoctorLine[] = [];
   const st = input.status;
   if (!st) {
-    lines.push({
-      status: "info",
-      message: `bridge never started under this profile (no status file: ${input.statusPath})`,
-    });
+    lines.push(
+      input.statusInvalid !== undefined
+        ? { status: "warn", message: unreadableText(input) }
+        : {
+            status: "info",
+            message: `bridge never started under this profile (no status file: ${input.statusPath})`,
+          },
+    );
     if (input.lock.kind !== "none") lines.push({ status: "info", message: lockText(input.lock) });
     lines.push({ status: "info", message: `log: ${input.logPath}` });
     return { title: "Bridge", lines };
@@ -411,11 +421,16 @@ export function bridgeSection(input: BridgeReadInput): DoctorSection {
 
 /**
  * PLAN 0.33.0 ② `loom bridge status` with the bridge down: status-file summary printed after
- * today's `bridge: offline` lines. No status file → no lines (today's output unchanged).
+ * today's `bridge: offline` lines. No status file → no lines (today's output unchanged);
+ * an unreadable one → the reason line (P5).
  */
 export function offlineBridgeStatusLines(input: BridgeReadInput): string[] {
   const st = input.status;
-  if (!st) return [];
+  if (!st) {
+    // P5: present but unusable → say so (same reason as doctor); absent → nothing.
+    if (input.statusInvalid === undefined) return [];
+    return [`  ${unreadableText(input)}`, `  ${lockText(input.lock)}`, `  log: ${input.logPath}`];
+  }
   const state = st.state ?? "unknown";
   const pid = typeof st.pid === "number" ? st.pid : null;
   const out = [`  status file: ${input.statusPath}`];

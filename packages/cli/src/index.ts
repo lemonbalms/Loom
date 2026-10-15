@@ -35,7 +35,7 @@ import {
   bridgeLockPath,
   bridgeLogPath,
   inspectBridgeLockAt,
-  readBridgeStatusFile,
+  readBridgeStatusFileResult,
   STATUS_STALE_MS,
   bridgeStatus,
   bridgeQuarantineAck,
@@ -164,12 +164,14 @@ const VERSION = "0.32.0";
 function readBridgeView(profile: string, bridgeDir?: string): BridgeReadInput {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
-  const status = readBridgeStatusFile(statusPath);
+  const read = readBridgeStatusFileResult(statusPath);
+  const status = read.kind === "ok" ? read.status : null;
   return {
     statusPath,
     lockPath,
     logPath: bridgeLogPath(profile, bridgeDir),
     status,
+    ...(read.kind === "invalid" ? { statusInvalid: read.reason } : {}),
     pidAlive: status !== null && status.pid > 0 ? isPidAlive(status.pid) : false,
     lock: inspectBridgeLockAt(lockPath),
     nowMs: Date.now(),
@@ -1821,7 +1823,16 @@ async function cmdBridge(
         ? `Bridge already running (pid ${r.meta.pid}, port ${r.meta.port})`
         : `Bridge started (pid ${r.meta.pid}, port ${r.meta.port})`,
     );
-    console.log(`herdr: ${r.meta.herdrSocketPath}`);
+    // P5: a headless bridge never connects to herdr — say so instead of a socket path.
+    // Live RPC `herdr` field first; config fallback if the status RPC does not answer.
+    const live = await bridgeStatus();
+    const liveHerdr =
+      live.health && typeof live.health === "object"
+        ? (live.health as Record<string, unknown>).herdr
+        : undefined;
+    const headless =
+      typeof liveHerdr === "string" ? liveHerdr === "skipped" : cfg.worker?.backend === "headless";
+    console.log(`herdr: ${headless ? "skipped (headless)" : r.meta.herdrSocketPath}`);
     console.log(`Stop with: ${loomCmd()} bridge stop`);
     return;
   }
@@ -1968,11 +1979,14 @@ async function cmdBridge(
     console.log(
       `bridge: online pid=${st.meta?.pid} port=${st.meta?.port} peer=${st.meta?.displayName}`,
     );
-    console.log(`  herdr: ${st.meta?.herdrSocketPath}`);
     const health =
       st.health && typeof st.health === "object" && st.health !== null
         ? (st.health as Record<string, unknown>)
         : null;
+    // P5: headless bridge (RPC herdr:"skipped") has no herdr connection — no socket path.
+    console.log(
+      `  herdr: ${health?.herdr === "skipped" ? "skipped (headless)" : st.meta?.herdrSocketPath}`,
+    );
     // PLAN 0.33.0 D5 / D4: lifecycle state; while draining, deadline + remaining counts.
     if (health && typeof health.state === "string") {
       console.log(`  state: ${health.state}`);
