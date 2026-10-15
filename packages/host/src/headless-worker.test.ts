@@ -185,6 +185,7 @@ function deadSession(over: Partial<CardSessionRecord>): CardSessionRecord {
     state: "running",
     resultSent: false,
     sendAttempts: 0,
+    completedHandoffIds: [],
     roomId: "room_w",
     cardId: "task_old",
     fromPeerId: "peer_w",
@@ -230,6 +231,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -264,6 +266,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           expect(calls[0]!.fields.output).toContain(`session:${lines[0]!.sessionId}`);
           const saved = readCardSession({
             loomDir,
+            localPeerId: "test-local-peer",
             roomId: card.roomId,
             agent: card.agent,
             cardId: card.cardId,
@@ -318,7 +321,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           cwd,
         };
         writeCardSession(
-          { loomDir },
+          { loomDir, localPeerId: "test-local-peer" },
           deadSession({
             ...card,
             cwd,
@@ -329,6 +332,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -400,7 +404,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           ARGV_TEMPLATE_VERSION,
         );
         writeCardSession(
-          { loomDir },
+          { loomDir, localPeerId: "test-local-peer" },
           deadSession({
             roomId: card.roomId,
             cardId: card.cardId,
@@ -415,6 +419,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -498,6 +503,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const first = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink,
@@ -508,6 +514,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           await waitFor(() => {
             const saved = readCardSession({
               loomDir,
+              localPeerId: "test-local-peer",
               roomId: card.roomId,
               agent: card.agent,
               cardId: card.cardId,
@@ -518,6 +525,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           second = new HeadlessDispatcher({
             config: configFor(cwd, 30_000),
             loomDir,
+            localPeerId: "test-local-peer",
             node: "bridge-node",
             commands: commands(),
             sink,
@@ -532,6 +540,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           try {
             const saved = readCardSession({
               loomDir,
+              localPeerId: "test-local-peer",
               roomId: card.roomId,
               agent: card.agent,
               cardId: card.cardId,
@@ -586,6 +595,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -657,6 +667,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -725,6 +736,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 1_800),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -806,6 +818,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 400),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -890,6 +903,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(root, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {
@@ -955,6 +969,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
       const dispatcher = new HeadlessDispatcher({
         config: configFor(root, 30_000),
         loomDir,
+        localPeerId: "test-local-peer",
         node: "bridge-node",
         commands: commands(),
         sink: {
@@ -1026,6 +1041,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(),
           sink: {

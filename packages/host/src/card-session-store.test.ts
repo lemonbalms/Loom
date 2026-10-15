@@ -9,10 +9,10 @@
  *   }
  *   cardKeyHash(roomId, agent, cardId) =
  *     sha256(utf8(`${roomId}\0${agent}\0${cardId}`)).hex.slice(0, 16)
- *   cardSessionPath({ loomDir, roomId, agent, cardId }) =
- *     join(loomDir, "cards", cardKeyHash(...), "session.json")
- *   readCardSession({ loomDir, roomId, agent, cardId }): CardSessionRecord | null
- *   writeCardSession({ loomDir }, record): void
+ *   cardSessionPath({ loomDir, localPeerId, roomId, agent, cardId }) =
+ *     join(loomDir, "cards", sha16(localPeerId), cardKeyHash(...), "session.json")
+ *   readCardSession({ loomDir, localPeerId, roomId, agent, cardId }): CardSessionRecord | null
+ *   writeCardSession({ loomDir, localPeerId }, record): void
  *     via writeAtomicJson — mode 0600, body JSON.stringify(record, null, 2) + "\n"
  *   cwd is a record field, not part of the key (D5, R1, R2).
  */
@@ -50,6 +50,7 @@ function record(over: Partial<CardSessionRecord> = {}): CardSessionRecord {
     state: "running",
     resultSent: false,
     sendAttempts: 0,
+    completedHandoffIds: [],
     roomId: "room_a",
     cardId: "task_abc",
     fromPeerId: "peer_a",
@@ -68,11 +69,11 @@ describe("v0.30.0 P2 expected-red: card session store", () => {
       const roomId = "../x";
       const agent = "claude";
       const cardId = "task_abc";
-      const path = cardSessionPath({ loomDir, roomId, agent, cardId });
+      const path = cardSessionPath({ loomDir, localPeerId: "test-local-peer", roomId, agent, cardId });
       expect(cardKeyHash(roomId, agent, cardId)).toBe(sha16(roomId, agent, cardId));
       expect(cardKeyHash(roomId, agent, cardId)).toMatch(/^[0-9a-f]{16}$/);
       expect(path).toBe(
-        join(loomDir, "cards", sha16(roomId, agent, cardId), "session.json"),
+        join(loomDir, "cards", createHash("sha256").update("test-local-peer").digest("hex").slice(0, 16), sha16(roomId, agent, cardId), "session.json"),
       );
       expect(path.includes("..")).toBe(false);
       expect(path.startsWith(loomDir)).toBe(true);
@@ -87,14 +88,14 @@ describe("v0.30.0 P2 expected-red: card session store", () => {
   test("cwd is a record field and is not part of the key", () => {
     const loomDir = mkdtempSync(join(tmpdir(), "loom-p2-session-cwd-"));
     try {
-      const opts = { loomDir, roomId: "room_a", agent: "codex", cardId: "task_abc" };
+      const opts = { loomDir, localPeerId: "test-local-peer", roomId: "room_a", agent: "codex", cardId: "task_abc" };
       const first = cardSessionPath(opts);
       const second = cardSessionPath(opts);
       expect(first).toBe(second);
       expect(first).not.toContain("/tmp/loom-cwd-a");
       expect(first).not.toContain("/tmp/loom-cwd-b");
-      writeCardSession({ loomDir }, record({ cwd: "/tmp/loom-cwd-a", agent: "codex" }));
-      writeCardSession({ loomDir }, record({ cwd: "/tmp/loom-cwd-b", agent: "codex" }));
+      writeCardSession({ loomDir, localPeerId: "test-local-peer" }, record({ cwd: "/tmp/loom-cwd-a", agent: "codex" }));
+      writeCardSession({ loomDir, localPeerId: "test-local-peer" }, record({ cwd: "/tmp/loom-cwd-b", agent: "codex" }));
       expect(cardSessionPath(opts)).toBe(first);
       expect(readCardSession(opts)?.cwd).toBe("/tmp/loom-cwd-b");
     } finally {
@@ -110,12 +111,13 @@ describe("v0.30.0 P2 expected-red: card session store", () => {
       const saved = record({ roomId: "room_round", cardId: "task_def" });
       const opts = {
         loomDir,
+        localPeerId: "test-local-peer",
         roomId: saved.roomId,
         agent: saved.agent,
         cardId: saved.cardId,
       };
       expect(readCardSession(opts)).toBeNull();
-      writeCardSession({ loomDir }, saved);
+      writeCardSession({ loomDir, localPeerId: "test-local-peer" }, saved);
       const path = cardSessionPath(opts);
       expect(path.startsWith(loomDir)).toBe(true);
       expect(path.startsWith(join(homedir(), ".loom"))).toBe(false);

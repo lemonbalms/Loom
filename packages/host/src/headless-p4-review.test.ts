@@ -23,7 +23,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultWorkerPermissions, type WorkerConfig } from "./agent-argv";
-import { cardKeyHash, readCardSession } from "./card-session-store";
+import { cardKeyHash, cardPeerHash, readCardSession } from "./card-session-store";
 import { HeadlessDispatcher } from "./headless-worker";
 import { killProcessGroup, spawnDetachedWorker } from "./process-group";
 
@@ -241,6 +241,7 @@ describe("headless P4 review", () => {
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 2_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(wrapper),
           sink: {
@@ -262,6 +263,7 @@ describe("headless P4 review", () => {
           await waitFor(() => {
             const saved = readCardSession({
               loomDir,
+              localPeerId: "test-local-peer",
               roomId: card.roomId,
               agent: card.agent,
               cardId: card.cardId,
@@ -276,6 +278,7 @@ describe("headless P4 review", () => {
           expect(alive(grandchild)).toBe(false);
           const saved = readCardSession({
             loomDir,
+            localPeerId: "test-local-peer",
             roomId: card.roomId,
             agent: card.agent,
             cardId: card.cardId,
@@ -288,6 +291,7 @@ describe("headless P4 review", () => {
           try {
             const saved = readCardSession({
               loomDir,
+              localPeerId: "test-local-peer",
               roomId: card.roomId,
               agent: card.agent,
               cardId: card.cardId,
@@ -361,6 +365,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
       const dispatcher = new HeadlessDispatcher({
         config: configFor(cwd, 2_500),
         loomDir,
+        localPeerId: "test-local-peer",
         node: "bridge-node",
         commands: { claude: sh, codex: sh, grok: sh },
         sink: {
@@ -436,6 +441,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
       const dispatcher = new HeadlessDispatcher({
         config: configFor(root, 30_000),
         loomDir,
+        localPeerId: "test-local-peer",
         node: "bridge-node",
         commands: commands(script),
         sink: {
@@ -498,7 +504,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const pidFile = join(loomDir, "worker.pid");
     const roomId = "room_h4";
     const cardId = "task_h4";
-    const dir = join(loomDir, "cards", cardKeyHash(roomId, "claude", cardId));
+    const dir = join(loomDir, "cards", cardPeerHash("test-local-peer"), cardKeyHash(roomId, "claude", cardId));
     const transcript = join(dir, "transcript-1.jsonl");
     const script = writeScript(
       loomDir,
@@ -514,6 +520,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const dispatcher = new HeadlessDispatcher({
       config: configFor(cwd, 30_000),
       loomDir,
+      localPeerId: "test-local-peer",
       node: "bridge-node",
       commands: commands(script),
       sink: {
@@ -608,6 +615,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const dispatcher = new HeadlessDispatcher({
       config: configFor(cwd, 30_000),
       loomDir,
+      localPeerId: "test-local-peer",
       node: "bridge-node",
       commands: commands(script),
       sink: {
@@ -676,6 +684,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
         const dispatcher = new HeadlessDispatcher({
           config: configFor(cwd, 30_000),
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: commands(FAKE),
           sink: {
@@ -728,7 +737,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const cwd = realpathSync(mkdtempSync(join(tmpdir(), "loom-p4-m1-cwd-")));
     const roomId = "room_m1";
     const cardId = "task_m1";
-    const dir = join(loomDir, "cards", cardKeyHash(roomId, "claude", cardId));
+    const dir = join(loomDir, "cards", cardPeerHash("test-local-peer"), cardKeyHash(roomId, "claude", cardId));
     mkdirSync(dir, { recursive: true, mode: 0o755 });
     chmodSync(dir, 0o755);
     const script = writeScript(
@@ -742,6 +751,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const dispatcher = new HeadlessDispatcher({
       config: configFor(cwd, 30_000),
       loomDir,
+      localPeerId: "test-local-peer",
       node: "bridge-node",
       commands: commands(script),
       sink: {
@@ -835,6 +845,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const dispatcher = new HeadlessDispatcher({
       config,
       loomDir,
+      localPeerId: "test-local-peer",
       node: "bridge-node",
       commands: commands(script),
       sink: {
@@ -903,6 +914,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
       const dispatcher = new HeadlessDispatcher({
         config: configFor(cwd, 2_000),
         loomDir,
+        localPeerId: "test-local-peer",
         node: "bridge-node",
         commands: commands(script),
         sink: {
@@ -938,6 +950,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
         try {
           const saved = readCardSession({
             loomDir,
+            localPeerId: "test-local-peer",
             roomId: "room_m4",
             agent: "claude",
             cardId: "task_m4",
@@ -986,6 +999,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const dispatcher = new HeadlessDispatcher({
       config: configFor(cwd, 30_000),
       loomDir,
+      localPeerId: "test-local-peer",
       node: "bridge-node",
       commands: commands(script),
       sink: {
@@ -1004,6 +1018,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
       await waitFor(() => {
         const saved = readCardSession({
           loomDir,
+          localPeerId: "test-local-peer",
           roomId: card.roomId,
           agent: card.agent,
           cardId: card.cardId,
@@ -1012,6 +1027,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
       });
       const saved = readCardSession({
         loomDir,
+        localPeerId: "test-local-peer",
         roomId: card.roomId,
         agent: card.agent,
         cardId: card.cardId,
@@ -1031,6 +1047,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
       try {
         const saved = readCardSession({
           loomDir,
+          localPeerId: "test-local-peer",
           roomId: card.roomId,
           agent: card.agent,
           cardId: card.cardId,

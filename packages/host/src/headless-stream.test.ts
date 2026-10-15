@@ -296,6 +296,7 @@ describe("v0.30.0 P2 expected-red: headless stream", () => {
         const dispatcher = new HeadlessDispatcher({
           config,
           loomDir,
+          localPeerId: "test-local-peer",
           node: "bridge-node",
           commands: {
             claude: { bin: "bun", args: [FAKE, "--fake-kind", "claude"] },

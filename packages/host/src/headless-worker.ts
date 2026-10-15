@@ -5,11 +5,11 @@
  * `ps -o lstart=` matches `procStartedAt` is adopted — never spawned beside.
  * `resultSent=true` is written only after composeAndSend returns.
  */
-import { execFileSync, type ChildProcess } from "node:child_process";
+import { execFile, execFileSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, join, sep } from "node:path";
+import { dirname, isAbsolute, join, sep } from "node:path";
 import { truncateTail, wrapDispatchedPrompt } from "@loom/protocol";
 import {
   ARGV_TEMPLATE_VERSION,
@@ -24,9 +24,11 @@ import {
 import { parseAgentStream, type ParsedAgentStream } from "./agent-stream-parsers";
 import {
   cardKeyHash,
+  cardSessionPath,
   listCardSessions,
   readCardSessionAsync,
   writeCardSessionAsync,
+  writeCardSession,
   type CardSessionRecord,
 } from "./card-session-store";
 import {
@@ -69,6 +71,7 @@ export type HeadlessResultFields = {
   truncated: boolean;
   summary: string;
   note?: string;
+  timedOut?: boolean;
 };
 
 type HeadlessCommand = { bin: string; args: string[] };
@@ -85,6 +88,7 @@ type ResultTarget = {
 type HeadlessDeps = {
   config: WorkerConfig;
   loomDir: string;
+  localPeerId: string;
   node: string;
   commands: Record<AgentKind, HeadlessCommand>;
   sink: {
@@ -106,6 +110,8 @@ type CardOwner = {
 };
 
 type SpawnPlan = {
+  cwd: string;
+  completedHandoffIds: string[];
   sessionId: string;
   attempts: number;
   resumeSessionId?: string;
@@ -115,7 +121,7 @@ type SpawnPlan = {
 type SpawnOutcome =
   | { kind: "abandon" }
   | { kind: "setup_failed"; message: string; record?: CardSessionRecord }
-  | { kind: "cwd_denied" }
+  | { kind: "cwd_denied"; changed?: boolean; record?: CardSessionRecord }
   | {
       kind: "done";
       timedOut: boolean;
@@ -291,8 +297,8 @@ function processLstart(pid: number): string | null {
 type Liveness = "alive" | "dead" | "unknown";
 
 function processLiveness(record: CardSessionRecord): Liveness {
-  // The write-ahead attempt is spent even if the bridge died before spawn.
-  if (record.state === "spawning" && record.pid === 0) return "dead";
+  // Never probe pid 0/1, and terminal records do not identify live workers.
+  if (record.state === "exited" || !(record.pid > 1)) return "dead";
   try {
     process.kill(record.pid, 0);
   } catch (err) {
@@ -319,7 +325,14 @@ function processLiveness(record: CardSessionRecord): Liveness {
 
 async function captureLstart(pid: number, child: ChildProcess): Promise<string> {
   for (let i = 0; i < 25; i++) {
-    const started = processLstart(pid);
+    // Startup observation may wait on ps without blocking dispatch/status work.
+    // The pid/pgid have already been synchronously committed by the caller.
+    const started = await new Promise<string | null>((resolve) => {
+      execFile("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+        encoding: "utf8", timeout: 2_000,
+        env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
+      }, (err, stdout) => resolve(err ? null : stdout.trim() || null));
+    });
     if (started) return started;
     if (child.exitCode !== null || child.signalCode !== null) break;
     await sleep(20);
@@ -434,6 +447,7 @@ export class HeadlessDispatcher {
   private readonly byCard = new Map<string, CardOwner>();
 
   constructor(private readonly deps: HeadlessDeps) {
+    if (!deps.localPeerId) throw new Error("localPeerId is required");
     validateWorkerConfig(deps.config);
     this.lanes = {
       claude: new Semaphore(concurrencyLimit(deps.config, "claude")),
@@ -467,11 +481,11 @@ export class HeadlessDispatcher {
    */
   async recover(): Promise<void> {
     const pending: Promise<void>[] = [];
-    for (const record of listCardSessions(this.deps.loomDir)) {
+    for (const record of listCardSessions(this.deps.loomDir, this.deps.localPeerId)) {
       if (record.resultSent) continue;
       if (!isAgent(record.agent)) continue;
       pending.push(
-        this.dispatch({
+        this.dispatchOwned({
           roomId: record.roomId,
           cardId: record.cardId,
           agent: record.agent,
@@ -479,7 +493,7 @@ export class HeadlessDispatcher {
           fromPeerId: record.fromPeerId,
           dispatchHandoffId: record.dispatchHandoffId,
           cwd: record.requestedCwd === null ? undefined : record.requestedCwd,
-        }).catch((err: unknown) => {
+        }, true).catch((err: unknown) => {
           // One broken record or sink must not reject recovery of its peers.
           const message = err instanceof Error ? err.message : String(err);
           process.stderr.write(`[headless] recovery failed (${record.cardId}): ${message.replace(/[\r\n]/g, " ")}\n`);
@@ -497,10 +511,18 @@ export class HeadlessDispatcher {
   }
 
   async dispatch(card: HeadlessDispatchCard): Promise<void> {
+    return this.dispatchOwned(card, false);
+  }
+
+  private async dispatchOwned(card: HeadlessDispatchCard, recovering: boolean): Promise<void> {
     const key = cardKeyHash(card.roomId, card.agent, card.cardId);
     const existing = this.byCard.get(key);
     if (existing) {
       if (existing.handoffId !== card.dispatchHandoffId) {
+        // The completed-history decision precedes even the in-memory busy path.
+        const saved = await readCardSessionAsync({ loomDir: this.deps.loomDir,
+          localPeerId: this.deps.localPeerId, ...card });
+        if (saved?.completedHandoffIds.includes(card.dispatchHandoffId)) return;
         await this.deliver(card, new Date().toISOString(), this.alreadyRunningFields());
         return;
       }
@@ -510,7 +532,7 @@ export class HeadlessDispatcher {
     const owner = createOwner(card.dispatchHandoffId);
     this.byCard.set(key, owner);
     try {
-      await this.lead(card, owner);
+      await this.lead(card, owner, recovering);
     } finally {
       if (this.byCard.get(key) === owner) this.byCard.delete(key);
       owner.resolve();
@@ -561,23 +583,28 @@ export class HeadlessDispatcher {
   private async sendAndMark(
     record: CardSessionRecord,
     fields: HeadlessResultFields,
-    allowPersistenceFailure = false,
+    opts: { allowPersistenceFailure?: boolean; preserveWorkerState?: boolean } = {},
   ): Promise<void> {
-    record.state = "exited";
+    // Reporting a refusal/uncertainty is not proof of exit. Retain a possibly
+    // live identity so a later dispatch still gets the R48-M3 guard.
+    if (!opts.preserveWorkerState) record.state = "exited";
+    record.pendingResult ??= { ...structuredClone(fields), timedOut: fields.timedOut ?? false };
     record.resultSent = false;
     record.sendAttempts += 1;
     const persist = async (): Promise<void> => {
       try {
-        await writeCardSessionAsync({ loomDir: this.deps.loomDir }, record);
+        await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
       } catch (err) {
-        if (!allowPersistenceFailure) throw err;
+        if (!opts.allowPersistenceFailure) throw err;
         // Setup already killed the worker; still report the setup failure
         // when the same filesystem failure prevents marking its record.
       }
     };
     await persist();
-    await this.deliver({ ...record, prompt: "" }, record.startedAt, fields);
+    await this.deliver({ ...record, prompt: "" }, record.startedAt, structuredClone(record.pendingResult));
     record.resultSent = true;
+    record.completedHandoffIds = [...record.completedHandoffIds.filter(id => id !== record.dispatchHandoffId),
+      record.dispatchHandoffId].slice(-16);
     await persist();
   }
 
@@ -606,6 +633,8 @@ export class HeadlessDispatcher {
     }
     const unchanged = record.promptFingerprint === currentFingerprint(this.deps.config);
     return {
+      cwd: current.cwd,
+      completedHandoffIds: record.completedHandoffIds,
       sessionId: unchanged ? record.sessionId : randomUUID(),
       attempts: record.attempts + 1,
       ...(unchanged ? { resumeSessionId: record.sessionId } : {}),
@@ -613,21 +642,45 @@ export class HeadlessDispatcher {
     };
   }
 
-  private async lead(card: HeadlessDispatchCard, owner: CardOwner): Promise<void> {
+  private async lead(card: HeadlessDispatchCard, owner: CardOwner, recovering: boolean): Promise<void> {
     const lane = this.lanes[card.agent];
     await lane.acquire();
     try {
       if (owner.abandoned) return;
       const existing = await readCardSessionAsync({
         loomDir: this.deps.loomDir,
+        localPeerId: this.deps.localPeerId,
         roomId: card.roomId,
         agent: card.agent,
         cardId: card.cardId,
       });
       let plan: SpawnPlan;
       let runCard = card;
-      if (existing?.resultSent && existing.dispatchHandoffId === card.dispatchHandoffId) {
+      if (existing && (existing.completedHandoffIds.includes(card.dispatchHandoffId) ||
+        (existing.resultSent && existing.dispatchHandoffId === card.dispatchHandoffId))) {
         process.stderr.write(`[headless] already_completed (${existing.cardId})\n`);
+        return;
+      }
+      // These decisions precede every liveness probe: no pid cannot prove that
+      // exec did not happen, and a reserved result must never be reconstructed.
+      if (existing && !existing.resultSent && existing.pendingResult) {
+        if (existing.sendAttempts < 2) await this.sendAndMark(existing, existing.pendingResult,
+          { preserveWorkerState: existing.state !== "exited" });
+        return;
+      }
+      if (existing?.state === "spawning" && !(existing.pid > 1)) {
+        await this.sendAndMark(existing, {
+          status: "failed", reason: "spawn_state_unknown", output: "", truncated: false,
+          summary: "spawn state unknown",
+          note: "bridge stopped before worker identity was saved; exec may have happened; not spawning",
+        });
+        return;
+      }
+      if (recovering && existing && existing.promptFingerprint !== currentFingerprint(this.deps.config)) {
+        await this.sendAndMark(existing, {
+          status: "failed", reason: "needs_verification", output: "", truncated: false,
+          summary: "fingerprint changed", note: "fingerprint_changed; not resuming",
+        }, { preserveWorkerState: processLiveness(existing) !== "dead" });
         return;
       }
       if (existing && (!existing.resultSent || processLiveness(existing) !== "dead")) {
@@ -655,7 +708,7 @@ export class HeadlessDispatcher {
               status: "failed", reason: "liveness_unknown", output: "",
               truncated: false, summary: "liveness unknown",
               note: "could not establish worker identity; not spawning or signaling",
-            });
+            }, { preserveWorkerState: true });
             return;
           }
           raw = watched.raw;
@@ -680,7 +733,13 @@ export class HeadlessDispatcher {
         if (!next) return;
         plan = next;
       } else {
-        plan = { sessionId: randomUUID(), attempts: 1, startedAt: new Date().toISOString() };
+        const checked = resolveWorkerCwd(card.cwd, this.deps.config);
+        if (!checked.ok) {
+          await this.deliver(card, new Date().toISOString(), this.cwdDeniedFields());
+          return;
+        }
+        plan = { cwd: checked.cwd, completedHandoffIds: existing?.completedHandoffIds ?? [],
+          sessionId: randomUUID(), attempts: 1, startedAt: new Date().toISOString() };
       }
 
       for (;;) {
@@ -688,7 +747,10 @@ export class HeadlessDispatcher {
         const outcome = await this.spawnOnce(runCard, owner, plan);
         if (outcome.kind === "abandon") return;
         if (outcome.kind === "cwd_denied") {
-          await this.deliver(runCard, plan.startedAt, this.cwdDeniedFields());
+          const fields = this.cwdDeniedFields();
+          if (outcome.changed) fields.note = "cwd_changed_before_spawn";
+          if (outcome.record) await this.sendAndMark(outcome.record, fields);
+          else await this.deliver(runCard, plan.startedAt, fields);
           return;
         }
         if (outcome.kind === "setup_failed") {
@@ -696,7 +758,7 @@ export class HeadlessDispatcher {
             status: "failed", reason: "spawn_setup_failed", output: "",
             truncated: false, summary: "", note: outcome.message.slice(0, 500),
           };
-          if (outcome.record) await this.sendAndMark(outcome.record, fields, true);
+          if (outcome.record) await this.sendAndMark(outcome.record, fields, { allowPersistenceFailure: true });
           else await this.deliver(runCard, plan.startedAt, fields);
           return;
         }
@@ -754,6 +816,7 @@ export class HeadlessDispatcher {
     await this.sendAndMark(record, {
       status: "failed",
       reason: outcome.timedOut ? "timeout" : "needs_verification",
+      timedOut: outcome.timedOut,
       output: capped.text,
       truncated: capped.truncated,
       summary,
@@ -762,11 +825,7 @@ export class HeadlessDispatcher {
   }
 
   private cardDir(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">): string {
-    return join(
-      this.deps.loomDir,
-      "cards",
-      cardKeyHash(card.roomId, card.agent, card.cardId),
-    );
+    return dirname(cardSessionPath({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card }));
   }
 
   private transcriptPath(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">, attempts: number): string {
@@ -777,7 +836,7 @@ export class HeadlessDispatcher {
     const sessionId = parseAgentStream(record.agent, raw).sessionId;
     if (sessionId && sessionId !== record.sessionId) {
       record.sessionId = sessionId;
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir }, record);
+      await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
     }
   }
 
@@ -898,13 +957,7 @@ export class HeadlessDispatcher {
         ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`
         : wrapped;
       const promptFile = await this.writeGrokPrompt(card.agent, dir, promptBody);
-      // Re-checked after the permit wait, immediately before spawn.
-      // Residual TOCTOU: the directory can still be replaced by a symlink
-      // between this realpath and the child's execve. Closing that window
-      // needs an fd-relative chdir; spawn's cwd is only a path string.
-      const checked = resolveWorkerCwd(card.cwd, this.deps.config);
-      if (!checked.ok) return { kind: "cwd_denied" };
-      const cwd = checked.cwd;
+      const cwd = plan.cwd;
       const built = buildAgentArgv({
         agent: card.agent,
         cwd,
@@ -927,9 +980,17 @@ export class HeadlessDispatcher {
         startedAt: plan.startedAt, state: "spawning", resultSent: false,
         roomId: card.roomId, cardId: card.cardId, fromPeerId: card.fromPeerId,
         dispatchHandoffId: card.dispatchHandoffId, procStartedAt: "", sendAttempts: 0,
+        completedHandoffIds: [...plan.completedHandoffIds],
       };
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir }, record);
+      await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
       if (owner.abandoned) return { kind: "abandon" };
+      // Last path check after all setup awaits. Passing the pinned canonical
+      // path also avoids following a changed requested symlink in the child.
+      // Residual race at the canonical path itself needs fd-relative chdir.
+      const checked = resolveWorkerCwd(card.cwd, this.deps.config);
+      if (!checked.ok || checked.cwd !== plan.cwd) {
+        return { kind: "cwd_denied", changed: true, record };
+      }
       spawned = spawnDetachedWorker({
         bin: command.bin,
         args: [...command.args, ...built.argv],
@@ -938,6 +999,10 @@ export class HeadlessDispatcher {
         stdoutPath: transcriptPath,
         stderrPath: stderrPath,
       });
+      record.pid = spawned.pid;
+      record.pgid = spawned.pgid;
+      // No await between spawn returning and the atomic pid/pgid write.
+      writeCardSession({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
       const child = spawned.child;
       const exitPromise = waitChild(child);
       exitPromise.catch(() => {
@@ -951,14 +1016,10 @@ export class HeadlessDispatcher {
       };
       if (leaderGone()) onLeaderExit();
       else child.once("exit", onLeaderExit);
-      record.pid = spawned.pid;
-      record.pgid = spawned.pgid;
-      // Save the pid before any await for start-time capture or stdin setup.
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir }, record);
       if (spawned.pid <= 1) throw new Error("worker did not start");
       record.procStartedAt = await captureLstart(spawned.pid, child);
       record.state = "running";
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir }, record);
+      writeCardSession({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
       const tracked: HeadlessFlight = {
         workerId: plan.sessionId,
         cardId: card.cardId,
@@ -1066,7 +1127,7 @@ export class HeadlessDispatcher {
       const parsed = parseAgentStream(card.agent, raw);
       const sessionId = parsed.sessionId ?? plan.sessionId;
       record.sessionId = sessionId;
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir }, record);
+      await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
       return {
         kind: "done",
         timedOut,

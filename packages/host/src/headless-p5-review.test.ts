@@ -99,22 +99,22 @@ class Harness {
   lines(): Dump[] {
     return existsSync(this.dump) ? readFileSync(this.dump, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line)) : [];
   }
-  saved(): CardSessionRecord | null { return readCardSession({ loomDir: this.loomDir, ...this.card }); }
+  saved(): CardSessionRecord | null { return readCardSession({ loomDir: this.loomDir, localPeerId: "test-local-peer", ...this.card }); }
   path(record: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId"> = this.card, attempts = 1): string {
-    return join(dirname(cardSessionPath({ loomDir: this.loomDir, ...record })), "transcript-" + attempts + ".jsonl");
+    return join(dirname(cardSessionPath({ loomDir: this.loomDir, localPeerId: "test-local-peer", ...record })), "transcript-" + attempts + ".jsonl");
   }
   seed(over: Partial<CardSessionRecord> = {}, raw = ""): CardSessionRecord {
     const record: CardSessionRecord = {
       ...this.card, cwd: this.cwd, requestedCwd: null, sessionId: "saved-session", promptFingerprint: fingerprint(this.config),
       attempts: 1, pid: 2_000_000_000, pgid: 2_000_000_000, startedAt: new Date().toISOString(),
-      state: "running", resultSent: false, procStartedAt: "Thu Oct 15 00:00:00 2026", sendAttempts: 0, ...over,
+      state: "running", resultSent: false, procStartedAt: "Thu Oct 15 00:00:00 2026", sendAttempts: 0, completedHandoffIds: [], ...over,
     };
-    writeCardSession({ loomDir: this.loomDir }, record);
+    writeCardSession({ loomDir: this.loomDir, localPeerId: "test-local-peer" }, record);
     writeFileSync(this.path(record, record.attempts), raw);
     return record;
   }
   dispatcher(sink?: (target: Call["target"], fields: HeadlessResultFields) => Promise<unknown>, script?: string): HeadlessDispatcher {
-    const dispatcher = new HeadlessDispatcher({ config: this.config, loomDir: this.loomDir, node: "bridge-node", commands: commands(script), sink: {
+    const dispatcher = new HeadlessDispatcher({ config: this.config, loomDir: this.loomDir, localPeerId: "test-local-peer", node: "bridge-node", commands: commands(script), sink: {
       composeAndSend: async (target, fields) => {
         this.calls.push({ target, fields });
         return sink ? sink(target, fields) : { status: "delivered" };
@@ -147,7 +147,7 @@ async function fixture(fn: (h: Harness) => Promise<void>, extra: Record<string, 
     try { await fn(h); } finally {
       try {
         for (const dispatcher of h.dispatchers) await dispatcher.close();
-        const recorded = existsSync(join(h.loomDir, "cards")) ? sessions.listCardSessions(h.loomDir) : [];
+        const recorded = existsSync(join(h.loomDir, "cards")) ? sessions.listCardSessions(h.loomDir, "test-local-peer") : [];
         const tracked = [...new Set([...h.pids, ...h.lines().map(line => line.pid), ...recorded.flatMap(r => [r.pid, r.pgid])])];
         for (const pid of tracked) killPid(pid);
         await waitFor(() => tracked.every(pid => pid <= 1 || !alive(pid)), 3_000);
@@ -409,14 +409,16 @@ describe("headless P5 review", () => {
   });
 
   for (const attempts of [1, 2]) {
-    test("H6 recovery of pidless spawning consumes attempt " + attempts, async () => {
+    test("H6/H-B pidless spawning gives up with spawn_state_unknown (attempt " + attempts + ")", async () => {
       await fixture(async h => {
         h.seed({ state: "spawning", attempts, pid: 0, pgid: 0, procStartedAt: "" });
         await h.dispatcher().recover();
-        expect(h.lines()).toHaveLength(attempts === 1 ? 1 : 0);
-        expect(h.saved()!.attempts).toBe(2);
+        expect(h.lines()).toHaveLength(0);
+        expect(h.saved()!.attempts).toBe(attempts);
+        expect(h.saved()!.resultSent).toBe(true);
         expect(h.calls).toHaveLength(1);
-        expect(h.calls[0]!.fields.reason).toBe("needs_verification");
+        expect(h.calls[0]!.fields.status).toBe("failed");
+        expect(h.calls[0]!.fields.reason).toBe("spawn_state_unknown");
       });
     });
   }
@@ -581,18 +583,18 @@ describe("headless P5 review", () => {
   test("M5 malformed records are counted/skipped and per-record sink errors do not abort recover", async () => {
     await fixture(async h => {
       const invalid = h.seed({ cardId: "invalid" });
-      const path = cardSessionPath({ loomDir: h.loomDir, ...invalid });
+      const path = cardSessionPath({ loomDir: h.loomDir, localPeerId: "test-local-peer", ...invalid });
       const partial = { ...invalid } as Partial<CardSessionRecord>;
       delete partial.procStartedAt;
       writeFileSync(path, JSON.stringify(partial));
       const corrupt = h.seed({ cardId: "corrupt" });
-      writeFileSync(cardSessionPath({ loomDir: h.loomDir, ...corrupt }), "{bad json");
+      writeFileSync(cardSessionPath({ loomDir: h.loomDir, localPeerId: "test-local-peer", ...corrupt }), "{bad json");
       h.seed({ cardId: "sink-fails", attempts: 2 }, terminal("claude"));
       h.seed({ cardId: "good", attempts: 2 }, terminal("claude"));
       const before = sessions.cardSessionDiagnostics.invalidRecords;
       const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
       try {
-        expect(sessions.listCardSessions(h.loomDir).map(r => r.cardId).sort()).toEqual(["good", "sink-fails"]);
+        expect(sessions.listCardSessions(h.loomDir, "test-local-peer").map(r => r.cardId).sort()).toEqual(["good", "sink-fails"]);
         expect(sessions.cardSessionDiagnostics.invalidRecords - before).toBe(2);
         expect(stderr.mock.calls.filter(([s]) => String(s).includes("invalid session record"))).toHaveLength(2);
         const dispatcher = h.dispatcher(async target => {
@@ -601,7 +603,7 @@ describe("headless P5 review", () => {
         await expect(dispatcher.recover()).resolves.toBeUndefined();
         expect(h.calls.map(c => c.target.cardId).sort()).toEqual(["good", "sink-fails"]);
         expect(h.lines()).toHaveLength(0);
-        expect(readCardSession({ loomDir: h.loomDir, ...h.card, cardId: "good" })!.resultSent).toBe(true);
+        expect(readCardSession({ loomDir: h.loomDir, localPeerId: "test-local-peer", ...h.card, cardId: "good" })!.resultSent).toBe(true);
       } finally { stderr.mockRestore(); }
     });
   });
@@ -616,7 +618,7 @@ describe("headless P5 review", () => {
       const paths: string[] = [];
       for (const field of required) {
         const record = h.seed({ cardId: "missing-" + field });
-        const path = cardSessionPath({ loomDir: h.loomDir, ...record });
+        const path = cardSessionPath({ loomDir: h.loomDir, localPeerId: "test-local-peer", ...record });
         const partial: Partial<CardSessionRecord> = { ...record };
         delete partial[field];
         writeFileSync(path, JSON.stringify(partial));
@@ -634,7 +636,7 @@ describe("headless P5 review", () => {
         expect(h.lines()).toHaveLength(0);
 
         for (const field of required) {
-          expect(readCardSession({ loomDir: h.loomDir, ...h.card, cardId: "missing-" + field })).toBeNull();
+          expect(readCardSession({ loomDir: h.loomDir, localPeerId: "test-local-peer", ...h.card, cardId: "missing-" + field })).toBeNull();
         }
         expect(sessions.cardSessionDiagnostics.invalidRecords - before).toBe(required.length * 2);
         expect(stderr.mock.calls).toHaveLength(required.length * 2);

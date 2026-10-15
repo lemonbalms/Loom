@@ -1,12 +1,14 @@
 /**
  * PLAN 0.30.0 D5 / R1 / R2.
- * cardKey = sha16(roomId NUL agent NUL cardId). cwd is a record field, not a key.
+ * Peer namespace = sha16(localPeerId); cardKey = sha16(roomId NUL agent NUL cardId).
+ * cwd is a record field, not a key.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { chmod, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readJsonFile, writeAtomicJson } from "./atomic-json";
+import type { HeadlessResultFields } from "./headless-worker";
 
 export type CardSessionState = "spawning" | "running" | "exited";
 
@@ -30,6 +32,10 @@ export type CardSessionRecord = {
   /** ps lstart captured with LC_ALL=C, LANG=C, TZ=UTC; empty before capture. */
   procStartedAt: string;
   sendAttempts: number;
+  /** Recent successfully delivered dispatches, oldest first (at most 16). */
+  completedHandoffIds: string[];
+  /** Exact result reserved durably before the first delivery attempt. */
+  pendingResult?: HeadlessResultFields;
 };
 
 export const cardSessionDiagnostics = { invalidRecords: 0 };
@@ -51,6 +57,16 @@ function validRecord(raw: unknown): raw is CardSessionRecord {
   if (r.state === "running" && (r.pid === 0 || r.pgid === 0)) return false;
   if (r.requestedCwd !== null && typeof r.requestedCwd !== "string") return false;
   if (!Number.isInteger(r.sendAttempts) || r.sendAttempts! < 0 || r.sendAttempts! > 2) return false;
+  if (!Array.isArray(r.completedHandoffIds) || r.completedHandoffIds.length > 16 ||
+    r.completedHandoffIds.some(id => typeof id !== "string" || !id)) return false;
+  if (r.pendingResult !== undefined) {
+    const f = r.pendingResult;
+    if (!f || typeof f !== "object" || Array.isArray(f) || f.status !== "failed" ||
+      typeof f.reason !== "string" || typeof f.output !== "string" ||
+      typeof f.truncated !== "boolean" || typeof f.summary !== "string" ||
+      (f.note !== undefined && typeof f.note !== "string") ||
+      (f.timedOut !== undefined && typeof f.timedOut !== "boolean")) return false;
+  }
   return true;
 }
 
@@ -62,6 +78,7 @@ function invalidRecord(path: string): void {
 
 export type CardSessionKey = {
   loomDir: string;
+  localPeerId: string;
   roomId: string;
   agent: string;
   cardId: string;
@@ -74,10 +91,17 @@ export function cardKeyHash(roomId: string, agent: string, cardId: string): stri
     .slice(0, 16);
 }
 
+/** The shared cards directory is partitioned by the complete local peer id. */
+export function cardPeerHash(localPeerId: string): string {
+  if (!localPeerId) throw new Error("localPeerId is required");
+  return createHash("sha256").update(localPeerId).digest("hex").slice(0, 16);
+}
+
 export function cardSessionPath(opts: CardSessionKey): string {
   return join(
     opts.loomDir,
     "cards",
+    cardPeerHash(opts.localPeerId),
     cardKeyHash(opts.roomId, opts.agent, opts.cardId),
     "session.json",
   );
@@ -94,9 +118,9 @@ export function readCardSession(opts: CardSessionKey): CardSessionRecord | null 
   return raw;
 }
 
-/** Every valid session.json under loomDir/cards/<sha16>/. Missing dir → []. */
-export function listCardSessions(loomDir: string): CardSessionRecord[] {
-  const root = join(loomDir, "cards");
+/** Only this peer's session.json records. Missing namespace → []. */
+export function listCardSessions(loomDir: string, localPeerId: string): CardSessionRecord[] {
+  const root = join(loomDir, "cards", cardPeerHash(localPeerId));
   let names: string[];
   try {
     names = readdirSync(root);
@@ -146,8 +170,8 @@ export async function readCardSessionAsync(opts: CardSessionKey): Promise<CardSe
 }
 
 /** Same atomic rename/0600 contract as writeCardSession, without blocking I/O. */
-export async function writeCardSessionAsync(opts: { loomDir: string }, record: CardSessionRecord): Promise<void> {
-  const path = cardSessionPath({ ...opts, ...record });
+export async function writeCardSessionAsync(opts: { loomDir: string; localPeerId: string }, record: CardSessionRecord): Promise<void> {
+  const path = cardSessionPath({ ...record, ...opts });
   await mkdir(dirname(path), { recursive: true });
   const temp = join(dirname(path), `.session.json.tmp.${process.pid}.${randomUUID()}`);
   try {
@@ -160,12 +184,13 @@ export async function writeCardSessionAsync(opts: { loomDir: string }, record: C
 }
 
 export function writeCardSession(
-  opts: { loomDir: string },
+  opts: { loomDir: string; localPeerId: string },
   record: CardSessionRecord,
 ): void {
   writeAtomicJson(
     cardSessionPath({
       loomDir: opts.loomDir,
+      localPeerId: opts.localPeerId,
       roomId: record.roomId,
       agent: record.agent,
       cardId: record.cardId,
