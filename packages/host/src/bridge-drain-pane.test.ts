@@ -1,0 +1,349 @@
+/**
+ * PLAN 0.33.0 P3 — drain on the pane backend (Done-when (f) · R3 · R4 · R51-L1).
+ * In-process runtime against the fake herdr socket (pane cards + conv panes need herdr):
+ * a pane card flight and a conv flight keep the bridge `draining`; a new pane dispatch and a
+ * new conv.open are not claimed; the in-progress conv's turn and close are still processed.
+ */
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  buildDispatchBody,
+  CARD_CONTRACT_VERSION,
+  CARD_DISPATCH_LABEL,
+  CARD_RESULT_LABEL,
+  serializeCardAttachment,
+} from "@loom/protocol";
+import { RelayServer } from "@loom/relay";
+import type { BridgeConfig } from "./bridge-config";
+import { type BridgeRuntime, startBridgeRuntime } from "./bridge-runtime";
+import { bridgeStatusPath } from "./bridge-status";
+import { convAwait, convClose, convOpen, convSendTurn } from "./conv-ops";
+import { startFakeHerdr } from "./fake-herdr";
+import { HerdrClient } from "./herdr-client";
+import { RelayClient } from "./relay-client";
+import { type FableSession, resetStateHomeDirCache, setActiveProfile } from "./session-store";
+
+type Remaining = {
+  paneCards: number;
+  convs: number;
+  headlessRunning: number;
+  headlessQueued: number;
+};
+
+async function waitFor<T>(
+  probe: () => T | null | undefined | false | Promise<T | null | undefined | false>,
+  timeoutMs: number,
+  stepMs = 25,
+): Promise<T | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const v = await probe();
+    if (v) return v;
+    await Bun.sleep(stepMs);
+  }
+  const v = await probe();
+  return v ? v : null;
+}
+
+describe("bridge drain — pane cards + conv (PLAN 0.33.0 P3 · f)", () => {
+  const port = 22000 + Math.floor(Math.random() * 8000);
+  const dir = join(tmpdir(), `loom-p3-drain-pane-${Date.now()}-${process.pid}`);
+  const towerSessionFile = join(dir, "tower-session.json");
+  const workerSessionFile = join(dir, "worker-session.json");
+  const herdrSock = join(dir, "herdr.sock");
+  const relay = new RelayServer({ host: "127.0.0.1", port });
+
+  let fake: Awaited<ReturnType<typeof startFakeHerdr>>;
+  let bridge: BridgeRuntime | null = null;
+  let towerSession: FableSession;
+  let workerSession: FableSession;
+  let pump: ReturnType<typeof setInterval> | null = null;
+  const stderrLines: string[] = [];
+  const realStderr = console.error;
+
+  function useTowerSession(): void {
+    process.env.LOOM_SESSION = towerSessionFile;
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+  }
+
+  async function withTower<T>(fn: (c: RelayClient) => Promise<T>): Promise<T> {
+    const c = new RelayClient({ url: towerSession.relayUrl! });
+    try {
+      const joined = await c.joinRoom({
+        inviteCode: towerSession.inviteCode,
+        displayName: towerSession.displayName,
+        agentKind: "shell",
+        peerId: towerSession.peerId,
+        peerSecret: towerSession.peerSecret,
+      });
+      if (joined.type === "error") throw new Error(joined.message);
+      return await fn(c);
+    } finally {
+      c.close();
+    }
+  }
+
+  async function dispatch(cardId: string): Promise<string> {
+    return withTower(async (c) => {
+      const ack = await c.handoff({
+        to: "@node/wsl-1",
+        body: buildDispatchBody({ title: "p3 pane card", cardId, node: "node/wsl-1" }),
+        mode: "task",
+        attachments: [
+          serializeCardAttachment(CARD_DISPATCH_LABEL, {
+            v: CARD_CONTRACT_VERSION,
+            cardId,
+            sourceRoomId: towerSession.roomId,
+            prompt: `drain pane ${cardId}`,
+            agentKind: "claude" as const,
+          }),
+        ],
+      });
+      return ack.handoffId;
+    });
+  }
+
+  async function countResults(cardId: string): Promise<number> {
+    return withTower(async (c) => {
+      let n = 0;
+      for (const entry of await c.listInbox()) {
+        for (const a of entry.handoff.attachments ?? []) {
+          if (a.label !== CARD_RESULT_LABEL) continue;
+          if ((JSON.parse(a.content) as { cardId?: string }).cardId === cardId) n += 1;
+        }
+      }
+      return n;
+    });
+  }
+
+  function paneOfAgent(name: string): string | undefined {
+    const start = fake.calls.find((c) => c.method === "agent.start" && c.params.name === name);
+    return start ? String(start.params.pane_id) : undefined;
+  }
+
+  function agentStartNames(): string[] {
+    return fake.calls.filter((c) => c.method === "agent.start").map((c) => String(c.params.name));
+  }
+
+  function promptsTo(name: string): number {
+    return fake.calls.filter((c) => c.method === "agent.prompt" && c.params.target === name).length;
+  }
+
+  function pushStatus(paneId: string, status: string): void {
+    fake.pushEvent("pane_agent_status_changed", { pane_id: paneId, agent_status: status });
+  }
+
+  async function rpc(body: Record<string, unknown>) {
+    const meta = bridge!.meta;
+    const res = await fetch(`http://127.0.0.1:${meta.port}/rpc`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${meta.token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: res.status,
+      json: (await res.json()) as {
+        ok?: boolean;
+        state?: string;
+        deadlineAt?: string | null;
+        remaining?: Remaining;
+      },
+    };
+  }
+
+  beforeAll(async () => {
+    mkdirSync(dir, { recursive: true });
+    process.env.LOOM_NO_AUTO_HOST = "1";
+    relay.start();
+    // autoStatus "none": the test drives working/done per pane.
+    fake = await startFakeHerdr({ socketPath: herdrSock, autoStatus: "none" });
+    // Each submit (agent.prompt) is acknowledged with `working` so inject verify passes.
+    let handled = 0;
+    pump = setInterval(() => {
+      const prompts = fake.calls.filter((c) => c.method === "agent.prompt");
+      for (; handled < prompts.length; handled++) {
+        const pane = paneOfAgent(String(prompts[handled]!.params.target));
+        if (pane) pushStatus(pane, "working");
+      }
+    }, 10);
+
+    const bootstrap = new RelayClient({ url: `ws://127.0.0.1:${port}/ws` });
+    const created = await bootstrap.createRoom({
+      roomName: "p3-drain-pane",
+      displayName: "tower",
+      agentKind: "shell",
+      peerId: "p_tower",
+    });
+    if (created.type !== "room.state") throw new Error("create failed");
+    const towerSecret = created.peerSecret ?? bootstrap.peerSecret!;
+    bootstrap.close();
+    towerSession = {
+      roomId: created.roomId,
+      roomName: created.roomName ?? "p3-drain-pane",
+      inviteCode: created.inviteCode ?? "",
+      peerId: "p_tower",
+      displayName: "tower",
+      color: "#fff",
+      agentKind: "shell",
+      relayUrl: `ws://127.0.0.1:${port}/ws`,
+      peerSecret: towerSecret,
+      updatedAt: new Date().toISOString(),
+    };
+    writeFileSync(towerSessionFile, JSON.stringify(towerSession), "utf8");
+    workerSession = {
+      ...towerSession,
+      peerId: "p_node",
+      displayName: "node/wsl-1",
+      color: "#0f0",
+      peerSecret: undefined,
+    };
+    writeFileSync(workerSessionFile, JSON.stringify(workerSession), "utf8");
+
+    const cfg: BridgeConfig = {
+      authorizedDispatchers: ["p_tower"],
+      herdrSocketPath: herdrSock,
+      agentArgv: { claude: ["claude"] },
+      herdrProtocol: 17,
+    };
+    process.env.LOOM_TEST_HOME = dir;
+    process.env.LOOM_SESSION = workerSessionFile;
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    console.error = (...args: unknown[]) => {
+      stderrLines.push(args.map(String).join(" "));
+    };
+    bridge = await startBridgeRuntime({
+      session: workerSession,
+      profile: "node",
+      config: cfg,
+      herdr: new HerdrClient({ socketPath: herdrSock }),
+      submitVerify: { waitMs: 2_000, retries: 1 },
+    });
+    useTowerSession();
+  });
+
+  afterAll(async () => {
+    console.error = realStderr;
+    if (pump) clearInterval(pump);
+    if (bridge) await bridge.stop();
+    await fake.close();
+    relay.stop();
+    delete process.env.LOOM_TEST_HOME;
+    delete process.env.LOOM_SESSION;
+    delete process.env.LOOM_NO_AUTO_HOST;
+    resetStateHomeDirCache();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("pane card + conv keep `draining`; new dispatch / conv.open unclaimed; conv turn + close processed", async () => {
+    useTowerSession();
+    // In flight before the drain: one pane card and one conv.
+    const cardA = "task_a0330d0000000001";
+    await dispatch(cardA);
+    const nameA = `loom-${cardA}-1`;
+    expect(await waitFor(() => paneOfAgent(nameA), 15_000)).toBeTruthy();
+    const paneA = paneOfAgent(nameA)!;
+
+    const conv1 = await convOpen({ node: "node/wsl-1", goal: "drain conv one", maxTurns: 20 });
+    expect(conv1.ok).toBe(true);
+    if (!conv1.ok) return;
+    expect((await convAwait({ convId: conv1.convId, timeoutSec: 15 })).status).toBe("accept");
+    const convName = `loom-conv-${conv1.convId.slice(5, 21)}`;
+    expect(await waitFor(() => paneOfAgent(convName), 10_000)).toBeTruthy();
+    const convPane = paneOfAgent(convName)!;
+
+    const drained = await rpc({ op: "drain", timeoutSec: 120 });
+    expect(drained.status).toBe(200);
+    expect(drained.json.state).toBe("draining");
+    expect(drained.json.remaining).toEqual({
+      paneCards: 1,
+      convs: 1,
+      headlessRunning: 0,
+      headlessQueued: 0,
+    });
+    expect(bridge!.state()).toBe("draining");
+
+    // New work during drain: neither claimed (no agent.start), both re-observed per poll.
+    const startsBefore = agentStartNames().length;
+    const cardB = "task_a0330d0000000002";
+    const hB = await dispatch(cardB);
+    const conv2 = await convOpen({ node: "node/wsl-1", goal: "drain conv two" });
+    expect(conv2.ok).toBe(true);
+    if (!conv2.ok) return;
+    const seen = await waitFor(
+      () =>
+        stderrLines.some((l) => l.includes(`drain: not claiming handoff ${hB}`)) &&
+        stderrLines.some((l) => l.includes(`drain: not claiming handoff ${conv2.handoffId}`))
+          ? true
+          : null,
+      6_000,
+      50,
+    );
+    expect(seen).toBe(true);
+    expect(agentStartNames().length).toBe(startsBefore);
+
+    // In-progress conv: worker turn out, tower turn in (claimed + injected), close processed.
+    pushStatus(convPane, "done");
+    expect((await convAwait({ convId: conv1.convId, timeoutSec: 15 })).status).toBe("turn");
+    const promptsBefore = promptsTo(convName);
+    const sent = await convSendTurn({ convId: conv1.convId, text: "keep going during drain" });
+    expect(sent.ok).toBe(true);
+    expect(await waitFor(() => promptsTo(convName) > promptsBefore, 10_000)).toBe(true);
+    expect(bridge!.state()).toBe("draining");
+
+    const closed = await convClose({ convId: conv1.convId, reason: "done" });
+    expect(closed.ok).toBe(true);
+    const convGone = await waitFor(async () => {
+      const r = await rpc({ op: "drain" });
+      return r.json.remaining?.convs === 0 ? r.json : null;
+    }, 10_000, 100);
+    expect(convGone?.state).toBe("draining");
+    expect(convGone?.remaining?.paneCards).toBe(1);
+    expect(bridge!.state()).toBe("draining");
+
+    // Last flight completes → stopping → stopped.
+    pushStatus(paneA, "done");
+    const stopped = await Promise.race([
+      bridge!.stopped.then(() => "stopped" as const),
+      Bun.sleep(20_000).then(() => "timeout" as const),
+    ]);
+    expect(stopped).toBe("stopped");
+    expect(bridge!.state()).toBe("stopped");
+    expect(stderrLines.some((l) => l.includes("state stopping (drain)"))).toBe(true);
+    const status = JSON.parse(readFileSync(bridgeStatusPath("node"), "utf8")) as {
+      state?: string;
+      lastError?: string;
+    };
+    expect(status.state).toBe("stopped");
+    expect(status.lastError).toBeUndefined();
+
+    expect(await countResults(cardA)).toBe(1);
+    expect(await countResults(cardB)).toBe(0);
+    expect(agentStartNames().some((n) => n.includes(cardB))).toBe(false);
+    expect(agentStartNames().some((n) => n.includes(conv2.convId.slice(5, 21)))).toBe(false);
+
+    // Both handoffs are still unclaimed in the node's relay inbox.
+    const saved = JSON.parse(readFileSync(workerSessionFile, "utf8")) as FableSession;
+    const node = new RelayClient({ url: towerSession.relayUrl! });
+    try {
+      const joined = await node.joinRoom({
+        inviteCode: saved.inviteCode,
+        displayName: saved.displayName,
+        agentKind: "shell",
+        peerId: saved.peerId,
+        color: saved.color,
+        peerSecret: saved.peerSecret,
+      });
+      expect(joined.type).not.toBe("error");
+      const ids = (await node.listInbox()).map((e) => e.handoff.id);
+      expect(ids).toContain(hB);
+      expect(ids).toContain(conv2.handoffId);
+    } finally {
+      node.close();
+    }
+    bridge = null;
+  }, 90_000);
+});
