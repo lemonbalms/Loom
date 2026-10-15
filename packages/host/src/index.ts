@@ -32,3 +32,24 @@ export * from "./conv-node-hosts";
 export * from "./conv-artifact-present";
 export * from "./conv-artifact-pack";
 export * from "./conv-artifact-fetch";
+// PLAN 0.32.0 D10: policy.json loader / merge / hash for the Loom MCP pre-check.
+export {
+  builtinPolicyDefaults,
+  type DeprecatedToolLists,
+  type EffectivePolicy,
+  LOOM_DENY_MODES,
+  type LoomDenyMode,
+  type LoomDoneMode,
+  type LoomToolsPolicy,
+  loadPolicy,
+  mergePolicy,
+  POLICY_MAX_BYTES,
+  type PolicyDefaults,
+  type PolicyMergeResult,
+  type PolicyV1,
+  parsePolicy,
+  policyHash,
+  type ResolvedLoomTools,
+  resolveLoomTools,
+  type ShellRules,
+} from "./policy";

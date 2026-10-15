@@ -1,5 +1,7 @@
 /**
  * PLAN 0.31.0 P1. policy.json v1 schema, loader, merge, and policyHash.
+ * PLAN 0.32.0 P1 (D4 / D5 / D7 / R8): optional `loomTools` — parsed here, resolved by
+ * resolveLoomTools, and never part of EffectivePolicy (worker fingerprint unchanged).
  * Pure: no bridge-runtime / headless-worker / argv wiring.
  *
  * D7 schema. D8 allow replaces, deny unions, nothing relaxes a deny.
@@ -70,6 +72,44 @@ const LEGACY_D10_DENY_SET: ReadonlySet<string> = new Set(LEGACY_D10_DENIED_TOOLS
 /** policy.json read cap (bytes). Larger files fail closed. */
 export const POLICY_MAX_BYTES = 64 * 1024;
 
+/**
+ * PLAN 0.32.0 D5. Loom MCP argument-level deny modes (policy.json `loomTools.denyModes`).
+ * board.replace = import_board mode=replace · broadcast = handoff to="*" ·
+ * conv.writes = conv_open writesAllowed=true · conv.fetch = conv_fetch ·
+ * pack.embed = handoff withPackEmbed=true.
+ */
+export const LOOM_DENY_MODES = [
+  "board.replace",
+  "broadcast",
+  "conv.writes",
+  "conv.fetch",
+  "pack.embed",
+] as const;
+
+export type LoomDenyMode = (typeof LOOM_DENY_MODES)[number];
+
+/** D4 done knob. `allow` = 0.31.0 behaviour (audited); `propose` = MCP done refused. */
+export type LoomDoneMode = "allow" | "propose";
+
+/** policy.json `loomTools` as written (both keys optional). */
+export type LoomToolsPolicy = {
+  done?: LoomDoneMode;
+  /** Deduped. Unioned with the built-in deny (never relaxes it). */
+  denyModes?: LoomDenyMode[];
+};
+
+/** `loomTools` after the built-in default merge. */
+export type ResolvedLoomTools = {
+  done: LoomDoneMode;
+  denyModes: LoomDenyMode[];
+};
+
+const LOOM_DENY_MODE_SET: ReadonlySet<string> = new Set(LOOM_DENY_MODES);
+
+/** Built-in `loomTools`: done allowed, only the whole-board replace denied (D4 / D5). */
+const BUILTIN_LOOM_DONE: LoomDoneMode = "allow";
+const BUILTIN_LOOM_DENY_MODES: readonly LoomDenyMode[] = ["board.replace"];
+
 export type ShellRules = {
   allow: string[];
   deny: string[];
@@ -92,6 +132,11 @@ export type PolicyV1 = {
     allow?: string[];
     allowScripts: string[];
   };
+  /**
+   * 0.32.0 D7. Loom MCP pre-check knobs. Never part of EffectivePolicy, so it
+   * never reaches policyHash or the worker fingerprint (R8). Omitted = built-in.
+   */
+  loomTools?: LoomToolsPolicy;
 };
 
 /** Built-in baseline passed into mergePolicy. */
@@ -270,6 +315,45 @@ function mcpDenyList(value: unknown): string[] {
   return items;
 }
 
+/** 0.32.0 D7 `loomTools`. Unknown keys, out-of-enum values, and unknown modes throw. */
+function loomToolsPolicy(value: unknown): LoomToolsPolicy {
+  const obj = assertRecord(value, "loomTools");
+  rejectUnknown(obj, ["done", "denyModes"], "loomTools");
+  const out: LoomToolsPolicy = {};
+  if (Object.hasOwn(obj, "done")) {
+    if (obj.done !== "allow" && obj.done !== "propose") {
+      throw new Error(`loomTools.done: must be "allow" or "propose"`);
+    }
+    out.done = obj.done;
+  }
+  if (Object.hasOwn(obj, "denyModes")) {
+    const modes = stringArray(obj.denyModes, "loomTools.denyModes");
+    for (let i = 0; i < modes.length; i++) {
+      if (!LOOM_DENY_MODE_SET.has(modes[i])) {
+        throw new Error(`loomTools.denyModes[${i}]: unknown mode ${JSON.stringify(modes[i])}`);
+      }
+    }
+    out.denyModes = sortedUnique(modes) as LoomDenyMode[];
+  }
+  return out;
+}
+
+/**
+ * 0.32.0 D4 / D5. Built-in `{done: "allow", denyModes: ["board.replace"]}` merged
+ * with the policy: `done` replaces, `denyModes` unions (nothing relaxes a deny,
+ * so a policy `[]` still yields board.replace). Pure; the result is a fresh copy.
+ */
+export function resolveLoomTools(policy: PolicyV1 | null): ResolvedLoomTools {
+  const loomTools = policy?.loomTools;
+  return {
+    done: loomTools?.done ?? BUILTIN_LOOM_DONE,
+    denyModes: sortedUnique([
+      ...BUILTIN_LOOM_DENY_MODES,
+      ...(loomTools?.denyModes ?? []),
+    ]) as LoomDenyMode[],
+  };
+}
+
 /**
  * 0.30.0 `Bash(p*)` / `Bash(p *)` / `Bash(p)` → policy rules.
  * No-space star becomes `p` and `p *`. Never returns a no-space `p*` string.
@@ -390,7 +474,7 @@ export function builtinPolicyDefaults(): PolicyDefaults {
 
 export function parsePolicy(json: unknown): PolicyV1 {
   const root = assertRecord(json, "policy");
-  rejectUnknown(root, ["version", "shell", "network", "mcp", "skills"], "policy");
+  rejectUnknown(root, ["version", "shell", "network", "mcp", "skills", "loomTools"], "policy");
   if (!Object.hasOwn(root, "version")) throw new Error("version: is required");
   if (typeof root.version !== "number" || root.version !== 1) {
     throw new Error("version: must be 1");
@@ -431,6 +515,9 @@ export function parsePolicy(json: unknown): PolicyV1 {
   if (isolate !== undefined) parsed.mcp.isolate = isolate;
   if (Object.hasOwn(skills, "allow")) {
     parsed.skills.allow = skillNames(skills.allow, "skills.allow");
+  }
+  if (Object.hasOwn(root, "loomTools")) {
+    parsed.loomTools = loomToolsPolicy(root.loomTools);
   }
   return parsed;
 }
