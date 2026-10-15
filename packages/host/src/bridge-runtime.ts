@@ -74,10 +74,7 @@ import {
   type HerdrAgentStarted,
 } from "./herdr-client";
 import { ResultIssuerRegistry } from "./result-issuer";
-import {
-  QuarantineStore,
-  type QuarantineKey,
-} from "./result-quarantine";
+import { QuarantineStore, type QuarantineKey } from "./result-quarantine";
 import {
   createCardResultCore,
   type CardResultContent,
@@ -147,16 +144,13 @@ const STILL_RUNNING_MAX_MS = 5 * 60_000;
  * PLAN 0.23.7: conservative still-running indicator patterns (tail match only).
  * Real TUI status line observed live: "1 command still running" / "N commands…".
  */
-const STILL_RUNNING_PATTERNS: RegExp[] = [
-  /\d+\s+commands?\s+still\s+running/i,
-];
+const STILL_RUNNING_PATTERNS: RegExp[] = [/\d+\s+commands?\s+still\s+running/i];
 /**
  * PLAN 0.23.11 ③⑤ shared: pure timing line only (full-line match).
  * Covers composite `1m49s` live form; mixed "Worked for 20s. 1 command still
  * running." does not match (still-running indicator line stays unskipped).
  */
-export const WORKED_TIMING_LINE_RE =
-  /^Worked for (?:\d+h)?(?:\d+m)?\d+(?:\.\d+)?s\.?$/;
+export const WORKED_TIMING_LINE_RE = /^Worked for (?:\d+h)?(?:\d+m)?\d+(?:\.\d+)?s\.?$/;
 /**
  * PLAN 0.23.11 라이브 보정 2(Deviations §0.23.11): claude TUI variable-verb
  * timing line (`✻ Sautéed for 9s`, `✻ Churned for 15s`, …). Full-line match
@@ -165,8 +159,7 @@ export const WORKED_TIMING_LINE_RE =
  * evidence). Verb is `\p{L}+` (not ASCII `[A-Za-z]+`) so live accented
  * forms like Sautéed full-match.
  */
-export const CLAUDE_TIMING_LINE_RE =
-  /^✻\s+\p{L}+ for (?:\d+h)?(?:\d+m\s?)?\d+(?:\.\d+)?s\.?$/u;
+export const CLAUDE_TIMING_LINE_RE = /^✻\s+\p{L}+ for (?:\d+h)?(?:\d+m\s?)?\d+(?:\.\d+)?s\.?$/u;
 /** R30 M-1: Claude Ink folds multi-line paste into a placeholder — treat as hit. */
 const PASTE_PLACEHOLDER_MARKER = "[Pasted text";
 const PROBE_TAIL_CHARS = 48;
@@ -277,10 +270,7 @@ export function selectCardSummaryLine(chromeFiltered: string): string {
   for (let i = lines.length - 1; i >= 0; i--) {
     // Skip-judge uses refined candidate so timestamped timing lines skip too.
     const refined = refineSummaryCandidate(lines[i]!);
-    if (
-      WORKED_TIMING_LINE_RE.test(refined) ||
-      CLAUDE_TIMING_LINE_RE.test(refined)
-    ) {
+    if (WORKED_TIMING_LINE_RE.test(refined) || CLAUDE_TIMING_LINE_RE.test(refined)) {
       continue;
     }
     return refined.slice(0, 900);
@@ -329,10 +319,7 @@ export type DeltaApplyResult =
  * occurrence on the whitespace-normalized form; slice is from the original
  * (filtered) text via index map — never from the normalized string (R31 M-2).
  */
-export function applyDeltaAnchor(
-  filtered: string,
-  anchor: string | undefined,
-): DeltaApplyResult {
+export function applyDeltaAnchor(filtered: string, anchor: string | undefined): DeltaApplyResult {
   if (!anchor) return { kind: "no_anchor", text: filtered };
   const { normalized, map } = normalizeWithIndexMap(filtered);
   if (!normalized.includes(anchor)) {
@@ -558,9 +545,7 @@ function log(...args: unknown[]): void {
   console.error("[loom-bridge]", ...args);
 }
 
-function isHeadlessAgentKind(
-  kind: string,
-): kind is "claude" | "codex" | "grok" {
+function isHeadlessAgentKind(kind: string): kind is "claude" | "codex" | "grok" {
   return kind === "claude" || kind === "codex" || kind === "grok";
 }
 
@@ -578,9 +563,7 @@ function headlessCommandsFromOverride(
       argv.length === 0 ||
       argv.some((part) => typeof part !== "string" || part.length === 0)
     ) {
-      throw new Error(
-        `headlessAgentCommandOverride.${agent} must be a non-empty string[]`,
-      );
+      throw new Error(`headlessAgentCommandOverride.${agent} must be a non-empty string[]`);
     }
     assertHeadlessCommandArgv(argv);
     out[agent] = { bin: argv[0]!, args: argv.slice(1) };
@@ -643,11 +626,7 @@ export function resetFlightMapMiss(): void {
   flightMapMissCount = 0;
 }
 
-function recordFlightMapMiss(d: {
-  paneId: string;
-  event: string;
-  ev: string;
-}): void {
+function recordFlightMapMiss(d: { paneId: string; event: string; ev: string }): void {
   flightMapMissCount += 1;
   log(
     FLIGHT_MAP_MISS,
@@ -670,11 +649,7 @@ export function buildCardAgentTarget(cardId: string, seq: number): string | null
 }
 
 function hasDispatchLabel(h: HandoffPayload): boolean {
-  return Boolean(
-    h.attachments?.some(
-      (a) => a.kind === "text" && a.label === CARD_DISPATCH_LABEL,
-    ),
-  );
+  return Boolean(h.attachments?.some((a) => a.kind === "text" && a.label === CARD_DISPATCH_LABEL));
 }
 
 export async function startBridgeRuntime(opts?: {
@@ -710,16 +685,12 @@ export async function startBridgeRuntime(opts?: {
 }): Promise<BridgeRuntime> {
   let session = opts?.session ?? loadSession();
   if (!session) {
-    throw new Error(
-      "No session. Join a room first, then: loom bridge start",
-    );
+    throw new Error("No session. Join a room first, then: loom bridge start");
   }
-  const profile =
-    opts?.profile ?? getActiveProfile() ?? session.displayName ?? "default";
+  const profile = opts?.profile ?? getActiveProfile() ?? session.displayName ?? "default";
   const cfg = opts?.config ?? loadBridgeConfig(profile);
   // Fail closed before herdr or the room join. Pane configs skip this.
-  const headlessConfig =
-    cfg.worker?.backend === "headless" ? workerConfigFromBridge(cfg) : null;
+  const headlessConfig = cfg.worker?.backend === "headless" ? workerConfigFromBridge(cfg) : null;
   let headlessCommands = headlessConfig ? headlessAgentCommands(cfg) : null;
   if (headlessCommands && opts?.headlessAgentCommandOverride) {
     headlessCommands = headlessCommandsFromOverride(opts.headlessAgentCommandOverride);
@@ -799,18 +770,14 @@ export async function startBridgeRuntime(opts?: {
     const pong = await herdr.ping();
     const expected = cfg.herdrProtocol ?? HERDR_PROTOCOL_EXPECTED;
     if (pong.protocol !== expected) {
-      throw new Error(
-        `herdr protocol ${pong.protocol} != expected ${expected}`,
-      );
+      throw new Error(`herdr protocol ${pong.protocol} != expected ${expected}`);
     }
     herdrOk = true;
     log(`herdr ok v${pong.version} protocol ${pong.protocol}`);
   } catch (e) {
     herdr.close();
     throw new Error(
-      `herdr unreachable (${cfg.herdrSocketPath}): ${
-        e instanceof Error ? e.message : e
-      }`,
+      `herdr unreachable (${cfg.herdrSocketPath}): ${e instanceof Error ? e.message : e}`,
     );
   }
 
@@ -821,9 +788,7 @@ export async function startBridgeRuntime(opts?: {
   } catch (e) {
     herdr.close();
     throw new Error(
-      `herdr events.subscribe (pane.closed) failed: ${
-        e instanceof Error ? e.message : e
-      }`,
+      `herdr events.subscribe (pane.closed) failed: ${e instanceof Error ? e.message : e}`,
     );
   }
 
@@ -993,28 +958,22 @@ export async function startBridgeRuntime(opts?: {
             // PLAN 0.28.0 M5: observation-only count of preserved card panes (U3)
             preservedCardPanes: preservedCardPaneIds.size,
             // PLAN 0.30.0 D8: counts only, and only when the backend is headless.
-            ...(headlessDispatcher
-              ? { headless: headlessDispatcher.status() }
-              : {}),
+            ...(headlessDispatcher ? { headless: headlessDispatcher.status() } : {}),
           });
         }
         // PLAN 0.28.0 M3: operator quarantine ack against this process's store
         // (clears timer + in-memory unresolved — never a second local store).
         if (body.op === "quarantine_ack") {
-          const cardId =
-            typeof body.cardId === "string" ? body.cardId.trim() : "";
+          const cardId = typeof body.cardId === "string" ? body.cardId.trim() : "";
           const dispatchHandoffId =
-            typeof body.dispatchHandoffId === "string"
-              ? body.dispatchHandoffId.trim()
-              : "";
+            typeof body.dispatchHandoffId === "string" ? body.dispatchHandoffId.trim() : "";
           if (!cardId || !dispatchHandoffId) {
             return Response.json(
               {
                 ok: false,
                 op: "quarantine_ack",
                 error: "invalid_args",
-                message:
-                  "cardId and dispatchHandoffId are required",
+                message: "cardId and dispatchHandoffId are required",
               },
               { status: 400 },
             );
@@ -1036,7 +995,7 @@ export async function startBridgeRuntime(opts?: {
                   ok: false,
                   op: "quarantine_ack",
                   error: "invalid_args",
-                  message: "key must be {tag:\"presence\"} or {tag:\"seq\",seq:N}",
+                  message: 'key must be {tag:"presence"} or {tag:"seq",seq:N}',
                 },
                 { status: 400 },
               );
@@ -1167,10 +1126,7 @@ export async function startBridgeRuntime(opts?: {
       if (processedHandoffs.has(h.id)) return;
       // PLAN 0.23.9 ③: unauthorized conv.open — mark processed + log, no claim
       // (card M-1 deny form). turn/close keep pre-claim then pin check.
-      if (
-        convLbl === CONV_OPEN_LABEL &&
-        !isAuthorizedDispatcher(cfg, h.fromPeerId)
-      ) {
+      if (convLbl === CONV_OPEN_LABEL && !isAuthorizedDispatcher(cfg, h.fromPeerId)) {
         processedHandoffs.add(h.id);
         log(`M-1 deny conv.open (no claim) from ${h.fromPeerId}`);
         return;
@@ -1195,9 +1151,7 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
-    const att = h.attachments?.find(
-      (a) => a.kind === "text" && a.label === CARD_DISPATCH_LABEL,
-    );
+    const att = h.attachments?.find((a) => a.kind === "text" && a.label === CARD_DISPATCH_LABEL);
     if (!att) return;
 
     let payload: CardDispatchPayload;
@@ -1224,16 +1178,25 @@ export async function startBridgeRuntime(opts?: {
     issuers.getOrCreate(payload.cardId, h.id);
 
     processedHandoffs.add(h.id);
-    const claim = await client.claimHandoff(h.id, "claim");
-    if (!claim.ok) {
-      log(`claim failed for ${h.id}:`, claim.error);
-      return;
-    }
+    const claim = async (): Promise<boolean> => {
+      const result = await client.claimHandoff(h.id, "claim");
+      if (!result.ok) log(`claim failed for ${h.id}:`, result.error);
+      return result.ok;
+    };
+    // Keep queued headless cards in the durable relay inbox until a permit
+    // is available. Receipt-time processedHandoffs still dedupes poll replay.
+    const deferClaim =
+      cfg.worker?.backend === "headless" &&
+      headlessDispatcher &&
+      isHeadlessAgentKind(payload.agentKind) &&
+      resolveAgentArgv(cfg, payload.agentKind);
+    if (!deferClaim && !(await claim())) return;
 
     await runCard({
       payload,
       fromPeerId,
       dispatchHandoffId: h.id,
+      ...(deferClaim ? { claim } : {}),
     });
   }
 
@@ -1291,9 +1254,7 @@ export async function startBridgeRuntime(opts?: {
       let layout = await herdr.paneLayout(anyId);
       // Guard: any non-right split → not a pure right-split chain.
       if (layout.splits.some((s) => s.direction !== "right")) {
-        log(
-          "pane equalize skip: non-right split in layout",
-        );
+        log("pane equalize skip: non-right split in layout");
         return;
       }
       let poolPanes = layout.panes
@@ -1315,9 +1276,7 @@ export async function startBridgeRuntime(opts?: {
         // L-2(i): x-match must be unique — ambiguous topology aborts.
         const matches = layout.splits.filter((s) => s.rect.x === x);
         if (matches.length !== 1) {
-          log(
-            `pane equalize abort: x-match count=${matches.length} for pane ${pane.paneId}`,
-          );
+          log(`pane equalize abort: x-match count=${matches.length} for pane ${pane.paneId}`);
           return;
         }
         const split = matches[0]!;
@@ -1337,18 +1296,13 @@ export async function startBridgeRuntime(opts?: {
         poolPanes = layout.panes
           .filter((p) => poolIds.has(p.paneId))
           .sort((a, b) => a.rect.x - b.rect.x);
-        if (
-          poolPanes.length !== N ||
-          layout.splits.some((s) => s.direction !== "right")
-        ) {
+        if (poolPanes.length !== N || layout.splits.some((s) => s.direction !== "right")) {
           log("pane equalize abort: layout changed mid-equalize");
           return;
         }
       }
     } catch (e) {
-      log(
-        `pane equalize failed (spawn result kept): ${e instanceof Error ? e.message : e}`,
-      );
+      log(`pane equalize failed (spawn result kept): ${e instanceof Error ? e.message : e}`);
     }
   }
 
@@ -1431,9 +1385,7 @@ export async function startBridgeRuntime(opts?: {
               }
               return agent;
             } catch (e) {
-              return unhintedFallback(
-                `hinted spawn failed: ${e instanceof Error ? e.message : e}`,
-              );
+              return unhintedFallback(`hinted spawn failed: ${e instanceof Error ? e.message : e}`);
             }
           } else if (workerPool) {
             // Tracked set empty but tab listed: use pane.list evidence, else abandon.
@@ -1484,19 +1436,13 @@ export async function startBridgeRuntime(opts?: {
         } catch (e) {
           // Shell pane may remain; no destructive broad cleanup (PANE-DEATH).
           workerPool = null;
-          return unhintedFallback(
-            `first pool spawn failed: ${e instanceof Error ? e.message : e}`,
-          );
+          return unhintedFallback(`first pool spawn failed: ${e instanceof Error ? e.message : e}`);
         }
       } catch (e) {
-        return unhintedFallback(
-          `tab.create failed: ${e instanceof Error ? e.message : e}`,
-        );
+        return unhintedFallback(`tab.create failed: ${e instanceof Error ? e.message : e}`);
       }
     } catch (e) {
-      return unhintedFallback(
-        `pane.list failed: ${e instanceof Error ? e.message : e}`,
-      );
+      return unhintedFallback(`pane.list failed: ${e instanceof Error ? e.message : e}`);
     }
   }
 
@@ -1504,6 +1450,7 @@ export async function startBridgeRuntime(opts?: {
     payload: CardDispatchPayload;
     fromPeerId: string;
     dispatchHandoffId: string;
+    claim?: () => Promise<boolean>;
   }): Promise<void> {
     const { payload, fromPeerId, dispatchHandoffId } = args;
     let argv = resolveAgentArgv(cfg, payload.agentKind);
@@ -1539,13 +1486,12 @@ export async function startBridgeRuntime(opts?: {
           prompt: payload.prompt,
           fromPeerId,
           dispatchHandoffId,
+          ...(args.claim ? { claim: args.claim } : {}),
           ...(payload.cwd ? { cwd: payload.cwd } : {}),
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
-          log(
-            `headless dispatch failed (${payload.cardId}): ${message.replace(/[\r\n]/g, " ")}`,
-          );
+          log(`headless dispatch failed (${payload.cardId}): ${message.replace(/[\r\n]/g, " ")}`);
         });
       return;
     }
@@ -1598,11 +1544,7 @@ export async function startBridgeRuntime(opts?: {
             });
           }
           // M-2 ④ Stop → accelerate still-running poll (input only)
-          if (
-            hint.kind === "Stop" &&
-            f.stillRunningDeferral &&
-            f.paneId
-          ) {
+          if (hint.kind === "Stop" && f.stillRunningDeferral && f.paneId) {
             scheduleStillRunningPoll(f, f.paneId, /* immediate */ 0);
           }
         },
@@ -1641,9 +1583,7 @@ export async function startBridgeRuntime(opts?: {
         args: argv.slice(1),
         env: {
           LOOM_CARD: payload.cardId,
-          ...(pendingHookListener
-            ? { LOOM_HOOK_SOCK: pendingHookListener.socketPath }
-            : {}),
+          ...(pendingHookListener ? { LOOM_HOOK_SOCK: pendingHookListener.socketPath } : {}),
         },
         cwd: payload.cwd,
       });
@@ -1683,9 +1623,7 @@ export async function startBridgeRuntime(opts?: {
 
     // PLAN 0.23.4: per-pane status only — pane.closed is global at startup.
     try {
-      await herdr.eventsSubscribe([
-        { type: "pane.agent_status_changed", pane_id: agent.pane_id },
-      ]);
+      await herdr.eventsSubscribe([{ type: "pane.agent_status_changed", pane_id: agent.pane_id }]);
     } catch (e) {
       // Fail-visible: no blind progress without event delivery (M-1 rollback
       // on the client covers the failed subscription entry — no prune here).
@@ -1761,11 +1699,7 @@ export async function startBridgeRuntime(opts?: {
     }
   }
 
-  async function sendConvReject(
-    convId: string,
-    toPeerId: string,
-    reason: string,
-  ): Promise<void> {
+  async function sendConvReject(convId: string, toPeerId: string, reason: string): Promise<void> {
     try {
       const payload = ConvRejectPayloadSchema.parse({
         v: CONV_CONTRACT_VERSION,
@@ -1795,9 +1729,7 @@ export async function startBridgeRuntime(opts?: {
         log(`M-1 deny conv.open from ${fromPeerId}`);
         return;
       }
-      const att = h.attachments?.find(
-        (a) => a.kind === "text" && a.label === CONV_OPEN_LABEL,
-      );
+      const att = h.attachments?.find((a) => a.kind === "text" && a.label === CONV_OPEN_LABEL);
       if (!att) return;
       let payload: ConvOpenPayload;
       try {
@@ -1848,9 +1780,7 @@ export async function startBridgeRuntime(opts?: {
     }
 
     if (label === CONV_TURN_LABEL) {
-      const att = h.attachments?.find(
-        (a) => a.kind === "text" && a.label === CONV_TURN_LABEL,
-      );
+      const att = h.attachments?.find((a) => a.kind === "text" && a.label === CONV_TURN_LABEL);
       if (!att) return;
       let payload: ConvTurnPayload;
       try {
@@ -1910,9 +1840,7 @@ export async function startBridgeRuntime(opts?: {
     }
 
     if (label === CONV_CLOSE_LABEL) {
-      const att = h.attachments?.find(
-        (a) => a.kind === "text" && a.label === CONV_CLOSE_LABEL,
-      );
+      const att = h.attachments?.find((a) => a.kind === "text" && a.label === CONV_CLOSE_LABEL);
       if (!att) return;
       let payload: ConvClosePayload;
       try {
@@ -1993,9 +1921,7 @@ export async function startBridgeRuntime(opts?: {
 
     // PLAN 0.23.4: per-pane status only — pane.closed is global at startup.
     try {
-      await herdr.eventsSubscribe([
-        { type: "pane.agent_status_changed", pane_id: agent.pane_id },
-      ]);
+      await herdr.eventsSubscribe([{ type: "pane.agent_status_changed", pane_id: agent.pane_id }]);
     } catch (e) {
       // Fail-visible: clean flights + blocked turn (M-1 client rollback covers
       // the failed subscription entry — no prune here).
@@ -2066,8 +1992,7 @@ export async function startBridgeRuntime(opts?: {
    * one more (max 3). Last sample wins. Verify-loop paneRead is NOT covered.
    */
   async function settlePaneRead(paneId: string): Promise<string> {
-    const once = () =>
-      herdr.paneRead(paneId, { source: "recent", lines: 200 });
+    const once = () => herdr.paneRead(paneId, { source: "recent", lines: 200 });
     const last = await once();
     await new Promise((r) => setTimeout(r, settleMs));
     let next = await once();
@@ -2294,10 +2219,7 @@ export async function startBridgeRuntime(opts?: {
     prompt: string;
   }): Promise<void> {
     const { kind, paneId, agentTarget, prompt } = opts;
-    const pollMs = Math.max(
-      10,
-      Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10),
-    );
+    const pollMs = Math.max(10, Math.min(250, Math.floor(submitVerify.waitMs / 8) || 10));
 
     function flightAlive(): boolean {
       return kind === "card" ? flights.has(paneId) : convFlights.has(paneId);
@@ -2513,9 +2435,7 @@ export async function startBridgeRuntime(opts?: {
         source,
         at: new Date().toISOString(),
       };
-      log(
-        `card ${flight.cardId}: terminalPending latch source=${source} (no competing result)`,
-      );
+      log(`card ${flight.cardId}: terminalPending latch source=${source} (no competing result)`);
     }
   }
 
@@ -2552,9 +2472,7 @@ export async function startBridgeRuntime(opts?: {
       key: { tag: "presence" },
       reason: args.reason,
     });
-    log(
-      `card ${args.cardId}: presence_unknown reason=${args.reason}`,
-    );
+    log(`card ${args.cardId}: presence_unknown reason=${args.reason}`);
   }
 
   // silence unused-export concern for presence path (structure ready; poll may call later)
@@ -2565,10 +2483,7 @@ export async function startBridgeRuntime(opts?: {
    * finish immediately or enter still-running poll deferral.
    * Ownership of completion is the poll path while stillRunningDeferral is set.
    */
-  async function beginCardCompletion(
-    flight: Flight,
-    paneId: string,
-  ): Promise<void> {
+  async function beginCardCompletion(flight: Flight, paneId: string): Promise<void> {
     let scrape: string;
     try {
       scrape = await settlePaneRead(paneId);
@@ -2631,11 +2546,7 @@ export async function startBridgeRuntime(opts?: {
     scheduleStillRunningPoll(flight, paneId);
   }
 
-  function scheduleStillRunningPoll(
-    flight: Flight,
-    paneId: string,
-    delayMs?: number,
-  ): void {
+  function scheduleStillRunningPoll(flight: Flight, paneId: string, delayMs?: number): void {
     clearStillRunningTimers(flight);
     // PLAN 0.26.0 M-2 ④: Stop accelerates poll schedule (input only).
     const interval =
@@ -2662,9 +2573,7 @@ export async function startBridgeRuntime(opts?: {
         } catch {
           // Read fail mid-poll: if cap not reached, retry next interval; else exhaust.
           // PLAN 0.27.0 guard site (~:2080)
-          if (
-            !guardFlightCompletion(paneId, flight, { requireDeferral: true })
-          ) {
+          if (!guardFlightCompletion(paneId, flight, { requireDeferral: true })) {
             return;
           }
           if (elapsed >= stillRunningMaxMs) {
@@ -2805,16 +2714,11 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
-    if (
-      ev !== "pane_agent_status_changed" &&
-      event !== "pane.agent_status_changed"
-    ) {
+    if (ev !== "pane_agent_status_changed" && event !== "pane.agent_status_changed") {
       return;
     }
 
-    const status = String(
-      d.agent_status ?? d.state ?? "",
-    ).toLowerCase();
+    const status = String(d.agent_status ?? d.state ?? "").toLowerCase();
 
     if (status === "working") {
       // PLAN 0.23.7: working re-entry during deferral cancels poll and returns
@@ -2824,9 +2728,7 @@ export async function startBridgeRuntime(opts?: {
         clearStillRunningTimers(flight);
         flight.stillRunningDeferral = false;
         flight.stillRunningStartedAt = undefined;
-        log(
-          `card ${flight.cardId}: still-running deferral cancelled (working re-entry)`,
-        );
+        log(`card ${flight.cardId}: still-running deferral cancelled (working re-entry)`);
       }
       // PLAN 0.26.0 M-2 ②: herdr working re-entry clears stale hook markers
       // (approval grant fires none of the 3 wired events — stale permission_prompt
@@ -2853,9 +2755,7 @@ export async function startBridgeRuntime(opts?: {
       // hookHint absence → same path as 0.25.0 (D5 fail-open).
       disposeCardFlight(paneId, flight);
       herdr.eventsPrune(paneId);
-      scheduleOwnedCardResult(paneId, flight, () =>
-        finishCardFailure(flight, "agent_blocked"),
-      );
+      scheduleOwnedCardResult(paneId, flight, () => finishCardFailure(flight, "agent_blocked"));
       return;
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
@@ -2875,9 +2775,7 @@ export async function startBridgeRuntime(opts?: {
         disposeCardFlight(paneId, flight);
         herdr.eventsPrune(paneId);
         appendHookTelemetry({ type: "agent_blocked_correction" });
-        scheduleOwnedCardResult(paneId, flight, () =>
-          finishCardFailure(flight, "agent_blocked"),
-        );
+        scheduleOwnedCardResult(paneId, flight, () => finishCardFailure(flight, "agent_blocked"));
         return;
       }
       // M-1: while deferral flag is set, completion-class events are no-ops —
@@ -2914,10 +2812,7 @@ export async function startBridgeRuntime(opts?: {
       return;
     }
 
-    if (
-      ev !== "pane_agent_status_changed" &&
-      event !== "pane.agent_status_changed"
-    ) {
+    if (ev !== "pane_agent_status_changed" && event !== "pane.agent_status_changed") {
       return;
     }
 
@@ -2946,10 +2841,7 @@ export async function startBridgeRuntime(opts?: {
    * autoResolve. notePreservedCardPane stays in this same call.
    * acquire_denied never reaches here — acquireInitial returned null.
    */
-  function applyCardResultOutcome(
-    flight: Flight | undefined,
-    outcome: SendResultOutcome,
-  ): void {
+  function applyCardResultOutcome(flight: Flight | undefined, outcome: SendResultOutcome): void {
     if (!flight || outcome.branch === "acquire_denied") return;
     flight.resultPhase = outcome.resultPhase;
     if (outcome.branch === "accepted") {
@@ -2977,9 +2869,7 @@ export async function startBridgeRuntime(opts?: {
       paneId: flight.paneId,
     });
     if (!lease) {
-      log(
-        `card ${flight.cardId}: proposeCardVerification issuer.acquire(initial) denied`,
-      );
+      log(`card ${flight.cardId}: proposeCardVerification issuer.acquire(initial) denied`);
       return;
     }
 
@@ -2988,10 +2878,7 @@ export async function startBridgeRuntime(opts?: {
     try {
       // PLAN 0.23.6: settle re-read; output body unfiltered (R31 M-1).
       // PLAN 0.23.7 L-1: prefer caller-supplied scrape (no re-scrape).
-      const raw =
-        opts?.scrape !== undefined
-          ? opts.scrape
-          : await settlePaneRead(flight.paneId);
+      const raw = opts?.scrape !== undefined ? opts.scrape : await settlePaneRead(flight.paneId);
       const stripped = stripAnsi(raw);
       const t = truncateTail(stripped, 200_000);
       output = t.text;
@@ -3052,10 +2939,7 @@ export async function startBridgeRuntime(opts?: {
     let output = "";
     let truncated = false;
     try {
-      const raw =
-        opts?.scrape !== undefined
-          ? opts.scrape
-          : await settlePaneRead(flight.paneId);
+      const raw = opts?.scrape !== undefined ? opts.scrape : await settlePaneRead(flight.paneId);
       const stripped = stripAnsi(raw);
       const t = truncateTail(stripped, 200_000);
       output = t.text;
@@ -3125,9 +3009,10 @@ export async function startBridgeRuntime(opts?: {
       );
       return;
     }
-    const summary = `failed reason=${opts.reason}${
-      opts.detail ? ` ${opts.detail}` : ""
-    }`.slice(0, 900);
+    const summary = `failed reason=${opts.reason}${opts.detail ? ` ${opts.detail}` : ""}`.slice(
+      0,
+      900,
+    );
     const content: CardResultContent = {
       status: "failed",
       reason: opts.reason,

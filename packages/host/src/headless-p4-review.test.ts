@@ -4,7 +4,7 @@
  * env scrub, 0700 card dirs, stdout fd close, missing allowedRoots, timeout
  * transcript/summary, and procStartedAt from ps lstart.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { spawn, execFileSync } from "node:child_process";
 import {
   chmodSync,
@@ -41,11 +41,7 @@ type SinkCall = {
   };
 };
 
-function configFor(
-  cwd: string,
-  timeoutMs: number,
-  limits: { claude?: number } = {},
-): WorkerConfig {
+function configFor(cwd: string, timeoutMs: number, limits: { claude?: number } = {}): WorkerConfig {
   return {
     backend: "headless",
     cwd,
@@ -165,7 +161,9 @@ function writeScript(dir: string, name: string, body: string): string {
   return path;
 }
 
-function commands(script: string): Record<"claude" | "codex" | "grok", { bin: string; args: string[] }> {
+function commands(
+  script: string,
+): Record<"claude" | "codex" | "grok", { bin: string; args: string[] }> {
   const cmd = { bin: "bun", args: [script] };
   return { claude: cmd, codex: cmd, grok: cmd };
 }
@@ -185,6 +183,12 @@ describe("headless P4 review", () => {
         const loomDir = mkdtempSync(join(tmpdir(), "loom-p4-h1-"));
         const cwd = realpathSync(mkdtempSync(join(tmpdir(), "loom-p4-h1-cwd-")));
         const gpidFile = join(loomDir, "grandchild.pid");
+        const realSetTimeout = globalThis.setTimeout;
+        const timer = spyOn(globalThis, "setTimeout").mockImplementation(((
+          fn: Parameters<typeof setTimeout>[0],
+          ms?: number,
+          ...args: unknown[]
+        ) => realSetTimeout(fn, ms === 60_000 ? 2_000 : ms, ...args)) as typeof setTimeout);
         const wrapper = writeScript(
           loomDir,
           "term-trap.ts",
@@ -307,6 +311,7 @@ describe("headless P4 review", () => {
             /* */
           }
           restore();
+          timer.mockRestore();
           rmSync(loomDir, { recursive: true, force: true });
           rmSync(cwd, { recursive: true, force: true });
         }
@@ -344,13 +349,13 @@ describe("headless P4 review", () => {
   });
 
   test(
-    "H2 a normal exit disarms the timeout before result delivery",
+    "H2 a normal exit disarms the timeout and reaps orphans before result delivery",
     async () => {
       const loomDir = mkdtempSync(join(tmpdir(), "loom-p4-h2-"));
       const cwd = realpathSync(mkdtempSync(join(tmpdir(), "loom-p4-h2-cwd-")));
       const gpidFile = join(loomDir, "grandchild.pid");
-      // Leader exits immediately. sleep stays in the same group and dies if a
-      // timer still armed across result delivery signals that pgid.
+      // Leader exits immediately. Its remaining group must be reaped before
+      // result delivery, without classifying normal completion as a timeout.
       const script = writeScript(
         loomDir,
         "exit-fast.sh",
@@ -395,7 +400,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
         expect(calls[0]!.fields.reason).toBe("needs_verification");
         const grandchild = Number(readFileSync(gpidFile, "utf8").trim());
         expect(grandchild).toBeGreaterThan(1);
-        expect(alive(grandchild)).toBe(true);
+        expect(alive(grandchild)).toBe(false);
         expect(dispatcher.flights()).toHaveLength(0);
       } finally {
         if (existsSync(gpidFile)) killPid(Number(readFileSync(gpidFile, "utf8").trim()));
@@ -408,7 +413,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
         rmSync(cwd, { recursive: true, force: true });
       }
     },
-    { timeout: 15_000 },
+    { timeout: 20_000 },
   );
 
   test(
@@ -504,7 +509,12 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const pidFile = join(loomDir, "worker.pid");
     const roomId = "room_h4";
     const cardId = "task_h4";
-    const dir = join(loomDir, "cards", cardPeerHash("test-local-peer"), cardKeyHash(roomId, "claude", cardId));
+    const dir = join(
+      loomDir,
+      "cards",
+      cardPeerHash("test-local-peer"),
+      cardKeyHash(roomId, "claude", cardId),
+    );
     const transcript = join(dir, "transcript-1.jsonl");
     const script = writeScript(
       loomDir,
@@ -737,7 +747,12 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     const cwd = realpathSync(mkdtempSync(join(tmpdir(), "loom-p4-m1-cwd-")));
     const roomId = "room_m1";
     const cardId = "task_m1";
-    const dir = join(loomDir, "cards", cardPeerHash("test-local-peer"), cardKeyHash(roomId, "claude", cardId));
+    const dir = join(
+      loomDir,
+      "cards",
+      cardPeerHash("test-local-peer"),
+      cardKeyHash(roomId, "claude", cardId),
+    );
     mkdirSync(dir, { recursive: true, mode: 0o755 });
     chmodSync(dir, 0o755);
     const script = writeScript(
@@ -891,6 +906,12 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
     async () => {
       const loomDir = mkdtempSync(join(tmpdir(), "loom-p4-m4-"));
       const cwd = realpathSync(mkdtempSync(join(tmpdir(), "loom-p4-m4-cwd-")));
+      const realSetTimeout = globalThis.setTimeout;
+      const timer = spyOn(globalThis, "setTimeout").mockImplementation(((
+        fn: Parameters<typeof setTimeout>[0],
+        ms?: number,
+        ...args: unknown[]
+      ) => realSetTimeout(fn, ms === 60_000 ? 2_000 : ms, ...args)) as typeof setTimeout);
       const script = writeScript(
         loomDir,
         "partial.ts",
@@ -967,6 +988,7 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
         }
         rmSync(loomDir, { recursive: true, force: true });
         rmSync(cwd, { recursive: true, force: true });
+        timer.mockRestore();
       }
     },
     { timeout: 20_000 },
@@ -1032,11 +1054,12 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
         agent: card.agent,
         cardId: card.cardId,
       })!;
-      const canonicalLstart: typeof lstart = (pid) => execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
-        encoding: "utf8",
-        timeout: 2_000,
-        env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
-      }).trim();
+      const canonicalLstart: typeof lstart = (pid) =>
+        execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+          encoding: "utf8",
+          timeout: 2_000,
+          env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
+        }).trim();
       const observed = canonicalLstart(saved.pid);
       expect(observed.length).toBeGreaterThan(0);
       expect(saved.procStartedAt).toBe(observed);

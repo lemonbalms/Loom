@@ -32,7 +32,7 @@
  *   alive -> spawn 0, reason "card_already_running".
  *   Fake final text is PARTIAL_READY / session:<id> / resume:<id|-> / body.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   existsSync,
   mkdtempSync,
@@ -53,11 +53,7 @@ import {
   promptFingerprint,
   type WorkerConfig,
 } from "./agent-argv";
-import {
-  readCardSession,
-  writeCardSession,
-  type CardSessionRecord,
-} from "./card-session-store";
+import { readCardSession, writeCardSession, type CardSessionRecord } from "./card-session-store";
 import { HeadlessDispatcher } from "./headless-worker";
 
 const FAKE = join(import.meta.dir, "fake-agent-cli.ts");
@@ -553,10 +549,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           cwd,
         };
         const sink = {
-          async composeAndSend(
-            target: SinkCall["target"],
-            fields: SinkCall["fields"],
-          ) {
+          async composeAndSend(target: SinkCall["target"], fields: SinkCall["fields"]) {
             calls.push({ target, fields });
             return {
               branch: "accepted" as const,
@@ -678,9 +671,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         });
         try {
           const first = dispatcher.dispatch(card);
-          await waitFor(
-            () => spawnCount(dump) === 1 && dumpLines(dump)[0]!.pid! > 0,
-          );
+          await waitFor(() => spawnCount(dump) === 1 && dumpLines(dump)[0]!.pid! > 0);
           const second = dispatcher.dispatch(card);
           await Promise.all([first, second]);
           expect(spawnCount(dump)).toBe(1);
@@ -758,12 +749,8 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           await Promise.all([first, second]);
           expect(spawnCount(dump)).toBe(1);
           expect(calls).toHaveLength(2);
-          expect(calls.some((call) => call.fields.reason === "card_already_running")).toBe(
-            true,
-          );
-          expect(calls.some((call) => call.fields.reason === "needs_verification")).toBe(
-            true,
-          );
+          expect(calls.some((call) => call.fields.reason === "card_already_running")).toBe(true);
+          expect(calls.some((call) => call.fields.reason === "needs_verification")).toBe(true);
         } finally {
           for (const line of dumpLines(dump)) killRecorded(line.pid);
           try {
@@ -842,9 +829,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
           await Promise.all([first, second]);
           expect(spawnCount(dump)).toBe(2);
           expect(calls).toHaveLength(2);
-          expect(calls.every((call) => call.fields.reason === "needs_verification")).toBe(
-            true,
-          );
+          expect(calls.every((call) => call.fields.reason === "needs_verification")).toBe(true);
         } finally {
           for (const line of dumpLines(dump)) killRecorded(line.pid);
           try {
@@ -870,6 +855,14 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         const dump = join(loomDir, "argv.jsonl");
         const gpidFile = join(loomDir, "grandchild.pid");
         const calls: SinkCall[] = [];
+        // The production per-card timer has a 60s minimum. Accelerate only
+        // that timer; retain real process-group signals and reaping.
+        const realSetTimeout = globalThis.setTimeout;
+        const timer = spyOn(globalThis, "setTimeout").mockImplementation(((
+          fn: Parameters<typeof setTimeout>[0],
+          ms?: number,
+          ...args: unknown[]
+        ) => realSetTimeout(fn, ms === 60_000 ? 400 : ms, ...args)) as typeof setTimeout);
         const restore = pushEnv({
           LOOM_DIR: loomDir,
           FAKE_OUTPUT_BYTES: "16",
@@ -937,6 +930,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
             /* */
           }
           restore();
+          timer.mockRestore();
           rmSync(loomDir, { recursive: true, force: true });
           rmSync(cwd, { recursive: true, force: true });
         }
@@ -1015,67 +1009,71 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
     { timeout: 20_000 },
   );
 
-  test("(g) a cwd outside allowedRoots does not spawn", async () => {
-    await withFakeLock(async () => {
-      const loomDir = mkdtempSync(join(tmpdir(), "loom-p2-out-"));
-      const root = realpathSync(mkdtempSync(join(tmpdir(), "loom-p2-out-root-")));
-      const outside = realpathSync(mkdtempSync(join(tmpdir(), "loom-p2-out-cwd-")));
-      const dump = join(loomDir, "argv.jsonl");
-      const calls: SinkCall[] = [];
-      const restore = pushEnv({
-        LOOM_DIR: loomDir,
-        FAKE_OUTPUT_BYTES: "8",
-        FAKE_DURATION_MS: "0",
-        FAKE_ARGV_DUMP: dump,
-        FAKE_HANG: undefined,
-        FAKE_EXIT_ONCE_MARKER: undefined,
-        FAKE_SPAWN_GRANDCHILD: undefined,
-        FAKE_DENIAL: undefined,
-      });
-      const dispatcher = new HeadlessDispatcher({
-        config: configFor(root, 30_000),
-        loomDir,
-        localPeerId: "test-local-peer",
-        node: "bridge-node",
-        commands: commands(),
-        sink: {
-          async composeAndSend(target, fields) {
-            calls.push({ target, fields });
-            return {
-              branch: "accepted",
-              relayAcceptedAt: "2026-10-15T00:00:03.000Z",
-              status: "delivered",
-              recipientCount: 1,
-            };
-          },
-        },
-      });
-      try {
-        await dispatcher.dispatch({
-          roomId: "room_out",
-          cardId: "task_out",
-          agent: "claude",
-          prompt: "outside",
-          fromPeerId: "peer_out",
-          dispatchHandoffId: "hout",
-          cwd: outside,
+  test(
+    "(g) a cwd outside allowedRoots does not spawn",
+    async () => {
+      await withFakeLock(async () => {
+        const loomDir = mkdtempSync(join(tmpdir(), "loom-p2-out-"));
+        const root = realpathSync(mkdtempSync(join(tmpdir(), "loom-p2-out-root-")));
+        const outside = realpathSync(mkdtempSync(join(tmpdir(), "loom-p2-out-cwd-")));
+        const dump = join(loomDir, "argv.jsonl");
+        const calls: SinkCall[] = [];
+        const restore = pushEnv({
+          LOOM_DIR: loomDir,
+          FAKE_OUTPUT_BYTES: "8",
+          FAKE_DURATION_MS: "0",
+          FAKE_ARGV_DUMP: dump,
+          FAKE_HANG: undefined,
+          FAKE_EXIT_ONCE_MARKER: undefined,
+          FAKE_SPAWN_GRANDCHILD: undefined,
+          FAKE_DENIAL: undefined,
         });
-        expect(spawnCount(dump)).toBe(0);
-        expect(calls[0]!.fields.reason).toBe("cwd_not_allowed");
-      } finally {
-        for (const line of dumpLines(dump)) killRecorded(line.pid);
+        const dispatcher = new HeadlessDispatcher({
+          config: configFor(root, 30_000),
+          loomDir,
+          localPeerId: "test-local-peer",
+          node: "bridge-node",
+          commands: commands(),
+          sink: {
+            async composeAndSend(target, fields) {
+              calls.push({ target, fields });
+              return {
+                branch: "accepted",
+                relayAcceptedAt: "2026-10-15T00:00:03.000Z",
+                status: "delivered",
+                recipientCount: 1,
+              };
+            },
+          },
+        });
         try {
-          await dispatcher.close();
-        } catch {
-          /* */
+          await dispatcher.dispatch({
+            roomId: "room_out",
+            cardId: "task_out",
+            agent: "claude",
+            prompt: "outside",
+            fromPeerId: "peer_out",
+            dispatchHandoffId: "hout",
+            cwd: outside,
+          });
+          expect(spawnCount(dump)).toBe(0);
+          expect(calls[0]!.fields.reason).toBe("cwd_not_allowed");
+        } finally {
+          for (const line of dumpLines(dump)) killRecorded(line.pid);
+          try {
+            await dispatcher.close();
+          } catch {
+            /* */
+          }
+          restore();
+          rmSync(loomDir, { recursive: true, force: true });
+          rmSync(root, { recursive: true, force: true });
+          rmSync(outside, { recursive: true, force: true });
         }
-        restore();
-        rmSync(loomDir, { recursive: true, force: true });
-        rmSync(root, { recursive: true, force: true });
-        rmSync(outside, { recursive: true, force: true });
-      }
-    });
-  }, { timeout: 20_000 });
+      });
+    },
+    { timeout: 20_000 },
+  );
 
   test(
     "(g) R48-H1 spawn env keeps LOOM_CARD and drops other LOOM_* and FABLE_*",
@@ -1133,9 +1131,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
             cwd,
           });
           const env = JSON.parse(readFileSync(envFile, "utf8")) as Record<string, string>;
-          expect(Object.keys(env).filter((key) => key.startsWith("LOOM_"))).toEqual([
-            "LOOM_CARD",
-          ]);
+          expect(Object.keys(env).filter((key) => key.startsWith("LOOM_"))).toEqual(["LOOM_CARD"]);
           expect(Object.keys(env).filter((key) => key.startsWith("FABLE_"))).toEqual([]);
           expect(env.LOOM_CARD).toBe(cardId);
           expect(env.LOOM_RELAY_TOKEN).toBeUndefined();

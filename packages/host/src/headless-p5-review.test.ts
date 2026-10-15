@@ -169,13 +169,13 @@ describe("headless P5 review", () => {
         await h.dispatcher().recover();
         expect(h.lines()).toHaveLength(0);
         expect(h.calls).toHaveLength(1);
-        expect(h.calls[0]!.fields.reason).toBe("liveness_unknown");
+        expect(h.calls[0]!.fields.reason).toBe("orphan_group_alive");
         expect(ps.mock.calls.length).toBeGreaterThanOrEqual(5);
         expect(alive(pid)).toBe(true);
         // Giving up does not allow a new dispatch beside the same live pid.
         await h.dispatcher().dispatch({ ...h.card, dispatchHandoffId: "next-handoff" });
         expect(h.lines()).toHaveLength(0);
-        expect(h.calls[1]!.fields.reason).toBe("card_already_running");
+        expect(h.calls[1]!.fields.reason).toBe("orphan_group_alive");
       } finally { ps.mockRestore(); }
     });
   });
@@ -194,7 +194,7 @@ describe("headless P5 review", () => {
       try {
         await h.dispatcher().recover();
         expect(h.lines()).toHaveLength(0);
-        expect(h.calls[0]!.fields.reason).toBe("liveness_unknown");
+        expect(h.calls[0]!.fields.reason).toBe("orphan_group_alive");
       } finally { clearTimeout(release); kill.mockRestore(); }
       expect(alive(pid)).toBe(true);
     });
@@ -236,7 +236,7 @@ describe("headless P5 review", () => {
       try {
         await h.dispatcher().recover();
         expect(h.lines()).toHaveLength(0);
-        expect(h.calls[0]!.fields.reason).toBe("liveness_unknown");
+        expect(h.calls[0]!.fields.reason).toBe("orphan_group_alive");
         expect(alive(pid)).toBe(true);
       } finally { ps.mockRestore(); }
     });
@@ -268,9 +268,10 @@ describe("headless P5 review", () => {
       h.seed({ pid, pgid: pid, procStartedAt: "Sat Jan  1 00:00:00 2000" });
       expect(actual).not.toBe(h.saved()!.procStartedAt);
       await h.dispatcher().recover();
-      expect(h.lines()).toHaveLength(1);
-      expect(h.saved()!.attempts).toBe(2);
+      expect(h.lines()).toHaveLength(0);
+      expect(h.saved()!.attempts).toBe(1);
       expect(h.calls).toHaveLength(1);
+      expect(h.calls[0]!.fields.reason).toBe("orphan_group_alive");
       expect(alive(pid)).toBe(true);
     });
   });

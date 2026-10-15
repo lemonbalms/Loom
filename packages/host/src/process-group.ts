@@ -58,13 +58,16 @@ export function processGroupAlive(pgid: number): boolean {
  * Signal the worker group. Never signals this process's own group.
  * Never falls back to a positive pid: that pid may already belong to
  * an unrelated process. A dead or recycled group is left alone.
+ * False revokes the caller's verified identity after a failed probe or signal.
  */
-export function killProcessGroup(pgid: number, signal: GroupSignal): void {
-  if (!processGroupAlive(pgid)) return;
+export function killProcessGroup(pgid: number, signal: GroupSignal): boolean {
+  if (!processGroupAlive(pgid)) return false;
   try {
     process.kill(-pgid, signal);
+    return true;
   } catch {
     /* group disappeared between the probe and the signal */
+    return false;
   }
 }
 

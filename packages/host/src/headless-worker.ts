@@ -5,6 +5,7 @@
  * `ps -o lstart=` matches `procStartedAt` is adopted — never spawned beside.
  * `resultSent=true` is written only after composeAndSend returns.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile, execFileSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
@@ -26,6 +27,7 @@ import {
   cardKeyHash,
   cardSessionPath,
   listCardSessions,
+  readCardSession,
   readCardSessionAsync,
   writeCardSessionAsync,
   writeCardSession,
@@ -63,6 +65,8 @@ export type HeadlessDispatchCard = {
   dispatchHandoffId: string;
   /** Absent → worker config cwd. Realpath must sit under allowedRoots. */
   cwd?: string;
+  /** Claim the relay entry only once a lane permit is held. Recovery omits this. */
+  claim?: () => Promise<boolean>;
 };
 
 export type HeadlessResultFields = {
@@ -92,6 +96,9 @@ type HeadlessDeps = {
   localPeerId: string;
   node: string;
   commands: Record<AgentKind, HeadlessCommand>;
+  /** Maximum wait for abandoned owners during close(). Default: 10_000 ms. */
+  closeDeadlineMs?: number;
+  /** must not await dispatch() for the same card; it runs under the per-card transition lock */
   sink: {
     composeAndSend: (
       target: ResultTarget,
@@ -121,6 +128,7 @@ type SpawnPlan = {
 
 type SpawnOutcome =
   | { kind: "abandon" }
+  | { kind: "group_alive"; record: CardSessionRecord }
   | { kind: "setup_failed"; message: string; record?: CardSessionRecord }
   | { kind: "cwd_denied"; changed?: boolean; record?: CardSessionRecord }
   | {
@@ -135,6 +143,8 @@ type SpawnOutcome =
     };
 
 const AGENTS: readonly AgentKind[] = ["claude", "codex", "grok"];
+
+class UnsentResultError extends Error {}
 
 class Semaphore {
   private held = 0;
@@ -290,6 +300,23 @@ function truncationNote(
   return `transcript ${transcriptPath} (${bytes} bytes)`.slice(0, 500);
 }
 
+function denialNote(parsed: ParsedAgentStream): string | undefined {
+  if (parsed.denials.length === 0) return undefined;
+  const tools = [
+    ...new Set(
+      parsed.denials.flatMap(({ toolName }) => {
+        const name = toolName
+          ? redactSecrets(toolName.replace(/\p{Cc}/gu, "").trim()).slice(0, 64)
+          : "";
+        return name ? [name] : [];
+      }),
+    ),
+  ];
+  const listed = tools.slice(0, 5);
+  if (tools.length > 5) listed.push("…");
+  return `denials: ${parsed.denials.length}${listed.length ? ` (${listed.join(", ")})` : ""}`;
+}
+
 /** A failed ps observation is unknown, never proof of death. */
 function processLstart(pid: number): string | null {
   if (!Number.isInteger(pid) || pid <= 1) return null;
@@ -309,31 +336,64 @@ function processLstart(pid: number): string | null {
 
 type Liveness = "alive" | "dead" | "unknown";
 
-function processLiveness(record: CardSessionRecord): Liveness {
+function observeProcess(record: CardSessionRecord): { liveness: Liveness; leaderExited: boolean } {
   // Never probe pid 0/1, and terminal records do not identify live workers.
-  if (record.state === "exited" || !(record.pid > 1)) return "dead";
+  if (record.state === "exited" || !(record.pid > 1)) {
+    return { liveness: "dead", leaderExited: false };
+  }
   try {
     process.kill(record.pid, 0);
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ESRCH" ? "dead" : "unknown";
+    const leaderExited = (err as NodeJS.ErrnoException).code === "ESRCH";
+    return { liveness: leaderExited ? "dead" : "unknown", leaderExited };
   }
   const live = processLstart(record.pid);
   const normalize = (value: string): number | null => {
     const text = value.trim().replace(/\s+/g, " ");
-    const parts = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(text);
+    const parts =
+      /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(
+        text,
+      );
     if (!parts) return null;
-    const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].indexOf(parts[1]!);
-    const day = Number(parts[2]), hour = Number(parts[3]), minute = Number(parts[4]);
-    const second = Number(parts[5]), year = Number(parts[6]);
+    const month = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ].indexOf(parts[1]!);
+    const day = Number(parts[2]),
+      hour = Number(parts[3]),
+      minute = Number(parts[4]);
+    const second = Number(parts[5]),
+      year = Number(parts[6]);
     const date = new Date(Date.UTC(year, month, day, hour, minute, second));
-    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month || date.getUTCDate() !== day ||
-      date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second) return null;
+    if (
+      date.getUTCFullYear() !== year ||
+      date.getUTCMonth() !== month ||
+      date.getUTCDate() !== day ||
+      date.getUTCHours() !== hour ||
+      date.getUTCMinutes() !== minute ||
+      date.getUTCSeconds() !== second
+    )
+      return null;
     return date.getTime();
   };
   const expected = normalize(record.procStartedAt);
   const observed = live ? normalize(live) : null;
-  if (expected === null || observed === null) return "unknown";
-  return expected === observed ? "alive" : "dead";
+  if (expected === null || observed === null) return { liveness: "unknown", leaderExited: false };
+  return { liveness: expected === observed ? "alive" : "dead", leaderExited: false };
+}
+
+function processLiveness(record: CardSessionRecord): Liveness {
+  return observeProcess(record).liveness;
 }
 
 async function captureLstart(pid: number, child: ChildProcess): Promise<string> {
@@ -341,10 +401,16 @@ async function captureLstart(pid: number, child: ChildProcess): Promise<string> 
     // Startup observation may wait on ps without blocking dispatch/status work.
     // The pid/pgid have already been synchronously committed by the caller.
     const started = await new Promise<string | null>((resolve) => {
-      execFile("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
-        encoding: "utf8", timeout: 2_000,
-        env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
-      }, (err, stdout) => resolve(err ? null : stdout.trim() || null));
+      execFile(
+        "/bin/ps",
+        ["-o", "lstart=", "-p", String(pid)],
+        {
+          encoding: "utf8",
+          timeout: 2_000,
+          env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
+        },
+        (err, stdout) => resolve(err ? null : stdout.trim() || null),
+      );
     });
     if (started) return started;
     if (child.exitCode !== null || child.signalCode !== null) break;
@@ -377,9 +443,18 @@ function streamFinished(agent: AgentKind, raw: string): boolean {
         continue;
       }
       json += ch;
-      if (escaped) { escaped = false; continue; }
-      if (inString && ch === "\\") { escaped = true; continue; }
-      if (ch === '"') { inString = !inString; continue; }
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (inString && ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
       if (inString) continue;
       if (ch === "{" || ch === "[") depth++;
       if (ch === "}" || ch === "]") depth--;
@@ -389,7 +464,9 @@ function streamFinished(agent: AgentKind, raw: string): boolean {
     try {
       const event = JSON.parse(json);
       if (event?.type === terminal) return true;
-    } catch { /* non-JSON noise is not completion */ }
+    } catch {
+      /* non-JSON noise is not completion */
+    }
     i = end;
   }
   return false;
@@ -456,8 +533,15 @@ function isAgent(value: string): value is AgentKind {
 
 export class HeadlessDispatcher {
   private readonly active: HeadlessFlight[] = [];
+  // Never reconstructed from a saved numeric pgid alone.
+  private readonly verifiedFlights = new Set<HeadlessFlight>();
   private readonly lanes: Record<AgentKind, Semaphore>;
   private readonly byCard = new Map<string, CardOwner>();
+  // Includes distinct handoffs waiting to report an in-memory busy card.
+  private readonly owners = new Set<CardOwner>();
+  private readonly recordTails = new Map<string, Promise<void>>();
+  /** Per-branch sink ancestry: immutable list; a frame counts only while its sink call is active. */
+  private readonly sinkCards = new AsyncLocalStorage<readonly { key: string; active: boolean }[]>();
 
   constructor(private readonly deps: HeadlessDeps) {
     if (!deps.localPeerId) throw new Error("localPeerId is required");
@@ -503,18 +587,23 @@ export class HeadlessDispatcher {
       if (record.resultSent) continue;
       if (!isAgent(record.agent)) continue;
       pending.push(
-        this.dispatchOwned({
-          roomId: record.roomId,
-          cardId: record.cardId,
-          agent: record.agent,
-          prompt: "",
-          fromPeerId: record.fromPeerId,
-          dispatchHandoffId: record.dispatchHandoffId,
-          cwd: record.requestedCwd === null ? undefined : record.requestedCwd,
-        }, true).catch((err: unknown) => {
+        this.dispatchOwned(
+          {
+            roomId: record.roomId,
+            cardId: record.cardId,
+            agent: record.agent,
+            prompt: "",
+            fromPeerId: record.fromPeerId,
+            dispatchHandoffId: record.dispatchHandoffId,
+            cwd: record.requestedCwd === null ? undefined : record.requestedCwd,
+          },
+          true,
+        ).catch((err: unknown) => {
           // One broken record or sink must not reject recovery of its peers.
           const message = err instanceof Error ? err.message : String(err);
-          process.stderr.write(`[headless] recovery failed (${record.cardId}): ${message.replace(/[\r\n]/g, " ")}\n`);
+          process.stderr.write(
+            `[headless] recovery failed (${record.cardId}): ${message.replace(/[\r\n]/g, " ")}\n`,
+          );
         }),
       );
     }
@@ -542,9 +631,29 @@ export class HeadlessDispatcher {
 
   /** Does not kill workers. In-flight runs relinquish the result to a later adopt. */
   async close(): Promise<void> {
-    const pending = [...this.byCard.values()];
+    const pending = [...this.owners];
     for (const owner of pending) owner.abandon();
-    await Promise.allSettled(pending.map((owner) => owner.done));
+    if (pending.length === 0) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.allSettled(pending.map((owner) => owner.done)),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            const count = pending.filter((owner) => this.owners.has(owner)).length;
+            if (count > 0) {
+              process.stderr.write(`[headless] close deadline: ${count} owners still pending\n`);
+            }
+            resolve();
+          }, this.deps.closeDeadlineMs ?? 10_000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    // Late successful claims still take the abandoned owner's guarded reservation
+    // path while this process is alive. Known limit: if it exits first, the
+    // handoff can be claimed without any durable session record.
   }
 
   async dispatch(card: HeadlessDispatchCard): Promise<void> {
@@ -552,26 +661,34 @@ export class HeadlessDispatcher {
   }
 
   private async dispatchOwned(card: HeadlessDispatchCard, recovering: boolean): Promise<void> {
+    const dir = this.cardDir(card);
+    if (this.sinkCards.getStore()?.some((frame) => frame.active && frame.key === dir)) {
+      throw new Error("re-entrant dispatch from result sink");
+    }
     const key = cardKeyHash(card.roomId, card.agent, card.cardId);
     const existing = this.byCard.get(key);
-    if (existing) {
-      if (existing.handoffId !== card.dispatchHandoffId) {
-        // The completed-history decision precedes even the in-memory busy path.
-        const saved = await readCardSessionAsync({ loomDir: this.deps.loomDir,
-          localPeerId: this.deps.localPeerId, ...card });
-        if (saved?.completedHandoffIds.includes(card.dispatchHandoffId)) return;
-        await this.deliver(card, new Date().toISOString(), this.alreadyRunningFields());
-        return;
-      }
+    if (existing && existing.handoffId !== card.dispatchHandoffId && !card.claim) {
+      const saved = await readCardSessionAsync({
+        loomDir: this.deps.loomDir,
+        localPeerId: this.deps.localPeerId,
+        ...card,
+      });
+      if (saved?.completedHandoffIds.includes(card.dispatchHandoffId)) return;
+      await this.deliver(card, new Date().toISOString(), this.alreadyRunningFields());
+      return;
+    }
+    if (existing?.handoffId === card.dispatchHandoffId) {
       await existing.done;
       return;
     }
     const owner = createOwner(card.dispatchHandoffId);
-    this.byCard.set(key, owner);
+    if (!existing) this.byCard.set(key, owner);
+    this.owners.add(owner);
     try {
-      await this.lead(card, owner, recovering);
+      await this.lead(card, owner, recovering, !!existing);
     } finally {
       if (this.byCard.get(key) === owner) this.byCard.delete(key);
+      this.owners.delete(owner);
       owner.resolve();
     }
   }
@@ -598,22 +715,153 @@ export class HeadlessDispatcher {
     };
   }
 
+  // Only record transitions take this lock; lane waits and worker monitoring do not.
+  private async withCardLock<T>(
+    card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const key = this.cardDir(card);
+    const previous = this.recordTails.get(key) ?? Promise.resolve();
+    const result = previous.then(action);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.recordTails.set(key, tail);
+    try {
+      return await result;
+    } finally {
+      if (this.recordTails.get(key) === tail) this.recordTails.delete(key);
+    }
+  }
+
+  private readRecord(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">) {
+    return readCardSessionAsync({
+      loomDir: this.deps.loomDir,
+      localPeerId: this.deps.localPeerId,
+      ...card,
+    });
+  }
+
+  /** Caller holds the card lock. Every record writer, including pendingResult, comes here. */
+  private async updateRecordLocked(
+    card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">,
+    update: (current: CardSessionRecord | null) => CardSessionRecord,
+    synchronous = false,
+  ): Promise<CardSessionRecord> {
+    const key = { loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card };
+    // The synchronous branch preserves the no-await spawn -> pid-write fence.
+    const current = synchronous ? readCardSession(key) : await this.readRecord(card);
+    if (synchronous && !current) throw new Error("missing or invalid worker session record");
+    const next = update(current);
+    if (
+      current?.pendingResult &&
+      !current.resultSent &&
+      current.dispatchHandoffId !== next.dispatchHandoffId
+    )
+      throw new UnsentResultError("shutdown reservation would overwrite an unsent result");
+    if (next === current) return next;
+    const opts = { loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId };
+    if (synchronous) writeCardSession(opts, next);
+    else await writeCardSessionAsync(opts, next);
+    return next;
+  }
+
+  private async sendOrphanGroup(
+    card: HeadlessDispatchCard,
+    record: CardSessionRecord,
+  ): Promise<void> {
+    await this.withCardLock(card, () => this.sendOrphanGroupLocked(card, record));
+  }
+
+  private async sendOrphanGroupLocked(
+    card: HeadlessDispatchCard,
+    record: CardSessionRecord,
+  ): Promise<void> {
+    // Keep the old worker identity so later handoffs cannot spawn beside it.
+    await this.sendAndMarkLocked(
+      { ...record, fromPeerId: card.fromPeerId, dispatchHandoffId: card.dispatchHandoffId },
+      {
+        status: "failed",
+        reason: "orphan_group_alive",
+        output: "",
+        truncated: false,
+        summary: "needs_verification",
+        note: "needs_verification; previous worker processes may still be running; not resuming",
+      },
+      { preserveWorkerState: true },
+    );
+  }
+
+  private async reserveShutdownAfterClaim(card: HeadlessDispatchCard): Promise<void> {
+    await this.withCardLock(card, () => this.reserveShutdownAfterClaimLocked(card));
+  }
+
+  private async reserveShutdownAfterClaimLocked(card: HeadlessDispatchCard): Promise<void> {
+    await this.updateRecordLocked(card, (existing) => {
+      const checked = resolveWorkerCwd(card.cwd, this.deps.config);
+      return {
+        ...(existing ?? {
+          roomId: card.roomId,
+          cardId: card.cardId,
+          agent: card.agent,
+          cwd: checked.ok ? checked.cwd : (card.cwd ?? this.deps.config.cwd),
+          requestedCwd: card.cwd ?? null,
+          sessionId: randomUUID(),
+          promptFingerprint: currentFingerprint(this.deps.config),
+          attempts: 1,
+          pid: 0,
+          pgid: 0,
+          procStartedAt: "",
+          startedAt: new Date().toISOString(),
+          state: "exited",
+          completedHandoffIds: [],
+        }),
+        fromPeerId: card.fromPeerId,
+        dispatchHandoffId: card.dispatchHandoffId,
+        resultSent: false,
+        sendAttempts:
+          existing?.dispatchHandoffId === card.dispatchHandoffId ? existing.sendAttempts : 0,
+        pendingResult:
+          existing?.dispatchHandoffId === card.dispatchHandoffId && existing.pendingResult
+            ? existing.pendingResult
+            : {
+                status: "failed",
+                reason: "bridge_shutdown_after_claim",
+                output: "",
+                truncated: false,
+                summary: "needs_verification",
+                note: "needs_verification; bridge shut down after claiming the handoff; worker not started",
+                timedOut: false,
+              },
+      };
+    });
+  }
+
   private async deliver(
     card: HeadlessDispatchCard,
     startedAt: string,
     fields: HeadlessResultFields,
   ): Promise<void> {
-    await this.deps.sink.composeAndSend(
-      {
-        roomId: card.roomId,
-        cardId: card.cardId,
-        fromPeerId: card.fromPeerId,
-        dispatchHandoffId: card.dispatchHandoffId,
-        startedAt,
-      },
-      fields,
-      { node: this.deps.node },
-    );
+    const frame = { key: this.cardDir(card), active: true };
+    const ancestry = [...(this.sinkCards.getStore() ?? []), frame];
+    try {
+      await this.sinkCards.run(ancestry, () =>
+        this.deps.sink.composeAndSend(
+          {
+            roomId: card.roomId,
+            cardId: card.cardId,
+            fromPeerId: card.fromPeerId,
+            dispatchHandoffId: card.dispatchHandoffId,
+            startedAt,
+          },
+          fields,
+          { node: this.deps.node },
+        ),
+      );
+    } finally {
+      frame.active = false;
+    }
   }
 
   /** resultSent flips true only after composeAndSend resolves. */
@@ -622,27 +870,70 @@ export class HeadlessDispatcher {
     fields: HeadlessResultFields,
     opts: { allowPersistenceFailure?: boolean; preserveWorkerState?: boolean } = {},
   ): Promise<void> {
-    // Reporting a refusal/uncertainty is not proof of exit. Retain a possibly
-    // live identity so a later dispatch still gets the R48-M3 guard.
-    if (!opts.preserveWorkerState) record.state = "exited";
-    record.pendingResult ??= { ...structuredClone(fields), timedOut: fields.timedOut ?? false };
-    record.resultSent = false;
-    record.sendAttempts += 1;
-    const persist = async (): Promise<void> => {
+    await this.withCardLock(record, () => this.sendAndMarkLocked(record, fields, opts));
+  }
+
+  private async sendAndMarkLocked(
+    record: CardSessionRecord,
+    fields: HeadlessResultFields,
+    opts: { allowPersistenceFailure?: boolean; preserveWorkerState?: boolean } = {},
+  ): Promise<void> {
+    const persist = async (update: (current: CardSessionRecord) => CardSessionRecord) => {
       try {
-        await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
+        Object.assign(
+          record,
+          await this.updateRecordLocked(record, (current) => {
+            if (!current) throw new Error("missing worker session record");
+            return update(current);
+          }),
+        );
       } catch (err) {
         if (!opts.allowPersistenceFailure) throw err;
+        // A slot conflict is never a filesystem failure we may bypass.
+        if (err instanceof UnsentResultError) throw err;
         // Setup already killed the worker; still report the setup failure
         // when the same filesystem failure prevents marking its record.
+        Object.assign(record, update(record));
       }
     };
-    await persist();
-    await this.deliver({ ...record, prompt: "" }, record.startedAt, structuredClone(record.pendingResult));
-    record.resultSent = true;
-    record.completedHandoffIds = [...record.completedHandoffIds.filter(id => id !== record.dispatchHandoffId),
-      record.dispatchHandoffId].slice(-16);
-    await persist();
+    await persist((current) => {
+      const sameHandoff = current.dispatchHandoffId === record.dispatchHandoffId;
+      return {
+        ...current,
+        fromPeerId: record.fromPeerId,
+        dispatchHandoffId: record.dispatchHandoffId,
+        // A refusal/uncertainty is not proof of exit.
+        state: opts.preserveWorkerState ? current.state : "exited",
+        pendingResult: (sameHandoff && current.pendingResult) || {
+          ...structuredClone(fields),
+          timedOut: fields.timedOut ?? false,
+        },
+        resultSent: false,
+        sendAttempts: (sameHandoff ? current.sendAttempts : 0) + 1,
+      };
+    });
+    // Sending under the lock prevents another handoff reserving the slot
+    // between the write-ahead result and its successful-delivery persist.
+    await this.deliver(
+      { ...record, prompt: "" },
+      record.startedAt,
+      structuredClone(record.pendingResult!),
+    );
+    await persist((current) => ({
+      ...current,
+      // The first persist may have failed before writing. These are the
+      // exact reservation fields built under this lock and just delivered.
+      fromPeerId: record.fromPeerId,
+      dispatchHandoffId: record.dispatchHandoffId,
+      state: opts.preserveWorkerState ? current.state : "exited",
+      pendingResult: record.pendingResult,
+      sendAttempts: record.sendAttempts,
+      resultSent: true,
+      completedHandoffIds: [
+        ...current.completedHandoffIds.filter((id) => id !== record.dispatchHandoffId),
+        record.dispatchHandoffId,
+      ].slice(-16),
+    }));
   }
 
   /** The only resume gate, including after an adopted or local worker exits. */
@@ -650,139 +941,279 @@ export class HeadlessDispatcher {
     card: HeadlessDispatchCard,
     record: CardSessionRecord,
   ): Promise<SpawnPlan | null> {
-    const current = resolveWorkerCwd(card.cwd, this.deps.config);
-    // Compare the stored realpath literally: re-resolving it could conceal a
-    // symlink replacement at the old path.
-    if (!current.ok || record.cwd !== current.cwd) {
-      await this.sendAndMark(record, {
-        status: "failed",
-        reason: "needs_verification",
-        output: `recorded cwd ${record.cwd} does not match current worker cwd ${current.ok ? current.cwd : "(not allowed)"}`,
-        truncated: false,
-        summary: "cwd changed",
-        note: "cwd_changed; needs_verification; not resuming",
-      });
-      return null;
-    }
-    if (record.attempts >= MAX_ATTEMPTS) {
-      await this.sendGiveUp(record);
-      return null;
-    }
-    const unchanged = record.promptFingerprint === currentFingerprint(this.deps.config);
-    return {
-      cwd: current.cwd,
-      completedHandoffIds: record.completedHandoffIds,
-      sessionId: unchanged ? record.sessionId : randomUUID(),
-      attempts: record.attempts + 1,
-      ...(unchanged ? { resumeSessionId: record.sessionId } : {}),
-      startedAt: record.startedAt,
-    };
+    return this.withCardLock(card, async () => {
+      const latest = await this.readRecord(record);
+      if (!latest) throw new Error("missing worker session record");
+      record = latest;
+      const current = resolveWorkerCwd(card.cwd, this.deps.config);
+      // Compare the stored realpath literally: re-resolving it could conceal a
+      // symlink replacement at the old path.
+      if (!current.ok || record.cwd !== current.cwd) {
+        await this.sendAndMarkLocked(record, {
+          status: "failed",
+          reason: "needs_verification",
+          output: `recorded cwd ${record.cwd} does not match current worker cwd ${current.ok ? current.cwd : "(not allowed)"}`,
+          truncated: false,
+          summary: "cwd changed",
+          note: "cwd_changed; needs_verification; not resuming",
+        });
+        return null;
+      }
+      if (record.attempts >= MAX_ATTEMPTS) {
+        await this.sendGiveUpLocked(record);
+        return null;
+      }
+      const unchanged = record.promptFingerprint === currentFingerprint(this.deps.config);
+      return {
+        cwd: current.cwd,
+        completedHandoffIds: record.completedHandoffIds,
+        sessionId: unchanged ? record.sessionId : randomUUID(),
+        attempts: record.attempts + 1,
+        ...(unchanged ? { resumeSessionId: record.sessionId } : {}),
+        startedAt: record.startedAt,
+      };
+    });
   }
 
-  private async lead(card: HeadlessDispatchCard, owner: CardOwner, recovering: boolean): Promise<void> {
+  private async lead(
+    card: HeadlessDispatchCard,
+    owner: CardOwner,
+    recovering: boolean,
+    busy = false,
+  ): Promise<void> {
     const lane = this.lanes[card.agent];
     await lane.acquire();
     try {
       if (owner.abandoned) return;
-      const existing = await readCardSessionAsync({
-        loomDir: this.deps.loomDir,
-        localPeerId: this.deps.localPeerId,
-        roomId: card.roomId,
-        agent: card.agent,
-        cardId: card.cardId,
-      });
-      let plan: SpawnPlan;
-      let runCard = card;
-      if (existing && (existing.completedHandoffIds.includes(card.dispatchHandoffId) ||
-        (existing.resultSent && existing.dispatchHandoffId === card.dispatchHandoffId))) {
-        process.stderr.write(`[headless] already_completed (${existing.cardId})\n`);
-        return;
-      }
-      // These decisions precede every liveness probe: no pid cannot prove that
-      // exec did not happen, and a reserved result must never be reconstructed.
-      if (existing && !existing.resultSent && existing.pendingResult) {
-        if (existing.sendAttempts < 2) await this.sendAndMark(existing, existing.pendingResult,
-          { preserveWorkerState: existing.state !== "exited" });
-        return;
-      }
-      if (existing?.state === "spawning" && !(existing.pid > 1)) {
-        await this.sendAndMark(existing, {
-          status: "failed", reason: "spawn_state_unknown", output: "", truncated: false,
-          summary: "spawn state unknown",
-          note: "bridge stopped before worker identity was saved; exec may have happened; not spawning",
-        });
-        return;
-      }
-      if (recovering && existing && existing.promptFingerprint !== currentFingerprint(this.deps.config)) {
-        await this.sendAndMark(existing, {
-          status: "failed", reason: "needs_verification", output: "", truncated: false,
-          summary: "fingerprint changed", note: "fingerprint_changed; not resuming",
-        }, { preserveWorkerState: processLiveness(existing) !== "dead" });
-        return;
-      }
-      if (existing && (!existing.resultSent || processLiveness(existing) !== "dead")) {
-        if (existing.dispatchHandoffId !== card.dispatchHandoffId && processLiveness(existing) !== "dead") {
+      const prepared = await this.withCardLock(card, async () => {
+        if (owner.abandoned) return;
+        const existing = await this.readRecord(card);
+        // Discharge the card's reserved result before claiming another handoff.
+        // D1 replay needs no D2 claim, and close can still leave D2 in the inbox.
+        if (existing && !existing.resultSent && existing.pendingResult) {
+          const sameHandoff = existing.dispatchHandoffId === card.dispatchHandoffId;
+          const exhausted = existing.sendAttempts >= 2;
+          try {
+            if (exhausted) {
+              throw new Error("pending result replay budget exhausted");
+            }
+            await this.sendAndMarkLocked(existing, existing.pendingResult, {
+              preserveWorkerState: existing.state !== "exited",
+            });
+          } catch (err) {
+            process.stderr.write(`[headless] replay_exhausted ${existing.cardId}\n`);
+            if (card.claim) return;
+            if (sameHandoff) {
+              if (exhausted) return;
+              throw err;
+            }
+            // Preserve D1's reserved result; a direct D2 refusal cannot overwrite it.
+            await this.deliver(card, new Date().toISOString(), {
+              status: "failed",
+              reason: "needs_verification",
+              output: "",
+              truncated: false,
+              summary: "pending result replay failed",
+              note: "previous handoff result replay failed or exhausted; not starting this handoff",
+            });
+            return;
+          }
+          // sendAndMarkLocked updated resultSent/state/history on this same object.
+        }
+        if (owner.abandoned) return;
+        // The single result slot is still owed to this owner, even before it
+        // has reserved output (or written its first spawning record).
+        if (
+          card.claim &&
+          (busy ||
+            (existing &&
+              !existing.resultSent &&
+              existing.dispatchHandoffId !== card.dispatchHandoffId))
+        )
+          return;
+        // Keep the pre-claim check valid through the network call and the
+        // post-claim decision. Connection setup can outlast close's deadline;
+        // the abandoned owner must remain here to reserve a late successful claim.
+        try {
+          if (card.claim && !(await card.claim())) return;
+        } catch {
+          // Another bridge won, or the entry cannot currently be claimed.
+          return;
+        }
+        let runCard = card;
+        if (
+          existing &&
+          (existing.completedHandoffIds.includes(card.dispatchHandoffId) ||
+            (existing.resultSent && existing.dispatchHandoffId === card.dispatchHandoffId))
+        ) {
+          process.stderr.write(`[headless] already_completed (${existing.cardId})\n`);
+          return;
+        }
+        if (owner.abandoned) {
+          if (card.claim) await this.reserveShutdownAfterClaimLocked(card);
+          return;
+        }
+        if (busy) {
           await this.deliver(card, new Date().toISOString(), this.alreadyRunningFields());
           return;
         }
-        // Original dispatch identity owns every adopted/recovered result.
-        runCard = { ...card, roomId: existing.roomId, cardId: existing.cardId,
-          fromPeerId: existing.fromPeerId, dispatchHandoffId: existing.dispatchHandoffId };
+        // These decisions precede every liveness probe: no pid cannot prove that
+        // exec did not happen, and a reserved result must never be reconstructed.
+        if (existing) {
+          const liveness = processLiveness(existing);
+          const skipWatch =
+            existing.dispatchHandoffId !== card.dispatchHandoffId ||
+            (recovering && existing.promptFingerprint !== currentFingerprint(this.deps.config));
+          if (
+            processGroupAlive(existing.pgid) &&
+            (liveness === "dead" || (liveness === "unknown" && skipWatch))
+          ) {
+            await this.sendOrphanGroupLocked(card, existing);
+            return;
+          }
+        }
+        if (existing?.state === "spawning" && !(existing.pid > 1)) {
+          await this.sendAndMarkLocked(existing, {
+            status: "failed",
+            reason: "spawn_state_unknown",
+            output: "",
+            truncated: false,
+            summary: "spawn state unknown",
+            note: "bridge stopped before worker identity was saved; exec may have happened; not spawning",
+          });
+          return;
+        }
+        if (
+          recovering &&
+          existing &&
+          existing.promptFingerprint !== currentFingerprint(this.deps.config)
+        ) {
+          await this.sendAndMarkLocked(
+            existing,
+            {
+              status: "failed",
+              reason: "needs_verification",
+              output: "",
+              truncated: false,
+              summary: "fingerprint changed",
+              note: "fingerprint_changed; not resuming",
+            },
+            { preserveWorkerState: processLiveness(existing) !== "dead" },
+          );
+          return;
+        }
+        if (existing && (!existing.resultSent || processLiveness(existing) !== "dead")) {
+          if (
+            existing.dispatchHandoffId !== card.dispatchHandoffId &&
+            processLiveness(existing) !== "dead"
+          ) {
+            await this.deliver(card, new Date().toISOString(), this.alreadyRunningFields());
+            return;
+          }
+          // Original dispatch identity owns every adopted/recovered result.
+          runCard = {
+            ...card,
+            roomId: existing.roomId,
+            cardId: existing.cardId,
+            fromPeerId: existing.fromPeerId,
+            dispatchHandoffId: existing.dispatchHandoffId,
+          };
+          return { existing, runCard };
+        }
+        const checked = resolveWorkerCwd(card.cwd, this.deps.config);
+        if (!checked.ok) {
+          await this.deliver(card, new Date().toISOString(), this.cwdDeniedFields());
+          return;
+        }
+        return {
+          runCard,
+          plan: {
+            cwd: checked.cwd,
+            completedHandoffIds: existing?.completedHandoffIds ?? [],
+            sessionId: randomUUID(),
+            attempts: 1,
+            startedAt: new Date().toISOString(),
+          },
+        };
+      });
+      if (!prepared) return;
+      let plan: SpawnPlan;
+      const runCard = prepared.runCard;
+      if (prepared.existing) {
+        const existing = prepared.existing;
         if (existing.state === "exited") {
           if (existing.sendAttempts >= 2) return;
           const path = this.transcriptPath(existing, existing.attempts);
           const raw = await readStableTranscript(path);
-          await this.sendParsed(existing, { timedOut: false,
-            parsed: parseAgentStream(existing.agent, raw), raw, transcriptPath: path });
+          await this.sendParsed(existing, {
+            timedOut: false,
+            parsed: parseAgentStream(existing.agent, raw),
+            raw,
+            transcriptPath: path,
+          });
           return;
         }
-        let raw: string;
-        if (processLiveness(existing) !== "dead") {
-          const watched = await this.watchAdopted(existing, owner);
-          if (watched.kind === "abandon" || owner.abandoned) return;
-          if (watched.kind === "unknown") {
-            await this.sendAndMark(existing, {
-              status: "failed", reason: "liveness_unknown", output: "",
-              truncated: false, summary: "liveness unknown",
+        const watched = await this.watchAdopted(existing, owner);
+        if (watched.kind === "abandon" || owner.abandoned) return;
+        if (watched.kind === "group_alive") {
+          await this.sendOrphanGroup(card, existing);
+          return;
+        }
+        if (watched.kind === "unknown") {
+          await this.sendAndMark(
+            existing,
+            {
+              status: "failed",
+              reason: "liveness_unknown",
+              output: "",
+              truncated: false,
+              summary: "liveness unknown",
               note: "could not establish worker identity; not spawning or signaling",
-            }, { preserveWorkerState: true });
-            return;
-          }
-          raw = watched.raw;
-          if (watched.timedOut) {
-            await this.sendParsed(existing, { timedOut: true,
-              parsed: parseAgentStream(existing.agent, raw), raw,
-              transcriptPath: this.transcriptPath(existing, existing.attempts) });
-            return;
-          }
-        } else {
-          raw = await readStableTranscript(this.transcriptPath(existing, existing.attempts));
+            },
+            { preserveWorkerState: true },
+          );
+          return;
+        }
+        const raw = watched.raw;
+        if (watched.timedOut) {
+          await this.sendParsed(existing, {
+            timedOut: true,
+            parsed: parseAgentStream(existing.agent, raw),
+            raw,
+            transcriptPath: this.transcriptPath(existing, existing.attempts),
+          });
+          return;
         }
         const parsed = parseAgentStream(existing.agent, raw);
-        if (parsed.sessionId) existing.sessionId = parsed.sessionId;
+        await this.persistSessionId(existing, raw);
         // Always inspect the latest transcript before deciding to resume.
         if (streamFinished(existing.agent, raw)) {
-          await this.sendParsed(existing, { timedOut: false, parsed, raw,
-            transcriptPath: this.transcriptPath(existing, existing.attempts) });
+          await this.sendParsed(existing, {
+            timedOut: false,
+            parsed,
+            raw,
+            transcriptPath: this.transcriptPath(existing, existing.attempts),
+          });
           return;
         }
         const next = await this.nextPlan(runCard, existing);
         if (!next) return;
         plan = next;
       } else {
-        const checked = resolveWorkerCwd(card.cwd, this.deps.config);
-        if (!checked.ok) {
-          await this.deliver(card, new Date().toISOString(), this.cwdDeniedFields());
-          return;
-        }
-        plan = { cwd: checked.cwd, completedHandoffIds: existing?.completedHandoffIds ?? [],
-          sessionId: randomUUID(), attempts: 1, startedAt: new Date().toISOString() };
+        plan = prepared.plan!;
       }
 
       for (;;) {
-        if (owner.abandoned) return;
+        if (owner.abandoned) {
+          if (card.claim) await this.reserveShutdownAfterClaim(card);
+          return;
+        }
         const outcome = await this.spawnOnce(runCard, owner, plan);
         if (outcome.kind === "abandon") return;
+        if (outcome.kind === "group_alive") {
+          await this.sendOrphanGroup(runCard, outcome.record);
+          return;
+        }
         if (outcome.kind === "cwd_denied") {
           const fields = this.cwdDeniedFields();
           if (outcome.changed) fields.note = "cwd_changed_before_spawn";
@@ -792,10 +1223,15 @@ export class HeadlessDispatcher {
         }
         if (outcome.kind === "setup_failed") {
           const fields: HeadlessResultFields = {
-            status: "failed", reason: "spawn_setup_failed", output: "",
-            truncated: false, summary: "", note: outcome.message.slice(0, 500),
+            status: "failed",
+            reason: "spawn_setup_failed",
+            output: "",
+            truncated: false,
+            summary: "",
+            note: outcome.message.slice(0, 500),
           };
-          if (outcome.record) await this.sendAndMark(outcome.record, fields, { allowPersistenceFailure: true });
+          if (outcome.record)
+            await this.sendAndMark(outcome.record, fields, { allowPersistenceFailure: true });
           else await this.deliver(runCard, plan.startedAt, fields);
           return;
         }
@@ -813,13 +1249,19 @@ export class HeadlessDispatcher {
     }
   }
 
-  private async sendGiveUp(
-    record: CardSessionRecord,
-  ): Promise<void> {
+  private async sendGiveUpLocked(record: CardSessionRecord): Promise<void> {
     const transcriptPath = this.transcriptPath(record, record.attempts);
     const raw = await readTranscript(transcriptPath);
     const parsed = parseAgentStream(record.agent, raw);
-    if (parsed.sessionId) record.sessionId = parsed.sessionId;
+    if (parsed.sessionId) {
+      Object.assign(
+        record,
+        await this.updateRecordLocked(record, (current) => {
+          if (!current) throw new Error("missing worker session record");
+          return { ...current, sessionId: parsed.sessionId! };
+        }),
+      );
+    }
     const fullText = parsed.finalText.length > 0 ? parsed.finalText : raw;
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const truncated = truncationNote(capped.truncated, transcriptPath, fullText);
@@ -827,14 +1269,22 @@ export class HeadlessDispatcher {
     const stderrLine = lastStderrLine(
       await readTranscript(join(this.cardDir(record), `transcript-${record.attempts}.stderr`)),
     );
-    const withStderr = stderrLine ? `${attemptsNote}; last stderr: ${stderrLine}` : attemptsNote;
-    await this.sendAndMark(record, {
+    const note = [
+      denialNote(parsed),
+      attemptsNote,
+      stderrLine ? `last stderr: ${stderrLine}` : undefined,
+      truncated,
+    ]
+      .filter(Boolean)
+      .join("; ")
+      .slice(0, 500);
+    await this.sendAndMarkLocked(record, {
       status: "failed",
       reason: "needs_verification",
       output: capped.text,
       truncated: capped.truncated,
       summary: summaryLine(capped.text),
-      note: truncated ? `${withStderr}; ${truncated}`.slice(0, 500) : withStderr,
+      note,
     });
   }
 
@@ -847,13 +1297,19 @@ export class HeadlessDispatcher {
       transcriptPath: string;
     },
   ): Promise<void> {
-    if (outcome.parsed.sessionId) record.sessionId = outcome.parsed.sessionId;
+    await this.persistSessionId(record, outcome.raw);
     // Timeout keeps the whole partial transcript. Parsed finalText alone
     // drops the remainder once any text has been parsed.
     const fullText = outcome.timedOut ? outcome.raw : outcome.parsed.finalText;
     const summary = summaryLine(fullText);
     const capped = truncateTail(fullText, OUTPUT_CAP);
-    const note = truncationNote(capped.truncated, outcome.transcriptPath, fullText);
+    const note = [
+      denialNote(outcome.parsed),
+      truncationNote(capped.truncated, outcome.transcriptPath, fullText),
+    ]
+      .filter(Boolean)
+      .join("; ")
+      .slice(0, 500);
     await this.sendAndMark(record, {
       status: "failed",
       reason: outcome.timedOut ? "timeout" : "needs_verification",
@@ -866,26 +1322,44 @@ export class HeadlessDispatcher {
   }
 
   private cardDir(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">): string {
-    return dirname(cardSessionPath({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card }));
+    return dirname(
+      cardSessionPath({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card }),
+    );
   }
 
-  private transcriptPath(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">, attempts: number): string {
+  private transcriptPath(
+    card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">,
+    attempts: number,
+  ): string {
     return join(this.cardDir(card), `transcript-${attempts}.jsonl`);
   }
 
   private async persistSessionId(record: CardSessionRecord, raw: string): Promise<void> {
     const sessionId = parseAgentStream(record.agent, raw).sessionId;
-    if (sessionId && sessionId !== record.sessionId) {
-      record.sessionId = sessionId;
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
-    }
+    if (!sessionId) return;
+    await this.withCardLock(record, async () => {
+      Object.assign(
+        record,
+        await this.updateRecordLocked(record, (current) => {
+          if (!current) throw new Error("missing worker session record");
+          if (current.dispatchHandoffId !== record.dispatchHandoffId)
+            throw new Error("session record belongs to another handoff");
+          return current.sessionId === sessionId ? current : { ...current, sessionId };
+        }),
+      );
+    });
   }
 
   /** Poll identity, never equating a failed observation with death. */
   private async watchAdopted(
     record: CardSessionRecord,
     owner: CardOwner,
-  ): Promise<{ kind: "abandon" } | { kind: "unknown" } | { kind: "exited"; timedOut: boolean; raw: string }> {
+  ): Promise<
+    | { kind: "abandon" }
+    | { kind: "unknown" }
+    | { kind: "group_alive" }
+    | { kind: "exited"; timedOut: boolean; raw: string }
+  > {
     const flight: HeadlessFlight = {
       workerId: record.sessionId,
       cardId: record.cardId,
@@ -901,11 +1375,19 @@ export class HeadlessDispatcher {
       let timedOut = false;
       let unknownProbes = 0;
       while (!owner.abandoned) {
-        const liveness = processLiveness(record);
-        await this.persistSessionId(record, await readTranscript(this.transcriptPath(record, record.attempts)));
+        const observation = observeProcess(record);
+        const { liveness } = observation;
+        if (liveness === "alive") this.verifiedFlights.add(flight);
+        else if (liveness === "dead" && !observation.leaderExited)
+          this.verifiedFlights.delete(flight);
+        await this.persistSessionId(
+          record,
+          await readTranscript(this.transcriptPath(record, record.attempts)),
+        );
         if (liveness === "dead") break;
         if (liveness === "unknown") {
-          if (++unknownProbes >= MAX_UNKNOWN_PROBES) return { kind: "unknown" };
+          if (++unknownProbes >= MAX_UNKNOWN_PROBES)
+            return { kind: processGroupAlive(record.pgid) ? "group_alive" : "unknown" };
           await sleep(50);
           continue;
         }
@@ -914,13 +1396,16 @@ export class HeadlessDispatcher {
           // Only start the kill when the recorded leader is still that
           // process. Once SIGTERM is sent, reap the group even if the
           // leader exits and a grandchild ignores SIGTERM.
-          const confirmed = processLiveness(record);
-          if (confirmed === "unknown") {
-            if (++unknownProbes >= MAX_UNKNOWN_PROBES) return { kind: "unknown" };
+          const confirmed = observeProcess(record);
+          if (confirmed.liveness === "dead" && !confirmed.leaderExited)
+            this.verifiedFlights.delete(flight);
+          if (confirmed.liveness === "unknown") {
+            if (++unknownProbes >= MAX_UNKNOWN_PROBES)
+              return { kind: processGroupAlive(record.pgid) ? "group_alive" : "unknown" };
             await sleep(50);
             continue;
           }
-          if (confirmed === "alive") {
+          if (confirmed.liveness === "alive") {
             this.signalTracked(flight, "SIGTERM");
             await this.reapGroup(record.pgid, flight, owner, Date.now());
           }
@@ -930,20 +1415,32 @@ export class HeadlessDispatcher {
         await sleep(50);
       }
       if (owner.abandoned) return { kind: "abandon" };
+      // ESRCH on cold recovery never verifies a saved numeric process group.
+      // Only a leader observed alive with matching lstart in this watch does.
+      if (processGroupAlive(record.pgid)) {
+        if (!this.verifiedFlights.has(flight)) return { kind: "group_alive" };
+        await this.reapGroup(record.pgid, flight, owner, Date.now());
+      }
+      if (owner.abandoned) return { kind: "abandon" };
+      if (processGroupAlive(record.pgid)) return { kind: "group_alive" };
       const raw = await readStableTranscript(this.transcriptPath(record, record.attempts));
       return { kind: "exited", timedOut, raw };
     } finally {
+      this.verifiedFlights.delete(flight);
       const index = this.active.indexOf(flight);
       if (index >= 0) this.active.splice(index, 1);
     }
   }
 
-  /** Signal only while this flight is tracked and the group probe succeeds. */
+  /** Tracking a saved pgid alone does not establish its identity. */
   private signalTracked(flight: HeadlessFlight, signal: "SIGTERM" | "SIGKILL"): void {
     const pgid = flight.pgid ?? 0;
-    if (!this.active.includes(flight)) return;
-    if (!processGroupAlive(pgid)) return;
-    killProcessGroup(pgid, signal);
+    if (!this.active.includes(flight) || !this.verifiedFlights.has(flight)) return;
+    if (!processGroupAlive(pgid)) {
+      this.verifiedFlights.delete(flight);
+      return;
+    }
+    if (!killProcessGroup(pgid, signal)) this.verifiedFlights.delete(flight);
   }
 
   /**
@@ -957,14 +1454,25 @@ export class HeadlessDispatcher {
     owner: CardOwner,
     sigtermAt: number,
   ): Promise<void> {
+    if (!this.verifiedFlights.has(flight)) return;
     const killAt = sigtermAt + GROUP_KILL_GRACE_MS;
-    while (Date.now() < killAt && !owner.abandoned && processGroupAlive(pgid)) {
+    while (Date.now() < killAt && !owner.abandoned) {
+      if (!processGroupAlive(pgid)) {
+        this.verifiedFlights.delete(flight);
+        return;
+      }
       await sleep(50);
     }
-    if (!owner.abandoned && this.active.includes(flight) && processGroupAlive(pgid)) {
-      killProcessGroup(pgid, "SIGKILL");
+    if (!owner.abandoned && this.active.includes(flight)) {
+      this.signalTracked(flight, "SIGKILL");
       const giveUp = Date.now() + 1_000;
-      while (Date.now() < giveUp && processGroupAlive(pgid)) await sleep(30);
+      while (Date.now() < giveUp) {
+        if (!processGroupAlive(pgid)) {
+          this.verifiedFlights.delete(flight);
+          return;
+        }
+        await sleep(30);
+      }
     }
   }
 
@@ -977,7 +1485,9 @@ export class HeadlessDispatcher {
     let flight: HeadlessFlight | undefined;
     let record: CardSessionRecord | undefined;
     let tailStopped = false;
-    let stopTail = (): void => { tailStopped = true; };
+    let stopTail = (): void => {
+      tailStopped = true;
+    };
     let tailPromise: Promise<void> | undefined;
     let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
@@ -1010,40 +1520,90 @@ export class HeadlessDispatcher {
         permissions: this.deps.config.permissions,
       });
       const command = this.deps.commands[card.agent];
-      // Write-ahead: a crash from this point consumes this attempt. There is
-      // still a residual orphan window between spawn and the pid write; a
-      // spawning record without a pid cannot prove whether exec happened.
-      record = {
-        agent: card.agent, cwd, requestedCwd: card.cwd ?? null,
-        sessionId: plan.sessionId,
-        promptFingerprint: currentFingerprint(this.deps.config),
-        attempts: plan.attempts, pid: 0, pgid: 0,
-        startedAt: plan.startedAt, state: "spawning", resultSent: false,
-        roomId: card.roomId, cardId: card.cardId, fromPeerId: card.fromPeerId,
-        dispatchHandoffId: card.dispatchHandoffId, procStartedAt: "", sendAttempts: 0,
-        completedHandoffIds: [...plan.completedHandoffIds],
-      };
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
-      if (owner.abandoned) return { kind: "abandon" };
-      // Last path check after all setup awaits. Passing the pinned canonical
-      // path also avoids following a changed requested symlink in the child.
-      // Residual race at the canonical path itself needs fd-relative chdir.
-      const checked = resolveWorkerCwd(card.cwd, this.deps.config);
-      if (!checked.ok || checked.cwd !== plan.cwd) {
-        return { kind: "cwd_denied", changed: true, record };
-      }
-      spawned = spawnDetachedWorker({
-        bin: command.bin,
-        args: [...command.args, ...built.argv],
-        cwd,
-        env: scrubWorkerEnv(card.cardId),
-        stdoutPath: transcriptPath,
-        stderrPath: stderrPath,
+      const setup = await this.withCardLock<SpawnOutcome | undefined>(card, async () => {
+        if (owner.abandoned) {
+          if (card.claim) await this.reserveShutdownAfterClaimLocked(card);
+          return { kind: "abandon" };
+        }
+        const previous = await this.readRecord(card);
+        if (previous && processGroupAlive(previous.pgid)) {
+          return { kind: "group_alive", record: previous };
+        }
+        // Write-ahead: a crash from this point consumes this attempt. There is
+        // still a residual orphan window between spawn and the pid write; a
+        // spawning record without a pid cannot prove whether exec happened.
+        record = await this.updateRecordLocked(card, (current) => ({
+          agent: card.agent,
+          cwd,
+          requestedCwd: card.cwd ?? null,
+          sessionId: plan.sessionId,
+          promptFingerprint: currentFingerprint(this.deps.config),
+          attempts: plan.attempts,
+          pid: 0,
+          pgid: 0,
+          startedAt: plan.startedAt,
+          state: "spawning",
+          resultSent: false,
+          roomId: card.roomId,
+          cardId: card.cardId,
+          fromPeerId: card.fromPeerId,
+          dispatchHandoffId: card.dispatchHandoffId,
+          procStartedAt: "",
+          sendAttempts: 0,
+          completedHandoffIds: [...(current?.completedHandoffIds ?? plan.completedHandoffIds)],
+        }));
+        if (owner.abandoned) return { kind: "abandon" };
+        // Last path check after all setup awaits. Passing the pinned canonical
+        // path also avoids following a changed requested symlink in the child.
+        // Residual race at the canonical path itself needs fd-relative chdir.
+        const checked = resolveWorkerCwd(card.cwd, this.deps.config);
+        if (!checked.ok || checked.cwd !== plan.cwd) {
+          return { kind: "cwd_denied", changed: true, record };
+        }
+        if (previous && processGroupAlive(previous.pgid)) {
+          // Keep the consumed write-ahead attempt and the identity that blocks it.
+          record = await this.updateRecordLocked(card, (current) => ({
+            ...current!,
+            pid: previous.pid,
+            pgid: previous.pgid,
+            procStartedAt: previous.procStartedAt,
+            state: previous.state,
+          }));
+          return { kind: "group_alive", record };
+        }
+        spawned = spawnDetachedWorker({
+          bin: command.bin,
+          args: [...command.args, ...built.argv],
+          cwd,
+          env: scrubWorkerEnv(card.cardId),
+          stdoutPath: transcriptPath,
+          stderrPath: stderrPath,
+        });
+        const tracked: HeadlessFlight = {
+          workerId: plan.sessionId,
+          cardId: card.cardId,
+          agent: card.agent,
+          pid: spawned.pid,
+          pgid: spawned.pgid,
+        };
+        flight = tracked;
+        this.active.push(tracked);
+        this.verifiedFlights.add(tracked);
+        // The helper's synchronous branch re-reads and writes before its first
+        // await, retaining the no-await spawn -> durable pid/pgid fence.
+        record = await this.updateRecordLocked(
+          card,
+          (current) => ({
+            ...current!,
+            pid: spawned!.pid,
+            pgid: spawned!.pgid,
+          }),
+          true,
+        );
       });
-      record.pid = spawned.pid;
-      record.pgid = spawned.pgid;
-      // No await between spawn returning and the atomic pid/pgid write.
-      writeCardSession({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
+      if (setup) return setup;
+      if (!spawned || !record || !flight) throw new Error("worker setup did not complete");
+      const tracked = flight;
       const child = spawned.child;
       const exitPromise = waitChild(child);
       exitPromise.catch(() => {
@@ -1058,22 +1618,20 @@ export class HeadlessDispatcher {
       if (leaderGone()) onLeaderExit();
       else child.once("exit", onLeaderExit);
       if (spawned.pid <= 1) throw new Error("worker did not start");
-      record.procStartedAt = await captureLstart(spawned.pid, child);
-      record.state = "running";
-      writeCardSession({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
-      const tracked: HeadlessFlight = {
-        workerId: plan.sessionId,
-        cardId: card.cardId,
-        agent: card.agent,
-        pid: spawned.pid,
-        pgid: spawned.pgid,
-      };
-      flight = tracked;
-      this.active.push(tracked);
-
+      const procStartedAt = await captureLstart(spawned.pid, child);
+      record = await this.withCardLock(card, () =>
+        this.updateRecordLocked(card, (current) => ({
+          ...current!,
+          procStartedAt,
+          state: "running",
+        })),
+      );
       const runningRecord = record;
       let wakeTail = (): void => {};
-      stopTail = () => { tailStopped = true; wakeTail(); };
+      stopTail = () => {
+        tailStopped = true;
+        wakeTail();
+      };
       tailPromise = (async () => {
         while (!tailStopped && !owner.abandoned) {
           const raw = await new Promise<string | null>((resolve) => {
@@ -1087,7 +1645,10 @@ export class HeadlessDispatcher {
           // close; do not make result delivery depend on the next timer/IO wake.
           await new Promise<void>((resolve) => {
             const timer = setTimeout(resolve, 50);
-            wakeTail = () => { clearTimeout(timer); resolve(); };
+            wakeTail = () => {
+              clearTimeout(timer);
+              resolve();
+            };
             if (tailStopped || owner.abandoned) wakeTail();
           });
         }
@@ -1120,14 +1681,26 @@ export class HeadlessDispatcher {
         markTimedOut = resolve;
       });
       if (!disarmed && !leaderGone()) {
-        timeoutTimer = setTimeout(() => {
-          if (disarmed || owner.abandoned || !this.active.includes(tracked)) return;
-          if (!processGroupAlive(tracked.pgid ?? 0)) return;
-          timedOut = true;
-          sigtermAt = Date.now();
-          this.signalTracked(tracked, "SIGTERM");
-          markTimedOut();
-        }, timeoutMsOf(this.deps.config));
+        timeoutTimer = setTimeout(
+          () => {
+            if (disarmed || owner.abandoned || !this.active.includes(tracked)) return;
+            if (!processGroupAlive(tracked.pgid ?? 0)) {
+              this.verifiedFlights.delete(tracked);
+              return;
+            }
+            timedOut = true;
+            sigtermAt = Date.now();
+            this.signalTracked(tracked, "SIGTERM");
+            markTimedOut();
+          },
+          Math.min(
+            2_147_483_647,
+            Math.max(
+              60_000,
+              timeoutMsOf(this.deps.config) - (Date.now() - Date.parse(plan.startedAt)),
+            ),
+          ),
+        );
       }
 
       if (owner.abandoned) {
@@ -1146,13 +1719,14 @@ export class HeadlessDispatcher {
         detachChild(child);
         return { kind: "abandon" };
       }
-      if (timedOut) {
+      if (timedOut || processGroupAlive(tracked.pgid ?? 0)) {
         await this.reapGroup(tracked.pgid ?? 0, tracked, owner, sigtermAt || Date.now());
       }
       if (owner.abandoned) {
         detachChild(child);
         return { kind: "abandon" };
       }
+      if (processGroupAlive(tracked.pgid ?? 0)) return { kind: "group_alive", record };
       if (!leaderGone()) {
         await Promise.race([
           exitPromise.then(
@@ -1167,8 +1741,7 @@ export class HeadlessDispatcher {
       const raw = await readStableTranscript(transcriptPath);
       const parsed = parseAgentStream(card.agent, raw);
       const sessionId = parsed.sessionId ?? plan.sessionId;
-      record.sessionId = sessionId;
-      await writeCardSessionAsync({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId }, record);
+      await this.persistSessionId(record, raw);
       return {
         kind: "done",
         timedOut,
@@ -1180,9 +1753,7 @@ export class HeadlessDispatcher {
         sessionId,
       };
     } catch (err) {
-      if (spawned && processGroupAlive(spawned.pgid)) {
-        killProcessGroup(spawned.pgid, "SIGKILL");
-      }
+      if (flight) this.signalTracked(flight, "SIGKILL");
       const message = err instanceof Error ? err.message : String(err);
       return { kind: "setup_failed", message, record };
     } finally {
@@ -1190,13 +1761,18 @@ export class HeadlessDispatcher {
       await tailPromise?.catch(() => {});
       disarmTimeout();
       if (flight) {
+        this.verifiedFlights.delete(flight);
         const index = this.active.indexOf(flight);
         if (index >= 0) this.active.splice(index, 1);
       }
     }
   }
 
-  private async writeGrokPrompt(agent: AgentKind, dir: string, wrapped: string): Promise<string | undefined> {
+  private async writeGrokPrompt(
+    agent: AgentKind,
+    dir: string,
+    wrapped: string,
+  ): Promise<string | undefined> {
     if (agent !== "grok") return undefined;
     const promptFile = join(dir, "prompt.txt");
     await writeFile(promptFile, wrapped, { encoding: "utf8", mode: 0o600 });
