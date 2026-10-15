@@ -388,6 +388,58 @@ describe("0.32.0 P4 verify round 1 — policy lookup errors fail closed (H)", ()
   }, 30_000);
 });
 
+describe("0.32.0 P4 verify round 2 — absent cache keyed on loomDir state (H)", () => {
+  test("absent (cache warm) → loomDir replaced by a dangling symlink → calls refused", async () => {
+    const { home, loom } = makeHome();
+    const s = startServer(home);
+    let r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+    r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+
+    renameSync(loom, join(home, ".loom-moved"));
+    symlinkSync(join(home, "no-such-dir"), loom);
+    r = await s.call("get_purpose", {});
+    expect(r.result?.isError).toBe(true);
+    expect(textOf(r)).toContain("Loom pre-check refused get_purpose: policy.json is invalid");
+    expect(textOf(r)).toContain("dangling symlink");
+    expect((await s.listNames()).length).toBe(20);
+    expect((await s.request("ping")).result).toBeDefined();
+  }, 30_000);
+
+  test("absent (cache warm) → loomDir replaced by a symlink to a real dir → reloaded (loadPolicy follows it)", async () => {
+    const { home, loom } = makeHome();
+    const s = startServer(home);
+    let r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+
+    const real = join(home, "real-loom");
+    mkdirSync(real);
+    writeFileSync(
+      join(real, "policy.json"),
+      JSON.stringify(policyBody({ mcp: { deny: ["loom__get_purpose"] } })),
+    );
+    renameSync(loom, join(home, ".loom-moved"));
+    symlinkSync(real, loom);
+    r = await s.call("get_purpose", {});
+    expect(r.result?.isError).toBe(true);
+    expect(textOf(r)).toContain("denied by policy.json mcp.deny (loom__get_purpose)");
+    expect(await s.listNames()).not.toContain("get_purpose");
+  }, 30_000);
+
+  test("absent (cache warm) → loomDir replaced by a symlink to a real dir without policy.json → still built-in", async () => {
+    const { home, loom } = makeHome();
+    const s = startServer(home);
+    expect(textOf(await s.call("get_purpose", {}))).not.toContain("Loom pre-check refused");
+    const real = join(home, "real-loom-empty");
+    mkdirSync(real);
+    renameSync(loom, join(home, ".loom-moved"));
+    symlinkSync(real, loom);
+    const r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+  }, 30_000);
+});
+
 describe("0.32.0 P4 verify round 1 — dispatchPeerId never exposed over MCP (L)", () => {
   test("list_tasks / add_task / update_task / import_board / export_board / apply_card_result omit the pin", async () => {
     const { home, loom } = makeHome();

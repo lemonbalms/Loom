@@ -59,8 +59,10 @@ const TOOLS = TOOL_DEFINITIONS;
 //
 // P4 verify round 1 (fail closed): the cache key comes from lstat of policy.json (entry
 // type + ino + mtimeMs + ctimeMs + size; for a symlink also the target's stat or its
-// error), so a dangling symlink never shares the "absent" key. Only an lstat ENOENT is
-// "absent"; every other state goes through loadPolicy, which decides (and throws for
+// error), so a dangling symlink never shares the "absent" key. Round 2: the key also
+// covers loomDir's own lstat/stat, and an absent entry is reused only while loomDir is
+// a real directory with an unchanged key. Only an lstat ENOENT is "absent"; every
+// other state goes through loadPolicy, which decides (and throws for
 // dangling links, non-regular files, lookup errors). An invalid gate is never trusted
 // from cache — loadPolicy re-runs on every list/call until it succeeds.
 // Remaining limit: an in-place rewrite that keeps inode, size, mtimeMs and ctimeMs all
@@ -88,16 +90,15 @@ function statPart(st: Stats): string {
   return `${entryType(st)}:${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
 }
 
-function policyStatKey(dir: string): string {
-  const path = join(dir, "policy.json");
+/** lstat (+ stat when it is a symlink) of one path, or its error codes, as a cache-key part. */
+function entryKey(path: string): { key: string; lstat?: Stats } {
   let link: Stats;
   try {
     link = lstatSync(path);
   } catch (e) {
-    const code = errCode(e);
-    return `${dir}\0${code === "ENOENT" ? "absent" : `lstat-err:${code}`}`;
+    return { key: `lstat-err:${errCode(e)}` };
   }
-  let key = `${dir}\0${statPart(link)}`;
+  let key = statPart(link);
   if (link.isSymbolicLink()) {
     try {
       key += `->${statPart(statSync(path))}`;
@@ -105,7 +106,22 @@ function policyStatKey(dir: string): string {
       key += `->stat-err:${errCode(e)}`;
     }
   }
-  return key;
+  return { key, lstat: link };
+}
+
+/**
+ * P4 verify round 2: the key covers loomDir itself as well as policy.json, so swapping
+ * loomDir (e.g. for a dangling symlink) can never reuse a warm "absent" entry.
+ * `cacheable` is false for an absent policy unless loomDir is a real (non-symlink)
+ * directory — every other loomDir state goes to loadPolicy on each list/call.
+ */
+function policyStatKey(dir: string): { key: string; cacheable: boolean } {
+  const dirEntry = entryKey(dir);
+  const policyEntry = entryKey(join(dir, "policy.json"));
+  const key = `${dir}\0dir=${dirEntry.key}\0policy=${policyEntry.key}`;
+  const absent = policyEntry.key === "lstat-err:ENOENT";
+  const realDir = dirEntry.lstat?.isDirectory() === true;
+  return { key, cacheable: !absent || realDir };
 }
 
 function loadGate(dir: string): LoomToolsGate {
@@ -124,8 +140,13 @@ function currentGate(): LoomToolsGate {
   } catch (e) {
     return resolveLoomToolsGate({ invalid: `Loom state dir unavailable: ${errText(e)}` });
   }
-  const key = policyStatKey(dir);
-  if (policyState === null || policyState.key !== key || policyState.gate.invalid !== undefined) {
+  const { key, cacheable } = policyStatKey(dir);
+  if (
+    policyState === null ||
+    policyState.key !== key ||
+    !cacheable ||
+    policyState.gate.invalid !== undefined
+  ) {
     policyState = { key, gate: loadGate(dir) };
   }
   return policyState.gate;
