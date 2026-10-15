@@ -25,6 +25,12 @@
  *   sandbox_mode). `sandbox_workspace_write.network_access` must be present
  *   exactly once with `true` or `false`.
  * - grok `--disable-web-search` is a bool. Env `GROK_FOLDER_TRUST` is rejected.
+ *
+ * 0.31.0 P4 strictness (R49-M4):
+ * - claude `--plugin-dir <dir>` takes one value, at most once; `<dir>` must be an
+ *   absolute path to a directory holding a regular `.claude-plugin/plugin.json`.
+ * - claude `--add-dir` is rejected by name (it widens access beyond cwd, D4).
+ *   codex and grok know neither flag (unknown flag → exit 2).
  * - claude and grok permission rules with a `*` right after a non-space
  *   character (the `p*` form, PLAN §0.31.0 UK-1) are rejected.
  * - A flag given more than once exits 2 unless its spec is `repeatable`
@@ -79,10 +85,11 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 type Kind = "claude" | "codex" | "grok";
 
@@ -285,6 +292,7 @@ const claudeFlags = flagMap([
   [["--permission-mode"], { take: "value", label: "--permission-mode <mode>" }],
   [["--settings"], { take: "value", label: "--settings <file-or-json>" }],
   [["--strict-mcp-config"], { take: "bool", label: "--strict-mcp-config" }],
+  [["--plugin-dir"], { take: "value", label: "--plugin-dir <path>" }],
 ]);
 
 /** 0.30.0 claude tool-list flags. 0.31.0 compiles permissions into --settings. */
@@ -374,15 +382,33 @@ function checkClaudeSettings(argv: string[]): string | null {
   return null;
 }
 
+/** P4: the plugin root must hold `.claude-plugin/plugin.json` (D4). */
+function checkClaudePluginDir(argv: string[]): string | null {
+  for (const dir of flagValues(argv, ["--plugin-dir"])) {
+    if (!isAbsolute(dir)) return `error: --plugin-dir must be an absolute path, got '${dir}'\n`;
+    let ok = false;
+    try {
+      ok = statSync(dir).isDirectory() && statSync(join(dir, ".claude-plugin", "plugin.json")).isFile();
+    } catch {
+      ok = false;
+    }
+    if (!ok) return `error: --plugin-dir '${dir}' has no .claude-plugin/plugin.json\n`;
+  }
+  return null;
+}
+
 function checkClaude(argv: string[]): string | null {
   for (const arg of argv) {
     if (CLAUDE_REMOVED_FLAGS.has(arg)) {
       return `error: ${arg} is not accepted (0.31.0 compiles permissions into --settings)\n`;
     }
+    if (arg === "--add-dir" || arg.startsWith("--add-dir=")) {
+      return "error: --add-dir is not accepted (0.31.0 skills use --plugin-dir only)\n";
+    }
   }
   const flagError = parseFlags(argv, claudeFlags, 1);
   if (flagError) return flagError;
-  return checkClaudeSettings(argv);
+  return checkClaudeSettings(argv) ?? checkClaudePluginDir(argv);
 }
 
 function checkCodexConfig(argv: string[], allowed: ReadonlySet<string>): string | null {
