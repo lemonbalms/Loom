@@ -349,12 +349,16 @@ const AUDIT_OPTIONAL_KEYS = ["reason", "mode", "cardId", "convId"] as const;
 const GENERATION_RE = /^policy-audit\.\d{8}T\d{9}Z-\d{10}-[0-9a-z]{6}\.jsonl$/;
 
 /**
- * Test seams only (both undefined in production): `afterLstat` fires between the
- * size check and the rotation rename; `generationName` overrides the unique name.
+ * Test seams only (all undefined in production): `afterLstat` fires between the
+ * size check and the rotation; `generationName` overrides the unique name (undefined
+ * → the real one); `beforeRename` fires between name allocation and the rename;
+ * `write` replaces writeSync for one chunk of the write loop.
  */
 export const policyAuditTestHooks: {
   afterLstat?: () => void;
-  generationName?: () => string;
+  generationName?: () => string | undefined;
+  beforeRename?: () => void;
+  write?: (fd: number, buf: Buffer, offset: number, length: number) => number;
 } = {};
 
 /**
@@ -379,8 +383,12 @@ function randomBase36(): string {
 }
 
 /**
- * Audit files in a room directory: rotated generations oldest → newest, then the
- * live file if present. A missing directory (or one vanishing mid-scan) → what was seen.
+ * Audit files in a room directory for readers: rotated generations by name (≈ oldest
+ * → newest), then the live file if present. The order is approximate under concurrent
+ * rotation (a paused writer may rename with an earlier-stamped name; pruning goes by
+ * mtime instead). A missing directory → []; a file can vanish between this listing
+ * and the read (concurrent prune) — readers tolerate ENOENT. Readers must also skip
+ * unparsable lines: a crash mid-write can leave a partial final line.
  */
 export function listPolicyAuditGenerations(roomDir: string): string[] {
   let names: string[];
@@ -448,13 +456,26 @@ function auditFailed(roomId: string, err: unknown): false {
 const OPEN_LIVE =
   constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 
-/** Unlink all but the newest K rotated generations. ENOENT (a concurrent pruner) is fine. */
+/**
+ * Unlink all but the newest K rotated generations, newest = latest mtime (last write),
+ * name as tiebreak — not by name alone, since a paused writer can rename the freshest
+ * data with an earlier-stamped name. ENOENT (a concurrent pruner) is fine.
+ */
 function pruneGenerations(roomDir: string): void {
-  const rotated = listPolicyAuditGenerations(roomDir).filter((n) => n !== POLICY_AUDIT_FILE);
-  for (const name of rotated.slice(
-    0,
-    Math.max(0, rotated.length - POLICY_AUDIT_KEEP_GENERATIONS),
-  )) {
+  const rotated: Array<{ name: string; mtime: bigint }> = [];
+  for (const name of listPolicyAuditGenerations(roomDir)) {
+    if (name === POLICY_AUDIT_FILE) continue;
+    try {
+      rotated.push({ name, mtime: lstatSync(join(roomDir, name), { bigint: true }).mtimeNs });
+    } catch (e) {
+      if (errCode(e) !== "ENOENT") throw e;
+    }
+  }
+  rotated.sort((a, b) =>
+    a.mtime < b.mtime ? -1 : a.mtime > b.mtime ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  );
+  const excess = Math.max(0, rotated.length - POLICY_AUDIT_KEEP_GENERATIONS);
+  for (const { name } of rotated.slice(0, excess)) {
     try {
       unlinkSync(join(roomDir, name));
     } catch (e) {
@@ -463,15 +484,35 @@ function pruneGenerations(roomDir: string): void {
   }
 }
 
+/** Write every byte of `line`; a 0-byte or throwing write → false (no retry). */
+function writeFully(fd: number, line: string): boolean {
+  const buf = Buffer.from(line, "utf8");
+  let off = 0;
+  while (off < buf.length) {
+    let n: number;
+    try {
+      n = policyAuditTestHooks.write
+        ? policyAuditTestHooks.write(fd, buf, off, buf.length - off)
+        : writeSync(fd, buf, off, buf.length - off);
+    } catch {
+      return false;
+    }
+    if (n <= 0) return false;
+    off += n;
+  }
+  return true;
+}
+
 /**
  * Append one record to `<stateDir>/rooms/<roomKey(roomId)>/policy-audit.jsonl`.
  * Lock-free (D8 as amended in P2 verify round 2):
  *   1. lstat the live path (ENOENT = size 0; a symlink → skip).
  *   2. If `size > 0 && size + line > 1 MiB`, rename it to a unique generation name
- *      (ENOENT = another writer already rotated → continue), then keep only the
- *      newest 3 generations.
+ *      (ENOENT = another writer already rotated → continue), then prune.
  *   3. open O_WRONLY|O_APPEND|O_CREAT|O_NOFOLLOW 0600 (no O_EXCL: concurrent
- *      creators append to the same inode), fchmod 0600, one write, close.
+ *      creators append to the same inode), fchmod 0600, write the whole line
+ *      (loop over short writes; 0 bytes or a throw → short_write), close.
+ * Pruning keeps the newest 3 generations by mtime (name as tiebreak).
  * Renames never target an existing name, so nothing is overwritten; a concurrent
  * loser can at worst rotate a small fresh file into one extra small generation.
  * Any failure is swallowed with one stderr line and returns false — the decision
@@ -505,6 +546,7 @@ export function appendPolicyAudit(
       const gen =
         policyAuditTestHooks.generationName?.() ??
         policyAuditGenerationName(new Date(), process.pid, randomBase36());
+      policyAuditTestHooks.beforeRename?.();
       let rotated = false;
       try {
         renameSync(path, join(roomDir, gen));
@@ -515,13 +557,21 @@ export function appendPolicyAudit(
       if (rotated) pruneGenerations(roomDir);
     }
 
+    // Accepted limit (P2 verify round 3, M1): a writer paused between this open and
+    // its write while other writers rotate ≥ 3 times (≥ 3 MiB of audit lines) appends
+    // to an inode that pruning has already unlinked — at most that one record is lost.
+    // No lock protocol is added for it (D8 amended: lock-free).
     const fd = openSync(path, OPEN_LIVE, 0o600);
+    let written = false;
     try {
       if ((fstatSync(fd).mode & 0o777) !== 0o600) fchmodSync(fd, 0o600);
-      writeSync(fd, line);
+      written = writeFully(fd, line);
     } finally {
       closeSync(fd);
     }
+    // A crash or a failed write mid-loop can leave a partial line; readers skip
+    // unparsable lines (see listPolicyAuditGenerations).
+    if (!written) return auditFailed(roomId, { code: "short_write" });
     return true;
   } catch (e) {
     return auditFailed(roomId, e);
