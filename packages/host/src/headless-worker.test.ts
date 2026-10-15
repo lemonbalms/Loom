@@ -351,7 +351,7 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
   );
 
   test(
-    "(c) fingerprint change starts a new session",
+    "(c) fingerprint change on adoption → fingerprint_changed, no new session (0.31.0 D11 / R49-M3)",
     async () => {
       await withFakeLock(async () => {
         const loomDir = mkdtempSync(join(tmpdir(), "loom-p2-fp-"));
@@ -409,12 +409,12 @@ describe("v0.30.0 P2 expected-red: headless worker", () => {
         });
         try {
           await dispatcher.dispatch(card);
-          const lines = dumpLines(dump);
-          expect(lines).toHaveLength(1);
-          expect(lines[0]!.argv).toContain("--session-id");
-          expect(lines[0]!.argv).not.toContain("-r");
-          expect(lines[0]!.sessionId).not.toBe("old-session");
+          // 0.30.0 started a fresh session here; 0.31.0 adopts only on an unchanged
+          // fingerprint and otherwise lands needs_verification without spawning.
+          expect(dumpLines(dump)).toHaveLength(0);
+          expect(calls).toHaveLength(1);
           expect(calls[0]!.fields.reason).toBe("needs_verification");
+          expect(calls[0]!.fields.note).toBe("fingerprint_changed; not resuming");
         } finally {
           for (const line of dumpLines(dump)) killRecorded(line.pid);
           try {

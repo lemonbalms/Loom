@@ -313,20 +313,22 @@ describe("headless P5 review", () => {
     });
   });
 
-  test("H3 adopted incomplete exit rechecks fingerprint and spends the next durable attempt", async () => {
+  // 0.31.0 D11 / R49-M3 supersedes the 0.30.0 "adopt, then fresh session" rule: adoption
+  // happens only on an unchanged fingerprint, on every path (not only recovery).
+  test("H3 changed fingerprint is never adopted: live worker kept, result pre-empted", async () => {
     await fixture(async h => {
       const pid = h.sleeper();
-      const old = h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid), promptFingerprint: "old-profile" });
+      h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid), promptFingerprint: "old-profile" });
       const dispatcher = h.dispatcher();
-      const pending = dispatcher.dispatch(h.card);
-      await waitFor(() => dispatcher.flights().length === 1);
-      killPid(pid);
-      await pending;
-      expect(h.lines()).toHaveLength(1);
-      expect(h.lines()[0]!.resumeId).toBe("");
-      expect(h.lines()[0]!.sessionId).not.toBe(old.sessionId);
-      expect(h.saved()!.attempts).toBe(2);
+      await dispatcher.dispatch(h.card);
+      expect(dispatcher.flights()).toHaveLength(0);
+      expect(alive(pid)).toBe(true);
+      expect(h.lines()).toHaveLength(0);
+      expect(h.saved()!.attempts).toBe(1);
+      expect(h.saved()!.state).toBe("running");
       expect(h.calls).toHaveLength(1);
+      expect(h.calls[0]!.fields.reason).toBe("needs_verification");
+      expect(h.calls[0]!.fields.note).toBe("fingerprint_changed; not resuming");
     });
   });
 

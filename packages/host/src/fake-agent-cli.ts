@@ -27,8 +27,10 @@
  * - grok `--disable-web-search` is a bool. Env `GROK_FOLDER_TRUST` is rejected.
  *
  * 0.31.0 P4 strictness (R49-M4):
- * - claude `--plugin-dir <dir>` takes one value, at most once; `<dir>` must be an
- *   absolute path to a directory holding a regular `.claude-plugin/plugin.json`.
+ * - claude `--plugin-dir <dir>` takes one value; `<dir>` must be an absolute path to
+ *   a directory holding a regular `.claude-plugin/plugin.json`. The real claude accepts
+ *   a repeated `--plugin-dir` (several plugins); the fake rejecting a repeat is a
+ *   deliberate Loom restriction (Loom passes exactly one card plugin), not parser fidelity.
  * - claude `--add-dir` is rejected by name (it widens access beyond cwd, D4).
  *   codex and grok know neither flag (unknown flag → exit 2).
  * - claude and grok permission rules with a `*` right after a non-space
@@ -292,6 +294,7 @@ const claudeFlags = flagMap([
   [["--permission-mode"], { take: "value", label: "--permission-mode <mode>" }],
   [["--settings"], { take: "value", label: "--settings <file-or-json>" }],
   [["--strict-mcp-config"], { take: "bool", label: "--strict-mcp-config" }],
+  // Not `repeatable`: real claude accepts repeats; rejecting them is a Loom restriction.
   [["--plugin-dir"], { take: "value", label: "--plugin-dir <path>" }],
 ]);
 

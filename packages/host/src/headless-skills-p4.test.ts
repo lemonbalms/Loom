@@ -26,6 +26,7 @@ import {
   defaultWorkerPermissions,
   effectiveWorkerPolicy,
   HEADLESS_WORKER_HINT,
+  promptFingerprint,
   RESUME_CONTINUATION_MESSAGE,
   type WorkerConfig,
   workerFingerprint,
@@ -138,10 +139,53 @@ function commands(script?: string): Record<AgentKind, { bin: string; args: strin
   ) as Record<AgentKind, { bin: string; args: string[] }>;
 }
 
+/**
+ * Literal P2 argv (0.31.0 P2, default permissions, no policy.json, skills off), pinned
+ * as data so the oracle does not depend on buildAgentArgv.
+ */
+const P2_CLAUDE_SETTINGS =
+  '{"permissions":{"allow":["Read","Edit","Write","Glob","Grep","Bash(bun run *)","Bash(bun test)","Bash(bun test *)","Bash(git diff)","Bash(git diff *)","Bash(git log)","Bash(git log *)","Bash(git status)","Bash(git status *)","Bash(npm test)","Bash(npm test *)"],"deny":["Bash(curl)","Bash(curl *)","Bash(git clean)","Bash(git clean *)","Bash(git push)","Bash(git push *)","Bash(git reset --hard)","Bash(git reset --hard *)","Bash(rm)","Bash(rm *)","Bash(rmdir)","Bash(rmdir *)","Bash(sudo)","Bash(sudo *)","Bash(wget)","Bash(wget *)","WebFetch","WebSearch"]}}';
+const P2_GROK_RULES = [
+  "--allow", "Read", "--allow", "Edit", "--allow", "Write", "--allow", "Glob", "--allow", "Grep",
+  "--allow", "Bash(bun run *)", "--allow", "Bash(bun test)", "--allow", "Bash(bun test *)",
+  "--allow", "Bash(git diff)", "--allow", "Bash(git diff *)", "--allow", "Bash(git log)",
+  "--allow", "Bash(git log *)", "--allow", "Bash(git status)", "--allow", "Bash(git status *)",
+  "--allow", "Bash(npm test)", "--allow", "Bash(npm test *)",
+  "--deny", "Bash(curl)", "--deny", "Bash(curl *)", "--deny", "Bash(git clean)", "--deny", "Bash(git clean *)",
+  "--deny", "Bash(git push)", "--deny", "Bash(git push *)", "--deny", "Bash(git reset --hard)",
+  "--deny", "Bash(git reset --hard *)", "--deny", "Bash(rm)", "--deny", "Bash(rm *)",
+  "--deny", "Bash(rmdir)", "--deny", "Bash(rmdir *)", "--deny", "Bash(sudo)", "--deny", "Bash(sudo *)",
+  "--deny", "Bash(wget)", "--deny", "Bash(wget *)", "--disable-web-search",
+];
+function literalP2Argv(
+  agent: AgentKind,
+  v: { cwd: string; sessionId: string; promptFile: string },
+): string[] {
+  if (agent === "claude") {
+    return [
+      "-p", "--output-format", "stream-json", "--verbose", "--session-id", v.sessionId,
+      "--append-system-prompt", HEADLESS_WORKER_HINT, "--permission-mode", "acceptEdits",
+      "--settings", P2_CLAUDE_SETTINGS, "--strict-mcp-config",
+    ];
+  }
+  if (agent === "codex") {
+    return [
+      "exec", "--json", "-C", v.cwd, "--sandbox", "workspace-write",
+      "-c", "sandbox_workspace_write.network_access=false", "-c", "approval_policy=never",
+      "-c", `developer_instructions=${HEADLESS_WORKER_HINT}`, "--skip-git-repo-check", "-",
+    ];
+  }
+  return [
+    "--prompt-file", v.promptFile, "--output-format", "streaming-json", "--cwd", v.cwd,
+    "--session-id", v.sessionId, "--rules", HEADLESS_WORKER_HINT, "--permission-mode", "acceptEdits",
+    ...P2_GROK_RULES,
+  ];
+}
+
 class Harness {
   readonly root = realpathSync(mkdtempSync(join(tmpdir(), "loom-p4-")));
   readonly home = join(this.root, "home");
-  readonly loomDir = join(this.home, ".loom");
+  readonly loomDir: string;
   readonly cwd = join(this.root, "work");
   readonly dump = join(this.root, "argv.jsonl");
   readonly promptDump = join(this.root, "prompt.txt");
@@ -157,7 +201,8 @@ class Harness {
     fromPeerId: "original-peer",
     dispatchHandoffId: "original-handoff",
   };
-  constructor(enabled: boolean | undefined) {
+  constructor(enabled: boolean | undefined, loomName = ".loom") {
+    this.loomDir = join(this.home, loomName);
     for (const dir of [this.home, this.loomDir, this.cwd]) mkdirSync(dir, { recursive: true });
     this.config = {
       backend: "headless",
@@ -261,19 +306,13 @@ class Harness {
       })
       .trim();
   }
-  /** P2 argv for the dumped session (no skills). */
-  p2Argv(agent: AgentKind, sessionId: string, resumeSessionId?: string): string[] {
-    return buildAgentArgv({
-      agent,
+  /** P2 argv for the dumped session (no skills): literal pins, independent of the builder. */
+  p2Argv(agent: AgentKind, sessionId: string): string[] {
+    return literalP2Argv(agent, {
       cwd: this.cwd,
       sessionId,
-      ...(resumeSessionId ? { resumeSessionId } : {}),
-      hint: HEADLESS_WORKER_HINT,
-      prompt: this.card.prompt,
-      promptFile: agent === "grok" ? join(dirname(cardSessionPath(this.key(agent))), "prompt.txt") : undefined,
-      permissions: this.config.permissions,
-      policy: effectiveWorkerPolicy(this.config).effective[agent],
-    }).argv;
+      promptFile: join(dirname(cardSessionPath(this.key(agent))), "prompt.txt"),
+    });
   }
   assertNoDotDirs(): void {
     for (const dir of DOT_DIRS) {
@@ -287,9 +326,10 @@ async function fixture(
   enabled: boolean | undefined,
   fn: (h: Harness) => Promise<void>,
   extra: Record<string, string | undefined> = {},
+  loomName?: string,
 ): Promise<void> {
   await withFakeLock(async () => {
-    const h = new Harness(enabled);
+    const h = new Harness(enabled, loomName);
     const restore = pushEnv({
       HOME: h.home,
       FAKE_OUTPUT_BYTES: "8",
@@ -461,6 +501,35 @@ describe("P4 (e) skill listing", () => {
     }
   });
 
+  test("marker lookalike in an interpolated SKILL.md path or description fails closed", async () => {
+    const { renderSkillListing } = await sp();
+    const paths = [
+      "/tmp/▶ Loom dispatched task — x/SKILL.md",
+      "/tmp/ＬＯＯＭ　ｄｉｓｐａｔｃｈｅｄ　ｔａｓｋ/SKILL.md",
+      "/tmp/loom-Dispatched_TASK/SKILL.md",
+    ];
+    for (const bad of paths) {
+      for (const agent of ["codex", "grok"] as const) {
+        expect(() =>
+          renderSkillListing(agent, { available: [avail("alpha", "ok", bad)], unavailable: [] }),
+        ).toThrow(/marker/);
+      }
+    }
+    expect(() =>
+      renderSkillListing("codex", {
+        available: [avail("alpha", "see Loom dispatched-task notes", "/abs/SKILL.md")],
+        unavailable: [],
+      }),
+    ).toThrow(/marker/);
+    // A normal loom dir is fine.
+    expect(() =>
+      renderSkillListing("codex", {
+        available: [avail("alpha", "ok", "/Users/o/.loom/cards/a/b/skills/plugin/skills/alpha/SKILL.md")],
+        unavailable: [],
+      }),
+    ).not.toThrow();
+  });
+
   test("R6: the listing goes before the dispatched-task marker; empty listing leaves the prompt as is", async () => {
     const { composeFirstTurnPrompt } = await sp();
     const wrapped = wrapDispatchedPrompt("task body");
@@ -561,6 +630,23 @@ describe("P4 argv pins", () => {
           pluginDir: bad,
         } as Parameters<typeof buildAgentArgv>[0]),
       ).toThrow(/pluginDir/);
+    }
+  });
+
+  test("no pluginDir → builder output equals the literal P2 pins", () => {
+    const v = { cwd: "/w", sessionId: SESSION, promptFile: "/tmp/p.txt" };
+    for (const agent of ["claude", "codex", "grok"] as const) {
+      const argv = buildAgentArgv({
+        agent,
+        cwd: v.cwd,
+        sessionId: v.sessionId,
+        hint: HEADLESS_WORKER_HINT,
+        prompt: "",
+        promptFile: v.promptFile,
+        permissions,
+        policy: policyFor(agent),
+      }).argv;
+      expect(argv).toEqual(literalP2Argv(agent, v));
     }
   });
 
@@ -966,6 +1052,108 @@ describe("P4 (d) recovery re-hashes the card copy", () => {
       expect(h.calls[0]!.fields.reason).toBe("needs_verification");
       expect(h.calls[0]!.fields.note).toBe("fingerprint_changed; not resuming");
       expect(h.saved()!.attempts).toBe(1);
+    });
+  }, 20_000);
+});
+
+describe("P4 fix-first: marker in loomDir fails closed at spawn", () => {
+  test("codex: a loomDir whose folded letters contain the marker head → spawn_setup_failed, no spawn", async () => {
+    await fixture(
+      true,
+      async (h) => {
+        h.card = { ...h.card, agent: "codex" };
+        h.selectSkills(["loom-card-report"]);
+        await h.dispatcher().dispatch(h.card);
+        expect(h.lines()).toHaveLength(0);
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.fields.reason).toBe("spawn_setup_failed");
+        expect(h.calls[0]!.fields.note).toContain("marker");
+      },
+      {},
+      "Loom Dispatched Task",
+    );
+  }, 20_000);
+});
+
+/** A 0.30.0-era record: template 0.30.0-v1, no manifest or policy hash. */
+function legacyFingerprint(h: Harness): string {
+  return promptFingerprint(HEADLESS_WORKER_HINT, h.config.permissions, "0.30.0-v1", "", "");
+}
+
+describe("P4 fix-first: every adoption re-verifies the fingerprint (normal dispatch, R49-M3)", () => {
+  test("dispatch() of the same handoff, live pid, tampered copy → pre-empted, not killed, not adopted", async () => {
+    await fixture(true, async (h) => {
+      h.selectSkills(["loom-card-report"]);
+      const m = await h.materialize();
+      const pid = h.sleeper();
+      h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid), promptFingerprint: workerFingerprint(h.config, m.manifestHash) });
+      appendFileSync(h.skillMd(), "\ntampered\n");
+      const dispatcher = h.dispatcher();
+      await dispatcher.dispatch(h.card);
+      expect(dispatcher.flights()).toHaveLength(0);
+      expect(alive(pid)).toBe(true);
+      expect(h.lines()).toHaveLength(0);
+      expect(h.calls).toHaveLength(1);
+      expect(h.calls[0]!.fields.reason).toBe("needs_verification");
+      expect(h.calls[0]!.fields.note).toBe("fingerprint_changed; not resuming");
+      expect(h.saved()!.state).toBe("running");
+    });
+  }, 20_000);
+
+  for (const enabled of [true, false] as const) {
+    test(`dispatch() of the same handoff, live pid, legacy 0.30.0 record (skills=${enabled}) → pre-empted, not killed`, async () => {
+      await fixture(enabled, async (h) => {
+        const pid = h.sleeper();
+        h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid), promptFingerprint: legacyFingerprint(h) });
+        const dispatcher = h.dispatcher();
+        await dispatcher.dispatch(h.card);
+        expect(dispatcher.flights()).toHaveLength(0);
+        expect(alive(pid)).toBe(true);
+        expect(h.lines()).toHaveLength(0);
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.fields.note).toBe("fingerprint_changed; not resuming");
+        expect(h.saved()!.state).toBe("running");
+      });
+    }, 20_000);
+
+    test(`dispatch() of the same handoff, dead pid, legacy 0.30.0 record (skills=${enabled}) → fingerprint_changed, no spawn`, async () => {
+      await fixture(enabled, async (h) => {
+        h.seed({ promptFingerprint: legacyFingerprint(h) });
+        await h.dispatcher().dispatch(h.card);
+        expect(h.lines()).toHaveLength(0);
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.fields.reason).toBe("needs_verification");
+        expect(h.calls[0]!.fields.note).toBe("fingerprint_changed; not resuming");
+      });
+    }, 20_000);
+  }
+
+  test("dispatch() of the same handoff, live pid, unchanged copy → adopted, then resumed", async () => {
+    await fixture(true, async (h) => {
+      h.selectSkills(["loom-card-report"]);
+      const m = await h.materialize();
+      const pid = h.sleeper();
+      h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid), promptFingerprint: workerFingerprint(h.config, m.manifestHash) });
+      const dispatcher = h.dispatcher();
+      const pending = dispatcher.dispatch(h.card);
+      await waitFor(() => dispatcher.flights().length === 1);
+      expect(h.calls).toHaveLength(0);
+      killPid(pid);
+      await pending;
+      expect(h.lines()).toHaveLength(1);
+      expect(h.lines()[0]!.resumeId).toBe("saved-session");
+      expect(h.calls[0]!.fields.note ?? "").not.toContain("fingerprint_changed");
+    });
+  }, 20_000);
+
+  test("a different handoff beside a live worker is still card_already_running (not pre-empted)", async () => {
+    await fixture(true, async (h) => {
+      const pid = h.sleeper();
+      h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid), promptFingerprint: legacyFingerprint(h) });
+      await h.dispatcher().dispatch({ ...h.card, dispatchHandoffId: "other-handoff" });
+      expect(alive(pid)).toBe(true);
+      expect(h.calls.map((c) => c.fields.reason)).toEqual(["card_already_running"]);
+      expect(h.saved()!.resultSent).toBe(false);
     });
   }, 20_000);
 });

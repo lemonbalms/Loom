@@ -1113,9 +1113,20 @@ export class HeadlessDispatcher {
         }
         // These decisions precede every liveness probe: no pid cannot prove that
         // exec did not happen, and a reserved result must never be reconstructed.
-        // D11 / R49-M3: recovery compares against the card copy re-hashed now.
+        // D11 / R49-M3: recovery and every adoption compare against the config and
+        // the card copy re-hashed now. A completed dead record (fresh spawn below) and
+        // a different handoff beside a live worker (card_already_running) adopt nothing.
+        const adopting =
+          !!existing &&
+          (!existing.resultSent || processLiveness(existing) !== "dead") &&
+          !(
+            existing.dispatchHandoffId !== card.dispatchHandoffId &&
+            processLiveness(existing) !== "dead"
+          );
         const fingerprintChanged =
-          recovering && existing ? await this.fingerprintChangedLocked(existing) : false;
+          existing && (recovering || adopting)
+            ? await this.fingerprintChangedLocked(existing)
+            : false;
         if (existing) {
           const liveness = processLiveness(existing);
           const skipWatch =
@@ -1140,7 +1151,7 @@ export class HeadlessDispatcher {
           return;
         }
         if (existing && fingerprintChanged) {
-          // R49-M3: a live worker is not killed; its result is pre-empted.
+          // R49-M3: a live worker is not killed and not watched; its result is pre-empted.
           await this.sendAndMarkLocked(existing, fingerprintChangedFields(), {
             preserveWorkerState: processLiveness(existing) !== "dead",
           });

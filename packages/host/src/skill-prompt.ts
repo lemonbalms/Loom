@@ -18,8 +18,11 @@
  *
  * Fail closed: a SKILL.md path that is not absolute or carries a control, format,
  * or line/paragraph separator character (loomDir / HOME can hold anything), or a
- * description that is not one clean line of ≤ 160 code points, throws. The caller
- * does not spawn.
+ * description that is not one clean line of ≤ 160 code points, throws. So does a
+ * path or description whose letters/digits (after NFKC + lowercase) contain the
+ * dispatched-task marker head `loomdispatchedtask` — the same fold skill-materialize
+ * applies to descriptions — so nothing interpolated can forge the system/data
+ * boundary. The caller does not spawn (spawn_setup_failed).
  */
 import { isAbsolute } from "node:path";
 import type { AgentKind } from "./agent-argv";
@@ -37,6 +40,16 @@ export const SKILL_LISTING_MAX_ENTRIES = 20;
 export const SKILL_LISTING_MAX_BYTES = 4096;
 
 const UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/** Letters/digits of the DISPATCHED_TASK_MARKER head ("Loom dispatched task"). */
+const MARKER_LETTERS = "loomdispatchedtask";
+
+function containsMarker(text: string): boolean {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "")
+    .includes(MARKER_LETTERS);
+}
 
 function assertName(name: string): void {
   if (!SKILL_NAME_RE.test(name)) throw new Error(`skill listing: invalid skill name ${JSON.stringify(name)}`);
@@ -46,6 +59,7 @@ function assertSkillMdPath(path: string): void {
   if (!isAbsolute(path) || UNSAFE_TEXT.test(path)) {
     throw new Error("skill listing: SKILL.md path is not absolute or has control/format characters");
   }
+  if (containsMarker(path)) throw new Error("skill listing: SKILL.md path contains the task marker");
 }
 
 function assertDescription(description: string): void {
@@ -56,6 +70,7 @@ function assertDescription(description: string): void {
   ) {
     throw new Error("skill listing: description is not one clean line of at most 160 characters");
   }
+  if (containsMarker(description)) throw new Error("skill listing: description contains the task marker");
 }
 
 function capLine(omitted: number): string {
