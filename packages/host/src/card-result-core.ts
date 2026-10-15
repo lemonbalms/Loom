@@ -1,7 +1,10 @@
 /**
  * PLAN 0.30.0 D1 / R48-M1: card result core.
- * Issuer acquire, payload assembly, strict ACK, and send_unknown quarantine.
- * No Flight reads or writes — the pane wrapper applies SendResultOutcome.
+ * acquireInitial (issuer acquire, nextSeq, supersedePresence), payload
+ * assembly, strict ACK, and send_unknown quarantine.
+ * No Flight reads or writes — callers pass applyOutcome, invoked
+ * synchronously where sendResult wrote the flight (send_unknown before
+ * quarantine.enter; accepted before autoResolve), inside the same try.
  * R48-M2: if the serialized attachment exceeds 256_000 chars, cut output
  * from the front by the overflow and re-serialize until it fits.
  * Payloads that already fit stay byte-identical.
@@ -30,6 +33,15 @@ export type ResultTarget = {
    */
   startedAt: string;
   paneId?: string;
+};
+
+/**
+ * Held after acquireInitial. seq is the value nextSeq returned; presence
+ * was already superseded. composeAndSend must not acquire again.
+ */
+export type InitialLease = {
+  target: ResultTarget;
+  seq: number;
 };
 
 export type CardResultContent = {
@@ -102,6 +114,34 @@ function fitSerializedPayload(payload: CardResultPayload): CardResultPayload {
   return body;
 }
 
+export type ComposeAndSendOpts = {
+  node: string;
+  /**
+   * Synchronous. send_unknown: before quarantine.enter.
+   * accepted: before autoResolve. A throw here is inside sendResult's try
+   * on the handoff paths (becomes send_unknown). Omitted = no-op.
+   */
+  applyOutcome?: (outcome: SendResultOutcome) => void;
+};
+
+/**
+ * Call form kept for the pre-split signature (no scrape between acquire and
+ * send). Methods are the split API: acquireInitial, then composeAndSend(lease).
+ */
+export type CardResultCore = {
+  (
+    target: ResultTarget,
+    content: CardResultContent,
+    opts: { node: string },
+  ): Promise<SendResultOutcome>;
+  acquireInitial(target: ResultTarget): InitialLease | null;
+  composeAndSend(
+    lease: InitialLease,
+    content: CardResultContent,
+    opts: ComposeAndSendOpts,
+  ): Promise<SendResultOutcome>;
+};
+
 type CardResultCoreDeps = {
   /** Relay send. Caller binds the client (`(partial) => client.handoff(partial)`). */
   handoff: (partial: {
@@ -123,13 +163,7 @@ type CardResultCoreDeps = {
  * accepted | send_unknown only. Non-accepted absorbs via enterSendUnknown
  * (reason prefixes only — no rejected variant).
  */
-export function createCardResultCore(
-  deps: CardResultCoreDeps,
-): (
-  target: ResultTarget,
-  content: CardResultContent,
-  opts: { node: string },
-) => Promise<SendResultOutcome> {
+export function createCardResultCore(deps: CardResultCoreDeps): CardResultCore {
   function enterSendUnknown(args: {
     cardId: string;
     dispatchHandoffId: string;
@@ -148,30 +182,33 @@ export function createCardResultCore(
     );
   }
 
-  return async function composeAndSend(
-    target: ResultTarget,
-    content: CardResultContent,
-    opts: { node: string },
-  ): Promise<SendResultOutcome> {
+  function acquireInitial(target: ResultTarget): InitialLease | null {
     const issuer = deps.issuers.getOrCreate(
       target.cardId,
       target.dispatchHandoffId,
     );
-    if (!issuer.acquire("initial")) {
-      return { branch: "acquire_denied" };
-    }
+    if (!issuer.acquire("initial")) return null;
     const seq = issuer.nextSeq();
     deps.quarantine.supersedePresence({
       cardId: target.cardId,
       dispatchHandoffId: target.dispatchHandoffId,
     });
+    return { target, seq };
+  }
 
+  async function composeAndSend(
+    lease: InitialLease,
+    content: CardResultContent,
+    opts: ComposeAndSendOpts,
+  ): Promise<SendResultOutcome> {
+    const applyOutcome = opts.applyOutcome ?? (() => {});
+    const target = lease.target;
     const payload: CardResultPayload = {
       v: CARD_CONTRACT_VERSION,
       cardId: target.cardId,
       status: content.status,
       node: opts.node,
-      seq,
+      seq: lease.seq,
       paneId: target.paneId,
       dispatchHandoffId: target.dispatchHandoffId,
       output: content.output,
@@ -184,19 +221,23 @@ export function createCardResultCore(
     };
 
     const dispatchHandoffId = payload.dispatchHandoffId ?? "";
+    const sendUnknown = (reason: string): SendResultOutcome => ({
+      branch: "send_unknown",
+      resultPhase: "send_unknown",
+      reason,
+    });
     if (!target.fromPeerId) {
       deps.log("sendResult: missing toPeerId");
+      const outcome = sendUnknown("missing_toPeerId");
+      // Outside the handoff try, same as the old missing-toPeerId path.
+      applyOutcome(outcome);
       enterSendUnknown({
         cardId: payload.cardId,
         dispatchHandoffId,
         seq: payload.seq,
         reason: "missing_toPeerId",
       });
-      return {
-        branch: "send_unknown",
-        resultPhase: "send_unknown",
-        reason: "missing_toPeerId",
-      };
+      return outcome;
     }
 
     try {
@@ -218,6 +259,14 @@ export function createCardResultCore(
       const decision = classifyAck(ack);
       if (decision === "accepted") {
         const relayAcceptedAt = deps.now();
+        const outcome: SendResultOutcome = {
+          branch: "accepted",
+          resultPhase: "result_relay_accepted",
+          relayAcceptedAt,
+          status: ack.status,
+          recipientCount: ack.recipientCount,
+        };
+        applyOutcome(outcome);
         if (payload.dispatchHandoffId) {
           deps.quarantine.autoResolve({
             cardId: payload.cardId,
@@ -226,22 +275,18 @@ export function createCardResultCore(
             reason: "relay_accepted",
           });
         }
-        return {
-          branch: "accepted",
-          resultPhase: "result_relay_accepted",
-          relayAcceptedAt,
-          status: ack.status,
-          recipientCount: ack.recipientCount,
-        };
+        return outcome;
       }
       const reason = `ack_${ack.status}_rc${ack.recipientCount}`;
+      const outcome = sendUnknown(reason);
+      applyOutcome(outcome);
       enterSendUnknown({
         cardId: payload.cardId,
         dispatchHandoffId,
         seq: payload.seq,
         reason,
       });
-      return { branch: "send_unknown", resultPhase: "send_unknown", reason };
+      return outcome;
     } catch (e) {
       // PLAN 0.28.0 U5: non-accepted is always send_unknown + quarantine enter.
       // Rejection vs transport is reason-prefix only (reject: / transport:), not
@@ -257,17 +302,27 @@ export function createCardResultCore(
           ? `reject:${msg.slice(0, 120)}`
           : `transport:${msg.slice(0, 120)}`;
       deps.log("sendResult non-accepted (send_unknown):", msg);
+      const outcome = sendUnknown(reasonPrefix);
+      applyOutcome(outcome);
       enterSendUnknown({
         cardId: payload.cardId,
         dispatchHandoffId,
         seq: payload.seq,
         reason: reasonPrefix,
       });
-      return {
-        branch: "send_unknown",
-        resultPhase: "send_unknown",
-        reason: reasonPrefix,
-      };
+      return outcome;
     }
-  };
+  }
+
+  async function legacyComposeAndSend(
+    target: ResultTarget,
+    content: CardResultContent,
+    opts: { node: string },
+  ): Promise<SendResultOutcome> {
+    const lease = acquireInitial(target);
+    if (!lease) return { branch: "acquire_denied" };
+    return composeAndSend(lease, content, opts);
+  }
+
+  return Object.assign(legacyComposeAndSend, { acquireInitial, composeAndSend });
 }

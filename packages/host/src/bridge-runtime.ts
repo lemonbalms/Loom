@@ -81,7 +81,6 @@ import {
 import {
   createCardResultCore,
   type CardResultContent,
-  type ResultTarget,
   type SendResultOutcome,
 } from "./card-result-core";
 import {
@@ -437,7 +436,7 @@ type Flight = {
   hookFallbackRecorded?: boolean;
   /**
    * PLAN 0.27.0 lock 5: lifecycle CAS for Flight-backed completion side-effects.
-   * Winner alone may call sendResultForFlight (together with issuer.acquire).
+   * Winner alone may send the card result (together with issuer.acquire).
    * Not a phase — boolean ownership, same shape as stillRunningDeferral.
    */
   flightSideEffectOwner?: boolean;
@@ -801,7 +800,7 @@ export async function startBridgeRuntime(opts?: {
     },
   });
 
-  const composeAndSend = createCardResultCore({
+  const cardResult = createCardResultCore({
     handoff: (partial) => client.handoff(partial),
     issuers,
     quarantine,
@@ -2785,40 +2784,22 @@ export async function startBridgeRuntime(opts?: {
   }
 
   /**
-   * PLAN 0.30.0 D1 / R48-M1: pane wrapper. ResultTarget from the flight (or
-   * `routed`), then composeAndSend, then flight.resultPhase / relayAcceptedAt
-   * and notePreservedCardPane in that existing order. acquire_denied writes
-   * neither — the caller still owns the denied log line.
+   * PLAN 0.30.0 D1 / R48-M1: pane wrapper. composeAndSend calls this
+   * synchronously where sendResult wrote the flight: send_unknown before
+   * quarantine.enter, accepted (resultPhase + relayAcceptedAt) before
+   * autoResolve. notePreservedCardPane stays in this same call.
+   * acquire_denied never reaches here — acquireInitial returned null.
    */
   function applyCardResultOutcome(
     flight: Flight | undefined,
     outcome: SendResultOutcome,
-  ): SendResultOutcome {
-    if (!flight || outcome.branch === "acquire_denied") return outcome;
+  ): void {
+    if (!flight || outcome.branch === "acquire_denied") return;
     flight.resultPhase = outcome.resultPhase;
     if (outcome.branch === "accepted") {
       flight.relayAcceptedAt = outcome.relayAcceptedAt;
     }
     notePreservedCardPane(flight.paneId);
-    return outcome;
-  }
-
-  async function sendResultForFlight(
-    flight: Flight | undefined,
-    content: CardResultContent,
-    routed?: ResultTarget,
-  ): Promise<SendResultOutcome> {
-    const target: ResultTarget = routed ?? {
-      cardId: flight!.cardId,
-      fromPeerId: flight!.fromPeerId,
-      dispatchHandoffId: flight!.dispatchHandoffId,
-      startedAt: flight!.startedAt,
-      paneId: flight!.paneId,
-    };
-    const outcome = await composeAndSend(target, content, {
-      node: session!.displayName,
-    });
-    return applyCardResultOutcome(flight, outcome);
   }
 
   /**
@@ -2831,6 +2812,21 @@ export async function startBridgeRuntime(opts?: {
     flight: Flight,
     opts?: { scrape?: string; note?: string },
   ): Promise<void> {
+    // Pre-2d1bc3b: issuer.acquire before settlePaneRead / fallback telemetry.
+    const lease = cardResult.acquireInitial({
+      cardId: flight.cardId,
+      fromPeerId: flight.fromPeerId,
+      dispatchHandoffId: flight.dispatchHandoffId,
+      startedAt: flight.startedAt,
+      paneId: flight.paneId,
+    });
+    if (!lease) {
+      log(
+        `card ${flight.cardId}: proposeCardVerification issuer.acquire(initial) denied`,
+      );
+      return;
+    }
+
     let output = "";
     let truncated = false;
     try {
@@ -2854,19 +2850,23 @@ export async function startBridgeRuntime(opts?: {
     // Preserve real output summary even though status is failed (U1/A1).
     const summary = selectCardSummaryLine(stripTuiChrome(output));
 
-    const outcome = await sendResultForFlight(flight, {
-      status: "failed",
-      reason: "needs_verification",
-      output,
-      truncated,
-      summary,
-      ...(opts?.note ? { note: opts.note } : {}),
-    });
-    if (outcome.branch === "acquire_denied") {
-      log(
-        `card ${flight.cardId}: proposeCardVerification issuer.acquire(initial) denied`,
-      );
-    }
+    await cardResult.composeAndSend(
+      lease,
+      {
+        status: "failed",
+        reason: "needs_verification",
+        output,
+        truncated,
+        summary,
+        ...(opts?.note ? { note: opts.note } : {}),
+      },
+      {
+        node: session!.displayName,
+        applyOutcome: (outcome) => {
+          applyCardResultOutcome(flight, outcome);
+        },
+      },
+    );
   }
 
   /**
@@ -2879,6 +2879,20 @@ export async function startBridgeRuntime(opts?: {
     reason: string,
     opts?: { scrape?: string; note?: string },
   ): Promise<void> {
+    const lease = cardResult.acquireInitial({
+      cardId: flight.cardId,
+      fromPeerId: flight.fromPeerId,
+      dispatchHandoffId: flight.dispatchHandoffId,
+      startedAt: flight.startedAt,
+      paneId: flight.paneId,
+    });
+    if (!lease) {
+      log(
+        `card ${flight.cardId}: finishCardFailure issuer.acquire(initial) denied reason=${reason}`,
+      );
+      return;
+    }
+
     let output = "";
     let truncated = false;
     try {
@@ -2895,19 +2909,23 @@ export async function startBridgeRuntime(opts?: {
     }
 
     const summary = `failed reason=${reason}`.slice(0, 900);
-    const outcome = await sendResultForFlight(flight, {
-      status: "failed",
-      reason,
-      output,
-      truncated,
-      summary,
-      ...(opts?.note ? { note: opts.note } : {}),
-    });
-    if (outcome.branch === "acquire_denied") {
-      log(
-        `card ${flight.cardId}: finishCardFailure issuer.acquire(initial) denied reason=${reason}`,
-      );
-    }
+    await cardResult.composeAndSend(
+      lease,
+      {
+        status: "failed",
+        reason,
+        output,
+        truncated,
+        summary,
+        ...(opts?.note ? { note: opts.note } : {}),
+      },
+      {
+        node: session!.displayName,
+        applyOutcome: (outcome) => {
+          applyCardResultOutcome(flight, outcome);
+        },
+      },
+    );
   }
 
   async function sendFailedResult(opts: {
@@ -2920,16 +2938,6 @@ export async function startBridgeRuntime(opts?: {
     /** When set, Flight-backed path — CAS must already be held. */
     flight?: Flight;
   }): Promise<void> {
-    const summary = `failed reason=${opts.reason}${
-      opts.detail ? ` ${opts.detail}` : ""
-    }`.slice(0, 900);
-    const content: CardResultContent = {
-      status: "failed",
-      reason: opts.reason,
-      output: summary,
-      truncated: false,
-      summary,
-    };
     // Empty toPeerId never reached sendResult: acquire + seq + supersede only.
     if (!opts.fromPeerId) {
       const issuer = issuers.getOrCreate(opts.cardId, opts.dispatchHandoffId);
@@ -2947,7 +2955,7 @@ export async function startBridgeRuntime(opts?: {
       });
       return;
     }
-    const outcome = await sendResultForFlight(opts.flight, content, {
+    const lease = cardResult.acquireInitial({
       cardId: opts.cardId,
       fromPeerId: opts.fromPeerId,
       dispatchHandoffId: opts.dispatchHandoffId,
@@ -2955,11 +2963,28 @@ export async function startBridgeRuntime(opts?: {
       startedAt: "",
       paneId: opts.paneId,
     });
-    if (outcome.branch === "acquire_denied") {
+    if (!lease) {
       log(
         `card ${opts.cardId}: sendFailedResult issuer.acquire(initial) denied reason=${opts.reason}`,
       );
+      return;
     }
+    const summary = `failed reason=${opts.reason}${
+      opts.detail ? ` ${opts.detail}` : ""
+    }`.slice(0, 900);
+    const content: CardResultContent = {
+      status: "failed",
+      reason: opts.reason,
+      output: summary,
+      truncated: false,
+      summary,
+    };
+    await cardResult.composeAndSend(lease, content, {
+      node: session!.displayName,
+      applyOutcome: (outcome) => {
+        applyCardResultOutcome(opts.flight, outcome);
+      },
+    });
   }
 
   let stopped = false;
