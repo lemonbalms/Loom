@@ -175,6 +175,7 @@ function deadSession(over: Partial<CardSessionRecord>): CardSessionRecord {
   return {
     agent: "claude",
     cwd: "/unset",
+    requestedCwd: null,
     sessionId: "old-session",
     promptFingerprint: "deadbeef",
     attempts: 1,
@@ -183,11 +184,12 @@ function deadSession(over: Partial<CardSessionRecord>): CardSessionRecord {
     startedAt: "2026-10-15T00:00:00.000Z",
     state: "running",
     resultSent: false,
+    sendAttempts: 0,
     roomId: "room_w",
     cardId: "task_old",
     fromPeerId: "peer_w",
     dispatchHandoffId: "hold",
-    procStartedAt: "2026-10-15T00:00:01.000Z",
+    procStartedAt: "Thu Oct 15 00:00:01 2026",
     ...over,
   };
 }

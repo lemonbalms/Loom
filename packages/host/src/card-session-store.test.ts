@@ -40,6 +40,7 @@ function record(over: Partial<CardSessionRecord> = {}): CardSessionRecord {
   return {
     agent: "claude",
     cwd: "/tmp/loom-cwd-a",
+    requestedCwd: null,
     sessionId: "sid-1",
     promptFingerprint: "fp-1",
     attempts: 1,
@@ -48,11 +49,12 @@ function record(over: Partial<CardSessionRecord> = {}): CardSessionRecord {
     startedAt: "2026-10-15T00:00:00.000Z",
     state: "running",
     resultSent: false,
+    sendAttempts: 0,
     roomId: "room_a",
     cardId: "task_abc",
     fromPeerId: "peer_a",
     dispatchHandoffId: "h1",
-    procStartedAt: "2026-10-15T00:00:01.000Z",
+    procStartedAt: "Thu Oct 15 00:00:01 2026",
     ...over,
   };
 }

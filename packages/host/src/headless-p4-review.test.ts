@@ -1016,7 +1016,12 @@ printf '%s\\n' ${JSON.stringify(RESULT_EVENT)}
         agent: card.agent,
         cardId: card.cardId,
       })!;
-      const observed = lstart(saved.pid);
+      const canonicalLstart: typeof lstart = (pid) => execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+        encoding: "utf8",
+        timeout: 2_000,
+        env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
+      }).trim();
+      const observed = canonicalLstart(saved.pid);
       expect(observed.length).toBeGreaterThan(0);
       expect(saved.procStartedAt).toBe(observed);
       expect(saved.procStartedAt).not.toBe(saved.startedAt);
