@@ -50,6 +50,12 @@ export type TaskItem = {
   createdAt: string;
   updatedAt: string;
   createdByPeerId?: string;
+  /**
+   * PLAN 0.32.0 R7 / R50-M2 (L-2): relay peer id of the dispatch target, recorded only
+   * when the tower's peer list had exactly one display-name match for `node` at
+   * dispatch time. Local board file only — stripped from every snapshot (no wire).
+   */
+  dispatchPeerId?: string;
 };
 
 export type TaskBoard = {
@@ -201,7 +207,17 @@ function normalizeTask(t: TaskItem): TaskItem {
     createdByPeerId: t.createdByPeerId
       ? sanitizePeerText(t.createdByPeerId).slice(0, 64)
       : undefined,
+    ...(typeof t.dispatchPeerId === "string" && t.dispatchPeerId.length > 0
+      ? { dispatchPeerId: sanitizePeerText(t.dispatchPeerId).slice(0, 64) }
+      : {}),
   };
+}
+
+/** PLAN 0.32.0 R7: local-only fields never leave the board file (snapshots, attachments, imports). */
+function withoutLocalFields(t: TaskItem): TaskItem {
+  if (t.dispatchPeerId === undefined) return t;
+  const { dispatchPeerId: _local, ...rest } = t;
+  return rest;
 }
 
 export function saveTaskBoard(board: TaskBoard): void {
@@ -282,6 +298,8 @@ export function updateTask(
     assignee?: string | null;
     notes?: string | null;
     handoffId?: string | null;
+    /** PLAN 0.32.0 R7: null clears (ambiguous / failed peer lookup on re-dispatch). */
+    dispatchPeerId?: string | null;
   },
   roomId?: string,
 ): TaskItem {
@@ -314,6 +332,8 @@ export function updateTask(
             : cur.handoffId,
       updatedAt: new Date().toISOString(),
     };
+    if (patch.dispatchPeerId === null) delete next.dispatchPeerId;
+    else if (patch.dispatchPeerId !== undefined) next.dispatchPeerId = patch.dispatchPeerId;
     board.tasks[idx] = normalizeTask(next);
     updated = board.tasks[idx]!;
   });
@@ -427,7 +447,7 @@ export function exportBoardSnapshot(roomId?: string): BoardSnapshot {
     exportedAt: new Date().toISOString(),
     sourceRoomId: board.roomId,
     sourceRoomName: board.roomName,
-    tasks: board.tasks.map(normalizeTask),
+    tasks: board.tasks.map((t) => withoutLocalFields(normalizeTask(t))),
   };
 }
 
@@ -439,7 +459,7 @@ export function boardToAttachments(board: TaskBoard): HandoffAttachment[] {
     exportedAt: new Date().toISOString(),
     sourceRoomId: board.roomId,
     sourceRoomName: board.roomName,
-    tasks: board.tasks.map(normalizeTask),
+    tasks: board.tasks.map((t) => withoutLocalFields(normalizeTask(t))),
   };
   return [
     {
@@ -483,7 +503,7 @@ export function parseBoardSnapshot(raw: unknown): BoardSnapshot {
           typeof (t as TaskItem).id === "string" &&
           typeof (t as TaskItem).title === "string",
       )
-      .map((t) => normalizeTask(t as TaskItem))
+      .map((t) => withoutLocalFields(normalizeTask(t as TaskItem)))
       .slice(0, MAX_TASKS),
   };
 }

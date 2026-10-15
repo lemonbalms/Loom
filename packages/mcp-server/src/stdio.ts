@@ -24,6 +24,20 @@ import {
   toolConvClose,
   toolConvFetch,
 } from "./tools";
+import { statSync } from "node:fs";
+import { join } from "node:path";
+import {
+  appendPolicyAudit,
+  evaluateMcpCall,
+  type LoomToolsGate,
+  loadPolicy,
+  loadSession,
+  loomDir,
+  type McpCallCtx,
+  type PolicyAuditRecord,
+  resolveLoomToolsGate,
+  toolVisible,
+} from "@loom/host";
 import type { ArtifactRefEntry } from "@loom/protocol";
 import { TOOL_DEFINITIONS, toolRegistry } from "./tool-schemas";
 
@@ -36,6 +50,82 @@ type JsonRpcReq = {
 
 /** 0.32.0 D2: advertised inputSchema is derived from the zod schemas (tool-schemas.ts). */
 const TOOLS = TOOL_DEFINITIONS;
+
+// ---------------------------------------------------------------------------
+// 0.32.0 D9: policy gate — loaded at start, re-stat'ed (mtime+size+ino) before every
+// tools/list and tools/call, reloaded on change. A loader failure becomes an invalid
+// gate (every call refused with the loader message, list unfiltered) — never an exit.
+// ---------------------------------------------------------------------------
+
+let policyState: { key: string; gate: LoomToolsGate } | null = null;
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function policyStatKey(dir: string): string {
+  try {
+    const st = statSync(join(dir, "policy.json"));
+    return `${dir}\0${st.mtimeMs}:${st.size}:${st.ino}`;
+  } catch (e) {
+    const code = e && typeof e === "object" && "code" in e ? String(e.code) : "error";
+    return `${dir}\0err:${code}`;
+  }
+}
+
+function loadGate(dir: string): LoomToolsGate {
+  try {
+    return resolveLoomToolsGate(loadPolicy(dir));
+  } catch (e) {
+    return resolveLoomToolsGate({ invalid: errText(e) });
+  }
+}
+
+/** One gate snapshot per list/call (no reload mid-call). */
+function currentGate(): LoomToolsGate {
+  let dir: string;
+  try {
+    dir = loomDir();
+  } catch (e) {
+    return resolveLoomToolsGate({ invalid: `Loom state dir unavailable: ${errText(e)}` });
+  }
+  const key = policyStatKey(dir);
+  if (policyState === null || policyState.key !== key) {
+    policyState = { key, gate: loadGate(dir) };
+  }
+  return policyState.gate;
+}
+
+/** Session identity for the decision ctx / audit (missing → empty strings). */
+function callCtx(): McpCallCtx {
+  let session: ReturnType<typeof loadSession> = null;
+  try {
+    session = loadSession();
+  } catch {
+    session = null;
+  }
+  return {
+    peerId: session?.peerId ?? "",
+    roomId: session?.roomId ?? "",
+    agentKind: session?.agentKind ?? "",
+    now: new Date().toISOString(),
+  };
+}
+
+/** Best-effort audit append — failure never changes the decision. */
+function audit(roomId: string, record: PolicyAuditRecord): void {
+  try {
+    appendPolicyAudit(loomDir(), roomId, record);
+  } catch {
+    // appendPolicyAudit already reports its own failures on stderr.
+  }
+}
+
+/** Caller-supplied tool name, printable + capped, for the one stderr refusal line. */
+function logSafe(name: string): string {
+  const printable = name.replace(/[^\x21-\x7e]/g, "?");
+  return printable.length > 64 ? `${printable.slice(0, 64)}…` : printable;
+}
 
 function respond(id: string | number | null | undefined, result: unknown) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, result }) + "\n");
@@ -67,32 +157,38 @@ async function handle(req: JsonRpcReq) {
     case "notifications/initialized":
     case "initialized":
       return;
-    case "tools/list":
-      respond(req.id, { tools: TOOLS });
+    case "tools/list": {
+      // 0.32.0 D1 / D3 / R50-M1: the same predicate the call path uses (toolVisible).
+      const gate = currentGate();
+      respond(req.id, {
+        tools: TOOLS.filter((t) => toolVisible(gate, toolRegistry, t.name)),
+      });
       return;
+    }
     case "tools/call": {
       const name = String(req.params?.name ?? "");
-      let args: Record<string, unknown> = {};
-      // 0.32.0 P3 (D2): strict argument validation for known tools — wrong types / unknown
-      // keys are refused as isError text (path + zod code, never the value). Only omitted
-      // arguments default to {} (inside validate); explicit null is validated and refused.
-      // Unknown tool names fall through to the -32601 path below (R5). P4 replaces this hook.
-      if (toolRegistry.has(name)) {
-        const checked = toolRegistry.validate(name, req.params?.arguments);
-        if (!checked.ok) {
-          respond(req.id, {
-            content: [
-              {
-                type: "text",
-                text: `Loom pre-check refused ${name}: invalid_args at ${checked.path} (${checked.code}). Fix the arguments to match the tool's inputSchema and retry.`,
-              },
-            ],
-            isError: true,
-          });
+      // 0.32.0 D1 / R6: one decision before the dispatch chain — policy invalid → unknown
+      // tool → mcp.deny → strict args → deny modes → done. Only omitted arguments default
+      // to {} (inside validate); explicit null is validated and refused.
+      const ctx = callCtx();
+      const decision = evaluateMcpCall(currentGate(), toolRegistry, name, req.params?.arguments, ctx);
+      if (!decision.ok) {
+        process.stderr.write(
+          `[loom-mcp] precheck refused tool=${logSafe(name)} reason=${decision.reason}\n`,
+        );
+        audit(ctx.roomId, decision.audit);
+        if (decision.reason === "unknown_tool") {
+          // R5: unknown names keep today's JSON-RPC -32601 response.
+          respondError(req.id, -32601, `Unknown tool: ${name}`);
           return;
         }
-        args = checked.args;
+        respond(req.id, {
+          content: [{ type: "text", text: decision.message }],
+          isError: true,
+        });
+        return;
       }
+      const args = decision.args;
       try {
         let text: string;
         if (name === "list_peers") {
@@ -294,6 +390,8 @@ async function handle(req: JsonRpcReq) {
           respondError(req.id, -32601, `Unknown tool: ${name}`);
           return;
         }
+        // D4 allow: done_via_mcp is recorded only once the dispatch returned without throwing.
+        if (decision.audit) audit(ctx.roomId, decision.audit);
         respond(req.id, {
           content: [{ type: "text", text }],
           isError: false,
@@ -316,6 +414,9 @@ async function handle(req: JsonRpcReq) {
       }
   }
 }
+
+// D9: initial load at server start (an invalid policy never stops the server).
+currentGate();
 
 let buffer = "";
 process.stdin.setEncoding("utf8");

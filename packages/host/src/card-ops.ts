@@ -16,8 +16,9 @@ import {
   type DispatchAgentKind,
   type HandoffAttachment,
 } from "@loom/protocol";
-import { loadSession } from "./session-store";
-import { opsHandoff } from "./room-ops";
+import { appendPolicyAudit, type PolicyAuditRecord } from "./mcp-precheck";
+import { loadSession, loomDir } from "./session-store";
+import { opsHandoff, opsListPeers } from "./room-ops";
 import {
   loadTaskBoard,
   updateTask,
@@ -26,6 +27,63 @@ import {
   type TaskItem,
   type TaskStatus,
 } from "./task-board";
+
+/**
+ * PLAN 0.32.0 R7 / R50-M2: the dispatch target's peer id, only when exactly one peer's
+ * display name matches `node` (same comparison as relay `findPeerByName`: leading `@`
+ * stripped, case-insensitive). Zero or several matches → undefined (not recorded) —
+ * relay prefers an online peer among duplicates, so an ambiguous name is never pinned.
+ */
+export function resolveDispatchPeerId(
+  peers: ReadonlyArray<{ id: string; displayName: string }>,
+  node: string,
+): string | undefined {
+  const n = node.replace(/^@/, "").trim().toLowerCase();
+  if (!n) return undefined;
+  const matches = peers.filter((p) => p.displayName.toLowerCase() === n);
+  return matches.length === 1 ? matches[0]?.id : undefined;
+}
+
+/** Best-effort peer lookup at dispatch time; any failure → not recorded (l2_unverifiable later). */
+async function lookupDispatchPeerId(node: string): Promise<string | undefined> {
+  try {
+    const listed = await opsListPeers();
+    return resolveDispatchPeerId(listed.peers, node);
+  } catch {
+    return undefined;
+  }
+}
+
+const L2_ID_ECHO_MAX = 64;
+
+function l2Echo(id: string): string {
+  return id.length > L2_ID_ECHO_MAX ? `${id.slice(0, L2_ID_ECHO_MAX)}…` : id;
+}
+
+/** PLAN 0.32.0 D8: L-2 fromPeerId refusal → one stderr line + local per-room audit (never the relay log). */
+function auditL2Refusal(cardId: string): void {
+  process.stderr.write(
+    "[loom-mcp] precheck refused tool=apply_card_result reason=l2_from_peer\n",
+  );
+  try {
+    const session = loadSession();
+    const record = {
+      v: 1,
+      ts: new Date().toISOString(),
+      kind: "refused",
+      tool: "apply_card_result",
+      // `l2_from_peer` is issued by applyCardResult, not the evaluator (PLAN ② 거부 코드).
+      reason: "l2_from_peer",
+      peerId: session?.peerId ?? "",
+      roomId: session?.roomId ?? "",
+      agentKind: session?.agentKind ?? "",
+      cardId,
+    } as unknown as PolicyAuditRecord;
+    appendPolicyAudit(loomDir(), session?.roomId ?? "", record);
+  } catch {
+    // Audit never changes the decision.
+  }
+}
 
 export type DispatchCardResult =
   | {
@@ -99,6 +157,7 @@ export async function dispatchCard(args: {
   });
 
   try {
+    const dispatchPeerId = await lookupDispatchPeerId(node);
     const ack = await opsHandoff({
       to: `@${node}`,
       body,
@@ -114,6 +173,8 @@ export async function dispatchCard(args: {
       assignee: node,
       handoffId: ack.handoffId,
       notes: `dispatched node=${node}`,
+      // R7: re-dispatch always overwrites — an ambiguous / failed lookup clears the old pin.
+      dispatchPeerId: dispatchPeerId ?? null,
     });
     return {
       ok: true,
@@ -162,7 +223,9 @@ function findTasksByHandoffId(handoffId: string): TaskItem[] {
 
 /**
  * Apply loom-card-result JSON to local board.
- * L-2: optional fromPeerId/node must match card assignee when provided.
+ * L-2: optional node must match card assignee when provided; fromPeerId must match the
+ * recorded dispatchPeerId when both are present (PLAN 0.32.0 R7 / R50-M2) — otherwise
+ * today's behaviour plus one stderr `l2_unverifiable` line.
  * PLAN 0.27.0 §6.7.3: tower currency gate — dispatchHandoffId vs task.handoffId.
  * PLAN 0.28.0 U2 / PATCH 2: remote result isolation — every accepted remote
  * result maps board status to `blocked` (never `done`). Legacy payload
@@ -300,6 +363,23 @@ export function applyCardResult(args: {
         };
       }
     }
+  }
+
+  // L-2 (PLAN 0.32.0 R7 / R50-M2): fromPeerId vs the peer id pinned at dispatch time.
+  const expectedPeer = task.dispatchPeerId;
+  const fromPeer = args.fromPeerId?.trim() || undefined;
+  if (expectedPeer && fromPeer) {
+    if (fromPeer !== expectedPeer) {
+      auditL2Refusal(task.id);
+      return {
+        ok: false,
+        error: `L-2: fromPeerId (${l2Echo(fromPeer)}) does not match dispatch target (${expectedPeer})`,
+      };
+    }
+  } else {
+    process.stderr.write(
+      `[loom-tower] l2_unverifiable cardId=${task.id} dispatchPeerId=${expectedPeer ? "recorded" : "absent"} fromPeerId=${fromPeer ? "given" : "absent"}\n`,
+    );
   }
 
   // Unidirectional: ignore reverse transitions

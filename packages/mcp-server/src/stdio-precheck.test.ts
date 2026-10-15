@@ -4,7 +4,7 @@
  * `toolVisible` and `tools/call` is decided by `evaluateMcpCall` — one decision, two
  * surfaces. Policy is re-stat'ed on every list/call (swap reflected on the next call),
  * an invalid policy refuses every call but never kills the server, and the only
- * process exit in packages/mcp-server/src stays the stdin `end` handler.
+ * exit call in packages/mcp-server/src stays the stdin `end` handler.
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import {
@@ -419,8 +419,8 @@ describe("0.32.0 P4 — default policy differences + audit (D4 · D5 · D8 · Do
   }, 30_000);
 });
 
-describe("0.32.0 P4 — no process exit on policy errors (D9 · Done-when (f))", () => {
-  test("packages/mcp-server/src (non-test) has exactly one process exit — the stdin end handler", () => {
+describe("0.32.0 P4 — server never exits on policy errors (D9 · Done-when (f))", () => {
+  test("packages/mcp-server/src (non-test) has exactly one exit call — the stdin end handler", () => {
     const needle = ["process", "exit"].join(".");
     const srcDir = import.meta.dir;
     const hits: string[] = [];
