@@ -1,8 +1,9 @@
 /**
- * PLAN 0.32.0 P4 verify round 3 (H2): a missing loomDir reads as "no policy" (built-in
- * defaults) only when loomDir's parent exists and lstat's as a real directory. A dangling
- * or symlinked ancestor at the parent position, or a missing parent, fails closed — for
- * the Loom MCP server and the headless worker alike (same loader).
+ * PLAN 0.32.0 P4 verify round 3 (H2) + coordinator follow-up: a missing loomDir reads as
+ * "no policy" (built-in defaults) only when loomDir's parent resolves (stat, following
+ * symlinks — a symlinked $HOME is common on Linux) to a directory. A dangling, missing or
+ * non-directory parent, or any lookup error, fails closed — for the Loom MCP server and
+ * the headless worker alike (same loader).
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -30,7 +31,7 @@ function loadError(dir: string): string {
   throw new Error("expected loadPolicy to throw");
 }
 
-describe("loadPolicy — missing loomDir is absent only under a real parent directory", () => {
+describe("loadPolicy — missing loomDir is absent only when its parent resolves to a directory", () => {
   test("fresh home (real dir) without .loom → null (built-in defaults)", () => {
     const home = root();
     expect(loadPolicy(join(home, ".loom"))).toBeNull();
@@ -45,12 +46,30 @@ describe("loadPolicy — missing loomDir is absent only under a real parent dire
     expect(message).toContain(join(home, ".loom", "policy.json"));
   });
 
-  test("home is a symlink to a real dir and .loom is missing → throws (parent must not be a symlink)", () => {
+  test("home is a symlink to a real dir and .loom is missing → null (symlinked $HOME is fine)", () => {
     const r = root();
     const real = join(r, "real-home");
     mkdirSync(real);
     const home = join(r, "home");
     symlinkSync(real, home);
+    expect(loadPolicy(join(home, ".loom"))).toBeNull();
+  });
+
+  test("home is a symlink to a symlink to a real dir → null", () => {
+    const r = root();
+    const real = join(r, "real-home");
+    mkdirSync(real);
+    symlinkSync(real, join(r, "hop"));
+    const home = join(r, "home");
+    symlinkSync(join(r, "hop"), home);
+    expect(loadPolicy(join(home, ".loom"))).toBeNull();
+  });
+
+  test("home is a symlink to a regular file → throws", () => {
+    const r = root();
+    writeFileSync(join(r, "file"), "x");
+    const home = join(r, "home");
+    symlinkSync(join(r, "file"), home);
     expect(loadError(join(home, ".loom"))).toContain("fail-closed");
   });
 

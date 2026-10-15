@@ -541,20 +541,24 @@ function lookupFailed(filePath: string, detail: string): Error {
 /**
  * ENOENT on `<loomDir>/policy.json`: absent only when loomDir is a real directory
  * (or loomDir itself does not exist, i.e. not created yet — and then only when its
- * parent exists and lstat's as a real directory, PLAN 0.32.0 P4 verify round 3 H2:
- * a dangling / symlinked / missing parent fails closed). Anything else throws.
+ * parent resolves to a directory, symlinks followed; PLAN 0.32.0 P4 verify round 3 H2:
+ * a dangling / missing / non-directory parent fails closed). Anything else throws.
  */
-/** loomDir not created yet: its parent must exist as a real directory (not a symlink). */
+/**
+ * loomDir not created yet: its parent must resolve (stat, following symlinks — a
+ * symlinked $HOME is common on Linux) to a directory. A dangling, missing or
+ * non-directory parent, or any lookup error, fails closed.
+ */
 function confirmRealParent(loomDir: string, filePath: string): void {
   const parent = dirname(loomDir);
-  let st: ReturnType<typeof lstatSync>;
+  let st: ReturnType<typeof statSync>;
   try {
-    st = lstatSync(parent);
+    st = statSync(parent);
   } catch (err) {
-    throw lookupFailed(filePath, `loomDir is missing and its parent lstat ${errDetail(err)}`);
-  }
-  if (st.isSymbolicLink()) {
-    throw lookupFailed(filePath, `loomDir is missing and its parent is a symlink: ${parent}`);
+    throw lookupFailed(
+      filePath,
+      `loomDir is missing and its parent is missing or dangling: ${errDetail(err)}`,
+    );
   }
   if (!st.isDirectory()) {
     throw lookupFailed(filePath, `loomDir is missing and its parent is not a directory: ${parent}`);
@@ -588,7 +592,7 @@ function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void 
 /**
  * Reads `<loomDir>/policy.json`. `loomDir` is the already-resolved Loom dir.
  * Absent file → null (only ENOENT on the final path with a real loomDir, or no loomDir
- * under a real, non-symlink parent directory).
+ * under a parent that resolves to a directory).
  * Dangling/looping symlink, EACCES, ENOTDIR, any other lookup error, a non-regular
  * file (dir/FIFO/device), or a file over POLICY_MAX_BYTES → throws (fail-closed).
  * A symlink is followed only when its target is a regular file.
