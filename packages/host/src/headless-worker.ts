@@ -1113,20 +1113,11 @@ export class HeadlessDispatcher {
         }
         // These decisions precede every liveness probe: no pid cannot prove that
         // exec did not happen, and a reserved result must never be reconstructed.
-        // D11 / R49-M3: recovery and every adoption compare against the config and
-        // the card copy re-hashed now. A completed dead record (fresh spawn below) and
-        // a different handoff beside a live worker (card_already_running) adopt nothing.
-        const adopting =
-          !!existing &&
-          (!existing.resultSent || processLiveness(existing) !== "dead") &&
-          !(
-            existing.dispatchHandoffId !== card.dispatchHandoffId &&
-            processLiveness(existing) !== "dead"
-          );
+        // D11 / R49-M3: recovery compares against the config and the card copy
+        // re-hashed now (it also decides skipWatch). Every adoption re-checks at the
+        // adoption branch below, independent of any liveness snapshot taken here.
         const fingerprintChanged =
-          existing && (recovering || adopting)
-            ? await this.fingerprintChangedLocked(existing)
-            : false;
+          recovering && existing ? await this.fingerprintChangedLocked(existing) : false;
         if (existing) {
           const liveness = processLiveness(existing);
           const skipWatch =
@@ -1163,6 +1154,14 @@ export class HeadlessDispatcher {
             processLiveness(existing) !== "dead"
           ) {
             await this.deliver(card, new Date().toISOString(), this.alreadyRunningFields());
+            return;
+          }
+          // About to adopt → verify → adopt or pre-empt (R49-M3). Liveness may have
+          // changed since any earlier probe, so this check does not depend on one.
+          if (await this.fingerprintChangedLocked(existing)) {
+            await this.sendAndMarkLocked(existing, fingerprintChangedFields(), {
+              preserveWorkerState: processLiveness(existing) !== "dead",
+            });
             return;
           }
           // Original dispatch identity owns every adopted/recovered result.

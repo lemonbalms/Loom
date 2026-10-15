@@ -3,7 +3,7 @@
  * Done when (d) resume/upgrade · (e) argv/prompt · (f) Loom writes nothing in cwd/home ·
  * (g) P4 fake-CLI strictness (`--plugin-dir` plugin.json check, `--add-dir` rejected).
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as childProcess from "node:child_process";
 import { spawnSync } from "node:child_process";
 import {
@@ -37,6 +37,7 @@ import { type CardSessionRecord, cardSessionPath, readCardSession, writeCardSess
 import { HeadlessDispatcher, type HeadlessDispatchCard, type HeadlessResultFields } from "./headless-worker";
 import { compileClaudePolicyArgv } from "./policy-compile";
 import { resetStateHomeDirCache } from "./session-store";
+import * as skillMaterialize from "./skill-materialize";
 import {
   type AvailableSkill,
   cardSkillsDir,
@@ -1156,4 +1157,82 @@ describe("P4 fix-first: every adoption re-verifies the fingerprint (normal dispa
       expect(h.saved()!.resultSent).toBe(false);
     });
   }, 20_000);
+});
+
+/**
+ * Liveness race: the record's pid is observed alive on the first `kill(pid, 0)` and
+ * dead (ESRCH) afterwards; ps reports the recorded start time while alive.
+ */
+function aliveThenDead(pid: number, lstart: string): { restore: () => void; probes: () => number } {
+  const realKill = process.kill.bind(process);
+  let probes = 0;
+  const kill = spyOn(process, "kill").mockImplementation(((target: number, signal?: string | number) => {
+    if (target === pid && signal === 0) {
+      probes += 1;
+      if (probes === 1) return true;
+      const err = new Error("kill ESRCH") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    }
+    return realKill(target, signal as NodeJS.Signals);
+  }) as typeof process.kill);
+  const realExec = childProcess.execFileSync;
+  const ps = spyOn(childProcess, "execFileSync").mockImplementation(((file: string, args?: readonly string[], opts?: object) => {
+    if (file === "/bin/ps" && args?.includes(String(pid))) return `${lstart}\n`;
+    return (realExec as (...a: unknown[]) => unknown)(file, args, opts);
+  }) as typeof childProcess.execFileSync);
+  return {
+    restore: () => {
+      kill.mockRestore();
+      ps.mockRestore();
+    },
+    probes: () => probes,
+  };
+}
+
+describe("P4 round 2: adoption verifies at the adoption branch, not on an earlier liveness snapshot", () => {
+  const PID = 2_000_000_001;
+  const LSTART = "Thu Oct 15 00:00:00 2026";
+  for (const enabled of [true, false] as const) {
+    test(`direct dispatch, different handoff, unsent record, alive→dead (skills=${enabled}) → verified, pre-empted, no watch, no spawn`, async () => {
+      await fixture(enabled, async (h) => {
+        let fingerprint = legacyFingerprint(h);
+        if (enabled) {
+          h.selectSkills(["loom-card-report"]);
+          const m = await h.materialize();
+          fingerprint = workerFingerprint(h.config, m.manifestHash);
+          appendFileSync(h.skillMd(), "\ntampered\n");
+        }
+        h.seed({ pid: PID, pgid: PID, procStartedAt: LSTART, promptFingerprint: fingerprint });
+        const race = aliveThenDead(PID, LSTART);
+        // Probe count at each verification: an adoption watch would probe first.
+        const verifiedAt: number[] = [];
+        const original = skillMaterialize.verifyCardSkillsCopy;
+        const verify = spyOn(skillMaterialize, "verifyCardSkillsCopy").mockImplementation(async (key) => {
+          verifiedAt.push(race.probes());
+          return original(key);
+        });
+        const dispatcher = h.dispatcher();
+        try {
+          await dispatcher.dispatch({ ...h.card, dispatchHandoffId: "other-handoff" });
+        } finally {
+          race.restore();
+          verify.mockRestore();
+        }
+        if (enabled) {
+          // Verified right at the adoption branch: after the alive snapshot and the one
+          // dead re-probe that decided "adopt", before any watch probe.
+          expect(verifiedAt.length).toBeGreaterThan(0);
+          expect(verifiedAt[0]!).toBeLessThanOrEqual(2);
+        }
+        expect(dispatcher.flights()).toHaveLength(0);
+        expect(h.lines()).toHaveLength(0);
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.fields.reason).toBe("needs_verification");
+        expect(h.calls[0]!.fields.note).toBe("fingerprint_changed; not resuming");
+        // The pre-empted result belongs to the original dispatch identity.
+        expect(h.calls[0]!.target.dispatchHandoffId).toBe("original-handoff");
+      });
+    }, 20_000);
+  }
 });
