@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.32.0 **implemented** · Loom MCP pre-check (step 2 done) · **next = owner pick** (step 3 or 7) · topology full
+> v0.32.0 **implemented** · step 2 done · **next = 3단계 host OS 서비스** (fixed order; on owner go) · topology full
 
 ## Current loop
 
@@ -18,13 +18,13 @@
 
 ## Current action
 
-### v0.32.0 implemented · next = owner pick (step 3 or step 7)
+### v0.32.0 implemented · next = 3단계 host OS 서비스 (UPGRADE-PLAN order)
 
 **Goal:** step 2 done — Loom MCP pre-check (`loomTools` · `loom__*` deny · strict args · audit · L-2 flag) on v0.31.0 policy. Authority `docs/PLAN.md` §0.32.0 · impl-notes §0.32.0 · `USER_GUIDE.md` §17.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check`
-2. Owner picks step 3 (host OS service) or 7 (orchestrator) per `docs/UPGRADE-PLAN.md` → PLAN MINOR + R{n} before code
+2. On owner go: 3단계 host OS 서비스 (`docs/UPGRADE-PLAN.md` order) → PLAN MINOR + R{n} before code
 3. Carry: codex MCP approval (owner config) · `propose` shell bypass · L-2 advisory (impl-notes)
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
@@ -48,7 +48,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| Next: step 3 vs step 7 | owner pick (step 7 confirmed 2026-10-16, do not re-ask) | not started | `docs/UPGRADE-PLAN.md` |
+| Start 3단계 host OS 서비스 | 착수는 오너 지시 시 · 7단계 확정(2026-10-16), 순서상 마지막 — 재질문 금지 | not started | `docs/UPGRADE-PLAN.md` |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 

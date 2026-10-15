@@ -1066,7 +1066,11 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 
 **하고 싶은 일:** 대화형 `loom run claude|codex|grok` 세션의 에이전트가 Loom MCP 도구(20개)로 보드·인계·conv를 바꾸기 **전에** Loom 서버가 `policy.json`으로 검사하게 한다 — 특정 도구 끄기, 보드 통째 교체·브로드캐스트 같은 위험한 모드 끄기, MCP로 `done` 찍기를 사람 몫으로 돌리기.
 
-**범위는 Loom MCP 서버 한 곳이다.** 헤드리스 워커(§15·§16)는 Loom MCP를 받지 않으므로 이 절과 무관하고, 워커 argv·fingerprint는 0.31.0과 같다 — `policy.json`에 `loomTools`를 넣어도 실행 중 헤드리스 카드에 `fingerprint_changed`가 생기지 않는다. 와이어·완료 권한(원격 결과 = `blocked`)도 그대로다. **`policy.json`이 없거나 `loomTools`가 없으면 0.31.0과 다른 점은 둘뿐이다:** 인자를 엄격하게 검사한다(§17.4) · `import_board mode=replace`를 거부한다(§17.2).
+**범위는 Loom MCP 서버 한 곳이다.** 헤드리스 워커(§15·§16)는 Loom MCP를 받지 않으므로 이 절과 무관하고, 워커 argv·fingerprint는 0.31.0과 같다 — `policy.json`에 `loomTools`를 넣어도 실행 중 헤드리스 카드에 `fingerprint_changed`가 생기지 않는다. 와이어·완료 권한(원격 결과 = `blocked`)도 그대로다. **`policy.json`이 없거나 `loomTools`가 없을 때 모델이 보는 새 거부는 둘이다:** 인자를 엄격하게 검사한다(§17.4) · `import_board mode=replace`를 거부한다(§17.2). 그 밖에 기본 정책에서도 0.31.0과 달라지는 점:
+- MCP로 `done`을 찍을 때마다 감사 줄 `done_via_mcp` 하나 — 새 파일 `~/.loom/rooms/<roomKey>/policy-audit.jsonl`(§17.6).
+- `dispatch_card`가 로컬 peer 목록을 더 조회한다(보내기 전 1회, 그 조회가 대상을 하나로 정하면 보낸 뒤 1회 더) — 일치하면 카드에 로컬 고정 id를 남긴다(§17.6).
+- `apply_card_result`가 카드에 `l2Mismatch` 플래그를 붙일 수 있다(거부 아님, §17.6).
+- Loom MCP 서버가 **호출마다** `policy.json`을 읽는다 — 조회 실패(권한 없음 · 매달린 링크 · 64 KiB 초과 · 무효)면 모든 Loom 도구가 거부된다. 0.31.0 MCP 서버는 이 파일을 읽지 않았다(§17.5).
 
 ### 17.1 `policy.json`에 쓰는 키
 

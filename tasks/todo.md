@@ -12,13 +12,13 @@
    - [x] **2부 — 두 릴리스로 분할(범위 분할, PLAN §0.31.0 권위 고지)**
      - [x] **v0.31.0 스킬 materialize + `policy.json` v1 → CLI별 권한 번역** — `9f52ba0` P1 → … → `3f92eeb` → PATCH 5(USER_GUIDE §16 · PROTOCOL · implementation-notes §0.31.0 · VERSION 0.31.0 · 스모크 `HEADLESS-SMOKE-0310.md`). Done when (a)~(i) green · (j) ship 검사.
      - [x] **v0.32.0 Loom MCP 사전 점검** — `58f3b02` P1 → … → `f5c59ce` → `1e97aa7` 스모크 → PATCH 5(USER_GUIDE §17 · PROTOCOL · implementation-notes §0.32.0 · VERSION 0.32.0 · 스모크 `MCP-PRECHECK-SMOKE-0320.md`). Done when (a)~(i) green · (j) ship 검사.
-   2단계 완료. **다음 = 오너 지명**(3단계 OS 서비스 또는 7단계 총괄 에이전트 — `docs/UPGRADE-PLAN.md`).
+   2단계 완료. **다음 = 3단계 host OS 서비스**(UPGRADE-PLAN 순서 고정) — 착수는 오너 지시 시.
 3. [ ] **3단계 — host를 OS 서비스로** (미착수)
 4. [ ] **4단계 — memory / rules / skills 저장소** (미착수)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.
-   (확정 2026-10-16 · 미착수 · 설계 `docs/UPGRADE-PLAN.md`)
+   (확정 2026-10-16, 순서상 마지막 — 재질문 금지 · 미착수 · 설계 `docs/UPGRADE-PLAN.md`)
 
 ## Previous — owner pick next (2026-07-28, superseded by 업그레이드 계획)
 
