@@ -440,6 +440,61 @@ describe("0.32.0 P4 verify round 2 — absent cache keyed on loomDir state (H)",
   }, 30_000);
 });
 
+describe("0.32.0 P4 verify round 3 — no cache; missing loomDir parent fails closed (H1 · H2)", () => {
+  test("LOOM_TEST_HOME replaced by a dangling symlink (no .loom) → every call refused policy_invalid", async () => {
+    const { home } = makeHome();
+    const s = startServer(home);
+    expect(textOf(await s.call("get_purpose", {}))).not.toContain("Loom pre-check refused");
+
+    const moved = `${home}-moved`;
+    homes.push(moved);
+    renameSync(home, moved);
+    symlinkSync(join(home, "..", "no-such-home-dir"), home);
+    const r = await s.call("get_purpose", {});
+    expect(r.result?.isError).toBe(true);
+    expect(textOf(r)).toContain("Loom pre-check refused get_purpose: policy.json is invalid");
+    expect(textOf(r)).toContain("fail-closed");
+    expect((await s.listNames()).length).toBe(20);
+    expect(s.stderr).toContain("reason=policy_invalid");
+    unlinkSync(home);
+  }, 30_000);
+
+  test("fresh home with no .loom at all → built-in default (20 tools, calls allowed)", async () => {
+    const home = mkdtempSync(join(tmpdir(), "loom-mcp-p4-fresh-"));
+    homes.push(home);
+    const s = startServer(home);
+    expect((await s.listNames()).length).toBe(20);
+    const r = await s.call("get_purpose", {});
+    expect(textOf(r)).not.toContain("Loom pre-check refused");
+    const replace = await s.call("import_board", {
+      snapshot: { kind: "loom-board-snapshot", tasks: [] },
+      mode: "replace",
+    });
+    expect(textOf(replace)).toContain("loomTools.denyModes board.replace");
+  }, 30_000);
+
+  test("rapid swaps within one tick are never served from a stale gate (loaded every call)", async () => {
+    const { home, loom } = makeHome();
+    const s = startServer(home);
+    for (let i = 0; i < 5; i++) {
+      // Same size, rewritten in place (same inode) — a stat-keyed cache could miss these.
+      writeFileSync(
+        join(loom, "policy.json"),
+        JSON.stringify(policyBody({ mcp: { deny: ["loom__get_purpose"] } })),
+      );
+      expect(textOf(await s.call("get_purpose", {}))).toContain("mcp.deny");
+      writeFileSync(
+        join(loom, "policy.json"),
+        JSON.stringify(policyBody({ mcp: { deny: ["loom__room_chat"] } })).padEnd(
+          JSON.stringify(policyBody({ mcp: { deny: ["loom__get_purpose"] } })).length,
+          " ",
+        ),
+      );
+      expect(textOf(await s.call("get_purpose", {}))).not.toContain("Loom pre-check refused");
+    }
+  }, 30_000);
+});
+
 describe("0.32.0 P4 verify round 1 — dispatchPeerId never exposed over MCP (L)", () => {
   test("list_tasks / add_task / update_task / import_board / export_board / apply_card_result omit the pin", async () => {
     const { home, loom } = makeHome();

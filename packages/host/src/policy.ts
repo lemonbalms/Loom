@@ -27,7 +27,7 @@ import {
   readSync,
   statSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /** First non-whitespace character is a flag-shaped dash (agent-argv RULE_FLAG_PREFIX). */
 const RULE_FLAG_PREFIX = /^[-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/;
@@ -540,8 +540,27 @@ function lookupFailed(filePath: string, detail: string): Error {
 
 /**
  * ENOENT on `<loomDir>/policy.json`: absent only when loomDir is a real directory
- * (or loomDir itself does not exist, i.e. not created yet). Anything else throws.
+ * (or loomDir itself does not exist, i.e. not created yet — and then only when its
+ * parent exists and lstat's as a real directory, PLAN 0.32.0 P4 verify round 3 H2:
+ * a dangling / symlinked / missing parent fails closed). Anything else throws.
  */
+/** loomDir not created yet: its parent must exist as a real directory (not a symlink). */
+function confirmRealParent(loomDir: string, filePath: string): void {
+  const parent = dirname(loomDir);
+  let st: ReturnType<typeof lstatSync>;
+  try {
+    st = lstatSync(parent);
+  } catch (err) {
+    throw lookupFailed(filePath, `loomDir is missing and its parent lstat ${errDetail(err)}`);
+  }
+  if (st.isSymbolicLink()) {
+    throw lookupFailed(filePath, `loomDir is missing and its parent is a symlink: ${parent}`);
+  }
+  if (!st.isDirectory()) {
+    throw lookupFailed(filePath, `loomDir is missing and its parent is not a directory: ${parent}`);
+  }
+}
+
 function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void {
   let dirStat: ReturnType<typeof statSync>;
   try {
@@ -551,7 +570,10 @@ function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void 
       try {
         lstatSync(loomDir);
       } catch (lerr) {
-        if (errCode(lerr) === "ENOENT") return;
+        if (errCode(lerr) === "ENOENT") {
+          confirmRealParent(loomDir, filePath);
+          return;
+        }
         throw lookupFailed(filePath, `loomDir lstat ${errDetail(lerr)}`);
       }
       throw lookupFailed(filePath, `loomDir is a dangling symlink: ${errDetail(err)}`);
@@ -565,7 +587,8 @@ function confirmAbsent(loomDir: string, filePath: string, cause: unknown): void 
 
 /**
  * Reads `<loomDir>/policy.json`. `loomDir` is the already-resolved Loom dir.
- * Absent file → null (only ENOENT on the final path with a real loomDir, or no loomDir).
+ * Absent file → null (only ENOENT on the final path with a real loomDir, or no loomDir
+ * under a real, non-symlink parent directory).
  * Dangling/looping symlink, EACCES, ENOTDIR, any other lookup error, a non-regular
  * file (dir/FIFO/device), or a file over POLICY_MAX_BYTES → throws (fail-closed).
  * A symlink is followed only when its target is a regular file.

@@ -25,8 +25,6 @@ import {
   toolConvFetch,
   mcpResultJson,
 } from "./tools";
-import { lstatSync, type Stats, statSync } from "node:fs";
-import { join } from "node:path";
 import {
   appendPolicyAudit,
   evaluateMcpCall,
@@ -53,103 +51,24 @@ type JsonRpcReq = {
 const TOOLS = TOOL_DEFINITIONS;
 
 // ---------------------------------------------------------------------------
-// 0.32.0 D9: policy gate — loaded at start, re-stat'ed before every tools/list and
-// tools/call, reloaded on change. A loader failure becomes an invalid gate (every call
-// refused with the loader message, list unfiltered) — never an exit.
-//
-// P4 verify round 1 (fail closed): the cache key comes from lstat of policy.json (entry
-// type + ino + mtimeMs + ctimeMs + size; for a symlink also the target's stat or its
-// error), so a dangling symlink never shares the "absent" key. Round 2: the key also
-// covers loomDir's own lstat/stat, and an absent entry is reused only while loomDir is
-// a real directory with an unchanged key. Only an lstat ENOENT is "absent"; every
-// other state goes through loadPolicy, which decides (and throws for
-// dangling links, non-regular files, lookup errors). An invalid gate is never trusted
-// from cache — loadPolicy re-runs on every list/call until it succeeds.
-// Remaining limit: an in-place rewrite that keeps inode, size, mtimeMs and ctimeMs all
-// identical (same filesystem timestamp tick) is not seen until the next real change.
+// 0.32.0 D9: policy gate — loadPolicy runs on EVERY tools/list and tools/call (P4 verify
+// round 3 H1: no cache, so no stale or raced gate can ever be served; a 64 KiB reload is
+// ~43 µs). One call uses one gate for its list filter or its evaluation. A loader failure
+// becomes an invalid gate (every call refused with the loader message, list unfiltered)
+// — never an exit.
 // ---------------------------------------------------------------------------
-
-let policyState: { key: string; gate: LoomToolsGate } | null = null;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function errCode(e: unknown): string {
-  return e && typeof e === "object" && "code" in e ? String(e.code) : "error";
-}
-
-function entryType(st: Stats): string {
-  if (st.isFile()) return "file";
-  if (st.isSymbolicLink()) return "symlink";
-  if (st.isDirectory()) return "dir";
-  return "other";
-}
-
-function statPart(st: Stats): string {
-  return `${entryType(st)}:${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
-}
-
-/** lstat (+ stat when it is a symlink) of one path, or its error codes, as a cache-key part. */
-function entryKey(path: string): { key: string; lstat?: Stats } {
-  let link: Stats;
+/** Fresh gate for one list/call. */
+function currentGate(): LoomToolsGate {
   try {
-    link = lstatSync(path);
-  } catch (e) {
-    return { key: `lstat-err:${errCode(e)}` };
-  }
-  let key = statPart(link);
-  if (link.isSymbolicLink()) {
-    try {
-      key += `->${statPart(statSync(path))}`;
-    } catch (e) {
-      key += `->stat-err:${errCode(e)}`;
-    }
-  }
-  return { key, lstat: link };
-}
-
-/**
- * P4 verify round 2: the key covers loomDir itself as well as policy.json, so swapping
- * loomDir (e.g. for a dangling symlink) can never reuse a warm "absent" entry.
- * `cacheable` is false for an absent policy unless loomDir is a real (non-symlink)
- * directory — every other loomDir state goes to loadPolicy on each list/call.
- */
-function policyStatKey(dir: string): { key: string; cacheable: boolean } {
-  const dirEntry = entryKey(dir);
-  const policyEntry = entryKey(join(dir, "policy.json"));
-  const key = `${dir}\0dir=${dirEntry.key}\0policy=${policyEntry.key}`;
-  const absent = policyEntry.key === "lstat-err:ENOENT";
-  const realDir = dirEntry.lstat?.isDirectory() === true;
-  return { key, cacheable: !absent || realDir };
-}
-
-function loadGate(dir: string): LoomToolsGate {
-  try {
-    return resolveLoomToolsGate(loadPolicy(dir));
+    return resolveLoomToolsGate(loadPolicy(loomDir()));
   } catch (e) {
     return resolveLoomToolsGate({ invalid: errText(e) });
   }
-}
-
-/** One gate snapshot per list/call (no reload mid-call). */
-function currentGate(): LoomToolsGate {
-  let dir: string;
-  try {
-    dir = loomDir();
-  } catch (e) {
-    return resolveLoomToolsGate({ invalid: `Loom state dir unavailable: ${errText(e)}` });
-  }
-  const { key, cacheable } = policyStatKey(dir);
-  if (
-    policyState === null ||
-    policyState.key !== key ||
-    !cacheable ||
-    policyState.gate.invalid !== undefined
-  ) {
-    policyState = { key, gate: loadGate(dir) };
-  }
-  return policyState.gate;
 }
 
 /** Session identity for the decision ctx / audit (missing → empty strings). */
@@ -458,9 +377,6 @@ async function handle(req: JsonRpcReq) {
       }
   }
 }
-
-// D9: initial load at server start (an invalid policy never stops the server).
-currentGate();
 
 let buffer = "";
 process.stdin.setEncoding("utf8");
