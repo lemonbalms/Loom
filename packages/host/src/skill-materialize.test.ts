@@ -869,7 +869,7 @@ describe("verify fix 2 — strict frontmatter subset", () => {
       "SKILL.md": md("maybe", "M.", "loom:\n  requires-policy: maybe\n"),
     });
     userSkill(loomDir, "meta", {
-      "SKILL.md": md("meta", "M.", "metadata:\n  loom.requires-policy: true\n"),
+      "SKILL.md": md("meta", "M.", "metadata:\n  loom-requires-policy: true\n"),
     });
     userSkill(loomDir, "offnest", {
       "SKILL.md": md("offnest", "O.", "loom:\n  requires-policy: false\n"),
@@ -1040,7 +1040,7 @@ describe("verify round 2 - block scalars and nested duplicates", () => {
       duptools: md("duptools", "D.", "hooks:\n  Stop:\n    - type: x\n  Stop:\n    - type: y\n"),
     };
     const good: Record<string, string> = {
-      sibling: md("sibling", "S.", "metadata:\n  x:\n    k: 1\n  y:\n    k: 2\n"),
+      sibling: md("sibling", "S.", "metadata:\n  first:\n    k: 1\n  second:\n    k: 2\n"),
       items: md(
         "items",
         "I.",
@@ -1057,5 +1057,60 @@ describe("verify round 2 - block scalars and nested duplicates", () => {
     for (const name of Object.keys(bad)) {
       expect([name, reasons(res)[name]]).toEqual([name, "invalid SKILL.md"]);
     }
+  });
+});
+
+describe("verify round 3 - nested key spelling and bare list items", () => {
+  test("nested keys must be plain lowercase identifiers (hooks: letters any case); others → invalid SKILL.md", async () => {
+    const { loomDir, key } = setup();
+    const bad: Record<string, string> = {
+      numkey: md("numkey", "N.", "metadata:\n  1: a\n  01: b\n"),
+      boolkey: md("boolkey", "B.", "metadata:\n  true: a\n"),
+      boolcase: md("boolcase", "B.", "metadata:\n  True: a\n"),
+      yeskey: md("yeskey", "Y.", "metadata:\n  yes: a\n"),
+      upperkey: md("upperkey", "U.", "metadata:\n  Author: a\n"),
+      dotkey: md("dotkey", "D.", "metadata:\n  loom.requires-policy: true\n"),
+      quotedkey: md("quotedkey", "Q.", 'metadata:\n  "a": 1\n'),
+      spacekey: md("spacekey", "S.", "metadata:\n  - my key: 1\n"),
+      hookcase: md(
+        "hookcase",
+        "H.",
+        "hooks:\n  PreToolUse:\n    - type: x\n  pretooluse:\n    - type: y\n",
+      ),
+      hookbool: md("hookbool", "H.", "hooks:\n  True:\n    - type: x\n"),
+      hooknum: md("hooknum", "H.", "hooks:\n  1Stop:\n    - type: x\n"),
+    };
+    const good: Record<string, string> = {
+      hookok: md(
+        "hookok",
+        "H.",
+        "hooks:\n  PreToolUse:\n    - matcher: Bash\n  Stop:\n    - type: x\n",
+      ),
+      metaok: md("metaok", "M.", "metadata:\n  author_name: a\n  build-id: b2\n"),
+    };
+    for (const [name, text] of Object.entries({ ...bad, ...good })) {
+      userSkill(loomDir, name, { "SKILL.md": text });
+    }
+    const all = [...Object.keys(bad), ...Object.keys(good)];
+    select(loomDir, "room-1", all);
+    const res = await run(key, { allow: null, allowScripts: all });
+    expect(res.available.map((s) => s.name)).toEqual(["hookok", "metaok"]);
+    for (const name of Object.keys(bad)) {
+      expect([name, reasons(res)[name]]).toEqual([name, "invalid SKILL.md"]);
+    }
+  });
+
+  test("a bare '-' list item opens a fresh scope; a duplicate inside one item is still rejected", async () => {
+    const { loomDir, key } = setup();
+    userSkill(loomDir, "bareok", {
+      "SKILL.md": md("bareok", "B.", "metadata:\n  items:\n    -\n      k: 1\n    -\n      k: 2\n"),
+    });
+    userSkill(loomDir, "baredup", {
+      "SKILL.md": md("baredup", "B.", "metadata:\n  items:\n    -\n      k: 1\n      k: 2\n"),
+    });
+    select(loomDir, "room-1", ["bareok", "baredup"]);
+    const res = await run(key);
+    expect(res.available.map((s) => s.name)).toEqual(["bareok"]);
+    expect(reasons(res)).toEqual({ baredup: "invalid SKILL.md" });
   });
 });

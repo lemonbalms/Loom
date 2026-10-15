@@ -97,6 +97,12 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** Any C0/C1/DEL, format (bidi, zero-width, BOM), or line/paragraph separator except LF. */
 const RAW_FORBIDDEN = /(?!\n)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 const BLOCK_SCALAR = /^[>|][+-]?$/;
+/** Nested mapping keys (fail closed on anything YAML could resolve to a non-string). */
+const NESTED_KEY = /^[a-z][a-z0-9_-]*$/;
+/** Inside `hooks`, event names such as PreToolUse keep their case. */
+const HOOKS_NESTED_KEY = /^[A-Za-z][A-Za-z0-9_-]*$/;
+/** YAML 1.1/1.2 boolean and null words; rejected as keys in any case. */
+const YAML_RESERVED_KEYS = new Set(["true", "false", "yes", "no", "on", "off", "y", "n", "null"]);
 const TOP_KEY_LINE = /^([a-z][a-z0-9.-]*):(?: +(.*))?$/;
 const NESTED_KEY_LINE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):(?: +(.*))?$/;
 
@@ -486,21 +492,28 @@ function parseFrontmatter(text: string): Frontmatter | null {
           item = rest.trimStart();
           col += 1 + rest.length - item.length;
         }
-        if (item === "") continue;
+        // A list item (bare `-` included) closes every scope at or right of its content.
         while (
           scopes.length > 0 &&
           (listItem ? scopes.at(-1)!.col >= col : scopes.at(-1)!.col > col)
         ) {
           scopes.pop();
         }
+        if (item === "") continue;
         const kv = NESTED_KEY_LINE.exec(item);
         if (kv) {
           if (scalar((kv[2] ?? "").trimEnd()) === null) return null;
+          // Plain identifiers only, so literal spelling = YAML key identity (no 1/01,
+          // true/True); hooks event names keep their case and compare case-insensitively.
+          const hooks = key === "hooks";
+          if (!(hooks ? HOOKS_NESTED_KEY : NESTED_KEY).test(kv[1]!)) return null;
+          if (YAML_RESERVED_KEYS.has(kv[1]!.toLowerCase())) return null;
+          const keyId = hooks ? kv[1]!.toLowerCase() : kv[1]!;
           if (scopes.length === 0 || scopes.at(-1)!.col < col)
             scopes.push({ col, keys: new Set() });
           const scope = scopes.at(-1)!;
-          if (scope.keys.has(kv[1]!)) return null;
-          scope.keys.add(kv[1]!);
+          if (scope.keys.has(keyId)) return null;
+          scope.keys.add(keyId);
           if (key === "loom") {
             if (listItem || kv[1] !== "requires-policy") return null;
             if (requiresFrom((kv[2] ?? "").trimEnd())) fm.requiresPolicy = true;
