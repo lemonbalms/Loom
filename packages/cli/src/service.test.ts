@@ -209,6 +209,8 @@ type FakeState = {
   /** status file follows the fake service (simulated bridge). */
   writesStatus: boolean;
   linger: "yes" | "no";
+  /** program + arguments of the LOADED job (`print` / `show -p ExecStart`); null = not printed. */
+  loadedArgs: string[] | null;
 };
 
 type Fake = {
@@ -225,7 +227,14 @@ function launchdPrint(st: FakeState): string {
     "\tactive count = 1",
     `\tpath = ${plistPath()}`,
     `\tstate = ${st.running ? "running" : "not running"}`,
-    "\tprogram = /usr/local/bin/bun",
+    ...(st.loadedArgs
+      ? [
+          `\tprogram = ${st.loadedArgs[0]}`,
+          "\targuments = {",
+          ...st.loadedArgs.map((a) => `\t\t${a}`),
+          "\t}",
+        ]
+      : []),
     ...(st.running ? [`\tpid = ${SVC_PID}`] : ["\tlast exit code = 0"]),
     "}",
     "",
@@ -252,6 +261,7 @@ function makeFake(init: Partial<FakeState> = {}): Fake {
     bootoutLingerPrints: 0,
     writesStatus: true,
     linger: "no",
+    loadedArgs: [process.execPath, BRIDGE_MAIN],
     ...init,
   };
   const calls: string[][] = [];
@@ -298,6 +308,14 @@ function makeFake(init: Partial<FakeState> = {}): Fake {
     if (argv[0] === "systemctl") {
       switch (verb) {
         case "show":
+          if (argv.includes("ExecStart")) {
+            const a = state.loadedArgs;
+            return ok(
+              a
+                ? `ExecStart={ path=${a[0]} ; argv[]=${a.join(" ")} ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\n`
+                : "ExecStart=\n",
+            );
+          }
           return ok(systemdShow(state));
         case "daemon-reload":
           state.loaded = existsSync(unitPath());
@@ -307,6 +325,9 @@ function makeFake(init: Partial<FakeState> = {}): Fake {
           return ok();
         case "stop":
           state.running = false;
+          return ok();
+        case "restart":
+          startSvc();
           return ok();
       }
       return fail(1, `unexpected systemctl ${verb}`);
@@ -1270,3 +1291,365 @@ test("service.ts: real runner refuses under LOOM_TEST_HOME and spawns only launc
   // tests in this file never hand the CLI module a real runner except under LOOM_TEST_HOME (R9)
   expect(bridgeConfigPath(PROFILE).startsWith(home)).toBe(true);
 });
+
+// ---------------------------------------------------------------------------------------------
+// P3 verify M — one service home (stateRootHome rule, process.env) + test-home guard (any runner).
+// Every case runs in a SUBPROCESS whose process env has HOME=<temp> and LOOM_TEST_HOME=<temp>
+// (Bun's os.homedir() is fixed at process start), so nothing can reach the real home.
+// ---------------------------------------------------------------------------------------------
+
+const SERVICE_TS = join(import.meta.dir, "service.ts");
+
+function homeProbeScript(dir: string): string {
+  const p = join(dir, "probe.ts");
+  writeFileSync(
+    p,
+    `import { runServiceCommand } from ${JSON.stringify(SERVICE_TS)};
+const injected = JSON.parse(process.env.PROBE_INJECT_ENV ?? "{}");
+const platform = process.env.PROBE_PLATFORM ?? "darwin";
+const calls: string[][] = [];
+let loaded = false;
+const res = (code: number, stdout = "", stderr = "") => ({ code, stdout, stderr });
+const runner = async (argv: string[]) => {
+  calls.push([...argv]);
+  if (argv[0] === "launchctl" && argv[1] === "print") {
+    return loaded ? res(0, "\\tstate = not running\\n") : res(113, "", "Could not find service");
+  }
+  if (argv[0] === "launchctl" && argv[1] === "bootstrap") loaded = true;
+  return res(0);
+};
+let t = 0;
+const lines: string[] = [];
+const code = await runServiceCommand("install", { profile: "work" }, {
+  runner, platform, uid: 501, user: "t", env: injected,
+  execPath: process.execPath, bridgeMainPath: () => ${JSON.stringify(BRIDGE_MAIN)},
+  now: () => t, sleep: async (ms: number) => { t += ms; },
+  out: (l: string) => lines.push(l), err: (l: string) => lines.push(l),
+  inspectLock: () => ({ kind: "none" }), loomVersion: "0.34.0",
+});
+console.log("PROBE_RESULT " + JSON.stringify({ code, calls, lines }));
+`,
+  );
+  return p;
+}
+
+type Probe = { code: number; calls: string[][]; lines: string[] };
+
+function runProbe(
+  platform: "darwin" | "linux",
+  procEnv: { HOME: string; LOOM_TEST_HOME?: string },
+  injected: Record<string, string>,
+  dir: string,
+): Probe {
+  const r = spawnSync(process.execPath, [homeProbeScript(dir)], {
+    env: {
+      PATH: process.env.PATH ?? "",
+      ...procEnv,
+      PROBE_PLATFORM: platform,
+      PROBE_INJECT_ENV: JSON.stringify(injected),
+    },
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  const line = (r.stdout ?? "").split("\n").find((l) => l.startsWith("PROBE_RESULT "));
+  if (!line) throw new Error(`probe failed: ${r.stdout}\n${r.stderr}`);
+  return JSON.parse(line.slice("PROBE_RESULT ".length)) as Probe;
+}
+
+function sessionAt(root: string): void {
+  const loom = join(root, ".loom");
+  mkdirSync(join(loom, "profiles"), { recursive: true });
+  mkdirSync(join(loom, "bridge"), { recursive: true });
+  writeFileSync(
+    join(loom, "profiles", `${PROFILE}.json`),
+    JSON.stringify({
+      relayUrl: "wss://relay.example.com:7842/ws",
+      relayToken: "tok-SECRET-123",
+      roomId: "r_1",
+      roomName: "room",
+      inviteCode: "LOOM-ABCD",
+      peerId: "p_node",
+      peerSecret: "ps-SECRET",
+      displayName: PROFILE,
+    }),
+    { mode: 0o600 },
+  );
+  writeFileSync(
+    join(loom, "bridge", `${PROFILE}.json`),
+    JSON.stringify({ authorizedDispatchers: ["p_tower"] }),
+  );
+}
+
+const agentsDir = (root: string) => join(root, "Library/LaunchAgents");
+const sdDir = (root: string) => join(root, ".config/systemd");
+
+describe("service home — single source + test-home guard (P3 verify M)", () => {
+  let fakeHome: string;
+  let other: string;
+  let scripts: string;
+  beforeEach(() => {
+    fakeHome = mkdtempSync(join(tmpdir(), "loom-svc-HOME-"));
+    other = mkdtempSync(join(tmpdir(), "loom-svc-other-"));
+    scripts = mkdtempSync(join(tmpdir(), "loom-svc-probe-"));
+  });
+  afterEach(() => {
+    for (const d of [fakeHome, other, scripts]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const platform of PLATFORMS) {
+    test(`${platform}: injected env WITHOUT LOOM_TEST_HOME, process has it → every path under the test home`, () => {
+      sessionAt(home);
+      const r = runProbe(platform, { HOME: fakeHome, LOOM_TEST_HOME: home }, { PATH: "/usr/bin:/bin" }, scripts);
+      expect(r.lines.join("\n")).not.toContain("outside LOOM_TEST_HOME");
+      expect(r.calls.length).toBeGreaterThan(0);
+      expect(existsSync(target(platform))).toBe(true);
+      expect(existsSync(bridgeLogPath(PROFILE))).toBe(true);
+      if (platform === "linux") expect(lstatSync(wantsPath()).isSymbolicLink()).toBe(true);
+      expect(existsSync(agentsDir(fakeHome))).toBe(false);
+      expect(existsSync(sdDir(fakeHome))).toBe(false);
+    });
+
+    test(`${platform}: injected LOOM_TEST_HOME ≠ process LOOM_TEST_HOME → refused before any call or write`, () => {
+      sessionAt(home);
+      const r = runProbe(
+        platform,
+        { HOME: fakeHome, LOOM_TEST_HOME: home },
+        { PATH: "/usr/bin:/bin", LOOM_TEST_HOME: other },
+        scripts,
+      );
+      expect(r.code).toBe(1);
+      expect(r.lines.join("\n")).toContain(`is outside LOOM_TEST_HOME (${other})`);
+      expect(r.calls).toEqual([]);
+      for (const root of [home, fakeHome, other]) {
+        expect(existsSync(agentsDir(root))).toBe(false);
+        expect(existsSync(sdDir(root))).toBe(false);
+      }
+    });
+
+    test(`${platform}: injected LOOM_TEST_HOME while the process has none → refused (targets would be under HOME)`, () => {
+      sessionAt(fakeHome);
+      const r = runProbe(platform, { HOME: fakeHome }, { PATH: "/usr/bin:/bin", LOOM_TEST_HOME: other }, scripts);
+      expect(r.code).toBe(1);
+      expect(r.lines.join("\n")).toContain(`is outside LOOM_TEST_HOME (${other})`);
+      expect(r.calls).toEqual([]);
+      for (const root of [fakeHome, other]) {
+        expect(existsSync(agentsDir(root))).toBe(false);
+        expect(existsSync(sdDir(root))).toBe(false);
+      }
+    });
+  }
+
+  test("structure: one function derives the service home (stateRootHome rule) — install/uninstall/start/status/doctor", () => {
+    const src = readFileSync(SERVICE_TS, "utf8");
+    expect(src).toMatch(/export function serviceHome\(\): string \{\s*return stateRootHome\(\);\s*\}/);
+    expect(src.match(/stateRootHome\(\)/g) ?? []).toHaveLength(1);
+    expect(src).not.toMatch(/homedir\(\)/);
+    expect(src).not.toMatch(/LOOM_TEST_HOME\s*\|\|/);
+    expect(src).toMatch(/const home = serviceHome\(\);/);
+    const idx = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
+    const call = /serviceDoctorSection\(\{[\s\S]*?\}\);/.exec(idx)?.[0] ?? "";
+    expect(call).toContain("home: serviceHome(),");
+    expect(idx).not.toMatch(/home: process\.env\.LOOM_TEST_HOME/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P3 verify L1 — label loaded but plist absent: query first, bootout before bootstrap
+// ---------------------------------------------------------------------------------------------
+
+describe("install — plist absent but label loaded (P3 verify L1)", () => {
+  const eioWhenLoaded = (fake: Fake) =>
+    fake.override.set("launchctl bootstrap", () =>
+      fake.state.loaded ? fail(5, "Bootstrap failed: 5: Input/output error") : undefined,
+    );
+
+  test("not running → bootout → poll → write → bootstrap → exit 0 (not exit 3)", async () => {
+    setup();
+    writeStatus("stopped");
+    const fake = makeFake({ loaded: true, running: false });
+    eioWhenLoaded(fake);
+    const r = await run("install", "darwin", fake);
+    expect(r.code).toBe(0);
+    expect(writes(fake)).toEqual([
+      ["launchctl", "bootout", `gui/${UID}/${LABEL}`],
+      ["launchctl", "bootstrap", `gui/${UID}`, plistPath()],
+    ]);
+    expect(fake.calls[0]).toEqual(["launchctl", "print", `gui/${UID}/${LABEL}`]);
+    expect(existsSync(plistPath())).toBe(true);
+    expect(r.text).not.toContain("loads at next login");
+  });
+
+  test("running with in-flight work → refused without --force, nothing written, no bootout", async () => {
+    setup();
+    writeStatus("running", SVC_PID, { paneCards: 1, convs: 0, headlessRunning: 0, headlessQueued: 0 });
+    const fake = makeFake({ loaded: true, running: true });
+    eioWhenLoaded(fake);
+    const r = await run("install", "darwin", fake);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain("in-flight — loom bridge drain first, or --force");
+    expect(writes(fake)).toEqual([]);
+    expect(existsSync(plistPath())).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P3 verify L2 — bootout poll: not-found only on 113 / "Could not find service"
+// ---------------------------------------------------------------------------------------------
+
+describe("install — bootout poll result codes (P3 verify L2)", () => {
+  /** after bootout, the first `n` prints answer `res` (then the state machine: 113 not found). */
+  const afterBootout = (fake: Fake, n: number, res: Res) => {
+    let left = n;
+    fake.override.set("launchctl print", () => {
+      if (!fake.calls.some((c) => c[1] === "bootout")) return undefined;
+      if (left <= 0) return undefined;
+      left--;
+      return res;
+    });
+  };
+
+  test("runner timeout (137) is not 'not found' — keep polling, then bootstrap after 113", async () => {
+    setup();
+    writeTarget("darwin", foreignMarked("darwin", PROFILE));
+    writeStatus("stopped");
+    const fake = makeFake({ loaded: true, running: false });
+    afterBootout(fake, 3, { code: 137, stdout: "", stderr: "" });
+    const r = await run("install", "darwin", fake);
+    expect(r.code).toBe(0);
+    const iBootout = fake.calls.findIndex((c) => c[1] === "bootout");
+    const iBootstrap = fake.calls.findIndex((c) => c[1] === "bootstrap");
+    const between = fake.calls.slice(iBootout + 1, iBootstrap);
+    expect(between.length).toBe(4);
+    expect(between.every((c) => c[1] === "print")).toBe(true);
+  });
+
+  test("print keeps failing (137) → exit 1 after 25 s, old file byte-identical, no bootstrap", async () => {
+    setup();
+    const old = foreignMarked("darwin", PROFILE);
+    writeTarget("darwin", old);
+    const fake = makeFake({ loaded: true, running: false });
+    afterBootout(fake, 1_000_000, { code: 137, stdout: "", stderr: "" });
+    const r = await run("install", "darwin", fake);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain("bootout did not complete within 25 s");
+    expect(readFileSync(plistPath(), "utf8")).toBe(old);
+    expect(fake.calls.some((c) => c[1] === "bootstrap")).toBe(false);
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(25_000);
+  });
+
+  test("other non-zero code with 'Could not find service' text → not found → bootstrap", async () => {
+    setup();
+    writeTarget("darwin", foreignMarked("darwin", PROFILE));
+    writeStatus("stopped");
+    const fake = makeFake({ loaded: true, running: false });
+    afterBootout(fake, 1, { code: 3, stdout: "", stderr: `Could not find service "${LABEL}" in domain` });
+    const r = await run("install", "darwin", fake);
+    expect(r.code).toBe(0);
+    const iBootout = fake.calls.findIndex((c) => c[1] === "bootout");
+    const iBootstrap = fake.calls.findIndex((c) => c[1] === "bootstrap");
+    expect(iBootstrap - iBootout).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P3 verify L3 — byte-identical on disk but an older job loaded
+// ---------------------------------------------------------------------------------------------
+
+const OLD_ARGS = ["/old/bin/bun", "/old/src/bridge-main.ts"];
+
+describe("install — identical file, loaded job differs (P3 verify L3)", () => {
+  test("darwin running, stale args → 'will stop' → bootout → bootstrap (file not rewritten)", async () => {
+    setup();
+    expect((await run("install", "darwin", makeFake())).code).toBe(0);
+    const mtime = statSync(plistPath()).mtimeMs;
+    writeStatus("running");
+    const fake = makeFake({ loaded: true, running: true, loadedArgs: OLD_ARGS });
+    const r = await run("install", "darwin", fake);
+    expect(r.code).toBe(0);
+    expect(r.text).not.toContain("already installed");
+    expect(r.text).toContain(`will stop the running service bridge (pid ${SVC_PID})`);
+    expect(writes(fake)).toEqual([
+      ["launchctl", "bootout", `gui/${UID}/${LABEL}`],
+      ["launchctl", "bootstrap", `gui/${UID}`, plistPath()],
+    ]);
+    expect(statSync(plistPath()).mtimeMs).toBe(mtime);
+  });
+
+  test("darwin running, stale args, in-flight → refused without --force, no write verb", async () => {
+    setup();
+    expect((await run("install", "darwin", makeFake())).code).toBe(0);
+    writeStatus("running", SVC_PID, { paneCards: 0, convs: 2, headlessRunning: 0, headlessQueued: 0 });
+    const fake = makeFake({ loaded: true, running: true, loadedArgs: OLD_ARGS });
+    const r = await run("install", "darwin", fake);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain("in-flight — loom bridge drain first, or --force");
+    expect(writes(fake)).toEqual([]);
+  });
+
+  test("linux running, stale ExecStart → daemon-reload → restart", async () => {
+    setup();
+    expect((await run("install", "linux", makeFake())).code).toBe(0);
+    writeStatus("running");
+    const fake = makeFake({ loaded: true, running: true, loadedArgs: OLD_ARGS });
+    const r = await run("install", "linux", fake);
+    expect(r.code).toBe(0);
+    expect(r.text).not.toContain("already installed");
+    expect(writes(fake)).toEqual([
+      ["systemctl", "--user", "daemon-reload"],
+      ["systemctl", "--user", "restart", UNIT],
+    ]);
+    expect(fake.calls).toContainEqual(["systemctl", "--user", "show", UNIT, "-p", "ExecStart"]);
+  });
+
+  test("linux not running, stale ExecStart → daemon-reload → start", async () => {
+    setup();
+    expect((await run("install", "linux", makeFake())).code).toBe(0);
+    writeStatus("stopped");
+    const fake = makeFake({ loaded: true, running: false, loadedArgs: OLD_ARGS });
+    const r = await run("install", "linux", fake);
+    expect(r.code).toBe(0);
+    expect(writes(fake)).toEqual([
+      ["systemctl", "--user", "daemon-reload"],
+      ["systemctl", "--user", "start", UNIT],
+    ]);
+  });
+
+  for (const platform of PLATFORMS) {
+    test(`${platform}: loaded job not parseable → 'up to date on disk; loaded job unverified', exit 0, no write verb`, async () => {
+      setup();
+      expect((await run("install", platform, makeFake())).code).toBe(0);
+      writeStatus("running");
+      const fake = makeFake({ loaded: true, running: true, loadedArgs: null });
+      const r = await run("install", platform, fake);
+      expect(r.code).toBe(0);
+      expect(r.text).toContain("up to date on disk; loaded job unverified");
+      expect(writes(fake)).toEqual([]);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// P3 verify L4 — "--" never reaches the XML comment marker
+// ---------------------------------------------------------------------------------------------
+
+for (const platform of PLATFORMS) {
+  describe(`'--' in names (P3 verify L4, ${platform})`, () => {
+    test("profile name containing '--' → D8 refusal, no call, no file", async () => {
+      writeSession({}, "a--b");
+      writeBridgeConfig({}, "a--b");
+      const r = await run("install", platform, makeFake(), { profile: "a--b" });
+      expect(r.code).toBe(1);
+      expect(r.text).toContain('profile name "a--b" contains "--"');
+      expect(r.text).toContain("rename the profile");
+      expect(r.fake.calls).toEqual([]);
+    });
+
+    test("loomVersion containing '--' → refused by the generator, no file", async () => {
+      setup();
+      const r = await run("install", platform, makeFake(), {}, { loomVersion: "0.34.0--x" });
+      expect(r.code).toBe(1);
+      expect(r.text).toContain('invalid loomVersion "0.34.0--x"');
+      expect(existsSync(target(platform))).toBe(false);
+    });
+  });
+}
