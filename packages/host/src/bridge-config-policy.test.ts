@@ -1,8 +1,8 @@
 /**
  * PLAN 0.37.0 P1 — bridge config `worker.strictEnforcement: boolean` and
  * `worker.rules = {"enabled": <boolean>}` (D3 · D4(a) · ② bridge 설정) plus the doctor's pure
- * `readBridgeWorkerFlags` (② · R14). `worker.maxConcurrent.<agent>: 0` is P2 (R55-L4) and is not
- * exercised here.
+ * `readBridgeWorkerFlags` (② · R14). `worker.maxConcurrent.<agent>: 0` is P2 (R55-L4): its cases
+ * are the last describe block of this file.
  * Parsers: strictEnforcement omitted → no key · non-boolean → `worker.strictEnforcement must be a
  * boolean`; rules is `parseMemory`-shaped (`worker.rules must be an object` · `worker.rules.<key>
  * is not a known key` · `worker.rules.enabled must be a boolean`). Every error throws from
@@ -341,5 +341,136 @@ describe("bridge config worker.strictEnforcement · worker.rules (PLAN 0.37.0 P1
         rmSync(policyPath, { force: true });
       }
     });
+  });
+});
+
+/**
+ * PLAN 0.37.0 P2 (R55-L4 — moved from P1): `worker.maxConcurrent.<agent>: 0` disables the agent
+ * (D4(c)). 0 is accepted · the error text is `worker.maxConcurrent.<agent> must be an integer >= 0
+ * (0 disables the agent)` · negatives and non-integers are refused · loadBridgeConfig round-trip
+ * keeps 0 · readBridgeWorkerFlags leaves the 0 agent out of `enabled`.
+ */
+describe("bridge config worker.maxConcurrent.<agent>: 0 (PLAN 0.37.0 P2 · D4(c) · R55-L4)", () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "loom-p2-maxconc-")));
+  const saved = new Map<string, string | undefined>();
+  function setEnv(key: string, value: string | undefined): void {
+    if (!saved.has(key)) saved.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  beforeAll(() => {
+    setEnv("LOOM_TEST_HOME", dir);
+    setEnv("LOOM_SESSION", join(dir, "session.json"));
+    setEnv("LOOM_PROFILE", undefined);
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    mkdirSync(bridgeConfigDir(), { recursive: true });
+  });
+  afterAll(() => {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    resetStateHomeDirCache();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const errMax = (agent: string) =>
+    `worker.maxConcurrent.${agent} must be an integer >= 0 (0 disables the agent)`;
+  const headless = (extra: Record<string, unknown> = {}) => ({
+    backend: "headless",
+    cwd: dir,
+    allowedRoots: [dir],
+    ...extra,
+  });
+  const save = (id: string, worker: unknown) =>
+    writeFileSync(bridgeConfigPath(id), JSON.stringify({ worker }), "utf8");
+
+  test("0 is accepted per agent; other agents keep their values / default 1", () => {
+    save("mc-zero-grok", headless({ maxConcurrent: { grok: 0 } }));
+    expect(loadBridgeConfig("mc-zero-grok").worker?.maxConcurrent).toEqual({
+      claude: 1,
+      codex: 1,
+      grok: 0,
+    });
+    save("mc-zero-mixed", headless({ maxConcurrent: { claude: 3, codex: 0, grok: 2 } }));
+    expect(loadBridgeConfig("mc-zero-mixed").worker?.maxConcurrent).toEqual({
+      claude: 3,
+      codex: 0,
+      grok: 2,
+    });
+  });
+
+  test("all three 0 is not an error (R20)", () => {
+    save("mc-zero-all", headless({ maxConcurrent: { claude: 0, codex: 0, grok: 0 } }));
+    const loaded = loadBridgeConfig("mc-zero-all");
+    expect(loaded.worker?.maxConcurrent).toEqual({ claude: 0, codex: 0, grok: 0 });
+    expect(workerConfigFromBridge(loaded).maxConcurrent).toEqual({
+      claude: 0,
+      codex: 0,
+      grok: 0,
+    });
+  });
+
+  test("negative, fractional and non-number values → the new exact error", () => {
+    for (const [i, [agent, bad]] of (
+      [
+        ["claude", -1],
+        ["codex", 0.5],
+        ["grok", 1.5],
+        ["grok", -0.5],
+        ["codex", "0"],
+        ["claude", null],
+        ["grok", Number.NaN],
+      ] as const
+    ).entries()) {
+      const id = `mc-bad-${i}`;
+      // NaN does not survive JSON; write the raw text instead.
+      if (Number.isNaN(bad as number)) {
+        writeFileSync(
+          bridgeConfigPath(id),
+          `{"worker":{"backend":"headless","cwd":${JSON.stringify(dir)},"allowedRoots":[${JSON.stringify(dir)}],"maxConcurrent":{"${agent}":"NaN"}}}`,
+          "utf8",
+        );
+      } else {
+        save(id, headless({ maxConcurrent: { [agent]: bad } }));
+      }
+      expect(messageOf(() => loadBridgeConfig(id))).toBe(errMax(agent));
+      expect(messageOf(() => loadBridgeConfig(id))).not.toContain(">= 1");
+    }
+  });
+
+  test("loadBridgeConfig → saveBridgeConfig → loadBridgeConfig round-trip keeps 0", () => {
+    save("mc-rt", headless({ maxConcurrent: { codex: 0, grok: 2 } }));
+    const first = loadBridgeConfig("mc-rt");
+    saveBridgeConfig("mc-rt", first);
+    const raw = JSON.parse(readFileSync(bridgeConfigPath("mc-rt"), "utf8")) as {
+      worker?: { maxConcurrent?: unknown };
+    };
+    expect(raw.worker?.maxConcurrent).toEqual({ claude: 1, codex: 0, grok: 2 });
+    const second = loadBridgeConfig("mc-rt");
+    expect(second).toEqual(first);
+    expect(second.worker?.maxConcurrent?.codex).toBe(0);
+  });
+
+  test("readBridgeWorkerFlags: a 0 agent is not enabled; errors use the same wording", () => {
+    expect(readBridgeWorkerFlags(headless({ maxConcurrent: { grok: 0 } })).enabled).toEqual([
+      "claude",
+      "codex",
+    ]);
+    expect(
+      readBridgeWorkerFlags(headless({ maxConcurrent: { claude: 0, grok: 0 } })).enabled,
+    ).toEqual(["codex"]);
+    expect(
+      readBridgeWorkerFlags(headless({ maxConcurrent: { claude: 0, codex: 0, grok: 0 } })).enabled,
+    ).toEqual([]);
+    expect(messageOf(() => readBridgeWorkerFlags(headless({ maxConcurrent: { codex: -1 } })))).toBe(
+      errMax("codex"),
+    );
+  });
+
+  test("pane backend ignores maxConcurrent entirely (even junk)", () => {
+    save("mc-pane", { backend: "pane", maxConcurrent: { codex: -5 } });
+    expect(loadBridgeConfig("mc-pane").worker).toBeUndefined();
   });
 });
