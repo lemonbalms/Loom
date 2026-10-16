@@ -177,7 +177,13 @@ export type FoldedEntry = {
   at?: string;
   /** `supersedes` target absent while a compact watermark exists (R53-M1 — info, not dangling). */
   supersedesArchived: boolean;
-  /** Some entry with status active|retired validly supersedes this one (fold 7 · R53-M1). */
+  /**
+   * Ever approved: the entry line had status active, or an applied transition moved it to active
+   * (fold 6). Only an ever-active supersessor hides its target — a rejected proposal
+   * (proposed → retired) does not (R53-M1 "한 번 승인된 대체자").
+   */
+  everActive: boolean;
+  /** Some ever-active entry validly supersedes this one (fold 7 · R53-M1). */
   hidden: boolean;
   /** Applied transitions, in (seq, id) order. */
   transitions: FoldedTransition[];
@@ -280,6 +286,7 @@ export function foldMemoryLines(raw: string): MemoryFold {
         supersedes: line.supersedes,
         ...(line.at !== undefined ? { at: line.at } : {}),
         supersedesArchived: false,
+        everActive: line.status === "active",
         hidden: false,
         transitions: [],
       };
@@ -312,6 +319,7 @@ export function foldMemoryLines(raw: string): MemoryFold {
       continue;
     }
     e.status = line.to;
+    if (line.to === "active") e.everActive = true;
     e.transitions.push({
       seq: line.seq,
       to: line.to,
@@ -320,9 +328,9 @@ export function foldMemoryLines(raw: string): MemoryFold {
     });
   }
 
-  // 7) hidden = superseded by an entry whose status is active or retired (proposed never hides)
+  // 7) hidden = superseded by an ever-active entry (proposed or rejected proposals never hide)
   for (const { from, to } of links) {
-    if (from.status === "active" || from.status === "retired") to.hidden = true;
+    if (from.everActive) to.hidden = true;
   }
   const visibleActive: FoldedEntry[] = [];
   for (const e of entries.values()) {
