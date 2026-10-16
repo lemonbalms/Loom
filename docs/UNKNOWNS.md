@@ -42,14 +42,14 @@
 
 ## Gate log
 
-### 0.34.0 — `loom service` launchd/systemd 사용자 서비스 설치 (`approved` — R52 approved-with-fixes)
+### 0.34.0 — `loom service` launchd/systemd 사용자 서비스 설치 (`approved` — R52 approved-with-fixes · implemented 2026-10-16)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.34.0 (`approved` — R52 approved-with-fixes, 반영 완료 · no R52b) · 업그레이드 3단계 2부 · 요구 `UPGRADE-PLAN.md:81-85` · 범위 = §0.33.0 "다음 후보" + 락 D1~D8(아키텍트 + fable-advisor 자문 2026-10-16) · 실 OS 등록·라이브 스모크는 별도 오너 명시 승인 |
 | **Date** | 2026-10-16 |
 | **Review** | R52 **done 2026-10-16** (새 MINOR + 신규 제품 표면 + 영속성·신뢰 경계 — Loom 프로세스의 OS 서비스 등록 · 유닛 내용(토큰 0 · env 고정) · 서비스 stop의 워커 생존(`KillMode=process`)) |
-| **Evidence** | 코드 실측 `main @ 0a20173` (PLAN §0.34.0 Why · 추정/실측 표) · `bridge-main.ts:28-31` · `:52-55` · `:68-69` · `bridge-lock.ts:76-85` · `:226-240` · `:425-436` · `bridge-spawn.ts:28` · `:68-75` · `:132` · `:137` · `:150-152` · `:161` · `bridge-config.ts:99-104` · `:112-113` · `session-store.ts:269-282` · `:408` · `headless-worker.ts:241-251` · `process-group.ts:96-102` · `doctor.ts:363` · `:470` · lessons `tasks/lessons/platform.md:136-151`(systemd HOME 미상속 크래시 루프) · R52 대조: `headless-worker.ts:615-635`(`close()` = abandon만, 워커 kill 0) · `process-group.ts:96-104` · `session-store.ts:300` · `protocol/src/env.ts:67-73`(`LOOM_`/`FABLE_` 이중 읽기) |
+| **Evidence** | 코드 실측 `main @ 0a20173` (PLAN §0.34.0 Why · 추정/실측 표) · `bridge-main.ts:28-31` · `:52-55` · `:68-69` · `bridge-lock.ts:76-85` · `:226-240` · `:425-436` · `bridge-spawn.ts:28` · `:68-75` · `:132` · `:137` · `:150-152` · `:161` · `bridge-config.ts:99-104` · `:112-113` · `session-store.ts:269-282` · `:408` · `headless-worker.ts:241-251` · `process-group.ts:96-102` · `doctor.ts:363` · `:470` · lessons `tasks/lessons/platform.md:136-151`(systemd HOME 미상속 크래시 루프) · R52 대조: `headless-worker.ts:615-635`(`close()` = abandon만, 워커 kill 0) · `process-group.ts:96-104` · `session-store.ts:300` · `protocol/src/env.ts:67-73`(*P5 정정: `envRelayToken()`은 `LOOM_RELAY_TOKEN`만 돌려주고 `FABLE_RELAY_TOKEN`은 경고만 — install이 두 이름을 직접 검사*) · 스모크 [`docs/spikes/SERVICE-SMOKE-0340.md`](spikes/SERVICE-SMOKE-0340.md) (2026-10-16 · macOS · bun 1.3.11 · 코드 `fb89d75` · 가짜 서비스 관리자 · **라이브 not run — 오너 승인 대기**) · P3 검증 프로브 사고(실 LaunchAgents plist 1분 · `launchctl` 0) = `implementation-notes.md` §0.34.0 Deviation (9) |
 
 | 분면 | 내용 |
 |------|------|
@@ -62,13 +62,13 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R52 판정 |
 |---|------|-------------|----------|
-| UK-1 | launchd/systemd 정지 신호 순서·유예(0.33.0 Unknown unknowns 이월) — launchd 그룹 대상 여부 · SIGKILL 시점 | bridge 정지 상한 10초 < `ExitTimeOut 20` / `TimeoutStopSec=30` · 라이브 스모크(선택)가 macOS 실측 | **open, 비차단** |
-| UK-2 | macOS 26 Login Items — 등록 알림 · 표시 이름(`bun` vs label) · 비활성 뒤 `bootstrap`/`kickstart` 코드·문구 · `print-disabled` 표기 | `disabled` 분류 패턴(R10)만 영향 · 라이브 스모크가 실측 | **open, 비차단** |
-| UK-3 | ssh(GUI 세션 없음)에서 `launchctl bootstrap gui/<uid>` 결과 코드(5 · 125 · 기타) · GUI 로그인 사용자의 ssh 세션에서 성공 여부 | 결과는 exit 0 또는 exit 3 — 둘 다 파일 유지 · 분류 패턴 실측 후 조정 | **open, 비차단** |
-| UK-4 | Linux 라이브 미검증 — `StandardError=append:`(systemd ≥ 240) · `KillMode=process` 뒤 left-over 경고 · linger 조회 형식 · wants 심링크 직접 생성 = `enable` 동등성 | CI는 생성기·runner 각본만 · 환경 없으면 **unverified** 기록 | **open, 비차단** |
-| UK-5 | Linux `ps -o lstart=` 형식(0.33.0 UK-2 Linux 이월) — D3 양보가 락 `live` 판정에 기댐 | 못 읽으면 `live` 미검증 → 서비스 모드 양보 exit 0(0.33.0 fail-safe 그대로) | **open, 비차단** |
+| UK-1 | launchd/systemd 정지 신호 순서·유예(0.33.0 Unknown unknowns 이월) — launchd 그룹 대상 여부 · SIGKILL 시점 | bridge 정지 상한 10초 < `ExitTimeOut 20` / `TimeoutStopSec=30` · 라이브 스모크(선택)가 macOS 실측 | **open, 비차단** — P2가 main 단독 SIGTERM 경로만 모사(≤10초 exit 0 · 워커 생존 · 입양 1회). 라이브 스모크 **not run(오너 승인 대기)** — `smoke:service --live`가 bootout → `stopped` 시간을 기록하도록 구현됨 |
+| UK-2 | macOS 26 Login Items — 등록 알림 · 표시 이름(`bun` vs label) · 비활성 뒤 `bootstrap`/`kickstart` 코드·문구 · `print-disabled` 표기 | `disabled` 분류 패턴(R10)만 영향 · 라이브 스모크가 실측 | **partly observed, 비차단** — P3 검증 프로브 사고로 관측: LaunchAgents에 plist **파일만 생겨도**(`launchctl` 호출 0) "Background Items Added" 알림 · 표시 이름 = bun 서명자 **"Jarred Sumner"**(label 아님). 비활성 뒤 코드·문구 · `print-disabled` 표기는 미실측 |
+| UK-3 | ssh(GUI 세션 없음)에서 `launchctl bootstrap gui/<uid>` 결과 코드(5 · 125 · 기타) · GUI 로그인 사용자의 ssh 세션에서 성공 여부 | 결과는 exit 0 또는 exit 3 — 둘 다 파일 유지 · 분류 패턴 실측 후 조정 | **open, 비차단** — 각본(`Input/output error` → exit 3)만 검증(P3 · 스모크 ⑤). 패턴 없는 코드 단독은 exit 1(R52-L2) |
+| UK-4 | Linux 라이브 미검증 — `StandardError=append:`(systemd ≥ 240) · `KillMode=process` 뒤 left-over 경고 · linger 조회 형식 · wants 심링크 직접 생성 = `enable` 동등성 | CI는 생성기·runner 각본만 · 환경 없으면 **unverified** 기록 | **unverified(Linux 환경 미사용), 비차단** |
+| UK-5 | Linux `ps -o lstart=` 형식(0.33.0 UK-2 Linux 이월) — D3 양보가 락 `live` 판정에 기댐 | 못 읽으면 `live` 미검증 → 서비스 모드 양보 exit 0(0.33.0 fail-safe 그대로) | **unverified(Linux 환경 미사용), 비차단** |
 
-**Current decision:** D1~D8 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16) · **R52 `approved-with-fixes` → M1·M2·M3·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R52b)** · R1~R14 수용(R5→L1 · R10→L2) · 아키텍트 답 1~5 수용(exit 3 · uninstall `--force` · doctor subprocess ≤2초 → `info unknown` · `service status` exit 0 · 미분류 exit 1) · 수용 손실 계급 1~13(계급 8 = Linux linger 없음 / macOS 로그아웃 공통 — M3) · UK-1~UK-5 open(비차단). 실 OS 등록·라이브 스모크는 별도 오너 명시 승인. 구현 착수 = **P1**(순수 생성기 + 이름, red 선행 — 테스트 파일만).
+**Current decision:** D1~D8 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16) · **R52 `approved-with-fixes` → M1·M2·M3·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R52b)** · R1~R14 수용(R5→L1 · R10→L2) · 아키텍트 답 1~5 수용(exit 3 · uninstall `--force` · doctor subprocess ≤2초 → `info unknown` · `service status` exit 0 · 미분류 exit 1) · 수용 손실 계급 1~13(계급 8 = Linux linger 없음 / macOS 로그아웃 공통 — M3) · UK-1 · UK-3 open · UK-2 partly observed · UK-4 · UK-5 unverified(전부 비차단). **implemented 2026-10-16** — P1~P5(`b77a42f` → … → `fb89d75` → `244e6a2` 스모크 → PATCH 5 문서) · 스모크 `smoke:service` ①~⑥ PASS(가짜 서비스 관리자) · **라이브 스모크 not run(오너 승인 대기)**. 다음 후보 = 업그레이드 4단계(memory / rules / skills 저장소 — 오너 지시 · PLAN MINOR + R53).
 
 ### 0.33.0 — bridge 생명주기 보강 (`approved` — R51 approved-with-fixes · implemented 2026-10-16)
 
@@ -484,3 +484,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-16 | 0.33.0 ship 반영 (UK-1 resolved — P2 + `BRIDGE-LIFECYCLE-SMOKE-0330.md` · UK-2 macOS resolved / Linux 미실측 · UK-3 resolved-by-decision — 600초 유지) |
 | 2026-10-16 | 0.34.0 `loom service` unknowns (UK-1~UK-5 요약 · 전부 비차단 제안 · 코드 실측 Known knowns · `pending-review` R52) |
 | 2026-10-16 | 0.34.0 R52 판정 반영 (UK-1~UK-5 open 비차단 · M1·M2·M3·L2 교훈 Unknown knowns 기재 · PLAN `approved`) |
+| 2026-10-16 | 0.34.0 ship 반영 (UK-2 partly observed — 프로브 사고 알림 · UK-1 · UK-3 open — 라이브 not run(오너 승인 대기) · UK-4 · UK-5 unverified — Linux 미사용 · `SERVICE-SMOKE-0340.md` · R52-L1 `envRelayToken()` 문면 정정) |

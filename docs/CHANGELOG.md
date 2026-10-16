@@ -5,8 +5,42 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.33.0**) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.34.0**) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.34.0 — 2026-10-16
+
+**`loom service` — 로그인 시 bridge 자동 기동** (업그레이드 3단계 2부 — 3단계 완료) — 프로필 bridge를 macOS launchd 에이전트 / Linux `systemd --user` 유닛으로 등록해 재부팅·로그아웃·크래시 뒤에도 사람 손 없이 다시 뜨게 한다.
+
+### 가능해진 것
+
+- **`loom service install [--force]`** — 등록 + 기동 + 실행 확인(≤12초). 유닛은 절대 bun · 절대 `bridge-main.ts` · env 다섯 키(`HOME` · 설치 때 `PATH` · `LOOM_SESSION` · `LOOM_PROFILE` · `LOOM_SERVICE=1`)만 — **토큰 0**. stderr는 `~/.loom/bridge/<p>.stderr.log`에 append(0600). 실패하면 10초 조절 재시작, exit 0(요청 정지)은 다시 띄우지 않는다. 서비스 stop은 bridge main에만 SIGTERM — headless 워커는 살아 남아 입양된다.
+- **설치 가드** — 루프백 relay · env에만 있는 토큰(`LOOM_RELAY_TOKEN`/`FABLE_RELAY_TOKEN`) · 빈 `authorizedDispatchers` · 남의 파일 · 사람이 띄운 bridge · 서비스 이름으로 못 쓰는 프로필 이름 → exit 1. 다시 실행은 안전(같으면 무동작 · 바뀌면 내리고 다시 올림 · 진행 중 작업이 있으면 `--force` 필요).
+- **exit 3 `written; loads at next login`** — ssh처럼 GUI 세션/사용자 버스가 없으면 파일만 남기고 다음 로그인에 뜬다.
+- **`loom service start | uninstall | status`** — start는 `kickstart`(`-k` 없음 — 실행 중이면 무동작) / `systemctl --user start` · uninstall은 내리고 파일·심링크 삭제(미설치 = exit 0) · status는 읽기 전용 · 항상 exit 0.
+- **`loom doctor` Service 절** — 설치 · 적재/실행 · Login Items 비활성 · bun/`bridge-main.ts` 경로 · PATH 표류 · srcPath 3자 비교 · 로그 모드 · linger(Linux) · 루프백 relay · 양보 / 서비스 밖 bridge. 읽기 동사만(각 ≤2초, 멈춘 자식은 CLI 종료 전에 회수) · ok/warn/info만 — doctor exit 코드 그대로.
+- 가짜 서비스 관리자 스모크 `bun run smoke:service`(install → 재설치 무동작 → status → doctor → exit 3 → uninstall · 실 홈 무접촉). 실 launchd 라이브 스모크는 `--live` + `LOOM_SERVICE_LIVE_SMOKE=1`로 구현만 — **아직 돌리지 않았다(오너 승인 대기)**.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.33.0) | 지금 (0.34.0) |
+|---------------|---------------|
+| 재부팅·로그아웃 뒤 bridge는 사람이 `bridge start`를 칠 때까지 꺼져 있다 | `service install`한 프로필은 로그인 때 뜨고 실패하면 10초 뒤 다시 뜬다 |
+| 같은 프로필 락이 잡혀 있으면 bridge는 항상 exit 1 | **`LOOM_SERVICE=1`일 때만** 살아 있는 보유자에게 **exit 0으로 양보**(`yield to bridge pid N`) — 서비스는 `service start`까지 내려가 있다. 수동 기동은 0.33.0 그대로 exit 1 |
+| 업그레이드 = `bridge drain` → 갱신 → `bridge start` | 서비스 프로필은 `bridge drain` → 갱신 → **`service start`**(drain의 exit 0 뒤 서비스 관리자는 다시 띄우지 않는다). 소스·bun 경로가 바뀌면 `service install` 다시 |
+| 세션 `displayName`이 빈 문자열이면 `bridge status`/`stop`/`drain`이 프로필을 빈 이름으로 다뤘다(표시 · 상태 파일 경로) | 프로필 이름은 어디서나 `resolveBridgeProfile()` 하나(R13) — 빈 `displayName` → `default` |
+| bridge의 PATH = 띄운 셸의 PATH | 서비스 bridge의 PATH = **install 때 캡처한 PATH** — 에이전트 CLI를 옮기면 재설치(doctor PATH 행) |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · 완료 권한 · 워커 argv/fingerprint(`agent-argv.ts` · `policy-compile.ts` · `headless-worker.ts` · `process-group.ts` diff 0) · bridge 런타임(`BRIDGE_VERSION` 한 줄 외) · sticky host · relay 무변경. 정지·비우기는 여전히 `loom bridge stop|drain` — 서비스에 stop/restart 동사는 없다.
+- **정직 고지(설계상 수용 손실):** 로그아웃은 워커까지 정리한다(macOS 공통 · Linux는 linger 없을 때 — Loom은 linger를 켜지 않는다) · macOS Login Items에 **"Jarred Sumner"**(bun 서명자)로 보이고 사용자가 끌 수 있다(Loom은 다시 켜지 않는다) · pane backend는 herdr가 없으면 10초마다 크래시 루프 · 서비스 로그는 회전하지 않는다 · 네트워크 준비 순서 없음 · 사용자 범위만(Windows 밖). 실 launchd/systemd 등록 라이브 · ssh 실제 코드 · Linux 전부는 **미실측**.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §19 · PLAN 0.34.0 · R52 · `implementation-notes.md` §0.34.0 · [`spikes/SERVICE-SMOKE-0340.md`](./spikes/SERVICE-SMOKE-0340.md)
 
 ---
 

@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.33.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.34.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -1213,7 +1213,7 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 
 ## 18. bridge 생명주기 (v0.33.0)
 
-**하고 싶은 일:** 카드를 돌리는 bridge를 **안전하게 멈추고(신호 · `bridge stop`) · 돌던 카드만 끝내고 내리고(drain) · 꺼진 뒤에도 왜 꺼졌는지 보고 · 같은 프로필에 둘이 뜨지 않게** 한다. 0.34.0 `loom service`(launchd/systemd 자동 기동)의 바탕이다.
+**하고 싶은 일:** 카드를 돌리는 bridge를 **안전하게 멈추고(신호 · `bridge stop`) · 돌던 카드만 끝내고 내리고(drain) · 꺼진 뒤에도 왜 꺼졌는지 보고 · 같은 프로필에 둘이 뜨지 않게** 한다. 0.34.0 `loom service`(launchd/systemd 자동 기동, §19)의 바탕이다.
 
 **범위는 프로필별 bridge 하나다.** sticky host(`host start`)와 로컬(루프백) relay는 지금처럼 따로 돈다 — 이 절과 무관하다. 와이어 · 카드 계약 · 완료 권한 · 워커 argv/fingerprint는 0.32.0과 같다.
 
@@ -1294,11 +1294,115 @@ bun run loom --profile <p> bridge drain --timeout 1200 # grok 긴 카드
 - **drain 중 claim하지 않은 handoff는 폴마다 다시 관측되어 handoff당 stderr 한 줄**이 쌓인다.
 - **stale 락 판정은 pid + 시작 시각 best effort** — 시작 시각을 못 읽으면 거부하고 수동 제거를 안내한다. Linux의 `ps -o lstart=` 형식은 아직 실측하지 않았다(macOS만 확인).
 - **pid가 재사용된 `stopped` bridge를 doctor가 "alive"로 볼 수 있다**(조언용 pid 확인의 한계).
-- **루프백 relay와 sticky host는 감독하지 않는다.** 자동 기동·재시작은 0.34.0 `loom service`(별도 오너 승인).
+- **루프백 relay와 sticky host는 감독하지 않는다.** 프로필 bridge의 자동 기동·재시작은 0.34.0 `loom service`(§19).
 
 ---
 
-## 19. 명령 치트시트
+## 19. `loom service` — 로그인 시 bridge 자동 기동 (v0.34.0)
+
+**하고 싶은 일:** 재부팅·로그아웃·크래시 뒤에도 **사람이 `bridge start`를 치지 않아도** 프로필의 bridge가 다시 뜨게 한다. macOS는 launchd 에이전트(`~/Library/LaunchAgents`), Linux는 `systemd --user` 유닛으로 등록한다. **사용자 범위만**이다 — 시스템 데몬·root 설치·Windows 서비스는 없다.
+
+**범위는 §18과 같은 프로필별 bridge 하나다.** 서비스로 뜬 bridge도 같은 `bridge-main.ts`, 같은 세션·프로필, 같은 락·상태 파일·로그를 쓴다. 정지·비우기는 여전히 `loom bridge stop|drain`이다(서비스 동사에는 stop/restart가 없다). 와이어 · 카드 계약 · 완료 권한 · 워커 argv/fingerprint는 0.33.0과 같다.
+
+### 19.1 설치 — `loom service install`
+
+```bash
+bun run loom --profile <p> service install            # 등록 + 기동, 실행 확인까지
+bun run loom --profile <p> service install --force    # 실행 중 서비스 bridge에 진행 중 작업이 있어도 교체
+```
+
+- **설치 전에 막는 것(exit 1 + 문구):** 루프백 relay(`loopback relay — loom service needs a reachable relay`) · 토큰이 env에만 있는 세션(`relay token only in env — save it to the session (loom join …) first` — `LOOM_RELAY_TOKEN`·`FABLE_RELAY_TOKEN` 둘 다 본다) · 빈 `authorizedDispatchers` · 경로에 Loom이 쓰지 않은 파일(`… is not a Loom service file — not touching it`) · **사람이 띄운 bridge가 락을 쥐고 있음**(`bridge pid N is running outside the service — loom bridge stop first`) · 서비스 이름으로 못 쓰는 프로필 이름(설정 파일과 락/로그 파일 이름이 달라지는 이름 · `--` 포함).
+- **유닛에 들어가는 것:** 설치 때의 **절대 bun 경로**(`process.execPath`) + **절대 `bridge-main.ts`** · env는 `HOME` · **설치 때 셸의 `PATH`** · `LOOM_SESSION`(세션 파일 절대경로) · (`LOOM_PROFILE`) · `LOOM_SERVICE=1` 다섯 개뿐 — **토큰은 넣지 않는다**(0600 세션 파일에서 bridge가 읽는다). stdout은 버리고 stderr는 `~/.loom/bridge/<p>.stderr.log`에 **append**(install이 0600으로 미리 만든다, 지우지 않는다). 유닛 파일 0644.
+- **재시작 정책:** 실패(exit 1)면 **10초 조절**로 다시 띄운다(launchd `KeepAlive{SuccessfulExit:false}` + `ThrottleInterval 10` · systemd `Restart=on-failure` + `RestartSec=10`). **exit 0은 "요청받아 멈춤"** — 다시 띄우지 않는다. 서비스 stop은 bridge main에만 SIGTERM을 보낸다(launchd `AbandonProcessGroup` · systemd `KillMode=process`) — **headless 워커는 살아 남아 다음 기동이 입양한다**(§15.4).
+- **다시 실행해도 안전하다.** 내용이 같고 실행 중이면 `already installed (up to date, pid N)` exit 0(아무것도 쓰지 않는다). 내용이 바뀌었으면 옛 서비스를 내리고(launchd `bootout` → 사라질 때까지 ≤25초 대기) 새 파일로 다시 올린다. 이때 서비스 bridge에 진행 중 작업이 있으면 `--force` 없이는 거부(`service bridge has N in-flight — loom bridge drain first, or --force`).
+- **pane backend 경고:** `warn: pane backend — the service crash-loops (exit 1 every 10 s) while herdr is down` — herdr가 뜰 때까지 10초마다 실패·재시도한다(로그에 10초마다 한 줄).
+- **Linux linger:** `linger: yes|no`를 찍고, no면 `run 'loginctl enable-linger <user>' yourself …`를 안내한다. **Loom은 linger를 켜지 않는다.** Linux install은 `enable` 대신 wants 심링크(`default.target.wants/loom-bridge-<p>.service`)를 직접 만든다.
+
+**exit 코드 (install · start):**
+
+| 코드 | 뜻 |
+|------|-----|
+| **0** | 적재 + 실행 확인(상태 파일 `running` + pid == 서비스 main pid, ≤12초) · 이미 최신 · 이미 실행 중 |
+| **1** | 거부 · 오류 · 사용 오류 · Login Items에서 꺼짐 · 12초 안에 `running` 안 됨(로그 마지막 줄 표시) · 분류 못 한 서비스 관리자 오류 |
+| **3** | **`written; loads at next login (<path>)`** — GUI 세션이 없거나(ssh — launchd `Input/output error`) 사용자 버스가 없음(`Failed to connect to bus`). 파일은 남는다 — 다음 로그인에 뜬다. 성공도 실패도 아니다 |
+
+### 19.2 기동 · 해제 · 조회
+
+```bash
+bun run loom --profile <p> service start       # 적재 안 됨 → bootstrap · 적재됨 → kickstart(-k 없음) / systemctl --user start
+bun run loom --profile <p> service uninstall   # 내리고 파일(·심링크) 삭제 · 미설치면 "not installed" exit 0
+bun run loom --profile <p> service status      # doctor Service 절과 같은 줄 · 항상 exit 0
+```
+
+- **`start`는 실행 중이면 아무것도 안 한다**(`already running (pid N)` exit 0). 실행 중 bridge를 새 코드로 바꾸는 길은 drain뿐이다(아래 업그레이드).
+- **`uninstall`도 진행 중 작업 가드가 같다**(`--force`). 내려도 headless 워커는 죽이지 않는다. Linux에서 사용자 버스가 없으면 파일만 지우고 `removed; the running service (if any) stops at logout` exit 0.
+- **`status`는 읽기 전용이다** — `launchctl print` · `print-disabled` / `systemctl --user show` · `loginctl show-user`만 부르고(각 ≤2초 — 응답 없으면 그 행은 `info … unknown`, 멈춘 자식 프로세스는 CLI 종료 전에 정리된다) 아무것도 쓰지 않는다. 옛 `~/.fable` 홈도 옮기지 않는다.
+
+### 19.3 업그레이드 순서
+
+```bash
+bun run loom --profile <p> bridge drain      # 돌던 카드만 끝내고 exit 0 → 서비스는 내려간 채 머문다
+git pull && bun install                      # 소스 갱신
+bun run loom --profile <p> service start     # 새 코드로 기동
+```
+
+- drain의 exit 0은 서비스 관리자에게 "요청받아 멈춤"이라 다시 띄우지 않는다 — 그래서 `service start`가 필요하다. 상태 파일 `version`·`srcPath`로 새 코드가 떴는지 확인한다(§18.2).
+- **소스 위치가 바뀌었거나 bun을 다른 경로로 다시 깔았으면** `start`가 아니라 **`service install`을 다시** 한다 — 유닛에 고정된 경로가 옛 것이다. doctor `srcPath mismatch … re-run loom service install` · `missing: … re-run loom service install`이 알려 준다.
+
+### 19.4 사람이 띄운 bridge와의 관계 — 양보
+
+- 서비스 bridge(`LOOM_SERVICE=1`)는 같은 프로필 락을 **살아 있는 다른 bridge**가 쥐고 있으면 **exit 0으로 양보**한다(stderr `[loom-bridge] yield to bridge pid N (lock …) — service stays down until \`loom service start\``). exit 0이라 서비스 관리자가 10초마다 재시작하지 않는다(크래시 루프 차단). 사람이 띄운 bridge의 락 거부는 0.33.0 그대로 **exit 1**이다.
+- 양보한 서비스는 **`loom service start`까지 내려가 있다**(대기·폴링 없음). 그동안 카드는 사람이 띄운 bridge가 처리한다. doctor: `warn service yielded to bridge pid N — loom bridge stop, then loom service start`.
+- 보유자를 아직 모르는 락(owner 없는 디렉터리 · 회수 경합)은 양보가 아니라 exit 1 → 10초 뒤 재시도.
+- 서비스가 꺼진 동안 `bridge start`로 띄운 bridge가 돌면 doctor `warn bridge pid N runs outside the service`. 되돌리기: `bridge stop` → `service start`.
+
+### 19.5 macOS — Login Items · 알림
+
+- 처음 등록하면(파일이 `~/Library/LaunchAgents`에 생기기만 해도) macOS가 **"Background Items Added" 알림**을 띄운다. 항목은 Loom이 아니라 **bun의 서명자 이름 "Jarred Sumner"**로 보인다(실행 파일이 bun이므로). 시스템 설정 → 일반 → 로그인 항목(Login Items & Extensions)의 백그라운드 항목에도 같은 이름으로 나온다.
+- 거기서 끄면 로그인 기동이 멈춘다. **Loom은 다시 켜지 않는다**(`launchctl enable` 안 함). doctor `warn … disabled in Login Items` · `service start`/`install`은 `disabled in Login Items / launchctl — enable it in System Settings → General → Login Items` exit 1.
+
+### 19.6 진단 — `loom doctor` Service 절
+
+`loom doctor`(와 `service status`)는 Service 절을 보인다 — **`fail`은 내지 않는다**(doctor exit 코드는 서비스와 무관). 미설치면 `info not installed (<path>)` 한 줄.
+
+| 행 | 보이는 것 |
+|------|-----|
+| 설치 | `ok installed: <label/unit> (<path>, loom <ver>)` · 남의 파일이면 `warn … not a Loom service file` |
+| 적재/실행 | `ok running pid N` · `warn installed but not loaded — loom service start` · `info loaded, not running (last exit code N)` |
+| Login Items(macOS) | 꺼져 있으면 `warn` |
+| 경로 | `ok bun and bridge-main.ts exist` · 없으면 `warn missing: … — re-run loom service install` |
+| PATH 표류 | `ok unit PATH matches the current PATH` · `info unit PATH differs …(agent binaries still resolve)` · `warn agent binaries not resolvable via the unit PATH: … — re-run loom service install` |
+| srcPath | 유닛 · 현재 CLI · 상태 파일의 `bridge-main.ts`가 다르면 `warn srcPath mismatch … — re-run loom service install` |
+| 로그 모드 | 0600이 아니면 `warn` |
+| linger(Linux) | `ok linger: yes` · no면 `warn`(로그아웃이 서비스와 워커를 죽인다) |
+| 루프백 relay | 설치 뒤 세션 relay가 루프백으로 바뀌면 `warn` |
+| 양보 / 서비스 밖 | §19.4 두 줄 |
+
+서비스 관리자 조회가 실패하거나 2초 안에 답이 없으면 그 행만 `info … unknown`이다.
+
+**PATH 캡처:** 유닛 PATH는 **install을 친 셸의 PATH**다. 나중에 에이전트 CLI(`claude` · `codex` · `grok`)를 다른 곳에 깔면 서비스 bridge는 못 찾아 카드가 실패한다 — doctor PATH 행이 알려 주고, 고치는 길은 install 재실행이다.
+
+### 19.7 한계 — 설계상 수용 (0.34.0)
+
+1. **pane 카드·conv flight 유실** — 서비스 stop · bootout · 재설치 · drain 마감 때 진행 중 pane 카드·conv는 잃는다(§18.7). 재설치·uninstall은 진행 중 작업이 있으면 `--force` 없이 거부한다.
+2. **업그레이드 전에 뜬 headless 워커는 옛 워커 코드로 끝난다**(입양은 다시 띄우지 않는다).
+3. **SIGKILL 경로는 `recover()`** — launchd `ExitTimeOut 20` / systemd `TimeoutStopSec=30`을 넘기면 서비스 관리자가 SIGKILL한다. bridge 정지 상한이 10초라 정상 경로에서는 닿지 않는다.
+4. **루프백 relay는 감독하지 않는다** — install이 거부하고, 설치 뒤 바뀌면 doctor `warn`만.
+5. **pane backend + herdr 부재 = 10초마다 크래시 루프**(exit 1 조절 재시작 · 로그에 10초마다 한 줄).
+6. **캡처한 `PATH`가 낡을 수 있다** — 에이전트 바이너리를 못 찾으면 카드 실패 · doctor PATH 행 · 해결은 재설치.
+7. **사용자 범위만** — 시스템 데몬 없음 · Windows는 `unsupported platform` exit 1.
+8. **로그아웃이 워커를 죽인다 — macOS·Linux 모두.** Linux는 linger가 없으면 사용자 매니저 종료가 user slice 전체(서비스 + setsid 워커)를 정리한다(`KillMode=process`는 유닛 stop에만 작용). macOS는 로그아웃이 GUI 로그인 세션 전체(워커 포함)를 정리하며 **linger 같은 것이 없다**. 회복 = 다음 로그인 기동의 `recover()`.
+9. **Login Items에서 사용자가 끌 수 있다** — 이름은 "Jarred Sumner"(bun)로 보인다 · Loom은 다시 켜지 않는다.
+10. **네트워크 준비 순서가 없다** — 로그인 직후 네트워크가 없어 기동이 실패하면 10초 조절 재시도, 기동 뒤 끊김은 relay 재연결.
+11. **양보한 서비스는 `loom service start`까지 내려가 있다**(§19.4).
+12. **서비스 stderr 로그는 append만 — 회전 없음.** 크래시 루프에서 커진다. 락이 비어 있을 때 수동 `bridge start`는 같은 로그를 절단한다(0.33.0 동작).
+13. **systemd `KillMode=process` 정지 뒤 남은 워커는 그 유닛 cgroup에 남는다** — 다음 `start`에서 systemd가 "left-over process" 경고를 낼 수 있다(의도된 상태 — 입양 대상).
+
+**아직 실측하지 않은 것:** 실 launchd/systemd 등록 라이브 스모크는 오너 승인 대기라 돌리지 않았다(스모크는 가짜 서비스 관리자 — `bun run smoke:service`). launchd/systemd 정지 신호 순서 · ssh에서의 `bootstrap` 실제 코드 · Login Items 끈 뒤 `bootstrap` 문구 · Linux 전부(`StandardError=append:` · linger 조회 형식 · 심링크가 `enable`과 같은지)는 미실측이다(`docs/UNKNOWNS.md` 0.34.0).
+
+---
+
+## 20. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -1308,6 +1412,7 @@ bun run loom --profile <p> inbox | inbox accept <id>
 bun run loom --profile <p> listen
 bun run loom --profile <p> host start|stop|status
 bun run loom --profile <p> bridge start|stop|status|drain [--timeout <s>]
+bun run loom --profile <p> service install|uninstall|start|status [--force]
 bun run loom --profile <p> pack show|set|add|note|…
 bun run loom --profile <p> board | board add|set|assign|export|import|…
 bun run loom --profile <p> run [claude|codex|grok|shell]
@@ -1322,7 +1427,7 @@ bun test
 
 ---
 
-## 20. 자주 하는 실수
+## 21. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -1349,10 +1454,15 @@ bun test
 | `bridge already running for profile <p> (pid N, …)`로 bridge가 exit 1 | 같은 프로필 bridge가 이미 돈다(0.33.0 프로필 락) | `bridge status`로 확인 · 정말 바꾸려면 `bridge stop`(또는 `drain`) 뒤 다시 start (§18.1) |
 | headless bridge에서 conv가 `conv_unavailable_headless`로 거절 | 0.33.0부터 headless bridge는 herdr를 쓰지 않아 conv pane을 못 띄운다 | conv는 pane backend bridge로 연다 (§18.5) |
 | doctor `warn bridge died without clean stop` | SIGKILL · 크래시 · 두 번째 신호로 끝남 | 다음 `bridge start`가 stale 락을 회수한다. 정상 정지는 `bridge stop` / `drain` (§18.3·§18.6) |
+| `loom service install`이 exit 3 `written; loads at next login` | ssh 등 GUI 세션이 없거나(macOS) 사용자 버스가 없음(Linux) | 실패가 아니다 — 파일은 남았고 다음 로그인에 뜬다. 바로 띄우려면 로그인 세션에서 `service start` (§19.1) |
+| `bridge drain` 뒤 서비스 bridge가 다시 안 뜸 | drain의 exit 0 = 요청 정지 — 서비스 관리자는 다시 띄우지 않는다 | 갱신 뒤 `service start` (§19.3) |
+| doctor `service yielded to bridge pid N` | 사람이 띄운 bridge가 락을 쥐어 서비스가 exit 0으로 양보함 | `bridge stop` → `service start` (§19.4) |
+| 서비스 bridge 카드가 `claude: not found` 류로 실패 · doctor `agent binaries not resolvable via the unit PATH` | 유닛 PATH는 install 때 셸의 PATH — 그 뒤 에이전트 CLI를 다른 곳에 깜 | 지금 셸에서 `service install` 다시 (§19.6) |
+| 로그아웃 뒤 headless 카드가 끊김 | 로그아웃이 워커까지 정리한다(macOS 공통 · Linux linger 없음) | 다음 로그인 기동이 회수한다. Linux는 `loginctl enable-linger <user>`를 직접 (§19.7-8) |
 
 ---
 
-## 21. 지금 버전에서 **아직** 못 하는 것
+## 22. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
@@ -1362,11 +1472,11 @@ bun test
 - 원격 result만으로 타워 board **`done`** (0.28.0 이후 의도적 금지 — `blocked` 후 로컬 확정)  
 - 전역 `loom` 설치가 OS 패키지 매니저 기본 제공 (원하면 `scripts/install.sh` · `link:loom`)
 
-**할 수 있는 것 (0.33.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · **Loom MCP 사전 점검(0.32.0 — §17)** · **bridge 생명주기 — 프로필 락 · 우아한 정지 · drain · doctor Bridge 절(0.33.0 — §18)** · dogfood 3-kind · 완료 권한 분리 운영.
+**할 수 있는 것 (0.34.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · **Loom MCP 사전 점검(0.32.0 — §17)** · **bridge 생명주기 — 프로필 락 · 우아한 정지 · drain · doctor Bridge 절(0.33.0 — §18)** · **`loom service` — 로그인 시 bridge 자동 기동 · doctor Service 절(0.34.0 — §19)** · dogfood 3-kind · 완료 권한 분리 운영.
 
 ---
 
-## 22. 더 읽을 문서
+## 23. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|

@@ -13,10 +13,11 @@
      - [x] **v0.31.0 스킬 materialize + `policy.json` v1 → CLI별 권한 번역** — `9f52ba0` P1 → … → `3f92eeb` → PATCH 5(USER_GUIDE §16 · PROTOCOL · implementation-notes §0.31.0 · VERSION 0.31.0 · 스모크 `HEADLESS-SMOKE-0310.md`). Done when (a)~(i) green · (j) ship 검사.
      - [x] **v0.32.0 Loom MCP 사전 점검** — `58f3b02` P1 → … → `f5c59ce` → `1e97aa7` 스모크 → PATCH 5(USER_GUIDE §17 · PROTOCOL · implementation-notes §0.32.0 · VERSION 0.32.0 · 스모크 `MCP-PRECHECK-SMOKE-0320.md`). Done when (a)~(i) green · (j) ship 검사.
    2단계 완료.
-3. [ ] **3단계 — host를 OS 서비스로** (오너 "진행해" 2026-10-16 — 3단계 전체 승인 · 두 릴리스로 분할)
+3. [x] **3단계 — host를 OS 서비스로** (오너 "진행해" 2026-10-16 — 3단계 전체 승인 · 두 릴리스로 분할)
    - [x] **1부 — v0.33.0 bridge 생명주기 보강** — `b8739d9` P1 → … → `236a8c1` P4 → `38933f1` P4 검증 교정 → `bb97ffd` 스모크 → PATCH 5(USER_GUIDE §18 · PROTOCOL · implementation-notes §0.33.0 · VERSION 0.33.0 · 스모크 `BRIDGE-LIFECYCLE-SMOKE-0330.md`). Done when (a)~(i) green · (j) ship 검사.
-   - [ ] **2부 — v0.34.0 `loom service` launchd/systemd 설치** — PLAN §0.34.0 `approved`(R52 approved-with-fixes, M1~M3·L1~L3 반영, no R52b). 다음 = **P1**(생성기, red = 테스트 파일만) → P2 D3 양보 + 결정적 위험 → P3 CLI → P4 doctor → P5 문서·스모크. **실 OS 등록·라이브 스모크는 별도 오너 명시 승인**.
-4. [ ] **4단계 — memory / rules / skills 저장소** (미착수)
+   - [x] **2부 — v0.34.0 `loom service` launchd/systemd 설치** — `b77a42f` P1 → … → `732845e` P4 → `52716ba` P3/P4 검증 교정 → `fb89d75` P4+fix 검증 교정 → `244e6a2` 스모크 → PATCH 5(USER_GUIDE §19 · PROTOCOL · implementation-notes §0.34.0 · VERSION 0.34.0 · 스모크 `SERVICE-SMOKE-0340.md`). Done when (a)~(i) green · (j) ship 검사. **라이브 스모크(`smoke:service --live`)는 오너 명시 승인 대기 — 미실행.**
+   3단계 완료.
+4. [ ] **4단계 — memory / rules / skills 저장소** (**다음** 후보 — 오너 지시로 착수 · PLAN MINOR + R53)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.

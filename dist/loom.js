@@ -5134,7 +5134,9 @@ var init_src = __esm(() => {
 var exports_session_store = {};
 __export(exports_session_store, {
   topLevelToBinding: () => topLevelToBinding,
+  stateRootHome: () => stateRootHome,
   setActiveProfile: () => setActiveProfile,
+  sessionPathUnder: () => sessionPathUnder,
   sessionPath: () => sessionPath,
   saveSession: () => saveSession,
   resolveStateHomeDir: () => resolveStateHomeDir,
@@ -5319,7 +5321,9 @@ function getActiveProfile() {
   return activeProfile || envProfile() || null;
 }
 function sessionPath() {
-  const home = loomDir();
+  return sessionPathUnder(loomDir());
+}
+function sessionPathUnder(home) {
   if (activeProfileExplicit && activeProfile) {
     return join(home, "profiles", `${activeProfile}.json`);
   }
@@ -5438,10 +5442,10 @@ var init_session_store = __esm(() => {
 
 // packages/relay/src/persist.ts
 import {
-  existsSync as existsSync18,
-  mkdirSync as mkdirSync19,
-  readFileSync as readFileSync14,
-  writeFileSync as writeFileSync15,
+  existsSync as existsSync17,
+  mkdirSync as mkdirSync18,
+  readFileSync as readFileSync13,
+  writeFileSync as writeFileSync14,
   renameSync as renameSync5,
   chmodSync as chmodSync11,
   copyFileSync as copyFileSync2,
@@ -5452,15 +5456,15 @@ import {
   unlinkSync as unlinkSync6,
   rmSync as rmSync4
 } from "fs";
-import { join as join27, dirname as dirname13, basename as basename4, resolve as resolve5, sep as sep5 } from "path";
+import { join as join26, dirname as dirname12, basename as basename4, resolve as resolve5, sep as sep5 } from "path";
 import { createHash as createHash10 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
-  return join27(homedir5(), ".loom", "relay-state");
+  return join26(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
   const h = createHash10("sha256").update(roomId).digest("hex").slice(0, 16);
-  return join27(stateDir2, `${h}.json`);
+  return join26(stateDir2, `${h}.json`);
 }
 function isPidAlive4(pid) {
   if (!Number.isFinite(pid) || pid <= 0)
@@ -5473,22 +5477,22 @@ function isPidAlive4(pid) {
   }
 }
 function processLockDir(stateDir2) {
-  return join27(stateDir2, ".relay-writer.lock");
+  return join26(stateDir2, ".relay-writer.lock");
 }
 function lockPidPath2(lockDir) {
-  return join27(lockDir, "owner.pid");
+  return join26(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
-  mkdirSync19(stateDir2, { recursive: true });
+  mkdirSync18(stateDir2, { recursive: true });
   const lockDir = processLockDir(stateDir2);
   const tryAcquire = () => {
     try {
-      mkdirSync19(lockDir);
+      mkdirSync18(lockDir);
     } catch {
       return false;
     }
     try {
-      writeFileSync15(lockPidPath2(lockDir), `${process.pid}
+      writeFileSync14(lockPidPath2(lockDir), `${process.pid}
 `, {
         encoding: "utf8",
         mode: 384
@@ -5507,7 +5511,7 @@ function acquireStateDirLock(stateDir2) {
     const age = Date.now() - statSync7(lockDir).mtimeMs;
     let owner = null;
     try {
-      const raw = readFileSync14(lockPidPath2(lockDir), "utf8").trim();
+      const raw = readFileSync13(lockPidPath2(lockDir), "utf8").trim();
       const n = Number(raw);
       owner = Number.isFinite(n) ? n : null;
     } catch {
@@ -5531,10 +5535,10 @@ function acquireStateDirLock(stateDir2) {
 }
 function releaseStateDirLock(stateDir2) {
   const lockDir = processLockDir(stateDir2);
-  if (!existsSync18(lockDir))
+  if (!existsSync17(lockDir))
     return;
   try {
-    const raw = readFileSync14(lockPidPath2(lockDir), "utf8").trim();
+    const raw = readFileSync13(lockPidPath2(lockDir), "utf8").trim();
     const owner = Number(raw);
     if (Number.isFinite(owner) && owner !== process.pid)
       return;
@@ -5544,8 +5548,8 @@ function releaseStateDirLock(stateDir2) {
   } catch {}
 }
 function writeAtomicJson2(filePath, data) {
-  const parent = dirname13(resolve5(filePath));
-  mkdirSync19(parent, { recursive: true });
+  const parent = dirname12(resolve5(filePath));
+  mkdirSync18(parent, { recursive: true });
   let realParent;
   try {
     realParent = realpathSync3(parent);
@@ -5556,7 +5560,7 @@ function writeAtomicJson2(filePath, data) {
   if (!base || base === "." || base === "..") {
     throw new Error(`Invalid snapshot basename: ${filePath}`);
   }
-  const finalPath = join27(realParent, base);
+  const finalPath = join26(realParent, base);
   try {
     const st = lstatSync3(finalPath);
     if (st.isSymbolicLink()) {
@@ -5571,29 +5575,29 @@ function writeAtomicJson2(filePath, data) {
         throw e;
     }
   }
-  const tmp = join27(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
+  const tmp = join26(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
   try {
-    writeFileSync15(tmp, body, { encoding: "utf8", mode: 384 });
+    writeFileSync14(tmp, body, { encoding: "utf8", mode: 384 });
     renameSync5(tmp, finalPath);
     try {
       chmodSync11(finalPath, 384);
     } catch {}
   } catch (e) {
     try {
-      if (existsSync18(tmp))
+      if (existsSync17(tmp))
         unlinkSync6(tmp);
     } catch {}
     throw e;
   }
 }
 function readJsonFile2(filePath) {
-  if (!existsSync18(filePath))
+  if (!existsSync17(filePath))
     return null;
   let raw;
   try {
-    raw = readFileSync14(filePath, "utf8");
+    raw = readFileSync13(filePath, "utf8");
   } catch (e) {
     throw new Error(`Failed to read ${filePath}: ${e instanceof Error ? e.message : e}`);
   }
@@ -5709,7 +5713,7 @@ function parseRoomSnapshot(raw) {
 function loadAllSnapshots(stateDir2) {
   const snapshots = [];
   const errors2 = [];
-  if (!existsSync18(stateDir2))
+  if (!existsSync17(stateDir2))
     return { snapshots, errors: errors2 };
   let names;
   try {
@@ -5721,7 +5725,7 @@ function loadAllSnapshots(stateDir2) {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith("."))
       continue;
-    const path = join27(stateDir2, name);
+    const path = join26(stateDir2, name);
     try {
       const st = statSync7(path);
       if (!st.isFile())
@@ -5746,7 +5750,7 @@ function loadAllSnapshots(stateDir2) {
   return { snapshots, errors: errors2 };
 }
 function saveRoomSnapshot(stateDir2, snap) {
-  mkdirSync19(stateDir2, { recursive: true });
+  mkdirSync18(stateDir2, { recursive: true });
   let realState;
   try {
     realState = realpathSync3(stateDir2);
@@ -6560,7 +6564,7 @@ var init_room = __esm(() => {
 });
 
 // packages/relay/src/server.ts
-function isLoopbackHost2(host) {
+function isLoopbackHost(host) {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
@@ -6591,7 +6595,7 @@ class RelayServer {
   assertBindAllowed() {
     if (this.authToken)
       return;
-    if (isLoopbackHost2(this.host))
+    if (isLoopbackHost(this.host))
       return;
     if (this.allowInsecureOpen)
       return;
@@ -7005,7 +7009,7 @@ __export(exports_src2, {
   resolveRegistryOptionsFromEnv: () => resolveRegistryOptionsFromEnv,
   releaseStateDirLock: () => releaseStateDirLock,
   loadAllSnapshots: () => loadAllSnapshots,
-  isLoopbackHost: () => isLoopbackHost2,
+  isLoopbackHost: () => isLoopbackHost,
   draftPeer: () => draftPeer,
   defaultRelayStateDir: () => defaultRelayStateDir,
   acquireStateDirLock: () => acquireStateDirLock,
@@ -10820,9 +10824,11 @@ var DEFAULT_AGENT_ARGV = {
 function bridgeConfigDir() {
   return join11(loomDir(), "bridge");
 }
+function bridgeConfigSafeName(profile) {
+  return profile.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
+}
 function bridgeConfigPath(profile) {
-  const safe = profile.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
-  return join11(bridgeConfigDir(), `${safe}.json`);
+  return join11(bridgeConfigDir(), `${bridgeConfigSafeName(profile)}.json`);
 }
 function defaultBridgeConfig() {
   return {
@@ -15779,6 +15785,10 @@ function shortValue(v) {
   const s = typeof v === "string" ? JSON.stringify(v) : String(v);
   return s.length > 24 ? `${s.slice(0, 24)}\u2026` : s;
 }
+function readBridgeStatusFile(path) {
+  const r = readBridgeStatusFileResult(path);
+  return r.kind === "ok" ? r.status : null;
+}
 function readBridgeStatusFileResult(path) {
   let text;
   try {
@@ -15982,6 +15992,296 @@ function removeConvNodeHost(peerId) {
 init_src();
 init_session_store();
 var convFetchChains = new Map;
+// packages/host/src/service-units.ts
+import { posix } from "path";
+function serviceProfileNameCheck(profile) {
+  const config = bridgeConfigSafeName(profile);
+  const lockLog = sanitizeProfileLogName(profile);
+  if (config !== lockLog) {
+    return {
+      ok: false,
+      config,
+      lockLog,
+      message: `profile name "${profile}" maps to different file names (config "${config}" vs lock/log "${lockLog}") \u2014 rename the profile`
+    };
+  }
+  if (profile.includes("--")) {
+    return {
+      ok: false,
+      config,
+      lockLog,
+      message: `profile name "${profile}" contains "--" (not allowed in a service file marker) \u2014 rename the profile`
+    };
+  }
+  if (lockLog !== profile) {
+    return {
+      ok: false,
+      config,
+      lockLog,
+      message: `profile name "${profile}" is not a valid service name (its files would be named "${lockLog}") \u2014 rename the profile`
+    };
+  }
+  return { ok: true, name: profile };
+}
+function serviceNames(profile) {
+  const p = sanitizeProfileLogName(profile);
+  return { profile: p, label: `com.loom.bridge.${p}`, unitName: `loom-bridge-${p}.service` };
+}
+function serviceTargetPaths(home, profile, platform) {
+  const n = serviceNames(profile);
+  if (platform === "darwin") {
+    return {
+      kind: "launchd",
+      unitPath: posix.join(home, "Library/LaunchAgents", `${n.label}.plist`)
+    };
+  }
+  if (platform === "linux") {
+    const userDir = posix.join(home, ".config/systemd/user");
+    return {
+      kind: "systemd",
+      unitPath: posix.join(userDir, n.unitName),
+      wantsLinkPath: posix.join(userDir, "default.target.wants", n.unitName),
+      wantsLinkTarget: `../${n.unitName}`
+    };
+  }
+  throw new Error(`loom service: unsupported platform ${platform}`);
+}
+function renderServiceMarker(kind, profile, loomVersion) {
+  const body = `loom-service v1 profile=${profile} loom=${loomVersion}`;
+  return kind === "launchd" ? `<!-- ${body} -->` : `# ${body}`;
+}
+var MARKER_RE = /^(<!--|#) loom-service v1 profile=(\S+) loom=(\S+)/;
+function parseServiceMarker(text) {
+  for (const line of text.split(`
+`, 3)) {
+    const m = MARKER_RE.exec(line);
+    if (m)
+      return { profile: m[2], loomVersion: m[3] };
+  }
+  return null;
+}
+function isLoomServiceFile(text, profile) {
+  return parseServiceMarker(text)?.profile === profile;
+}
+function validateSpec(spec) {
+  const check = serviceProfileNameCheck(spec.profile);
+  if (!check.ok)
+    throw new Error(check.message);
+  if (!/^[0-9A-Za-z.+_-]+$/.test(spec.loomVersion) || spec.loomVersion.includes("--")) {
+    throw new Error(`service unit: invalid loomVersion "${spec.loomVersion}"`);
+  }
+  if (spec.loomProfile && spec.loomProfile !== spec.profile) {
+    throw new Error(`service unit: LOOM_PROFILE "${spec.loomProfile}" must be absent or equal to the profile "${spec.profile}"`);
+  }
+  for (const key of ["execPath", "bridgeMainPath", "home", "sessionPath", "logPath"]) {
+    if (!posix.isAbsolute(spec[key])) {
+      throw new Error(`service unit: ${key} must be an absolute path (got "${spec[key]}")`);
+    }
+  }
+  return serviceNames(spec.profile);
+}
+function unitEnv(spec) {
+  const env2 = [
+    ["HOME", spec.home],
+    ["PATH", spec.path],
+    ["LOOM_SERVICE", "1"],
+    ["LOOM_SESSION", spec.sessionPath]
+  ];
+  if (spec.loomProfile)
+    env2.push(["LOOM_PROFILE", spec.loomProfile]);
+  return env2;
+}
+function xmlEscape(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+function renderLaunchdPlist(spec) {
+  const n = validateSpec(spec);
+  const s = (v) => `<string>${xmlEscape(v)}</string>`;
+  const key = (k) => `	<key>${k}</key>`;
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    renderServiceMarker("launchd", n.profile, spec.loomVersion),
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0">',
+    "<dict>",
+    key("Label"),
+    `	${s(n.label)}`,
+    key("ProgramArguments"),
+    "\t<array>",
+    `		${s(spec.execPath)}`,
+    `		${s(spec.bridgeMainPath)}`,
+    "\t</array>",
+    key("EnvironmentVariables"),
+    "\t<dict>",
+    ...unitEnv(spec).flatMap(([k, v]) => [`		<key>${k}</key>`, `		${s(v)}`]),
+    "\t</dict>",
+    key("WorkingDirectory"),
+    `	${s(spec.home)}`,
+    key("RunAtLoad"),
+    "\t<true/>",
+    key("KeepAlive"),
+    "\t<dict>",
+    "\t\t<key>SuccessfulExit</key>",
+    "\t\t<false/>",
+    "\t</dict>",
+    key("ThrottleInterval"),
+    "\t<integer>10</integer>",
+    key("ExitTimeOut"),
+    "\t<integer>20</integer>",
+    key("AbandonProcessGroup"),
+    "\t<true/>",
+    key("StandardOutPath"),
+    `	${s("/dev/null")}`,
+    key("StandardErrorPath"),
+    `	${s(spec.logPath)}`,
+    "</dict>",
+    "</plist>"
+  ];
+  return `${lines.join(`
+`)}
+`;
+}
+function sdPercent(v) {
+  return v.replace(/%/g, "%%");
+}
+function sdNeedsQuote(v) {
+  return /[\s"\\']/.test(v);
+}
+function sdQuote(v) {
+  return `"${v.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
+}
+function sdExecArg(v) {
+  const e = sdPercent(v).replace(/\$/g, "$$$$");
+  return sdNeedsQuote(e) ? sdQuote(e) : e;
+}
+function sdEnvAssignment(k, v) {
+  const a = `${k}=${sdPercent(v)}`;
+  return sdNeedsQuote(a) ? sdQuote(a) : a;
+}
+function renderSystemdUnit(spec) {
+  const n = validateSpec(spec);
+  const values = [spec.execPath, spec.bridgeMainPath, spec.home, spec.path, spec.sessionPath];
+  values.push(spec.logPath, spec.loomProfile ?? "", spec.loomVersion);
+  if (values.some((v) => /[\r\n\0]/.test(v))) {
+    throw new Error("service unit: value contains a newline or NUL");
+  }
+  for (const [key, v] of [
+    ["home", spec.home],
+    ["logPath", spec.logPath]
+  ]) {
+    if (v.includes("\\"))
+      throw new Error(`service unit: ${key} must not contain a backslash`);
+  }
+  const lines = [
+    renderServiceMarker("systemd", n.profile, spec.loomVersion),
+    "[Unit]",
+    `Description=Loom bridge (${sdPercent(n.profile)})`,
+    "",
+    "[Service]",
+    "Type=simple",
+    `ExecStart=${sdExecArg(spec.execPath)} ${sdExecArg(spec.bridgeMainPath)}`,
+    `WorkingDirectory=${sdPercent(spec.home)}`,
+    ...unitEnv(spec).map(([k, v]) => `Environment=${sdEnvAssignment(k, v)}`),
+    "KillMode=process",
+    "Restart=on-failure",
+    "RestartSec=10",
+    "TimeoutStopSec=30",
+    "StandardOutput=null",
+    `StandardError=append:${sdPercent(spec.logPath)}`,
+    "",
+    "[Install]",
+    "WantedBy=default.target"
+  ];
+  return `${lines.join(`
+`)}
+`;
+}
+var LAUNCHD_NO_DOMAIN = /Input\/output error|Domain does not support|Could not find domain/;
+var LAUNCHD_DISABLED = /disabled/i;
+var SYSTEMD_NO_BUS = /Failed to connect to bus|XDG_RUNTIME_DIR/;
+function classifyRunnerResult(kind, r) {
+  if (r.code === 0)
+    return "ok";
+  if (kind === "launchd") {
+    if (LAUNCHD_DISABLED.test(r.stderr))
+      return "disabled";
+    if (LAUNCHD_NO_DOMAIN.test(r.stderr))
+      return "no_domain";
+    return "error";
+  }
+  if (SYSTEMD_NO_BUS.test(r.stderr))
+    return "no_bus";
+  return "error";
+}
+function toInt(v) {
+  if (v === undefined || !/^-?\d+$/.test(v))
+    return null;
+  return Number(v);
+}
+function parseLaunchctlPrint(stdout) {
+  const top = new Map;
+  for (const line of stdout.split(`
+`)) {
+    const m = /^\t([^\t=][^=]*?) = (.*)$/.exec(line);
+    if (m && !top.has(m[1]))
+      top.set(m[1], m[2].trim());
+  }
+  const state = top.get("state") ?? null;
+  const pid = toInt(top.get("pid"));
+  return {
+    state,
+    running: state === "running",
+    pid: pid !== null && pid > 0 ? pid : null,
+    lastExitCode: toInt(/^-?\d+/.exec(top.get("last exit code") ?? "")?.[0]),
+    path: top.get("path") ?? null,
+    program: top.get("program") ?? null
+  };
+}
+function parseLaunchctlPrintDisabled(stdout, label) {
+  let inBlock = false;
+  for (const line of stdout.split(`
+`)) {
+    if (/^disabled services = \{/.test(line)) {
+      inBlock = true;
+      continue;
+    }
+    if (!inBlock)
+      continue;
+    if (/^\}/.test(line))
+      break;
+    const m = /^\s*"([^"]+)" => (\S+)/.exec(line);
+    if (!m || m[1] !== label)
+      continue;
+    if (m[2] === "disabled" || m[2] === "true")
+      return true;
+    if (m[2] === "enabled" || m[2] === "false")
+      return false;
+    return null;
+  }
+  return null;
+}
+function parseSystemctlShow(stdout) {
+  const kv = new Map;
+  for (const line of stdout.split(`
+`)) {
+    const i = line.indexOf("=");
+    if (i > 0)
+      kv.set(line.slice(0, i), line.slice(i + 1).trim());
+  }
+  const str = (k) => {
+    const v = kv.get(k);
+    return v ? v : null;
+  };
+  const mainPid = toInt(kv.get("MainPID"));
+  return {
+    loadState: str("LoadState"),
+    activeState: str("ActiveState"),
+    subState: str("SubState"),
+    mainPid: mainPid !== null && mainPid > 0 ? mainPid : null,
+    execMainStatus: toInt(kv.get("ExecMainStatus")),
+    unitFileState: str("UnitFileState")
+  };
+}
 // packages/cli/src/index.ts
 init_src();
 
@@ -16490,19 +16790,28 @@ function writeAgentHintFile(opts) {
 }
 // packages/cli/src/index.ts
 import { spawn as nodeSpawn, spawnSync } from "child_process";
+
+// packages/cli/src/service.ts
 import {
-  openSync as openSync7,
+  chmodSync as chmodSync12,
   closeSync as closeSync7,
-  writeSync as writeSync3,
-  readSync as readSync3,
-  existsSync as existsSync19,
-  readdirSync as readdirSync5,
-  readFileSync as readFileSync15,
-  accessSync,
-  constants as fsConstants4
+  existsSync as existsSync18,
+  lstatSync as lstatSync4,
+  mkdirSync as mkdirSync19,
+  openSync as openSync7,
+  readFileSync as readFileSync14,
+  readlinkSync,
+  renameSync as renameSync6,
+  rmSync as rmSync5,
+  statSync as statSync8,
+  symlinkSync,
+  unlinkSync as unlinkSync7,
+  writeFileSync as writeFileSync15
 } from "fs";
-import { join as pathJoin } from "path";
-import { homedir as homedir6 } from "os";
+import { userInfo } from "os";
+import { dirname as dirname13, isAbsolute as isAbsolute6, join as join27, relative as relative3, resolve as resolve6 } from "path";
+init_src();
+init_src2();
 
 // packages/cli/src/doctor.ts
 function redactToken(input) {
@@ -16602,7 +16911,7 @@ function relaySection(input) {
   const lines = [
     { status: "ok", message: `relay url parsed: ${redactToken(ep.wsUrl)}` }
   ];
-  if (ep.isLocal || isLoopbackHost(ep.host)) {
+  if (ep.isLocal || isLoopbackHost2(ep.host)) {
     lines.push({
       status: "warn",
       message: "relay is loopback \u2014 invite links from this session will not work on another machine"
@@ -16807,6 +17116,145 @@ function offlineBridgeStatusLines(input) {
   out.push(`  log: ${input.logPath}`);
   return out;
 }
+function unknownText(row, reason) {
+  return `${row}: unknown (service manager unreachable: ${reason})`;
+}
+function modeText(mode) {
+  return `0${(mode & 511).toString(8).padStart(3, "0")}`;
+}
+function serviceSection(input) {
+  const title = "Service";
+  switch (input.kind) {
+    case "unsupported":
+      return {
+        title,
+        lines: [{ status: "info", message: `service: unsupported platform ${input.platform}` }]
+      };
+    case "invalid-name":
+      return { title, lines: [{ status: "info", message: `service: ${input.message}` }] };
+    case "not-installed":
+      return { title, lines: [{ status: "info", message: `not installed (${input.unitPath})` }] };
+    case "foreign":
+      return {
+        title,
+        lines: [
+          {
+            status: "warn",
+            message: `${input.unitPath} exists and is not a Loom service file \u2014 loom service will not touch it`
+          }
+        ]
+      };
+  }
+  const i = input;
+  const lines = [];
+  lines.push({
+    status: "ok",
+    message: `installed: ${i.name} (${i.unitPath}${i.loomVersion ? `, loom ${i.loomVersion}` : ""})`
+  });
+  const st = i.state.ok ? i.state.value : null;
+  if (!i.state.ok) {
+    lines.push({ status: "info", message: unknownText("loaded/running", i.state.reason) });
+  } else if (st?.running) {
+    lines.push({ status: "ok", message: `running pid ${st.mainPid ?? "?"}` });
+  } else if (st && (!st.loaded || i.manager === "systemd" && st.unitFileState !== "enabled")) {
+    const detail = i.manager === "systemd" ? ` (LoadState ${st.loaded ? "loaded" : "not loaded"}, UnitFileState=${st.unitFileState ?? "?"})` : "";
+    lines.push({ status: "warn", message: `installed but not loaded${detail} \u2014 loom service start` });
+  } else if (st) {
+    lines.push({
+      status: "info",
+      message: `loaded, not running (last exit code ${st.lastExit ?? "?"})`
+    });
+  }
+  if (i.disabled) {
+    if (!i.disabled.ok) {
+      lines.push({ status: "info", message: unknownText("Login Items", i.disabled.reason) });
+    } else if (i.disabled.value === true) {
+      lines.push({
+        status: "warn",
+        message: "disabled in Login Items / launchctl \u2014 enable it in System Settings \u2192 General \u2192 Login Items"
+      });
+    }
+  }
+  const missing = [];
+  if (!i.unit.execPath || !i.execPathExists)
+    missing.push(`bun ${i.unit.execPath ?? "(not in unit)"}`);
+  if (!i.unit.bridgeMainPath || !i.bridgeMainExists) {
+    missing.push(`bridge-main.ts ${i.unit.bridgeMainPath ?? "(not in unit)"}`);
+  }
+  lines.push(missing.length === 0 ? {
+    status: "ok",
+    message: `bun and bridge-main.ts exist (${i.unit.execPath} \xB7 ${i.unit.bridgeMainPath})`
+  } : { status: "warn", message: `missing: ${missing.join(" \xB7 ")} \u2014 re-run loom service install` });
+  if (i.unresolvedAgentBins.length > 0) {
+    lines.push({
+      status: "warn",
+      message: `agent binaries not resolvable via the unit PATH: ${i.unresolvedAgentBins.join(", ")} \u2014 re-run loom service install`
+    });
+  } else if (i.unit.path === null) {
+    lines.push({ status: "info", message: "unit PATH: not found in the unit file" });
+  } else if (i.unit.path === i.currentPath) {
+    lines.push({ status: "ok", message: "unit PATH matches the current PATH" });
+  } else {
+    lines.push({
+      status: "info",
+      message: "unit PATH differs from the current PATH (agent binaries still resolve)"
+    });
+  }
+  const known = [i.unit.bridgeMainPath, i.cliBridgeMainPath, i.statusSrcPath].filter((v) => v !== null);
+  const srcDesc = `unit ${i.unit.bridgeMainPath ?? "?"} \xB7 CLI ${i.cliBridgeMainPath ?? "?"} \xB7 status file ${i.statusSrcPath ?? "(none)"}`;
+  if (new Set(known).size > 1) {
+    lines.push({ status: "warn", message: `srcPath mismatch \u2014 ${srcDesc} \u2014 re-run loom service install` });
+  } else if (known.length === 3) {
+    lines.push({ status: "ok", message: `srcPath: unit == CLI == status file (${known[0]})` });
+  } else {
+    lines.push({ status: "info", message: `srcPath: ${srcDesc}` });
+  }
+  if (i.log.mode === null) {
+    lines.push({ status: "info", message: `log not created yet (${i.log.path})` });
+  } else if ((i.log.mode & 511) === 384) {
+    lines.push({ status: "ok", message: `log mode 0600 (${i.log.path})` });
+  } else {
+    lines.push({
+      status: "warn",
+      message: `log mode ${modeText(i.log.mode)}, expected 0600 (${i.log.path})`
+    });
+  }
+  if (i.linger) {
+    if (!i.linger.ok) {
+      lines.push({ status: "info", message: unknownText("linger", i.linger.reason) });
+    } else if (i.linger.value === "yes") {
+      lines.push({ status: "ok", message: "linger: yes" });
+    } else {
+      lines.push({
+        status: "warn",
+        message: "linger: no \u2014 logout stops the service and kills its workers (run 'loginctl enable-linger' yourself)"
+      });
+    }
+  }
+  if (i.loopbackRelay) {
+    lines.push({
+      status: "warn",
+      message: "session relay is loopback \u2014 the service needs a reachable relay (0.33.0 D1)"
+    });
+  }
+  const outsidePid = i.statusPidAlive && i.statusPid !== null ? i.statusPid : i.lockHolderPid;
+  if (!i.state.ok) {
+    if (outsidePid !== null) {
+      lines.push({
+        status: "info",
+        message: unknownText("yield / outside-service check", i.state.reason)
+      });
+    }
+  } else if (st?.loaded && !st.running && i.lockHolderPid !== null && i.lockHolderPid !== st.mainPid) {
+    lines.push({
+      status: "warn",
+      message: `service yielded to bridge pid ${i.lockHolderPid} \u2014 loom bridge stop, then loom service start`
+    });
+  } else if (st && outsidePid !== null && (!st.running || outsidePid !== st.mainPid)) {
+    lines.push({ status: "warn", message: `bridge pid ${outsidePid} runs outside the service` });
+  }
+  return { title, lines };
+}
 function summarizeDoctor(sections) {
   const summary = {
     ok: 0,
@@ -16838,19 +17286,995 @@ function renderDoctor(sections) {
 `)}
 `;
 }
-function isLoopbackHost(host) {
+function isLoopbackHost2(host) {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
 
+// packages/cli/src/service.ts
+var SERVICE_USAGE = "Usage: loom service install|uninstall|start|status [--profile <p>] [--force]";
+var R9_MESSAGE = "LOOM_TEST_HOME set \u2014 refusing to call the real service manager";
+var DISABLED_MESSAGE = "disabled in Login Items / launchctl \u2014 enable it in System Settings \u2192 General \u2192 Login Items";
+var START_POLL_MS = 12000;
+var BOOTOUT_POLL_MS = 25000;
+var POLL_STEP_MS = 250;
+var RUNNER_TIMEOUT_MS = 1e4;
+var SYSTEMD_SHOW_PROPS = "LoadState,ActiveState,SubState,MainPID,ExecMainStatus,UnitFileState";
+var VERBS = ["install", "uninstall", "start", "status"];
+var REAL_PROGRAMS = new Set(["launchctl", "systemctl", "loginctl"]);
+function killChild(pid, group) {
+  if (group) {
+    try {
+      process.kill(-pid, "SIGKILL");
+      return;
+    } catch {}
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {}
+}
+async function spawnServiceManager(argv, timeoutMs, group = false) {
+  if (process.env.LOOM_TEST_HOME)
+    return { code: 1, stdout: "", stderr: R9_MESSAGE };
+  const program = argv[0] ?? "";
+  if (!REAL_PROGRAMS.has(program)) {
+    return { code: 1, stdout: "", stderr: `loom service: refusing to run "${program}"` };
+  }
+  let proc;
+  try {
+    proc = Bun.spawn({
+      cmd: argv,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      ...group ? { detached: true } : {}
+    });
+  } catch (e) {
+    return { code: 127, stdout: "", stderr: e instanceof Error ? e.message : String(e) };
+  }
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    killChild(proc.pid, group);
+  }, timeoutMs);
+  try {
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited
+    ]);
+    if (timedOut) {
+      return { code: 137, stdout, stderr: `no answer within ${timeoutMs / 1000} s \u2014 killed` };
+    }
+    return { code, stdout, stderr };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var realServiceRunner = (argv) => spawnServiceManager(argv, RUNNER_TIMEOUT_MS);
+function defaultDeps() {
+  let user = process.env.USER ?? "";
+  try {
+    user = userInfo().username;
+  } catch {}
+  return {
+    runner: realServiceRunner,
+    platform: process.platform,
+    uid: process.getuid?.() ?? 0,
+    user: user || "<user>",
+    env: process.env,
+    execPath: process.execPath,
+    bridgeMainPath,
+    now: () => Date.now(),
+    sleep: (ms) => Bun.sleep(ms),
+    out: (line) => console.log(line),
+    err: (line) => console.error(line),
+    inspectLock: (profile) => inspectBridgeLockAt(bridgeLockPath(profile)),
+    loomVersion: "dev"
+  };
+}
+function readSessionAt(file) {
+  try {
+    const text = readFileSync14(file, "utf8").trim();
+    if (!text)
+      return null;
+    return normalizeSession(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+function serviceHome() {
+  return stateRootHome();
+}
+function isUnder(path, root) {
+  const rel = relative3(resolve6(root), resolve6(path));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute6(rel);
+}
+function testHomes(d) {
+  return [process.env.LOOM_TEST_HOME, d.env.LOOM_TEST_HOME].filter((v) => typeof v === "string" && v.length > 0);
+}
+function testHomeViolation(d, logPath, paths) {
+  const roots = testHomes(d);
+  const targets = [paths.unitPath, logPath];
+  if (paths.kind === "systemd")
+    targets.push(paths.wantsLinkPath);
+  for (const root of roots) {
+    for (const t of targets) {
+      if (!isUnder(t, root)) {
+        return `loom service: ${t} is outside LOOM_TEST_HOME (${root}) \u2014 refusing`;
+      }
+    }
+  }
+  return null;
+}
+async function runServiceCommand(verb, opts = {}, deps = {}) {
+  const d = { ...defaultDeps(), ...deps };
+  if (!VERBS.includes(verb)) {
+    d.err(SERVICE_USAGE);
+    return 1;
+  }
+  const kind = d.platform === "darwin" ? "launchd" : d.platform === "linux" ? "systemd" : null;
+  if (!kind) {
+    d.err(`loom service: unsupported platform ${d.platform}`);
+    return 1;
+  }
+  if (testHomes(d).length > 0 && d.runner === realServiceRunner) {
+    d.err(R9_MESSAGE);
+    return 1;
+  }
+  if (opts.profile)
+    setActiveProfile(opts.profile, { explicit: true });
+  const home = serviceHome();
+  const readOnly = verb === "status";
+  const roLoom = join27(home, ".loom");
+  const roSession = readOnly ? readSessionAt(sessionPathUnder(roLoom)) : undefined;
+  const profile = resolveBridgeProfile(roSession);
+  const check = serviceProfileNameCheck(profile);
+  if (!check.ok) {
+    if (readOnly) {
+      d.out(`service: ${check.message}`);
+      return 0;
+    }
+    d.err(check.message);
+    return 1;
+  }
+  const bridgeDir = readOnly ? join27(roLoom, "bridge") : join27(loomDir(), "bridge");
+  if (!isUnder(bridgeDir, home)) {
+    d.err(`loom service: ${bridgeDir} is outside the service home (${home}) \u2014 refusing`);
+    return 1;
+  }
+  const paths = serviceTargetPaths(home, profile, d.platform);
+  const outside = testHomeViolation(d, bridgeLogPath(profile, bridgeDir), paths);
+  if (outside) {
+    d.err(outside);
+    return 1;
+  }
+  const ctx = {
+    d,
+    kind,
+    profile,
+    names: serviceNames(profile),
+    paths,
+    home,
+    bridgeDir,
+    roSession: roSession ?? null,
+    customInspect: deps.inspectLock !== undefined
+  };
+  switch (verb) {
+    case "install":
+      return install(ctx, opts.force === true);
+    case "uninstall":
+      return uninstall(ctx, opts.force === true);
+    case "start":
+      return start(ctx);
+    case "status":
+      return status(ctx);
+  }
+}
+var domain = (c) => `gui/${c.d.uid}`;
+var serviceTarget = (c) => `gui/${c.d.uid}/${c.names.label}`;
+function foreignMessage(path) {
+  return `${path} exists and is not a Loom service file \u2014 not touching it`;
+}
+function readText(path) {
+  try {
+    return readFileSync14(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+function lstatOrNull(path) {
+  try {
+    return lstatSync4(path);
+  } catch {
+    return null;
+  }
+}
+function firstLine(s) {
+  return s.split(`
+`).map((l) => l.trim()).find(Boolean) ?? "";
+}
+function runnerDetail(r) {
+  return firstLine(r.stderr) || firstLine(r.stdout) || "(no output)";
+}
+function lastLogLine2(path) {
+  const text = readText(path);
+  if (!text)
+    return null;
+  const lines = text.split(`
+`).map((l) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1];
+  return last ? last.slice(0, 400) : null;
+}
+async function call(c, argv) {
+  return c.d.runner(argv);
+}
+async function query(c) {
+  if (c.kind === "launchd") {
+    const r2 = await call(c, ["launchctl", "print", serviceTarget(c)]);
+    const cls2 = classifyRunnerResult("launchd", r2);
+    if (r2.code !== 0) {
+      return { cls: cls2, loaded: false, running: false, mainPid: null, lastExit: null, raw: "" };
+    }
+    const p = parseLaunchctlPrint(r2.stdout);
+    return {
+      cls: cls2,
+      loaded: true,
+      running: p.running,
+      mainPid: p.pid,
+      lastExit: p.lastExitCode,
+      raw: r2.stdout
+    };
+  }
+  const r = await call(c, ["systemctl", "--user", "show", c.names.unitName, "-p", SYSTEMD_SHOW_PROPS]);
+  const cls = classifyRunnerResult("systemd", r);
+  if (r.code !== 0) {
+    return { cls, loaded: false, running: false, mainPid: null, lastExit: null, raw: "" };
+  }
+  const s = parseSystemctlShow(r.stdout);
+  const running = s.activeState === "active";
+  return {
+    cls,
+    loaded: s.loadState === "loaded",
+    running,
+    mainPid: running ? s.mainPid : null,
+    lastExit: s.execMainStatus,
+    raw: r.stdout
+  };
+}
+function launchctlPrintArguments(stdout) {
+  const lines = stdout.split(`
+`);
+  const i = lines.findIndex((l) => /^\targuments = \{\s*$/.test(l));
+  if (i < 0)
+    return null;
+  const out = [];
+  for (const l of lines.slice(i + 1)) {
+    if (/^\t\}\s*$/.test(l))
+      return out;
+    if (!l.startsWith("\t\t"))
+      return null;
+    out.push(l.slice(2));
+  }
+  return null;
+}
+async function loadedJobMatchesFile(c, q, text) {
+  const unit = parseInstalledUnit(c.kind, text);
+  if (unit.execPath === null || unit.bridgeMainPath === null)
+    return null;
+  const want = [unit.execPath, unit.bridgeMainPath];
+  if (c.kind === "launchd") {
+    const args = launchctlPrintArguments(q.raw);
+    if (args)
+      return args.length === want.length && args.every((a, i) => a === want[i]);
+    const program = parseLaunchctlPrint(q.raw).program;
+    return program !== null && program !== want[0] ? false : null;
+  }
+  const r = await call(c, ["systemctl", "--user", "show", c.names.unitName, "-p", "ExecStart"]);
+  if (r.code !== 0)
+    return null;
+  const m = /argv\[\]=(.*?) ;/.exec(r.stdout);
+  if (!m)
+    return null;
+  return m[1] === want.join(" ");
+}
+function liveHolder(c) {
+  const ins = c.d.inspectLock(c.profile);
+  return ins.kind === "held" ? ins.pid : null;
+}
+function inFlight(c, mainPid) {
+  const st = readBridgeStatusFile(bridgeStatusPath(c.profile));
+  if (!st || mainPid === null || st.pid !== mainPid)
+    return 0;
+  return st.inFlight.paneCards + st.inFlight.convs + st.inFlight.headlessRunning;
+}
+function inFlightGuard(c, q, force) {
+  if (!q.running)
+    return null;
+  const n = inFlight(c, q.mainPid);
+  if (n > 0 && !force) {
+    c.d.err(`service bridge has ${n} in-flight \u2014 loom bridge drain first, or --force`);
+    return 1;
+  }
+  c.d.out(`will stop the running service bridge (pid ${q.mainPid ?? "?"})`);
+  return null;
+}
+function outcome(c, argv, r, unreachable) {
+  const cls = classifyRunnerResult(c.kind, r);
+  if (cls === "ok")
+    return null;
+  if (cls === "no_domain" || cls === "no_bus") {
+    c.d.out(unreachable);
+    return 3;
+  }
+  if (cls === "disabled") {
+    c.d.err(DISABLED_MESSAGE);
+    return 1;
+  }
+  c.d.err(`${argv.join(" ")} failed (code ${r.code}): ${runnerDetail(r)}`);
+  return 1;
+}
+async function waitRunning(c) {
+  const deadline = c.d.now() + START_POLL_MS;
+  const statusPath = bridgeStatusPath(c.profile);
+  for (;; ) {
+    const q = await query(c);
+    const st = readBridgeStatusFile(statusPath);
+    if (q.running && q.mainPid !== null && st?.state === "running" && st.pid === q.mainPid) {
+      c.d.out(`service running (pid ${q.mainPid})`);
+      return 0;
+    }
+    if (c.d.now() >= deadline)
+      break;
+    await c.d.sleep(POLL_STEP_MS);
+  }
+  const last = lastLogLine2(bridgeLogPath(c.profile));
+  c.d.err(`service did not report running within ${START_POLL_MS / 1000} s${last ? ` \u2014 last log: ${last}` : ""}`);
+  return 1;
+}
+async function startLoaded(c, unreachable) {
+  const argv = c.kind === "launchd" ? ["launchctl", "kickstart", serviceTarget(c)] : ["systemctl", "--user", "start", c.names.unitName];
+  const bad = outcome(c, argv, await call(c, argv), unreachable);
+  if (bad !== null)
+    return bad;
+  return waitRunning(c);
+}
+async function loadService(c, unreachable) {
+  if (c.kind === "launchd") {
+    const argv = ["launchctl", "bootstrap", domain(c), c.paths.unitPath];
+    const bad2 = outcome(c, argv, await call(c, argv), unreachable);
+    if (bad2 !== null)
+      return bad2;
+    return waitRunning(c);
+  }
+  const reload = ["systemctl", "--user", "daemon-reload"];
+  const bad = outcome(c, reload, await call(c, reload), unreachable);
+  if (bad !== null)
+    return bad;
+  return startLoaded(c, unreachable);
+}
+async function stopLoaded(c) {
+  if (c.kind === "systemd") {
+    const argv2 = ["systemctl", "--user", "stop", c.names.unitName];
+    const r2 = await call(c, argv2);
+    if (r2.code === 0)
+      return null;
+    c.d.err(`${argv2.join(" ")} failed (code ${r2.code}): ${runnerDetail(r2)}`);
+    return 1;
+  }
+  const argv = ["launchctl", "bootout", serviceTarget(c)];
+  const r = await call(c, argv);
+  if (classifyRunnerResult("launchd", r) !== "ok") {
+    c.d.err(`${argv.join(" ")} failed (code ${r.code}): ${runnerDetail(r)}`);
+    return 1;
+  }
+  const deadline = c.d.now() + BOOTOUT_POLL_MS;
+  for (;; ) {
+    const p = await call(c, ["launchctl", "print", serviceTarget(c)]);
+    if (p.code === 113 || /Could not find service/i.test(`${p.stderr}
+${p.stdout}`))
+      return null;
+    if (c.d.now() >= deadline) {
+      c.d.err(`bootout did not complete within ${BOOTOUT_POLL_MS / 1000} s`);
+      return 1;
+    }
+    await c.d.sleep(POLL_STEP_MS);
+  }
+}
+async function reloadRestart(c, running, unreachable) {
+  const reload = ["systemctl", "--user", "daemon-reload"];
+  const bad = outcome(c, reload, await call(c, reload), unreachable);
+  if (bad !== null)
+    return bad;
+  const argv = ["systemctl", "--user", running ? "restart" : "start", c.names.unitName];
+  const bad2 = outcome(c, argv, await call(c, argv), unreachable);
+  if (bad2 !== null)
+    return bad2;
+  return waitRunning(c);
+}
+async function installNotes(c, cfg) {
+  if (cfg.worker?.backend !== "headless") {
+    c.d.out("warn: pane backend \u2014 the service crash-loops (exit 1 every 10 s) while herdr is down");
+  }
+  if (c.kind !== "systemd")
+    return;
+  const linger = await queryLinger(c);
+  c.d.out(`linger: ${linger}`);
+  if (linger === "no") {
+    c.d.out(`run 'loginctl enable-linger ${c.d.user}' yourself to keep the service (and workers) alive after logout`);
+  }
+}
+async function queryLinger(c) {
+  const r = await call(c, ["loginctl", "show-user", String(c.d.uid), "-p", "Linger"]);
+  if (r.code !== 0)
+    return "unknown";
+  const m = /^Linger=(yes|no)\s*$/m.exec(r.stdout);
+  return m ? m[1] : "unknown";
+}
+function prepareLog(c) {
+  const dir = join27(loomDir(), "bridge");
+  mkdirSync19(dir, { recursive: true, mode: 448 });
+  chmodSync12(dir, 448);
+  const log = bridgeLogPath(c.profile);
+  const fd = openSync7(log, "a", 384);
+  try {
+    chmodSync12(log, 384);
+  } finally {
+    closeSync7(fd);
+  }
+}
+function writeUnit(path, text) {
+  mkdirSync19(dirname13(path), { recursive: true });
+  const tmp = `${path}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
+  try {
+    writeFileSync15(tmp, text, { mode: 420 });
+    chmodSync12(tmp, 420);
+    renameSync6(tmp, path);
+  } catch (e) {
+    rmSync5(tmp, { force: true });
+    throw e;
+  }
+}
+function ensureWantsLink(paths) {
+  if (paths.kind !== "systemd")
+    return;
+  const st = lstatOrNull(paths.wantsLinkPath);
+  if (st?.isSymbolicLink()) {
+    if (readlinkSync(paths.wantsLinkPath) === paths.wantsLinkTarget)
+      return;
+    unlinkSync7(paths.wantsLinkPath);
+  }
+  mkdirSync19(dirname13(paths.wantsLinkPath), { recursive: true });
+  symlinkSync(paths.wantsLinkTarget, paths.wantsLinkPath);
+}
+function foreignWants(paths) {
+  if (paths.kind !== "systemd")
+    return null;
+  const st = lstatOrNull(paths.wantsLinkPath);
+  return st && !st.isSymbolicLink() ? paths.wantsLinkPath : null;
+}
+function removeUnitFiles(c) {
+  const p = c.paths;
+  if (p.kind === "systemd" && lstatOrNull(p.wantsLinkPath)?.isSymbolicLink()) {
+    unlinkSync7(p.wantsLinkPath);
+  }
+  rmSync5(p.unitPath, { force: true });
+}
+function diskRelayToken() {
+  try {
+    const raw = JSON.parse(readFileSync14(sessionPath(), "utf8"));
+    return topLevelToBinding(raw).relayToken || undefined;
+  } catch {
+    return;
+  }
+}
+async function install(c, force) {
+  const { d } = c;
+  const session = loadSession();
+  if (!session) {
+    d.err("No session. Create or join a room first.");
+    return 1;
+  }
+  let host;
+  let isLocal;
+  try {
+    const ep = parseRelayUrl(session.relayUrl);
+    host = ep.host;
+    isLocal = ep.isLocal;
+  } catch (e) {
+    d.err(`relay url invalid: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  }
+  if (isLocal || isLoopbackHost(host)) {
+    d.err("loopback relay \u2014 loom service needs a reachable relay (0.33.0 D1)");
+    return 1;
+  }
+  if (!diskRelayToken() && (d.env.LOOM_RELAY_TOKEN || d.env.FABLE_RELAY_TOKEN)) {
+    d.err("relay token only in env \u2014 save it to the session (loom join \u2026) first");
+    return 1;
+  }
+  let cfg;
+  try {
+    cfg = loadBridgeConfig(c.profile);
+  } catch (e) {
+    d.err(`bridge config invalid: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  }
+  if (cfg.authorizedDispatchers.length === 0) {
+    d.err("M-1: authorizedDispatchers empty \u2014 default deny. Set with: loom bridge start --allow <towerPeerId>");
+    return 1;
+  }
+  if (!isAbsolute6(d.execPath) || !existsSync18(d.execPath)) {
+    d.err(`cannot find bun at ${d.execPath}`);
+    return 1;
+  }
+  let main;
+  try {
+    main = d.bridgeMainPath();
+    if (!isAbsolute6(main))
+      throw new Error("not absolute");
+  } catch {
+    d.err("cannot find bridge-main.ts \u2014 run install from the Loom source checkout");
+    return 1;
+  }
+  const spec = {
+    profile: c.profile,
+    execPath: d.execPath,
+    bridgeMainPath: main,
+    home: c.home,
+    path: d.env.PATH ?? "",
+    sessionPath: resolve6(sessionPath()),
+    loomProfile: getActiveProfile() ?? undefined,
+    logPath: bridgeLogPath(c.profile),
+    loomVersion: d.loomVersion
+  };
+  let text;
+  try {
+    text = c.kind === "launchd" ? renderLaunchdPlist(spec) : renderSystemdUnit(spec);
+  } catch (e) {
+    d.err(`loom service: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  }
+  const unitPath = c.paths.unitPath;
+  const existing = readText(unitPath);
+  if (existing === null && existsSync18(unitPath)) {
+    d.err(foreignMessage(unitPath));
+    return 1;
+  }
+  if (existing !== null && !isLoomServiceFile(existing, c.profile)) {
+    d.err(foreignMessage(unitPath));
+    return 1;
+  }
+  const wantsForeign = foreignWants(c.paths);
+  if (wantsForeign) {
+    d.err(foreignMessage(wantsForeign));
+    return 1;
+  }
+  const q = await query(c);
+  const holder = liveHolder(c);
+  if (holder !== null && holder !== q.mainPid) {
+    d.err(`bridge pid ${holder} is running outside the service \u2014 loom bridge stop first`);
+    return 1;
+  }
+  const nextLogin = `written; loads at next login (${unitPath})`;
+  const same = existing !== null && existing === text;
+  if (same && q.loaded) {
+    const match = await loadedJobMatchesFile(c, q, text);
+    if (match === false) {
+      const guard = inFlightGuard(c, q, force);
+      if (guard !== null)
+        return guard;
+      if (c.kind === "systemd")
+        return reloadRestart(c, q.running, nextLogin);
+      const stopped = await stopLoaded(c);
+      if (stopped !== null)
+        return stopped;
+    } else {
+      const note = match === null ? "up to date on disk; loaded job unverified" : "up to date";
+      if (q.running) {
+        d.out(`already installed (${note}, pid ${q.mainPid ?? "?"})`);
+        return 0;
+      }
+      if (match === null)
+        d.out(`already installed (${note})`);
+      return startLoaded(c, nextLogin);
+    }
+  } else if (q.loaded) {
+    const guard = inFlightGuard(c, q, force);
+    if (guard !== null)
+      return guard;
+    const stopped = await stopLoaded(c);
+    if (stopped !== null)
+      return stopped;
+  }
+  await installNotes(c, cfg);
+  try {
+    prepareLog(c);
+    if (!same)
+      writeUnit(unitPath, text);
+    ensureWantsLink(c.paths);
+  } catch (e) {
+    d.err(`loom service: write failed: ${e instanceof Error ? e.message : String(e)}`);
+    return 1;
+  }
+  d.out(`${same ? "unchanged" : "wrote"} ${unitPath}`);
+  return loadService(c, nextLogin);
+}
+async function uninstall(c, force) {
+  const { d } = c;
+  const unitPath = c.paths.unitPath;
+  const existing = readText(unitPath);
+  if (existing === null && !existsSync18(unitPath)) {
+    d.out(`not installed (${unitPath})`);
+    return 0;
+  }
+  if (existing === null || !isLoomServiceFile(existing, c.profile)) {
+    d.err(foreignMessage(unitPath));
+    return 1;
+  }
+  const q = await query(c);
+  if (c.kind === "systemd" && q.cls === "no_bus") {
+    removeUnitFiles(c);
+    d.out(`removed; the running service (if any) stops at logout (${unitPath})`);
+    return 0;
+  }
+  const guard = inFlightGuard(c, q, force);
+  if (guard !== null)
+    return guard;
+  if (c.kind === "launchd") {
+    if (q.loaded) {
+      const argv = ["launchctl", "bootout", serviceTarget(c)];
+      const r = await call(c, argv);
+      if (r.code !== 0) {
+        d.err(`${argv.join(" ")} failed (code ${r.code}): ${runnerDetail(r)}`);
+        return 1;
+      }
+    }
+    removeUnitFiles(c);
+  } else {
+    const stop = ["systemctl", "--user", "stop", c.names.unitName];
+    const r = await call(c, stop);
+    if (r.code !== 0) {
+      d.err(`${stop.join(" ")} failed (code ${r.code}): ${runnerDetail(r)}`);
+      return 1;
+    }
+    removeUnitFiles(c);
+    const reload = ["systemctl", "--user", "daemon-reload"];
+    const rr = await call(c, reload);
+    if (rr.code !== 0)
+      d.err(`warn: ${reload.join(" ")} failed (code ${rr.code}) \u2014 unit file already removed`);
+  }
+  d.out(`removed ${unitPath}`);
+  return 0;
+}
+async function start(c) {
+  const { d } = c;
+  const unitPath = c.paths.unitPath;
+  const existing = readText(unitPath);
+  if (existing === null && !existsSync18(unitPath)) {
+    d.err(`not installed (${unitPath}) \u2014 run loom service install`);
+    return 1;
+  }
+  if (existing === null || !isLoomServiceFile(existing, c.profile)) {
+    d.err(foreignMessage(unitPath));
+    return 1;
+  }
+  const q = await query(c);
+  const holder = liveHolder(c);
+  if (holder !== null && holder !== q.mainPid) {
+    d.err(`bridge pid ${holder} runs outside the service \u2014 loom bridge stop first`);
+    return 1;
+  }
+  if (c.kind === "launchd") {
+    const r = await call(c, ["launchctl", "print-disabled", domain(c)]);
+    if (r.code === 0 && parseLaunchctlPrintDisabled(r.stdout, c.names.label) === true) {
+      d.err(DISABLED_MESSAGE);
+      return 1;
+    }
+  }
+  if (q.running) {
+    d.out(`already running (pid ${q.mainPid ?? "?"})`);
+    return 0;
+  }
+  const unreachable = `not loaded now (no GUI session / user bus) \u2014 loads at next login (${unitPath})`;
+  return q.loaded ? startLoaded(c, unreachable) : loadService(c, unreachable);
+}
+async function status(c) {
+  const { d } = c;
+  const name = c.kind === "launchd" ? c.names.label : c.names.unitName;
+  d.out(`service: ${name} (${c.paths.unitPath})`);
+  const section = await serviceDoctorSection({
+    runner: d.runner,
+    platform: d.platform,
+    uid: d.uid,
+    home: c.home,
+    bridgeDir: c.bridgeDir,
+    profile: c.profile,
+    relayUrl: c.roSession?.relayUrl ?? null,
+    currentPath: d.env.PATH ?? "",
+    cliBridgeMainPath: d.bridgeMainPath,
+    inspectLock: (lockPath) => c.customInspect ? d.inspectLock(c.profile) : inspectBridgeLockAt(lockPath)
+  });
+  for (const l of section.lines)
+    d.out(`  ${l.status.padEnd(4)} ${l.message}`);
+  return 0;
+}
+var SERVICE_READ_VERBS = ["print", "print-disabled", "show", "show-user"];
+var READ_VERB_SET = new Set(SERVICE_READ_VERBS);
+var READ_TIMEOUT_MS = 2000;
+var REAP_MARGIN_MS = 250;
+var DEFAULT_AGENT_BINS = { claude: "claude", codex: "codex", grok: "grok" };
+var AGENT_KINDS = Object.keys(DEFAULT_AGENT_BINS);
+function readVerb(argv) {
+  if (argv[0] === "systemctl")
+    return (argv[1] === "--user" ? argv[2] : argv[1]) ?? "";
+  return argv[1] ?? "";
+}
+async function readQuery(runner, argv, ms) {
+  if (!READ_VERB_SET.has(readVerb(argv))) {
+    return { ok: false, reason: `refusing non-read verb "${readVerb(argv)}"` };
+  }
+  let timer;
+  const timeout = new Promise((res) => {
+    timer = setTimeout(() => res({ ok: false, reason: `no answer within ${ms / 1000} s` }), ms);
+  });
+  const call2 = Promise.resolve().then(() => runner(argv)).then((r) => ({ ok: true, r }), (e) => ({ ok: false, reason: e instanceof Error ? e.message : String(e) }));
+  try {
+    return await Promise.race([call2, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function failReason(argv, r) {
+  return `${argv[0]} ${readVerb(argv)} exited ${r.code}: ${runnerDetail(r)}`;
+}
+function xmlUnescape(v) {
+  return v.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+}
+function sdWords(line) {
+  const out = [];
+  let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i]))
+      i++;
+    if (i >= line.length)
+      break;
+    let w = "";
+    if (line[i] === '"') {
+      i++;
+      while (i < line.length && line[i] !== '"') {
+        if (line[i] === "\\" && i + 1 < line.length) {
+          w += line[i + 1];
+          i += 2;
+        } else {
+          w += line[i++];
+        }
+      }
+      i++;
+    } else {
+      while (i < line.length && !/\s/.test(line[i]))
+        w += line[i++];
+    }
+    out.push(w);
+  }
+  return out;
+}
+function parseInstalledUnit(kind, text) {
+  if (kind === "launchd") {
+    const pa = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>\s*<string>([^<]*)<\/string>/.exec(text);
+    const env2 = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(text);
+    const path2 = env2 ? /<key>PATH<\/key>\s*<string>([^<]*)<\/string>/.exec(env2[1]) : null;
+    return {
+      execPath: pa ? xmlUnescape(pa[1]) : null,
+      bridgeMainPath: pa ? xmlUnescape(pa[2]) : null,
+      path: path2 ? xmlUnescape(path2[1]) : null
+    };
+  }
+  let execPath = null;
+  let bridgeMain = null;
+  let path = null;
+  for (const line of text.split(`
+`)) {
+    if (line.startsWith("ExecStart=")) {
+      const w = sdWords(line.slice("ExecStart=".length)).map((v) => v.replace(/\$\$/g, "$").replace(/%%/g, "%"));
+      execPath = w[0] ?? null;
+      bridgeMain = w[1] ?? null;
+    } else if (line.startsWith("Environment=")) {
+      const a = sdWords(line.slice("Environment=".length))[0] ?? "";
+      if (a.startsWith("PATH="))
+        path = a.slice(5).replace(/%%/g, "%");
+    }
+  }
+  return { execPath, bridgeMainPath: bridgeMain, path };
+}
+function configuredAgentBins(bridgeDir, profile) {
+  let worker;
+  try {
+    const raw = JSON.parse(readFileSync14(join27(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"));
+    worker = raw?.worker;
+  } catch {
+    return [];
+  }
+  if (worker?.backend !== "headless")
+    return [];
+  const obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  const bin = obj(worker.agentBin);
+  const conc = obj(worker.maxConcurrent);
+  const named = AGENT_KINDS.filter((k) => (k in bin) || (k in conc));
+  return (named.length > 0 ? named : AGENT_KINDS).map((k) => {
+    const v = bin[k];
+    return typeof v === "string" && v.length > 0 ? v : DEFAULT_AGENT_BINS[k];
+  });
+}
+function resolvableVia(bin, path) {
+  if (isAbsolute6(bin))
+    return existsSync18(bin);
+  return Bun.which(bin, { PATH: path }) !== null;
+}
+function fileMode(path) {
+  try {
+    return statSync8(path).mode & 4095;
+  } catch {
+    return null;
+  }
+}
+function relayIsLoopback(relayUrl) {
+  if (!relayUrl)
+    return false;
+  try {
+    const ep = parseRelayUrl(relayUrl);
+    return ep.isLocal || isLoopbackHost(ep.host);
+  } catch {
+    return false;
+  }
+}
+async function gatherServiceInput(p) {
+  const kind = p.platform === "darwin" ? "launchd" : p.platform === "linux" ? "systemd" : null;
+  if (!kind)
+    return { kind: "unsupported", platform: p.platform };
+  const check = serviceProfileNameCheck(p.profile);
+  if (!check.ok)
+    return { kind: "invalid-name", message: check.message };
+  const names = serviceNames(p.profile);
+  const name = kind === "launchd" ? names.label : names.unitName;
+  const unitPath = serviceTargetPaths(p.home, p.profile, p.platform).unitPath;
+  const text = readText(unitPath);
+  if (text === null) {
+    return existsSync18(unitPath) ? { kind: "foreign", name, unitPath } : { kind: "not-installed", name, unitPath };
+  }
+  if (!isLoomServiceFile(text, p.profile))
+    return { kind: "foreign", name, unitPath };
+  const ms = Math.min(p.timeoutMs ?? READ_TIMEOUT_MS, READ_TIMEOUT_MS);
+  const reapMs = Math.max(ms - REAP_MARGIN_MS, 100);
+  const run = p.runner === realServiceRunner ? (argv) => spawnServiceManager(argv, reapMs, true) : p.runner;
+  let state;
+  let disabled;
+  let linger;
+  if (kind === "launchd") {
+    const printArgv = ["launchctl", "print", `gui/${p.uid}/${names.label}`];
+    const disArgv = ["launchctl", "print-disabled", `gui/${p.uid}`];
+    const [pr, dr] = await Promise.all([readQuery(run, printArgv, ms), readQuery(run, disArgv, ms)]);
+    if (!pr.ok)
+      state = { ok: false, reason: pr.reason };
+    else if (pr.r.code === 0) {
+      const x = parseLaunchctlPrint(pr.r.stdout);
+      state = {
+        ok: true,
+        value: {
+          loaded: true,
+          running: x.running,
+          mainPid: x.running ? x.pid : null,
+          lastExit: x.lastExitCode,
+          unitFileState: null
+        }
+      };
+    } else if (/Could not find service/i.test(pr.r.stderr)) {
+      state = {
+        ok: true,
+        value: { loaded: false, running: false, mainPid: null, lastExit: null, unitFileState: null }
+      };
+    } else
+      state = { ok: false, reason: failReason(printArgv, pr.r) };
+    if (!dr.ok)
+      disabled = { ok: false, reason: dr.reason };
+    else if (dr.r.code !== 0)
+      disabled = { ok: false, reason: failReason(disArgv, dr.r) };
+    else
+      disabled = { ok: true, value: parseLaunchctlPrintDisabled(dr.r.stdout, names.label) };
+  } else {
+    const showArgv = ["systemctl", "--user", "show", names.unitName, "-p", SYSTEMD_SHOW_PROPS];
+    const lingerArgv = ["loginctl", "show-user", String(p.uid), "-p", "Linger"];
+    const [sr, lr] = await Promise.all([readQuery(run, showArgv, ms), readQuery(run, lingerArgv, ms)]);
+    if (!sr.ok)
+      state = { ok: false, reason: sr.reason };
+    else if (sr.r.code !== 0)
+      state = { ok: false, reason: failReason(showArgv, sr.r) };
+    else {
+      const x = parseSystemctlShow(sr.r.stdout);
+      const running = x.activeState === "active";
+      state = {
+        ok: true,
+        value: {
+          loaded: x.loadState === "loaded",
+          running,
+          mainPid: running ? x.mainPid : null,
+          lastExit: x.execMainStatus,
+          unitFileState: x.unitFileState
+        }
+      };
+    }
+    const m = lr.ok && lr.r.code === 0 ? /^Linger=(yes|no)\s*$/m.exec(lr.r.stdout) : null;
+    if (m)
+      linger = { ok: true, value: m[1] };
+    else if (!lr.ok)
+      linger = { ok: false, reason: lr.reason };
+    else
+      linger = { ok: false, reason: failReason(lingerArgv, lr.r) };
+  }
+  const unit = parseInstalledUnit(kind, text);
+  const unresolvedAgentBins = unit.path === null ? [] : configuredAgentBins(p.bridgeDir, p.profile).filter((b) => !resolvableVia(b, unit.path));
+  let cliBridgeMainPath = null;
+  try {
+    cliBridgeMainPath = p.cliBridgeMainPath();
+  } catch {
+    cliBridgeMainPath = null;
+  }
+  const statusRead = readBridgeStatusFileResult(bridgeStatusPath(p.profile, p.bridgeDir));
+  const status2 = statusRead.kind === "ok" ? statusRead.status : null;
+  const statusPid = status2 && status2.pid > 0 ? status2.pid : null;
+  const alive = p.isPidAlive ?? isPidAlive;
+  const lock = (p.inspectLock ?? ((path) => inspectBridgeLockAt(path)))(bridgeLockPath(p.profile, p.bridgeDir));
+  const logPath = bridgeLogPath(p.profile, p.bridgeDir);
+  return {
+    kind: "installed",
+    manager: kind,
+    name,
+    unitPath,
+    loomVersion: parseServiceMarker(text)?.loomVersion ?? null,
+    state,
+    ...disabled ? { disabled } : {},
+    ...linger ? { linger } : {},
+    unit,
+    execPathExists: unit.execPath !== null && existsSync18(unit.execPath),
+    bridgeMainExists: unit.bridgeMainPath !== null && existsSync18(unit.bridgeMainPath),
+    currentPath: p.currentPath,
+    unresolvedAgentBins,
+    cliBridgeMainPath,
+    statusSrcPath: status2?.srcPath ? status2.srcPath : null,
+    log: { path: logPath, mode: fileMode(logPath) },
+    loopbackRelay: relayIsLoopback(p.relayUrl),
+    lockHolderPid: lock.kind === "held" ? lock.pid : null,
+    statusPid,
+    statusPidAlive: statusPid !== null && alive(statusPid)
+  };
+}
+async function serviceDoctorSection(p) {
+  return serviceSection(await gatherServiceInput(p));
+}
+
+// packages/cli/src/index.ts
+import {
+  openSync as openSync8,
+  closeSync as closeSync8,
+  writeSync as writeSync3,
+  readSync as readSync3,
+  existsSync as existsSync20,
+  readdirSync as readdirSync5,
+  readFileSync as readFileSync16,
+  accessSync,
+  constants as fsConstants4
+} from "fs";
+import { join as pathJoin } from "path";
+import { homedir as homedir6 } from "os";
+
 // packages/cli/src/inject-handoffs.ts
 import {
-  existsSync as existsSync17,
-  mkdirSync as mkdirSync18,
-  readFileSync as readFileSync13,
-  writeFileSync as writeFileSync14
+  existsSync as existsSync19,
+  mkdirSync as mkdirSync20,
+  readFileSync as readFileSync15,
+  writeFileSync as writeFileSync16
 } from "fs";
-import { dirname as dirname12, join as join26 } from "path";
+import { dirname as dirname14, join as join28 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -16876,18 +18300,18 @@ function mergeClaudeStopHook(settings, command) {
   return next;
 }
 function ensureClaudeStopHook(cwd, idleMarkerPath) {
-  const settingsPath = join26(cwd, ".claude", "settings.local.json");
+  const settingsPath = join28(cwd, ".claude", "settings.local.json");
   let settings = {};
-  if (existsSync17(settingsPath)) {
+  if (existsSync19(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync13(settingsPath, "utf8"));
+      settings = JSON.parse(readFileSync15(settingsPath, "utf8"));
     } catch {
       settings = {};
     }
   }
   const merged = mergeClaudeStopHook(settings, claudeStopHookCommand(idleMarkerPath));
-  mkdirSync18(dirname12(settingsPath), { recursive: true });
-  writeFileSync14(settingsPath, `${JSON.stringify(merged, null, 2)}
+  mkdirSync20(dirname14(settingsPath), { recursive: true });
+  writeFileSync16(settingsPath, `${JSON.stringify(merged, null, 2)}
 `, {
     encoding: "utf8",
     mode: 384
@@ -16896,19 +18320,19 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.33.0";
+var VERSION = "0.34.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
   const read = readBridgeStatusFileResult(statusPath);
-  const status = read.kind === "ok" ? read.status : null;
+  const status2 = read.kind === "ok" ? read.status : null;
   return {
     statusPath,
     lockPath,
     logPath: bridgeLogPath(profile, bridgeDir),
-    status,
+    status: status2,
     ...read.kind === "invalid" ? { statusInvalid: read.reason } : {},
-    pidAlive: status !== null && status.pid > 0 ? isPidAlive(status.pid) : false,
+    pidAlive: status2 !== null && status2.pid > 0 ? isPidAlive(status2.pid) : false,
     lock: inspectBridgeLockAt(lockPath),
     nowMs: Date.now(),
     staleMs: STATUS_STALE_MS
@@ -16990,6 +18414,8 @@ Usage:
   loom down [--profiles a,b]            # stop sticky hosts (idempotent)
   loom host start | stop | status   # sticky long-lived relay connection (advanced)
   loom bridge start | stop | status | quarantine ack  # herdr node bridge (0.22+)
+  loom service install|uninstall|start|status [--profile <p>] [--force]
+                                    # bridge as launchd/systemd user service (0.34)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -17125,7 +18551,7 @@ async function autoHostAfterSession(flags) {
 }
 function profilesWithSession() {
   const dir = pathJoin(loomDir(), "profiles");
-  if (!existsSync19(dir))
+  if (!existsSync20(dir))
     return [];
   const out = [];
   for (const name of readdirSync5(dir)) {
@@ -17168,7 +18594,7 @@ async function cmdUp(flags) {
   console.log("loom up \u2014 sticky hosts:");
   for (const profile of profiles) {
     setActiveProfile(profile, { explicit: true });
-    if (!existsSync19(sessionPath()) || !loadSession()) {
+    if (!existsSync20(sessionPath()) || !loadSession()) {
       console.log(`  ${profile.padEnd(14)} skipped  (no session)`);
       continue;
     }
@@ -17660,11 +19086,11 @@ async function cmdVerify(flags) {
         process.exit(2);
       }
       process.stdout.write("Run these commands? [y/N] ");
-      const answer = await new Promise((resolve6) => {
+      const answer = await new Promise((resolve7) => {
         const chunks = [];
         process.stdin.once("data", (d) => {
           chunks.push(Buffer.from(d));
-          resolve6(Buffer.concat(chunks).toString("utf8"));
+          resolve7(Buffer.concat(chunks).toString("utf8"));
         });
       });
       if (!/^y(es)?$/i.test(answer.trim())) {
@@ -17743,12 +19169,12 @@ async function cmdBoard(sub, rest, flags) {
         console.error("Usage: loom board set <task_id> <todo|doing|done|blocked|cancelled>");
         process.exit(1);
       }
-      const status = parseTaskStatus(statusRaw);
-      if (!status) {
+      const status2 = parseTaskStatus(statusRaw);
+      if (!status2) {
         console.error(`Invalid status: ${statusRaw}`);
         process.exit(1);
       }
-      const task = updateTask(id, { status });
+      const task = updateTask(id, { status: status2 });
       console.log(`updated ${task.id} \u2192 ${task.status}  ${task.title}`);
       return;
     }
@@ -18163,7 +19589,7 @@ async function cmdBridge(sub, rest, flags) {
       console.error("No session. Create or join a room first.");
       process.exit(1);
     }
-    const profile = getActiveProfile() ?? loadSession().displayName ?? "default";
+    const profile = resolveBridgeProfile();
     if (flags.allow === true) {
       console.error("--allow requires a peer id");
       process.exit(1);
@@ -18223,7 +19649,7 @@ async function cmdBridge(sub, rest, flags) {
       console.log("no bridge running");
       return;
     }
-    const profile = getActiveProfile() ?? loadSession()?.displayName ?? "default";
+    const profile = resolveBridgeProfile();
     if (r.kind === "rpc_failed") {
       console.error(`drain request failed (pid ${r.pid}): ${r.error}`);
       console.error(`  status file: ${bridgeStatusPath(profile)}`);
@@ -18266,7 +19692,7 @@ async function cmdBridge(sub, rest, flags) {
       }
       key = { tag: "seq", seq: n };
     }
-    const profile = getActiveProfile() ?? loadSession()?.displayName ?? "default";
+    const profile = resolveBridgeProfile();
     const result = await bridgeQuarantineAck({
       cardId,
       dispatchHandoffId,
@@ -18288,7 +19714,7 @@ async function cmdBridge(sub, rest, flags) {
   }
   if (sub === "status" || !sub) {
     const st = await bridgeStatus();
-    const profile = getActiveProfile() ?? loadSession()?.displayName ?? "default";
+    const profile = resolveBridgeProfile();
     if (!st.running) {
       console.log("bridge: offline");
       try {
@@ -18428,10 +19854,10 @@ function readOnlySessionPath(home, flags) {
   return pathJoin(home, "session.json");
 }
 function loadSessionReadOnly(file) {
-  if (!existsSync19(file))
+  if (!existsSync20(file))
     return null;
   try {
-    const text = readFileSync15(file, "utf8").trim();
+    const text = readFileSync16(file, "utf8").trim();
     if (!text)
       return null;
     return normalizeSession(JSON.parse(text));
@@ -18440,7 +19866,7 @@ function loadSessionReadOnly(file) {
   }
 }
 function homeWritableStatus(home) {
-  const homeExists = existsSync19(home);
+  const homeExists = existsSync20(home);
   if (!homeExists)
     return { homeExists, homeWritable: null };
   try {
@@ -18506,6 +19932,18 @@ async function cmdDoctor(flags) {
       };
     }
   }
+  const bridgeProfile = profile ?? (session?.displayName || "default");
+  const service = await serviceDoctorSection({
+    runner: realServiceRunner,
+    platform: process.platform,
+    uid: process.getuid?.() ?? 0,
+    home: serviceHome(),
+    bridgeDir: pathJoin(home, "bridge"),
+    profile: bridgeProfile,
+    relayUrl: session?.relayUrl ?? null,
+    currentPath: process.env.PATH ?? "",
+    cliBridgeMainPath: bridgeMainPath
+  });
   const sections = [
     installEnvSection({
       version: VERSION,
@@ -18533,7 +19971,8 @@ async function cmdDoctor(flags) {
       pidAlive,
       rpc: hostRpc
     }),
-    bridgeSection(readBridgeView(profile ?? (session?.displayName || "default"), pathJoin(home, "bridge")))
+    bridgeSection(readBridgeView(bridgeProfile, pathJoin(home, "bridge"))),
+    service
   ];
   process.stdout.write(renderDoctor(sections));
   process.exit(doctorExitCode(sections));
@@ -18999,7 +20438,7 @@ function runAgentChild(spec) {
   return spawnWait(spec.command, spec.args, spec);
 }
 function spawnWait(command, args, spec, opts) {
-  return new Promise((resolve6) => {
+  return new Promise((resolve7) => {
     const child = nodeSpawn(command, args, {
       cwd: spec.cwd,
       env: cleanEnv(spec.env),
@@ -19021,14 +20460,14 @@ function spawnWait(command, args, spec, opts) {
       cleanup();
       eprint(`\x1B[31mFailed to start agent: ${err.message}\x1B[0m
 `);
-      resolve6(1);
+      resolve7(1);
     });
     child.on("exit", (c, signal) => {
       cleanup();
       if (signal)
-        resolve6(1);
+        resolve7(1);
       else
-        resolve6(c ?? 1);
+        resolve7(c ?? 1);
     });
   });
 }
@@ -19036,7 +20475,7 @@ async function runTuiAgent(spec) {
   const attempts = [];
   const ptyHelper = pathJoin(import.meta.dir, "../../../scripts/run-with-pty.py");
   const ptyHelperAlt = pathJoin(import.meta.dir, "../../scripts/run-with-pty.py");
-  const helperPath = existsSync19(ptyHelper) ? ptyHelper : existsSync19(ptyHelperAlt) ? ptyHelperAlt : null;
+  const helperPath = existsSync20(ptyHelper) ? ptyHelper : existsSync20(ptyHelperAlt) ? ptyHelperAlt : null;
   if (helperPath && process.platform !== "win32") {
     attempts.push({
       label: "python-pty-winch",
@@ -19078,14 +20517,14 @@ Workaround: leave Loom MCP configured, run Claude directly:
   return lastCode;
 }
 function spawnOnDevTty(spec) {
-  return new Promise((resolve6) => {
+  return new Promise((resolve7) => {
     const fds = [];
     try {
-      fds.push(openSync7("/dev/tty", "r"), openSync7("/dev/tty", "w"), openSync7("/dev/tty", "w"));
+      fds.push(openSync8("/dev/tty", "r"), openSync8("/dev/tty", "w"), openSync8("/dev/tty", "w"));
     } catch (e) {
       eprint(`\x1B[2m/dev/tty unavailable: ${e instanceof Error ? e.message : e}\x1B[0m
 `);
-      resolve6(1);
+      resolve7(1);
       return;
     }
     const child = nodeSpawn(spec.command, spec.args, {
@@ -19096,7 +20535,7 @@ function spawnOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync7(fd);
+          closeSync8(fd);
         } catch {}
       }
     };
@@ -19104,14 +20543,14 @@ function spawnOnDevTty(spec) {
       closeFds();
       eprint(`\x1B[31m/dev/tty spawn failed: ${err.message}\x1B[0m
 `);
-      resolve6(1);
+      resolve7(1);
     });
     child.on("exit", (c, signal) => {
       closeFds();
       if (signal)
-        resolve6(1);
+        resolve7(1);
       else
-        resolve6(c ?? 1);
+        resolve7(c ?? 1);
     });
   });
 }
@@ -19145,12 +20584,12 @@ Session stays active. Type commands (e.g. ${loomCmd()} peers). exit to leave.
   return runLoomShellRepl(spec);
 }
 function spawnShellOnDevTty(spec) {
-  return new Promise((resolve6) => {
+  return new Promise((resolve7) => {
     const fds = [];
     try {
-      fds.push(openSync7("/dev/tty", "r"), openSync7("/dev/tty", "w"), openSync7("/dev/tty", "w"));
+      fds.push(openSync8("/dev/tty", "r"), openSync8("/dev/tty", "w"), openSync8("/dev/tty", "w"));
     } catch {
-      resolve6(0);
+      resolve7(0);
       return;
     }
     const child = nodeSpawn(spec.command, spec.args, {
@@ -19161,7 +20600,7 @@ function spawnShellOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync7(fd);
+          closeSync8(fd);
         } catch {}
       }
       fds.length = 0;
@@ -19170,14 +20609,14 @@ function spawnShellOnDevTty(spec) {
       closeFds();
       process.stderr.write(`\x1B[2m/dev/tty spawn failed: ${err.message}\x1B[0m
 `);
-      resolve6(0);
+      resolve7(0);
     });
     child.on("exit", (c, signal) => {
       closeFds();
       if (signal)
-        resolve6(1);
+        resolve7(1);
       else
-        resolve6(c ?? 1);
+        resolve7(c ?? 1);
     });
   });
 }
@@ -19399,6 +20838,12 @@ async function main() {
   if (cmd === "bridge") {
     await cmdBridge(sub, rest, flags);
     return;
+  }
+  if (cmd === "service") {
+    const code = await runServiceCommand(sub ?? "", { force: flags.force === true }, {
+      loomVersion: VERSION
+    });
+    process.exit(code);
   }
   if (cmd === "conv-hosts") {
     await cmdConvHosts(sub, rest);
