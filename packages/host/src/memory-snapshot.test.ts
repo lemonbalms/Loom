@@ -773,8 +773,12 @@ describe("compact keeps the snapshot (deviation 9 follow-up · R53-M1)", () => {
 
 describe("wired only through the headless worker (0.36.0 D10b · R15 — import-specifier guard)", () => {
   const repo = join(import.meta.dir, "..", "..", "..");
-  /** An import / export-from / dynamic-import specifier that resolves to memory-snapshot. */
-  const IMPORT_RE = /(?:from\s+|import\s*\(\s*)["'][^"']*\/memory-snapshot(?:\.ts)?["']/;
+  /**
+   * An import / export-from / side-effect import / dynamic-import / require specifier that
+   * resolves to memory-snapshot (optional .ts / .js / .mts / .mjs / .cts / .cjs extension).
+   */
+  const IMPORT_RE =
+    /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)["'`][^"'`]*\/memory-snapshot(?:\.[cm]?[jt]s)?["'`]/;
   const WORKER = join("packages", "host", "src", "headless-worker.ts");
   const ALLOWED = new Set([WORKER, join("packages", "host", "src", "index.ts")]);
 
@@ -807,6 +811,14 @@ describe("wired only through the headless worker (0.36.0 D10b · R15 — import-
       "import { x } from './memory-snapshot.ts';",
       'export { loadMemorySnapshot } from "../host/src/memory-snapshot";',
       'const m = await import("./memory-snapshot");',
+      'import "./memory-snapshot";',
+      'import { x } from"./memory-snapshot";',
+      'export * from"../host/src/memory-snapshot.js";',
+      'import { x } from "./memory-snapshot.js";',
+      'const m = require("./memory-snapshot");',
+      "const m = require('./memory-snapshot.ts');",
+      "const m = await import(`./memory-snapshot`);",
+      "const m = await import( `./memory-snapshot.js` );",
     ]) {
       expect(IMPORT_RE.test(src)).toBe(true);
     }
@@ -815,6 +827,9 @@ describe("wired only through the headless worker (0.36.0 D10b · R15 — import-
       'join(cardDir, "memory-snapshot.md")',
       "// see memory-snapshot.ts",
       'import { x } from "./memory-snapshot-extra";',
+      'import { x } from "./memory-snapshot.md";',
+      'const m = required("memory-snapshot");',
+      "const f = `" + "$" + "{cardDir}/memory-snapshot.md`;",
     ]) {
       expect(IMPORT_RE.test(src)).toBe(false);
     }
