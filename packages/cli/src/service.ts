@@ -9,6 +9,11 @@
  * Everything that touches the OS is injected (`ServiceDeps`): runner (argv → {code, stdout,
  * stderr}), platform, uid, clock, sleep, lock inspection. The real runner refuses to run while
  * `LOOM_TEST_HOME` is set (R9), and so does `runServiceCommand` before any verb.
+ *
+ * Home (P3 verify M): every target path hangs off `serviceHome()` — the session store's
+ * `stateRootHome` rule read from process.env, the same root `loomDir()` / `sessionPath()` use.
+ * Never the injected env. With any `LOOM_TEST_HOME` set (process or injected) a verb is refused
+ * before any call or write unless every target (unit · wants link · log) is under it.
  */
 import {
   chmodSync,
@@ -26,8 +31,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, userInfo } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { userInfo } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   type BridgeConfig,
   type BridgeLockInspection,
@@ -65,6 +70,7 @@ import {
   serviceTargetPaths,
   sessionPath,
   setActiveProfile,
+  stateRootHome,
   topLevelToBinding,
 } from "@loom/host";
 import { parseRelayUrl } from "@loom/protocol";
@@ -103,7 +109,7 @@ export interface ServiceDeps {
   uid: number;
   /** Login name — only printed in the `loginctl enable-linger` hint (never run). */
   user: string;
-  /** PATH capture · token env (R5) · LOOM_TEST_HOME (R9 · target home). */
+  /** PATH capture · token env (R5) · LOOM_TEST_HOME (R9 · test-home guard — never the home). */
   env: Record<string, string | undefined>;
   execPath: string;
   bridgeMainPath: () => string;
@@ -191,7 +197,44 @@ type SvcState = {
   running: boolean;
   mainPid: number | null;
   lastExit: number | null;
+  /** launchd `print` stdout when loaded (P3 verify L3 — the loaded job's program/arguments). */
+  raw: string;
 };
+
+/**
+ * The ONLY derivation of the user home the service files hang off (install · uninstall · start ·
+ * status · doctor): the session store's rule, from process.env.
+ */
+export function serviceHome(): string {
+  return stateRootHome();
+}
+
+function isUnder(path: string, root: string): boolean {
+  const rel = relative(resolve(root), resolve(path));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/** Every LOOM_TEST_HOME in effect — the process's and the injected one. */
+function testHomes(d: ServiceDeps): string[] {
+  return [process.env.LOOM_TEST_HOME, d.env.LOOM_TEST_HOME].filter(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+}
+
+/** P3 verify M: any LOOM_TEST_HOME (process or injected) must contain every target. */
+function testHomeViolation(d: ServiceDeps, profile: string, paths: ServiceTargetPaths): string | null {
+  const roots = testHomes(d);
+  const targets = [paths.unitPath, bridgeLogPath(profile)];
+  if (paths.kind === "systemd") targets.push(paths.wantsLinkPath);
+  for (const root of roots) {
+    for (const t of targets) {
+      if (!isUnder(t, root)) {
+        return `loom service: ${t} is outside LOOM_TEST_HOME (${root}) — refusing`;
+      }
+    }
+  }
+  return null;
+}
 
 /** Returns the exit code: 0 · 1 refused/error/usage · 3 "written; loads at next login". */
 export async function runServiceCommand(
@@ -210,7 +253,7 @@ export async function runServiceCommand(
     d.err(`loom service: unsupported platform ${d.platform}`);
     return 1;
   }
-  if (d.env.LOOM_TEST_HOME && d.runner === realServiceRunner) {
+  if (testHomes(d).length > 0 && d.runner === realServiceRunner) {
     d.err(R9_MESSAGE);
     return 1;
   }
@@ -225,15 +268,14 @@ export async function runServiceCommand(
     d.err(check.message);
     return 1;
   }
-  const home = d.env.LOOM_TEST_HOME || homedir();
-  const ctx: Ctx = {
-    d,
-    kind,
-    profile,
-    names: serviceNames(profile),
-    paths: serviceTargetPaths(home, profile, d.platform),
-    home,
-  };
+  const home = serviceHome();
+  const paths = serviceTargetPaths(home, profile, d.platform);
+  const outside = testHomeViolation(d, profile, paths);
+  if (outside) {
+    d.err(outside);
+    return 1;
+  }
+  const ctx: Ctx = { d, kind, profile, names: serviceNames(profile), paths, home };
   switch (verb as Verb) {
     case "install":
       return install(ctx, opts.force === true);
@@ -305,13 +347,24 @@ async function query(c: Ctx): Promise<SvcState> {
   if (c.kind === "launchd") {
     const r = await call(c, ["launchctl", "print", serviceTarget(c)]);
     const cls = classifyRunnerResult("launchd", r);
-    if (r.code !== 0) return { cls, loaded: false, running: false, mainPid: null, lastExit: null };
+    if (r.code !== 0) {
+      return { cls, loaded: false, running: false, mainPid: null, lastExit: null, raw: "" };
+    }
     const p = parseLaunchctlPrint(r.stdout);
-    return { cls, loaded: true, running: p.running, mainPid: p.pid, lastExit: p.lastExitCode };
+    return {
+      cls,
+      loaded: true,
+      running: p.running,
+      mainPid: p.pid,
+      lastExit: p.lastExitCode,
+      raw: r.stdout,
+    };
   }
   const r = await call(c, ["systemctl", "--user", "show", c.names.unitName, "-p", SYSTEMD_SHOW_PROPS]);
   const cls = classifyRunnerResult("systemd", r);
-  if (r.code !== 0) return { cls, loaded: false, running: false, mainPid: null, lastExit: null };
+  if (r.code !== 0) {
+    return { cls, loaded: false, running: false, mainPid: null, lastExit: null, raw: "" };
+  }
   const s = parseSystemctlShow(r.stdout);
   const running = s.activeState === "active";
   return {
@@ -320,7 +373,43 @@ async function query(c: Ctx): Promise<SvcState> {
     running,
     mainPid: running ? s.mainPid : null,
     lastExit: s.execMainStatus,
+    raw: r.stdout,
   };
+}
+
+/** launchd `print`: the `arguments = { … }` block (two-tab lines), or null when absent. */
+function launchctlPrintArguments(stdout: string): string[] | null {
+  const lines = stdout.split("\n");
+  const i = lines.findIndex((l) => /^\targuments = \{\s*$/.test(l));
+  if (i < 0) return null;
+  const out: string[] = [];
+  for (const l of lines.slice(i + 1)) {
+    if (/^\t\}\s*$/.test(l)) return out;
+    if (!l.startsWith("\t\t")) return null;
+    out.push(l.slice(2));
+  }
+  return null;
+}
+
+/**
+ * P3 verify L3: does the LOADED job run what the (byte-identical) file says? true · false ·
+ * null = cannot tell (query failed / output not parseable).
+ */
+async function loadedJobMatchesFile(c: Ctx, q: SvcState, text: string): Promise<boolean | null> {
+  const unit = parseInstalledUnit(c.kind, text);
+  if (unit.execPath === null || unit.bridgeMainPath === null) return null;
+  const want = [unit.execPath, unit.bridgeMainPath];
+  if (c.kind === "launchd") {
+    const args = launchctlPrintArguments(q.raw);
+    if (args) return args.length === want.length && args.every((a, i) => a === want[i]);
+    const program = parseLaunchctlPrint(q.raw).program;
+    return program !== null && program !== want[0] ? false : null;
+  }
+  const r = await call(c, ["systemctl", "--user", "show", c.names.unitName, "-p", "ExecStart"]);
+  if (r.code !== 0) return null;
+  const m = /argv\[\]=(.*?) ;/.exec(r.stdout);
+  if (!m) return null;
+  return m[1] === want.join(" ");
 }
 
 /** Live lock holder pid (read-only `inspect` verdict reuse), or null. */
@@ -434,13 +523,26 @@ async function stopLoaded(c: Ctx): Promise<number | null> {
   const deadline = c.d.now() + BOOTOUT_POLL_MS;
   for (;;) {
     const p = await call(c, ["launchctl", "print", serviceTarget(c)]);
-    if (p.code !== 0) return null;
+    // P3 verify L2: only a real not-found ends the poll; a timeout (137) or any other failure
+    // keeps polling until the bound.
+    if (p.code === 113 || /Could not find service/i.test(`${p.stderr}\n${p.stdout}`)) return null;
     if (c.d.now() >= deadline) {
       c.d.err(`bootout did not complete within ${BOOTOUT_POLL_MS / 1000} s`);
       return 1;
     }
     await c.d.sleep(POLL_STEP_MS);
   }
+}
+
+/** P3 verify L3 (systemd): the loaded unit is stale — daemon-reload, then restart / start. */
+async function reloadRestart(c: Ctx, running: boolean, unreachable: string): Promise<number> {
+  const reload = ["systemctl", "--user", "daemon-reload"];
+  const bad = outcome(c, reload, await call(c, reload), unreachable);
+  if (bad !== null) return bad;
+  const argv = ["systemctl", "--user", running ? "restart" : "start", c.names.unitName];
+  const bad2 = outcome(c, argv, await call(c, argv), unreachable);
+  if (bad2 !== null) return bad2;
+  return waitRunning(c);
 }
 
 /** ② install 7: pane warning · Linux linger line (+ hint; Loom never runs enable-linger). */
@@ -628,22 +730,33 @@ async function install(c: Ctx, force: boolean): Promise<number> {
     return 1;
   }
   const nextLogin = `written; loads at next login (${unitPath})`;
-  // 6 — reinstall candidate (R52-M1: bootout condition = loaded)
+  // 6 — reinstall candidate (R52-M1: bootout condition = loaded). The state comes from the
+  // read-only query above even when the file is absent (P3 verify L1: label loaded, plist gone
+  // → treated as "loaded, content differs", never a bootstrap into EIO).
   const same = existing !== null && existing === text;
-  if (existing !== null) {
-    if (same && q.loaded) {
-      if (q.running) {
-        d.out(`already installed (up to date, pid ${q.mainPid ?? "?"})`);
-        return 0;
-      }
-      return startLoaded(c, nextLogin);
-    }
-    if (!same && q.loaded) {
+  if (same && q.loaded) {
+    // P3 verify L3: identical on disk — but is the loaded job the one the file describes?
+    const match = await loadedJobMatchesFile(c, q, text);
+    if (match === false) {
       const guard = inFlightGuard(c, q, force);
       if (guard !== null) return guard;
+      if (c.kind === "systemd") return reloadRestart(c, q.running, nextLogin);
       const stopped = await stopLoaded(c);
       if (stopped !== null) return stopped;
+    } else {
+      const note = match === null ? "up to date on disk; loaded job unverified" : "up to date";
+      if (q.running) {
+        d.out(`already installed (${note}, pid ${q.mainPid ?? "?"})`);
+        return 0;
+      }
+      if (match === null) d.out(`already installed (${note})`);
+      return startLoaded(c, nextLogin);
     }
+  } else if (q.loaded) {
+    const guard = inFlightGuard(c, q, force);
+    if (guard !== null) return guard;
+    const stopped = await stopLoaded(c);
+    if (stopped !== null) return stopped;
   }
   // 7 — notes
   await installNotes(c, cfg);
@@ -780,12 +893,13 @@ const READ_VERB_SET: ReadonlySet<string> = new Set(SERVICE_READ_VERBS);
 /** R12: hard per-call bound. */
 const READ_TIMEOUT_MS = 2_000;
 const DEFAULT_AGENT_BINS: Record<string, string> = { claude: "claude", codex: "codex", grok: "grok" };
+const AGENT_KINDS = Object.keys(DEFAULT_AGENT_BINS);
 
 export type ServiceProbeDeps = {
   runner: ServiceRunner;
   platform: string;
   uid: number;
-  /** User home the unit path hangs off (`LOOM_TEST_HOME` or `homedir()`). */
+  /** User home the unit path hangs off — `serviceHome()` (injectable for tests). */
   home: string;
   /** `<loom home>/bridge` — config · status · lock · log. */
   bridgeDir: string;
@@ -909,24 +1023,33 @@ export function parseInstalledUnit(
   return { execPath, bridgeMainPath: bridgeMain, path };
 }
 
-/** Configured agent binaries (bridge-config defaults + `worker.agentBin`), read raw — no throw. */
+/**
+ * Agent binaries this profile's bridge can launch, read raw — no throw. Pane (or no / invalid
+ * config) → none (agents run in herdr panes, not from the unit PATH). Headless → the agents the
+ * config names in `worker.agentBin` / `worker.maxConcurrent` (agentBin path or default name);
+ * a headless config naming none can launch any agent → all defaults.
+ */
 function configuredAgentBins(bridgeDir: string, profile: string): string[] {
-  const bins = { ...DEFAULT_AGENT_BINS };
+  type W = { backend?: unknown; agentBin?: unknown; maxConcurrent?: unknown };
+  let worker: W | undefined;
   try {
     const raw = JSON.parse(
       readFileSync(join(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"),
-    ) as { worker?: { agentBin?: Record<string, unknown> } };
-    const over = raw?.worker?.agentBin;
-    if (over && typeof over === "object") {
-      for (const k of Object.keys(bins)) {
-        const v = over[k];
-        if (typeof v === "string" && v.length > 0) bins[k] = v;
-      }
-    }
+    ) as { worker?: W };
+    worker = raw?.worker;
   } catch {
-    /* missing / invalid config → defaults */
+    return [];
   }
-  return Object.values(bins);
+  if (worker?.backend !== "headless") return [];
+  const obj = (v: unknown): Record<string, unknown> =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const bin = obj(worker.agentBin);
+  const conc = obj(worker.maxConcurrent);
+  const named = AGENT_KINDS.filter((k) => k in bin || k in conc);
+  return (named.length > 0 ? named : AGENT_KINDS).map((k) => {
+    const v = bin[k];
+    return typeof v === "string" && v.length > 0 ? v : DEFAULT_AGENT_BINS[k]!;
+  });
 }
 
 function resolvableVia(bin: string, path: string): boolean {

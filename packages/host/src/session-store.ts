@@ -72,8 +72,11 @@ const LOOM_DIR_NAME = ".loom";
 let homeDirResolved: string | null = null;
 let migrateMessagePrinted = false;
 
-/** Override home for tests (M-16). Absolute path; unset to use os.homedir(). */
-function stateRootHome(): string {
+/**
+ * Override home for tests (M-16). Absolute path; unset to use os.homedir(). Read from
+ * process.env on every call — the single home rule (`loom service` targets use it too).
+ */
+export function stateRootHome(): string {
   const override = process.env.LOOM_TEST_HOME;
   if (override && override.length > 0) return override;
   return homedir();

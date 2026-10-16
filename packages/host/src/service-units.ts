@@ -64,6 +64,15 @@ export function serviceProfileNameCheck(profile: string): ServiceProfileNameChec
       message: `profile name "${profile}" maps to different file names (config "${config}" vs lock/log "${lockLog}") — rename the profile`,
     };
   }
+  // P3 verify L4: `--` would land inside the `<!-- … -->` marker comment of the plist.
+  if (profile.includes("--")) {
+    return {
+      ok: false,
+      config,
+      lockLog,
+      message: `profile name "${profile}" contains "--" (not allowed in a service file marker) — rename the profile`,
+    };
+  }
   if (lockLog !== profile) {
     return {
       ok: false,
@@ -87,7 +96,7 @@ export type ServiceTargetPaths =
   | { kind: "launchd"; unitPath: string }
   | { kind: "systemd"; unitPath: string; wantsLinkPath: string; wantsLinkTarget: string };
 
-/** ② 대상 경로. `home` = `LOOM_TEST_HOME` or `homedir()` (caller resolves). */
+/** ② 대상 경로. `home` = `stateRootHome()` (caller resolves — cli `serviceHome()`). */
 export function serviceTargetPaths(
   home: string,
   profile: string,
@@ -149,7 +158,7 @@ function validateSpec(spec: ServiceUnitSpec): ServiceNames {
   const check = serviceProfileNameCheck(spec.profile);
   if (!check.ok) throw new Error(check.message);
   // P1-L1: the version is written raw into the marker comment — keep it to a version alphabet.
-  if (!/^[0-9A-Za-z.+_-]+$/.test(spec.loomVersion)) {
+  if (!/^[0-9A-Za-z.+_-]+$/.test(spec.loomVersion) || spec.loomVersion.includes("--")) {
     throw new Error(`service unit: invalid loomVersion "${spec.loomVersion}"`);
   }
   // P1-L5 / R3: LOOM_PROFILE is only ever the active profile, which IS the service profile.

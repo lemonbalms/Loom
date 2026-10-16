@@ -124,7 +124,12 @@ import {
   resolveMcpStdio,
 } from "@loom/mcp-server";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
-import { realServiceRunner, runServiceCommand, serviceDoctorSection } from "./service";
+import {
+  realServiceRunner,
+  runServiceCommand,
+  serviceDoctorSection,
+  serviceHome,
+} from "./service";
 import {
   openSync,
   closeSync,
@@ -2271,7 +2276,7 @@ async function cmdDoctor(flags: Record<string, string | boolean>) {
     runner: realServiceRunner,
     platform: process.platform,
     uid: process.getuid?.() ?? 0,
-    home: process.env.LOOM_TEST_HOME || homedir(),
+    home: serviceHome(),
     bridgeDir: pathJoin(home, "bridge"),
     profile: bridgeProfile,
     relayUrl: session?.relayUrl ?? null,
