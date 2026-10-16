@@ -317,7 +317,8 @@ describe("bridge start — policy gap warnings · strictEnforcement · notice/ru
     const peers = await tower!.listPeers();
     expect(peers.type).toBe("room.state");
     if (peers.type === "room.state") {
-      expect(peers.peers.map((p) => p.peerId)).not.toContain("p_strict");
+      expect(peers.peers.map((p) => p.id)).not.toContain("p_strict");
+      expect(peers.peers.map((p) => p.id)).toContain("p_tower");
     }
   }, 60_000);
 
