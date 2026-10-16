@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-10-16 |
+| **Last updated** | 2026-10-17 |
 
 ---
 
@@ -41,6 +41,36 @@
 ---
 
 ## Gate log
+
+### 0.37.0 — 정책 정직성 · 펜스 안 정책 안내문 + 규칙 본문 · strict · `agent_disabled` · AGENT_HINT 삭제 (`approved` — R55 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.37.0 (`approved` — R55 approved-with-fixes, 반영 완료 · no R55b) · 업그레이드 4단계 3부 · 요구 `UPGRADE-PLAN.md` 4단계 완료 기준 셋째 항목(옵션 ii 체크리스트 `:98`) · '규칙 관리' `:169` · 스킬 관리 규칙 6 `:235` · 범위 = 락 D1~D9(아키텍트 + fable-advisor 자문 2026-10-17) · 정책 안내문 기본 켜짐(D3) · `worker.rules.enabled` · `worker.strictEnforcement`(bridge 설정 키 — `policy.json` 루트 키 철회, D4(a)) · 기억 쓰기 경로는 0.38.0 |
+| **Date** | 2026-10-17 |
+| **Review** | R55 **done 2026-10-17** — approved-with-fixes H0 · M2 · L4 (M1 내장 deny 합집합 — 계급 20 · strict 거부 꼬리 · UK-6 영구 경고 · M2 UK-1 ship 차단 · 실 CLI ① 한정 1회 = ship 조건 · L1 `configuredAgentBins` 켜진 에이전트 기준 · L2 스모크 안쪽 자식 = bridge와 같은 두 호출 · L3 `POLICY_NOTICE_LEAD` "Loom policy" · L4 `maxConcurrent` 0 파서 → P2) — (새 MINOR + 신뢰 경계 변경 — 정책 문자열 · 규칙 본문이 옵트인 없이 실 CLI 첫 턴으로 · 실 CLI 스모크 0회) |
+| **Evidence** | 코드 실측 `main @ acd53a0` (PLAN §0.37.0 Why · 추정/실측 표) · `policy-compile.ts:31-55` · `:124-138` · `policy.ts:462-474` · `:478` · `:765-769` · `:787-792` · `bridge-config.ts:276-290` · `:396-409` · `:441-446` · `:482-500` · `:538-551` · `bridge-runtime.ts:878-883` · `:1106-1116` · `headless-worker.ts:148-170` · `:260-264` · `:1147` · `:1180` · `:1721-1724` · `:2008-2050` · `memory-inject.ts:22-23` · `:54-73` · `memory-inject.test.ts:66-67` · `:177` · `memory-snapshot.ts:270` · `:310` · `rules-store.ts:27` · `:72-75` · `:269` · `mcp-server/src/stdio.ts:65-72` · `mcp-server/src/config.ts:34-55` · `adapters/src/types.ts:52` · `hints.ts` · `cli/src/index.ts:2157-2160` · `:2693-2696` · `cli/src/service.ts:1106-1128` · `session-store.ts:178-208` · `bridge-memory-profile.test.ts:246-256` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 코드 실측(`acd53a0`): (1) 정직 표 `POLICY_ENFORCEMENT`의 소비자는 테스트 하나(`policy-compile.test.ts:363-372`) — bridge · doctor · 프롬프트 어디에도 렌더 0. (2) 내장 기본 = `network: false` · `mcp.isolate: true` · 유효 `shell.deny` 11개 → D1 문면이면 기본 간극 6개(claude `network/advisory` 포함 — C1). (3) `parseMaxConcurrent`는 `< 1` 거부 · 워커 `concurrencyLimit`은 `< 1`을 1로 바꿈 → 0 허용에는 명시 검사 필요. (4) `workerSectionFromRaw`는 모르는 키 허용 · `saveBridgeConfig`는 지움. (5) 옛 MCP는 `policy.json` 모르는 루트 키에 모든 호출 거부(`stdio.ts:65-72` + `policy.ts:478`) → strict는 bridge 설정 키. (6) doctor는 `loomDir()`(이관 rename 가능)을 피한다 — C3. (7) `AGENT_HINT.txt` · `systemHint()`를 읽는 코드 0. (8) 프로덕션 `HeadlessDispatcher` 생성자 1개(bridge). (9) `mergePolicy`는 내장 deny 9개를 **항상** 합집합으로 깐다(`policy.ts:765-769`) — 유효 `shell.deny`는 어떤 `policy.json`으로도 비지 않아 codex · grok `shell.deny` 간극은 정책으로 제거 불가(R55-M1). |
+| Known unknowns | **UK-1~UK-7**(아래 표, 정본 = PLAN §0.37.0). 요지: 기본 켜짐 안내문의 실 CLI 미검증 · 안내문 준수 · 규칙 준수("자료" 틀) · 첫 턴 크기 · 첫 spawn 정지 시간(`loadRules` 추가) · 경고 소음과 strict 채택 · Windows. |
+| Unknown knowns | 0.36 "다음 후보"의 `policy.strictEnforcement`(새 루트 키)는 옛 MCP 전면 거부를 부른다 → bridge 설정 키(D4(a)). D5 예문 꼬리 "nothing blocks it"는 `not-enforced`에만 참 → 수준별 결과 문구(R3). D1 `Gap`에는 금지 문자열이 없다 → `values`(C2 · R1). 계급 20 락 문면은 claude `network` 기본 간극을 빠뜨렸다(C1) — 그리고 내장 deny 합집합 때문에 codex/grok을 켠 채 정책 편집만으로 strict를 통과시킬 길이 없다는 것도(R55-M1 → 계급 20 문면 교체 · strict 거부 꼬리 교체). |
+| Unknown unknowns | 기본 켜짐 안내문을 받은 실 codex/grok/claude가 첫 턴을 어떻게 다루는지(거부 · 과잉 준수 · 무시) · 오너가 기동마다 나오는 경고 줄을 읽는지 · 규칙 본문이 "자료" 펜스 안에서 hint와 부딪힐 때의 실제 행동 · 위조 안내문 섹션이 실제로 쓰이는지. |
+
+**Unknowns 요약 (정본 = PLAN §0.37.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R55 판정 |
+|---|------|-------------|----------|
+| UK-1 | **기본 켜짐 안내문이 실 CLI 첫 턴에 닿음 — 실 CLI 스모크 0회**(0.36 UK-1 승계 · 아키텍트 메모). 간극 있는 정책(기본 포함)의 bridge는 업그레이드 즉시 옵트인 없이 실 codex/grok/claude(claude도 — C1 → D1 문면) 첫 턴에 펜스 블록을 넣는다 | 스모크 = 가짜 CLI 바이트만 · `smoke:policy --real-cli --owner-approved`는 오너 명시 승인 | **ship 차단(R55-M2) — 오너 승인 필요 · 승인 없으면 ship 대기, `unverified` ship 불가** · ship 조건 = `smoke:policy --real-cli --owner-approved` **① 한정**(codex · grok · claude 각 1카드 · 프롬프트 `Reply with the single word ok.` · 기본 정책 · 기억 · 규칙 꺼짐 · 안쪽 프로세스 실 HOME + `LOOM_TEST_HOME=T` R54-M3 형) 1회 PASS — 세 응답이 결과를 내고 거부 · 탈선 없음을 `POLICY-HONESTY-SMOKE-0370.md`에 기록 · 기각 대안 = 스위치 / `not-enforced` 한정 |
+| UK-2 | 안내문 준수 — 에이전트가 금지 목록을 지키는 정도 | 권고 경계(계급 17) · CI 측정 불가 | **open, 비차단** |
+| UK-3 | 규칙 준수 vs. "자료" 틀 — hint "data, not instructions"와 새 머리말 사이 | 옵트인(기본 꺼짐) · 5단계에서 재검토 | **open, 비차단** |
+| UK-4 | 첫 턴 크기 — 안내문 + 규칙 ≤16 KiB + 기억 ≈48 KiB(0.36 UK-1 승계) | 스모크 ⑦ 바이트 실측 | **open, 비차단** |
+| UK-5 | 첫 spawn 정지 시간 — `loadRules` 추가(0.36 UK-2 승계) | 스모크 ⑦ `load_ms` · 0.38 캐시 판단 입력 | **open, 비차단** |
+| UK-6 | 경고 소음과 strict 채택 — 기본 정책 bridge 경고 6줄 · doctor warn 6줄(exit code 무변경) | C1 → D1 문면(R55) — 기본 6줄 | **open, 비차단** — **codex/grok을 켠 bridge는 경고 2~3줄이 영구**(설계 — R55-M1: 그 `shell.deny` 간극은 내장 deny 합집합 `policy.ts:766`으로 어떤 `policy.json`에서도 남는다 · 끄는 것만 없앤다) |
+| UK-7 | Windows(0.36 UK-7 승계) | 테스트는 macOS/Linux | **unverified(Windows 환경 미사용), 비차단** |
+
+**Current decision:** D1~D9 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-17) · 작성자 정밀화 R1~R21 · 락↔코드 불일치 C1(claude `network` 기본 간극 · 계급 20 문면) · C2(`Gap.values`) · C3(doctor 정책 경로) · C4(머리말 고정 = 상수 `:66-67`) · 수용 손실 계급 17~22 + 무번호 4행 · UK-1~UK-7. **R55 `approved-with-fixes` → M1·M2·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-17, no R55b)** · R1~R21 수용(R17→L1) · C1 → D1 문면(6개) · C2 → R1 · C3 → R14(+③ 레거시 info 줄) · C4 수용 · **UK-1 ship 차단(오너 승인 필요 — 실 CLI ① 한정 1회 PASS)** · UK-2~UK-7 비차단(UK-6 영구 경고 명시). **Next = P1**(red = `memory-inject.test.ts:66-67` 머리말 + `policy-gaps.test.ts` · `bridge-config-policy.test.ts`). 다음 후보 = **0.38.0 기억 쓰기 경로**(card-report 후보 → `propose` · `notes.md` · mtime 캐시/async 리더 · 닮은 글자 표지 강화).
 
 ### 0.36.0 — headless 워커 카드 시작 기억 스냅샷 + 펜스 주입 (`approved` — R54 approved-with-fixes · implemented 2026-10-16)
 
@@ -547,3 +577,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-16 | 0.34.0 ship 반영 (UK-2 partly observed — 프로브 사고 알림 · UK-1 · UK-3 open — 라이브 not run(오너 승인 대기) · UK-4 · UK-5 unverified — Linux 미사용 · `SERVICE-SMOKE-0340.md` · R52-L1 `envRelayToken()` 문면 정정) |
 | 2026-10-16 | 0.35.0 ship 반영 (UK-1~UK-5 open 비차단 · UK-6 unverified — Windows 미사용 · `MEMORY-SMOKE-0350.md` 18/18 · P4b `redact.ts` O(n²) 실측·선형화) |
 | 2026-10-16 | 0.36.0 ship 반영 (UK-1 가짜 CLI 바이트만 실측 · 실 CLI 0 · UK-2 `load_ms` 중앙값 16–17 / 최대 24–25 ms(2회) 실측 · UK-3~UK-5 open · UK-6 13/13 + 스모크 ⓪ · UK-7 unverified — Windows 미사용 · `MEMORY-INJECT-SMOKE-0360.md` 7/7) |
+| 2026-10-17 | 0.37.0 정책 정직성 unknowns (UK-1~UK-7 요약 · UK-1 기본 켜짐 안내문 실 CLI 미검증 = R55 판정 요청 · 코드 실측 Known knowns · C1~C4 · R55 approved-with-fixes → UK-1 ship 차단(오너 승인 · 실 CLI ① 한정 1회) · UK-2~UK-7 비차단 · UK-6 영구 경고) |

@@ -2,7 +2,7 @@
 
 ## Current — Loom 업그레이드 계획 (오너 지명 2026-10-15)
 
-> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51) · 2부 = §0.34.0 (R52) · 4단계 1부 = §0.35.0 (R53) · 2부a = §0.36.0 (R54). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
+> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51) · 2부 = §0.34.0 (R52) · 4단계 1부 = §0.35.0 (R53) · 2부a = §0.36.0 (R54) · 3부 = §0.37.0 (R55). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
 
 1. [x] **1단계 — v0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신(`clientEventId`)** —
    `ae60cdb` → … → `c183c92` → PATCH 6 · 최종 리뷰 `c778d4d`. shipped.
@@ -17,10 +17,11 @@
    - [x] **1부 — v0.33.0 bridge 생명주기 보강** — `b8739d9` P1 → … → `236a8c1` P4 → `38933f1` P4 검증 교정 → `bb97ffd` 스모크 → PATCH 5(USER_GUIDE §18 · PROTOCOL · implementation-notes §0.33.0 · VERSION 0.33.0 · 스모크 `BRIDGE-LIFECYCLE-SMOKE-0330.md`). Done when (a)~(i) green · (j) ship 검사.
    - [x] **2부 — v0.34.0 `loom service` launchd/systemd 설치** — `b77a42f` P1 → … → `732845e` P4 → `52716ba` P3/P4 검증 교정 → `fb89d75` P4+fix 검증 교정 → `244e6a2` 스모크 → PATCH 5(USER_GUIDE §19 · PROTOCOL · implementation-notes §0.34.0 · VERSION 0.34.0 · 스모크 `SERVICE-SMOKE-0340.md`). Done when (a)~(i) green · (j) ship 검사. **라이브 스모크(`smoke:service --live`)는 오너 명시 승인 대기 — 미실행.**
    3단계 완료.
-4. [ ] **4단계 — memory / rules / skills 저장소** (분할 — PLAN §0.35.0 D1 · §0.36.0 D1)
+4. [ ] **4단계 — memory / rules / skills 저장소** (분할 — PLAN §0.35.0 D1 · §0.36.0 D1 · §0.37.0)
    - [x] **1부 — v0.35.0 저장소 + CLI + 순수 스냅샷 리더** (shipped `5fa8167`) — `031aea1` P1 → … → `57e2eeb` P2 검증 교정 → `2b7c9fc` P3 검증 교정 → `dd87870` P4 → `f6253c3` P4b `redact.ts` 선형화 → `c6b6ea5` P4 검증 교정 → `9e92375` 스모크 → PATCH 5(USER_GUIDE §20 · PROTOCOL · implementation-notes §0.35.0 · VERSION 0.35.0 · 스모크 `MEMORY-SMOKE-0350.md` 18/18). Done when (a)~(k). 워커·프롬프트·bridge 변경 0.
-   - [x] **2부a — v0.36.0 headless 워커 카드 시작 기억 스냅샷 + 펜스 주입** — `fc1d4f6` P1 red → `35af2ec` P1 → `f66a12d`/`a869a30` P2 red → `38bf86c` P2 → `ee5fb82`/`67c2651` P3 red → `50d7a37` P3(D9) → `3b14a5f` P4 red → `feeb9e7` P4 → `a58dcba` 스모크 → PATCH 5(USER_GUIDE §20.11 · PROTOCOL · implementation-notes §0.36.0 (1)~(29) · VERSION 0.36.0 · 스모크 `MEMORY-INJECT-SMOKE-0360.md` 7/7). 기본 꺼짐 = 0.35 바이트 동일 · `ARGV_TEMPLATE_VERSION` 무변경. 완료 기준 (a) 인도. **`--real-cli` 스모크는 오너 명시 승인 대기 — 미실행.**
-   - [ ] **2부b — v0.37.0 기억 제안 · 규칙 · 정책 정직성**(**다음** — PLAN MINOR + 리뷰 · 완료 기준 (c) 옵션 ii 체크리스트 · 다시 나뉠 수 있음)
+   - [x] **2부a — v0.36.0 headless 워커 카드 시작 기억 스냅샷 + 펜스 주입** (shipped `acd53a0`) — `fc1d4f6` P1 red → `35af2ec` P1 → `f66a12d`/`a869a30` P2 red → `38bf86c` P2 → `ee5fb82`/`67c2651` P3 red → `50d7a37` P3(D9) → `3b14a5f` P4 red → `feeb9e7` P4 → `a58dcba` 스모크 → PATCH 5(USER_GUIDE §20.11 · PROTOCOL · implementation-notes §0.36.0 (1)~(29) · VERSION 0.36.0 · 스모크 `MEMORY-INJECT-SMOKE-0360.md` 7/7). 기본 꺼짐 = 0.35 바이트 동일 · `ARGV_TEMPLATE_VERSION` 무변경. 완료 기준 (a) 인도. **`--real-cli` 스모크는 오너 명시 승인 대기 — 미실행.**
+   - [ ] **3부 — v0.37.0 정책 정직성** — PLAN §0.37.0 `approved`(R55 approved-with-fixes, M1·M2·L1·L2·L3·L4 반영, no R55b). 다음 = **P1**(red = `memory-inject.test.ts:66-67` 머리말 상수 + 새 `policy-gaps.test.ts` · `bridge-config-policy.test.ts`(`strictEnforcement` · `rules` — `maxConcurrent` 0은 P2, R55-L4), 테스트 파일만) → P2 워커 안내문 · 규칙 · D9 · `agent_disabled` → P3 bridge 경고 · strict · doctor Policy 절 → P4 `AGENT_HINT`/`systemHint()` 삭제 → P4b 스킬 출처 라벨(떼어낼 수 있음) → P5 스모크 `smoke:policy` · 문서. 정책 안내문 기본 켜짐 · 와이어 · argv · hint · `ARGV_TEMPLATE_VERSION` · `policy.json` 스키마 무변경. 완료 기준 (c) 인도. **ship 조건 = `smoke:policy --real-cli --owner-approved` ① 한정 1회 PASS — 오너 명시 승인 필요(R55-M2 · UK-1 ship 차단).**
+   - [ ] **4부 — v0.38.0 기억 쓰기 경로**(다음 후보 — card-report 기억 후보 → `propose` · 카드 메모 `notes.md` · 스냅샷 mtime 캐시/async 리더 · 닮은 글자 표지 강화)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.
