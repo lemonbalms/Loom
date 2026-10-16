@@ -30,26 +30,3 @@ export function writeMcpConfig(opts?: {
   writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf8");
   return path;
 }
-
-/** Write a short agent hint file agents/shells can cat. */
-export function writeAgentHintFile(opts?: {
-  dir?: string;
-  agentId?: string;
-  hint?: string;
-}): string {
-  const dir = opts?.dir ?? loomDir();
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, "AGENT_HINT.txt");
-  const body =
-    opts?.hint ??
-    [
-      "Loom multiplayer room is active.",
-      "MCP tools: list_peers, handoff, check_handoffs, claim_handoff, room_chat",
-      "CLI: loom peers | handoff | inbox | inbox accept <id>",
-      opts?.agentId ? `Agent: ${opts.agentId}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n") + "\n";
-  writeFileSync(path, body, "utf8");
-  return path;
-}

@@ -100,6 +100,8 @@ export function homeProfileSection(input: {
   profile: string | null;
   homeExists: boolean;
   homeWritable: boolean | null;
+  /** PLAN 0.37.0 D7 · R18: `<home>/AGENT_HINT.txt` when it exists (never read or deleted). */
+  agentHintFile?: string | null;
 }): DoctorSection {
   const lines: DoctorLine[] = [
     { status: "info", message: `home: ${input.home}` },
@@ -116,6 +118,13 @@ export function homeProfileSection(input: {
     lines.push({ status: "ok", message: "home directory is writable" });
   } else {
     lines.push({ status: "fail", message: "home directory is not writable" });
+  }
+
+  if (typeof input.agentHintFile === "string") {
+    lines.push({
+      status: "info",
+      message: `AGENT_HINT.txt is unused since 0.37 — safe to delete: ${input.agentHintFile}`,
+    });
   }
 
   return { title: "Home/profile", lines };

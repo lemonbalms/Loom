@@ -1,6 +1,5 @@
 import { basename } from "node:path";
 import type { AgentAdapter, SpawnSpec } from "./types";
-import { loomSystemHint } from "./hints";
 
 /**
  * Force interactive mode. Without -i, zsh/bash often exit immediately when
@@ -46,13 +45,5 @@ export const shellAdapter: AgentAdapter = {
       },
       cwd: opts.cwd,
     };
-  },
-
-  systemHint() {
-    return [
-      loomSystemHint("Shell"),
-      "",
-      "Shell has no MCP: use CLI — loom inbox, loom handoff, loom peers.",
-    ].join("\n");
   },
 };

@@ -120,7 +120,6 @@ import {
 } from "@loom/adapters";
 import {
   writeMcpConfig,
-  writeAgentHintFile,
   resolveMcpStdio,
 } from "@loom/mcp-server";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
@@ -2325,6 +2324,10 @@ async function cmdDoctor(flags: Record<string, string | boolean>) {
       profile,
       homeExists: writable.homeExists,
       homeWritable: writable.homeWritable,
+      // PLAN 0.37.0 D7: existence only — the file is never read, rewritten or deleted.
+      agentHintFile: existsSync(pathJoin(home, "AGENT_HINT.txt"))
+        ? pathJoin(home, "AGENT_HINT.txt")
+        : null,
     }),
     sessionSection(session),
     relaySection({
@@ -2700,10 +2703,6 @@ async function cmdRun(
   }
 
   const globalMcp = writeMcpConfig({ sessionEnv });
-  writeAgentHintFile({
-    agentId,
-    hint: adapter.systemHint(),
-  });
 
   const stdioPath = resolveMcpStdio();
   let agentMcpPath: string | null = null;

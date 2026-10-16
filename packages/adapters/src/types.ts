@@ -48,6 +48,4 @@ export interface AgentAdapter {
     /** Opt-in: merge into ~/.codex or ~/.grok config.toml with LOOM_SESSION */
     writeUserConfig?: boolean;
   }): Promise<string | null>;
-  /** System hint text about Loom tools. */
-  systemHint(): string;
 }

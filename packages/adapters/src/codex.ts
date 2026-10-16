@@ -1,6 +1,5 @@
 import type { AgentAdapter, SpawnSpec } from "./types";
 import { resolveCommand } from "./which";
-import { loomSystemHint } from "./hints";
 import {
   buildFableMcpTomlBlock,
   projectMcpSnippetToml,
@@ -76,9 +75,5 @@ export const codexAdapter: AgentAdapter = {
     }
 
     return snippetPath;
-  },
-
-  systemHint() {
-    return loomSystemHint("Codex CLI");
   },
 };

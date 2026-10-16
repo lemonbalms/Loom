@@ -1,6 +1,5 @@
 import type { AgentAdapter, SpawnSpec } from "./types";
 import { resolveCommand } from "./which";
-import { loomSystemHint } from "./hints";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -58,9 +57,5 @@ export const claudeAdapter: AgentAdapter = {
     writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf8");
     // Return null so CLI prefers globalMcp for --mcp-config (single source of truth)
     return null;
-  },
-
-  systemHint() {
-    return loomSystemHint("Claude Code");
   },
 };

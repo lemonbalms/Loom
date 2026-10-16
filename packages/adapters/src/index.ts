@@ -5,7 +5,6 @@ import { grokAdapter } from "./grok";
 import { shellAdapter } from "./shell";
 
 export * from "./types";
-export * from "./hints";
 export * from "./user-mcp-config";
 export { claudeAdapter } from "./claude";
 export { codexAdapter } from "./codex";
