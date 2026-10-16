@@ -474,3 +474,135 @@ describe("bridge config worker.maxConcurrent.<agent>: 0 (PLAN 0.37.0 P2 · D4(c)
     expect(loadBridgeConfig("mc-pane").worker).toBeUndefined();
   });
 });
+
+/**
+ * P1 verify L1 (② amendment, architect-accepted — folded into P3 red): readBridgeWorkerFlags runs
+ * every filesystem-free parser the bridge runs, in bridge order (skills → permissions → cwd →
+ * allowedRoots → maxConcurrent → timeoutMs → agentBin → memory → rules → strictEnforcement), still
+ * without loadPolicy / loomDir — so doctor never calls a config valid that bridge start rejects.
+ * Oracle: with a valid (absent) policy.json, the error message of readBridgeWorkerFlags(section)
+ * equals the one loadBridgeConfig(id) throws for the same section, case by case.
+ */
+describe("readBridgeWorkerFlags ≡ loadBridgeConfig errors (P1 verify L1 · ② amendment)", () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "loom-p3-flagsparity-")));
+  const saved = new Map<string, string | undefined>();
+  function setEnv(key: string, value: string | undefined): void {
+    if (!saved.has(key)) saved.set(key, process.env[key]);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  beforeAll(() => {
+    setEnv("LOOM_TEST_HOME", dir);
+    setEnv("LOOM_SESSION", join(dir, "session.json"));
+    setEnv("LOOM_PROFILE", undefined);
+    resetStateHomeDirCache();
+    setActiveProfile(null);
+    mkdirSync(bridgeConfigDir(), { recursive: true });
+  });
+  afterAll(() => {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    resetStateHomeDirCache();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** `undefined` values delete the key from the valid base section. */
+  const section = (over: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = { backend: "headless", cwd: dir, allowedRoots: [dir] };
+    for (const [k, v] of Object.entries(over)) {
+      if (v === undefined) delete out[k];
+      else out[k] = v;
+    }
+    return out;
+  };
+  const save = (id: string, worker: unknown) =>
+    writeFileSync(bridgeConfigPath(id), JSON.stringify({ worker }), "utf8");
+
+  const CASES: Array<[string, Record<string, unknown>]> = [
+    // skills
+    ['skills "x"', { skills: "x" }],
+    ["skills unknown key", { skills: { enabled: true, extra: 1 } }],
+    ["skills enabled not boolean", { skills: { enabled: "yes" } }],
+    // permissions
+    ["permissions not an object", { permissions: [1] }],
+    ["permissions.claude not an object", { permissions: { claude: "x" } }],
+    [
+      "permissions dangerous token",
+      {
+        permissions: {
+          codex: {
+            sandbox: "workspace-write",
+            approvalPolicy: "never",
+            extraArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+          },
+        },
+      },
+    ],
+    // cwd
+    ["headless without cwd", { cwd: undefined }],
+    ["empty cwd", { cwd: "" }],
+    ["relative cwd", { cwd: "work/dir" }],
+    // allowedRoots
+    ["no allowedRoots", { allowedRoots: undefined }],
+    ["empty allowedRoots", { allowedRoots: [] }],
+    ["relative allowedRoots entry", { allowedRoots: ["rel"] }],
+    // maxConcurrent
+    ["maxConcurrent not an object", { maxConcurrent: 3 }],
+    ["maxConcurrent negative", { maxConcurrent: { grok: -1 } }],
+    // timeoutMs
+    ["timeoutMs -1", { timeoutMs: -1 }],
+    ["timeoutMs not a number", { timeoutMs: "1000" }],
+    ["timeoutMs over 2^31-1", { timeoutMs: 2_147_483_648 }],
+    // agentBin
+    ['agentBin "x"', { agentBin: "x" }],
+    ['agentBin codex "/bin/sh"', { agentBin: { codex: "/bin/sh" } }],
+    ["agentBin claude empty", { agentBin: { claude: "" } }],
+    ["agentBin grok not a string", { agentBin: { grok: 7 } }],
+    // memory · rules · strictEnforcement
+    ["memory not an object", { memory: true }],
+    ["rules unknown key", { rules: { enabled: false, x: 1 } }],
+    ["strictEnforcement string", { strictEnforcement: "true" }],
+    // bridge order: the first failing parser wins in both readers
+    ["skills before cwd/strict", { skills: "x", cwd: undefined, strictEnforcement: 1 }],
+    ["permissions before cwd", { permissions: "x", cwd: "rel" }],
+    ["cwd before allowedRoots/maxConcurrent", { cwd: "rel", allowedRoots: [], maxConcurrent: 2 }],
+    [
+      "allowedRoots before maxConcurrent",
+      { allowedRoots: undefined, maxConcurrent: { codex: 1.5 } },
+    ],
+    ["maxConcurrent before timeoutMs", { maxConcurrent: { claude: -2 }, timeoutMs: 0 }],
+    ["timeoutMs before agentBin", { timeoutMs: -1, agentBin: "x" }],
+    ["agentBin before memory", { agentBin: { codex: "/bin/sh" }, memory: 1 }],
+    ["memory before rules", { memory: [1], rules: "x" }],
+    ["rules before strictEnforcement", { rules: 2, strictEnforcement: "x" }],
+  ];
+
+  for (const [i, [name, over]] of CASES.entries()) {
+    test(`same error: ${name}`, () => {
+      const sec = section(over);
+      const id = `parity-${i}`;
+      save(id, sec);
+      const fromBridge = messageOf(() => loadBridgeConfig(id));
+      expect(fromBridge).not.toBe("");
+      expect(messageOf(() => readBridgeWorkerFlags(sec))).toBe(fromBridge);
+    });
+  }
+
+  test("a section loadBridgeConfig accepts is accepted by readBridgeWorkerFlags too", () => {
+    const sec = section({
+      skills: { enabled: true },
+      timeoutMs: 60_000,
+      agentBin: { codex: "/opt/bin/codex" },
+      maxConcurrent: { grok: 0 },
+      memory: { enabled: true },
+      rules: { enabled: true },
+      strictEnforcement: false,
+    });
+    save("parity-ok", sec);
+    expect(messageOf(() => loadBridgeConfig("parity-ok"))).toBe("");
+    expect(messageOf(() => readBridgeWorkerFlags(sec))).toBe("");
+    expect(readBridgeWorkerFlags(sec).enabled).toEqual(["claude", "codex"]);
+  });
+});

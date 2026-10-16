@@ -778,6 +778,49 @@ for (const platform of PLATFORMS) {
       expect(text(s)).not.toMatch(/not resolvable.*grok/);
     });
 
+    test("PATH drift (0.37.0 R17 · R55-L1): maxConcurrent.codex = 0 → codex is not checked", async () => {
+      const path = installUnit(platform, { path: binDir([]) });
+      writeWorker({
+        backend: "headless",
+        cwd: home,
+        allowedRoots: [home],
+        maxConcurrent: { claude: 1, codex: 0 },
+      });
+      const f = fakeRunner();
+      const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
+      expect(text(s)).toMatch(/^warn agent binaries not resolvable via the unit PATH: claude — /m);
+      expect(text(s)).not.toMatch(/not resolvable.*codex/);
+    });
+
+    test("PATH drift (0.37.0 R55-L1): only {codex: 0} named → the enabled claude · grok are still checked", async () => {
+      const path = installUnit(platform, { path: binDir([]) });
+      writeWorker({
+        backend: "headless",
+        cwd: home,
+        allowedRoots: [home],
+        maxConcurrent: { codex: 0 },
+      });
+      const f = fakeRunner();
+      const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
+      expect(text(s)).toMatch(
+        /^warn agent binaries not resolvable via the unit PATH: claude, grok — /m,
+      );
+      expect(text(s)).not.toMatch(/not resolvable.*codex/);
+    });
+
+    test("PATH drift (0.37.0 R17): every agent 0 → no agent binary checked", async () => {
+      const path = installUnit(platform, { path: binDir([]) });
+      writeWorker({
+        backend: "headless",
+        cwd: home,
+        allowedRoots: [home],
+        maxConcurrent: { claude: 0, codex: 0, grok: 0 },
+      });
+      const f = fakeRunner();
+      const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
+      expect(text(s)).not.toContain("agent binaries not resolvable");
+    });
+
     test("PATH drift: bridge config agentBin (absolute) is checked as configured", async () => {
       const path = installUnit(platform, { path: binDir(["claude", "codex"]) });
       const grok = join(binDir(["grok"]), "grok");

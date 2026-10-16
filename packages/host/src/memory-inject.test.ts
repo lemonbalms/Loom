@@ -554,3 +554,59 @@ describe("renderRulesSection (② 규칙 섹션 · R7)", () => {
     expect(r.section.includes("### tiny")).toBe(false);
   });
 });
+
+/**
+ * P1 verify L2 (declared behaviour, folded into P3 red): composeFenceText drops a memory text that
+ * is a lone "\n" (its one trailing newline is stripped, leaving ""), and the rules section can never
+ * meet an empty rule body because loadRules marks every empty / whitespace-only user body `disabled`
+ * (which renderRulesSection excludes).
+ */
+describe("P1 verify L2 — declared edge behaviour", () => {
+  test('composeFenceText("", "", "\\n") === "" (declared)', async () => {
+    const m = await mi();
+    expect(m.composeFenceText("", "", "\n")).toBe("");
+  });
+
+  test("loadRules never yields a non-disabled rule with an empty / whitespace-only body", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const { loadRules } = await import("./rules-store");
+    const L = fs.mkdtempSync(join(os.tmpdir(), "loom-p3-rules-empty-"));
+    try {
+      const dir = join(L, "rules");
+      fs.mkdirSync(dir, { recursive: true });
+      const bodies: Record<string, string> = {
+        "e-empty": "",
+        "e-newlines": "\n\n\n",
+        "e-spaces": "   \t  \n",
+        "e-nbsp": "  \n",
+        "e-ctrl": "\u0007\u0000\n",
+        "report-blockers": " \n",
+        "e-real": "keep me\n",
+      };
+      for (const [id, body] of Object.entries(bodies)) {
+        fs.writeFileSync(
+          join(dir, `${id}.md`),
+          `---\nid: ${id}\nscope: all\npriority: 100\n---\n${body}`,
+        );
+      }
+      const view = loadRules(L);
+      const byId = new Map(view.rules.map((r) => [r.id, r]));
+      for (const id of Object.keys(bodies)) expect(byId.has(id)).toBe(true);
+      for (const r of view.rules) {
+        if (r.status !== "disabled") expect(r.body.trim()).not.toBe("");
+      }
+      expect(byId.get("e-real")?.status).toBe("user");
+      for (const id of ["e-empty", "e-newlines", "e-spaces", "e-nbsp", "report-blockers"]) {
+        expect(byId.get(id)?.status).toBe("disabled");
+      }
+      // … so renderRulesSection never meets an empty body from loadRules.
+      const m = await mi();
+      const r = m.renderRulesSection("codex", view.rules);
+      expect(r.eligible).toBe(view.rules.filter((x) => x.status !== "disabled").length);
+      expect(r.section).toContain("### e-real\nkeep me");
+    } finally {
+      fs.rmSync(L, { recursive: true, force: true });
+    }
+  });
+});

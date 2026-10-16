@@ -243,13 +243,20 @@ describe("bridge → HeadlessDeps profile + memory wiring (PLAN 0.36.0 P4 · R16
     expect(stdin).not.toContain("ENTRY-FOR-work");
   }, 30_000);
 
-  test("bridge without worker.memory → stdin = 0.35 bytes, no memory-snapshot.md", async () => {
+  // PLAN 0.37.0 ⑦② (D3 · C1 → D1 문면): claude has a default gap (network/advisory), so "no block"
+  // needs a policy with no claude gap.
+  const GAP_FREE_POLICY =
+    '{"version":1,"shell":{"deny":[]},"network":true,"mcp":{"deny":[]},"skills":{"allowScripts":[]}}';
+
+  test("bridge without worker.memory → no block (memory off, rules off, gap-free policy), no memory-snapshot.md", async () => {
+    writeFileSync(join(loomDir(), "policy.json"), GAP_FREE_POLICY);
     const { stdin, cardDir } = await runCard({ profile: "work" });
     expect(stdin).toBe(wrapDispatchedPrompt(PROMPT));
     expect(existsSync(join(cardDir, MEMORY_SNAPSHOT_FILE))).toBe(false);
   }, 30_000);
 
-  test("memory {enabled:false} → stdin = 0.35 bytes, no memory-snapshot.md", async () => {
+  test("memory {enabled:false} → no block (memory off, rules off, gap-free policy), no memory-snapshot.md", async () => {
+    writeFileSync(join(loomDir(), "policy.json"), GAP_FREE_POLICY);
     const { stdin, cardDir } = await runCard({ profile: "work", memory: { enabled: false } });
     expect(stdin).toBe(wrapDispatchedPrompt(PROMPT));
     expect(existsSync(join(cardDir, MEMORY_SNAPSHOT_FILE))).toBe(false);

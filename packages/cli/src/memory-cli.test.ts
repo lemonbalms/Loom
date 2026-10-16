@@ -1330,3 +1330,70 @@ describe("spawn: secret · `--` body · doctor Memory · id prefix (P4 verify L3
     { timeout: 180_000 },
   );
 });
+
+// ---------------------------------------------------------------------------------------------
+// PLAN 0.37.0 P3 — `memory list` head: worker.memory.enabled (D6 · ② memory list 머리 · R16)
+// ---------------------------------------------------------------------------------------------
+
+describe("0.37.0 P3 — memory list head line from the optional memoryEnabled dep (R16)", () => {
+  type MemoryEnabled = () => boolean | "no bridge config" | "invalid bridge config";
+  const withDep = (memoryEnabled: MemoryEnabled, over: Partial<MemoryCliDeps> = {}) =>
+    session({ ...over, memoryEnabled } as unknown as Partial<MemoryCliDeps>);
+
+  for (const [value, text] of [
+    [true, "true"],
+    [false, "false"],
+    ["no bridge config", "no bridge config"],
+    ["invalid bridge config", "invalid bridge config"],
+  ] as const) {
+    test(`memoryEnabled → ${text}: second line, right after the profile line`, async () => {
+      const s = withDep(() => value, { profile: "work", profileSource: "--profile" });
+      const r = await s.call("list", [], { agent: "claude" });
+      expect(r.code).toBe(0);
+      expect(r.out.slice(0, 3)).toEqual([
+        "profile work (from --profile)",
+        `memory: worker.memory.enabled = ${text} (profile work)`,
+        `knowledge/INDEX.md: ${join(L, "knowledge", "INDEX.md")} (absent)`,
+      ]);
+    });
+  }
+
+  test("memoryEnabled omitted → 0.36 output (no memory: line)", async () => {
+    const r = await session().call("list", [], { agent: "claude" });
+    expect(r.out.some((l) => l.startsWith("memory: "))).toBe(false);
+    expect(r.out[1]).toBe(`knowledge/INDEX.md: ${join(L, "knowledge", "INDEX.md")} (absent)`);
+  });
+
+  test("--json is unchanged by memoryEnabled", async () => {
+    const plain = await session().call("list", [], { agent: "claude", json: true });
+    const withFlag = await withDep(() => true).call("list", [], { agent: "claude", json: true });
+    expect(withFlag.out).toEqual(plain.out);
+  });
+
+  test("real deps (spawn): no bridge config · headless memory on · invalid config → the three texts", () => {
+    const T = mkdtempSync(join(tmpdir(), "loom-memcli-p3-"));
+    try {
+      const second = () => runCli(T, ["memory", "list", "--agent", "claude"]).stdout.split("\n")[1];
+      expect(second()).toBe("memory: worker.memory.enabled = no bridge config (profile default)");
+      const bridgeDir = join(T, ".loom", "bridge");
+      mkdirSync(bridgeDir, { recursive: true });
+      const cfg = join(bridgeDir, "default.json");
+      writeFileSync(
+        cfg,
+        JSON.stringify({
+          worker: { backend: "headless", cwd: T, allowedRoots: [T], memory: { enabled: true } },
+        }),
+      );
+      expect(second()).toBe("memory: worker.memory.enabled = true (profile default)");
+      writeFileSync(
+        cfg,
+        JSON.stringify({ worker: { backend: "headless", cwd: T, allowedRoots: [T], memory: 1 } }),
+      );
+      expect(second()).toBe(
+        "memory: worker.memory.enabled = invalid bridge config (profile default)",
+      );
+    } finally {
+      rmSync(T, { recursive: true, force: true });
+    }
+  }, 90_000);
+});
