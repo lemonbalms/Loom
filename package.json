@@ -43,6 +43,7 @@
     "smoke:mcp-precheck": "bun run scripts/smoke-mcp-precheck.ts",
     "smoke:bridge-lifecycle": "bun run scripts/smoke-bridge-lifecycle.ts",
     "smoke:service": "bun run scripts/smoke-service.ts",
+    "smoke:memory": "bun run scripts/smoke-memory.ts",
     "dogfood:room": "bash scripts/dogfood-room-up.sh",
     "dogfood:up": "bash scripts/dogfood-up.sh",
     "dogfood:status": "bash scripts/dogfood-room-status.sh",
