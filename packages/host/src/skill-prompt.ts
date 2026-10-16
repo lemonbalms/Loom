@@ -43,7 +43,7 @@ const UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 /** Letters/digits of the DISPATCHED_TASK_MARKER head ("Loom dispatched task"). */
 const MARKER_LETTERS = "loomdispatchedtask";
 
-function containsMarker(text: string): boolean {
+export function containsMarker(text: string): boolean {
   return text
     .normalize("NFKC")
     .toLowerCase()

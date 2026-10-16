@@ -262,10 +262,11 @@ export function promptFingerprint(
   argvTemplateVersion: string,
   skillsManifestHash: string,
   policyHash: string,
+  memorySnapshotHash = "",
 ): string {
   return createHash("sha256")
     .update(
-      `${hint}\0${stableStringify(permissions)}\0${argvTemplateVersion}\0${skillsManifestHash}\0${policyHash}`,
+      `${hint}\0${stableStringify(permissions)}\0${argvTemplateVersion}\0${skillsManifestHash}\0${policyHash}${memorySnapshotHash ? `\0${memorySnapshotHash}` : ""}`,
     )
     .digest("hex");
 }
@@ -279,6 +280,7 @@ export function effectiveWorkerPolicy(config: Pick<WorkerConfig, "permissions" |
 export function workerFingerprint(
   config: Pick<WorkerConfig, "permissions" | "policy">,
   skillsManifestHash = "",
+  memorySnapshotHash = "",
 ): string {
   return promptFingerprint(
     HEADLESS_WORKER_HINT,
@@ -286,6 +288,7 @@ export function workerFingerprint(
     ARGV_TEMPLATE_VERSION,
     skillsManifestHash,
     effectiveWorkerPolicy(config).hash,
+    memorySnapshotHash,
   );
 }
 
