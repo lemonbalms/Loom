@@ -144,6 +144,11 @@ export type AvailableSkill = {
   description: string;
   /** Absolute path of SKILL.md inside the card copy (under the caller's loomDir). */
   skillMdPath: string;
+  /**
+   * PLAN 0.37.0 D8 · R19: present (true) only for a user skill whose name is also a bundled
+   * skill. Listing label only — not in the manifest, so never a fingerprint input.
+   */
+  shadowsBuiltin?: true;
 };
 
 export type UnavailableSkill = { name: string; reason: SkillUnavailableReason };
@@ -978,6 +983,9 @@ export async function materializeCardSkills(opts: MaterializeOptions): Promise<M
       source: s.source,
       description: s.description,
       skillMdPath: join(pluginDir, "skills", s.name, "SKILL.md"),
+      ...(s.source === "user" && BUILTIN_SKILLS.some((b) => b.name === s.name)
+        ? { shadowsBuiltin: true as const }
+        : {}),
     })),
     unavailable,
   };

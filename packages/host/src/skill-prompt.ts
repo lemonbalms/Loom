@@ -5,7 +5,8 @@
  * PLAN 0.31.0 P4. First-turn skill listing for the worker prompt (D5 · R6 · R49-L1).
  *
  * codex/grok: `Available skills — read the SKILL.md before use:` then one
- *   `- <name>: <description> — <abs SKILL.md>` per available skill.
+ *   `- <name>: <description> — <abs SKILL.md>` per available skill, plus
+ *   SKILL_SHADOW_SUFFIX when a user skill shadows the bundled one (0.37.0 D8).
  * claude: no Available lines (the `--plugin-dir` plugin injects them natively, D4/D5).
  * All three: `- <name>: unavailable: <reason>`.
  * Cap: at most 20 entry lines and 4,096 UTF-8 bytes for the whole block (header,
@@ -38,6 +39,8 @@ export const SKILL_LISTING_HEADER = "Available skills — read the SKILL.md befo
 export const SKILL_LISTING_CLAUDE_HEADER = "Unavailable skills:";
 export const SKILL_LISTING_MAX_ENTRIES = 20;
 export const SKILL_LISTING_MAX_BYTES = 4096;
+/** PLAN 0.37.0 D8: end of a codex/grok Available line whose user skill shadows a bundled one. */
+export const SKILL_SHADOW_SUFFIX = " (user, shadows bundled)";
 
 const UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 /** Letters/digits of the DISPATCHED_TASK_MARKER head ("Loom dispatched task"). */
@@ -96,7 +99,8 @@ export function renderSkillListing(
       assertName(skill.name);
       assertDescription(skill.description);
       assertSkillMdPath(skill.skillMdPath);
-      entries.push(`- ${skill.name}: ${skill.description} — ${skill.skillMdPath}`);
+      const label = skill.shadowsBuiltin === true ? SKILL_SHADOW_SUFFIX : "";
+      entries.push(`- ${skill.name}: ${skill.description} — ${skill.skillMdPath}${label}`);
     }
   }
   for (const skill of skills.unavailable) {
