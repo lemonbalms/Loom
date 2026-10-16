@@ -27,6 +27,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import * as fsp from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DISPATCHED_TASK_MARKER, wrapDispatchedPrompt } from "@loom/protocol";
@@ -1361,4 +1362,80 @@ describe("P3 reserveShutdownAfterClaimLocked: unchanged code (R12)", () => {
     expect(saved.promptFingerprint).toBe(workerFingerprint(h.config, "", hash));
     expect(h.spawns()).toBe(0);
   }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// P4 red (P3 verify L1): the R18 read is hardened against a swap after lstat
+// (O_NOFOLLOW · O_NONBLOCK · fstat re-check · size re-check). These pin it.
+// ---------------------------------------------------------------------------
+
+describe("P3 verify L1: memory-snapshot.md swapped after lstat (R18)", () => {
+  const SWAP_REASON = {
+    symlink: "not a regular file",
+    fifo: "not a regular file",
+    big: "too large",
+    dir: "not a regular file",
+    bytes: "hash mismatch",
+  } as const;
+
+  test("a directory in place of the file → not a regular file", async () => {
+    const h = new Harness();
+    await seedWithSnapshot(h);
+    unlinkSync(h.snapshotPath());
+    mkdirSync(h.snapshotPath());
+    await observed(() => h.dispatcher(ON).recover());
+    expect(h.spawns()).toBe(0);
+    expectNeedsVerification(h);
+    expect(gateLines()).toEqual([gateLine(h, "not a regular file")]);
+  }, 10_000);
+
+  test("a FIFO in place of the file → not a regular file, no hang", async () => {
+    const h = new Harness();
+    await seedWithSnapshot(h);
+    unlinkSync(h.snapshotPath());
+    childProcess.execFileSync("/usr/bin/mkfifo", [h.snapshotPath()]);
+    await observed(() => h.dispatcher(ON).recover());
+    expect(h.spawns()).toBe(0);
+    expectNeedsVerification(h);
+    expect(gateLines()).toEqual([gateLine(h, "not a regular file")]);
+  }, 10_000);
+
+  for (const swap of ["symlink", "fifo", "big", "dir", "bytes"] as const) {
+    test(`swap to ${swap} right after lstat → needs_verification · ${SWAP_REASON[swap]}`, async () => {
+      const h = new Harness();
+      await seedWithSnapshot(h);
+      const original = fsp.lstat;
+      let swapped = 0;
+      const spy = spyOn(fsp, "lstat").mockImplementation((async (
+        ...args: Parameters<typeof original>
+      ) => {
+        const st = await original(...args);
+        if (String(args[0]).endsWith(MEMORY_SNAPSHOT_FILE) && swapped === 0) {
+          swapped += 1;
+          const p = h.snapshotPath();
+          const bytes = readFileSync(p);
+          unlinkSync(p);
+          if (swap === "symlink") {
+            const elsewhere = join(h.root, "elsewhere-race.md");
+            writeFileSync(elsewhere, bytes);
+            symlinkSync(elsewhere, p);
+          } else if (swap === "fifo") childProcess.execFileSync("/usr/bin/mkfifo", [p]);
+          else if (swap === "big") writeFileSync(p, Buffer.alloc(1024 * 1024 + 1, 0x61));
+          else if (swap === "dir") mkdirSync(p);
+          else writeFileSync(p, Buffer.concat([bytes, Buffer.from("x")]));
+        }
+        return st;
+      }) as typeof original);
+      try {
+        await observed(() => h.dispatcher(ON).recover());
+      } finally {
+        spy.mockRestore();
+      }
+      // The lstat the code saw was the intact regular file; only the post-lstat checks catch it.
+      expect(swapped).toBe(1);
+      expect(h.spawns()).toBe(0);
+      expectNeedsVerification(h);
+      expect(gateLines()).toEqual([gateLine(h, SWAP_REASON[swap])]);
+    }, 10_000);
+  }
 });
