@@ -151,6 +151,8 @@ import {
   hostSection,
   installEnvSection,
   memorySection,
+  policySection,
+  readPolicyDoctorInput,
   relaySection,
   offlineBridgeStatusLines,
   renderDoctor,
@@ -2307,6 +2309,9 @@ async function cmdDoctor(flags: Record<string, string | boolean>) {
     cliBridgeMainPath: bridgeMainPath,
   });
 
+  // PLAN 0.37.0 D6 · C3 → R14: policy + bridge worker flags from the read-only home (never loomDir()).
+  const policyInput = readPolicyDoctorInput(home, bridgeProfile);
+
   const sections = [
     installEnvSection({
       version: VERSION,
@@ -2335,10 +2340,15 @@ async function cmdDoctor(flags: Record<string, string | boolean>) {
       rpc: hostRpc,
     }),
     // PLAN 0.33.0 D5 / R6: files + pid only, ok/warn/info — never changes the exit code.
-    bridgeSection(readBridgeView(bridgeProfile, pathJoin(home, "bridge"))),
+    bridgeSection({
+      ...readBridgeView(bridgeProfile, pathJoin(home, "bridge")),
+      worker: policyInput.worker,
+    }),
     service,
     // PLAN 0.35.0 D7 / ③: read-only (no lock, no write), ok/warn/info — never changes the exit code.
-    memorySection(readMemoryDoctorInput(home)),
+    memorySection({ ...readMemoryDoctorInput(home), worker: policyInput.worker }),
+    // PLAN 0.37.0 D6 / ③: last section; only an invalid policy.json is `fail` (exit 1).
+    policySection(policyInput),
   ];
   process.stdout.write(renderDoctor(sections));
   process.exit(doctorExitCode(sections));

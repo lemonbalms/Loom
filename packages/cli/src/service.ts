@@ -1101,7 +1101,8 @@ export function parseInstalledUnit(
  * Agent binaries this profile's bridge can launch, read raw — no throw. Pane (or no / invalid
  * config) → none (agents run in herdr panes, not from the unit PATH). Headless → the agents the
  * config names in `worker.agentBin` / `worker.maxConcurrent` (agentBin path or default name);
- * a headless config naming none can launch any agent → all defaults.
+ * a headless config naming none can launch any agent → all defaults. Agents set to
+ * `worker.maxConcurrent.<agent>: 0` are disabled and never checked (0.37.0 R17 · R55-L1).
  */
 function configuredAgentBins(bridgeDir: string, profile: string): string[] {
   type W = { backend?: unknown; agentBin?: unknown; maxConcurrent?: unknown };
@@ -1119,8 +1120,10 @@ function configuredAgentBins(bridgeDir: string, profile: string): string[] {
     v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
   const bin = obj(worker.agentBin);
   const conc = obj(worker.maxConcurrent);
-  const named = AGENT_KINDS.filter((k) => k in bin || k in conc);
-  return (named.length > 0 ? named : AGENT_KINDS).map((k) => {
+  // PLAN 0.37.0 R17 · R55-L1: a `worker.maxConcurrent.<agent>: 0` agent is never launched.
+  const enabled = AGENT_KINDS.filter((k) => conc[k] !== 0);
+  const named = enabled.filter((k) => k in bin || k in conc);
+  return (named.length > 0 ? named : enabled).map((k) => {
     const v = bin[k];
     return typeof v === "string" && v.length > 0 ? v : DEFAULT_AGENT_BINS[k]!;
   });

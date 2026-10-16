@@ -552,16 +552,22 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
 
 /**
  * PLAN 0.37.0 ② doctor용 순수 파서 (R14). `raw` = the config file's `worker` value. Not headless
- * → pane defaults. Headless → the same parsers (same wording) as loadBridgeConfig for
- * maxConcurrent · strictEnforcement · memory · rules · permissions. Never calls loomDir() or
- * loadPolicy.
+ * → pane defaults. Headless → every filesystem-free parser loadBridgeConfig runs, in the bridge's
+ * order and with the same wording (P1 verify L1 — ② amendment): skills → permissions → cwd →
+ * allowedRoots → maxConcurrent → timeoutMs → agentBin → memory → rules → strictEnforcement, so the
+ * doctor never calls a config valid that bridge start rejects. Never calls loomDir() or loadPolicy.
  */
 export function readBridgeWorkerFlags(raw: unknown): BridgeWorkerFlags {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return paneWorkerFlags();
   const src = raw as Record<string, unknown>;
   if (src.backend !== "headless") return paneWorkerFlags();
+  parseSkills(src.skills);
   const permissions = parsePermissions(src.permissions);
+  parseCwd(src.cwd);
+  parseAllowedRoots(src.allowedRoots);
   const maxConcurrent = parseMaxConcurrent(src.maxConcurrent);
+  parseTimeoutMs(src.timeoutMs);
+  parseAgentBin(src.agentBin);
   const memory = parseMemory(src.memory);
   const rules = parseRules(src.rules);
   const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);

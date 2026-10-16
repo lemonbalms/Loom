@@ -1,4 +1,18 @@
-import type { LoomSession, StickyHostMeta } from "@loom/host";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import {
+  type BridgeWorkerFlags,
+  bridgeConfigSafeName,
+  type Gap,
+  type LoomSession,
+  loadPolicy,
+  POLICY_ENFORCEMENT,
+  policyGaps,
+  readBridgeWorkerFlags,
+  renderGapLine,
+  resolveWorkerPolicy,
+  type StickyHostMeta,
+} from "@loom/host";
 
 export type DoctorStatus = "ok" | "warn" | "fail" | "info";
 
@@ -320,7 +334,23 @@ export type BridgeReadInput = {
   nowMs: number;
   /** Advisory heartbeat staleness (PLAN D5: 3 × 5 s heartbeat). */
   staleMs?: number;
+  /** PLAN 0.37.0 D6 · R15: worker flags of the profile's bridge config — last line when present. */
+  worker?: WorkerFlagsView;
 };
+
+/** PLAN 0.37.0 ② Bridge · Memory 절 표시 — `worker.memory.enabled` / `worker.rules.enabled`. */
+export type WorkerFlagsView = {
+  profile: string;
+  memory: boolean | "no bridge config" | "invalid bridge config";
+  rules: boolean | "no bridge config" | "invalid bridge config";
+};
+
+function workerFlagsLine(v: WorkerFlagsView): DoctorLine {
+  return {
+    status: "info",
+    message: `worker.memory.enabled = ${v.memory} · worker.rules.enabled = ${v.rules} (profile ${v.profile})`,
+  };
+}
 
 const BRIDGE_STALE_MS_DEFAULT = 15_000;
 
@@ -375,6 +405,7 @@ export function bridgeSection(input: BridgeReadInput): DoctorSection {
     );
     if (input.lock.kind !== "none") lines.push({ status: "info", message: lockText(input.lock) });
     lines.push({ status: "info", message: `log: ${input.logPath}` });
+    if (input.worker) lines.push(workerFlagsLine(input.worker));
     return { title: "Bridge", lines };
   }
 
@@ -416,6 +447,7 @@ export function bridgeSection(input: BridgeReadInput): DoctorSection {
   lines.push({ status: "info", message: lockText(input.lock) });
   lines.push({ status: "info", message: `status file: ${input.statusPath}` });
   lines.push({ status: "info", message: `log: ${input.logPath}` });
+  if (input.worker) lines.push(workerFlagsLine(input.worker));
   return { title: "Bridge", lines };
 }
 
@@ -739,6 +771,8 @@ export type MemoryDoctorInput = {
     truncated: string[];
     scanCapped: boolean;
   };
+  /** PLAN 0.37.0 D6 · R15: worker flags of the profile's bridge config — last line when present. */
+  worker?: WorkerFlagsView;
 };
 
 const MEMORY_DOCTOR_ACTIVE_CAP = 200;
@@ -965,7 +999,238 @@ export function memorySection(input: MemoryDoctorInput): DoctorSection {
   }
 
   if (!modes) lines.push({ status: "info", message: "mode bits not checked on Windows" });
+  if (input.worker) lines.push(workerFlagsLine(input.worker));
   return { title: "Memory", lines };
+}
+
+// ---------------------------------------------------------------------------------------------
+// PLAN 0.37.0 D6 / ③ — Policy section (C3 → R14: read-only home, never loomDir())
+// ---------------------------------------------------------------------------------------------
+
+type PolicyAgent = Gap["agent"];
+const POLICY_AGENTS: readonly PolicyAgent[] = ["claude", "codex", "grok"];
+
+export type PolicyDoctorInput = {
+  /** The doctor's read-only Loom home (`<LOOM_TEST_HOME|HOME>/.loom`). */
+  home: string;
+  /** Bridge profile whose config is read. */
+  profile: string;
+  /** `<home>/policy.json`. */
+  policyPath: string;
+  /** `<home>/policy.json` state per `loadPolicy(home)` — the loader MCP and the bridge use. */
+  policy: { state: "default" } | { state: "file" } | { state: "invalid"; message: string };
+  /** `<root>/.fable/policy.json` exists (same root as `home`; read only, never renamed). */
+  legacyPolicy: boolean;
+  /** `<home>/bridge/<safe profile>.json`. */
+  bridgePath: string;
+  /** Raw config file `worker` value → `readBridgeWorkerFlags` (same parsers · wording as the bridge). */
+  bridge:
+    | { state: "absent" }
+    | { state: "invalid"; message: string }
+    | { state: "ok"; flags: BridgeWorkerFlags };
+  /** `WorkerPolicy.hash` (fingerprint input); null when the policy is invalid. */
+  hash: string | null;
+  /** Agents the gaps are computed for (all three when the config is absent / invalid). */
+  enabled: PolicyAgent[];
+  /** `policyGaps(effective, enabled)` — the bridge's function on the bridge's input (D1). */
+  gaps: Gap[];
+  strictEnforcement: boolean;
+  /** Bridge · Memory section flag line (D6). */
+  worker: WorkerFlagsView;
+};
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * Read-only gatherer for the Policy section (and the Bridge · Memory flag line). `home` is the
+ * doctor's own `<root>/.loom` — `loadPolicy(home)` (R14), the bridge config raw file under
+ * `<home>/bridge/`. Never calls `loomDir()` (which may migrate `~/.fable`), never writes. Never
+ * throws.
+ */
+export function readPolicyDoctorInput(home: string, profile: string): PolicyDoctorInput {
+  const policyPath = join(home, "policy.json");
+  const legacyPolicy = existsSync(join(dirname(home), ".fable", "policy.json"));
+  const bridgePath = join(home, "bridge", `${bridgeConfigSafeName(profile)}.json`);
+
+  // Bridge config — same reading as loadBridgeConfig: a missing file is "absent"; an unreadable
+  // or non-JSON / non-object file falls back to defaults (no worker section → pane).
+  let bridge: PolicyDoctorInput["bridge"];
+  if (!existsSync(bridgePath)) {
+    bridge = { state: "absent" };
+  } else {
+    let worker: unknown;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(bridgePath, "utf8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        worker = (parsed as Record<string, unknown>).worker;
+      }
+    } catch {
+      worker = undefined;
+    }
+    try {
+      bridge = { state: "ok", flags: readBridgeWorkerFlags(worker) };
+    } catch (e) {
+      bridge = { state: "invalid", message: errText(e) };
+    }
+  }
+  const viewValue = (pick: (f: BridgeWorkerFlags) => boolean): WorkerFlagsView["memory"] =>
+    bridge.state === "absent"
+      ? "no bridge config"
+      : bridge.state === "invalid"
+        ? "invalid bridge config"
+        : pick(bridge.flags);
+  const worker: WorkerFlagsView = {
+    profile,
+    memory: viewValue((f) => f.memoryEnabled),
+    rules: viewValue((f) => f.rulesEnabled),
+  };
+  const strictEnforcement = bridge.state === "ok" && bridge.flags.strictEnforcement;
+
+  let userPolicy: ReturnType<typeof loadPolicy>;
+  try {
+    userPolicy = loadPolicy(home);
+  } catch (e) {
+    return {
+      home,
+      profile,
+      policyPath,
+      policy: { state: "invalid", message: errText(e) },
+      legacyPolicy,
+      bridgePath,
+      bridge,
+      hash: null,
+      enabled: [],
+      gaps: [],
+      strictEnforcement,
+      worker,
+    };
+  }
+
+  const flags = bridge.state === "ok" ? bridge.flags : readBridgeWorkerFlags(undefined);
+  let enabled: PolicyAgent[] = bridge.state === "ok" ? [...flags.enabled] : [...POLICY_AGENTS];
+  let resolved: ReturnType<typeof resolveWorkerPolicy>;
+  try {
+    resolved = resolveWorkerPolicy(flags.permissions, userPolicy, { policyPath });
+  } catch (e) {
+    // A deprecated bridge list conflicting with policy.json: the bridge refuses to start (D8 ·
+    // R49-M2) — shown as an invalid bridge config, all agents with default permissions.
+    bridge = { state: "invalid", message: errText(e) };
+    enabled = [...POLICY_AGENTS];
+    resolved = resolveWorkerPolicy(readBridgeWorkerFlags(undefined).permissions, userPolicy, {
+      policyPath,
+    });
+  }
+  return {
+    home,
+    profile,
+    policyPath,
+    policy: { state: userPolicy === null ? "default" : "file" },
+    legacyPolicy,
+    bridgePath,
+    bridge,
+    hash: resolved.hash,
+    enabled,
+    gaps: policyGaps(resolved.effective, enabled),
+    strictEnforcement: bridge.state === "ok" && bridge.flags.strictEnforcement,
+    worker,
+  };
+}
+
+/**
+ * PLAN 0.37.0 D6 / ③ — `loom doctor` Policy section (last section). Rows top to bottom: source
+ * (+ legacy) · hash · bridge config · one row per agent · gaps · strict. `fail` only for an
+ * invalid policy.json (then the rows below the source are omitted); gaps are `warn` and never
+ * change the exit code. Gap lines are `renderGapLine` — the bridge warning without `warning: `.
+ */
+export function policySection(input: PolicyDoctorInput): DoctorSection {
+  const lines: DoctorLine[] = [];
+  const legacy = (): void => {
+    if (input.legacyPolicy) {
+      lines.push({
+        status: "info",
+        message: "legacy ~/.fable/policy.json present — bridge/MCP migrate it on first run",
+      });
+    }
+  };
+
+  if (input.policy.state === "invalid") {
+    lines.push({
+      status: "fail",
+      message: `policy.json invalid: ${input.policy.message} — every Loom MCP call is refused and a headless bridge refuses to start`,
+    });
+    legacy();
+    return { title: "Policy", lines };
+  }
+  lines.push({
+    status: "info",
+    message:
+      input.policy.state === "file"
+        ? `policy: ${input.policyPath}`
+        : `policy: built-in defaults (no ${input.policyPath})`,
+  });
+  legacy();
+  if (input.hash !== null) {
+    lines.push({ status: "info", message: `worker policy hash ${input.hash} (fingerprint input)` });
+  }
+
+  const bridge = input.bridge;
+  if (bridge.state === "absent") {
+    lines.push({
+      status: "info",
+      message: `no bridge config for profile ${input.profile} — all agents assumed enabled`,
+    });
+  } else if (bridge.state === "invalid") {
+    lines.push({
+      status: "warn",
+      message: `bridge config invalid: ${bridge.message} — the headless bridge refuses to start; showing all agents`,
+    });
+  } else {
+    const enabledText = bridge.flags.enabled.length > 0 ? bridge.flags.enabled.join(", ") : "none";
+    lines.push({
+      status: "info",
+      message: `bridge config ${input.bridgePath} (profile ${input.profile}): backend ${bridge.flags.backend} · enabled ${enabledText}`,
+    });
+    if (bridge.flags.backend === "pane") {
+      lines.push({
+        status: "info",
+        message: "backend is pane — the policy notice and warnings apply to headless workers only",
+      });
+    }
+  }
+
+  const headlessOk = bridge.state === "ok" && bridge.flags.backend === "headless";
+  for (const agent of POLICY_AGENTS) {
+    if (headlessOk && !input.enabled.includes(agent)) {
+      lines.push({
+        status: "info",
+        message: `${agent}: disabled (worker.maxConcurrent.${agent} = 0) — not checked`,
+      });
+      continue;
+    }
+    const t = POLICY_ENFORCEMENT;
+    lines.push({
+      status: "info",
+      message: `${agent}: shell.deny ${t.shellDeny[agent]} · network ${t.network[agent]} · mcp.deny ${t.mcpDeny[agent]} · mcp.isolate ${t.mcpIsolate[agent]}`,
+    });
+  }
+
+  if (input.gaps.length === 0) {
+    lines.push({ status: "ok", message: "no policy gaps for enabled agents" });
+  } else {
+    for (const g of input.gaps) lines.push({ status: "warn", message: renderGapLine(g) });
+  }
+
+  const refuses =
+    input.strictEnforcement && input.gaps.length > 0
+      ? ` — the bridge refuses to start (${input.gaps.length} gaps)`
+      : "";
+  lines.push({
+    status: "info",
+    message: `worker.strictEnforcement = ${input.strictEnforcement} (profile ${input.profile})${refuses}`,
+  });
+  return { title: "Policy", lines };
 }
 
 export function summarizeDoctor(sections: DoctorSection[]): Record<DoctorStatus, number> {

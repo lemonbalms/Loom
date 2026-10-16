@@ -91,8 +91,15 @@ import {
   workerConfigFromBridge,
   type BridgeConfig,
 } from "./bridge-config";
-import { type AgentKind } from "./agent-argv";
+import { type AgentKind, effectiveWorkerPolicy } from "./agent-argv";
 import { HeadlessDispatcher } from "./headless-worker";
+import {
+  enabledAgentsOf,
+  type Gap,
+  policyGaps,
+  renderGapWarning,
+  renderStrictRefusal,
+} from "./policy-gaps";
 import {
   writeBridgeMeta,
   clearBridgeMeta,
@@ -881,6 +888,18 @@ async function startLockedBridgeRuntime(
   const headlessConfig = cfg.worker?.backend === "headless" ? workerConfigFromBridge(cfg) : null;
   // PLAN 0.31.0 D8: deprecated worker.permissions tool lists warn once at startup.
   for (const warning of headlessConfig?.policy?.warnings ?? []) log(`warning: ${warning}`);
+  // PLAN 0.37.0 ② bridge 기동 (D4(b) · D5 · R4 · R13): one Gap[] per start, computed only for a
+  // headless config — warnings, the strict refusal and the worker notice all render from it.
+  let policyGapsAtStart: Gap[] = [];
+  if (headlessConfig) {
+    const enabled = enabledAgentsOf(headlessConfig.maxConcurrent);
+    policyGapsAtStart = policyGaps(effectiveWorkerPolicy(headlessConfig).effective, enabled);
+    if (cfg.worker?.strictEnforcement === true && policyGapsAtStart.length > 0) {
+      // Before herdr and the room join: the existing startup-failure path (lastError · exit 1).
+      throw new Error(renderStrictRefusal(policyGapsAtStart));
+    }
+    for (const g of policyGapsAtStart) log(renderGapWarning(g));
+  }
   let headlessCommands = headlessConfig ? headlessAgentCommands(cfg) : null;
   if (headlessCommands && opts?.headlessAgentCommandOverride) {
     headlessCommands = headlessCommandsFromOverride(opts.headlessAgentCommandOverride);
@@ -1111,6 +1130,10 @@ async function startLockedBridgeRuntime(
         // PLAN 0.36.0 D8 · R1: the profile resolved above (no re-resolution) + the opt-in flag.
         profile,
         memory: cfg.worker?.memory?.enabled === true ? { enabled: true } : undefined,
+        // PLAN 0.37.0 R4 · D3: the start-time Gap[] (the worker keeps its card agent's gaps) and
+        // the opt-in standing rules.
+        policyGaps: policyGapsAtStart,
+        rules: cfg.worker?.rules?.enabled === true ? { enabled: true } : undefined,
         commands: headlessCommands,
         // PLAN 0.33.0 R2: inner bound below the outer STOP_BOUND_MS.
         closeDeadlineMs: HEADLESS_CLOSE_BOUND_MS,

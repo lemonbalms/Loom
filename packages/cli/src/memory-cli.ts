@@ -92,6 +92,11 @@ export type MemoryCliDeps = {
   stderr: (line: string) => void;
   /** `worker.skills.enabled` of the profile's bridge config; null = no bridge config. */
   skillsEnabled?: () => boolean | null;
+  /**
+   * PLAN 0.37.0 ② `memory list` 머리 (D6 · R16): `worker.memory.enabled` of the profile's bridge
+   * config. Present → one head line after the `profile …` line; omitted → 0.36 output.
+   */
+  memoryEnabled?: () => boolean | "no bridge config" | "invalid bridge config";
 };
 
 export type CliArgs = { positional: readonly string[]; passthrough: readonly string[] };
@@ -553,6 +558,15 @@ function memoryList(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps): number
   }
 
   deps.stdout(`profile ${deps.profile} (from ${deps.profileSource})`);
+  if (deps.memoryEnabled) {
+    let enabled: boolean | "no bridge config" | "invalid bridge config";
+    try {
+      enabled = deps.memoryEnabled();
+    } catch {
+      enabled = "invalid bridge config";
+    }
+    deps.stdout(`memory: worker.memory.enabled = ${enabled} (profile ${deps.profile})`);
+  }
   deps.stdout(humanFileText("knowledge/INDEX.md", index));
   for (const a of agents) {
     deps.stdout(`agent ${a.agentKey}  ${a.store.dir}`);
@@ -882,6 +896,15 @@ export function realMemoryCliDeps(flags: CliFlags): MemoryCliDeps {
     skillsEnabled: () => {
       if (!existsSync(bridgeConfigPath(profile))) return null;
       return loadBridgeConfig(profile).worker?.skills?.enabled === true;
+    },
+    // PLAN 0.37.0 R16: no file → "no bridge config" · loadBridgeConfig throws → "invalid bridge config".
+    memoryEnabled: () => {
+      if (!existsSync(bridgeConfigPath(profile))) return "no bridge config";
+      try {
+        return loadBridgeConfig(profile).worker?.memory?.enabled === true;
+      } catch {
+        return "invalid bridge config";
+      }
     },
   };
 }
