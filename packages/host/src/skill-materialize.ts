@@ -727,6 +727,114 @@ async function resolveSkill(
   return builtin ? { source: "builtin", loaded: loadBuiltinSkill(builtin) } : null;
 }
 
+/** PLAN 0.35.0 R15. `unknown` = no valid policy to judge by (policy.json invalid). */
+export type SkillAvailability = "available" | "unavailable" | "unknown";
+
+export type SkillInventoryItem = {
+  name: string;
+  /** Same rule as resolveSkill: a user entry wins whenever it exists, even broken. */
+  source: SkillSource;
+  /** A user entry hides the bundled skill of the same name. */
+  shadowsBuiltin: boolean;
+  status: SkillAvailability;
+  /** Set when status is "unavailable". */
+  reason: SkillUnavailableReason | null;
+  /** Sanitized SKILL.md description when it parses, else null. */
+  description: string | null;
+};
+
+export type SkillInventory = {
+  /** Builtin names ∪ valid user entry names, sorted by name. */
+  skills: SkillInventoryItem[];
+  /** User skills-dir entries whose name fails SKILL_NAME_RE, sorted. */
+  ignored: string[];
+  userRoot: "absent" | "dir" | "unsafe";
+};
+
+/**
+ * PLAN 0.35.0 D7 / R15 (`loom skills list`). Read-only inventory of every installed skill —
+ * builtin and `<loomDir>/skills/<name>` — with source and shadowing resolved exactly as
+ * materializeCardSkills does (resolveSkill), and availability judged by the same
+ * loadUserSkill / loadBuiltinSkill / evaluate path. `policy` null = availability unknown.
+ * Never copies, creates or writes anything; never throws on file content.
+ */
+export async function inventorySkills(
+  loomDir: string,
+  policy: SkillPolicy | null,
+): Promise<SkillInventory> {
+  let userRoot = "";
+  let rootState: UserRoot = "absent";
+  try {
+    const root = await realLoomDir(loomDir);
+    if (root !== null) {
+      userRoot = join(root, "skills");
+      rootState = await userRootState(userRoot);
+    }
+  } catch {
+    rootState = "unsafe";
+  }
+
+  const builtinNames = new Set(BUILTIN_SKILLS.map((s) => s.name));
+  const names = new Set(builtinNames);
+  const ignored: string[] = [];
+  if (rootState === "dir") {
+    let entries: string[] | null = null;
+    try {
+      entries = await listCapped(userRoot, DIR_MAX_ENTRIES);
+    } catch {
+      entries = null;
+    }
+    for (const entry of entries ?? []) {
+      if (SKILL_NAME_RE.test(entry)) names.add(entry);
+      else ignored.push(entry);
+    }
+  }
+
+  const skills: SkillInventoryItem[] = [];
+  for (const name of [...names].sort(compareCodeUnits)) {
+    const found = await resolveSkill(name, userRoot, rootState);
+    if (!found) {
+      // The user entry vanished between listing and resolving.
+      skills.push({
+        name,
+        source: "user",
+        shadowsBuiltin: false,
+        status: "unavailable",
+        reason: "not installed",
+        description: null,
+      });
+      continue;
+    }
+    const item: SkillInventoryItem = {
+      name,
+      source: found.source,
+      shadowsBuiltin: found.source === "user" && builtinNames.has(name),
+      status: "available",
+      reason: null,
+      description: null,
+    };
+    if (policy !== null && policy.allow !== null && !policy.allow.includes(name)) {
+      item.status = "unavailable";
+      item.reason = "not allowed by policy";
+    } else if (!found.loaded.ok) {
+      item.status = policy === null ? "unknown" : "unavailable";
+      item.reason = policy === null ? null : found.loaded.reason;
+    } else {
+      const judge: SkillPolicy = policy ?? { allow: null, allowScripts: [name] };
+      const verdict = evaluate(name, found.source, found.loaded.files, judge);
+      if (typeof verdict === "string") {
+        item.status = policy === null ? "unknown" : "unavailable";
+        item.reason = policy === null ? null : verdict;
+      } else {
+        item.description = verdict.description;
+        if (policy === null) item.status = "unknown";
+      }
+    }
+    skills.push(item);
+  }
+  return { skills, ignored: ignored.sort(compareCodeUnits), userRoot: rootState };
+}
+
 function cardChain(key: CardSessionKey): string[] {
   return ["cards", cardPeerHash(key.localPeerId), cardKeyHash(key.roomId, key.agent, key.cardId)];
 }
