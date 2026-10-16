@@ -552,6 +552,46 @@ describe("foldMemoryLines — duplicates and conflicts (D2 · R4 · class 3 · c
     }
   });
 
+  test("transition with reordered keys sorting before an entry of the same (id, seq) wins (R3)", () => {
+    // P1 verify gap L3: raw `{"source":…` < `{"v":1,…` in code-unit order → the transition wins,
+    // the entry line loses the group and vanishes; the transition then dangles (no target).
+    const e = JSON.stringify(entry({ id: ID(1), seq: 4, status: "proposed" }));
+    const t = `{"source":{"kind":"human","by":"Kim"},"v":1,"kind":"transition","id":"${ID(1)}","seq":4,"to":"active"}`;
+    expect(parseMemoryLine(t)).not.toBeNull();
+    expect(t < e).toBe(true);
+    for (const raw of [store(e, t), store(t, e)]) {
+      const f = foldMemoryLines(raw);
+      expect(f.counters.conflicts).toBe(1);
+      expect(f.entries.has(ID(1))).toBe(false);
+      expect(f.counters.dangling).toBe(1);
+      expect(f.maxSeq).toBe(4);
+    }
+  });
+
+  test("conflict winner uses code-unit order, not locale order", () => {
+    // P1 verify gap L1: "B" (0x42) < "a" (0x61) in code units; localeCompare would pick "a".
+    const big = entry({ body: "B" });
+    const small = entry({ body: "a" });
+    expect(JSON.stringify(big) < JSON.stringify(small)).toBe(true);
+    expect(JSON.stringify(big).localeCompare(JSON.stringify(small))).toBeGreaterThan(0);
+    for (const raw of [store(big, small), store(small, big)]) {
+      const f = foldMemoryLines(raw);
+      expect(f.entries.get(ID(1))!.body).toBe("B");
+      expect(f.counters.conflicts).toBe(1);
+    }
+  });
+
+  test("only ONE trailing CR is stripped: `X\\r\\r` vs `X` → 1 conflict", () => {
+    // P1 verify gap L2: after stripping one CR, `X\r` and `X` are different raws of one (id, seq).
+    const x = JSON.stringify(entry());
+    for (const raw of [`${x}\r\r\n${x}\n`, `${x}\n${x}\r\r\n`]) {
+      const f = foldMemoryLines(raw);
+      expect(f.counters.unparseable).toBe(0);
+      expect(f.entries.size).toBe(1);
+      expect(f.counters.conflicts).toBe(1);
+    }
+  });
+
   test("same id entry at a different seq → first (seq, id) wins + conflicts 1", () => {
     const first = entry({ seq: 3, body: "first" });
     const later = entry({ seq: 7, body: "later" });
@@ -984,6 +1024,12 @@ function buildShuffleStore(rand: () => number): string[] {
   L(entry({ id: ID(0xf1), seq: 74, supersedes: ID(0xf0), status: "proposed", body: "edit" }));
   L(transition({ id: ID(0xf1), seq: 75, to: "active" }));
   L(transition({ id: ID(0xf1), seq: 76, to: "retired" }));
+  // reordered-key transition sorting before an entry of the same (id, seq) — transition wins,
+  // the entry vanishes, the transition dangles (P1 verify gap L3; consumes no randomness)
+  L(entry({ id: ID(0xd0), seq: 80, body: "loses to transition" }));
+  lines.push(
+    `{"source":{"kind":"human","by":"Kim"},"v":1,"kind":"transition","id":"${ID(0xd0)}","seq":80,"to":"retired"}`,
+  );
   // unparseable ×5 (garbage, v:2, unknown kind, bad field, torn)
   lines.push("garbage line");
   L(entry({ id: ID(0xbad1), seq: 500, v: 2 }));
@@ -1030,6 +1076,7 @@ describe("foldMemoryLines — shuffle invariance (Done-when (b))", () => {
     expect(base.visibleActive.some((e) => e.id === ID(0xe0))).toBe(true);
     expect(base.entries.get(ID(0xf0))!.hidden).toBe(true);
     expect(base.entries.get(ID(0xf1))!.everActive).toBe(true);
+    expect(base.entries.has(ID(0xd0))).toBe(false);
     const want = canonical(base);
 
     const shuffle = mulberry32(0xb0b);
