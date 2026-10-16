@@ -463,7 +463,7 @@ describe("write checks ①–⑥ — first refusal stops, zero bytes written (D5
       expectRefused(
         appendMemoryEntry(L, AGENT, input({ status }), deps()),
         "too_large",
-        `entries.jsonl is ${kib} KiB (max 1024 KiB) — run loom memory compact`,
+        `entries.jsonl is ${kib} KiB (max 1024 KiB) — run loom memory compact (retire entries first if it moves nothing)`,
       );
     }
     expect(bytes()).toBe(before);
@@ -560,6 +560,14 @@ describe("write checks ①–⑥ — first refusal stops, zero bytes written (D5
       "unknown_supersedes",
     );
     expect(bytes()).toBe("");
+    expect(existsSync(join(L, "memory"))).toBe(false);
+    // memory/ present but no agent dir → still nothing created
+    mkdirSync(join(L, "memory"), { mode: 0o700 });
+    expectRefused(
+      appendMemoryEntry(L, AGENT, input({ supersedes: ID(5), status: "proposed" }), deps()),
+      "unknown_supersedes",
+    );
+    expect(existsSync(paths().dir)).toBe(false);
   });
 
   test("check order: ④ before ⑤ before ⑥", () => {
@@ -795,6 +803,121 @@ function lines(raw: string): string[] {
 }
 
 describe("compact (R9 · R53-M1)", () => {
+  test("a pending proposal nothing hides survives compact and can be approved afterwards", () => {
+    const d = deps();
+    const a = expectOk(appendMemoryEntry(L, AGENT, input({ body: "A" }), d));
+    const p = expectOk(
+      appendMemoryEntry(L, AGENT, input({ body: "P", status: "proposed", supersedes: a.id }), d),
+    );
+    const lone = expectOk(appendMemoryEntry(L, AGENT, input({ body: "Q", status: "proposed" }), d));
+    const gone = expectOk(appendMemoryEntry(L, AGENT, input({ body: "R" }), d));
+    expectOk(appendMemoryTransition(L, AGENT, { id: gone.id, to: "retired", source: SRC }, d));
+    const r = expectOk(compactMemory(L, AGENT));
+    expect(r.moved).toBe(2);
+    const f = fold();
+    expect(f.entries.get(p.id)!.status).toBe("proposed");
+    expect(f.entries.get(lone.id)!.status).toBe("proposed");
+    expect(f.entries.get(a.id)!.hidden).toBe(false);
+    expectOk(appendMemoryTransition(L, AGENT, { id: p.id, to: "active", source: SRC }, d));
+    expectOk(appendMemoryTransition(L, AGENT, { id: lone.id, to: "active", source: SRC }, d));
+    const g = fold();
+    expect(g.visibleActive.map((e) => e.id)).toEqual([p.id, lone.id]);
+    expect(g.entries.get(a.id)!.hidden).toBe(true);
+  });
+
+  test("compact result carries the CLI stdout line", () => {
+    seed(
+      storeText(
+        entryLine({ id: ID(1), seq: 1 }),
+        "junk",
+        entryLine({ id: ID(2), seq: 2, status: "retired" }),
+      ),
+    );
+    const r = expectOk(compactMemory(L, AGENT));
+    expect(r.message).toBe(
+      `compacted: moved 2 lines (1 unparseable, 0 conflict losers) to ${paths().archive}; kept 1; watermark seq 2`,
+    );
+    expect(expectOk(compactMemory(L, AGENT)).message).toBe("nothing to compact");
+  });
+
+  test("nothing to move while entries.jsonl > 1 MiB → stuck advice, exit-0 result, no write", () => {
+    const lines: Obj[] = [];
+    for (let i = 1; i <= 560; i++) {
+      lines.push(entryLine({ id: ID(0x10000 + i), seq: i, body: "a".repeat(1990) }));
+    }
+    seed(storeText(...lines));
+    const before = bytes();
+    const kib = Math.ceil(Buffer.byteLength(before) / 1024);
+    expect(kib).toBeGreaterThan(1024);
+    const r = expectOk(compactMemory(L, AGENT));
+    expect(r.moved).toBe(0);
+    expect(r.message).toBe(
+      `nothing to compact — entries.jsonl is ${kib} KiB (max 1024 KiB); retire entries first, then compact`,
+    );
+    expect(bytes()).toBe(before);
+    expect(existsSync(paths().archive)).toBe(false);
+  });
+
+  test("orphan transitions (target absent from the fold) are moved; add works again", () => {
+    const pad = "x".repeat(900);
+    const lines: Obj[] = [entryLine({ id: ID(1), seq: 1, body: "keep" })];
+    for (let i = 0; i < 1200; i++) {
+      lines.push(
+        transitionLine({
+          id: ID(0x50000 + i),
+          seq: 2 + i,
+          to: "retired",
+          source: { kind: "human", by: pad },
+        }),
+      );
+    }
+    seed(storeText(...lines));
+    expect(Buffer.byteLength(bytes())).toBeGreaterThan(MEMORY_ENTRIES_MAX_BYTES);
+    const beforeSig = visibleSig(bytes());
+    expectRefused(appendMemoryEntry(L, AGENT, input(), deps()), "too_large");
+    const r = expectOk(compactMemory(L, AGENT));
+    expect(r.moved).toBe(1200);
+    expect(r.kept).toBe(1);
+    expect(r.watermark).toBe(1201);
+    expect(visibleSig(bytes())).toBe(beforeSig);
+    expect(fold().counters.dangling).toBe(0);
+    expect(expectOk(appendMemoryEntry(L, AGENT, input(), deps())).seq).toBe(1202);
+  });
+
+  test("moving only unparseable lines with no prior watermark writes no watermark line (dev. 15)", () => {
+    const keep = JSON.stringify(entryLine({ id: ID(1), seq: 3 }));
+    seed(`garbage\n${keep}\n{"v":1,\n`);
+    const r = expectOk(compactMemory(L, AGENT));
+    expect(r.moved).toBe(2);
+    expect(r.unparseable).toBe(2);
+    expect(r.watermark).toBeNull();
+    expect(bytes()).toBe(`${keep}\n`);
+    expect(expectOk(appendMemoryEntry(L, AGENT, input(), deps())).seq).toBe(4);
+  });
+
+  test("seq space exhausted → every write refused, zero bytes", () => {
+    const p = JSON.stringify(entryLine({ id: ID(1), seq: 1, status: "proposed" }));
+    const a = JSON.stringify(entryLine({ id: ID(2), seq: 2 }));
+    const max = Number.MAX_SAFE_INTEGER;
+    seed(`${p}\n${a}\n${JSON.stringify(watermarkLine(max))}\n`);
+    const before = bytes();
+    const msg = `seq space exhausted (max seq ${max}) — nothing written`;
+    for (const status of ["active", "proposed"] as const) {
+      expectRefused(appendMemoryEntry(L, AGENT, input({ status }), deps()), "seq_exhausted", msg);
+    }
+    expectRefused(
+      appendMemoryTransition(L, AGENT, { id: ID(1), to: "active", source: SRC }, deps()),
+      "seq_exhausted",
+      msg,
+    );
+    expectRefused(
+      appendMemoryTransition(L, AGENT, { id: ID(2), to: "retired", source: SRC }, deps()),
+      "seq_exhausted",
+      msg,
+    );
+    expect(bytes()).toBe(before);
+  });
+
   test("A ← B ← C (all approved): A·B moved, C supersedesArchived, dangling 0, visible same", () => {
     const d = deps();
     const a = expectOk(appendMemoryEntry(L, AGENT, input({ body: "A" }), d));
