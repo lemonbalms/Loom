@@ -83,6 +83,7 @@ import {
   type SendResultOutcome,
 } from "./card-result-core";
 import {
+  enabledHeadlessAgents,
   loadBridgeConfig,
   isAuthorizedDispatcher,
   resolveAgentArgv,
@@ -93,13 +94,7 @@ import {
 } from "./bridge-config";
 import { type AgentKind, effectiveWorkerPolicy } from "./agent-argv";
 import { HeadlessDispatcher } from "./headless-worker";
-import {
-  enabledAgentsOf,
-  type Gap,
-  policyGaps,
-  renderGapWarning,
-  renderStrictRefusal,
-} from "./policy-gaps";
+import { type Gap, policyGaps, renderGapWarning, renderStrictRefusal } from "./policy-gaps";
 import {
   writeBridgeMeta,
   clearBridgeMeta,
@@ -892,7 +887,7 @@ async function startLockedBridgeRuntime(
   // headless config — warnings, the strict refusal and the worker notice all render from it.
   let policyGapsAtStart: Gap[] = [];
   if (headlessConfig) {
-    const enabled = enabledAgentsOf(headlessConfig.maxConcurrent);
+    const enabled = enabledHeadlessAgents(headlessConfig.maxConcurrent, cfg.agentArgv);
     policyGapsAtStart = policyGaps(effectiveWorkerPolicy(headlessConfig).effective, enabled);
     if (cfg.worker?.strictEnforcement === true && policyGapsAtStart.length > 0) {
       // Before herdr and the room join: the existing startup-failure path (lastError · exit 1).

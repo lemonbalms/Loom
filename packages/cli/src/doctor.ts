@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  agentArgvFromRaw,
   type BridgeWorkerFlags,
   bridgeConfigSafeName,
   type Gap,
@@ -10,6 +11,7 @@ import {
   policyGaps,
   readBridgeWorkerFlags,
   renderGapLine,
+  resolveAgentArgv,
   resolveWorkerPolicy,
   type StickyHostMeta,
 } from "@loom/host";
@@ -1028,7 +1030,10 @@ export type PolicyDoctorInput = {
   policyPath: string;
   /** `<home>/policy.json` state per `loadPolicy(home)` — the loader MCP and the bridge use. */
   policy: { state: "default" } | { state: "file" } | { state: "invalid"; message: string };
-  /** `<root>/.fable/policy.json` exists (same root as `home`; read only, never renamed). */
+  /**
+   * The ~/.fable → ~/.loom migration is pending: `<root>/.fable/policy.json` exists AND `home`
+   * does not (resolveStateHomeDir's condition — P4c · P3-V-L1). Read only, never renamed.
+   */
   legacyPolicy: boolean;
   /** `<home>/bridge/<safe profile>.json`. */
   bridgePath: string;
@@ -1041,6 +1046,11 @@ export type PolicyDoctorInput = {
   hash: string | null;
   /** Agents the gaps are computed for (all three when the config is absent / invalid). */
   enabled: PolicyAgent[];
+  /**
+   * Agents without a usable dispatch argv (`resolveAgentArgv` null on the file's agentArgv merged
+   * like loadBridgeConfig) — the disabled row names that reason instead of maxConcurrent (P4c).
+   */
+  noAgentArgv: PolicyAgent[];
   /** `policyGaps(effective, enabled)` — the bridge's function on the bridge's input (D1). */
   gaps: Gap[];
   strictEnforcement: boolean;
@@ -1060,12 +1070,14 @@ function errText(e: unknown): string {
  */
 export function readPolicyDoctorInput(home: string, profile: string): PolicyDoctorInput {
   const policyPath = join(home, "policy.json");
-  const legacyPolicy = existsSync(join(dirname(home), ".fable", "policy.json"));
+  const legacyPolicy =
+    existsSync(join(dirname(home), ".fable", "policy.json")) && !existsSync(home);
   const bridgePath = join(home, "bridge", `${bridgeConfigSafeName(profile)}.json`);
 
   // Bridge config — same reading as loadBridgeConfig: a missing file is "absent"; an unreadable
   // or non-JSON / non-object file falls back to defaults (no worker section → pane).
   let bridge: PolicyDoctorInput["bridge"];
+  let rawAgentArgv: unknown;
   if (!existsSync(bridgePath)) {
     bridge = { state: "absent" };
   } else {
@@ -1074,33 +1086,45 @@ export function readPolicyDoctorInput(home: string, profile: string): PolicyDoct
       const parsed: unknown = JSON.parse(readFileSync(bridgePath, "utf8"));
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         worker = (parsed as Record<string, unknown>).worker;
+        rawAgentArgv = (parsed as Record<string, unknown>).agentArgv;
       }
     } catch {
       worker = undefined;
     }
     try {
-      bridge = { state: "ok", flags: readBridgeWorkerFlags(worker) };
+      bridge = { state: "ok", flags: readBridgeWorkerFlags(worker, rawAgentArgv) };
     } catch (e) {
       bridge = { state: "invalid", message: errText(e) };
     }
   }
-  const viewValue = (pick: (f: BridgeWorkerFlags) => boolean): WorkerFlagsView["memory"] =>
-    bridge.state === "absent"
-      ? "no bridge config"
-      : bridge.state === "invalid"
-        ? "invalid bridge config"
-        : pick(bridge.flags);
-  const worker: WorkerFlagsView = {
-    profile,
-    memory: viewValue((f) => f.memoryEnabled),
-    rules: viewValue((f) => f.rulesEnabled),
+  const argvMap = agentArgvFromRaw(rawAgentArgv);
+  const noAgentArgv = POLICY_AGENTS.filter(
+    (agent) => resolveAgentArgv({ agentArgv: argvMap }, agent) === null,
+  );
+  // P4c (P3-V-L2): the flag view derives like `memory list` (loadBridgeConfig): no file → "no
+  // bridge config"; any headless load failure — a parser error, an invalid policy.json, a
+  // deprecated list vs policy.json conflict — → "invalid bridge config"; pane never loads the policy.
+  const workerView = (invalid: boolean): WorkerFlagsView => {
+    const value = (pick: (f: BridgeWorkerFlags) => boolean): WorkerFlagsView["memory"] =>
+      bridge.state === "absent"
+        ? "no bridge config"
+        : bridge.state === "invalid" || invalid
+          ? "invalid bridge config"
+          : pick(bridge.flags);
+    return {
+      profile,
+      memory: value((f) => f.memoryEnabled),
+      rules: value((f) => f.rulesEnabled),
+    };
   };
+  const headless = bridge.state === "ok" && bridge.flags.backend === "headless";
   const strictEnforcement = bridge.state === "ok" && bridge.flags.strictEnforcement;
 
   let userPolicy: ReturnType<typeof loadPolicy>;
   try {
     userPolicy = loadPolicy(home);
   } catch (e) {
+    const worker = workerView(headless);
     return {
       home,
       profile,
@@ -1111,6 +1135,7 @@ export function readPolicyDoctorInput(home: string, profile: string): PolicyDoct
       bridge,
       hash: null,
       enabled: [],
+      noAgentArgv,
       gaps: [],
       strictEnforcement,
       worker,
@@ -1131,6 +1156,7 @@ export function readPolicyDoctorInput(home: string, profile: string): PolicyDoct
       policyPath,
     });
   }
+  const worker = workerView(false);
   return {
     home,
     profile,
@@ -1141,6 +1167,7 @@ export function readPolicyDoctorInput(home: string, profile: string): PolicyDoct
     bridge,
     hash: resolved.hash,
     enabled,
+    noAgentArgv,
     gaps: policyGaps(resolved.effective, enabled),
     strictEnforcement: bridge.state === "ok" && bridge.flags.strictEnforcement,
     worker,
@@ -1214,7 +1241,9 @@ export function policySection(input: PolicyDoctorInput): DoctorSection {
     if (headlessOk && !input.enabled.includes(agent)) {
       lines.push({
         status: "info",
-        message: `${agent}: disabled (worker.maxConcurrent.${agent} = 0) — not checked`,
+        message: input.noAgentArgv.includes(agent)
+          ? `${agent}: disabled (no usable agentArgv.${agent}) — not checked`
+          : `${agent}: disabled (worker.maxConcurrent.${agent} = 0) — not checked`,
       });
       continue;
     }

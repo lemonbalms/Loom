@@ -196,6 +196,26 @@ function sanitizeAgentArgv(raw: unknown): Partial<Record<DispatchAgentKind, stri
   return out;
 }
 
+/** The dispatch argv map for a raw config file's `agentArgv` value — the loadBridgeConfig merge. */
+export function agentArgvFromRaw(raw: unknown): BridgeConfig["agentArgv"] {
+  return { ...DEFAULT_AGENT_ARGV, ...sanitizeAgentArgv(raw) };
+}
+
+/**
+ * PLAN 0.37.0 P4c (P3-V-L3): the headless agents that can actually spawn — `maxConcurrent[k] !== 0`
+ * AND `resolveAgentArgv` accepts k (the dispatch allowlist: a missing / empty / shell argv is
+ * `agent_kind_not_allowed` before any spawn). claude → codex → grok order. Pure. The one input to
+ * the policy gaps at bridge start, `readBridgeWorkerFlags(...).enabled` and the doctor.
+ */
+export function enabledHeadlessAgents(
+  maxConcurrent: Readonly<Record<AgentKind, number>>,
+  agentArgv: BridgeConfig["agentArgv"],
+): AgentKind[] {
+  return enabledAgentsOf(maxConcurrent).filter(
+    (agent) => resolveAgentArgv({ agentArgv }, agent) !== null,
+  );
+}
+
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${field} is required`);
@@ -556,8 +576,10 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
  * order and with the same wording (P1 verify L1 — ② amendment): skills → permissions → cwd →
  * allowedRoots → maxConcurrent → timeoutMs → agentBin → memory → rules → strictEnforcement, so the
  * doctor never calls a config valid that bridge start rejects. Never calls loomDir() or loadPolicy.
+ * `rawAgentArgv` = the file's top-level `agentArgv` value (omitted = key absent → {claude});
+ * headless `enabled` = `enabledHeadlessAgents` (P4c · P3-V-L3).
  */
-export function readBridgeWorkerFlags(raw: unknown): BridgeWorkerFlags {
+export function readBridgeWorkerFlags(raw: unknown, rawAgentArgv?: unknown): BridgeWorkerFlags {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return paneWorkerFlags();
   const src = raw as Record<string, unknown>;
   if (src.backend !== "headless") return paneWorkerFlags();
@@ -573,7 +595,7 @@ export function readBridgeWorkerFlags(raw: unknown): BridgeWorkerFlags {
   const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);
   return {
     backend: "headless",
-    enabled: enabledAgentsOf(maxConcurrent),
+    enabled: enabledHeadlessAgents(maxConcurrent, agentArgvFromRaw(rawAgentArgv)),
     strictEnforcement: strictEnforcement === true,
     memoryEnabled: memory?.enabled === true,
     rulesEnabled: rules?.enabled === true,
@@ -615,10 +637,7 @@ export function loadBridgeConfig(profile: string): BridgeConfig {
       typeof raw.herdrSocketPath === "string" && raw.herdrSocketPath
         ? raw.herdrSocketPath
         : base.herdrSocketPath,
-    agentArgv: {
-      ...DEFAULT_AGENT_ARGV,
-      ...sanitizeAgentArgv(raw.agentArgv),
-    },
+    agentArgv: agentArgvFromRaw(raw.agentArgv),
     herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol,
     paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
     panePlacement: sanitizePanePlacement(raw.panePlacement),
@@ -651,7 +670,10 @@ export function isAuthorizedDispatcher(cfg: BridgeConfig, fromPeerId: string | u
   return cfg.authorizedDispatchers.includes(fromPeerId);
 }
 
-export function resolveAgentArgv(cfg: BridgeConfig, kind: DispatchAgentKind): string[] | null {
+export function resolveAgentArgv(
+  cfg: Pick<BridgeConfig, "agentArgv">,
+  kind: DispatchAgentKind,
+): string[] | null {
   const argv = cfg.agentArgv[kind];
   if (!argv?.length) return null;
   // Permanent: shell never allowed even if misconfigured
