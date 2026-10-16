@@ -452,6 +452,231 @@ export function offlineBridgeStatusLines(input: BridgeReadInput): string[] {
   return out;
 }
 
+/** A read-only service-manager query (R12): its value, or why it is unknown (failure · >2 s). */
+export type ServiceProbe<T> = { ok: true; value: T } | { ok: false; reason: string };
+
+export type ServiceManagerState = {
+  loaded: boolean;
+  running: boolean;
+  mainPid: number | null;
+  lastExit: number | null;
+  /** systemd `UnitFileState` (launchd: null). */
+  unitFileState: string | null;
+};
+
+/** PLAN 0.34.0 D7 — everything the Service section needs, gathered by `service.ts`. */
+export type ServiceInstalledInput = {
+  kind: "installed";
+  manager: "launchd" | "systemd";
+  /** launchd Label / systemd unit name. */
+  name: string;
+  unitPath: string;
+  loomVersion: string | null;
+  state: ServiceProbe<ServiceManagerState>;
+  /** launchd `print-disabled` (true = disabled); absent on systemd. */
+  disabled?: ServiceProbe<boolean | null>;
+  /** systemd `loginctl show-user -p Linger`; absent on launchd. */
+  linger?: ServiceProbe<"yes" | "no">;
+  /** Pinned in the unit file (null = not readable from it). */
+  unit: { execPath: string | null; bridgeMainPath: string | null; path: string | null };
+  execPathExists: boolean;
+  bridgeMainExists: boolean;
+  currentPath: string;
+  /** Configured agent binaries that the unit PATH does not resolve. */
+  unresolvedAgentBins: string[];
+  /** Current CLI's `bridgeMainPath()` (null = unresolvable). */
+  cliBridgeMainPath: string | null;
+  /** Status file `srcPath` (null = no status file). */
+  statusSrcPath: string | null;
+  /** Log file mode bits (null = missing). */
+  log: { path: string; mode: number | null };
+  loopbackRelay: boolean;
+  /** Live lock holder pid (read-only `inspect` verdict `held`), else null. */
+  lockHolderPid: number | null;
+  /** Status file ("meta") pid and its liveness. */
+  statusPid: number | null;
+  statusPidAlive: boolean;
+};
+
+export type ServiceSectionInput =
+  | { kind: "unsupported"; platform: string }
+  | { kind: "invalid-name"; message: string }
+  | { kind: "not-installed"; name: string; unitPath: string }
+  | { kind: "foreign"; name: string; unitPath: string }
+  | ServiceInstalledInput;
+
+function unknownText(row: string, reason: string): string {
+  return `${row}: unknown (service manager unreachable: ${reason})`;
+}
+
+function modeText(mode: number): string {
+  return `0${(mode & 0o777).toString(8).padStart(3, "0")}`;
+}
+
+/**
+ * PLAN 0.34.0 D7 / ③ — `loom doctor` Service section, also the body of `loom service status`.
+ * Pure: the caller gathers files + read-only runner queries (R12). ok / warn / info only — never
+ * `fail`, so it never changes the doctor exit code. Rows top to bottom per ③.
+ */
+export function serviceSection(input: ServiceSectionInput): DoctorSection {
+  const title = "Service";
+  switch (input.kind) {
+    case "unsupported":
+      return {
+        title,
+        lines: [{ status: "info", message: `service: unsupported platform ${input.platform}` }],
+      };
+    case "invalid-name":
+      return { title, lines: [{ status: "info", message: `service: ${input.message}` }] };
+    case "not-installed":
+      return { title, lines: [{ status: "info", message: `not installed (${input.unitPath})` }] };
+    case "foreign":
+      return {
+        title,
+        lines: [
+          {
+            status: "warn",
+            message: `${input.unitPath} exists and is not a Loom service file — loom service will not touch it`,
+          },
+        ],
+      };
+  }
+  const i = input;
+  const lines: DoctorLine[] = [];
+  // 설치
+  lines.push({
+    status: "ok",
+    message: `installed: ${i.name} (${i.unitPath}${i.loomVersion ? `, loom ${i.loomVersion}` : ""})`,
+  });
+  // 적재/실행
+  const st = i.state.ok ? i.state.value : null;
+  if (!i.state.ok) {
+    lines.push({ status: "info", message: unknownText("loaded/running", i.state.reason) });
+  } else if (st?.running) {
+    lines.push({ status: "ok", message: `running pid ${st.mainPid ?? "?"}` });
+  } else if (st && (!st.loaded || (i.manager === "systemd" && st.unitFileState !== "enabled"))) {
+    const detail =
+      i.manager === "systemd"
+        ? ` (LoadState ${st.loaded ? "loaded" : "not loaded"}, UnitFileState=${st.unitFileState ?? "?"})`
+        : "";
+    lines.push({ status: "warn", message: `installed but not loaded${detail} — loom service start` });
+  } else if (st) {
+    lines.push({
+      status: "info",
+      message: `loaded, not running (last exit code ${st.lastExit ?? "?"})`,
+    });
+  }
+  // 비활성 (launchd print-disabled)
+  if (i.disabled) {
+    if (!i.disabled.ok) {
+      lines.push({ status: "info", message: unknownText("Login Items", i.disabled.reason) });
+    } else if (i.disabled.value === true) {
+      lines.push({
+        status: "warn",
+        message:
+          "disabled in Login Items / launchctl — enable it in System Settings → General → Login Items",
+      });
+    }
+  }
+  // 경로
+  const missing: string[] = [];
+  if (!i.unit.execPath || !i.execPathExists) missing.push(`bun ${i.unit.execPath ?? "(not in unit)"}`);
+  if (!i.unit.bridgeMainPath || !i.bridgeMainExists) {
+    missing.push(`bridge-main.ts ${i.unit.bridgeMainPath ?? "(not in unit)"}`);
+  }
+  lines.push(
+    missing.length === 0
+      ? {
+          status: "ok",
+          message: `bun and bridge-main.ts exist (${i.unit.execPath} · ${i.unit.bridgeMainPath})`,
+        }
+      : { status: "warn", message: `missing: ${missing.join(" · ")} — re-run loom service install` },
+  );
+  // PATH 표류
+  if (i.unresolvedAgentBins.length > 0) {
+    lines.push({
+      status: "warn",
+      message: `agent binaries not resolvable via the unit PATH: ${i.unresolvedAgentBins.join(", ")} — re-run loom service install`,
+    });
+  } else if (i.unit.path === null) {
+    lines.push({ status: "info", message: "unit PATH: not found in the unit file" });
+  } else if (i.unit.path === i.currentPath) {
+    lines.push({ status: "ok", message: "unit PATH matches the current PATH" });
+  } else {
+    lines.push({
+      status: "info",
+      message: "unit PATH differs from the current PATH (agent binaries still resolve)",
+    });
+  }
+  // srcPath (R11 — unit · current CLI · status file)
+  const known = [i.unit.bridgeMainPath, i.cliBridgeMainPath, i.statusSrcPath].filter(
+    (v): v is string => v !== null,
+  );
+  const srcDesc = `unit ${i.unit.bridgeMainPath ?? "?"} · CLI ${i.cliBridgeMainPath ?? "?"} · status file ${i.statusSrcPath ?? "(none)"}`;
+  if (new Set(known).size > 1) {
+    lines.push({ status: "warn", message: `srcPath mismatch — ${srcDesc} — re-run loom service install` });
+  } else if (known.length === 3) {
+    lines.push({ status: "ok", message: `srcPath: unit == CLI == status file (${known[0]})` });
+  } else {
+    lines.push({ status: "info", message: `srcPath: ${srcDesc}` });
+  }
+  // 로그 모드
+  if (i.log.mode === null) {
+    lines.push({ status: "info", message: `log not created yet (${i.log.path})` });
+  } else if ((i.log.mode & 0o777) === 0o600) {
+    lines.push({ status: "ok", message: `log mode 0600 (${i.log.path})` });
+  } else {
+    lines.push({
+      status: "warn",
+      message: `log mode ${modeText(i.log.mode)}, expected 0600 (${i.log.path})`,
+    });
+  }
+  // linger (Linux)
+  if (i.linger) {
+    if (!i.linger.ok) {
+      lines.push({ status: "info", message: unknownText("linger", i.linger.reason) });
+    } else if (i.linger.value === "yes") {
+      lines.push({ status: "ok", message: "linger: yes" });
+    } else {
+      lines.push({
+        status: "warn",
+        message:
+          "linger: no — logout stops the service and kills its workers (run 'loginctl enable-linger' yourself)",
+      });
+    }
+  }
+  // 루프백 relay
+  if (i.loopbackRelay) {
+    lines.push({
+      status: "warn",
+      message: "session relay is loopback — the service needs a reachable relay (0.33.0 D1)",
+    });
+  }
+  // 양보 / 서비스 밖 bridge (D3 · D7)
+  const outsidePid = i.statusPidAlive && i.statusPid !== null ? i.statusPid : i.lockHolderPid;
+  if (!i.state.ok) {
+    if (outsidePid !== null) {
+      lines.push({
+        status: "info",
+        message: unknownText("yield / outside-service check", i.state.reason),
+      });
+    }
+  } else if (
+    st?.loaded &&
+    !st.running &&
+    i.lockHolderPid !== null &&
+    i.lockHolderPid !== st.mainPid
+  ) {
+    lines.push({
+      status: "warn",
+      message: `service yielded to bridge pid ${i.lockHolderPid} — loom bridge stop, then loom service start`,
+    });
+  } else if (st && outsidePid !== null && (!st.running || outsidePid !== st.mainPid)) {
+    lines.push({ status: "warn", message: `bridge pid ${outsidePid} runs outside the service` });
+  }
+  return { title, lines };
+}
+
 export function summarizeDoctor(sections: DoctorSection[]): Record<DoctorStatus, number> {
   const summary: Record<DoctorStatus, number> = {
     ok: 0,

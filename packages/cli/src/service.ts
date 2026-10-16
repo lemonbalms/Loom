@@ -21,6 +21,7 @@ import {
   readlinkSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -37,6 +38,7 @@ import {
   type ServiceRunnerResult,
   type ServiceTargetPaths,
   type ServiceUnitSpec,
+  bridgeConfigSafeName,
   bridgeLockPath,
   bridgeLogPath,
   bridgeMainPath,
@@ -45,13 +47,16 @@ import {
   getActiveProfile,
   inspectBridgeLockAt,
   isLoomServiceFile,
+  isPidAlive,
   loadBridgeConfig,
   loadSession,
   loomDir,
   parseLaunchctlPrint,
   parseLaunchctlPrintDisabled,
+  parseServiceMarker,
   parseSystemctlShow,
   readBridgeStatusFile,
+  readBridgeStatusFileResult,
   renderLaunchdPlist,
   renderSystemdUnit,
   resolveBridgeProfile,
@@ -64,6 +69,13 @@ import {
 } from "@loom/host";
 import { parseRelayUrl } from "@loom/protocol";
 import { isLoopbackHost } from "@loom/relay";
+import {
+  type DoctorSection,
+  type ServiceManagerState,
+  type ServiceProbe,
+  type ServiceSectionInput,
+  serviceSection,
+} from "./doctor";
 
 export const SERVICE_USAGE =
   "Usage: loom service install|uninstall|start|status [--profile <p>] [--force]";
@@ -107,10 +119,10 @@ export interface ServiceDeps {
 const REAL_PROGRAMS = new Set(["launchctl", "systemctl", "loginctl"]);
 
 /**
- * The only path to the real service manager. Refuses under `LOOM_TEST_HOME` (R9) and anything
- * but launchctl / systemctl / loginctl. Each call is bounded (10 s).
+ * Spawn the real service manager. Refuses under `LOOM_TEST_HOME` (R9) and anything but
+ * launchctl / systemctl / loginctl; the child is SIGKILLed after `timeoutMs`.
  */
-export const realServiceRunner: ServiceRunner = async (argv) => {
+async function spawnServiceManager(argv: string[], timeoutMs: number): Promise<ServiceRunnerResult> {
   if (process.env.LOOM_TEST_HOME) return { code: 1, stdout: "", stderr: R9_MESSAGE };
   const program = argv[0] ?? "";
   if (!REAL_PROGRAMS.has(program)) {
@@ -122,7 +134,7 @@ export const realServiceRunner: ServiceRunner = async (argv) => {
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
-      timeout: RUNNER_TIMEOUT_MS,
+      timeout: timeoutMs,
       killSignal: "SIGKILL",
     });
     const [stdout, stderr, code] = await Promise.all([
@@ -134,7 +146,10 @@ export const realServiceRunner: ServiceRunner = async (argv) => {
   } catch (e) {
     return { code: 127, stdout: "", stderr: e instanceof Error ? e.message : String(e) };
   }
-};
+}
+
+/** The only path to the real service manager for the verbs (each call bounded at 10 s). */
+export const realServiceRunner: ServiceRunner = (argv) => spawnServiceManager(argv, RUNNER_TIMEOUT_MS);
 
 function defaultDeps(): ServiceDeps {
   let user = process.env.USER ?? "";
@@ -725,35 +740,342 @@ async function start(c: Ctx): Promise<number> {
   return q.loaded ? startLoaded(c, unreachable) : loadService(c, unreachable);
 }
 
-/** ② status: read-only, always exit 0 (R6). P4 replaces the body with doctor's serviceSection. */
+/**
+ * ② status: read-only, always exit 0 (R6) — prints the D7 Service section lines (the same pure
+ * `serviceSection` as `loom doctor`, gathered by `gatherServiceInput`).
+ */
 async function status(c: Ctx): Promise<number> {
   const { d } = c;
-  const unitPath = c.paths.unitPath;
   const name = c.kind === "launchd" ? c.names.label : c.names.unitName;
-  d.out(`service: ${name} (${unitPath})`);
-  const existing = readText(unitPath);
-  if (existing === null && !existsSync(unitPath)) {
-    d.out("  installed: no (not installed)");
-    return 0;
+  d.out(`service: ${name} (${c.paths.unitPath})`);
+  let relayUrl: string | null = null;
+  try {
+    relayUrl = loadSession()?.relayUrl ?? null;
+  } catch {
+    /* no session → no loopback row */
   }
-  if (existing === null || !isLoomServiceFile(existing, c.profile)) {
-    d.out(`  installed: ${foreignMessage(unitPath)}`);
-    return 0;
-  }
-  d.out("  installed: yes");
-  const q = await query(c);
-  if (!q.loaded) {
-    d.out(q.cls === "ok" || q.cls === "error" ? "  loaded: no" : `  loaded: unknown (${q.cls})`);
-  } else if (q.running) {
-    d.out(`  loaded: yes · running pid ${q.mainPid ?? "?"}`);
-  } else {
-    d.out(`  loaded: yes · not running${q.lastExit !== null ? ` (last exit code ${q.lastExit})` : ""}`);
-  }
-  const holder = liveHolder(c);
-  if (holder !== null && holder !== q.mainPid) {
-    d.out(`  bridge pid ${holder} runs outside the service`);
-  }
-  d.out(`  log: ${bridgeLogPath(c.profile)}`);
-  if (c.kind === "systemd") d.out(`  linger: ${await queryLinger(c)}`);
+  const section = await serviceDoctorSection({
+    runner: d.runner,
+    platform: d.platform,
+    uid: d.uid,
+    home: c.home,
+    bridgeDir: join(loomDir(), "bridge"),
+    profile: c.profile,
+    relayUrl,
+    currentPath: d.env.PATH ?? "",
+    cliBridgeMainPath: d.bridgeMainPath,
+    inspectLock: () => d.inspectLock(c.profile),
+  });
+  for (const l of section.lines) d.out(`  ${l.status.padEnd(4)} ${l.message}`);
   return 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// D7 Service section gatherer — shared by `loom doctor` and `loom service status` (P4)
+// ---------------------------------------------------------------------------------------------
+
+/** R12: the only service-manager verbs the doctor / status path may call. */
+export const SERVICE_READ_VERBS: readonly string[] = ["print", "print-disabled", "show", "show-user"];
+const READ_VERB_SET: ReadonlySet<string> = new Set(SERVICE_READ_VERBS);
+/** R12: hard per-call bound. */
+const READ_TIMEOUT_MS = 2_000;
+const DEFAULT_AGENT_BINS: Record<string, string> = { claude: "claude", codex: "codex", grok: "grok" };
+
+export type ServiceProbeDeps = {
+  runner: ServiceRunner;
+  platform: string;
+  uid: number;
+  /** User home the unit path hangs off (`LOOM_TEST_HOME` or `homedir()`). */
+  home: string;
+  /** `<loom home>/bridge` — config · status · lock · log. */
+  bridgeDir: string;
+  profile: string;
+  /** Session relay URL (loopback row); null = no session. */
+  relayUrl: string | null;
+  /** Current PATH (drift row). */
+  currentPath: string;
+  /** Current CLI's `bridgeMainPath()`; a throw → unknown. */
+  cliBridgeMainPath: () => string;
+  /** Per-call bound; clamped to ≤ 2 s (R12). */
+  timeoutMs?: number;
+  isPidAlive?: (pid: number) => boolean;
+  inspectLock?: (lockPath: string) => BridgeLockInspection;
+};
+
+function readVerb(argv: string[]): string {
+  if (argv[0] === "systemctl") return (argv[1] === "--user" ? argv[2] : argv[1]) ?? "";
+  return argv[1] ?? "";
+}
+
+/** One read-only query: read verbs only · bounded · failure / throw / timeout → unknown reason. */
+async function readQuery(
+  runner: ServiceRunner,
+  argv: string[],
+  ms: number,
+): Promise<{ ok: true; r: ServiceRunnerResult } | { ok: false; reason: string }> {
+  if (!READ_VERB_SET.has(readVerb(argv))) {
+    return { ok: false, reason: `refusing non-read verb "${readVerb(argv)}"` };
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<{ ok: false; reason: string }>((res) => {
+    timer = setTimeout(() => res({ ok: false, reason: `no answer within ${ms / 1000} s` }), ms);
+  });
+  const call = Promise.resolve()
+    .then(() => runner(argv))
+    .then(
+      (r) => ({ ok: true as const, r }),
+      (e: unknown) => ({ ok: false as const, reason: e instanceof Error ? e.message : String(e) }),
+    );
+  try {
+    return await Promise.race([call, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function failReason(argv: string[], r: ServiceRunnerResult): string {
+  return `${argv[0]} ${readVerb(argv)} exited ${r.code}: ${runnerDetail(r)}`;
+}
+
+function xmlUnescape(v: string): string {
+  return v
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/** systemd word splitting for the values `renderSystemdUnit` writes (double quotes · backslash). */
+function sdWords(line: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i]!)) i++;
+    if (i >= line.length) break;
+    let w = "";
+    if (line[i] === '"') {
+      i++;
+      while (i < line.length && line[i] !== '"') {
+        if (line[i] === "\\" && i + 1 < line.length) {
+          w += line[i + 1];
+          i += 2;
+        } else {
+          w += line[i++];
+        }
+      }
+      i++;
+    } else {
+      while (i < line.length && !/\s/.test(line[i]!)) w += line[i++];
+    }
+    out.push(w);
+  }
+  return out;
+}
+
+/** Read back what install pinned: bun · bridge-main.ts · PATH (inverse of the P1 generators). */
+export function parseInstalledUnit(
+  kind: ServiceManagerKind,
+  text: string,
+): { execPath: string | null; bridgeMainPath: string | null; path: string | null } {
+  if (kind === "launchd") {
+    const pa =
+      /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>\s*<string>([^<]*)<\/string>/.exec(
+        text,
+      );
+    const env = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(text);
+    const path = env ? /<key>PATH<\/key>\s*<string>([^<]*)<\/string>/.exec(env[1]!) : null;
+    return {
+      execPath: pa ? xmlUnescape(pa[1]!) : null,
+      bridgeMainPath: pa ? xmlUnescape(pa[2]!) : null,
+      path: path ? xmlUnescape(path[1]!) : null,
+    };
+  }
+  let execPath: string | null = null;
+  let bridgeMain: string | null = null;
+  let path: string | null = null;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("ExecStart=")) {
+      const w = sdWords(line.slice("ExecStart=".length)).map((v) =>
+        v.replace(/\$\$/g, "$").replace(/%%/g, "%"),
+      );
+      execPath = w[0] ?? null;
+      bridgeMain = w[1] ?? null;
+    } else if (line.startsWith("Environment=")) {
+      const a = sdWords(line.slice("Environment=".length))[0] ?? "";
+      if (a.startsWith("PATH=")) path = a.slice(5).replace(/%%/g, "%");
+    }
+  }
+  return { execPath, bridgeMainPath: bridgeMain, path };
+}
+
+/** Configured agent binaries (bridge-config defaults + `worker.agentBin`), read raw — no throw. */
+function configuredAgentBins(bridgeDir: string, profile: string): string[] {
+  const bins = { ...DEFAULT_AGENT_BINS };
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"),
+    ) as { worker?: { agentBin?: Record<string, unknown> } };
+    const over = raw?.worker?.agentBin;
+    if (over && typeof over === "object") {
+      for (const k of Object.keys(bins)) {
+        const v = over[k];
+        if (typeof v === "string" && v.length > 0) bins[k] = v;
+      }
+    }
+  } catch {
+    /* missing / invalid config → defaults */
+  }
+  return Object.values(bins);
+}
+
+function resolvableVia(bin: string, path: string): boolean {
+  if (isAbsolute(bin)) return existsSync(bin);
+  return Bun.which(bin, { PATH: path }) !== null;
+}
+
+function fileMode(path: string): number | null {
+  try {
+    return statSync(path).mode & 0o7777;
+  } catch {
+    return null;
+  }
+}
+
+function relayIsLoopback(relayUrl: string | null): boolean {
+  if (!relayUrl) return false;
+  try {
+    const ep = parseRelayUrl(relayUrl);
+    return ep.isLocal || isLoopbackHost(ep.host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * PLAN 0.34.0 D7 · R12 — gather the Service section input. Files + pid liveness + read-only
+ * runner queries (`print` · `print-disabled` / `show` · `show-user`), each bounded at ≤ 2 s;
+ * a failed / slow query makes only its rows `unknown`. Writes nothing; never runs a write verb.
+ */
+export async function gatherServiceInput(p: ServiceProbeDeps): Promise<ServiceSectionInput> {
+  const kind: ServiceManagerKind | null =
+    p.platform === "darwin" ? "launchd" : p.platform === "linux" ? "systemd" : null;
+  if (!kind) return { kind: "unsupported", platform: p.platform };
+  const check = serviceProfileNameCheck(p.profile);
+  if (!check.ok) return { kind: "invalid-name", message: check.message };
+  const names = serviceNames(p.profile);
+  const name = kind === "launchd" ? names.label : names.unitName;
+  const unitPath = serviceTargetPaths(p.home, p.profile, p.platform).unitPath;
+  const text = readText(unitPath);
+  if (text === null) {
+    return existsSync(unitPath)
+      ? { kind: "foreign", name, unitPath }
+      : { kind: "not-installed", name, unitPath };
+  }
+  if (!isLoomServiceFile(text, p.profile)) return { kind: "foreign", name, unitPath };
+
+  const ms = Math.min(p.timeoutMs ?? READ_TIMEOUT_MS, READ_TIMEOUT_MS);
+  const run: ServiceRunner =
+    p.runner === realServiceRunner ? (argv) => spawnServiceManager(argv, ms) : p.runner;
+  let state: ServiceProbe<ServiceManagerState>;
+  let disabled: ServiceProbe<boolean | null> | undefined;
+  let linger: ServiceProbe<"yes" | "no"> | undefined;
+  if (kind === "launchd") {
+    const printArgv = ["launchctl", "print", `gui/${p.uid}/${names.label}`];
+    const disArgv = ["launchctl", "print-disabled", `gui/${p.uid}`];
+    const [pr, dr] = await Promise.all([readQuery(run, printArgv, ms), readQuery(run, disArgv, ms)]);
+    if (!pr.ok) state = { ok: false, reason: pr.reason };
+    else if (pr.r.code === 0) {
+      const x = parseLaunchctlPrint(pr.r.stdout);
+      state = {
+        ok: true,
+        value: {
+          loaded: true,
+          running: x.running,
+          mainPid: x.running ? x.pid : null,
+          lastExit: x.lastExitCode,
+          unitFileState: null,
+        },
+      };
+    } else if (/Could not find service/i.test(pr.r.stderr)) {
+      state = {
+        ok: true,
+        value: { loaded: false, running: false, mainPid: null, lastExit: null, unitFileState: null },
+      };
+    } else state = { ok: false, reason: failReason(printArgv, pr.r) };
+    if (!dr.ok) disabled = { ok: false, reason: dr.reason };
+    else if (dr.r.code !== 0) disabled = { ok: false, reason: failReason(disArgv, dr.r) };
+    else disabled = { ok: true, value: parseLaunchctlPrintDisabled(dr.r.stdout, names.label) };
+  } else {
+    const showArgv = ["systemctl", "--user", "show", names.unitName, "-p", SYSTEMD_SHOW_PROPS];
+    const lingerArgv = ["loginctl", "show-user", String(p.uid), "-p", "Linger"];
+    const [sr, lr] = await Promise.all([readQuery(run, showArgv, ms), readQuery(run, lingerArgv, ms)]);
+    if (!sr.ok) state = { ok: false, reason: sr.reason };
+    else if (sr.r.code !== 0) state = { ok: false, reason: failReason(showArgv, sr.r) };
+    else {
+      const x = parseSystemctlShow(sr.r.stdout);
+      const running = x.activeState === "active";
+      state = {
+        ok: true,
+        value: {
+          loaded: x.loadState === "loaded",
+          running,
+          mainPid: running ? x.mainPid : null,
+          lastExit: x.execMainStatus,
+          unitFileState: x.unitFileState,
+        },
+      };
+    }
+    const m = lr.ok && lr.r.code === 0 ? /^Linger=(yes|no)\s*$/m.exec(lr.r.stdout) : null;
+    if (m) linger = { ok: true, value: m[1] as "yes" | "no" };
+    else if (!lr.ok) linger = { ok: false, reason: lr.reason };
+    else linger = { ok: false, reason: failReason(lingerArgv, lr.r) };
+  }
+
+  const unit = parseInstalledUnit(kind, text);
+  const unresolvedAgentBins =
+    unit.path === null
+      ? []
+      : configuredAgentBins(p.bridgeDir, p.profile).filter((b) => !resolvableVia(b, unit.path!));
+  let cliBridgeMainPath: string | null = null;
+  try {
+    cliBridgeMainPath = p.cliBridgeMainPath();
+  } catch {
+    cliBridgeMainPath = null;
+  }
+  const statusRead = readBridgeStatusFileResult(bridgeStatusPath(p.profile, p.bridgeDir));
+  const status = statusRead.kind === "ok" ? statusRead.status : null;
+  const statusPid = status && status.pid > 0 ? status.pid : null;
+  const alive = p.isPidAlive ?? isPidAlive;
+  const lock = (p.inspectLock ?? ((path: string) => inspectBridgeLockAt(path)))(
+    bridgeLockPath(p.profile, p.bridgeDir),
+  );
+  const logPath = bridgeLogPath(p.profile, p.bridgeDir);
+  return {
+    kind: "installed",
+    manager: kind,
+    name,
+    unitPath,
+    loomVersion: parseServiceMarker(text)?.loomVersion ?? null,
+    state,
+    ...(disabled ? { disabled } : {}),
+    ...(linger ? { linger } : {}),
+    unit,
+    execPathExists: unit.execPath !== null && existsSync(unit.execPath),
+    bridgeMainExists: unit.bridgeMainPath !== null && existsSync(unit.bridgeMainPath),
+    currentPath: p.currentPath,
+    unresolvedAgentBins,
+    cliBridgeMainPath,
+    statusSrcPath: status?.srcPath ? status.srcPath : null,
+    log: { path: logPath, mode: fileMode(logPath) },
+    loopbackRelay: relayIsLoopback(p.relayUrl),
+    lockHolderPid: lock.kind === "held" ? lock.pid : null,
+    statusPid,
+    statusPidAlive: statusPid !== null && alive(statusPid),
+  };
+}
+
+/** `serviceSection(await gatherServiceInput(p))` — the doctor / status entry point. */
+export async function serviceDoctorSection(p: ServiceProbeDeps): Promise<DoctorSection> {
+  return serviceSection(await gatherServiceInput(p));
 }
