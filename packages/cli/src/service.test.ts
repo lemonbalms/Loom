@@ -965,15 +965,15 @@ describe("uninstall (darwin)", () => {
     setup();
     expect((await run("install", "darwin", makeFake())).code).toBe(0);
     const fake = makeFake({ loaded: true, running: false });
-    let fileAtBootout: boolean | null = null;
+    const seen: { fileAtBootout: boolean | null } = { fileAtBootout: null };
     fake.override.set("launchctl bootout", () => {
-      fileAtBootout = existsSync(plistPath());
+      seen.fileAtBootout = existsSync(plistPath());
       fake.state.loaded = false;
       return undefined;
     });
     const r = await run("uninstall", "darwin", fake);
     expect(r.code).toBe(0);
-    expect(fileAtBootout).toBe(true);
+    expect(seen.fileAtBootout).toBe(true);
     expect(writes(fake)).toEqual([["launchctl", "bootout", `gui/${UID}/${LABEL}`]]);
     expect(existsSync(plistPath())).toBe(false);
   });
