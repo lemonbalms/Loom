@@ -4,7 +4,8 @@
  * --profile · LOOM_PROFILE · displayName fallback · default) · results ⊆ AGENT_KEY_RE · safe/hash
  * forms disjoint · line schema field boundaries · appliesTo regex.
  * Done-when (b): (seq, id) fold — identical copies · (id, seq) conflicts · same id other seq ·
- * dangling · unparseable anywhere · CRLF · hiding (retired supersessor hides, proposed does not) ·
+ * dangling · unparseable anywhere · CRLF · hiding (an ever-active supersessor hides — incl. one
+ * later retired; proposed or rejected (proposed → retired) does not) ·
  * absent supersedes target with/without watermark · maxSeq incl. watermark · 200-permutation
  * shuffle invariance on a fixed-seed ≥60-line store.
  * Pure: no file I/O — run with HOME and LOOM_TEST_HOME pointing at a temp dir anyway (R16).
@@ -453,6 +454,7 @@ describe("foldMemoryLines — basics", () => {
       status: "active",
       supersedes: null,
       supersedesArchived: false,
+      everActive: true,
       hidden: false,
       transitions: [],
     });
@@ -730,6 +732,7 @@ describe("foldMemoryLines — hiding rule (R5 · R53-M1)", () => {
     );
     expect(visibleIds(f)).toEqual([ID(0xa)]);
     expect(f.entries.get(ID(0xa))!.hidden).toBe(false);
+    expect(f.entries.get(ID(0xb))!.everActive).toBe(false);
   });
 
   test("proposed supersessor hides once approved", () => {
@@ -756,7 +759,7 @@ describe("foldMemoryLines — hiding rule (R5 · R53-M1)", () => {
     expect(f.entries.get(ID(0xb))!.status).toBe("retired");
   });
 
-  test("hiding is status-based (② fold 7 literal): proposed → retired supersessor hides too", () => {
+  test("rejected proposal (proposed → retired) never hides its target — everActive false", () => {
     const f = foldMemoryLines(
       store(
         A(),
@@ -764,8 +767,49 @@ describe("foldMemoryLines — hiding rule (R5 · R53-M1)", () => {
         transition({ id: ID(0xb), seq: 3, to: "retired" }),
       ),
     );
+    expect(f.entries.get(ID(0xb))!.status).toBe("retired");
+    expect(f.entries.get(ID(0xb))!.everActive).toBe(false);
+    expect(f.entries.get(ID(0xa))!.hidden).toBe(false);
+    expect(visibleIds(f)).toEqual([ID(0xa)]);
+  });
+
+  test("approved-then-retired supersessor still hides — everActive true", () => {
+    const f = foldMemoryLines(
+      store(
+        A(),
+        entry({ id: ID(0xb), seq: 2, supersedes: ID(0xa), status: "proposed" }),
+        transition({ id: ID(0xb), seq: 3, to: "active" }),
+        transition({ id: ID(0xb), seq: 4, to: "retired" }),
+      ),
+    );
+    expect(f.entries.get(ID(0xb))!.status).toBe("retired");
+    expect(f.entries.get(ID(0xb))!.everActive).toBe(true);
     expect(f.entries.get(ID(0xa))!.hidden).toBe(true);
     expect(visibleIds(f)).toEqual([]);
+  });
+
+  test("everActive: active line → true; proposed line → false until an applied approve", () => {
+    const f = foldMemoryLines(
+      store(
+        entry({ id: ID(1), seq: 1 }),
+        entry({ id: ID(2), seq: 2, status: "proposed" }),
+        entry({ id: ID(3), seq: 3, status: "proposed" }),
+        transition({ id: ID(3), seq: 4, to: "active" }),
+        entry({ id: ID(4), seq: 5, status: "retired" }),
+        // dangling approve (sorted before its entry) does not count
+        transition({ id: ID(5), seq: 6, to: "active" }),
+        entry({ id: ID(5), seq: 7, status: "proposed" }),
+      ),
+    );
+    const ever = (n: number) => f.entries.get(ID(n))!.everActive;
+    expect([ever(1), ever(2), ever(3), ever(4), ever(5)]).toEqual([
+      true,
+      false,
+      true,
+      false,
+      false,
+    ]);
+    expect(f.counters.dangling).toBe(1);
   });
 
   test("chain A ← B ← C: only C visible; retiring C keeps A and B hidden", () => {
@@ -932,6 +976,14 @@ function buildShuffleStore(rand: () => number): string[] {
   // watermarks (two, as a hand-merged store might have)
   L(watermark(12));
   L(watermark(3));
+  // fixed hiding cases: rejected proposal (does not hide) · approved-then-retired (hides)
+  L(entry({ id: ID(0xe0), seq: 70, body: "kept" }));
+  L(entry({ id: ID(0xe1), seq: 71, supersedes: ID(0xe0), status: "proposed", body: "rejected" }));
+  L(transition({ id: ID(0xe1), seq: 72, to: "retired" }));
+  L(entry({ id: ID(0xf0), seq: 73, body: "replaced" }));
+  L(entry({ id: ID(0xf1), seq: 74, supersedes: ID(0xf0), status: "proposed", body: "edit" }));
+  L(transition({ id: ID(0xf1), seq: 75, to: "active" }));
+  L(transition({ id: ID(0xf1), seq: 76, to: "retired" }));
   // unparseable ×5 (garbage, v:2, unknown kind, bad field, torn)
   lines.push("garbage line");
   L(entry({ id: ID(0xbad1), seq: 500, v: 2 }));
@@ -973,6 +1025,11 @@ describe("foldMemoryLines — shuffle invariance (Done-when (b))", () => {
     expect([...base.entries.values()].some((e) => e.status === "retired")).toBe(true);
     expect([...base.entries.values()].some((e) => e.status === "proposed")).toBe(true);
     expect(base.maxSeq).toBeGreaterThanOrEqual(41);
+    expect(base.entries.get(ID(0xe0))!.hidden).toBe(false);
+    expect(base.entries.get(ID(0xe1))!.everActive).toBe(false);
+    expect(base.visibleActive.some((e) => e.id === ID(0xe0))).toBe(true);
+    expect(base.entries.get(ID(0xf0))!.hidden).toBe(true);
+    expect(base.entries.get(ID(0xf1))!.everActive).toBe(true);
     const want = canonical(base);
 
     const shuffle = mulberry32(0xb0b);
