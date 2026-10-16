@@ -26,7 +26,7 @@ const KNOWN_SHAPES: readonly RegExp[] = [
 
 function redactUrlUserinfo(text: string): string {
   return text.replace(
-    /([a-zA-Z][a-zA-Z0-9+.-]*):\/\/[^\s/@:]+:[^\s/@]+@/g,
+    /(?<![a-zA-Z0-9+.-])([0-9+.-]*[a-zA-Z][a-zA-Z0-9+.-]*):\/\/[^\s/@:]+:[^\s/@]+@/g,
     `$1://${MARK}@`,
   );
 }
