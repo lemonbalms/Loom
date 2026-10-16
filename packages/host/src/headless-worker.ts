@@ -31,6 +31,16 @@
  * symlink, ≤1 MiB, sha256 = recorded hash) → fingerprint. Any failure is fingerprint_changed →
  * needs_verification, with skills on or off (D9: a skills-off mismatch no longer starts a fresh
  * session). The resume turn carries no fence (R3); its write-ahead keeps the recorded hash (R10).
+ *
+ * PLAN 0.37.0 P2 (D2 · D3 · D4(c) · D9 · R4 · R5 · R8–R12). The same fence now carries, in order,
+ * the policy notice (`deps.policyGaps`, the card agent's gaps only — omitted = none, R4), the
+ * standing rules (`deps.rules.enabled`) and memory, composed by `composeFenceText`, env-redacted
+ * once over the whole text (R9) and fenced as before. The step runs on a fresh first turn only
+ * when memory, rules or an own gap is on (R10) — otherwise no reader call and no filesystem
+ * access (0.36 bytes). A block over 1 MiB is a setup failure (R8). D9: the memory_snapshot line
+ * reports read_errors / entries_oversize even when the text is empty. `worker.maxConcurrent
+ * .<agent>: 0` is `agent_disabled` after the claim, under the card lock: a new card before the
+ * cwd check, an existing unsent record pre-empted like fingerprint_changed (no kill, no spawn).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile, type ChildProcess } from "node:child_process";
@@ -79,16 +89,20 @@ import {
   type SpawnedWorker,
 } from "./process-group";
 import {
+  composeFenceText,
   composeMemoryWrapped,
   MEMORY_SNAPSHOT_FILE,
   type MemoryInjectFlags,
   renderMemoryBlock,
+  renderRulesSection,
 } from "./memory-inject";
 import { loadMemorySnapshot } from "./memory-snapshot";
 import { agentKeyFor } from "./memory-store";
+import { type Gap, renderPolicyNotice } from "./policy-gaps";
 import { parseLstart, readProcessLstart } from "./process-lstart";
 import { redactSecrets } from "./redact";
 import { roomKey } from "./room-event-log";
+import { loadRules } from "./rules-store";
 import { materializeCardSkills, verifyCardSkillsCopy } from "./skill-materialize";
 import { composeFirstTurnPrompt, renderSkillListing } from "./skill-prompt";
 
@@ -157,6 +171,13 @@ type HeadlessDeps = {
   memory?: { enabled: boolean };
   /** 0.36.0 test seam: the per-card fence nonce. Default 32 lowercase hex from randomBytes(16). */
   memoryNonce?: () => string;
+  /**
+   * 0.37.0 D3 · R4: the bridge's policy gaps, computed once at start. Omitted = [] = no notice.
+   * A card gets only its own agent's gaps.
+   */
+  policyGaps?: readonly Gap[];
+  /** 0.37.0 D3: standing rules in the fence; only `{enabled: true}` turns them on. */
+  rules?: { enabled: boolean };
   /** Maximum wait for abandoned owners during close(). Default: 10_000 ms. */
   closeDeadlineMs?: number;
   /** must not await dispatch() for the same card; it runs under the per-card transition lock */
@@ -519,6 +540,18 @@ function fingerprintChangedFields(): HeadlessResultFields {
     truncated: false,
     summary: "fingerprint changed",
     note: "fingerprint_changed; not resuming",
+  };
+}
+
+/** 0.37.0 D4(c): `worker.maxConcurrent.<agent>` is 0 — the card is never spawned. */
+function agentDisabledFields(agent: AgentKind): HeadlessResultFields {
+  return {
+    status: "failed",
+    reason: "agent_disabled",
+    output: "",
+    truncated: false,
+    summary: "",
+    note: `worker.maxConcurrent.${agent} is 0 (agent disabled)`,
   };
 }
 
@@ -1144,6 +1177,14 @@ export class HeadlessDispatcher {
           });
           return;
         }
+        if (existing && !existing.resultSent && this.deps.config.maxConcurrent[card.agent] === 0) {
+          // 0.37.0 D4(c) · R12: a disabled agent's record is never adopted or resumed; a live
+          // worker is not killed (R49-M3 form) and its result is pre-empted.
+          await this.sendAndMarkLocked(existing, agentDisabledFields(card.agent), {
+            preserveWorkerState: processLiveness(existing) !== "dead",
+          });
+          return;
+        }
         if (existing && fingerprintChanged) {
           // R49-M3: a live worker is not killed and not watched; its result is pre-empted.
           await this.sendAndMarkLocked(existing, fingerprintChangedFields(), {
@@ -1176,6 +1217,11 @@ export class HeadlessDispatcher {
             dispatchHandoffId: existing.dispatchHandoffId,
           };
           return { existing, runCard };
+        }
+        // 0.37.0 D4(c) · R12: concurrencyLimit turns 0 into a lane of 1, so check explicitly.
+        if (this.deps.config.maxConcurrent[card.agent] === 0) {
+          await this.deliver(card, new Date().toISOString(), agentDisabledFields(card.agent));
+          return;
         }
         const checked = resolveWorkerCwd(card.cwd, this.deps.config);
         if (!checked.ok) {
@@ -1715,12 +1761,17 @@ export class HeadlessDispatcher {
         // failure before the write-ahead record (no spawn).
         const skills = await this.skillsForSpawnLocked(card, plan);
         manifestHash = skills.manifestHash;
-        // 0.36.0 D2 / R2: a fresh first turn (never a resume) snapshots memory when enabled.
-        // Off = no reader call, no filesystem access (R54-L1). A throw is a setup failure
-        // before the write-ahead record (no spawn).
+        // 0.36.0 D2 / R2 · 0.37.0 R10: a fresh first turn (never a resume) builds the fence when
+        // memory, rules or an own policy gap is on. None = no reader call, no filesystem access
+        // (R54-L1). A throw is a setup failure before the write-ahead record (no spawn).
+        const sources = {
+          memory: this.deps.memory?.enabled === true,
+          rules: this.deps.rules?.enabled === true,
+          gaps: (this.deps.policyGaps ?? []).filter((g) => g.agent === card.agent),
+        };
         const memoryBlock =
-          !plan.resumeSessionId && this.deps.memory?.enabled === true
-            ? await this.memorySnapshotLocked(card, dir)
+          !plan.resumeSessionId && (sources.memory || sources.rules || sources.gaps.length > 0)
+            ? await this.memorySnapshotLocked(card, dir, sources)
             : { block: "", hash: "" };
         // R10: a resume write-ahead carries the hash nextPlan's gate passed (a new record
         // object, so it must be passed explicitly); a first spawn records this snapshot's hash.
@@ -2001,28 +2052,47 @@ export class HeadlessDispatcher {
   }
 
   /**
-   * Caller holds the card lock; fresh first turn with memory enabled only (D2 ①–⑥). Returns the
-   * fence bytes F (also the memory-snapshot.md bytes) and sha256(F), or {"", ""} when the
-   * snapshot text is empty — then a stale memory-snapshot.md is removed (R7 · R54-L1).
+   * Caller holds the card lock; fresh first turn with at least one source on (0.37.0 ② 펜스
+   * 스냅샷 단계 ①–⑧). Order: ① memory snapshot ② rules section ③ policy notice ④ compose
+   * ⑤ env redaction once over the whole text ⑥ nonce (after the reads) → fence ⑦ > 1 MiB throws
+   * ⑧ write. Returns the fence bytes F (also the memory-snapshot.md bytes) and sha256(F), or
+   * {"", ""} when the composed text is empty — then a stale memory-snapshot.md is removed
+   * (R7 · R54-L1).
    */
   private async memorySnapshotLocked(
     card: HeadlessDispatchCard,
     dir: string,
+    sources: { memory: boolean; rules: boolean; gaps: readonly Gap[] },
   ): Promise<{ block: string; hash: string }> {
     const started = performance.now();
-    const snap = loadMemorySnapshot(
-      this.deps.loomDir,
-      agentKeyFor(this.deps.profile ?? "default", card.agent),
-      roomKey(card.roomId),
-    );
-    // R53-L3 · R13: env values are redacted outside the reader, with the spawn-time env.
-    const redacted = redactSecrets(snap.text, process.env);
-    // R5: drawn after the read, so a store author cannot know it.
+    const snap = sources.memory
+      ? loadMemorySnapshot(
+          this.deps.loomDir,
+          agentKeyFor(this.deps.profile ?? "default", card.agent),
+          roomKey(card.roomId),
+        )
+      : null;
+    const rules = sources.rules
+      ? renderRulesSection(card.agent, loadRules(this.deps.loomDir).rules)
+      : null;
+    const notice = renderPolicyNotice(sources.gaps);
+    const text = composeFenceText(notice, rules?.section ?? "", snap?.text ?? "");
+    // R53-L3 · R13 · 0.37.0 R9: env values are redacted outside the readers, once, over the
+    // whole composition (notice, rules and memory), with the spawn-time env.
+    const redacted = redactSecrets(text, process.env);
+    // R5: drawn after the reads, so a store author cannot know it.
     const nonce = (this.deps.memoryNonce ?? defaultMemoryNonce)();
     const { block, neutralizedLines } = renderMemoryBlock(redacted, nonce);
-    const flags: MemoryInjectFlags = { neutralizedLines, envRedacted: redacted !== snap.text };
+    // 0.37.0 R8: never write a file the resume gate would refuse.
+    if (Buffer.byteLength(block, "utf8") > MEMORY_SNAPSHOT_MAX_BYTES) {
+      throw new Error(`memory snapshot block exceeds ${MEMORY_SNAPSHOT_MAX_BYTES} bytes`);
+    }
+    const flags: MemoryInjectFlags = { neutralizedLines, envRedacted: redacted !== text };
     const target = join(dir, MEMORY_SNAPSHOT_FILE);
     const id = card.cardId.replace(/[\r\n]/g, " ");
+    const readErrors = snap?.flags.readErrors ?? 0;
+    // D9: shown only when set, so the 0.36 lines stay byte-identical.
+    const oversize = snap?.flags.entriesOversize === true ? " · entries_oversize yes" : "";
     if (block === "") {
       try {
         await unlink(target);
@@ -2030,8 +2100,9 @@ export class HeadlessDispatcher {
         if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
       }
       const ms = Math.round(performance.now() - started);
+      const errors = readErrors > 0 ? ` · read_errors ${readErrors}` : "";
       process.stderr.write(
-        `[headless] memory_snapshot (${id}): empty — no block · load_ms ${ms}\n`,
+        `[headless] memory_snapshot (${id}): empty — no block${errors}${oversize} · load_ms ${ms}\n`,
       );
       return { block: "", hash: "" };
     }
@@ -2039,12 +2110,14 @@ export class HeadlessDispatcher {
     // D2 ⑥ · R8: the hash of the exact file bytes, never snap.hash.
     const hash = createHash("sha256").update(Buffer.from(block, "utf8")).digest("hex");
     const ms = Math.round(performance.now() - started);
-    const t = snap.flags.truncated;
+    const t = snap?.flags.truncated;
     const truncated =
-      (["persona", "index", "guideline", "entries"] as const).filter((k) => t[k]).join(",") ||
+      (["persona", "index", "guideline", "entries"] as const).filter((k) => t?.[k]).join(",") ||
       "none";
+    const noticeField = sources.gaps.length > 0 ? ` · notice ${sources.gaps.length}` : "";
+    const rulesField = rules ? ` · rules ${rules.included}/${rules.eligible}` : "";
     process.stderr.write(
-      `[headless] memory_snapshot (${id}): block ${Buffer.byteLength(block, "utf8")} B · text ${Buffer.byteLength(snap.text, "utf8")} B · neutralized ${flags.neutralizedLines} · env_redacted ${flags.envRedacted ? "yes" : "no"} · read_errors ${snap.flags.readErrors} · truncated ${truncated} · load_ms ${ms}\n`,
+      `[headless] memory_snapshot (${id}): block ${Buffer.byteLength(block, "utf8")} B · text ${Buffer.byteLength(text, "utf8")} B${noticeField}${rulesField} · neutralized ${flags.neutralizedLines} · env_redacted ${flags.envRedacted ? "yes" : "no"} · read_errors ${readErrors}${oversize} · truncated ${truncated} · load_ms ${ms}\n`,
     );
     return { block, hash };
   }

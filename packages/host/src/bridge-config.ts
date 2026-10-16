@@ -304,8 +304,11 @@ function parseMaxConcurrent(raw: unknown): Record<AgentKind, number> {
   for (const agent of HEADLESS_AGENTS) {
     if (!Object.prototype.hasOwnProperty.call(src, agent)) continue;
     const value = src[agent];
-    if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-      throw new Error(`worker.maxConcurrent.${agent} must be an integer >= 1`);
+    // PLAN 0.37.0 D4(c) · R55-L4: 0 disables the agent (agent_disabled, never spawned).
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      throw new Error(
+        `worker.maxConcurrent.${agent} must be an integer >= 0 (0 disables the agent)`,
+      );
     }
     out[agent] = value;
   }
