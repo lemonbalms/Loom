@@ -10,7 +10,15 @@
  * - Second signal while stopping (or during startup) → immediate exit 0, no status write.
  * - After `stopped` is recorded → exit 0 (lingering handles never hold the process).
  * - Startup failure (incl. lock refusal) → exit 1.
+ *
+ * PLAN 0.34.0 D3 · R1 · R2 — service yield: with `LOOM_SERVICE=1` (exactly "1") a lock refusal
+ * by a LIVE holder (`holderPid !== null`) exits 0 with one stderr line, so launchd
+ * `KeepAlive{SuccessfulExit:false}` / systemd `Restart=on-failure` do not crash-loop against a
+ * bridge started by hand. Holder unknown and every other startup failure stay exit 1. The
+ * yielding process never writes the status file (it is the holder's). This file is the only
+ * reader of `LOOM_SERVICE`.
  */
+import { BridgeLockBusyError } from "./bridge-lock";
 import { bridgeMetaPath } from "./bridge-meta";
 import {
   type BridgeRuntime,
@@ -18,6 +26,11 @@ import {
   startBridgeRuntime,
 } from "./bridge-runtime";
 import { sessionPath } from "./session-store";
+
+/** D3: startup error `err` under `env` is a service yield (exit 0) — pure. */
+export function isServiceYield(err: unknown, env: Record<string, string | undefined>): boolean {
+  return env.LOOM_SERVICE === "1" && err instanceof BridgeLockBusyError && err.holderPid !== null;
+}
 
 export async function runBridgeMain(
   opts: { runtimeOptions?: StartBridgeRuntimeOptions } = {},
@@ -50,8 +63,15 @@ export async function runBridgeMain(
       ...opts.runtimeOptions,
     });
   } catch (e) {
-    console.error(e instanceof Error ? e.message : e);
-    process.exit(1);
+    const serviceYield = isServiceYield(e, process.env);
+    if (serviceYield && e instanceof BridgeLockBusyError) {
+      console.error(
+        `[loom-bridge] yield to bridge pid ${e.holderPid} (lock ${e.lockPath}) — service stays down until \`loom service start\``,
+      );
+    } else {
+      console.error(e instanceof Error ? e.message : e);
+    }
+    process.exit(serviceYield ? 0 : 1);
   }
 
   console.log(
