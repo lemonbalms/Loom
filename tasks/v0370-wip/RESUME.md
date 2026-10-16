@@ -1,6 +1,6 @@
 # Loom v0.37.0 — 재개 메모 (2026-10-17 07:55 중지)
 
-저장소 `~/projects/fable-advisor` main = `8140c97` (원격 미푸시 · origin/main = `acd53a0` v0.36.0). 작업 트리 깨끗.
+저장소 `~/projects/loom` main = `8140c97` (원격 미푸시 · origin/main = `acd53a0` v0.36.0). 작업 트리 깨끗.
 
 ## 끝난 것
 - 게이트 `5860990` (PLAN §0.37.0 approved, R55 approved-with-fixes, no R55b)

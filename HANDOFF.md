@@ -1,7 +1,7 @@
 # HANDOFF — Loom
 
 **Updated:** 2026-10-17
-**Workspace:** `/Users/kyoungsiklee/projects/fable-advisor`
+**Workspace:** `/Users/kyoungsiklee/projects/loom`
 
 ## One-line resume
 
