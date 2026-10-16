@@ -2,7 +2,7 @@
 
 ## Current — Loom 업그레이드 계획 (오너 지명 2026-10-15)
 
-> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51) · 2부 = §0.34.0 (R52). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
+> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51) · 2부 = §0.34.0 (R52) · 4단계 1부 = §0.35.0 (R53). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
 
 1. [x] **1단계 — v0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신(`clientEventId`)** —
    `ae60cdb` → … → `c183c92` → PATCH 6 · 최종 리뷰 `c778d4d`. shipped.
@@ -17,7 +17,9 @@
    - [x] **1부 — v0.33.0 bridge 생명주기 보강** — `b8739d9` P1 → … → `236a8c1` P4 → `38933f1` P4 검증 교정 → `bb97ffd` 스모크 → PATCH 5(USER_GUIDE §18 · PROTOCOL · implementation-notes §0.33.0 · VERSION 0.33.0 · 스모크 `BRIDGE-LIFECYCLE-SMOKE-0330.md`). Done when (a)~(i) green · (j) ship 검사.
    - [x] **2부 — v0.34.0 `loom service` launchd/systemd 설치** — `b77a42f` P1 → … → `732845e` P4 → `52716ba` P3/P4 검증 교정 → `fb89d75` P4+fix 검증 교정 → `244e6a2` 스모크 → PATCH 5(USER_GUIDE §19 · PROTOCOL · implementation-notes §0.34.0 · VERSION 0.34.0 · 스모크 `SERVICE-SMOKE-0340.md`). Done when (a)~(i) green · (j) ship 검사. **라이브 스모크(`smoke:service --live`)는 오너 명시 승인 대기 — 미실행.**
    3단계 완료.
-4. [ ] **4단계 — memory / rules / skills 저장소** (**다음** 후보 — 오너 지시로 착수 · PLAN MINOR + R53)
+4. [ ] **4단계 — memory / rules / skills 저장소** (두 릴리스로 분할 — PLAN §0.35.0 D1)
+   - [ ] **1부 — v0.35.0 저장소 + CLI + 순수 스냅샷 리더** — PLAN §0.35.0 `approved`(R53 approved-with-fixes, M1·M2·L1~L3 반영, no R53b). 다음 = **P1**(순수 코어, red = 테스트 파일만) → P2 쓰기·락·compact → P3 리더(스냅샷·규칙·스킬 목록) → P4 CLI + doctor Memory 절 → P5 문서·스모크. 워커·프롬프트·bridge 변경 0.
+   - [ ] **2부 — v0.36.0 카드 시작 스냅샷 + 펜스 주입**(다음 후보 — D9 · D10 · 완료 기준 (c) 옵션 ii 체크리스트)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.

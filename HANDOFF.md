@@ -5,31 +5,31 @@
 
 ## One-line resume
 
-> v0.34.0 **implemented** · 3단계 done (`loom service`) · **next = 4단계** memory/rules/skills (owner pick) · topology full
+> v0.35.0 **approved** (R53) · 4단계 1부 memory/rules/skills store · **next = P1** pure core (red first) · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.34.0 `implemented`** · P5 docs/smoke in · live smoke owner-gated | `docs/PLAN.md` |
+| Product | **v0.35.0 `approved`** (R53) · next P1 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.34.0 implemented · next = 4단계 memory / rules / skills
+### v0.35.0 approved (R53) · next = P1 memory-store pure core
 
-**Goal:** 3단계 2부 done — `loom service install|uninstall|start|status` (launchd/systemd user units · `LOOM_SERVICE=1` lock-busy yield exit 0 · `KillMode=process` · doctor Service section). Authority `docs/PLAN.md` §0.34.0 · impl-notes §0.34.0 · `USER_GUIDE.md` §19 · smoke `SERVICE-SMOKE-0340.md`. v0.33.0 shipped `0a20173`.
+**Goal:** 4단계 1부 — memory/rules/skills store + CLI + pure snapshot reader (`memory/<agentKey>/entries.jsonl` v1 · store-local `seq` + `(seq, id)` fold · `loom memory add|propose|list|show|approve|retire|compact` · `loom rules list` · `loom skills list` · doctor Memory section · `loadMemorySnapshot` unwired). **Zero worker/prompt/bridge change** (D1 — `agent-argv.ts` · `policy-compile.ts` · `packages/protocol` diff 0). Authority `docs/PLAN.md` §0.35.0 (D1–D10 · R1–R16 · C1 · classes 1–9 · UK-1–6) · `docs/plan_review.md` R53 (M1 · M2 · L1–L3 in PLAN). v0.34.0 shipped `dbab890`.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:service` · `smoke:bridge-lifecycle`
-2. 4단계 memory / rules / skills (`UPGRADE-PLAN.md` order): owner pick → PLAN MINOR + R53 before code
+2. P1 red (test files only — `agentKeyFor` table, line schema, fold, 200-permutation shuffle invariance, R53-M1 hiding/archived refs) → green → Opus 5.5 xhigh verify → P2…P5 (PLAN ⑦) · every test/probe child: HOME + `LOOM_TEST_HOME` temp
 3. Carry: live `smoke:service --live` (owner yes — UK-1–3) · Linux live unverified (UK-4/5) · service log rotation · codex MCP approval · `propose` shell bypass · L-2 advisory
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** 4단계 PLAN drafted and R53 gated (owner pick first).
+**Done when (this handoff):** P1 red→green committed and independently verified.
 
 **Must not:** run live launchd/systemd registration (`smoke:service --live`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -37,7 +37,8 @@
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.34.0 | **implemented** | 3단계 2부 · smoke ①~⑥ PASS · live not run | `docs/PLAN.md` |
+| v0.35.0 | **approved** (R53) | 4단계 1부 · next P1 | `docs/PLAN.md` |
+| v0.34.0 | **shipped** `dbab890` | 3단계 2부 · smoke ①~⑥ PASS · live not run | `docs/PLAN.md` |
 | v0.33.0 | **shipped** `0a20173` | 3단계 1부 · smoke ①~④ PASS | `docs/PLAN.md` |
 | v0.32.0 | **shipped** `9567f87` | step 2 done | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |

@@ -42,6 +42,35 @@
 
 ## Gate log
 
+### 0.35.0 — memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더 (`approved` — R53 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.35.0 (`approved` — R53 approved-with-fixes, 반영 완료 · no R53b) · 업그레이드 4단계 1부 · 요구 `UPGRADE-PLAN.md` 4단계 · 기억 관리 · 규칙 관리 · 스킬 관리 · 범위 = 락 D1~D10(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 0.36.0 기록용) · 워커·프롬프트·bridge 변경 0(D1) · 4단계 2부 = 0.36.0(카드 시작 스냅샷 + 펜스 주입) |
+| **Date** | 2026-10-16 |
+| **Review** | R53 **done 2026-10-16** (새 MINOR + 신규 제품 표면 + 영속성·신뢰 경계 — 0.36에서 프롬프트로 들어갈 저장소의 형식 · 쓰기 안전 · 승인 상태기계 · 경로 규약) |
+| **Evidence** | 코드 실측 `main @ dbab890` (PLAN §0.35.0 Why · 추정/실측 표) · `packages/relay/src/room.ts:167-168`(룸별 seq) · `agent-argv.ts:18` · `:28-36` · `:279` · `atomic-json.ts:22-24` · `:190-209` · `room-event-log.ts:125-141` · `:518-551` · `card-session-store.ts:83-123` · `context-pack.ts:67-73` · `result-quarantine.ts:106-147` · `redact.ts:87-98` · `protocol/src/sanitize.ts:18` · `skill-materialize.ts:47` · `:109-120` · `:708-728` · `session-store.ts:72` · `:79-83` · `:179` · `bridge-spawn.ts:40-45` · `bridge-runtime.ts:878` · `:1106-1111` · `headless-worker.ts:110-127` · `cli/src/service.ts:295` · `cli/src/index.ts:362-397` · `:3389-3395` · `doctor.ts:3` · `:695` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 코드 실측(`dbab890`): (1) `rules/` · `memory/` · `knowledge/`를 읽거나 쓰는 코드 0 · 헤드리스 워커는 Loom MCP 없음(`agent-argv.ts:28-36`). (2) relay seq는 룸별 · 미스탬프 0(`room.ts:167-168`) — 전순서 아님. (3) `roomKey` = sha256(roomId)[:16] · 카드 디렉터리 = 해시(`room-event-log.ts:125` · `card-session-store.ts:83-123`). (4) `withFileLock` 동기 · 대기 4초 · stale 5초 · 타임아웃 = 일반 Error(`atomic-json.ts:22-24` · `:190-209`). (5) JSONL append 끝 개행 수선 선례(`room-event-log.ts:518-551`). (6) 격리 fold는 torn을 마지막 줄만 셈(`result-quarantine.ts:117-127`). (7) `redactSecrets` env 생략 = `process.env`(`redact.ts:87-91`) · `sanitizePeerText`는 CR 제거. (8) 사용자 스킬 항목은 깨졌어도 내장을 가림(`skill-materialize.ts:708-728`) · 목록 CLI 없음. (9) `loomDir()` 캐시·이주(`session-store.ts:72` · `:179`). (10) `HeadlessDeps`에 profile 없음(`headless-worker.ts:110-127` — C1). |
+| Known unknowns | **UK-1~UK-6**(아래 표, 정본 = PLAN §0.35.0). 요지: 0.36 profile 전달(C1) · redaction 오탐률 · 스냅샷 크기 예산 · 규칙 scope/priority 의미 · 동기 리더 핫 경로 비용 · Windows. |
+| Unknown knowns | 업그레이드 계획의 "1단계 순번(seq)으로 최신 판단"은 relay seq가 룸별이라 성립하지 않는다 — 저장소 로컬 seq + `(seq, id)` fold(D2). `rooms/<roomId>/` · `cards/<cardId>/` 문면은 기존 해시 규약과 충돌한다(D3). 리더가 `redactSecrets`를 env 없이 부르면 `process.env`를 읽어 순수하지 않다(R10). sanitize가 CR을 지우므로 "sanitize가 바꾸면 거부"는 붙여넣은 본문을 전부 막는다(R7). compact가 대체된 기록을 옮겨도 대체자는 dangling이 아니라 **아카이브 참조**(`supersedesArchived` · `archivedRefs` — info)로 센다 — 고정점으로 대상을 붙잡으면 대체 사슬이 줄지 않아 1 MiB 쓰기 거부가 풀리지 않고, "active 대체자만 가림"이면 retire가 옛 기록을 되살려 compact 전후 가시 집합이 달라진다(R9 · R53-M1). 스모크가 자기 HOME을 임시로 요구하면 실 셸에서 돌 수 없고 실 홈 비교도 못 한다 — 임시 env는 자식에게만(R53-M2). 사람이 쓰는 파일은 쓰기 검사가 없어 env 값 redaction을 받지 않는다(R53-L3). 프로필 이름은 임의 문자라 경로가 될 수 없고 macOS는 대소문자를 무시한다(R1). |
+| Unknown unknowns | 사람이 실제로 쓰는 기록의 양·길이 분포 · 여러 프로필이 같은 `~/.loom`을 쓸 때 knowledge·guideline 공유가 낳는 혼란 · 0.36 주입 뒤 에이전트가 기억을 지시로 오인하는 정도 · 손편집이 만드는 이상 줄의 실제 빈도 · 편집기 임시 파일(`.md~` · `.swp`)이 `rules/`에 남는 경우. |
+
+**Unknowns 요약 (정본 = PLAN §0.35.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R53 판정 |
+|---|------|-------------|----------|
+| UK-1 | 0.36 배선 때 profile 전달(C1) — `HeadlessDeps.profile` 추가 외 sticky host·pane 경로의 profile 해석 | 0.35는 `agentKeyFor(profile, …)`만 고정 · 배선 0 | **open, 비차단** |
+| UK-2 | redaction 오탐률(`token: …` · `password = …` 꼴 평문) | 0.35 = 사람이 고쳐 씀(계급 6) · 문구가 이유를 말함 | **open, 비차단** |
+| UK-3 | 스냅샷 크기 예산(persona 8 · INDEX 8 · guideline 16 · Memory 16 KiB)이 세 CLI 첫 턴 본문에 맞는지 | 0.36 PLAN이 실측 뒤 상한 조정 가능(형식 무변경) | **open, 비차단** |
+| UK-4 | 규칙 `scope`(`all\|claude\|codex\|grok`) · `priority` 의미가 5단계 프롬프트 조립과 맞는지 | 규칙 배선 0 · 키 추가로 흡수 | **open, 비차단** |
+| UK-5 | 동기 `loadMemorySnapshot`의 0.36 `spawnOnce` 핫 경로 비용(최대 4 MiB fold) | 0.35 미배선 · 0.36이 측정 후 async 래퍼 결정 | **open, 비차단** |
+| UK-6 | Windows — 모드 비트 · `withFileLock` · 심링크 판정 | 0.24.2 플랫폼 조건부 선례 · 테스트는 macOS/Linux | **open, 비차단** |
+
+**Current decision:** D1~D10 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 0.36.0 기록용) · 작성자 정밀화 R1~R16 · 락↔코드 불일치 C1(profile이 `HeadlessDeps`에 없음 — 0.36에서 필드 추가) · 수용 손실 계급 1~9 + 무번호 3행 · UK-1~UK-6 · 4단계 완료 기준 (c) 옵션 ii 체크리스트로 재정의(0.36 인도). **R53 `approved-with-fixes` → M1·M2·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R53b)** · R1~R16 수용(R5·R9→M1 · R7→L1 · R1→L2) · C1 수용(0.35 변경 없음) · UK-1~UK-6 비차단. **Next = P1**(순수 코어, red = 테스트 파일만).
+
 ### 0.34.0 — `loom service` launchd/systemd 사용자 서비스 설치 (`approved` — R52 approved-with-fixes · implemented 2026-10-16)
 
 | Field | Value |
