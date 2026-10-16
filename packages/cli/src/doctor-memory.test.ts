@@ -503,3 +503,64 @@ describe("readMemoryDoctorInput (gatherer)", () => {
     expect(inp.rooms.guidelines).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// P4 verify L2 · L4
+// ---------------------------------------------------------------------------------------------
+
+describe("unreadable entries.jsonl (P4 verify L2)", () => {
+  test("memorySection: entriesReadError → distinct warn", () => {
+    const s = memorySection(
+      input({
+        agents: [
+          agent({
+            entries: { state: "file", bytes: 50, mode: 0o000 },
+            fold: null,
+            entriesReadError: "EACCES",
+          }),
+        ],
+      }),
+    );
+    expect(rows(s)[1]).toBe("warn claude.default: entries.jsonl unreadable (EACCES)");
+    noFail(s);
+  });
+
+  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  test.skipIf(asRoot)("gatherer: mode 0000 → entriesReadError EACCES, not 'not scanned'", () => {
+    const store = join(L, "memory", "claude.default");
+    mkdirSync(store, { recursive: true, mode: 0o700 });
+    const f = join(store, "entries.jsonl");
+    writeFileSync(f, `${line(1)}\n`, { mode: 0o600 });
+    chmodSync(f, 0o000);
+    try {
+      const inp = readMemoryDoctorInput(L, "darwin");
+      expect(inp.agents[0]!.fold).toBeNull();
+      expect(inp.agents[0]!.entriesReadError).toBe("EACCES");
+      const r = rows(memorySection(inp));
+      expect(r).toContain("warn claude.default: entries.jsonl unreadable (EACCES)");
+      expect(r.join("\n")).not.toContain("not scanned");
+    } finally {
+      chmodSync(f, 0o600);
+    }
+  });
+});
+
+describe("ignored entries capped (P4 verify L4)", () => {
+  test("20 ignored names → 16 info rows + `… 4 more ignored`", () => {
+    const names = Array.from({ length: 20 }, (_, i) => `junk${String(i).padStart(2, "0")}`);
+    const s = memorySection(input({ ignored: names }));
+    const r = rows(s);
+    expect(r.filter((x) => x.startsWith("info ignored entry "))).toEqual(
+      names.slice(0, 16).map((n) => `info ignored entry ${n}`),
+    );
+    expect(r).toContain("info … 4 more ignored");
+    noFail(s);
+  });
+
+  test("exactly 16 ignored → no `more` row", () => {
+    const names = Array.from({ length: 16 }, (_, i) => `j${i}`);
+    const r = rows(memorySection(input({ ignored: names })));
+    expect(r.filter((x) => x.startsWith("info ignored entry "))).toHaveLength(16);
+    expect(r.some((x) => x.includes("more ignored"))).toBe(false);
+  });
+});

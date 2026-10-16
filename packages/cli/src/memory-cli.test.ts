@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -1181,5 +1182,151 @@ describe("spawn: bun packages/cli/src/index.ts memory … (HOME = LOOM_TEST_HOME
       }
     },
     { timeout: 60_000 },
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
+// P4 verify L1 — `--all` / `--json` are boolean only for memory · rules · skills; every other
+// command keeps the old parse (`--profile all` · `--profile json` stay values).
+// ---------------------------------------------------------------------------------------------
+
+describe("argv parsing (P4 verify L1 — no regression outside memory/rules/skills)", () => {
+  test(
+    "--profile all / --profile json stay values for bridge · doctor; --room all is a value",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-memcli-argv-"));
+      try {
+        for (const args of [
+          ["--profile", "all", "bridge", "status"],
+          ["bridge", "status", "--profile", "json"],
+        ]) {
+          const r = runCli(T, args);
+          expect(r.stdout + r.stderr).not.toContain("Unknown command");
+          expect(r.status).toBe(0);
+          expect(r.stdout).toStartWith("bridge: offline");
+        }
+        const d1 = runCli(T, ["--profile", "all", "doctor"]);
+        expect(d1.stdout).toContain("profile: all");
+        const d2 = runCli(T, ["doctor", "--profile", "json"]);
+        expect(d2.stdout).toContain("profile: json");
+
+        const room = runCli(T, ["memory", "list", "--agent", "claude", "--room", "all"]);
+        expect(room.stderr).toBe("");
+        expect(room.status).toBe(0);
+        expect(room.stdout).toContain(
+          `  guideline.md: ${join(T, ".loom", "rooms", roomKey("all"), "guideline.md")} (absent)`,
+        );
+        const prof = runCli(T, ["--profile", "all", "memory", "list", "--agent", "claude"]);
+        expect(prof.stdout.split("\n")[0]).toBe("profile all (from --profile)");
+
+        // memory keeps --all / --json as booleans, before or after a bare word
+        const add = runCli(T, ["memory", "add", "--agent", "claude", "kept"]);
+        expect(add.status).toBe(0);
+        const id = /added (mem_[0-9a-f]{16}) /.exec(add.stdout)![1]!;
+        const js = runCli(T, ["memory", "list", "--all", "--json", "--agent", "claude"]);
+        expect(js.status).toBe(0);
+        expect(JSON.parse(js.stdout).agents[0].entries[0].id).toBe(id);
+        const sh = runCli(T, ["memory", "show", "--json", id, "--agent", "claude"]);
+        expect(sh.status).toBe(0);
+        expect(JSON.parse(sh.stdout).entry.id).toBe(id);
+        const rj = runCli(T, ["rules", "list", "--json"]);
+        expect(JSON.parse(rj.stdout).counts.bundled).toBe(1);
+        const sj = runCli(T, ["skills", "list", "--json"]);
+        expect(JSON.parse(sj.stdout).skills[0].name).toBe("loom-card-report");
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    { timeout: 180_000 },
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
+// P4 verify L2 — unreadable entries.jsonl (EACCES) is its own reason
+// ---------------------------------------------------------------------------------------------
+
+const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+
+describe("unreadable entries.jsonl (P4 verify L2)", () => {
+  test.skipIf(asRoot)(
+    "mode 0000 → list `unreadable`, JSON state unreadable, show exit 1",
+    async () => {
+      const s = session();
+      await s.call("add", ["x"], { agent: "claude" });
+      const p = storePaths();
+      chmodSync(p.entries, 0o000);
+      try {
+        const r = await s.call("list", [], { agent: "claude" });
+        expect(r.code).toBe(0);
+        expect(r.out).toContain(`  entries: unreadable — cannot read ${p.entries} (EACCES)`);
+        const j = JSON.parse((await s.call("list", [], { agent: "claude", json: true })).out[0]!);
+        expect(j.agents[0].state).toBe("unreadable");
+        const sh = await s.call("show", [ID(0xa001)], { agent: "claude" });
+        expect(sh).toEqual({
+          code: 1,
+          out: [],
+          err: [`loom memory: cannot read ${p.entries} (EACCES)`],
+        });
+      } finally {
+        chmodSync(p.entries, 0o600);
+      }
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------------------------
+// P4 verify L3 — more spawn assertions
+// ---------------------------------------------------------------------------------------------
+
+describe("spawn: secret · `--` body · doctor Memory · id prefix (P4 verify L3)", () => {
+  test(
+    "child-env secret refused; `--` body verbatim; doctor shows Memory; show <prefix> exit 1",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-memcli-spawn2-"));
+      const secret = "plainvalue-xyz-1234";
+      try {
+        const bad = runCli(T, ["memory", "add", "--agent", "claude", "remember", secret], {
+          MY_SERVICE_TOKEN: secret,
+        });
+        expect(bad.status).toBe(1);
+        expect(bad.stderr).toBe(
+          "loom memory: body looks like it contains a secret (redaction would change it) — reword it; nothing written\n",
+        );
+        expect(bad.stdout + bad.stderr).not.toContain(secret);
+        expect(readdirSync(T).includes(".loom") && existsSync(join(T, ".loom", "memory"))).toBe(
+          false,
+        );
+        // the same body passes once the sensitive env value is gone (the child env drove it)
+        const ok = runCli(T, ["memory", "add", "--agent", "claude", "remember", secret]);
+        expect(ok.status).toBe(0);
+
+        const verbatim = ["--flag-like", 'a:b "q"', "--x", "tail"];
+        const dd = runCli(T, ["memory", "add", "--agent", "claude", "--", ...verbatim]);
+        expect(dd.status).toBe(0);
+        const entries = join(T, ".loom", "memory", "claude.default", "entries.jsonl");
+        const bodies = readFileSync(entries, "utf8")
+          .trim()
+          .split("\n")
+          .map((l) => JSON.parse(l).body);
+        expect(bodies).toEqual([`remember ${secret}`, verbatim.join(" ")]);
+        const id = /added (mem_[0-9a-f]{16}) /.exec(dd.stdout)![1]!;
+
+        const doc = runCli(T, ["doctor"]);
+        expect(doc.status).toBe(0);
+        expect(doc.stdout).toContain("\nMemory\n");
+        expect(doc.stdout).toContain(
+          `memory/ 0700 · 1 agent stores (${join(T, ".loom", "memory")})`,
+        );
+        expect(doc.stdout).toMatch(/claude\.default: active 2\/200 · proposed 0 · retired 0/);
+
+        const prefix = id.slice(0, 12);
+        const sh = runCli(T, ["memory", "show", "--agent", "claude", prefix]);
+        expect(sh.status).toBe(1);
+        expect(sh.stderr).toBe(`loom memory: entry ${prefix} not found\n`);
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    { timeout: 180_000 },
   );
 });
