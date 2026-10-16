@@ -1,8 +1,9 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R53** PLAN **v0.35.0**(memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더, MINOR — 업그레이드 4단계 1부) **`approved-with-fixes` → M1·M2·L1·L2·L3 반영 완료 · PLAN `approved`(no R53b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **2** · Low **3**) — 결정적 **R53-M1**: R9 compact 고정점이 "가려진 entry" 이동 클래스를 공집합으로 만들어 대체 사슬 저장소가 1 MiB 뒤 add/propose 영구 거부 · "active 대체자만 가림"이면 retire가 옛 기록을 되살려 compact 전후 가시 집합이 달라짐 → 가림 = 대체자 status ∈ {active, retired} · 고정점 삭제 · 부재 대상 + 워터마크 → `supersedesArchived` + `archivedRefs`(info). **M2**(스모크 = 실 env 읽기 전용 · 자식만 `HOME=LOOM_TEST_HOME=T` · `os.tmpdir()` 가드 · `~/.loom`·`~/.fable` 엄격 / 에이전트 홈은 새 이름만)·**L1**(`deps.env`)·**L2**(profile 출처 · `LOOM_PROFILE`)·**L3**(사람 파일 env redaction 무번호 행). 기록 §Review R53.  
-> **이전:** **R52** PLAN **v0.34.0**(`loom service` launchd/systemd 사용자 서비스 설치, MINOR — 업그레이드 3단계 2부) **`approved-with-fixes` → M1·M2·M3·L1·L2·L3 반영 완료 · PLAN `approved`(no R52b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **3**) — 결정적 **R52-M1**: install 흐름 6이 bootout을 **실행 중**에만 걸어 "적재됨 + 실행 아님"(양보 · drain 뒤 · 조절 중)에서 `bootstrap`이 EALREADY로 실패 → bootout 조건 = **적재됨** · 바이트 동일 + 적재·실행 아님 → `kickstart` · bootout 뒤 ≤25초 not-found 폴(M2). 기록 §Review R52.  
+> **최신:** **R54** PLAN **v0.36.0**(headless 워커 카드 시작 기억 스냅샷 + 펜스 주입, MINOR — 업그레이드 4단계 2부a) **`approved-with-fixes` → M1·M2·M3·L1·L2 반영 완료 · PLAN `approved`(no R54b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **2**) — 결정적 **R54-M1**: P1 green이 `memory-inject.ts`에 `"memory-snapshot.md"` 리터럴을 넣는 순간 아직 뒤집지 않은 부분 문자열 import 가드(`memory-snapshot.test.ts:791`, `scripts/`까지 전수)가 red → **D10b 뒤집기를 P1 red로**("`headless-worker.ts` 필수" 단언은 P2 green까지 예정된 red) · M2 스모크 CLI 자식 `LOOM_PROFILE=smoke` · M3 스모크 가드 모드별 · L1 꺼짐 파일시스템 무접촉 · L2 레코드 `null` 변조 차단  
+> **이전:** **R53** PLAN **v0.35.0**(memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더, MINOR — 업그레이드 4단계 1부) **`approved-with-fixes` → M1·M2·L1·L2·L3 반영 완료 · PLAN `approved`(no R53b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **2** · Low **3**) — 결정적 **R53-M1**: R9 compact 고정점이 "가려진 entry" 이동 클래스를 공집합으로 만들어 대체 사슬 저장소가 1 MiB 뒤 add/propose 영구 거부 · "active 대체자만 가림"이면 retire가 옛 기록을 되살려 compact 전후 가시 집합이 달라짐 → 가림 = 대체자 status ∈ {active, retired} · 고정점 삭제 · 부재 대상 + 워터마크 → `supersedesArchived` + `archivedRefs`(info). **M2**(스모크 = 실 env 읽기 전용 · 자식만 `HOME=LOOM_TEST_HOME=T` · `os.tmpdir()` 가드 · `~/.loom`·`~/.fable` 엄격 / 에이전트 홈은 새 이름만)·**L1**(`deps.env`)·**L2**(profile 출처 · `LOOM_PROFILE`)·**L3**(사람 파일 env redaction 무번호 행). 기록 §Review R53.  
+> **직전:** **R52** PLAN **v0.34.0**(`loom service` launchd/systemd 사용자 서비스 설치, MINOR — 업그레이드 3단계 2부) **`approved-with-fixes` → M1·M2·M3·L1·L2·L3 반영 완료 · PLAN `approved`(no R52b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **3**) — 결정적 **R52-M1**: install 흐름 6이 bootout을 **실행 중**에만 걸어 "적재됨 + 실행 아님"(양보 · drain 뒤 · 조절 중)에서 `bootstrap`이 EALREADY로 실패 → bootout 조건 = **적재됨** · 바이트 동일 + 적재·실행 아님 → `kickstart` · bootout 뒤 ≤25초 not-found 폴(M2). 기록 §Review R52.  
 > **직전:** **R51** PLAN **v0.33.0**(bridge 생명주기 보강, MINOR — 업그레이드 3단계 1부) **`approved-with-fixes` → M1·M2·M3·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R51b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **4**) — 결정적 **R51-M2**: 정지 뒤 `main()`이 반환돼도 남은 핸들이 프로세스를 붙잡을 수 있고, `stop()` 범위만 grep하면 `bridge-runtime.ts` 다른 곳의 `process.exit`를 놓친다 → `bridge-main.ts`가 `stopped` 기록 확인 후 `process.exit(0)` · `process.exit`는 `bridge-main.ts`에만 셋(정상 0 · catch 1 · 두 번째 신호) · `bridge-runtime.ts` 전체 0곳 grep. **M1**(headless conv.open = `payload_invalid` 패턴 — claim 1회 후 `sendConvReject(…, "conv_unavailable_headless")` · drain 중 미claim · 미claim 거절은 재기동마다 반복)·**M3**(`stop()`은 `close()` 8초 경쟁 · 동기 꼬리(격리 · meta · 락 · `stopped`)는 `finally`)·**L1**(drain 검사 위치 `:1180` 앞 + claim 클로저 · conv `:1136` 앞)·**L2**(`startFakeHerdr` 재사용 · red = 테스트 파일만)·**L3**(CLI 12초는 RPC ok일 때만)·**L4**(수용 계급 3항). R1~R12 수용(R5→M1 · R2→M3 · R1→L3) · UK-4 resolved. **Advisor: fable-advisor consulted: yes.**
 > **직전:** **R50** PLAN **v0.32.0**(Loom MCP 사전 점검, MINOR — 업그레이드 2단계 2부 마무리) **`approved-with-fixes` → M1·M2·L1·L2·L3 반영 완료 · PLAN `approved`(no R50b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **2** · Low **3**) — 결정적 **R50-M1**: `toolVisible`이 `policy_invalid`를 포함하면 무효 정책에서 `tools/list`가 비어 D9 "거르지 않은 목록"과 모순 → `toolVisible(gate, name)` = `gate.invalid ? true : (name ∈ TOOLS && !mcpDeny(name))` · `policy_invalid`는 `evaluateMcpCall` 1단계에만 · (f) 무효 정책 목록 20개 성질 테스트. **M2**(UK-5 실측 제외 — ack `to`는 입력 에코(`room-ops.ts:114-125`) · `dispatchPeerId`는 로컬 peer 목록 이름 일치 정확히 1개일 때만 · `fromPeerId`는 모델이 베끼는 주장이라 생략 시 우회 — `blocked` 착지로 수용)·**L1**(변환기 자유형 객체 · `.strict()` 최상위만 · done 카드 방어적 스캔)·**L2**(거부 모드 → done)·**L3**(워커 파일 diff 0줄 → ship 검사 `git diff --stat a2e0d99`). R1~R9 수용(R7 M2로 수정 · R9 문서화로 충분). **Advisor: fable-advisor consulted: yes.**
 > **직전:** **R49** PLAN **v0.31.0**(스킬 materialize + `policy.json` v1 → CLI별 권한 번역, MINOR — 업그레이드 2단계 2부) **`approved-with-fixes` → H1·M1~M5·L1~L4 반영 완료 · PLAN `approved`(no R49b — 리뷰어 명시: H1·M1~M5 축자 반영 + 아키텍트 PLAN diff 확인 시 재리뷰 불요)**(2026-10-15, High **1** · Medium **5** · Low **4**) — 결정적 **R49-H1**: 내장 deny가 공백 없는 형 `Bash(git push*)`·`Bash(git reset --hard*)`(`agent-argv.ts:79-88`)인데 정책 문법이 ` *`를 강제 → ` *`가 맨 명령을 못 잡으면(UK-1) 맨 `git push` 허용 → deny 접두마다 `Bash(p)` + `Bash(p *)` 이중 컴파일 · (b) 0.30.0 deny 8개 의미 포괄 · UK-1 P2 deny 경로 차단. **M1**(`mcp.isolate` 기본 true — claude `--strict-mcp-config`, false는 오너 옵트인)·**M2**(deprecated allow — `policy.json` 없으면 사용 · `shell.allow`와 공존 시 기동 거부)·**M3**(살아 있는 pid kill 0 + `needs_verification` 선점 · 입양은 fingerprint 무변경만 · 복사본 재해시)·**M4**(가짜 CLI 엄격성 P2/P4 red)·**M5**(스크립트 = `scripts/` 정규 파일 또는 실행 비트 파일)·**L1**~**L4** 반영. R1~R8 수용(R4 H1 조건부) · 범위 분할(MCP 사전 점검 → v0.32.0) 승인. **Advisor: fable-advisor consulted: yes.**
@@ -26,6 +27,7 @@
 
 | Review | Plan | Status | Gate |
 |--------|------|--------|------|
+| **R54** | **v0.36.0** | **closed (approved-with-fixes 2026-10-16 → M1·M2·M3·L1·L2 반영 완료 · PLAN `approved`, no R54b)** | **headless 워커 카드 시작 기억 스냅샷 + 펜스 주입** (MINOR — 업그레이드 4단계 2부a) — 게이트 = 새 MINOR + 신뢰 경계 변경(사람 파일·승인 기록 → 워커 프롬프트 · nonce 펜스 · 표지 위장 무력화 · env 비밀 redaction · resume 게이트 동작 변경 D9). **M1**(P1 green이 아직 뒤집지 않은 import 가드를 깸 — D10b 뒤집기 P1 red로) 결정적 · 기본 꺼짐 = 0.35 바이트 동일 · `ARGV_TEMPLATE_VERSION` 무변경 · 완료 기준 (c)는 0.37.0 |
 | **R53** | **v0.35.0** | **closed (approved-with-fixes 2026-10-16 → M1·M2·L1·L2·L3 반영 완료 · PLAN `approved`, no R53b)** | **memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더** (MINOR — 업그레이드 4단계 1부) — 게이트 = 새 MINOR + 신규 제품 표면 + 영속성·신뢰 경계(0.36에서 프롬프트로 들어갈 저장소의 형식 `entries.jsonl` v1 · 쓰기 안전(sanitize · redaction 거부 · 상한) · 승인 상태기계 · 경로 규약 `agentKeyFor`). **M1**(compact가 대체 사슬을 못 줄임 — 교착) 결정적 · 워커·프롬프트·bridge 변경 0(D1) · 4단계 2부 = 0.36.0 |
 | **R52** | **v0.34.0** | **closed (approved-with-fixes 2026-10-16 → M1·M2·M3·L1·L2·L3 반영 완료 · PLAN `approved`, no R52b)** | **`loom service` launchd/systemd 사용자 서비스 설치** (MINOR — 업그레이드 3단계 2부) — 게이트 = 새 MINOR + 신규 제품 표면 + 영속성·신뢰 경계(OS 서비스 등록 · 유닛 내용 토큰 0 · 서비스 stop의 워커 생존 `KillMode=process`). **M1**(재설치 멱등성 — 적재됨·실행 아님) 결정적 · 실 OS 등록·라이브 스모크는 별도 오너 승인 |
 | **R51** | **v0.33.0** | **closed (approved-with-fixes 2026-10-16 → M1·M2·M3·L1·L2·L3·L4 반영 완료 · PLAN `approved`, no R51b)** | **bridge 생명주기 보강** (MINOR — 업그레이드 3단계 1부) — 게이트 = 새 MINOR + 신뢰·내구성 경계 변경(bridge 프로세스 생명주기 상태기계 · 프로세스 간 락 · 종료 시 수용 손실 계급 공식화). **M2**(`process.exit`는 `bridge-main.ts`에만) 결정적 · 오너 "진행해"(2026-10-16) = 3단계 승인, 0.34.0 라이브 스모크는 별도 승인 |
@@ -144,6 +146,60 @@ author-close(Fable 사전 승인, no R41b) — verdict `pending-revision`의 M-1
 - **M-2 반영**: "conv 턴 delta화" 행에 슬라이스 메커니즘 단락(정규화 오프셋→원문 오프셋 인덱스 맵 동반 구축 → 마지막 출현 매치 끝의 원문 오프셋에서 원문 슬라이스, 정규화본 슬라이스 금지) + "0.23.5 프로브 동일 기법" 인용을 매칭 원리 한정으로 정정 · 테스트 ④에 슬라이스 원문 무결성 어서션 보강.
 - **L-1**: "32k 트리거와의 관계" 행 신설(임계 판정·패키징 입력 = 필터 후 full scrape·delta 미적용·앵커는 패키징 턴에도 갱신) + 테스트 ⑪ 신설. **L-2**: delta 적용 턴 상시 통계 note `delta: kept N/M chars` 명기 + Security ② 정정. **L-3**: 빈 delta note `delta empty (no new output)` 명기. **L-4**: "done_proposal 판정 입력" 행 신설(delta 텍스트 선두 기준 + 폴백 턴 현행 유지 — 권고안 채택). **L-5**: settle 비교 = `stripAnsi` 후 텍스트 기준 명기.
 - PLAN 헤더 Status/Fable-when·섹션 헤더·Approved by 갱신 → **`approved`** (no R31b, Fable 사전 승인 조건 충족).
+
+---
+
+## Review R54 — Plan v0.36.0 (headless 워커 카드 시작 기억 스냅샷 + 펜스 주입, MINOR)
+
+**검토 대상:** `docs/PLAN.md` §0.36.0(권위 고지 · D1~D11 · ② 인터페이스 정본 · R1~R18 · C1·C2 · 계급 5·10~16 · P1~P5 · UK-1~7 · Done when (a)~(i)) + §0.35.0 "다음 후보" 정정 + `docs/UNKNOWNS.md` §0.36.0 + `docs/UPGRADE-PLAN.md:17,26-28,97-98` + 코드 대조(`5fa8167`): `headless-worker.ts:923-976`(두 갈래 실측 일치) · `:1339-1368` · `:1058-1137`(lead — 미전송 레코드는 adopt 경로로만 감) · `:1570-1664` · `bridge-config.ts:374-412`·`:461-477` · `memory-snapshot.test.ts:773-800`(**`packages/`+`scripts/` 전수 부분 문자열**) · `redact.ts:68`(env 값 <8자 제외) · `packages/cli/src/memory-cli.ts:860-877`(CLI profile = `resolveBridgeProfile` — `--profile`·`LOOM_PROFILE`·displayName·default).
+**검토자:** Fable 5.1 (fable-advisor). **Advisor: fable-advisor consulted: yes.**
+**날짜:** 2026-10-16
+**결론:** **`approved-with-fixes`** — High 0 · Medium 3(M1~M3) · Low 2(L1·L2). 전부 PLAN 문안으로 닫힌다. **D1~D11 충실 · R1~R18 수용 · C1 → R1 수용 · C2 → R15 수용(M1 순서 조정)**. **no R54b**(아래 문안대로 반영하면 `approved`).
+
+### 결정적 발견
+설계는 닫혀 있다 — 꺼짐 동일성은 구조(`composeMemoryWrapped` 빈 블록 = `wrapDispatchedPrompt` · 조건부 `\0` 꼬리 · 키 생략)로 보장되고, 게이트는 레코드 값 하나로 갈려 플래그 토글 양방향이 안전하며, 크래시 창은 lead `:1097`이 미전송 레코드를 첫 spawn으로 보내지 않아 "hash 있는 레코드가 살아 있는데 파일이 덮이는" 경우가 없다. **새는 곳은 실행 계획 둘:** (M1) P1 green이 `memory-inject.ts`에 `"memory-snapshot.md"` 리터럴을 넣는 순간 **아직 뒤집지 않은** 부분 문자열 가드(`:791`, `scripts/`까지 전수)가 red가 된다 — D10b 뒤집기가 P2 red에 있어 P1 green 스위트가 깨진다. (M2) 스모크의 dist CLI 자식은 profile을 `resolveBridgeProfile`로 풀어 임시 홈에서 `default`가 되고, 디스패처는 `smoke`를 읽는다 — 완료 기준 (a) 스모크가 설계대로 쓰면 **항상 실패**한다.
+
+### Checklist
+- [x] ① 꺼짐 바이트 동일 — PASS(구조 보장 · 고정 테스트 목록 충분 · `session.json` 키 집합 검사 포함) + L1
+- [x] ② resume 게이트 완전성 — PASS(`nextPlan` 한 갈래 · `:1066`·`:1107` 둘 다 `fingerprintChangedLocked` 경유 · `:794` 코드 0 + 테스트 · 토글 양방향 R11) + L2
+- [x] ③ 쓰기 순서 · 크래시 창 — PASS(파일 → write-ahead → spawn · 미전송 레코드는 첫 spawn 불가 → 덮어쓰기 창 없음 · R7 삭제는 레코드 전)
+- [x] ④ 펜스 · nonce · 무력화 — PASS(바이트 축자 · 네 고정 문자열 alnum이 `loomdispatchedtask` 미포함 · R6 수용)
+- [x] ⑤ 완료 기준 (a) 종단 — PASS 설계 / **FAIL 스모크 → M2**
+- [ ] ⑥ 테스트 홈 안전 — **FAIL → M3**(`--real-cli` 모드가 가드와 양립 불가)
+- [ ] ⑦ red/green — **FAIL → M1**(P1 green 스위트 red)
+- [x] ⑧ 계급 5 · 10~16 — PASS(전부 있고 한계 명시)
+
+### Findings
+| ID | Sev | 결함 | 수정 |
+|---|---|---|---|
+| **R54-M1** | Med | 기존 가드(`memory-snapshot.test.ts:791`)는 `packages/`·`scripts/` non-test 파일의 부분 문자열 `"memory-snapshot"`을 위반으로 센다 → P1 green(`memory-inject.ts`의 `MEMORY_SNAPSHOT_FILE = "memory-snapshot.md"`)에서 스위트 red · D10b 뒤집기는 P2 red | **D10b 뒤집기를 P1 red로 이동**(테스트 파일만 — red 0 production 유지) · P1 red 상태에서 "`headless-worker.ts` 필수" 단언이 red인 것은 **예정된 red**로 커밋 메시지에 명기 · P2 green에서 녹색 · ⑥·⑦ 표 P1/P2 행 갱신 |
+| **R54-M2** | Med | P5 스모크: 디스패처 profile `smoke` → `memory/claude.smoke/` 읽음 · dist CLI 자식(`memory propose\|approve`)은 `resolveBridgeProfile` → 임시 홈에 세션 없음 → `default` → `claude.default`에 기록 → 셋 모두 **project 기록 부재**로 실패 | **모든 CLI 자식 env에 `LOOM_PROFILE=smoke`**(또는 매 호출 `--profile smoke`) · 스모크가 `loom memory list` 머리 `profile smoke (from LOOM_PROFILE)`을 먼저 단언 · R16 테스트와 짝(UK-6 실측 1건 추가) |
+| **R54-M3** | Med | `--real-cli` "그 자식만 실 HOME · `LOOM_TEST_HOME=T`" — 실 CLI는 **디스패처가 안쪽 프로세스의 `process.env`로** 띄우고 `scrubWorkerEnv`가 `LOOM_*`만 지운다 → 안쪽 프로세스 자체가 HOME=실·`LOOM_TEST_HOME=T`여야 하는데 가드 "두 값 같고 tmpdir 아래"가 그것을 exit 1로 막는다 | 가드를 모드별로: 기본 = HOME===`LOOM_TEST_HOME` ∧ `os.tmpdir()` 아래 / `--real-cli` = `LOOM_TEST_HOME`만 tmpdir 아래 · HOME 실 · dist CLI 자식은 `loomDir()`이 `LOOM_TEST_HOME`을 우선하므로 `~/.loom` 무접촉(명시) · 실 홈 전후 비교 규칙 동일(`~/.loom`·`~/.fable` 엄격 · 셋은 새 이름만) · (g) 문안 동일 수정 |
+| **R54-L1** | Low | R7이 **꺼짐** 첫 spawn에도 `unlink`를 넣고 비-ENOENT 실패를 `spawn_setup_failed`로 올린다 — 0.35 무변경을 약속한 경로에 새 syscall·새 실패 모드 | R7 = `deps.memory?.enabled === true` **그리고** `block === ""`일 때만 삭제 · 꺼짐 = 파일시스템 무접촉(남은 파일은 R8·R11로 무해) · P2 "남은 파일 삭제" 케이스를 "켜짐 + 빈 text"로 한정 |
+| **R54-L2** | Low | 게이트 1) "문자열 아님 → `bad record field`"인데 호출 지점이 `record.memorySnapshotHash ?? ""`를 넘긴다 → 변조된 `null`이 `""`로 바뀌어 "블록 없음"으로 통과 | 호출 지점 = `record.memorySnapshotHash === undefined ? "" : record.memorySnapshotHash`(`nextPlan` · `fingerprintChangedLocked` · resume write-ahead 셋 동일) · P3 (v)에 `null` 케이스 추가 |
+
+### Decision notes
+- **C1 → R1 수용.** 기억 플래그는 argv·권한·정책과 무관한 런타임 입력이다 — `WorkerConfig`에 넣으면 (f)의 `agent-argv.ts` diff 검증이 무뎌지고 얻는 것이 없다. `HeadlessDeps.memory` 옳다.
+- **C2 → R15 수용(M1 순서로).** 저장소 import는 전부 확장자 없는 `"./x"` 형이라 정규식이 맞는다.
+- **R4 수용.** `wrapDispatchedPrompt(block + "\n\n" + prompt)`는 표지 상수를 복제하지 않아 드리프트 0 — 꺼짐 동일성이 테스트가 아니라 구조로 선다.
+- **R6 수용.** 가짜 END는 nonce가 없거나 달라 머리말이 선언한 종료 조건을 못 채운다 — 무해. 두 줄 조각은 표지가 아니다(hint의 권위는 정확한 표지 줄에 있다). 남는 것은 계급 13 그대로 — 적절히 한정됐다.
+- **D9:** 동작 변경 선언·계급 15·grep 한계 명시 — 충분. 깨지는 기존 테스트가 나오면 R54 판정 대상으로 올리는 규칙 유지.
+- **결정을 가르는 리스크:** M1(P1 green이 스위트를 깨면 red/green 규율이 첫 PATCH에서 무너진다).
+- **UK 판정:** UK-1~UK-7 비차단 유지.
+- **수정 범위:** `docs/PLAN.md` §0.36.0(② `memory-snapshot.md` 행 · 호출 지점 행 · R7 · P1·P2·P3·P5 · (a)(b)(g) · ⑥ 테스트 행) · `docs/UNKNOWNS.md` UK-6 열(M2 실측 추가) · `docs/plan_review.md`. 제품 코드 0.
+
+**R54b 필요 여부:** 불필요 — M1~M3·L1·L2를 위 문안대로 반영하면 `approved`. 다른 해법(예: 가드 뒤집기를 P2에 두고 `memory-inject.ts`에서 리터럴을 빼는 식)을 택할 때만 R54b.
+
+### 반영 확인 (2026-10-16, 아키텍트)
+- **M1** — PLAN §0.36.0 ① D10b(뒤집기 = P1 red) · ② import 가드 행("`headless-worker.ts` 필수" 단언 = P1 red · P1 green · P2 red 동안 예정된 red, P1 red 커밋 메시지에 명기 · P2 green 녹색) · R15 · C2 판정 · ⑥ 테스트 행 · ⑦ 머리 "바뀌는 것" · P1 행(red = D10b 뒤집기 + `memory-inject.test.ts` · P1 green 스위트 red = 예정된 단언 하나) · P2 행(D10b 제거 · green에서 가드 전부 녹색).
+- **M2** — P5 스모크(모든 CLI 자식 `LOOM_PROFILE=smoke` 또는 매 호출 `--profile smoke` · ⓪ `memory list` 머리 `profile smoke (from LOOM_PROFILE)` 먼저 단언) · R16(스모크 짝) · R17 · UK-6(PLAN · `UNKNOWNS.md` — 실측 1건 추가) · (g).
+- **M3** — P5 가드 모드별(기본 = HOME === `LOOM_TEST_HOME` ∧ `os.tmpdir()` 아래 / `--real-cli` = `LOOM_TEST_HOME`만 tmpdir 아래 · 안쪽 프로세스 실 HOME · dist CLI 자식 `~/.loom` 무접촉 명시 · 실 홈 비교 규칙 동일) · R17 · (g) · UK-1 판정 열.
+- **L1** — ② `memory-snapshot.md` 행 · R7(켜짐 + 빈 text에서만 삭제 · 꺼짐 = 파일시스템 무접촉) · P2 케이스 한정 · (a).
+- **L2** — ② `memorySnapshotHash` 행 · 호출 지점 행 · D9 `nextPlan` 행(`record.memorySnapshotHash === undefined ? "" : record.memorySnapshotHash` — `nextPlan` · `fingerprintChangedLocked` · resume write-ahead로 가는 `plan`) · R10 · P3 (v) `null` 케이스 · (b).
+- PLAN 머리 Version 0.36.0 · Status/Supersedes/Fable-when · 절 머리 · 권위 고지 판정 · ④ 행 표지 · C1·C2 판정 · Unknowns 머리 · Review impact 판정 · Done when (i) · Approved by 갱신. R1~R18 수용(R7→L1 · R10→L2 · R15→M1) · C1→R1 · C2→R15(M1 순서).
+- `UNKNOWNS.md` — 게이트 블록 `approved` · UK-1~UK-7 판정 열(open 비차단 · UK-7 unverified) · UK-6 M2 실측 · Current decision 갱신.
+- 재리뷰 면제 조건 충족(M1~M3 · L1 · L2 문안 그대로 적용) → PLAN **`approved`**(no R54b).
+- Advisor: fable-advisor consulted: yes.
 
 ---
 

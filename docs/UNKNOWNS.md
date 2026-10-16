@@ -42,6 +42,36 @@
 
 ## Gate log
 
+### 0.36.0 — headless 워커 카드 시작 기억 스냅샷 + 펜스 주입 (`approved` — R54 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.36.0 (`approved` — R54 approved-with-fixes, 반영 완료 · no R54b) · 업그레이드 4단계 2부a · 요구 `UPGRADE-PLAN.md` 4단계 완료 기준 (a) · 기억 관리 규칙 4 · 범위 = 락 D1~D11(아키텍트 + fable-advisor 자문 2026-10-16) · 기본 꺼짐 `worker.memory.enabled` · 4단계 완료 기준 (c)는 0.37.0으로 이동(D1 — §0.35.0 "다음 후보" 정정) · `ARGV_TEMPLATE_VERSION` 올림 없음(D10 amended) |
+| **Date** | 2026-10-16 |
+| **Review** | R54 **done 2026-10-16** — approved-with-fixes H0 · M3 · L2 (M1 D10b 뒤집기 P1 red · M2 스모크 `LOOM_PROFILE=smoke` · M3 스모크 가드 모드별 · L1 꺼짐 파일시스템 무접촉 · L2 레코드 `null` 변조) — (새 MINOR + 신뢰 경계 변경 — 사람 파일·승인 기록이 워커 프롬프트로 · resume 게이트 동작 변경 D9) |
+| **Evidence** | 코드 실측 `main @ 5fa8167` (PLAN §0.36.0 Why · 추정/실측 표) · `headless-worker.ts:109-125` · `:241-251` · `:794` · `:923-976`(`:966-974` 새 세션 갈래) · `:1066` · `:1107` · `:1339-1368` · `:1548-1660` · `:1753-1760` · `:1860-1870` · `agent-argv.ts:18` · `:28-36` · `:70-84` · `:259-290` · `skill-prompt.ts:44-52` · `:120-122` · `protocol/src/card-contract.ts:123-129` · `card-session-store.ts:43-71` · `bridge-config.ts:75-94` · `:374-388` · `:461-478` · `bridge-runtime.ts:838` · `:878` · `:1106-1148` · `bridge-spawn.ts:40-45` · `skill-materialize.ts:1086-1150` · `memory-snapshot.ts:200` · `memory-snapshot.test.ts:773-800` · `policy-fingerprint.test.ts:50-62` · `headless-argv.test.ts:139-167` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | 코드 실측(`5fa8167`): (1) 저장소를 읽는 워커 경로 0 — `loadMemorySnapshot` production import 0(`memory-snapshot.test.ts:773-800`). (2) hint 마지막 문장이 **표지 아래**만 자료로 선언(`agent-argv.ts:35`) — 표지 위 블록은 밖. (3) `containsMarker` 비공개(`skill-prompt.ts:44-52`). (4) fingerprint 5-입력 · 리터럴 hex 고정 테스트(`agent-argv.ts:259-271` · `policy-fingerprint.test.ts:50-62`). (5) skills 꺼짐 resume 불일치 = 조용한 새 세션(`headless-worker.ts:966-974`) — recovery/adopt는 이미 `needs_verification`. (6) `HeadlessDeps`에 profile 없음(`:109-125`). (7) `WorkerConfig`는 `agent-argv.ts:70-84`(C1). (8) `skills/`는 `manifest.json` + `plugin`만 허용(`skill-materialize.ts:1086-1100`) → 기억 파일은 형제. (9) `scrubWorkerEnv`가 `LOOM_TEST_HOME`을 지움(`:241-251`). (10) `validRecord`는 모르는 키 허용(`card-session-store.ts:43-71`). |
+| Known unknowns | **UK-1~UK-7**(아래 표, 정본 = PLAN §0.36.0). 요지: 실 CLI 첫 턴 크기 수용 · 첫 spawn 정지 시간 · 펜스 준수 · 무력화 오탐 · env redaction 영향 · profile 일관성 · Windows. |
+| Unknown knowns | 0.35 "다음 후보"의 펜스 위치(스킬 목록 다음 · 표지 앞)는 hint 문장 밖이었다 → 표지 뒤(D4). 템플릿 버전을 올리면 recovery가 미전송 레코드 전부를 선점한다 → 올리지 않고 조건부 6번째 입력(D3 · D10 amended). skills 꺼짐에서 기억 hash 불일치가 조용한 새 세션으로 샐 수 있었다 → D9. 기존 import 가드는 부분 문자열이라 파일 이름 `memory-snapshot.md`만 적어도 걸린다(C2). 쓰기 순서상 write-ahead 레코드는 spread가 아니라 새 객체라 resume에서 hash를 명시 전달해야 한다(R10). |
+| Unknown unknowns | 실 에이전트가 펜스 머리말을 얼마나 지키는지 · 사람이 persona에 무엇을 실제로 쓰는지(지시문 비중) · 기억이 룸 결과로 되돌아 나오는 빈도(출력 미redaction) · 여러 bridge 프로필이 같은 `~/.loom`의 project 기억을 공유할 때의 혼란 · 긴 카드에서 시작 시점 기억이 낡아 생기는 판단 오류. |
+
+**Unknowns 요약 (정본 = PLAN §0.36.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R54 판정 |
+|---|------|-------------|----------|
+| UK-1 | 실 CLI 첫 턴 크기 수용 — 블록 ≈48 KiB + 머리 + 목록 ≤4 KiB(0.35 UK-3 승계) | 스모크 = 가짜 CLI 바이트만 · 실 CLI는 `--real-cli` + 오너 승인 | **open, 비차단** — `--real-cli`는 안쪽 프로세스 실 HOME · `LOOM_TEST_HOME`만 tmpdir 가드(R54-M3) |
+| UK-2 | 첫 spawn 정지 시간 — 카드 락 안 동기 읽기 ≤4 MiB + redaction + 쓰기(0.35 UK-5 승계) | 캐시 없음(계급 12) · 스모크 `load_ms` 기록 → 0.37 mtime 캐시/async 결정 | **open, 비차단** |
+| UK-3 | 펜스 준수 — 에이전트가 기억을 자료로 다루는지 | 권고 경계(계급 13) · CI 측정 불가 | **open, 비차단** |
+| UK-4 | 무력화 오탐 — 실제 persona/guideline에서 `containsMarker` 적중 빈도 | 자리표시 + 셈 + stderr(계급 11) | **open, 비차단** |
+| UK-5 | env 값 redaction이 사람 문장을 바꾸는 정도 | `env_redacted` 표시 | **open, 비차단** |
+| UK-6 | profile 일관성 — bridge와 CLI가 같은 agentKey(0.35 UK-1 승계) | D8 · R16 테스트(headless) · pane/sticky host 주입 0 | **open, 비차단** — **R54-M2 실측 1건 추가:** 스모크 dist CLI 자식은 `resolveBridgeProfile`로 풀어 임시 홈에서 `default`가 된다(`memory-cli.ts:860-877`) → 모든 CLI 자식 `LOOM_PROFILE=smoke` · ⓪ `memory list` 머리 `profile smoke (from LOOM_PROFILE)` 단언 · 디스패처 `claude.smoke`와 일치(R16 짝) |
+| UK-7 | Windows — 원자 rename · 0600 · 심링크(0.35 UK-6 승계) | 테스트는 macOS/Linux | **unverified(Windows 환경 미사용), 비차단** |
+
+**Current decision:** D1~D11 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 amended) · 작성자 정밀화 R1~R18 · 락↔코드 불일치 C1(플래그 경로 — `WorkerConfig`가 `agent-argv.ts`에 있음 → `HeadlessDeps.memory`) · C2(import 가드 부분 문자열 → import 지정자) · 수용 손실 계급 5(실현) · 10~16 + 무번호 2행 · UK-1~UK-7. **R54 `approved-with-fixes` → M1·M2·M3·L1·L2 PLAN 반영 → PLAN `approved`(2026-10-16, no R54b)** · R1~R18 수용(R7→L1 · R10→L2 · R15→M1) · C1→R1 · C2→R15(M1 순서) · UK-1~UK-7 비차단. **Next = P1**(red = D10b 뒤집기 + `memory-inject.test.ts`). 다음 후보 = **0.37.0 제안 · 규칙 · 정책 정직성**(4단계 완료 기준 (c) 인도 — 다시 나뉠 수 있음).
+
 ### 0.35.0 — memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더 (`approved` — R53 approved-with-fixes · implemented 2026-10-16)
 
 | Field | Value |

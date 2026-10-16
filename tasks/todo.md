@@ -2,7 +2,7 @@
 
 ## Current — Loom 업그레이드 계획 (오너 지명 2026-10-15)
 
-> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51) · 2부 = §0.34.0 (R52) · 4단계 1부 = §0.35.0 (R53). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
+> **SSOT = `HANDOFF.md`.** 1단계 = PLAN §0.29.0 (R47) · 2단계 1부 = §0.30.0 (R48) · 2부 = §0.31.0 (R49) + §0.32.0 (R50) — 2단계 완료. · 3단계 1부 = §0.33.0 (R51) · 2부 = §0.34.0 (R52) · 4단계 1부 = §0.35.0 (R53) · 2부a = §0.36.0 (R54). 단계마다 새 PLAN 버전 + R{n} 게이트 · 단계 전체 계획 = `docs/UPGRADE-PLAN.md`
 
 1. [x] **1단계 — v0.29.0 룸 이벤트 seq + 안정 id · 멱등 수신 · 룸별 이벤트 로그 · 멱등 송신(`clientEventId`)** —
    `ae60cdb` → … → `c183c92` → PATCH 6 · 최종 리뷰 `c778d4d`. shipped.
@@ -17,9 +17,10 @@
    - [x] **1부 — v0.33.0 bridge 생명주기 보강** — `b8739d9` P1 → … → `236a8c1` P4 → `38933f1` P4 검증 교정 → `bb97ffd` 스모크 → PATCH 5(USER_GUIDE §18 · PROTOCOL · implementation-notes §0.33.0 · VERSION 0.33.0 · 스모크 `BRIDGE-LIFECYCLE-SMOKE-0330.md`). Done when (a)~(i) green · (j) ship 검사.
    - [x] **2부 — v0.34.0 `loom service` launchd/systemd 설치** — `b77a42f` P1 → … → `732845e` P4 → `52716ba` P3/P4 검증 교정 → `fb89d75` P4+fix 검증 교정 → `244e6a2` 스모크 → PATCH 5(USER_GUIDE §19 · PROTOCOL · implementation-notes §0.34.0 · VERSION 0.34.0 · 스모크 `SERVICE-SMOKE-0340.md`). Done when (a)~(i) green · (j) ship 검사. **라이브 스모크(`smoke:service --live`)는 오너 명시 승인 대기 — 미실행.**
    3단계 완료.
-4. [ ] **4단계 — memory / rules / skills 저장소** (두 릴리스로 분할 — PLAN §0.35.0 D1)
-   - [x] **1부 — v0.35.0 저장소 + CLI + 순수 스냅샷 리더** — `031aea1` P1 → … → `57e2eeb` P2 검증 교정 → `2b7c9fc` P3 검증 교정 → `dd87870` P4 → `f6253c3` P4b `redact.ts` 선형화 → `c6b6ea5` P4 검증 교정 → `9e92375` 스모크 → PATCH 5(USER_GUIDE §20 · PROTOCOL · implementation-notes §0.35.0 · VERSION 0.35.0 · 스모크 `MEMORY-SMOKE-0350.md` 18/18). Done when (a)~(k). 워커·프롬프트·bridge 변경 0.
-   - [ ] **2부 — v0.36.0 카드 시작 스냅샷 + 펜스 주입**(**다음** — PLAN MINOR + R54 · D9 · D10 · C1 `HeadlessDeps.profile` · 완료 기준 (a) 종단 · (c) 옵션 ii 체크리스트)
+4. [ ] **4단계 — memory / rules / skills 저장소** (분할 — PLAN §0.35.0 D1 · §0.36.0 D1)
+   - [x] **1부 — v0.35.0 저장소 + CLI + 순수 스냅샷 리더** (shipped `5fa8167`) — `031aea1` P1 → … → `57e2eeb` P2 검증 교정 → `2b7c9fc` P3 검증 교정 → `dd87870` P4 → `f6253c3` P4b `redact.ts` 선형화 → `c6b6ea5` P4 검증 교정 → `9e92375` 스모크 → PATCH 5(USER_GUIDE §20 · PROTOCOL · implementation-notes §0.35.0 · VERSION 0.35.0 · 스모크 `MEMORY-SMOKE-0350.md` 18/18). Done when (a)~(k). 워커·프롬프트·bridge 변경 0.
+   - [ ] **2부a — v0.36.0 headless 워커 카드 시작 기억 스냅샷 + 펜스 주입** — PLAN §0.36.0 `approved`(R54 approved-with-fixes, M1·M2·M3·L1·L2 반영, no R54b). 다음 = **P1**(red = `memory-snapshot.test.ts` D10b 뒤집기 + `memory-inject.test.ts`, 테스트 파일만 · "`headless-worker.ts` 필수" 단언은 P2 green까지 예정된 red) → P2 첫 spawn 주입 → P3 resume·recovery 게이트(D9) → P4 bridge 설정·profile → P5 스모크 `smoke:memory-inject`·문서. 기본 꺼짐 = 0.35 바이트 동일 · `ARGV_TEMPLATE_VERSION` 무변경. 완료 기준 (a) 인도.
+   - [ ] **2부b — v0.37.0 기억 제안 · 규칙 · 정책 정직성**(다음 후보 — 완료 기준 (c) 옵션 ii 체크리스트 · 다시 나뉠 수 있음)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.
