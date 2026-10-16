@@ -418,7 +418,8 @@ export type MemoryRefusalCode =
   | "id_collision"
   | "bad_state"
   | "busy"
-  | "unsafe_path";
+  | "unsafe_path"
+  | "seq_exhausted";
 
 /** A refused write: nothing was written. `message` is the CLI reason (no `loom memory:` prefix). */
 export type MemoryRefusal = { ok: false; code: MemoryRefusalCode; message: string };
@@ -469,6 +470,8 @@ export type CompactResult =
       /** Watermark seq written, null when nothing moved or no seq to mark. */
       watermark: number | null;
       archivePath: string;
+      /** The CLI stdout line (`compacted: …` / `nothing to compact[ — … stuck advice]`). */
+      message: string;
     }
   | MemoryRefusal;
 
@@ -648,6 +651,12 @@ function underStoreLock<T>(p: MemoryPaths, fn: () => T): T | MemoryRefusal {
   }
 }
 
+/** L3: the next seq must stay a safe integer — otherwise every write is refused. */
+function seqExhausted(f: MemoryFold): MemoryRefusal | null {
+  if (Number.isSafeInteger(f.maxSeq + 1)) return null;
+  return refuse("seq_exhausted", `seq space exhausted (max seq ${f.maxSeq}) — nothing written`);
+}
+
 function nowIso(deps: { now?: () => Date }): string {
   return (deps.now ? deps.now() : new Date()).toISOString();
 }
@@ -701,6 +710,12 @@ export function appendMemoryEntry(
   if (input.supersedes !== null && typeof input.supersedes !== "string") {
     throw new TypeError("appendMemoryEntry: supersedes must be a string or null");
   }
+  // ⑥ on an absent store needs no file: any supersedes target is unknown — refuse before mkdir
+  const existing = prepareStoreDirs(loomDir, p, false);
+  if (existing !== "ready" && existing !== "absent") return existing;
+  if (existing === "absent" && input.supersedes !== null) {
+    return refuse("unknown_supersedes", `unknown entry ${input.supersedes}`);
+  }
   const dirs = prepareStoreDirs(loomDir, p, true);
   if (dirs !== "ready" && dirs !== "absent") return dirs;
   const pre = fileState(p.entries);
@@ -713,10 +728,12 @@ export function appendMemoryEntry(
     if (read.size > MEMORY_ENTRIES_MAX_BYTES) {
       return refuse(
         "too_large",
-        `entries.jsonl is ${Math.ceil(read.size / 1024)} KiB (max ${MEMORY_ENTRIES_MAX_BYTES / 1024} KiB) — run loom memory compact`,
+        `entries.jsonl is ${Math.ceil(read.size / 1024)} KiB (max ${MEMORY_ENTRIES_MAX_BYTES / 1024} KiB) — run loom memory compact (retire entries first if it moves nothing)`,
       );
     }
     const f = foldMemoryLines(read.raw);
+    const exhausted = seqExhausted(f);
+    if (exhausted) return exhausted;
     // ⑤ caps (R6): add — visible active, unless superseding a visible active; propose — proposed
     if (input.status === "active") {
       const n = f.visibleActive.length;
@@ -810,6 +827,8 @@ export function appendMemoryTransition(
     const read = readEntries(p);
     if ("ok" in read) return read;
     const f = foldMemoryLines(read.raw);
+    const exhausted = seqExhausted(f);
+    if (exhausted) return exhausted;
     const target = f.entries.get(input.id);
     const status = target ? target.status : "missing";
     const allowed =
@@ -847,6 +866,7 @@ export function compactMemory(loomDir: string, agentKey: string): CompactResult 
     kept: 0,
     watermark: null,
     archivePath: p.archive,
+    message: "nothing to compact",
   };
   const dirs = prepareStoreDirs(loomDir, p, false);
   if (dirs === "absent") return nothing;
@@ -861,7 +881,7 @@ export function compactMemory(loomDir: string, agentKey: string): CompactResult 
     if ("ok" in read) return read;
     const archiveSt = fileState(p.archive);
     if (archiveSt !== "absent" && archiveSt !== "file") return archiveSt;
-    if (read.raw === "") return { ...nothing, kept: 0 };
+    if (read.raw === "") return nothing;
 
     const f = foldMemoryLines(read.raw);
     const movedEntryIds = new Set<string>();
@@ -919,8 +939,8 @@ export function compactMemory(loomDir: string, agentKey: string): CompactResult 
           } else if (movedEntryIds.has(line.id)) {
             move = true;
           }
-        } else if (movedEntryIds.has(line.id)) {
-          move = true; // every transition targeting a moved entry
+        } else if (movedEntryIds.has(line.id) || !f.entries.has(line.id)) {
+          move = true; // every transition targeting a moved entry · orphans (no fold effect)
         }
       }
       if (move) {
@@ -930,7 +950,15 @@ export function compactMemory(loomDir: string, agentKey: string): CompactResult 
         kept.push(piece);
       }
     }
-    if (moved.length === 0) return nothing;
+    if (moved.length === 0) {
+      if (read.size <= MEMORY_ENTRIES_MAX_BYTES) return nothing;
+      // still over the add/propose cap and compact can't help — say what will (L1)
+      return {
+        ...nothing,
+        kept: kept.length,
+        message: `nothing to compact — entries.jsonl is ${Math.ceil(read.size / 1024)} KiB (max ${MEMORY_ENTRIES_MAX_BYTES / 1024} KiB); retire entries first, then compact`,
+      };
+    }
 
     const n = Math.max(watermark, movedMax);
     // ① archive append + fsync first — a crash after this only duplicates archive lines
@@ -950,6 +978,7 @@ export function compactMemory(loomDir: string, agentKey: string): CompactResult 
       kept: kept.length,
       watermark: n > 0 ? n : null,
       archivePath: p.archive,
+      message: `compacted: moved ${moved.length} lines (${unparseable} unparseable, ${conflictLosers} conflict losers) to ${p.archive}; kept ${kept.length}; watermark seq ${n > 0 ? n : "none"}`,
     };
   });
 }
