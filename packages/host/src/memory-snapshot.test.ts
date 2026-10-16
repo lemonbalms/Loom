@@ -28,13 +28,6 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import {
-  appendMemoryEntry,
-  appendMemoryTransition,
-  compactMemory,
-  humanMemorySource,
-  type MemoryWriteDeps,
-} from "./memory-store";
-import {
   loadMemorySnapshot,
   SNAPSHOT_ENTRIES_READ_MAX_BYTES,
   SNAPSHOT_GUIDELINE_MAX_BYTES,
@@ -42,6 +35,13 @@ import {
   SNAPSHOT_MEMORY_MAX_BYTES,
   SNAPSHOT_PERSONA_MAX_BYTES,
 } from "./memory-snapshot";
+import {
+  appendMemoryEntry,
+  appendMemoryTransition,
+  compactMemory,
+  humanMemorySource,
+  type MemoryWriteDeps,
+} from "./memory-store";
 import { roomKey } from "./room-event-log";
 
 const AGENT = "claude.default";
@@ -797,5 +797,115 @@ describe("not wired (D1 · D8 — production import 0)", () => {
     expect(lstatSync(join(repo, "packages", "host", "src", "memory-snapshot.ts")).isFile()).toBe(
       true,
     );
+  });
+});
+
+describe("P3 verify — read prefix · lone surrogates (L1 · L2)", () => {
+  const MiB = 1024 * 1024;
+
+  test("human file > 1 MiB: cut at the read prefix → truncated flag + marker, tail absent", () => {
+    put(
+      personaPath(),
+      Buffer.concat([Buffer.from("head\n"), Buffer.alloc(MiB), Buffer.from("TAIL")]),
+    );
+    const s = snap();
+    expect(s.flags.truncated.persona).toBe(true);
+    expect(s.text).not.toContain("TAIL");
+    expect(s.text).toBe(`## Persona\nhead\n[truncated at ${MiB} bytes]\n`);
+  });
+
+  test("multibyte char straddling the 1 MiB read prefix → no U+FFFD", () => {
+    const head = Buffer.concat([Buffer.from("x"), Buffer.alloc(MiB - 2)]);
+    put(personaPath(), Buffer.concat([head, Buffer.from("가나")]));
+    const s = snap();
+    expect(s.text).not.toContain("\uFFFD");
+    expect(s.text).not.toContain("가");
+    expect(s.flags.truncated.persona).toBe(true);
+  });
+
+  test("lone surrogate escape in a hand-edited entry body → well-formed text", () => {
+    putEntries([entry(1, 1, { body: "a\ud83db" }), entry(2, 2, { body: "c\udc00" })]);
+    const s = snap();
+    expect(Buffer.from(s.text, "utf8").toString("utf8")).toBe(s.text);
+    expect(s.text).toContain("a\uFFFDb");
+    expect(s.text).toContain("c\uFFFD");
+    expect(s.hash).toBe(sha256(s.text));
+  });
+});
+
+describe("P3 verify — Memory cap boundary · break semantics · counts (L6)", () => {
+  const prefix = (n: number) => Buffer.byteLength(`- [fact] (${ID(n)}) `);
+
+  /** 9 entries whose rendered lines + 8 separators total exactly 16384 B (+extra on the oldest). */
+  function nineAtCap(extra: number): void {
+    const big = "x".repeat(1800);
+    const lines: string[] = [];
+    let used = 0;
+    for (let i = 9; i >= 2; i--) {
+      lines.push(entry(i, i, { body: big }));
+      used += prefix(i) + big.length + 1;
+    }
+    const last = SNAPSHOT_MEMORY_MAX_BYTES - used - prefix(1) + extra;
+    lines.push(entry(1, 1, { body: "y".repeat(last) }));
+    putEntries(lines);
+  }
+
+  test("exactly 16384 B (newline separators counted) → all included, no omitted line", () => {
+    nineAtCap(0);
+    const s = snap();
+    expect(s.flags.counts.included).toBe(9);
+    expect(s.flags.truncated.entries).toBe(false);
+    expect(s.text).not.toContain("omitted");
+    const body = s.text.slice("## Memory\n".length, -1);
+    expect(Buffer.byteLength(body)).toBe(SNAPSHOT_MEMORY_MAX_BYTES);
+  });
+
+  test("16385 B → oldest omitted", () => {
+    nineAtCap(1);
+    const s = snap();
+    expect(s.flags.counts.included).toBe(8);
+    expect(s.flags.truncated.entries).toBe(true);
+    expect(s.text.endsWith("- … 1 older entries omitted\n")).toBe(true);
+  });
+
+  test("stops at the first entry that does not fit — a smaller older entry is not included", () => {
+    const big = "x".repeat(1900);
+    const lines: string[] = [];
+    for (let i = 10; i >= 3; i--) lines.push(entry(i, i, { body: big }));
+    lines.push(entry(2, 2, { body: "z".repeat(2000) }));
+    lines.push(entry(1, 1, { body: "tiny" }));
+    putEntries(lines);
+    const s = snap();
+    expect(s.text).not.toContain("tiny");
+    expect(s.flags.counts.included).toBe(8);
+    expect(s.text.endsWith("- … 2 older entries omitted\n")).toBe(true);
+  });
+
+  test("out-of-scope proposed / retired entries are not counted", () => {
+    putEntries([
+      entry(1, 1, { appliesTo: `room:${OTHER}`, status: "proposed" }),
+      entry(2, 2, { appliesTo: `room:${OTHER}`, status: "retired" }),
+      entry(3, 3, { appliesTo: `room:${OTHER}` }),
+      trans(3, 4, "retired"),
+      entry(5, 5, { appliesTo: `room:${RK}`, status: "proposed" }),
+      entry(6, 6, { status: "retired" }),
+    ]);
+    expect(snap().flags.counts).toEqual({
+      visibleActive: 0,
+      included: 0,
+      proposed: 1,
+      retired: 1,
+    });
+  });
+
+  test("a redacted entry that is omitted is not counted in redactedOnRead", () => {
+    const big = "x".repeat(1900);
+    const lines: string[] = [entry(1, 1, { body: "token: abc123" })];
+    for (let i = 2; i <= 12; i++) lines.push(entry(i, i, { body: big }));
+    putEntries(lines);
+    const s = snap();
+    expect(s.text).not.toContain("token:");
+    expect(s.flags.truncated.entries).toBe(true);
+    expect(s.flags.redactedOnRead).toBe(0);
   });
 });

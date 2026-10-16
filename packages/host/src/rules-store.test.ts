@@ -93,8 +93,8 @@ describe("constants · bundled rule (R12 · text import)", () => {
     expect(r.path).toBe("bundled:report-blockers.md");
     expect(r.file).toBe("report-blockers.md");
     expect(r.truncated).toBe(false);
-    expect(r.bytes).toBe(Buffer.byteLength(r.body, "utf8"));
-    expect(r.bytes).toBeLessThanOrEqual(RULE_MAX_BYTES);
+    expect(r.bytes).toBe(Buffer.byteLength(BUNDLED_RULES[0]!.text, "utf8"));
+    expect(Buffer.byteLength(r.body, "utf8")).toBeLessThanOrEqual(RULE_MAX_BYTES);
     expect(r.body.toLowerCase()).toContain("blocked");
     expect(r.body.toLowerCase()).toContain("evidence");
     expect(v.counts).toEqual({ bundled: 1, user: 0, overrides: 0, disabled: 0, invalid: 0 });
@@ -304,11 +304,12 @@ describe("merge (② 규칙 병합 · R12)", () => {
     ]);
   });
 
-  test("body > 8192 B → cut to 8192 + truncated; bytes = original", () => {
-    writeRule("big.md", fm("big", "all", 1, "r".repeat(8193)));
+  test("body > 8192 B → cut to 8192 + truncated; bytes = true file size", () => {
+    const text = fm("big", "all", 1, "r".repeat(8193));
+    writeRule("big.md", text);
     const r = loadRules(L).rules.find((x) => x.id === "big")!;
     expect(r.truncated).toBe(true);
-    expect(r.bytes).toBe(8193);
+    expect(r.bytes).toBe(Buffer.byteLength(text));
     expect(r.body).toBe("r".repeat(8192));
   });
 
@@ -351,5 +352,67 @@ describe("read-only · arguments", () => {
 
   test("relative loomDir → TypeError", () => {
     expect(() => loadRules("relative")).toThrow(TypeError);
+  });
+});
+
+describe("P3 verify — read hygiene · disabled · bytes (R53-L3 · L4 · L5)", () => {
+  test("ESC sequences and CR stripped from rule bodies", () => {
+    writeRule("esc.md", fm("esc", "all", 1, "a\x1b[31mred\x1b[0m\r\nb\x07\r\n"));
+    const r = loadRules(L).rules.find((x) => x.id === "esc")!;
+    expect(r.body).toBe("ared\nb\n");
+  });
+
+  test("secret shapes redacted on read (empty env)", () => {
+    writeRule(
+      "sec.md",
+      fm(
+        "sec",
+        "all",
+        1,
+        "use token=ghp_abcdefghijklmnopqrstuvwxyz0123 and sk-ant-abcdefghijk12345\n",
+      ),
+    );
+    const r = loadRules(L).rules.find((x) => x.id === "sec")!;
+    expect(r.body).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123");
+    expect(r.body).not.toContain("sk-ant-abcdefghijk12345");
+    expect(r.body).toContain("[REDACTED]");
+  });
+
+  test("process.env is not consulted for rule redaction", () => {
+    const NAME = "LOOM_P3_RULES_API_TOKEN";
+    const VALUE = "plainvalue-rr7q";
+    writeRule("env.md", fm("env", "all", 1, `value ${VALUE}\n`));
+    const before = process.env[NAME];
+    process.env[NAME] = VALUE;
+    try {
+      expect(loadRules(L).rules.find((x) => x.id === "env")!.body).toBe(`value ${VALUE}\n`);
+    } finally {
+      if (before === undefined) delete process.env[NAME];
+      else process.env[NAME] = before;
+    }
+  });
+
+  test("9000 spaces then real text → NOT disabled (truncated + flagged)", () => {
+    writeRule("pad.md", fm("pad", "all", 1, `${" ".repeat(9000)}real text\n`));
+    const r = loadRules(L).rules.find((x) => x.id === "pad")!;
+    expect(r.status).toBe("user");
+    expect(r.truncated).toBe(true);
+  });
+
+  test("file larger than the 64 KiB read prefix → bytes = true size, truncated", () => {
+    const text = fm("huge", "all", 1, "h".repeat(70 * 1024));
+    writeRule("huge.md", text);
+    const r = loadRules(L).rules.find((x) => x.id === "huge")!;
+    expect(r.bytes).toBe(Buffer.byteLength(text));
+    expect(r.truncated).toBe(true);
+    expect(Buffer.byteLength(r.body)).toBeLessThanOrEqual(RULE_MAX_BYTES);
+  });
+
+  test("user rule bytes = file size including front-matter", () => {
+    const text = fm("small", "all", 1, "tiny\n");
+    writeRule("small.md", text);
+    const r = loadRules(L).rules.find((x) => x.id === "small")!;
+    expect(r.bytes).toBe(Buffer.byteLength(text));
+    expect(r.truncated).toBe(false);
   });
 });
