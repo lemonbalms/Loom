@@ -990,7 +990,7 @@ const IS_ROOT = process.getuid?.() === 0;
 const faultsHere = (faults: FileFault[]) => faults.filter((f) => !(IS_ROOT && f.root === false));
 const RECORD_FAULTS: Array<{ name: string; value: unknown }> = [
   { name: '(v) hash "zz"', value: "zz" },
-  { name: "(v) hash null (R54-L2: never ?? \"\")", value: null },
+  { name: '(v) hash null (R54-L2: never ?? "")', value: null },
   { name: "(v) hash not a string", value: 7 },
 ];
 
@@ -1043,7 +1043,9 @@ for (const skills of [false, true] as const) {
           workerFingerprint(h.config, await h.manifestHash(), first.memorySnapshotHash!),
         );
         expect(h.calls).toHaveLength(1);
-        expect(h.calls[0]!.fields.reason).not.toBe("needs_verification");
+        // Every parsed headless result is needs_verification; the gate's refusal is the note.
+        expect((h.calls[0]!.fields as { note?: string }).note ?? "").not.toContain(FP_NOTE);
+        expect((h.calls[0]!.fields as { output?: string }).output).toBe("done");
         expect(gateLines()).toEqual([]);
       }, 30_000);
     }
@@ -1152,7 +1154,9 @@ for (const skills of [false, true] as const) {
         expect(record.memorySnapshotHash).toBe(hash);
         expect(record.promptFingerprint).toBe(workerFingerprint(h.config, manifest, hash));
         expect(h.calls).toHaveLength(1);
-        expect(h.calls[0]!.fields.reason).not.toBe("needs_verification");
+        // Every parsed headless result is needs_verification; the gate's refusal is the note.
+        expect((h.calls[0]!.fields as { note?: string }).note ?? "").not.toContain(FP_NOTE);
+        expect((h.calls[0]!.fields as { output?: string }).output).toBe("done");
         expect(gateLines()).toEqual([]);
       }, 30_000);
 
@@ -1181,7 +1185,7 @@ for (const skills of [false, true] as const) {
       }, 30_000);
     }
 
-    test('dead pid, (vi) 0.35-shape record (no key) + a stray file → file ignored, resume OK', async () => {
+    test("dead pid, (vi) 0.35-shape record (no key) + a stray file → file ignored, resume OK", async () => {
       const h = harness();
       const manifest = skills ? await h.materialize() : "";
       h.writeSnapshot("stray bytes, not a snapshot\n");
@@ -1324,7 +1328,7 @@ describe("P3 reserveShutdownAfterClaimLocked: unchanged code (R12)", () => {
     await Promise.all([pending, closing]);
   }
 
-  test("a new reservation record has no hash key and workerFingerprint(config, \"\")", async () => {
+  test('a new reservation record has no hash key and workerFingerprint(config, "")', async () => {
     const h = new Harness();
     seedStore(h);
     const { loads } = await observed(() => closeDuringClaim(h, h.card));
