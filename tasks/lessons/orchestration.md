@@ -301,3 +301,15 @@ cross-ref: verification (51)·(4)·(10).
    대기 사유는 Owner pending(안전 default 열)이 자리다.
 
 cross-ref: orchestration (24) 레인 분리 · verification (51).
+
+## 2026-10-17 — 오너 모델 고정: 검증·자문 = Opus high
+
+오너 지시: "Opus xhigh -> Opus high, fable-advisor -> opus high 로 이 프로젝트에서 고정".
+배경: v0.37.0 P1~P4c는 문서상 레인(구현 grok · 검증 codex · 자문 Fable)과 달리 구현 Opus 5.5 ·
+검증 Opus xhigh로 돌았고 그 전환 사유가 기록되지 않았다. 오너가 실제 운용을 기준으로 모델을 확정했다.
+
+규칙(CLAUDE.md 규칙 8): 독립 검증 = in-harness `Agent` `model: opus` · `effort: high`. 자문 =
+`fable-advisor:fable-advisor` 에이전트를 `model: opus` · `effort: high`로 오버라이드(프롬프트·read-only
+도구는 유지). R{n} 필수 자문과 딜리버러블 최종 리뷰 모두 적용. 검증 인스턴스는 구현 인스턴스와 분리.
+교훈: 레인·모델을 바꿨으면 그 자리에서 사유와 함께 규칙 파일에 적는다 — 기록 없는 전환은 다음 세션에서
+규칙 위반으로 보인다.

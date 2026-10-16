@@ -24,11 +24,11 @@
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:memory-inject` · `smoke:memory`
-2. P1 red (test files only — `memory-inject.test.ts:66-67` header constant + new `policy-gaps.test.ts` + new `bridge-config-policy.test.ts` (`strictEnforcement` · `rules` only; `maxConcurrent` 0 is P2 — R55-L4)) → green → Opus 5.5 xhigh verify → P2…P5 (PLAN ⑦) · pinned test files byte-unedited except the 3 declared edits · every test/smoke child: HOME + `LOOM_TEST_HOME` temp (+ `LOOM_PROFILE=smoke`)
+2. P1 red (test files only — `memory-inject.test.ts:66-67` header constant + new `policy-gaps.test.ts` + new `bridge-config-policy.test.ts` (`strictEnforcement` · `rules` only; `maxConcurrent` 0 is P2 — R55-L4)) → green → Opus 5.5 high verify → P2…P5 (PLAN ⑦) · pinned test files byte-unedited except the 3 declared edits · every test/smoke child: HOME + `LOOM_TEST_HOME` temp (+ `LOOM_PROFILE=smoke`)
 3. Ship gate: `smoke:policy --real-cli --owner-approved` ① only (1 card each, `Reply with the single word ok.`) must PASS — needs owner yes (UK-1 ship-blocking, R55-M2)
 4. Carry: `smoke:memory-inject --real-cli` (owner yes) · live `smoke:service --live` (owner yes) · Linux live unverified · service log rotation · codex MCP approval · 0.36 UK-1–UK-7
 
-**Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
+**Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Opus-high verify + fable-advisor(Opus high) advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
 **Done when (this handoff):** P1 red→green committed and independently verified.
 

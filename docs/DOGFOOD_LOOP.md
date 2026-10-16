@@ -17,11 +17,11 @@
 |------|------|
 | **Loom** | Product CLI / MCP (`loom`, `@loom/*`) |
 | **Fable 5 / fable-advisor** | Review judgment model / agent — **not** the product |
-| **`fable-advisor` subagent** | Claude Code advisor consult pinned to **Fable** model (spawned via Task/Agent) |
+| **`fable-advisor` subagent** | Claude Code advisor consult spawned via Task/Agent with **`model: opus` · `effort: high`** override (owner pin 2026-10-17 · CLAUDE.md rule 8; agent file default is Fable) |
 | **`fable-advisor` plugin** | Orchestration tooling (DannyMac180, MIT) providing the grok/codex/fable lanes — **the dev tool, not the product**. Currently **v3.1.0**. |
 | **directory `fable-advisor/`** | Local checkout path only — the product is **Loom** (remote: `lemonbalms/Loom`). Dir name is historical, pending rename. |
 
-**Lane version pins:** Grok 4.5 · GPT-5.6 Sol (codex, high reasoning) · Fable 5 (advisor, read-only) · plugin **v3.1.0**.
+**Lane version pins:** Grok 4.5 · GPT-5.6 Sol (codex, high reasoning) · advisor = `fable-advisor` agent on **Opus high** (read-only) · independent verify = **Opus high** (CLAUDE.md rule 8) · plugin **v3.1.0**.
 When the `fable-advisor` plugin updates, bump these pins here so cache drift stays visible.
 
 ---
@@ -321,7 +321,7 @@ When Claude (profile `claude-rev` or any Claude session) receives a Loom **revie
 ### Mandatory sequence
 
 1. **Do not implement.** Read-only except `docs/plan_review.md` (and Open/header sync).
-2. Spawn the **`fable-advisor`** subagent (`model: fable`, read-only).
+2. Spawn the **`fable-advisor`** subagent (`model: opus` · `effort: high` override — CLAUDE.md rule 8; read-only).
 3. Pass the advisor:
    - decision = approve vs pending-revision for **PLAN vX.Y.Z**
    - constraints = WORKFLOW §5, security boundaries, stated non-goals
@@ -346,7 +346,7 @@ You are claude-review on the Loom dogfood room. When you get [R-REQUEST] or
 ```
 
 Plugin: `fable-advisor` installed (`claude plugin install fable-advisor`).  
-Agent file: `agents/fable-advisor.md` (`model: fable`).
+Agent file: `agents/fable-advisor.md` (`model: fable` default — overridden to `opus` · `effort: high` in this project).
 
 ---
 
