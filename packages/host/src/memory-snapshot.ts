@@ -73,7 +73,8 @@ type ReadResult =
   | { kind: "absent" }
   | { kind: "error" }
   | { kind: "oversize" }
-  | { kind: "ok"; buf: Buffer };
+  /** `cut`: the file was longer than the read prefix (cut on a code-point boundary). */
+  | { kind: "ok"; buf: Buffer; cut: boolean };
 
 function errCode(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err
@@ -124,9 +125,9 @@ function readUnder(
       }
       if (total > max) {
         if (overMax === "flag") return { kind: "oversize" };
-        return { kind: "ok", buf: buf.subarray(0, max) };
+        return { kind: "ok", buf: cutAt(buf, max), cut: true };
       }
-      return { kind: "ok", buf: buf.subarray(0, total) };
+      return { kind: "ok", buf: buf.subarray(0, total), cut: false };
     } finally {
       closeSync(fd);
     }
@@ -146,28 +147,40 @@ function cutAt(bytes: Buffer, cap: number): Buffer {
 
 type Clean = { text: string; redacted: boolean };
 
-/** sanitize → redact(·, {}) — the read-side hygiene shared by files and entry bodies. */
+/** Lone UTF-16 surrogates → U+FFFD (String.prototype.toWellFormed, not in the ES2022 lib). */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function toWellFormed(s: string): string {
+  return s.replace(LONE_SURROGATE, "\uFFFD");
+}
+
+/** well-formed → sanitize → redact(·, {}) — the read-side hygiene shared by files and entry bodies. */
 function clean(raw: string): Clean {
-  const sanitized = sanitizePeerText(raw);
+  const sanitized = sanitizePeerText(toWellFormed(raw));
   const redacted = redactSecrets(sanitized, NO_ENV);
   return { text: redacted, redacted: redacted !== sanitized };
 }
 
-/** Human file → section content (null = omit), truncated at `cap` bytes on a code-point boundary. */
+/**
+ * Human file → section content (null = omit), truncated at `cap` bytes on a code-point boundary.
+ * A file longer than the read prefix (`readCut`) is truncated too: marker names the prefix size.
+ */
 function humanContent(
   buf: Buffer,
   cap: number,
+  readCut: boolean,
   flags: MemorySnapshotFlags,
 ): { content: string | null; truncated: boolean } {
   const c = clean(decoder.decode(buf));
   if (c.redacted) flags.redactedOnRead += 1;
   const bytes = Buffer.from(c.text, "utf8");
-  if (bytes.length <= cap) {
+  if (bytes.length <= cap && !readCut) {
     const content = c.text.replace(/\n+$/, "");
     return { content: content === "" ? null : content, truncated: false };
   }
-  const kept = decoder.decode(cutAt(bytes, cap)).replace(/\n+$/, "");
-  const marker = `[truncated at ${cap} bytes]`;
+  const overCap = bytes.length > cap;
+  const kept = decoder.decode(overCap ? cutAt(bytes, cap) : bytes).replace(/\n+$/, "");
+  const marker = `[truncated at ${overCap ? cap : HUMAN_READ_MAX_BYTES} bytes]`;
   return { content: kept === "" ? marker : `${kept}\n${marker}`, truncated: true };
 }
 
@@ -242,7 +255,7 @@ export function loadMemorySnapshot(
       flags.readErrors += 1;
       continue;
     }
-    const { content, truncated } = humanContent(r.buf, f.cap, flags);
+    const { content, truncated } = humanContent(r.buf, f.cap, r.cut, flags);
     if (truncated) flags.truncated[f.flag] = true;
     if (content !== null) sections.push(`## ${f.title}\n${content}`);
   }

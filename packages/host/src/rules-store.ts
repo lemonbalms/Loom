@@ -19,7 +19,9 @@ import {
   readSync,
 } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { sanitizePeerText } from "@loom/protocol";
 import reportBlockersRule from "../rules/report-blockers.md" with { type: "text" };
+import { redactSecrets } from "./redact";
 
 /** Body cap per rule file (D5). */
 export const RULE_MAX_BYTES = 8192;
@@ -56,7 +58,7 @@ export type RuleView = {
   file: string;
   /** Absolute path (user) or `bundled:<file>`. */
   path: string;
-  /** Body bytes before truncation. */
+  /** True file size in bytes (stat for user files · text length for bundled). */
   bytes: number;
   truncated: boolean;
   /** Body (≤ 8192 B). */
@@ -89,8 +91,16 @@ type Parsed =
       body: string;
       bytes: number;
       truncated: boolean;
+      /** The whole (untruncated) cleaned body is whitespace-only → a user file disables the id. */
+      empty: boolean;
     }
   | { ok: false; reason: string };
+
+/** Explicit empty env: shape redaction only, never process.env (R53-L3). */
+const NO_ENV: Record<string, string | undefined> = Object.freeze({}) as Record<
+  string,
+  string | undefined
+>;
 
 function cmpCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -103,8 +113,12 @@ function cutAt(bytes: Buffer, cap: number): Buffer {
   return bytes.subarray(0, end);
 }
 
-/** Parse one rule file's text (② 규칙 파일). */
-function parseRuleText(text: string): Parsed {
+/**
+ * Parse one rule file's text (② 규칙 파일). The body is cleaned on read (sanitizePeerText +
+ * redactSecrets(·, {}) — R53-L3), then cut at 8192 B. `readCut` = the file was longer than the
+ * read prefix, so the body is truncated whatever its prefix length.
+ */
+function parseRuleText(text: string, fileBytes: number, readCut: boolean): Parsed {
   let pos = 0;
   const nextLine = (): string | null => {
     if (pos > text.length) return null;
@@ -146,17 +160,19 @@ function parseRuleText(text: string): Parsed {
     return { ok: false, reason: "invalid priority (integer 0–1000)" };
   }
   const rawBody = pos <= text.length ? text.slice(pos) : "";
-  const bodyBytes = Buffer.from(rawBody, "utf8");
-  const truncated = bodyBytes.length > RULE_MAX_BYTES;
-  const body = truncated ? cutAt(bodyBytes, RULE_MAX_BYTES).toString("utf8") : rawBody;
+  const cleaned = redactSecrets(sanitizePeerText(rawBody), NO_ENV);
+  const bodyBytes = Buffer.from(cleaned, "utf8");
+  const overCap = bodyBytes.length > RULE_MAX_BYTES;
+  const body = overCap ? cutAt(bodyBytes, RULE_MAX_BYTES).toString("utf8") : cleaned;
   return {
     ok: true,
     id,
     scope: scope as RuleScope,
     priority: Number(priorityText),
     body,
-    bytes: bodyBytes.length,
-    truncated,
+    bytes: fileBytes,
+    truncated: overCap || readCut,
+    empty: cleaned.trim() === "",
   };
 }
 
@@ -171,7 +187,9 @@ function decodeStrict(buf: Buffer): string | null {
 }
 
 /** Read one user rule file without following a symlink: text or an invalid reason. */
-function readUserRule(path: string): { text: string } | { reason: string } {
+function readUserRule(
+  path: string,
+): { text: string; size: number; cut: boolean } | { reason: string } {
   let st: ReturnType<typeof lstatSync>;
   try {
     st = lstatSync(path);
@@ -181,13 +199,16 @@ function readUserRule(path: string): { text: string } | { reason: string } {
   if (st.isSymbolicLink()) return { reason: "symlink" };
   if (!st.isFile()) return { reason: "not a regular file" };
   let buf: Buffer;
+  let size = 0;
+  let cut = false;
   try {
     const fd = openSync(
       path,
       fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
     );
     try {
-      if (!fstatSync(fd).isFile()) return { reason: "not a regular file" };
+      const fst = fstatSync(fd);
+      if (!fst.isFile()) return { reason: "not a regular file" };
       const all = Buffer.alloc(RULE_READ_MAX_BYTES + 1);
       let total = 0;
       while (total < all.length) {
@@ -195,7 +216,9 @@ function readUserRule(path: string): { text: string } | { reason: string } {
         if (n === 0) break;
         total += n;
       }
-      buf = total > RULE_READ_MAX_BYTES ? cutAt(all, RULE_READ_MAX_BYTES) : all.subarray(0, total);
+      cut = total > RULE_READ_MAX_BYTES;
+      buf = cut ? cutAt(all, RULE_READ_MAX_BYTES) : all.subarray(0, total);
+      size = Math.max(fst.size, total);
     } finally {
       closeSync(fd);
     }
@@ -203,7 +226,7 @@ function readUserRule(path: string): { text: string } | { reason: string } {
     return { reason: errCode(err) === "ELOOP" ? "symlink" : "unreadable" };
   }
   const text = decodeStrict(buf);
-  return text === null ? { reason: "not UTF-8" } : { text };
+  return text === null ? { reason: "not UTF-8" } : { text, size, cut };
 }
 
 function errCode(err: unknown): string | undefined {
@@ -253,7 +276,7 @@ export function loadRules(loomDir: string): RulesView {
   const bundledCandidates: Candidate[] = [];
   for (const b of BUNDLED_RULES) {
     const path = `bundled:${b.file}`;
-    const p = parseRuleText(b.text);
+    const p = parseRuleText(b.text, Buffer.byteLength(b.text, "utf8"), false);
     if (p.ok) bundledCandidates.push({ ...p, file: b.file, path });
     else invalid.push({ source: "bundled", file: b.file, path, reason: p.reason });
   }
@@ -308,7 +331,7 @@ export function loadRules(loomDir: string): RulesView {
             invalid.push({ source: "user", file, path, reason: r.reason });
             continue;
           }
-          const p = parseRuleText(r.text);
+          const p = parseRuleText(r.text, r.size, r.cut);
           if (p.ok) userCandidates.push({ ...p, file, path });
           else invalid.push({ source: "user", file, path, reason: p.reason });
         }
@@ -335,7 +358,7 @@ export function loadRules(loomDir: string): RulesView {
   let disabled = 0;
   for (const u of user) {
     let status: RuleStatus;
-    if (u.body.trim() === "") {
+    if (u.empty) {
       status = "disabled";
       disabled += 1;
     } else if (merged.get(u.id)?.source === "bundled") {
