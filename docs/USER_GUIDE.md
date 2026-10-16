@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.34.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.35.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -105,7 +105,9 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 16 | 스킬과 정책 (0.31.0) — 헤드리스 워커의 권한을 한 파일로, 룸이 고른 스킬을 카드에 | `policy.json` · `worker.skills` · 룸 `skills.json` · 정직 표 |
 | 17 | Loom MCP 사전 점검 (0.32.0) — 대화형 에이전트의 Loom 도구 호출을 정책으로 검사 | `loomTools` · `mcp.deny` `loom__<tool>` · 감사 파일 · 정직 표 |
 | 18 | bridge 생명주기 (0.33.0) — 프로필당 하나 · 우아한 정지 · drain · 꺼진 뒤 진단 | 프로필 락 · 상태 파일 · `loom bridge drain` · doctor Bridge 절 |
-| 19 | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
+| 19 | `loom service` (0.34.0) — 로그인 시 bridge 자동 기동 | `loom service install\|start\|status` · doctor Service 절 |
+| 20 | 기억 · 규칙 · 스킬 (0.35.0) — 에이전트별 장기 기록 · 방 규칙 · 공통 지식 · 되도록-규칙 · 스킬 출처 | `loom memory` · `loom rules list` · `loom skills list` · doctor Memory 절 |
+| — | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -1401,9 +1403,206 @@ bun run loom --profile <p> service start     # 새 코드로 기동
 
 **아직 실측하지 않은 것:** 실 launchd/systemd 등록 라이브 스모크는 오너 승인 대기라 돌리지 않았다(스모크는 가짜 서비스 관리자 — `bun run smoke:service`). launchd/systemd 정지 신호 순서 · ssh에서의 `bootstrap` 실제 코드 · Login Items 끈 뒤 `bootstrap` 문구 · Linux 전부(`StandardError=append:` · linger 조회 형식 · 심링크가 `enable`과 같은지)는 미실측이다. **로그인·재부팅 뒤 자동 기동(launchd `RunAtLoad` · systemd `default.target`)은 `--live` 스모크로도 측정되지 않는다** — 실제 `loom service install` 뒤 로그아웃·로그인(또는 재부팅)해야 확인된다(`docs/UNKNOWNS.md` 0.34.0).
 
+## 20. 기억 · 규칙 · 스킬 (v0.35.0)
+
+**하고 싶은 일:** 에이전트별 **장기 기록**(사실 · 결정 · 선호)과 **성격 메모**, 방마다의 **방 규칙**, 모두가 보는 **공통 지식 목차**, 되도록 지킬 **규칙**을 한곳에 두고, 사람이 쓰고 · 승인하고 · 정리하게 한다. `loom skills list`로 어떤 스킬이 어디서 왔는지(내장 · 사용자 · 가림)도 본다.
+
+**아직 워커에 들어가지 않는다.** 0.35.0은 **저장소 · 명령 · 읽기 함수까지**다. 여기 쓴 기록 · 규칙 · persona · guideline · INDEX는 **어느 에이전트 프롬프트에도 들어가지 않는다** — 카드 시작 때 스냅샷을 떠서 첫 턴에 넣는 일은 **0.36.0**이다. 와이어 · 카드 계약 · 워커 argv/fingerprint · 프롬프트 · bridge 동작은 0.34.0과 같다. MCP 기억 도구도 없다 — 쓰는 길은 이 절의 사람 CLI 하나다.
+
+### 20.1 파일 배치
+
+```text
+~/.loom/
+  memory/                              0700 — Loom이 만듦
+    <agentKey>/                        0700 — Loom이 만듦 (예: claude.default · codex.work · grok.x.3f…)
+      entries.jsonl                    0600 — Loom이 append (장기 기록 · 승인 상태)
+      entries.archive.jsonl            0600 — compact가 옮긴 줄 (append만 · 아무도 읽지 않음)
+      persona.md                       사람이 손으로 (≤8 KiB)
+  rooms/<roomKey>/guideline.md         사람이 손으로 (≤16 KiB · roomKey = sha256(roomId) 앞 16자)
+  knowledge/INDEX.md                   사람이 손으로 (≤8 KiB · 주제 파일 knowledge/*.md는 아직 읽지 않음)
+  rules/*.md                           사람이 손으로 (각 ≤8 KiB · 내장 규칙을 id로 덮어씀)
+  skills/<name>/SKILL.md               사람이 손으로 (0.31.0 — §16.3)
+```
+
+- **Loom이 만드는 것은 `memory/` · `memory/<agentKey>/` · 두 JSONL뿐이다.** persona · guideline · INDEX · rules는 만들지 않는다 — 편집기로 직접 만든다. `loom memory list`가 각 파일의 **경로와 크기/상한**을 보여 준다.
+- **`agentKey` = `<agentKind>.<프로필 토큰>`.** 프로필 이름이 소문자 안전형(`[a-z0-9][a-z0-9_-]{0,47}`)이면 그대로(`claude.default` · `codex.work`), 아니면(`Work` · `a b` · `한글` · 빈 이름 · 48자 초과) `x.` + sha256 앞 16자(`claude.x.3f…`). 대소문자 무시 파일 시스템(macOS)에서도 `Work`와 `work`가 섞이지 않는다.
+- **심링크는 거부한다.** `~/.loom` 아래 기억 경로 조각(`memory/` · agentKey 디렉터리 · JSONL · 사람 파일)이 심링크이거나 일반 파일이 아니면 쓰기는 거부(`refusing <path>: symlink or not a regular path — nothing written`), 읽기는 그 파일을 건너뛴다. `~/.loom`이나 HOME 자체가 심링크인 것은 괜찮다.
+
+**안정된 키는 `LOOM_PROFILE`이다.** `agentKey`의 프로필은 bridge와 같은 규칙으로 정한다 — `--profile` → `LOOM_PROFILE` → (둘 다 없으면) 세션 displayName → `default`. 그래서 `--profile`/`LOOM_PROFILE` 없이 쓰다가 **displayName을 바꾸면 agentKey가 바뀌어 다른 저장소를 보게 된다**(옛 기록은 그대로 옛 디렉터리에 있다). 오래 쓸 기억이면 `export LOOM_PROFILE=<p>`(또는 매번 `--profile <p>`)로 고정한다. `loom memory list` 첫 줄 `profile <p> (from --profile|LOOM_PROFILE|displayName|default)`가 지금 어느 출처인지 알려 준다.
+
+### 20.2 기록의 상태 — `proposed → active → retired`
+
+| 상태 | 들어오는 길 | 나가는 길 |
+|------|-------------|-----------|
+| **active** | `memory add`(사람이 바로 씀) · `memory approve`(제안 승인) | `memory retire` → retired |
+| **proposed** | `memory propose` | `approve` → active · `retire` → retired(거절) |
+| **retired** | `retire` | 끝 — 되살리지 않는다. 고칠 일이 있으면 새로 쓴다 |
+
+- **편집은 덮어쓰기가 아니라 대체다.** `memory add --supersedes <id>`(또는 `propose --supersedes`)로 새 기록을 쓰면, 새 기록이 **한 번이라도 승인되면**(active · 그 뒤 retired 포함) 옛 기록은 **가려진다**(`list` 기본에서 안 보임 · `--all`에 `hidden`). 승인 전 제안(proposed)이나 승인 없이 거절된 제안은 옛 기록을 가리지 않는다.
+- **모든 줄은 append-only다.** 각 줄에 저장소 로컬 순번 `seq`가 붙고, 읽을 때 `(seq, id)` 순서로 다시 접는다 — **파일 줄 순서를 섞어도 결과가 같다.** 파싱 못 하는 줄(손편집 · 잘린 줄)은 건너뛰고 `unparseable`로 센다(오류 아님). 같은 id 충돌 · 대상 없는 전이는 `conflicts` · `dangling`으로 센다.
+- `appliesTo`는 `project`(`--room` 없음 — 이 에이전트의 모든 방) 또는 `room:<roomKey>`(`--room <roomId>`) 둘뿐이다. 사람 범위는 없다.
+
+### 20.3 명령
+
+```bash
+# 쓰기 (--agent 필수 · 본문은 위치 인자 또는 -- 뒤)
+bun run loom memory add     --agent claude [--room <roomId>] [--type fact|decision|preference] [--supersedes <id>] <본문…>
+bun run loom memory propose --agent claude [--room <roomId>] [--type …] [--supersedes <id>] -- <본문>
+bun run loom memory approve --agent claude <id>
+bun run loom memory retire  --agent claude <id>
+bun run loom memory compact --agent claude
+# 읽기 (락 없음 · 쓰기 없음)
+bun run loom memory list [--agent claude|codex|grok] [--room <roomId>] [--all] [--json]
+bun run loom memory show --agent claude <id> [--json]
+bun run loom rules list [--json]
+bun run loom skills list [--room <roomId>] [--json]
+```
+
+- **exit 코드:** 0 성공 · 1 거부 · 오류 · 사용 오류. `list` · `rules list` · `skills list`는 사용 오류가 아니면 **항상 0**이다. 오류는 stderr 한 줄(`loom memory: <사유>`).
+- **`--agent`**는 `claude` · `codex` · `grok` 중 하나(`list`만 생략 가능 — 생략하면 현재 프로필의 세 agentKey를 모두 보인다). 그 밖은 `--agent must be claude, codex or grok` exit 1.
+- **id는 전체 id만** 받는다(`mem_` + 16 hex — 앞부분 일치 없음).
+- `--type` 기본은 `fact`. 본문에 `--`로 시작하는 단어가 있으면 `--` 뒤에 쓴다(그 앞의 단어는 플래그로 읽힌다).
+
+**예:**
+
+```text
+$ bun run loom memory add --agent claude --type decision -- "API 응답은 항상 camelCase로 쓴다"
+added mem_d94517e14805487e (active, seq 1) to ~/.loom/memory/claude.default/entries.jsonl
+
+$ bun run loom memory propose --agent claude "테스트는 bun test로 돌린다"
+proposed mem_c45004dcbcdadd15 (seq 3) — approve with: loom memory approve --agent claude mem_c45004dcbcdadd15
+
+$ bun run loom memory approve --agent claude mem_c45004dcbcdadd15
+approved mem_c45004dcbcdadd15 (seq 4)
+
+$ bun run loom memory list --agent claude --room demo-room
+profile default (from default)
+knowledge/INDEX.md: ~/.loom/knowledge/INDEX.md (absent)
+agent claude.default  ~/.loom/memory/claude.default
+  entries: active 2/200 · proposed 1/200 · retired 0 · entries.jsonl 1 KiB/1024 KiB · unparseable 0 · conflicts 0 · dangling 0 · archived refs 0
+  persona.md: ~/.loom/memory/claude.default/persona.md (absent)
+  guideline.md: ~/.loom/rooms/648904681423c5ab/guideline.md (absent)
+  mem_d94517e14805487e  active  decision  project  seq 1  API 응답은 항상 camelCase로 쓴다
+  mem_5de61d717ac8f3a9  active  fact  room:648904681423c5ab  seq 2  이 방은 macOS만 대상
+  mem_c45004dcbcdadd15  proposed  fact  project  seq 3  테스트는 bun test로 돌린다
+```
+
+- `list` 기본은 **proposed + 보이는 active**(seq 순) · `--all`은 retired와 가려진 것까지 · `--room`은 project + 그 방 기록만(머리의 건수는 저장소 전체). 머리 줄에 경로 · 건수/상한 · 카운터 · persona/guideline/INDEX의 `크기/상한 B`(`, truncated on read` · `absent`)가 나온다.
+- `show`는 상태 · 출처(`source`) · `supersedes`(아카이브로 옮겨졌으면 `(archived)`) · `superseded by` · 전이 이력(seq · to · source) · 본문 전체를 보인다. 없으면 `entry <id> not found` exit 1.
+- **`approve`/`retire`는 상태를 확인한다** — proposed가 아닌 것을 approve하거나 active/proposed가 아닌 것을 retire하면 `entry <id> is <status|missing> — nothing to approve|retire` exit 1.
+- **쓰기 동사는 에이전트 저장소 락**(`entries.jsonl.lock`) 아래에서 돈다. 다른 쓰기가 4초 넘게 쥐고 있으면 `loom memory: store busy (<lock path>) — try again; nothing written` exit 1 — 아무것도 쓰지 않았으니 그냥 다시 친다.
+
+### 20.4 상한과 거부
+
+| 대상 | 상한 | 넘으면 |
+|------|------|--------|
+| 본문 | 2000자(제어 문자 정리 뒤) | `body is N chars (max 2000)` exit 1 |
+| 보이는 active | 에이전트당 200 | `add` 거부 `200 active entries (max 200) — retire or supersede one`(보이는 active를 `--supersedes`하는 add는 허용 — 순증 0) |
+| proposed | 에이전트당 200 | `propose` 거부(같은 꼴 문구) |
+| `entries.jsonl` | 1 MiB | `add`/`propose` 거부 `entries.jsonl is X KiB (max 1024 KiB) — run loom memory compact` |
+| persona.md · INDEX.md | 8 KiB | 읽을 때 꼬리를 자르고 `[truncated at 8192 bytes]` · `list`에 `truncated on read` · doctor warn |
+| guideline.md | 16 KiB | 같음(`[truncated at 16384 bytes]`) |
+| 규칙 파일 | 각 8 KiB | 같음(`rules list`에 `truncated`) |
+
+- **상한 거부는 `add` · `propose`에만 걸린다.** `approve` · `retire` · `compact`는 상한과 무관하게 **항상 동작**한다 — 꽉 찬 저장소도 정리해서 풀 수 있다(approve로 200을 넘길 수도 있다 — doctor warn).
+- **비밀처럼 보이는 본문은 거부한다.** 본문의 제어 문자를 정리한 뒤(CR 같은 것은 **조용히 지운다** — 붙여넣은 CRLF 본문은 통과) 비밀 걸러내기를 돌려 **본문이 바뀌면** `body looks like it contains a secret (redaction would change it) — reword it; nothing written` exit 1. 토큰 모양(`sk-ant-…` 등) · `token: …` / `password = …` 꼴 할당 · 지금 셸의 민감한 이름 env 값(8자 이상)이 걸린다. **문구는 본문이나 비밀을 다시 찍지 않는다.** 평범한 문장이 `token: …` 꼴이라 걸리면 고쳐 쓴다(오탐 — 설계상 수용).
+- 빈 본문(공백뿐 포함)은 `empty body` exit 1. 거부된 쓰기는 **파일을 한 바이트도 바꾸지 않는다.**
+- **사람 파일(persona · guideline · INDEX · rules)에는 쓰기 검사가 없다.** 편집기로 쓰기 때문이다. 읽을 때 제어 문자 정리 + 비밀 **모양** 걸러내기(`[REDACTED]`)만 하고, env 값 걸러내기는 하지 않는다(0.36이 주입 직전에 한 번 더 건다). 비밀은 처음부터 넣지 않는다.
+
+### 20.5 정리 — `loom memory compact`
+
+```text
+$ bun run loom memory compact --agent claude
+compacted: moved 3 lines (0 unparseable, 0 conflict losers) to ~/.loom/memory/claude.default/entries.archive.jsonl; kept 3; watermark seq 5
+```
+
+- **옮기는 것:** 최종 retired 기록 · 가려진 기록(그 전이 줄까지) · 파싱 못 한 줄 · 충돌에서 진 줄 · 같은 줄 사본. 아카이브에 **먼저** append + fsync한 뒤 남는 줄 + 워터마크 한 줄(`{"v":1,"kind":"compact","seq":<N>}`)로 `entries.jsonl`을 원자 교체한다 — 도중에 죽어도 아카이브에 중복 줄이 생길 뿐 저장소는 잃지 않는다. 옮길 것이 없으면 `nothing to compact`(쓰기 0).
+- **보이는 기록은 compact 전후로 같다.** 남은 기록이 아카이브로 간 기록을 `supersedes`하면 `show`에 `(archived)` · `list` 머리에 `archived refs N` · doctor **info**로 보일 뿐 오류(dangling)가 아니다.
+- **compact로도 안 줄면** — `nothing to compact — entries.jsonl is X KiB (max 1024 KiB); retire entries first, then compact`. 1 MiB 거부 문구도 `(retire entries first if it moves nothing)`를 덧붙인다. 보이는 active 기록 자체가 1 MiB를 채운 경우다 — 안 쓰는 기록을 `retire`한 뒤 다시 compact한다.
+- 아카이브는 상한 없이 append만 하고 **아무도 읽지 않는다**(검색·복원은 나중 단계).
+
+### 20.6 손으로 쓰는 파일 — persona · guideline · INDEX
+
+- **persona.md** (`memory/<agentKey>/persona.md`) — 그 에이전트의 성격 · 말투 · 일하는 방식 메모. 에이전트 종류별 · 프로필별이다.
+- **guideline.md** (`rooms/<roomKey>/guideline.md`) — 방 규칙. `loom memory list --room <roomId>`가 정확한 경로(roomKey)를 찍어 준다.
+- **knowledge/INDEX.md** — 공통 지식 목차. 0.35.0(과 0.36 계획)은 **INDEX.md만** 읽는다 — 주제 파일(`knowledge/*.md`)은 목차에서 이름으로 가리키기만 한다.
+- 이 셋은 CLI 편집 명령이 없다 — 편집기로 쓴다. 편집기가 0644로 저장해도 doctor는 **info**만 낸다(Loom이 만드는 파일만 0600 아니면 warn). 상한을 넘으면 읽을 때 꼬리를 자른다(§20.4).
+
+### 20.7 규칙 — `loom rules list`
+
+규칙 파일은 front-matter 세 키가 필수다:
+
+```markdown
+---
+id: report-blockers
+scope: all
+priority: 500
+---
+막혔으면 무엇이 막았고 무엇을 시도했는지 말한다. 증거 없이 완료라고 하지 않는다.
+```
+
+- `id` = `[a-z0-9][a-z0-9-]{0,63}` · `scope` ∈ `all` · `claude` · `codex` · `grok` · `priority` = 정수 0~1000(큰 것이 먼저). 모르는 키 · 키 누락 · 값 밖 · UTF-8 아님 · 심링크 → 건너뛰고 `invalid: <파일>: <사유>`.
+- **내장 규칙은 1개**(`report-blockers` — CLI에 번들됨). `~/.loom/rules/<이름>.md`(영숫자로 시작 · `.md` · 64자 이내)에 **같은 `id`**를 쓰면 내장을 통째로 대체하고(`user (overrides bundled)`), 본문을 비우면 그 규칙을 끈다(`disabled by user`). 같은 출처 안에서 id가 겹치면 파일명 사전순 앞쪽이 이기고 `conflict:` 줄이 나온다.
+- 출력 예:
+
+```text
+rules: bundled 1 · user 1 · overrides 1 · disabled 0 · invalid 0
+report-blockers  user (overrides bundled)  scope=claude  priority=900  72/8192 B  ~/.loom/rules/report-blockers.md
+```
+
+- 규칙도 **아직 프롬프트에 들어가지 않는다**(0.36 이후).
+
+### 20.8 스킬 목록 — `loom skills list`
+
+```text
+skills: worker.skills.enabled = no bridge config (profile default)
+loom-card-report  user  available  user shadows builtin  …설명…
+```
+
+- 이름 집합 = 내장 스킬 ∪ `~/.loom/skills/` 항목. **사용자 항목이 내장과 이름이 같으면 사용자 쪽이 이기고 `user shadows builtin`이 붙는다** — 사용자 항목이 깨졌어도(파일 없음 · 형식 오류) 내장은 가려진다(`unavailable: <사유>`). 헤드리스 워커가 실제로 받는 것과 같은 규칙이다(§16.3).
+- 가용성은 `policy.json`으로 판정한다 — 정책이 무효면 `policy invalid: <사유>` 줄 + 가용성 `unknown`. `worker.skills.enabled`와 **무관하게** 동작한다(머리 줄에 현재 값만 보인다).
+- `--room <roomId>` → 그 방이 고른 스킬(`selected in room <roomKey>: …`)과 설치 안 된 이름 `(not installed)`.
+
+### 20.9 진단 — `loom doctor` Memory 절
+
+`loom doctor`는 읽기 전용 **Memory 절**을 보인다 — 락도 쓰기도 없고 **`fail`은 내지 않는다**(doctor exit 코드는 기억과 무관). `memory/`가 없으면 `info no memory yet` 한 줄.
+
+```text
+Memory
+  ok   memory/ 0700 · 1 agent stores (~/.loom/memory)
+  ok   claude.default: active 2/200 · proposed 0 · retired 1 · 2 KiB/1024 KiB
+  info claude.default: 1 supersedes point into the archive
+  info persona.md: 0 of 1 agent stores
+  info knowledge/INDEX.md: absent (~/.loom/knowledge/INDEX.md)
+  info guideline.md: 0 rooms
+  ok   rules: bundled 1 · user 1 · overrides 1
+```
+
+| 행 | warn이 되는 때 |
+|------|-----|
+| 저장소 루트 | `memory/`가 심링크 · 디렉터리 아님 · 모드 ≠0700 |
+| 에이전트(agentKey마다) | `entries.jsonl` > 1 MiB(`writes refused until loom memory compact`) · active > 200 · 파일 모드 ≠0600 · unparseable/conflicts/dangling > 0 · 읽을 수 없음 |
+| persona · INDEX · guideline | 상한 초과(`truncated on read`) · 심링크 |
+| rules | 무효 · 같은 출처 id 충돌 · 잘림 |
+
+`memory/` 아래 agentKey 꼴이 아닌 항목(`ignored entry <name>`) · 아카이브 참조 · 사람 파일 모드 · 개수는 **info**다. 스캔 상한(agentKey 64 · 방 4096 · 규칙 256)을 넘으면 info 한 줄.
+
+### 20.10 한계 — 설계상 수용 (0.35.0)
+
+1. **워커에 아직 안 들어간다** — 기록 · 규칙 · persona · guideline · INDEX 모두(0.36.0 카드 시작 스냅샷 + 주입). 에이전트가 기억을 제안하는 길(MCP 도구 · 카드 결과 파싱)도 없다.
+2. **락 타임아웃(4초)** — `store busy` exit 1 · 중복 쓰기 0 · 다시 친다.
+3. **파싱 못 하는 줄 · 손편집 충돌**은 건너뛰고 센다(복구 없음) — compact가 아카이브로 옮긴다. 락 없이 읽는 `list`가 막 쓰이는 줄을 보면 그 한 번만 unparseable로 셀 수 있다.
+4. **redaction 오탐** — `token: …` 같은 평문 문장도 거부된다. 고쳐 쓴다.
+5. **사람 파일은 env 값 걸러내기를 받지 않는다**(§20.4) — 비밀을 넣지 않는다.
+6. **codex 셸 deny는 여전히 강제되지 않는다**(§16.4 정직 표 그대로) — 규칙 파일로 "하지 마라"를 써도 강제가 아니다.
+7. **아카이브는 무상한 · 아무도 읽지 않는다** · 주제 파일 `knowledge/*.md`도 읽지 않는다.
+8. **Windows는 모드 비트가 효력이 없다** — doctor 모드 행은 info 한 줄.
+9. **displayName에 기대면 agentKey가 바뀐다** — `LOOM_PROFILE`로 고정(§20.1).
+10. 알 수 없거나 철자가 틀린 플래그는 다음 단어를 값으로 먹는다(기존 인자 파서 동작) — 본문은 `--` 뒤에 쓰면 안전하다.
+
 ---
 
-## 20. 명령 치트시트
+## 21. 명령 치트시트
 
 ```text
 bun run loom --profile <p> room create|join|leave
@@ -1414,6 +1613,8 @@ bun run loom --profile <p> listen
 bun run loom --profile <p> host start|stop|status
 bun run loom --profile <p> bridge start|stop|status|drain [--timeout <s>]
 bun run loom --profile <p> service install|uninstall|start|status [--force]
+bun run loom --profile <p> memory add|propose|approve|retire|compact|list|show --agent claude|codex|grok …
+bun run loom --profile <p> rules list | skills list [--room <roomId>]
 bun run loom --profile <p> pack show|set|add|note|…
 bun run loom --profile <p> board | board add|set|assign|export|import|…
 bun run loom --profile <p> run [claude|codex|grok|shell]
@@ -1428,7 +1629,7 @@ bun test
 
 ---
 
-## 21. 자주 하는 실수
+## 22. 자주 하는 실수
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
@@ -1460,10 +1661,15 @@ bun test
 | doctor `service yielded to bridge pid N` | 사람이 띄운 bridge가 락을 쥐어 서비스가 exit 0으로 양보함 | `bridge stop` → `service start` (§19.4) |
 | 서비스 bridge 카드가 `claude: not found` 류로 실패 · doctor `agent binaries not resolvable via the unit PATH` | 유닛 PATH는 install 때 셸의 PATH — 그 뒤 에이전트 CLI를 다른 곳에 깜 | 지금 셸에서 `service install` 다시 (§19.6) |
 | 로그아웃 뒤 headless 카드가 끊김 | 로그아웃이 워커까지 정리한다(macOS 공통 · Linux linger 없음) | 다음 로그인 기동이 회수한다. Linux는 `loginctl enable-linger <user>`를 직접 (§19.7-8) |
+| `loom memory add`가 `body looks like it contains a secret (redaction would change it)` | 본문이 토큰 모양 · `token: …` 꼴 · 셸의 민감 env 값을 담음(평문 오탐 포함) | 비밀을 빼거나 문장을 고쳐 다시 쓴다 — 아무것도 쓰이지 않았다 (§20.4) |
+| `loom memory add`가 `entries.jsonl is X KiB (max 1024 KiB) — run loom memory compact` | 저장소 1 MiB 초과 | `memory compact` · 그래도 안 줄면 안 쓰는 기록을 `retire` 뒤 다시 compact (§20.5) |
+| `loom memory: store busy (…) — try again; nothing written` | 다른 쓰기가 같은 에이전트 저장소 락을 4초 넘게 쥠 | 잠시 뒤 다시 친다 (§20.3) |
+| 써 둔 기록이 `memory list`에서 사라짐 · 다른 agentKey가 보임 | `--profile`/`LOOM_PROFILE` 없이 쓰다가 displayName을 바꿈 → agentKey가 바뀜 | `LOOM_PROFILE`을 예전 이름으로 두면 옛 저장소가 보인다. 앞으로는 `LOOM_PROFILE` 고정 (§20.1) |
+| 기록 · 규칙을 썼는데 에이전트가 모름 | 0.35.0은 저장소만 — 워커 주입은 0.36.0 | 지금은 핸드오프 본문 · pack으로 넘긴다 (§20) |
 
 ---
 
-## 22. 지금 버전에서 **아직** 못 하는 것
+## 23. 지금 버전에서 **아직** 못 하는 것
 
 의도적으로 빠졌거나 나중 마일스톤입니다.
 
@@ -1472,12 +1678,13 @@ bun test
 - herdr **0.7.4 / protocol 16** 동시 지원 (0.28.1은 17 컷오버; 다운그레이드 비목표)  
 - 원격 result만으로 타워 board **`done`** (0.28.0 이후 의도적 금지 — `blocked` 후 로컬 확정)  
 - 전역 `loom` 설치가 OS 패키지 매니저 기본 제공 (원하면 `scripts/install.sh` · `link:loom`)
+- 기억 · 규칙 · persona · guideline · 지식 목차를 **워커 프롬프트에 넣기** (0.36.0 — 카드 시작 스냅샷 + 주입 · §20)
 
-**할 수 있는 것 (0.34.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · **Loom MCP 사전 점검(0.32.0 — §17)** · **bridge 생명주기 — 프로필 락 · 우아한 정지 · drain · doctor Bridge 절(0.33.0 — §18)** · **`loom service` — 로그인 시 bridge 자동 기동 · doctor Service 절(0.34.0 — §19)** · dogfood 3-kind · 완료 권한 분리 운영.
+**할 수 있는 것 (0.35.0 핀):** room/handoff/inbox · sticky · pack/board · desktop · MCP `loom run` · **bridge + herdr 0.7.5 카드 워커** · **헤드리스 카드 워커(0.30.0, opt-in — §15)** · **`policy.json` 권한 · 룸별 스킬(0.31.0 — §16)** · **Loom MCP 사전 점검(0.32.0 — §17)** · **bridge 생명주기 — 프로필 락 · 우아한 정지 · drain · doctor Bridge 절(0.33.0 — §18)** · **`loom service` — 로그인 시 bridge 자동 기동 · doctor Service 절(0.34.0 — §19)** · **기억 · 규칙 · 스킬 저장소 — `loom memory` · `rules list` · `skills list` · doctor Memory 절(0.35.0 — §20, 워커 주입은 0.36)** · dogfood 3-kind · 완료 권한 분리 운영.
 
 ---
 
-## 23. 더 읽을 문서
+## 24. 더 읽을 문서
 
 | 문서 | 내용 |
 |------|------|
@@ -1494,4 +1701,4 @@ bun test
 
 ---
 
-*가이드 핀: 제품 **v0.32.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5 · §15 헤드리스 카드 워커 · §16 스킬과 정책 · §17 Loom MCP 사전 점검. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*
+*가이드 핀: 제품 **v0.35.0** · §12 오케스트레이터/bridge 복구 · §13 완료 권한 · §14 herdr 0.7.5 · §15 헤드리스 카드 워커 · §16 스킬과 정책 · §17 Loom MCP 사전 점검 · §18 bridge 생명주기 · §19 `loom service` · §20 기억 · 규칙 · 스킬. 기능이 늘면 사례 표와 CHANGELOG를 같이 갱신한다.*

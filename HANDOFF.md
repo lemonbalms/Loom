@@ -5,31 +5,31 @@
 
 ## One-line resume
 
-> v0.35.0 **approved** (R53) · 4단계 1부 memory/rules/skills store · **next = P1** pure core (red first) · topology full
+> v0.35.0 **implemented** · 4단계 1부 memory/rules/skills · **next = 0.36.0** snapshot injection (PLAN + R54) · topology full
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.35.0 `approved`** (R53) · next P1 | `docs/PLAN.md` |
+| Product | **v0.35.0 `implemented`** · P5 docs/smoke in · smoke 18/18 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.35.0 approved (R53) · next = P1 memory-store pure core
+### v0.35.0 implemented · next = 0.36.0 card-start snapshot + fenced injection
 
-**Goal:** 4단계 1부 — memory/rules/skills store + CLI + pure snapshot reader (`memory/<agentKey>/entries.jsonl` v1 · store-local `seq` + `(seq, id)` fold · `loom memory add|propose|list|show|approve|retire|compact` · `loom rules list` · `loom skills list` · doctor Memory section · `loadMemorySnapshot` unwired). **Zero worker/prompt/bridge change** (D1 — `agent-argv.ts` · `policy-compile.ts` · `packages/protocol` diff 0). Authority `docs/PLAN.md` §0.35.0 (D1–D10 · R1–R16 · C1 · classes 1–9 · UK-1–6) · `docs/plan_review.md` R53 (M1 · M2 · L1–L3 in PLAN). v0.34.0 shipped `dbab890`.
+**Goal:** 4단계 1부 done — memory/rules/skills store + CLI + pure snapshot reader (`memory/<agentKey>/entries.jsonl` v1 · store-local `seq` + `(seq, id)` fold · `loom memory add|propose|list|show|approve|retire|compact` · `loom rules list` · `loom skills list` · doctor Memory section · `loadMemorySnapshot` unwired). **Zero worker/prompt/bridge change** (D1 — `agent-argv.ts` · `policy-compile.ts` · `packages/protocol` diff 0 vs `dbab890`). Only out-of-⑥ prod change: P4b `redact.ts` linear regex (advisor-approved, output byte-identical). Authority `docs/PLAN.md` §0.35.0 · impl-notes §0.35.0 (1)–(52) · `USER_GUIDE.md` §20 · smoke `MEMORY-SMOKE-0350.md`. v0.34.0 shipped `dbab890`.
 
 **Playbook (next session):**
-1. `bun run status` · `handoff:check` · `smoke:service` · `smoke:bridge-lifecycle`
-2. P1 red (test files only — `agentKeyFor` table, line schema, fold, 200-permutation shuffle invariance, R53-M1 hiding/archived refs) → green → Opus 5.5 xhigh verify → P2…P5 (PLAN ⑦) · every test/probe child: HOME + `LOOM_TEST_HOME` temp
-3. Carry: live `smoke:service --live` (owner yes — UK-1–3) · Linux live unverified (UK-4/5) · service log rotation · codex MCP approval · `propose` shell bypass · L-2 advisory
+1. `bun run status` · `handoff:check` · `smoke:memory` · `smoke:service` · `smoke:bridge-lifecycle`
+2. v0.35.0 release commit (ship checks per PLAN §0.35.0 (k)) → 0.36.0 PLAN MINOR (PLAN §0.35.0 "다음 후보": D9 stored hash · D10 `ARGV_TEMPLATE_VERSION` bump · C1 `HeadlessDeps.profile` · reader-outside `redactSecrets(text, process.env)` · no `## ` section split · (c) option-ii checklist) + R54 before code
+3. Carry: live `smoke:service --live` (owner yes — UK-1–3) · Linux live unverified (UK-4/5) · service log rotation · codex MCP approval · `propose` shell bypass · L-2 advisory · 0.35 UK-1–UK-6
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Codex verify + fable-advisor advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** P1 red→green committed and independently verified.
+**Done when (this handoff):** v0.35.0 released and 0.36.0 PLAN drafted + R54 gated.
 
 **Must not:** run live launchd/systemd registration (`smoke:service --live`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -37,7 +37,7 @@
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.35.0 | **approved** (R53) | 4단계 1부 · next P1 | `docs/PLAN.md` |
+| v0.35.0 | **implemented** | 4단계 1부 · smoke 18/18 PASS · no worker wiring | `docs/PLAN.md` |
 | v0.34.0 | **shipped** `dbab890` | 3단계 2부 · smoke ①~⑥ PASS · live not run | `docs/PLAN.md` |
 | v0.33.0 | **shipped** `0a20173` | 3단계 1부 · smoke ①~④ PASS | `docs/PLAN.md` |
 | v0.32.0 | **shipped** `9567f87` | step 2 done | `docs/PLAN.md` |

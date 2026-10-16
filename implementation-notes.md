@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-16 (0.34.0 `loom service`) |
+| **Last updated** | 2026-10-16 (0.35.0 memory / rules / skills 저장소) |
 
 ---
 
@@ -39,6 +39,71 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.35.0 — memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더 (업그레이드 4단계 1부)
+
+PLAN §0.35.0 (R53 `approved-with-fixes` → `approved`) · 커밋 `6fb6878`(R53 게이트) → `031aea1`(P1 red) → `a2b5283`(P1 순수 코어) → `7630b2d`(P1 red — 가림 = 한 번 승인된 대체자) → `6e2bb55`(P1 `everActive`) → `c5687dc`(P2 red + P1 검증 테스트 공백) → `b220964`(P2 쓰기) → `7f42d05`(P2 검증 red) → `57e2eeb`(P2 검증 green) → `d761756`(P3 red) → `2376cba`(P3 스냅샷 · 규칙 · 스킬 목록) → `41795b5`(P3 검증 red) → `2b7c9fc`(P3 검증 green) → `37756d9`·`dffe62c`·`c06abd8`(P4 red + red 교정 2) → `dd87870`(P4 CLI + doctor Memory 절) → `7de217e`(P4b red) → `f6253c3`(P4b `redact.ts` 선형화) → `fe1e9e2`(P4 검증 red) → `c6b6ea5`(P4 검증 green) → `9e92375`(스모크 + 기록) → PATCH 5 문서(이 절). 독립 검증 Opus 5.5 xhigh(P1 · P2 · P3 · P4 각 1회) · 자문 fable-advisor · P5 문서·스모크 = Claude Opus 5.5 서브에이전트.
+
+**Deviations (계획 대비 실행 방식):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-16 | ② fold | **(1) P1:** 줄 파서 이름 = `parseMemoryLine(line): MemoryLine \| null`(②에 이름 없음). | 공개 표면 최소. | — |
+| 2026-10-16 | ② fold 출력 | **(2) P1:** `FoldedEntry`에 `hidden` · `transitions`(적용된 것: seq · to · source · at?) · 현재 `status`를 더함 · `visibleActive`는 (seq 오름, id 오름). | CLI `show`/`list`가 다시 접지 않게. | — |
+| 2026-10-16 | ② entry 줄 | **(3) P1:** `at`은 문자열 ≤40만 검사(ISO 형식 검사 없음) · 본문은 길이만(읽을 때 다시 sanitize 안 함 — 리더는 따로 함) · `supersedes` 키 **없음** → unparseable(②가 필수로 적음). | fold·text가 `at`을 쓰지 않는다 · 필수 키는 엄격히. | — |
+| 2026-10-16 | ② fold 1) | **(4) P1:** CR 하나 제거 뒤 **완전히 빈 줄만** 건너뜀 · 공백뿐인 줄 → unparseable. | 손상을 숨기지 않는다(fail-visible). | — |
+| 2026-10-16 | P1 · R53-L2 | **(5) P1:** profile 해석 테스트는 기존 `resolveBridgeProfile` + `setActiveProfile` + `LOOM_PROFILE` 사용 · 새 production API 없음. | 0.36이 같은 함수를 쓴다. | — |
+| 2026-10-16 | ② fold 7) · R53-M1 | **(6) P1 아키텍트 결정:** fold 7 "status ∈ {active, retired}"를 R53-M1의 뜻 "한 번 승인된 대체자" = **한 번이라도 active였던** 대체자(entry 줄 status active 또는 적용된 to-active 전이)로 읽는다. 거절된 제안(proposed→retired)은 대상을 가리지 않는다. `FoldedEntry.everActive` · P2 compact도 같은 술어(`7630b2d` red / `6e2bb55` green). | 승인 없이 거절된 제안이 기존 기록을 지우면 승인 게이트가 무의미. | — |
+| 2026-10-16 | P2 | **(7) P2:** 쓰기 테스트는 별도 `memory-store-write.test.ts`. | 순수/쓰기 테스트 분리. | — |
+| 2026-10-16 | P2 · 계급 1 | **(8) P2:** `withFileLock` 4초 대기는 주입 불가(`atomic-json.ts`는 ⑥ 밖) — busy 테스트는 실제로 4초 기다린다. | ⑥ 밖 파일 무접촉. | — |
+| 2026-10-16 | P2 compact | **(9) P2:** compact "가시 집합 동일"은 fold `visibleActive`로 단언 · P3가 스냅샷 text 비교를 더함. | P3 전 스냅샷 없음. | P3에서 충족. |
+| 2026-10-16 | ② 쓰기 검사 ⑤ · R6 | **(10) P2:** propose는 proposed 상한만 본다(가시 active 200에서도 성공) · add는 거부. | 제안 상한은 proposed가 맡고, approve는 상한을 보지 않는다(D5). | — |
+| 2026-10-16 | ② 문구 | **(11) P2 문구:** proposed 상한 `N proposed entries (max 200) — approve or retire one` · retire `entry <id> is <status\|missing> — nothing to retire` · 심링크 `refusing <path>: symlink or not a regular path — nothing written` · id 충돌 `could not allocate a fresh entry id — try again; nothing written`. | ②에 없는 문구를 같은 꼴로. | — |
+| 2026-10-16 | ② entry id | **(12) P2:** "최대 3회" = 첫 추첨 + 재생성 최대 3회(추첨 4번). | 문면의 보수적 해석. | — |
+| 2026-10-16 | ② 검사 ④ | **(13) P2:** 1 MiB 거부 문구의 KiB는 올림. | 1024 KiB를 막 넘은 파일이 "1024 KiB"로 보이지 않게. | — |
+| 2026-10-16 | ② 검사 ① | **(14) P2:** 본문은 sanitize된 그대로 저장(trim 안 함 — trim은 빈 본문 판정에만). | 사람이 쓴 공백·들여쓰기 보존. | — |
+| 2026-10-16 | ② compact 워터마크 | **(15) P2:** 이전 워터마크 없이 unparseable 줄만 옮기는 compact는 워터마크를 쓰지 않는다(seq 0은 unparseable). | 무효 줄을 만들지 않는다. | — |
+| 2026-10-16 | ② compact | **(16) P2:** compact는 빈 줄을 버린다 · 남는 줄은 CR 포함 바이트 그대로. | ② "바이트 그대로". | — |
+| 2026-10-16 | ② 경로 | **(17) P2:** 없는 저장소에 approve/retire/compact → 디렉터리 생성 0. | 거부·무동작은 흔적을 남기지 않는다. | — |
+| 2026-10-16 | ⑥ API | **(18) P2 API 이름:** `humanMemorySource` · `MEMORY_*_CAP` · `MEMORY_ENTRIES_MAX_BYTES` · 결과 타입들 · 테스트 훅 `memoryStoreTestHooks.failBeforeReplace`. | — | — |
+| 2026-10-16 | P2 검증 | **(19) P2 검증 교정:** `CompactResult.message` = CLI stdout 줄 · unparseable 줄만 옮기면 `watermark seq none`. | CLI·API 문구 단일 출처. | — |
+| 2026-10-16 | P2 검증 L1 · D5 | **(20) P2 검증 교정(L1):** 옮길 것이 없는데 >1 MiB면 막힘 안내 `nothing to compact — entries.jsonl is X KiB (max 1024 KiB); retire entries first, then compact` · 1 MiB 거부 문구에 `(retire entries first if it moves nothing)`. | 교착처럼 보이는 상태에서 다음 행동을 말한다. | — |
+| 2026-10-16 | P2 검증 L2 | **(21) P2 검증 교정(L2):** compact는 고아 전이(대상 id가 fold에 없음)도 옮긴다 — 가시 집합 영향 0(dangling 카운터만 줄어듦). | 정리 뒤 카운터가 남지 않게. | — |
+| 2026-10-16 | P2 검증 L3 | **(22) P2 검증 교정(L3):** maxSeq+1이 safe integer가 아니면 모든 쓰기에서 거부 코드 `seq_exhausted`. | 정밀도 잃은 seq를 쓰지 않는다. | — |
+| 2026-10-16 | P2 검증 L4 | **(23) P2 검증 교정(L4):** 없는 저장소의 ⑥ 거부는 mkdir 전에(기존 디렉터리 심링크 검사 뒤). | 거부가 디렉터리를 만들지 않는다. | — |
+| 2026-10-16 | ② 스냅샷 | **(24) P3:** 비었거나 개행뿐인 사람 파일 = 섹션 생략(없는 것과 같음). | 빈 머리 줄 방지. | — |
+| 2026-10-16 | ② 스냅샷 · R10 | **(25) P3:** 사람 파일은 1 MiB 앞부분까지 읽은 뒤 sanitize+redact → 상한에서 자름 · `[truncated at <cap> bytes]` 표지는 상한 밖. | 읽기 비용 상한 · 표지가 본문 예산을 먹지 않게. | — |
+| 2026-10-16 | ② 스냅샷 Memory | **(26) P3:** Memory 16 KiB 상한은 기록 줄을 `\n`으로 이은 길이로 셈 · `- … N older entries omitted`는 상한 밖 · 본문은 읽을 때 다시 sanitize+`redactSecrets(·,{})` · `redactedOnRead`는 포함된 기록만 셈. | 방어 이중화 · 카운트는 실제로 들어간 것만. | — |
+| 2026-10-16 | ② 스냅샷 flags | **(27) P3:** `flags.counts`(visibleActive · included · proposed · retired)는 범위(scope) 안 기록만. | 스냅샷과 같은 범위. | — |
+| 2026-10-16 | ② 스냅샷 · 심링크 | **(28) P3:** 소스마다 `loomDir` 아래 경로 조각이 심링크/잘못된 형이면 `readErrors` +1(심링크 `memory/`는 2 — persona와 entries). | 소스 단위 카운트. | — |
+| 2026-10-16 | ② 규칙 파일 | **(29) P3 규칙:** 사용자 본문이 공백뿐 = 비활성 · front-matter 키 `[a-z][a-z0-9_-]*`, 그 밖 줄은 형식 오류 · 사용자 파일은 원문 ≤64 KiB만 읽음 · `.md` 아닌 파일은 조용히 무시 · 이름이 안 맞는 `.md`는 invalid로 표시. | 편집기 부산물 소음 없이 오류는 보이게. | — |
+| 2026-10-16 | ② 규칙 병합 | **(30) P3 규칙:** 심링크/읽을 수 없는 `<L>/rules` → `userDirState "unsafe"` + invalid 항목 `rules` 하나. | 사용자 규칙 전체 무시를 보이게. | — |
+| 2026-10-16 | ② skills list · R15 | **(31) P3:** `inventorySkills`는 async → `{skills:[{name, source, shadowsBuiltin, status available\|unavailable\|unknown, reason, description}], ignored, userRoot}` · 이름 allow-list를 로드 전에 · 정책 null → status `unknown`(설명은 채움). | 기존 async 로더 재사용 · materialize 무변경. | — |
+| 2026-10-16 | ② skills list | **(32) P3:** 사용자 스킬 디렉터리 항목 >512 → 내장 이름만 목록. | 스캔 상한. | — |
+| 2026-10-16 | ② 규칙 병합 (텍스트 import) | **(33) P3:** `text-modules.d.ts`에 범위 한정 `declare module "*/rules/report-blockers.md"`. | 전역 `*.md` 선언 회피. | — |
+| 2026-10-16 | P3 검증 L1 | **(34) P3 검증 교정(L1):** 1 MiB 읽기 한도에서 잘린 사람 파일 → 표지 `[truncated at 1048576 bytes]` + truncated flag · 디코드 전 바이트 경계에서 자름. | 조용한 잘림 방지. | — |
+| 2026-10-16 | P3 검증 L2 | **(35) P3 검증 교정(L2):** 짝 없는 서로게이트 → 스냅샷 `clean()`에서 정규식으로 U+FFFD(`toWellFormed`는 ES2022 lib에 없음). | text가 늘 올바른 UTF-16/UTF-8. | — |
+| 2026-10-16 | P3 검증 L4/L5 | **(36) P3 검증 교정(L4/L5):** 규칙 본문은 읽을 때 `sanitizePeerText` + `redactSecrets(·,{})` · 비활성 판정은 자르기 전 trim 본문 · 규칙 `bytes` = front-matter 포함 파일 크기(내장 = 텍스트 길이) · `truncated`는 64 KiB 읽기 절단도 포함. | 0.36 주입 재료의 위생을 리더에서 고정. | — |
+| 2026-10-16 | P3 검증 L3 | **(37) P3 검증(L3, 코드 변경 없음):** persona/guideline이 0열 `## ` 섹션 머리나 생략 줄을 위조할 수 있다 — 0.36 리더·펜스는 `## `로 섹션을 나누면 안 된다. | 0.35는 배선 0. | 0.36 펜스 설계(52). |
+| 2026-10-16 | ② CLI 공통 | **(38) P4:** `runMemoryCommand` args = `{positional, passthrough}` · deps에 `profileSource`와 선택적 `skillsEnabled()` 리더 추가. | R53-L2 출처 표시 · 테스트 주입. | — |
+| 2026-10-16 | ② entry source | **(39) P4:** `source.by` = 세션 displayName, 세션이 없으면 프로필 이름. | 빈 `by` 방지. | — |
+| 2026-10-16 | ② list | **(40) P4 list 배치:** `knowledge/INDEX.md`는 프로필 머리 뒤 한 번 · guideline 행은 에이전트 블록마다 반복 · 건수는 저장소 전체, `--room`은 기록 줄만 거름. | 머리 줄이 저장소 상태(상한)를 정확히 말한다. | — |
+| 2026-10-16 | ② list/show · R14 | **(41) P4:** list/show는 `entries.jsonl`을 64 MiB까지 읽음 · doctor는 ≤4 MiB만 fold, 넘으면 "not scanned". | 사람이 보는 명령은 크게, doctor는 가볍게. | — |
+| 2026-10-16 | ② 출력 | **(42) P4 추가 출력:** rules list `conflict:` · 스캔 상한 줄 · skills list 위험한 skills 디렉터리 · 무효 bridge 설정 · 읽을 수 없는 룸 선택 줄 · 새 사용 오류 문구 · stderr 접두 `loom rules:` / `loom skills:`. | fail-visible. | — |
+| 2026-10-16 | ③ doctor | **(43) P4:** doctor 수집기 `readMemoryDoctorInput`은 `memory-cli.ts`에(`doctor.ts`는 순수 유지) · Windows → info 한 줄, 모드 판정 없음 · guideline 모드는 검사 안 함. | doctor 순수 함수 규약(0.33~0.34 선례). | — |
+| 2026-10-16 | ⑥ CLI | **(44) P4:** host `index.ts`가 memory store · rules store · `roomKey` · `inventorySkills`/`readRoomSkillSelection`을 export(CLI는 `@loom/host`에서만 import). | cli tsconfig rootDir. | — |
+| 2026-10-16 | ② `--json` | **(45) P4 JSON:** show `supersededBy` = `[{id, status}]` · list는 id 배열. | — | — |
+| 2026-10-16 | ② list `--all` | **(46) P4:** `list --all`은 가려진 active를 status `active`로 보임 · JSON에 `hidden`. | 상태와 가림을 섞지 않는다. | — |
+| 2026-10-16 | ⑦ red/green 규율 | **(47) P4 커밋:** red `37756d9`와 green `dd87870` 사이에 테스트 전용 교정 커밋 2개(`dffe62c` · `c06abd8`). **레인 규칙 위반 기록:** 레인이 자기의 커밋 전 줄에 대해 `git checkout -- packages/host/src/index.ts`를 한 번 실행했다(다시 적용 — 손실 없음). | red는 여전히 테스트 파일만. 위반은 숨기지 않는다. | 레인 스펙에 git 되돌리기 금지 재명시. |
+| 2026-10-16 | ⑥ 무접촉 밖 · 아키텍트 + fable-advisor 승인 | **(48) P4b(⑥ 밖):** `redact.ts` `redactUrlUserinfo` 정규식이 긴 `[a-zA-Z0-9+.-]` 연속에서 O(n²)(64 KiB ≈ 9.7초 · 1 MiB 추정 ~40분) — 기존 결함이 0.35 리더(사람 파일 1 MiB 앞부분)로 드러남. lookbehind 형 `(?<![a-zA-Z0-9+.-])([0-9+.-]*[a-zA-Z][a-zA-Z0-9+.-]*):\/\/…`로 교체 · 얼린 옛 파이프라인과 **출력 정확 일치**(손 사례 26 + 퍼즈 20k) · 1 MiB < 1초. `7de217e` red / `f6253c3` green. `redact.ts`의 기존 biome 형식 문제는 건드리지 않음. | 출력 바이트 동일 증명으로 동작 변경 0 · 범위는 정규식 한 줄. | — |
+| 2026-10-16 | P4 검증 L1 (회귀) | **(49) P4 검증 교정(L1):** `--all`/`--json`은 memory/rules/skills에서만 불리언 — 인자를 두 번 파싱(추가 불리언 있음/없음)하고 첫 단어로 고름 · 맨 단어 미리보기는 추가 불리언을 보지 않아 `--profile all`/`--room all`은 값으로 남음. 회귀 테스트 `--profile all bridge status` · `bridge status --profile json`. | 기존 명령의 인자 의미 무변경. | — |
+| 2026-10-16 | P4 검증 L2 | **(50) P4 검증 교정(L2):** 읽을 수 없는 `entries.jsonl` → list `unreadable — cannot read <path> (EACCES)`(JSON state `unreadable` + `readError`) · show exit 1 · doctor warn `<agentKey>: entries.jsonl unreadable (EACCES)`(선택 `entriesReadError`). | 빈 저장소로 오인하지 않게. | — |
+| 2026-10-16 | P4 검증 L4 | **(51) P4 검증 교정(L4):** `memory/` 아래 무시 항목 info 줄은 16개 + `… N more ignored`. | doctor 출력 상한. | — |
+| 2026-10-16 | 0.36 기록 | **(52) 검증에서 나온 0.36 메모:** 카드별 핫 경로는 redaction된 persona를 mtime으로 캐시(자문) · 리더는 `## `로 섹션을 나누지 않는다(P3-V-L3 · (37)) · 모르는/철자 틀린 플래그가 다음 단어를 먹는다(옛 파서 동작 — 변경 없음). | 0.35 범위 밖. | 0.36 PLAN. |
+
+**P4b 메모:** (48)은 ⑥ "무접촉" 표 밖의 production 변경(`packages/host/src/redact.ts` 한 정규식)이다 — 아키텍트 + fable-advisor 승인 뒤 red/green 한 쌍으로 넣었고, 출력은 옛 구현과 바이트 동일(손 사례 + 20k 퍼즈)이다. 와이어 · 워커 argv/fingerprint · `packages/protocol` 무변경(D1)은 그대로다.
+
+**Known limits (이 버전이 보장하지 않는 것 — PLAN ⑤ 수용 손실 계급 1~9 + 무번호):** 락 타임아웃 4초 → exit 1(1) · torn·파싱 불가 줄은 건너뛰고 셈(2) · 같은 id 충돌 = 결정적 패자(3) · 락 없는 리더가 반쯤 쓴 줄을 봄(4) · 카드 시작 뒤 승인된 기억은 그 카드에 안 보임(5 — 0.36) · redaction 오탐(6) · 사람 파일 상한 초과 = 꼬리 자름(7) · **codex 셸 deny 미강제**(8 — 문서화만, 0.36 (c) 체크리스트) · 손편집 seq 충돌(9) · 아카이브 무상한·미독 · knowledge 주제 파일 미독 · **사람 파일은 env 값 redaction을 받지 않음**(R53-L3 — 0.36이 리더 밖에서 `redactSecrets(text, process.env)` 1회) · Windows 모드 비트. **배선 0:** `loadMemorySnapshot`을 import하는 production 파일 없음 — 저장소를 읽는 워커 경로 0.
 
 ### §0.34.0 — `loom service` launchd/systemd 사용자 서비스 (업그레이드 3단계 2부)
 

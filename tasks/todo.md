@@ -18,8 +18,8 @@
    - [x] **2부 — v0.34.0 `loom service` launchd/systemd 설치** — `b77a42f` P1 → … → `732845e` P4 → `52716ba` P3/P4 검증 교정 → `fb89d75` P4+fix 검증 교정 → `244e6a2` 스모크 → PATCH 5(USER_GUIDE §19 · PROTOCOL · implementation-notes §0.34.0 · VERSION 0.34.0 · 스모크 `SERVICE-SMOKE-0340.md`). Done when (a)~(i) green · (j) ship 검사. **라이브 스모크(`smoke:service --live`)는 오너 명시 승인 대기 — 미실행.**
    3단계 완료.
 4. [ ] **4단계 — memory / rules / skills 저장소** (두 릴리스로 분할 — PLAN §0.35.0 D1)
-   - [ ] **1부 — v0.35.0 저장소 + CLI + 순수 스냅샷 리더** — PLAN §0.35.0 `approved`(R53 approved-with-fixes, M1·M2·L1~L3 반영, no R53b). 다음 = **P1**(순수 코어, red = 테스트 파일만) → P2 쓰기·락·compact → P3 리더(스냅샷·규칙·스킬 목록) → P4 CLI + doctor Memory 절 → P5 문서·스모크. 워커·프롬프트·bridge 변경 0.
-   - [ ] **2부 — v0.36.0 카드 시작 스냅샷 + 펜스 주입**(다음 후보 — D9 · D10 · 완료 기준 (c) 옵션 ii 체크리스트)
+   - [x] **1부 — v0.35.0 저장소 + CLI + 순수 스냅샷 리더** — `031aea1` P1 → … → `57e2eeb` P2 검증 교정 → `2b7c9fc` P3 검증 교정 → `dd87870` P4 → `f6253c3` P4b `redact.ts` 선형화 → `c6b6ea5` P4 검증 교정 → `9e92375` 스모크 → PATCH 5(USER_GUIDE §20 · PROTOCOL · implementation-notes §0.35.0 · VERSION 0.35.0 · 스모크 `MEMORY-SMOKE-0350.md` 18/18). Done when (a)~(k). 워커·프롬프트·bridge 변경 0.
+   - [ ] **2부 — v0.36.0 카드 시작 스냅샷 + 펜스 주입**(**다음** — PLAN MINOR + R54 · D9 · D10 · C1 `HeadlessDeps.profile` · 완료 기준 (a) 종단 · (c) 옵션 ii 체크리스트)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.

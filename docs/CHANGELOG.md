@@ -5,8 +5,44 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.34.0**) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.35.0**) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.35.0 — 2026-10-16
+
+**기억 · 규칙 · 스킬 저장소** (업그레이드 4단계 1부) — 에이전트별 장기 기록 · persona · 방 규칙(guideline) · 공통 지식 목차 · 되도록-규칙을 `~/.loom` 아래에 두고, 사람이 `loom memory`로 쓰고 · 승인하고 · 정리한다. **아직 어느 워커 프롬프트에도 들어가지 않는다** — 카드 시작 스냅샷 + 주입은 0.36.0이다.
+
+### 가능해진 것
+
+- **`loom memory add | propose | approve | retire | compact | list | show`** — `memory/<agentKey>/entries.jsonl`(0600 · append-only)에 사실 · 결정 · 선호를 쓴다. `add` = 바로 active · `propose` → `approve` = 승인 뒤 active · `retire` = 내림 · `--supersedes <id>` = 고쳐 쓰기(새 기록이 한 번 승인되면 옛 기록을 가림) · `--room <roomId>` = 그 방에만. `agentKey` = `<claude|codex|grok>.<프로필>`(이상한 프로필 이름은 해시형).
+- **줄 순서를 섞어도 같은 결과** — 각 줄에 저장소 로컬 `seq`를 붙이고 `(seq, id)` 순서로 다시 접는다. 파싱 못 하는 줄 · 충돌 · 대상 없는 전이는 오류가 아니라 **카운터**(unparseable · conflicts · dangling)로 보인다.
+- **쓰기 안전** — 본문 2000자 · 에이전트당 보이는 active 200 · proposed 200 · `entries.jsonl` 1 MiB(넘으면 add/propose만 거부 — approve · retire · compact는 항상 동작) · **비밀처럼 보이는 본문은 거부**(문구가 본문·비밀을 다시 찍지 않음) · 쓰기마다 에이전트 저장소 락(4초 넘게 잡혀 있으면 `store busy` exit 1, 아무것도 안 씀).
+- **`loom memory compact`** — retired · 가려진 기록 · 파싱 못 한 줄 · 충돌 패자를 `entries.archive.jsonl`로 옮기고(아카이브 먼저 → 원자 교체) 워터마크 한 줄을 남긴다. 보이는 기록은 전후 같다.
+- **`loom rules list`** — 내장 규칙 1개(`report-blockers`)와 `~/.loom/rules/*.md`(front-matter `id` · `scope` · `priority`) — 같은 id면 사용자 파일이 내장을 대체 · 빈 본문 = 끔 · 무효 파일은 `invalid:` 줄.
+- **`loom skills list`** — 내장 + `~/.loom/skills/` 스킬의 출처 · 가용성 · **`user shadows builtin`**(같은 이름이면 사용자 쪽이 이김 — 깨졌어도) · `--room`이면 그 방이 고른 스킬.
+- **`loom doctor` Memory 절** — 저장소 루트 · 에이전트별 건수/상한/카운터 · persona · INDEX · guideline · rules 상태. 읽기 전용 · ok/warn/info만 — doctor exit 코드 그대로.
+- persona.md · `rooms/<roomKey>/guideline.md` · `knowledge/INDEX.md` · `rules/*.md`는 **편집기로** 쓴다 — `memory list`가 경로와 크기/상한(8 · 16 · 8 · 8 KiB)을 보여 준다.
+- 스모크 `bun run smoke:memory`(dist CLI로 add → … → compact → 줄 섞기 → 락 → rules/skills → doctor · 자식만 임시 홈 · 실 `~/.loom` 무접촉).
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.34.0) | 지금 (0.35.0) |
+|---------------|---------------|
+| 방을 넘어 이어지는 기록을 둘 자리가 없다 — pack · purpose는 방마다, MCP로만 | 에이전트별 저장소 `memory/<agentKey>/` — `project` 범위 기록은 그 에이전트의 모든 방에 해당(주입은 0.36) |
+| 스킬 이름이 겹치면 조용히 사용자 쪽이 이겼다 | `loom skills list`가 `user shadows builtin`으로 보여 준다 |
+| 프로필을 정하지 않아도 별 차이가 없었다 | 기억 저장소 키가 프로필을 따른다 — `--profile`/`LOOM_PROFILE` 없이 displayName을 바꾸면 다른 저장소를 본다. **오래 쓸 기억은 `LOOM_PROFILE` 고정** |
+| `redactSecrets`가 긴 URL 꼴 문자열(수십 KiB)에서 매우 느렸다(O(n²)) | 선형 시간 · 출력은 바이트 동일 |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · 완료 권한 · 워커 argv/fingerprint · `ARGV_TEMPLATE_VERSION` · 프롬프트(`agent-argv.ts` · `policy-compile.ts` · `headless-worker.ts` · `packages/protocol` diff 0) · bridge 런타임(`BRIDGE_VERSION` 한 줄 외) · MCP 도구(기억 도구 없음 — 버전 문자열 외) · sticky host · relay 무변경. `entries.jsonl` v1은 로컬 파일 형식이며 와이어가 아니다.
+- **정직 고지(설계상 수용 손실):** 기록 · 규칙 · persona · guideline · INDEX는 **아직 워커에 들어가지 않는다**(0.36) · redaction 오탐(`token: …` 꼴 평문) · 사람 파일은 env 값 redaction을 받지 않는다(0.36이 주입 직전 처리) · codex 셸 deny는 여전히 미강제 · 아카이브는 무상한·아무도 읽지 않음 · knowledge 주제 파일은 읽지 않음 · Windows 모드 비트 무효.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §20 · PLAN 0.35.0 · R53 · `implementation-notes.md` §0.35.0 · [`spikes/MEMORY-SMOKE-0350.md`](./spikes/MEMORY-SMOKE-0350.md)
 
 ---
 

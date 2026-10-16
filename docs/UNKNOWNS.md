@@ -42,14 +42,14 @@
 
 ## Gate log
 
-### 0.35.0 — memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더 (`approved` — R53 approved-with-fixes)
+### 0.35.0 — memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더 (`approved` — R53 approved-with-fixes · implemented 2026-10-16)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.35.0 (`approved` — R53 approved-with-fixes, 반영 완료 · no R53b) · 업그레이드 4단계 1부 · 요구 `UPGRADE-PLAN.md` 4단계 · 기억 관리 · 규칙 관리 · 스킬 관리 · 범위 = 락 D1~D10(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 0.36.0 기록용) · 워커·프롬프트·bridge 변경 0(D1) · 4단계 2부 = 0.36.0(카드 시작 스냅샷 + 펜스 주입) |
 | **Date** | 2026-10-16 |
 | **Review** | R53 **done 2026-10-16** (새 MINOR + 신규 제품 표면 + 영속성·신뢰 경계 — 0.36에서 프롬프트로 들어갈 저장소의 형식 · 쓰기 안전 · 승인 상태기계 · 경로 규약) |
-| **Evidence** | 코드 실측 `main @ dbab890` (PLAN §0.35.0 Why · 추정/실측 표) · `packages/relay/src/room.ts:167-168`(룸별 seq) · `agent-argv.ts:18` · `:28-36` · `:279` · `atomic-json.ts:22-24` · `:190-209` · `room-event-log.ts:125-141` · `:518-551` · `card-session-store.ts:83-123` · `context-pack.ts:67-73` · `result-quarantine.ts:106-147` · `redact.ts:87-98` · `protocol/src/sanitize.ts:18` · `skill-materialize.ts:47` · `:109-120` · `:708-728` · `session-store.ts:72` · `:79-83` · `:179` · `bridge-spawn.ts:40-45` · `bridge-runtime.ts:878` · `:1106-1111` · `headless-worker.ts:110-127` · `cli/src/service.ts:295` · `cli/src/index.ts:362-397` · `:3389-3395` · `doctor.ts:3` · `:695` |
+| **Evidence** | 코드 실측 `main @ dbab890` (PLAN §0.35.0 Why · 추정/실측 표) · `packages/relay/src/room.ts:167-168`(룸별 seq) · `agent-argv.ts:18` · `:28-36` · `:279` · `atomic-json.ts:22-24` · `:190-209` · `room-event-log.ts:125-141` · `:518-551` · `card-session-store.ts:83-123` · `context-pack.ts:67-73` · `result-quarantine.ts:106-147` · `redact.ts:87-98` · `protocol/src/sanitize.ts:18` · `skill-materialize.ts:47` · `:109-120` · `:708-728` · `session-store.ts:72` · `:79-83` · `:179` · `bridge-spawn.ts:40-45` · `bridge-runtime.ts:878` · `:1106-1111` · `headless-worker.ts:110-127` · `cli/src/service.ts:295` · `cli/src/index.ts:362-397` · `:3389-3395` · `doctor.ts:3` · `:695` · 스모크 [`docs/spikes/MEMORY-SMOKE-0350.md`](spikes/MEMORY-SMOKE-0350.md) (2026-10-16 · macOS · bun 1.3.11 · dist 0.35.0 18/18 PASS · 자식만 임시 홈 · 실 `~/.loom`·`~/.fable` 이름+mtime 동일) · P4b 실측 `redact.ts` `redactUrlUserinfo` O(n²)(64 KiB ≈ 9.7초 → 선형, `implementation-notes.md` §0.35.0 (48)) |
 
 | 분면 | 내용 |
 |------|------|
@@ -62,14 +62,14 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R53 판정 |
 |---|------|-------------|----------|
-| UK-1 | 0.36 배선 때 profile 전달(C1) — `HeadlessDeps.profile` 추가 외 sticky host·pane 경로의 profile 해석 | 0.35는 `agentKeyFor(profile, …)`만 고정 · 배선 0 | **open, 비차단** |
-| UK-2 | redaction 오탐률(`token: …` · `password = …` 꼴 평문) | 0.35 = 사람이 고쳐 씀(계급 6) · 문구가 이유를 말함 | **open, 비차단** |
-| UK-3 | 스냅샷 크기 예산(persona 8 · INDEX 8 · guideline 16 · Memory 16 KiB)이 세 CLI 첫 턴 본문에 맞는지 | 0.36 PLAN이 실측 뒤 상한 조정 가능(형식 무변경) | **open, 비차단** |
-| UK-4 | 규칙 `scope`(`all\|claude\|codex\|grok`) · `priority` 의미가 5단계 프롬프트 조립과 맞는지 | 규칙 배선 0 · 키 추가로 흡수 | **open, 비차단** |
-| UK-5 | 동기 `loadMemorySnapshot`의 0.36 `spawnOnce` 핫 경로 비용(최대 4 MiB fold) | 0.35 미배선 · 0.36이 측정 후 async 래퍼 결정 | **open, 비차단** |
-| UK-6 | Windows — 모드 비트 · `withFileLock` · 심링크 판정 | 0.24.2 플랫폼 조건부 선례 · 테스트는 macOS/Linux | **open, 비차단** |
+| UK-1 | 0.36 배선 때 profile 전달(C1) — `HeadlessDeps.profile` 추가 외 sticky host·pane 경로의 profile 해석 | 0.35는 `agentKeyFor(profile, …)`만 고정 · 배선 0 | **open, 비차단** — 0.35 CLI·doctor는 `resolveBridgeProfile()` 하나로 풀고 `list` 머리에 출처 표시(R53-L2). 0.36 배선 때 확인 |
+| UK-2 | redaction 오탐률(`token: …` · `password = …` 꼴 평문) | 0.35 = 사람이 고쳐 씀(계급 6) · 문구가 이유를 말함 | **open, 비차단** — 실제 사람 기록 데이터 없음(미측정). 부수 실측: 긴 URL 꼴 문자열에서 `redactSecrets`가 O(n²) → P4b 선형화(출력 바이트 동일) |
+| UK-3 | 스냅샷 크기 예산(persona 8 · INDEX 8 · guideline 16 · Memory 16 KiB)이 세 CLI 첫 턴 본문에 맞는지 | 0.36 PLAN이 실측 뒤 상한 조정 가능(형식 무변경) | **open, 비차단** — 0.35는 주입 0이라 미측정 |
+| UK-4 | 규칙 `scope`(`all\|claude\|codex\|grok`) · `priority` 의미가 5단계 프롬프트 조립과 맞는지 | 규칙 배선 0 · 키 추가로 흡수 | **open, 비차단** — 내장 1개 · 덮어쓰기 · 비활성은 스모크 ⑫⑬ PASS · 의미 판정은 5단계 |
+| UK-5 | 동기 `loadMemorySnapshot`의 0.36 `spawnOnce` 핫 경로 비용(최대 4 MiB fold) | 0.35 미배선 · 0.36이 측정 후 async 래퍼 결정 | **open, 비차단** — 미측정 · 0.36 메모: redaction된 persona를 mtime으로 캐시(자문 — impl-notes (52)) |
+| UK-6 | Windows — 모드 비트 · `withFileLock` · 심링크 판정 | 0.24.2 플랫폼 조건부 선례 · 테스트는 macOS/Linux | **unverified(Windows 환경 미사용), 비차단** — doctor는 Windows에서 모드 판정 대신 info 한 줄 |
 
-**Current decision:** D1~D10 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 0.36.0 기록용) · 작성자 정밀화 R1~R16 · 락↔코드 불일치 C1(profile이 `HeadlessDeps`에 없음 — 0.36에서 필드 추가) · 수용 손실 계급 1~9 + 무번호 3행 · UK-1~UK-6 · 4단계 완료 기준 (c) 옵션 ii 체크리스트로 재정의(0.36 인도). **R53 `approved-with-fixes` → M1·M2·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R53b)** · R1~R16 수용(R5·R9→M1 · R7→L1 · R1→L2) · C1 수용(0.35 변경 없음) · UK-1~UK-6 비차단. **Next = P1**(순수 코어, red = 테스트 파일만).
+**Current decision:** D1~D10 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 0.36.0 기록용) · 작성자 정밀화 R1~R16 · 락↔코드 불일치 C1(profile이 `HeadlessDeps`에 없음 — 0.36에서 필드 추가) · 수용 손실 계급 1~9 + 무번호 3행 · UK-1~UK-6 · 4단계 완료 기준 (c) 옵션 ii 체크리스트로 재정의(0.36 인도). **R53 `approved-with-fixes` → M1·M2·L1·L2·L3 PLAN 반영 → PLAN `approved`(2026-10-16, no R53b)** · R1~R16 수용(R5·R9→M1 · R7→L1 · R1→L2) · C1 수용(0.35 변경 없음) · UK-1~UK-6 비차단. **implemented 2026-10-16** — P1~P5(`031aea1` → … → `c6b6ea5` → `9e92375` 스모크 → PATCH 5 문서) · 스모크 `smoke:memory` 18/18 PASS(dist 0.35.0 · `--source`) · ⑥ 밖 production 변경 1건 = P4b `redact.ts` 선형화(아키텍트 + fable-advisor 승인 · 출력 바이트 동일). UK-1~UK-5 open · UK-6 unverified(전부 비차단). 다음 후보 = **0.36.0 카드 시작 스냅샷 + 펜스 주입**(4단계 2부 — PLAN MINOR + R54).
 
 ### 0.34.0 — `loom service` launchd/systemd 사용자 서비스 설치 (`approved` — R52 approved-with-fixes · implemented 2026-10-16)
 
@@ -515,3 +515,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-16 | 0.34.0 `loom service` unknowns (UK-1~UK-5 요약 · 전부 비차단 제안 · 코드 실측 Known knowns · `pending-review` R52) |
 | 2026-10-16 | 0.34.0 R52 판정 반영 (UK-1~UK-5 open 비차단 · M1·M2·M3·L2 교훈 Unknown knowns 기재 · PLAN `approved`) |
 | 2026-10-16 | 0.34.0 ship 반영 (UK-2 partly observed — 프로브 사고 알림 · UK-1 · UK-3 open — 라이브 not run(오너 승인 대기) · UK-4 · UK-5 unverified — Linux 미사용 · `SERVICE-SMOKE-0340.md` · R52-L1 `envRelayToken()` 문면 정정) |
+| 2026-10-16 | 0.35.0 ship 반영 (UK-1~UK-5 open 비차단 · UK-6 unverified — Windows 미사용 · `MEMORY-SMOKE-0350.md` 18/18 · P4b `redact.ts` O(n²) 실측·선형화) |

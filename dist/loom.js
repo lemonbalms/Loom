@@ -5443,28 +5443,28 @@ var init_session_store = __esm(() => {
 // packages/relay/src/persist.ts
 import {
   existsSync as existsSync17,
-  mkdirSync as mkdirSync18,
-  readFileSync as readFileSync13,
+  mkdirSync as mkdirSync19,
+  readFileSync as readFileSync14,
   writeFileSync as writeFileSync14,
-  renameSync as renameSync5,
-  chmodSync as chmodSync11,
+  renameSync as renameSync6,
+  chmodSync as chmodSync12,
   copyFileSync as copyFileSync2,
-  readdirSync as readdirSync4,
+  readdirSync as readdirSync5,
   statSync as statSync7,
-  lstatSync as lstatSync3,
+  lstatSync as lstatSync5,
   realpathSync as realpathSync3,
-  unlinkSync as unlinkSync6,
+  unlinkSync as unlinkSync7,
   rmSync as rmSync4
 } from "fs";
-import { join as join26, dirname as dirname12, basename as basename4, resolve as resolve5, sep as sep5 } from "path";
-import { createHash as createHash10 } from "crypto";
+import { join as join28, dirname as dirname13, basename as basename5, resolve as resolve5, sep as sep5 } from "path";
+import { createHash as createHash11 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
-  return join26(homedir5(), ".loom", "relay-state");
+  return join28(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
-  const h = createHash10("sha256").update(roomId).digest("hex").slice(0, 16);
-  return join26(stateDir2, `${h}.json`);
+  const h = createHash11("sha256").update(roomId).digest("hex").slice(0, 16);
+  return join28(stateDir2, `${h}.json`);
 }
 function isPidAlive4(pid) {
   if (!Number.isFinite(pid) || pid <= 0)
@@ -5477,17 +5477,17 @@ function isPidAlive4(pid) {
   }
 }
 function processLockDir(stateDir2) {
-  return join26(stateDir2, ".relay-writer.lock");
+  return join28(stateDir2, ".relay-writer.lock");
 }
 function lockPidPath2(lockDir) {
-  return join26(lockDir, "owner.pid");
+  return join28(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
-  mkdirSync18(stateDir2, { recursive: true });
+  mkdirSync19(stateDir2, { recursive: true });
   const lockDir = processLockDir(stateDir2);
   const tryAcquire = () => {
     try {
-      mkdirSync18(lockDir);
+      mkdirSync19(lockDir);
     } catch {
       return false;
     }
@@ -5511,7 +5511,7 @@ function acquireStateDirLock(stateDir2) {
     const age = Date.now() - statSync7(lockDir).mtimeMs;
     let owner = null;
     try {
-      const raw = readFileSync13(lockPidPath2(lockDir), "utf8").trim();
+      const raw = readFileSync14(lockPidPath2(lockDir), "utf8").trim();
       const n = Number(raw);
       owner = Number.isFinite(n) ? n : null;
     } catch {
@@ -5538,7 +5538,7 @@ function releaseStateDirLock(stateDir2) {
   if (!existsSync17(lockDir))
     return;
   try {
-    const raw = readFileSync13(lockPidPath2(lockDir), "utf8").trim();
+    const raw = readFileSync14(lockPidPath2(lockDir), "utf8").trim();
     const owner = Number(raw);
     if (Number.isFinite(owner) && owner !== process.pid)
       return;
@@ -5548,23 +5548,23 @@ function releaseStateDirLock(stateDir2) {
   } catch {}
 }
 function writeAtomicJson2(filePath, data) {
-  const parent = dirname12(resolve5(filePath));
-  mkdirSync18(parent, { recursive: true });
+  const parent = dirname13(resolve5(filePath));
+  mkdirSync19(parent, { recursive: true });
   let realParent;
   try {
     realParent = realpathSync3(parent);
   } catch {
     realParent = parent;
   }
-  const base = basename4(filePath);
+  const base = basename5(filePath);
   if (!base || base === "." || base === "..") {
     throw new Error(`Invalid snapshot basename: ${filePath}`);
   }
-  const finalPath = join26(realParent, base);
+  const finalPath = join28(realParent, base);
   try {
-    const st = lstatSync3(finalPath);
+    const st = lstatSync5(finalPath);
     if (st.isSymbolicLink()) {
-      unlinkSync6(finalPath);
+      unlinkSync7(finalPath);
     } else if (st.isDirectory()) {
       throw new Error(`Refusing to overwrite directory: ${finalPath}`);
     }
@@ -5575,19 +5575,19 @@ function writeAtomicJson2(filePath, data) {
         throw e;
     }
   }
-  const tmp = join26(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
+  const tmp = join28(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
   try {
     writeFileSync14(tmp, body, { encoding: "utf8", mode: 384 });
-    renameSync5(tmp, finalPath);
+    renameSync6(tmp, finalPath);
     try {
-      chmodSync11(finalPath, 384);
+      chmodSync12(finalPath, 384);
     } catch {}
   } catch (e) {
     try {
       if (existsSync17(tmp))
-        unlinkSync6(tmp);
+        unlinkSync7(tmp);
     } catch {}
     throw e;
   }
@@ -5597,7 +5597,7 @@ function readJsonFile2(filePath) {
     return null;
   let raw;
   try {
-    raw = readFileSync13(filePath, "utf8");
+    raw = readFileSync14(filePath, "utf8");
   } catch (e) {
     throw new Error(`Failed to read ${filePath}: ${e instanceof Error ? e.message : e}`);
   }
@@ -5717,7 +5717,7 @@ function loadAllSnapshots(stateDir2) {
     return { snapshots, errors: errors2 };
   let names;
   try {
-    names = readdirSync4(stateDir2);
+    names = readdirSync5(stateDir2);
   } catch (e) {
     errors2.push(`Cannot read state dir ${stateDir2}: ${e instanceof Error ? e.message : e}`);
     return { snapshots, errors: errors2 };
@@ -5725,7 +5725,7 @@ function loadAllSnapshots(stateDir2) {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith("."))
       continue;
-    const path = join26(stateDir2, name);
+    const path = join28(stateDir2, name);
     try {
       const st = statSync7(path);
       if (!st.isFile())
@@ -5750,7 +5750,7 @@ function loadAllSnapshots(stateDir2) {
   return { snapshots, errors: errors2 };
 }
 function saveRoomSnapshot(stateDir2, snap) {
-  mkdirSync18(stateDir2, { recursive: true });
+  mkdirSync19(stateDir2, { recursive: true });
   let realState;
   try {
     realState = realpathSync3(stateDir2);
@@ -5776,9 +5776,9 @@ var ROOM_SNAPSHOT_VERSION = 1, LOCK_STALE_MS3 = 5000;
 var init_persist = () => {};
 
 // packages/relay/src/room.ts
-import { createHash as createHash11, randomUUID as randomUUID4 } from "crypto";
+import { createHash as createHash12, randomUUID as randomUUID4 } from "crypto";
 function clientEventBodyHash(material) {
-  return createHash11("sha256").update(material, "utf8").digest("hex");
+  return createHash12("sha256").update(material, "utf8").digest("hex");
 }
 function handoffClientEventMaterial(h) {
   const attachments = h.attachments == null || Array.isArray(h.attachments) && h.attachments.length === 0 ? null : h.attachments;
@@ -13224,7 +13224,7 @@ var KNOWN_SHAPES = [
   /eyJ[\w-]+\.[\w-]+\.[\w-]+/g
 ];
 function redactUrlUserinfo(text) {
-  return text.replace(/([a-zA-Z][a-zA-Z0-9+.-]*):\/\/[^\s/@:]+:[^\s/@]+@/g, `$1://${MARK}@`);
+  return text.replace(/(?<![a-zA-Z0-9+.-])([0-9+.-]*[a-zA-Z][a-zA-Z0-9+.-]*):\/\/[^\s/@:]+:[^\s/@]+@/g, `$1://${MARK}@`);
 }
 function redactKnownShapes(text) {
   let out = text;
@@ -13821,6 +13821,79 @@ async function resolveSkill(name, userRoot, rootState) {
   }
   const builtin = BUILTIN_SKILLS.find((s) => s.name === name);
   return builtin ? { source: "builtin", loaded: loadBuiltinSkill(builtin) } : null;
+}
+async function inventorySkills(loomDir2, policy) {
+  let userRoot = "";
+  let rootState = "absent";
+  try {
+    const root = await realLoomDir(loomDir2);
+    if (root !== null) {
+      userRoot = join16(root, "skills");
+      rootState = await userRootState(userRoot);
+    }
+  } catch {
+    rootState = "unsafe";
+  }
+  const builtinNames = new Set(BUILTIN_SKILLS.map((s) => s.name));
+  const names = new Set(builtinNames);
+  const ignored = [];
+  if (rootState === "dir") {
+    let entries = null;
+    try {
+      entries = await listCapped(userRoot, DIR_MAX_ENTRIES);
+    } catch {
+      entries = null;
+    }
+    for (const entry of entries ?? []) {
+      if (SKILL_NAME_RE.test(entry))
+        names.add(entry);
+      else
+        ignored.push(entry);
+    }
+  }
+  const skills = [];
+  for (const name of [...names].sort(compareCodeUnits)) {
+    const found = await resolveSkill(name, userRoot, rootState);
+    if (!found) {
+      skills.push({
+        name,
+        source: "user",
+        shadowsBuiltin: false,
+        status: "unavailable",
+        reason: "not installed",
+        description: null
+      });
+      continue;
+    }
+    const item = {
+      name,
+      source: found.source,
+      shadowsBuiltin: found.source === "user" && builtinNames.has(name),
+      status: "available",
+      reason: null,
+      description: null
+    };
+    if (policy !== null && policy.allow !== null && !policy.allow.includes(name)) {
+      item.status = "unavailable";
+      item.reason = "not allowed by policy";
+    } else if (!found.loaded.ok) {
+      item.status = policy === null ? "unknown" : "unavailable";
+      item.reason = policy === null ? null : found.loaded.reason;
+    } else {
+      const judge = policy ?? { allow: null, allowScripts: [name] };
+      const verdict = evaluate(name, found.source, found.loaded.files, judge);
+      if (typeof verdict === "string") {
+        item.status = policy === null ? "unknown" : "unavailable";
+        item.reason = policy === null ? null : verdict;
+      } else {
+        item.description = verdict.description;
+        if (policy === null)
+          item.status = "unknown";
+      }
+    }
+    skills.push(item);
+  }
+  return { skills, ignored: ignored.sort(compareCodeUnits), userRoot: rootState };
 }
 function cardChain(key) {
   return ["cards", cardPeerHash(key.localPeerId), cardKeyHash(key.roomId, key.agent, key.cardId)];
@@ -16282,6 +16355,991 @@ function parseSystemctlShow(stdout) {
     unitFileState: str("UnitFileState")
   };
 }
+// packages/host/src/memory-store.ts
+init_src();
+import { createHash as createHash10, randomBytes as randomBytes2 } from "crypto";
+import {
+  chmodSync as chmodSync11,
+  closeSync as closeSync7,
+  constants as fsConstants4,
+  fstatSync as fstatSync4,
+  fsyncSync as fsyncSync2,
+  lstatSync as lstatSync3,
+  mkdirSync as mkdirSync13,
+  openSync as openSync7,
+  readSync as readSync3,
+  readFileSync as readFileSync12,
+  renameSync as renameSync5,
+  unlinkSync as unlinkSync6,
+  writeSync as writeSync3
+} from "fs";
+import { basename as basename3, dirname as dirname11, isAbsolute as isAbsolute6, join as join22 } from "path";
+var AGENT_KEY_RE = /^(claude|codex|grok)\.(?:[a-z0-9][a-z0-9_-]{0,47}|x\.[0-9a-f]{16})$/;
+var SAFE_PROFILE_RE = /^[a-z0-9][a-z0-9_-]{0,47}$/;
+var AGENT_KINDS = ["claude", "codex", "grok"];
+function isAgentKey(s) {
+  return typeof s === "string" && AGENT_KEY_RE.test(s);
+}
+function agentKeyFor(profile, agentKind) {
+  if (typeof agentKind !== "string" || !AGENT_KINDS.includes(agentKind)) {
+    throw new TypeError(`agentKeyFor: agentKind must be claude, codex or grok (got ${String(agentKind)})`);
+  }
+  if (typeof profile !== "string") {
+    throw new TypeError("agentKeyFor: profile must be a string");
+  }
+  const token = SAFE_PROFILE_RE.test(profile) ? profile : `x.${createHash10("sha256").update(profile, "utf8").digest("hex").slice(0, 16)}`;
+  const key = `${agentKind}.${token}`;
+  if (!AGENT_KEY_RE.test(key))
+    throw new Error(`agentKeyFor: invariant violated (${key})`);
+  return key;
+}
+var MEMORY_ID_RE = /^mem_[0-9a-f]{16}$/;
+var APPLIES_TO_RE = /^(project|room:[0-9a-f]{16})$/;
+var SOURCE_KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
+var MEMORY_BODY_MAX = 2000;
+var MEMORY_SOURCE_MAX_BYTES = 1024;
+var MEMORY_AT_MAX = 40;
+var ENTRY_TYPES = ["fact", "decision", "preference"];
+var STATUSES = ["active", "proposed", "retired"];
+var TRANSITION_TO = ["active", "retired"];
+function isPlainObject2(x) {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+function isSeq(x) {
+  return typeof x === "number" && Number.isSafeInteger(x) && x > 0;
+}
+function isSource(x) {
+  if (!isPlainObject2(x))
+    return false;
+  if (typeof x.kind !== "string" || !SOURCE_KIND_RE.test(x.kind))
+    return false;
+  return Buffer.byteLength(JSON.stringify(x), "utf8") <= MEMORY_SOURCE_MAX_BYTES;
+}
+function isOptionalAt(o) {
+  if (!("at" in o))
+    return true;
+  return typeof o.at === "string" && o.at.length <= MEMORY_AT_MAX;
+}
+function parseMemoryLine(line) {
+  let o;
+  try {
+    o = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!isPlainObject2(o) || o.v !== 1)
+    return null;
+  if (o.kind === "compact") {
+    return isSeq(o.seq) ? o : null;
+  }
+  if (typeof o.id !== "string" || !MEMORY_ID_RE.test(o.id))
+    return null;
+  if (!isSeq(o.seq) || !isSource(o.source) || !isOptionalAt(o))
+    return null;
+  if (o.kind === "transition") {
+    return typeof o.to === "string" && TRANSITION_TO.includes(o.to) ? o : null;
+  }
+  if (o.kind !== "entry")
+    return null;
+  if (typeof o.type !== "string" || !ENTRY_TYPES.includes(o.type))
+    return null;
+  if (typeof o.appliesTo !== "string" || !APPLIES_TO_RE.test(o.appliesTo))
+    return null;
+  if (typeof o.body !== "string" || o.body.length < 1 || o.body.length > MEMORY_BODY_MAX) {
+    return null;
+  }
+  if (typeof o.status !== "string" || !STATUSES.includes(o.status))
+    return null;
+  if (!("supersedes" in o))
+    return null;
+  if (o.supersedes !== null && (typeof o.supersedes !== "string" || !MEMORY_ID_RE.test(o.supersedes))) {
+    return null;
+  }
+  return o;
+}
+function cmpStr(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function foldMemoryLines(raw) {
+  const counters = {
+    unparseable: 0,
+    conflicts: 0,
+    dangling: 0,
+    archivedRefs: 0
+  };
+  let maxSeq = 0;
+  const parsed = [];
+  for (const piece of raw.split(`
+`)) {
+    const text = piece.endsWith("\r") ? piece.slice(0, -1) : piece;
+    if (text === "")
+      continue;
+    const line = parseMemoryLine(text);
+    if (!line) {
+      counters.unparseable += 1;
+      continue;
+    }
+    if (line.seq > maxSeq)
+      maxSeq = line.seq;
+    parsed.push({ raw: text, line });
+  }
+  let hasWatermark = false;
+  const groups = new Map;
+  for (const p of parsed) {
+    if (p.line.kind === "compact") {
+      hasWatermark = true;
+      continue;
+    }
+    const k = `${p.line.id}\x00${p.line.seq}`;
+    const g = groups.get(k);
+    if (!g) {
+      groups.set(k, { winner: { raw: p.raw, line: p.line }, raws: new Set([p.raw]) });
+      continue;
+    }
+    g.raws.add(p.raw);
+    if (cmpStr(p.raw, g.winner.raw) < 0)
+      g.winner = { raw: p.raw, line: p.line };
+  }
+  const lines = [];
+  for (const g of groups.values()) {
+    counters.conflicts += g.raws.size - 1;
+    lines.push(g.winner);
+  }
+  lines.sort((a, b) => a.line.seq - b.line.seq || cmpStr(a.line.id, b.line.id));
+  const entryIds = new Set;
+  for (const l of lines)
+    if (l.line.kind === "entry")
+      entryIds.add(l.line.id);
+  const entries = new Map;
+  const links = [];
+  for (const { line } of lines) {
+    if (line.kind === "entry") {
+      if (entries.has(line.id)) {
+        counters.conflicts += 1;
+        continue;
+      }
+      const e2 = {
+        id: line.id,
+        seq: line.seq,
+        type: line.type,
+        appliesTo: line.appliesTo,
+        body: line.body,
+        source: line.source,
+        status: line.status,
+        supersedes: line.supersedes,
+        ...line.at !== undefined ? { at: line.at } : {},
+        supersedesArchived: false,
+        everActive: line.status === "active",
+        hidden: false,
+        transitions: []
+      };
+      const target = line.supersedes;
+      if (target !== null) {
+        const prior = entries.get(target);
+        if (target === line.id) {
+          counters.dangling += 1;
+        } else if (prior) {
+          links.push({ from: e2, to: prior });
+        } else if (entryIds.has(target)) {
+          counters.dangling += 1;
+        } else if (hasWatermark) {
+          e2.supersedesArchived = true;
+          counters.archivedRefs += 1;
+        } else {
+          counters.dangling += 1;
+        }
+      }
+      entries.set(line.id, e2);
+      continue;
+    }
+    const e = entries.get(line.id);
+    const ok = e !== undefined && (e.status === "proposed" && (line.to === "active" || line.to === "retired") || e.status === "active" && line.to === "retired");
+    if (!ok) {
+      counters.dangling += 1;
+      continue;
+    }
+    e.status = line.to;
+    if (line.to === "active")
+      e.everActive = true;
+    e.transitions.push({
+      seq: line.seq,
+      to: line.to,
+      source: line.source,
+      ...line.at !== undefined ? { at: line.at } : {}
+    });
+  }
+  for (const { from, to } of links) {
+    if (from.everActive)
+      to.hidden = true;
+  }
+  const visibleActive = [];
+  for (const e of entries.values()) {
+    if (e.status === "active" && !e.hidden)
+      visibleActive.push(e);
+  }
+  return { entries, visibleActive, maxSeq, counters };
+}
+var MEMORY_ACTIVE_CAP = 200;
+var MEMORY_PROPOSED_CAP = 200;
+var MEMORY_ENTRIES_MAX_BYTES = 1024 * 1024;
+var MEMORY_SOURCE_BY_MAX = 64;
+var ID_DRAWS = 4;
+function memoryPaths(loomDir2, agentKey) {
+  if (typeof loomDir2 !== "string" || !isAbsolute6(loomDir2)) {
+    throw new TypeError("memoryPaths: loomDir must be an absolute path");
+  }
+  if (!isAgentKey(agentKey))
+    throw new TypeError("memoryPaths: invalid agentKey");
+  const memoryDir = join22(loomDir2, "memory");
+  const dir = join22(memoryDir, agentKey);
+  const entries = join22(dir, "entries.jsonl");
+  return {
+    memoryDir,
+    dir,
+    entries,
+    archive: join22(dir, "entries.archive.jsonl"),
+    lock: `${entries}.lock`
+  };
+}
+var memoryStoreTestHooks = {
+  failBeforeReplace: false
+};
+function humanMemorySource(displayName) {
+  let by = sanitizePeerName(displayName);
+  if (by.length > MEMORY_SOURCE_BY_MAX) {
+    by = by.slice(0, MEMORY_SOURCE_BY_MAX);
+    const last = by.charCodeAt(by.length - 1);
+    if (last >= 55296 && last <= 56319)
+      by = by.slice(0, -1);
+  }
+  return { kind: "human", by };
+}
+function refuse(code, message) {
+  return { ok: false, code, message };
+}
+function lstatOrNull(p) {
+  try {
+    return lstatSync3(p);
+  } catch (e) {
+    if (e.code === "ENOENT")
+      return null;
+    throw e;
+  }
+}
+function unsafePath(p) {
+  return refuse("unsafe_path", `refusing ${p}: symlink or not a regular path \u2014 nothing written`);
+}
+function dirState(p) {
+  const st = lstatOrNull(p);
+  if (!st)
+    return "absent";
+  if (st.isSymbolicLink() || !st.isDirectory())
+    return unsafePath(p);
+  return "dir";
+}
+function fileState(p) {
+  const st = lstatOrNull(p);
+  if (!st)
+    return "absent";
+  if (st.isSymbolicLink() || !st.isFile())
+    return unsafePath(p);
+  return "file";
+}
+function makeDir(p) {
+  mkdirSync13(p, { mode: 448 });
+  try {
+    chmodSync11(p, 448);
+  } catch {}
+}
+function prepareStoreDirs(loomDir2, p, create) {
+  for (const d of [p.memoryDir, p.dir]) {
+    const st = dirState(d);
+    if (st === "dir")
+      continue;
+    if (st !== "absent")
+      return st;
+    if (!create)
+      return "absent";
+    if (d === p.memoryDir)
+      mkdirSync13(loomDir2, { recursive: true, mode: 448 });
+    makeDir(d);
+  }
+  return "ready";
+}
+function readEntries(p) {
+  const st = fileState(p.entries);
+  if (st === "absent")
+    return { raw: "", size: 0 };
+  if (st !== "file")
+    return st;
+  const fd = openSync7(p.entries, fsConstants4.O_RDONLY | fsConstants4.O_NOFOLLOW);
+  try {
+    const buf = readFileSync12(fd);
+    return { raw: buf.toString("utf8"), size: buf.length };
+  } finally {
+    closeSync7(fd);
+  }
+}
+function appendLines(file, lines) {
+  const fd = openSync7(file, fsConstants4.O_RDWR | fsConstants4.O_APPEND | fsConstants4.O_CREAT | fsConstants4.O_NOFOLLOW, 384);
+  try {
+    const size = fstatSync4(fd).size;
+    let repair = false;
+    if (size > 0) {
+      const last = Buffer.alloc(1);
+      repair = readSync3(fd, last, 0, 1, size - 1) === 1 && last[0] !== 10;
+    }
+    const text = `${repair ? `
+` : ""}${lines.map((l) => `${l}
+`).join("")}`;
+    const buf = Buffer.from(text, "utf8");
+    let off = 0;
+    while (off < buf.length)
+      off += writeSync3(fd, buf, off, buf.length - off);
+    fsyncSync2(fd);
+  } finally {
+    closeSync7(fd);
+  }
+  try {
+    chmodSync11(file, 384);
+  } catch {}
+}
+function replaceFile(file, text) {
+  const tmp = join22(dirname11(file), `.${basename3(file)}.tmp.${process.pid}.${Date.now()}`);
+  try {
+    const fd = openSync7(tmp, fsConstants4.O_WRONLY | fsConstants4.O_CREAT | fsConstants4.O_EXCL | fsConstants4.O_NOFOLLOW, 384);
+    try {
+      const buf = Buffer.from(text, "utf8");
+      let off = 0;
+      while (off < buf.length)
+        off += writeSync3(fd, buf, off, buf.length - off);
+      fsyncSync2(fd);
+    } finally {
+      closeSync7(fd);
+    }
+    renameSync5(tmp, file);
+  } catch (err) {
+    try {
+      unlinkSync6(tmp);
+    } catch {}
+    throw err;
+  }
+  try {
+    chmodSync11(file, 384);
+  } catch {}
+}
+function underStoreLock(p, fn) {
+  let entered = false;
+  try {
+    return withFileLock(p.entries, () => {
+      entered = true;
+      return fn();
+    });
+  } catch (err) {
+    if (!entered && err instanceof Error && err.message.startsWith("Timeout waiting for lock")) {
+      return refuse("busy", `store busy (${p.lock}) \u2014 try again; nothing written`);
+    }
+    throw err;
+  }
+}
+function seqExhausted(f) {
+  if (Number.isSafeInteger(f.maxSeq + 1))
+    return null;
+  return refuse("seq_exhausted", `seq space exhausted (max seq ${f.maxSeq}) \u2014 nothing written`);
+}
+function nowIso2(deps) {
+  return (deps.now ? deps.now() : new Date).toISOString();
+}
+function defaultRandomId() {
+  return `mem_${randomBytes2(8).toString("hex")}`;
+}
+function assertSource(source, fn) {
+  if (!isSource(source))
+    throw new TypeError(`${fn}: invalid source`);
+}
+function appendMemoryEntry(loomDir2, agentKey, input, deps) {
+  const p = memoryPaths(loomDir2, agentKey);
+  if (!ENTRY_TYPES.includes(input.type))
+    throw new TypeError("appendMemoryEntry: invalid type");
+  if (typeof input.appliesTo !== "string" || !APPLIES_TO_RE.test(input.appliesTo)) {
+    throw new TypeError("appendMemoryEntry: invalid appliesTo");
+  }
+  if (input.status !== "active" && input.status !== "proposed") {
+    throw new TypeError("appendMemoryEntry: status must be active or proposed");
+  }
+  assertSource(input.source, "appendMemoryEntry");
+  if (!deps || typeof deps.env !== "object" || deps.env === null) {
+    throw new TypeError("appendMemoryEntry: deps.env is required");
+  }
+  const body = sanitizePeerText(typeof input.body === "string" ? input.body : "");
+  if (body.trim() === "")
+    return refuse("empty_body", "empty body");
+  if (redactSecrets(body, deps.env) !== body) {
+    return refuse("secret", "body looks like it contains a secret (redaction would change it) \u2014 reword it; nothing written");
+  }
+  if (body.length > MEMORY_BODY_MAX) {
+    return refuse("too_long", `body is ${body.length} chars (max ${MEMORY_BODY_MAX})`);
+  }
+  if (input.supersedes !== null && typeof input.supersedes !== "string") {
+    throw new TypeError("appendMemoryEntry: supersedes must be a string or null");
+  }
+  const existing = prepareStoreDirs(loomDir2, p, false);
+  if (existing !== "ready" && existing !== "absent")
+    return existing;
+  if (existing === "absent" && input.supersedes !== null) {
+    return refuse("unknown_supersedes", `unknown entry ${input.supersedes}`);
+  }
+  const dirs = prepareStoreDirs(loomDir2, p, true);
+  if (dirs !== "ready" && dirs !== "absent")
+    return dirs;
+  const pre = fileState(p.entries);
+  if (pre !== "absent" && pre !== "file")
+    return pre;
+  return underStoreLock(p, () => {
+    const read = readEntries(p);
+    if ("ok" in read)
+      return read;
+    if (read.size > MEMORY_ENTRIES_MAX_BYTES) {
+      return refuse("too_large", `entries.jsonl is ${Math.ceil(read.size / 1024)} KiB (max ${MEMORY_ENTRIES_MAX_BYTES / 1024} KiB) \u2014 run loom memory compact (retire entries first if it moves nothing)`);
+    }
+    const f = foldMemoryLines(read.raw);
+    const exhausted = seqExhausted(f);
+    if (exhausted)
+      return exhausted;
+    if (input.status === "active") {
+      const n = f.visibleActive.length;
+      const net0 = input.supersedes !== null && f.visibleActive.some((e) => e.id === input.supersedes);
+      if (n >= MEMORY_ACTIVE_CAP && !net0) {
+        return refuse("active_cap", `${n} active entries (max ${MEMORY_ACTIVE_CAP}) \u2014 retire or supersede one`);
+      }
+    } else {
+      let n = 0;
+      for (const e of f.entries.values())
+        if (e.status === "proposed")
+          n += 1;
+      if (n >= MEMORY_PROPOSED_CAP) {
+        return refuse("proposed_cap", `${n} proposed entries (max ${MEMORY_PROPOSED_CAP}) \u2014 approve or retire one`);
+      }
+    }
+    if (input.supersedes !== null && !f.entries.has(input.supersedes)) {
+      return refuse("unknown_supersedes", `unknown entry ${input.supersedes}`);
+    }
+    const gen = deps.randomId ?? defaultRandomId;
+    let id = null;
+    for (let i = 0;i < ID_DRAWS; i++) {
+      const cand = gen();
+      if (typeof cand !== "string" || !MEMORY_ID_RE.test(cand)) {
+        throw new TypeError("appendMemoryEntry: randomId must return mem_ + 16 hex");
+      }
+      if (!f.entries.has(cand)) {
+        id = cand;
+        break;
+      }
+    }
+    if (id === null) {
+      return refuse("id_collision", "could not allocate a fresh entry id \u2014 try again; nothing written");
+    }
+    const seq = f.maxSeq + 1;
+    const line = {
+      v: 1,
+      kind: "entry",
+      id,
+      seq,
+      type: input.type,
+      appliesTo: input.appliesTo,
+      body,
+      source: input.source,
+      status: input.status,
+      supersedes: input.supersedes,
+      at: nowIso2(deps)
+    };
+    appendLines(p.entries, [JSON.stringify(line)]);
+    return { ok: true, id, seq, status: input.status, path: p.entries };
+  });
+}
+function appendMemoryTransition(loomDir2, agentKey, input, deps = {}) {
+  const p = memoryPaths(loomDir2, agentKey);
+  if (input.to !== "active" && input.to !== "retired") {
+    throw new TypeError("appendMemoryTransition: to must be active or retired");
+  }
+  assertSource(input.source, "appendMemoryTransition");
+  const verb = input.to === "active" ? "approve" : "retire";
+  const badState = (status) => refuse("bad_state", `entry ${input.id} is ${status} \u2014 nothing to ${verb}`);
+  const dirs = prepareStoreDirs(loomDir2, p, false);
+  if (dirs === "absent")
+    return badState("missing");
+  if (dirs !== "ready")
+    return dirs;
+  const pre = fileState(p.entries);
+  if (pre !== "absent" && pre !== "file")
+    return pre;
+  return underStoreLock(p, () => {
+    const read = readEntries(p);
+    if ("ok" in read)
+      return read;
+    const f = foldMemoryLines(read.raw);
+    const exhausted = seqExhausted(f);
+    if (exhausted)
+      return exhausted;
+    const target = f.entries.get(input.id);
+    const status = target ? target.status : "missing";
+    const allowed = input.to === "active" ? status === "proposed" : status === "active" || status === "proposed";
+    if (!allowed)
+      return badState(status);
+    const seq = f.maxSeq + 1;
+    const line = {
+      v: 1,
+      kind: "transition",
+      id: input.id,
+      seq,
+      to: input.to,
+      source: input.source,
+      at: nowIso2(deps)
+    };
+    appendLines(p.entries, [JSON.stringify(line)]);
+    return { ok: true, id: input.id, seq, to: input.to, path: p.entries };
+  });
+}
+function compactMemory(loomDir2, agentKey) {
+  const p = memoryPaths(loomDir2, agentKey);
+  const nothing = {
+    ok: true,
+    moved: 0,
+    unparseable: 0,
+    conflictLosers: 0,
+    kept: 0,
+    watermark: null,
+    archivePath: p.archive,
+    message: "nothing to compact"
+  };
+  const dirs = prepareStoreDirs(loomDir2, p, false);
+  if (dirs === "absent")
+    return nothing;
+  if (dirs !== "ready")
+    return dirs;
+  for (const file of [p.entries, p.archive]) {
+    const st = fileState(file);
+    if (st !== "absent" && st !== "file")
+      return st;
+  }
+  return underStoreLock(p, () => {
+    const read = readEntries(p);
+    if ("ok" in read)
+      return read;
+    const archiveSt = fileState(p.archive);
+    if (archiveSt !== "absent" && archiveSt !== "file")
+      return archiveSt;
+    if (read.raw === "")
+      return nothing;
+    const f = foldMemoryLines(read.raw);
+    const movedEntryIds = new Set;
+    for (const e of f.entries.values()) {
+      if (e.status === "retired" || e.hidden)
+        movedEntryIds.add(e.id);
+    }
+    const pieces = [];
+    const winners = new Map;
+    for (const piece of read.raw.split(`
+`)) {
+      const text = piece.endsWith("\r") ? piece.slice(0, -1) : piece;
+      if (text === "")
+        continue;
+      const line = parseMemoryLine(text);
+      pieces.push({ piece, text, line });
+      if (line && line.kind !== "compact") {
+        const k = `${line.id}\x00${line.seq}`;
+        const w = winners.get(k);
+        if (w === undefined || cmpStr(text, w) < 0)
+          winners.set(k, text);
+      }
+    }
+    const kept = [];
+    const moved = [];
+    let unparseable = 0;
+    let conflictLosers = 0;
+    let watermark = 0;
+    let movedMax = 0;
+    const seenWinner = new Set;
+    for (const { piece, text, line } of pieces) {
+      if (!line) {
+        unparseable += 1;
+        moved.push(piece);
+        continue;
+      }
+      if (line.kind === "compact") {
+        if (line.seq > watermark)
+          watermark = line.seq;
+        continue;
+      }
+      const k = `${line.id}\x00${line.seq}`;
+      let move = false;
+      if (winners.get(k) !== text) {
+        conflictLosers += 1;
+        move = true;
+      } else if (seenWinner.has(k)) {
+        move = true;
+      } else {
+        seenWinner.add(k);
+        if (line.kind === "entry") {
+          const applied = f.entries.get(line.id);
+          if (!applied || applied.seq !== line.seq) {
+            conflictLosers += 1;
+            move = true;
+          } else if (movedEntryIds.has(line.id)) {
+            move = true;
+          }
+        } else if (movedEntryIds.has(line.id) || !f.entries.has(line.id)) {
+          move = true;
+        }
+      }
+      if (move) {
+        moved.push(piece);
+        if (line.seq > movedMax)
+          movedMax = line.seq;
+      } else {
+        kept.push(piece);
+      }
+    }
+    if (moved.length === 0) {
+      if (read.size <= MEMORY_ENTRIES_MAX_BYTES)
+        return nothing;
+      return {
+        ...nothing,
+        kept: kept.length,
+        message: `nothing to compact \u2014 entries.jsonl is ${Math.ceil(read.size / 1024)} KiB (max ${MEMORY_ENTRIES_MAX_BYTES / 1024} KiB); retire entries first, then compact`
+      };
+    }
+    const n = Math.max(watermark, movedMax);
+    appendLines(p.archive, moved);
+    if (memoryStoreTestHooks.failBeforeReplace) {
+      memoryStoreTestHooks.failBeforeReplace = false;
+      throw new Error("injected failure before replace (test)");
+    }
+    const tail = n > 0 ? [JSON.stringify({ v: 1, kind: "compact", seq: n })] : [];
+    replaceFile(p.entries, [...kept, ...tail].map((l) => `${l}
+`).join(""));
+    return {
+      ok: true,
+      moved: moved.length,
+      unparseable,
+      conflictLosers,
+      kept: kept.length,
+      watermark: n > 0 ? n : null,
+      archivePath: p.archive,
+      message: `compacted: moved ${moved.length} lines (${unparseable} unparseable, ${conflictLosers} conflict losers) to ${p.archive}; kept ${kept.length}; watermark seq ${n > 0 ? n : "none"}`
+    };
+  });
+}
+// packages/host/src/rules-store.ts
+init_src();
+import {
+  closeSync as closeSync8,
+  constants as fsConstants5,
+  fstatSync as fstatSync5,
+  lstatSync as lstatSync4,
+  openSync as openSync8,
+  readdirSync as readdirSync4,
+  readSync as readSync4
+} from "fs";
+import { isAbsolute as isAbsolute7, join as join23 } from "path";
+
+// packages/host/rules/report-blockers.md
+var report_blockers_default = `---
+id: report-blockers
+scope: all
+priority: 500
+---
+When you are blocked, say what blocked you and what you already tried.
+Do not call work done without evidence: name the command output, test result, or file you checked.
+`;
+
+// packages/host/src/rules-store.ts
+var RULE_MAX_BYTES = 8192;
+var RULES_USER_SCAN_MAX = 256;
+var RULE_READ_MAX_BYTES = 64 * 1024;
+var RULE_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+var RULE_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.md$/;
+var PRIORITY_RE = /^(0|[1-9][0-9]{0,3})$/;
+var FM_LINE_RE = /^([a-z][a-z0-9_-]*):[ \t]*(.*?)[ \t]*$/;
+var RULE_KEYS = ["id", "scope", "priority"];
+var SCOPES = ["all", "claude", "codex", "grok"];
+var BUNDLED_RULES = Object.freeze([
+  Object.freeze({ file: "report-blockers.md", text: report_blockers_default })
+]);
+var NO_ENV = Object.freeze({});
+function cmpCodeUnits(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function cutAt(bytes2, cap) {
+  let end = cap;
+  while (end > 0 && ((bytes2[end] ?? 0) & 192) === 128)
+    end -= 1;
+  return bytes2.subarray(0, end);
+}
+function parseRuleText(text, fileBytes, readCut) {
+  let pos = 0;
+  const nextLine = () => {
+    if (pos > text.length)
+      return null;
+    const nl = text.indexOf(`
+`, pos);
+    let line;
+    if (nl === -1) {
+      line = text.slice(pos);
+      pos = text.length + 1;
+    } else {
+      line = text.slice(pos, nl);
+      pos = nl + 1;
+    }
+    return line.endsWith("\r") ? line.slice(0, -1) : line;
+  };
+  if (nextLine() !== "---")
+    return { ok: false, reason: "missing front-matter (first line must be ---)" };
+  const fields = new Map;
+  for (;; ) {
+    const line = nextLine();
+    if (line === null)
+      return { ok: false, reason: "unterminated front-matter (no closing ---)" };
+    if (line === "---")
+      break;
+    const m = FM_LINE_RE.exec(line);
+    if (!m)
+      return { ok: false, reason: "malformed front-matter line" };
+    const key = m[1];
+    if (fields.has(key))
+      return { ok: false, reason: `duplicate key ${key}` };
+    if (!RULE_KEYS.includes(key)) {
+      return { ok: false, reason: `unknown key ${key}` };
+    }
+    fields.set(key, m[2]);
+  }
+  for (const k of RULE_KEYS)
+    if (!fields.has(k))
+      return { ok: false, reason: `missing ${k}` };
+  const id = fields.get("id");
+  const scope = fields.get("scope");
+  const priorityText = fields.get("priority");
+  if (!RULE_ID_RE.test(id))
+    return { ok: false, reason: "invalid id" };
+  if (!SCOPES.includes(scope))
+    return { ok: false, reason: "invalid scope (all|claude|codex|grok)" };
+  if (!PRIORITY_RE.test(priorityText) || Number(priorityText) > 1000) {
+    return { ok: false, reason: "invalid priority (integer 0\u20131000)" };
+  }
+  const rawBody = pos <= text.length ? text.slice(pos) : "";
+  const cleaned = redactSecrets(sanitizePeerText(rawBody), NO_ENV);
+  const bodyBytes = Buffer.from(cleaned, "utf8");
+  const overCap = bodyBytes.length > RULE_MAX_BYTES;
+  const body = overCap ? cutAt(bodyBytes, RULE_MAX_BYTES).toString("utf8") : cleaned;
+  return {
+    ok: true,
+    id,
+    scope,
+    priority: Number(priorityText),
+    body,
+    bytes: fileBytes,
+    truncated: overCap || readCut,
+    empty: cleaned.trim() === ""
+  };
+}
+var strictDecoder = new TextDecoder("utf-8", { fatal: true });
+function decodeStrict(buf) {
+  try {
+    return strictDecoder.decode(buf);
+  } catch {
+    return null;
+  }
+}
+function readUserRule(path) {
+  let st;
+  try {
+    st = lstatSync4(path);
+  } catch {
+    return { reason: "unreadable" };
+  }
+  if (st.isSymbolicLink())
+    return { reason: "symlink" };
+  if (!st.isFile())
+    return { reason: "not a regular file" };
+  let buf;
+  let size = 0;
+  let cut = false;
+  try {
+    const fd = openSync8(path, fsConstants5.O_RDONLY | fsConstants5.O_NOFOLLOW | fsConstants5.O_NONBLOCK);
+    try {
+      const fst = fstatSync5(fd);
+      if (!fst.isFile())
+        return { reason: "not a regular file" };
+      const all = Buffer.alloc(RULE_READ_MAX_BYTES + 1);
+      let total = 0;
+      while (total < all.length) {
+        const n = readSync4(fd, all, total, all.length - total, null);
+        if (n === 0)
+          break;
+        total += n;
+      }
+      cut = total > RULE_READ_MAX_BYTES;
+      buf = cut ? cutAt(all, RULE_READ_MAX_BYTES) : all.subarray(0, total);
+      size = Math.max(fst.size, total);
+    } finally {
+      closeSync8(fd);
+    }
+  } catch (err) {
+    return { reason: errCode3(err) === "ELOOP" ? "symlink" : "unreadable" };
+  }
+  const text = decodeStrict(buf);
+  return text === null ? { reason: "not UTF-8" } : { text, size, cut };
+}
+function errCode3(err) {
+  return err && typeof err === "object" && "code" in err ? String(err.code) : undefined;
+}
+function dedupe(source, candidates, conflicts) {
+  const byId = new Map;
+  for (const c of candidates) {
+    const list = byId.get(c.id);
+    if (list)
+      list.push(c);
+    else
+      byId.set(c.id, [c]);
+  }
+  const out = [];
+  for (const [id, list] of [...byId.entries()].sort(([a], [b]) => cmpCodeUnits(a, b))) {
+    list.sort((a, b) => cmpCodeUnits(a.file, b.file));
+    out.push(list[0]);
+    if (list.length > 1) {
+      conflicts.push({
+        source,
+        id,
+        kept: list[0].file,
+        dropped: list.slice(1).map((c) => c.file)
+      });
+    }
+  }
+  return out;
+}
+function loadRules(loomDir2) {
+  if (typeof loomDir2 !== "string" || !isAbsolute7(loomDir2)) {
+    throw new TypeError("loadRules: loomDir must be an absolute path");
+  }
+  const invalid = [];
+  const conflicts = [];
+  const bundledCandidates = [];
+  for (const b of BUNDLED_RULES) {
+    const path = `bundled:${b.file}`;
+    const p = parseRuleText(b.text, Buffer.byteLength(b.text, "utf8"), false);
+    if (p.ok)
+      bundledCandidates.push({ ...p, file: b.file, path });
+    else
+      invalid.push({ source: "bundled", file: b.file, path, reason: p.reason });
+  }
+  const bundled = dedupe("bundled", bundledCandidates, conflicts);
+  const userDir = join23(loomDir2, "rules");
+  let userDirState = "absent";
+  let scanCapped = false;
+  const userCandidates = [];
+  let st = null;
+  try {
+    st = lstatSync4(userDir);
+  } catch (err) {
+    const code = errCode3(err);
+    if (code !== "ENOENT" && code !== "ENOTDIR") {
+      userDirState = "unsafe";
+      invalid.push({ source: "user", file: "rules", path: userDir, reason: "unreadable" });
+    }
+  }
+  if (st) {
+    if (st.isSymbolicLink() || !st.isDirectory()) {
+      userDirState = "unsafe";
+      invalid.push({
+        source: "user",
+        file: "rules",
+        path: userDir,
+        reason: "symlink or not a directory"
+      });
+    } else {
+      let names = null;
+      try {
+        names = readdirSync4(userDir);
+      } catch {
+        userDirState = "unsafe";
+        invalid.push({ source: "user", file: "rules", path: userDir, reason: "unreadable" });
+      }
+      if (names) {
+        userDirState = "dir";
+        let md = names.filter((n) => n.endsWith(".md")).sort(cmpCodeUnits);
+        if (md.length > RULES_USER_SCAN_MAX) {
+          scanCapped = true;
+          md = md.slice(0, RULES_USER_SCAN_MAX);
+        }
+        for (const file of md) {
+          const path = join23(userDir, file);
+          if (!RULE_FILE_RE.test(file)) {
+            invalid.push({ source: "user", file, path, reason: "invalid file name" });
+            continue;
+          }
+          const r = readUserRule(path);
+          if ("reason" in r) {
+            invalid.push({ source: "user", file, path, reason: r.reason });
+            continue;
+          }
+          const p = parseRuleText(r.text, r.size, r.cut);
+          if (p.ok)
+            userCandidates.push({ ...p, file, path });
+          else
+            invalid.push({ source: "user", file, path, reason: p.reason });
+        }
+      }
+    }
+  }
+  const user = dedupe("user", userCandidates, conflicts);
+  const view = (c, source, status) => ({
+    id: c.id,
+    scope: c.scope,
+    priority: c.priority,
+    status,
+    source,
+    file: c.file,
+    path: c.path,
+    bytes: c.bytes,
+    truncated: c.truncated,
+    body: c.body
+  });
+  const merged = new Map;
+  for (const b of bundled)
+    merged.set(b.id, view(b, "bundled", "bundled"));
+  let overrides = 0;
+  let disabled = 0;
+  for (const u of user) {
+    let status;
+    if (u.empty) {
+      status = "disabled";
+      disabled += 1;
+    } else if (merged.get(u.id)?.source === "bundled") {
+      status = "override";
+      overrides += 1;
+    } else {
+      status = "user";
+    }
+    merged.set(u.id, view(u, "user", status));
+  }
+  const rules = [...merged.values()].sort((a, b) => b.priority - a.priority || cmpCodeUnits(a.id, b.id));
+  conflicts.sort((a, b) => cmpCodeUnits(a.source, b.source) || cmpCodeUnits(a.id, b.id));
+  return {
+    rules,
+    invalid,
+    conflicts,
+    counts: {
+      bundled: bundled.length,
+      user: user.length,
+      overrides,
+      disabled,
+      invalid: invalid.length
+    },
+    userDir,
+    userDirState,
+    scanCapped
+  };
+}
 // packages/cli/src/index.ts
 init_src();
 
@@ -16337,8 +17395,8 @@ function loomSystemHint(agentLabel) {
 }
 
 // packages/adapters/src/claude.ts
-import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync9 } from "fs";
-import { join as join22 } from "path";
+import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync9 } from "fs";
+import { join as join24 } from "path";
 var claudeAdapter = {
   id: "claude",
   label: "Claude Code",
@@ -16373,9 +17431,9 @@ var claudeAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const dir = join22(opts.cwd, ".loom");
-    mkdirSync13(dir, { recursive: true });
-    const path = join22(dir, "claude.mcp.json");
+    const dir = join24(opts.cwd, ".loom");
+    mkdirSync14(dir, { recursive: true });
+    const path = join24(dir, "claude.mcp.json");
     const config = {
       mcpServers: {
         loom: {
@@ -16395,8 +17453,8 @@ var claudeAdapter = {
 };
 
 // packages/adapters/src/user-mcp-config.ts
-import { existsSync as existsSync16, mkdirSync as mkdirSync14, readFileSync as readFileSync12, writeFileSync as writeFileSync10 } from "fs";
-import { dirname as dirname11 } from "path";
+import { existsSync as existsSync16, mkdirSync as mkdirSync15, readFileSync as readFileSync13, writeFileSync as writeFileSync10 } from "fs";
+import { dirname as dirname12 } from "path";
 var LOOM_BEGIN = "# --- Loom multiplayer (managed) BEGIN ---";
 var LOOM_END = "# --- Loom multiplayer (managed) END ---";
 var FABLE_BEGIN = "# --- Fable multiplayer (managed) BEGIN ---";
@@ -16498,10 +17556,10 @@ function stripAllLoomMcpSections(existing) {
 }
 function upsertUserMcpConfig(opts) {
   const { configPath, block: block2 } = opts;
-  mkdirSync14(dirname11(configPath), { recursive: true });
+  mkdirSync15(dirname12(configPath), { recursive: true });
   let existing = "";
   if (existsSync16(configPath)) {
-    existing = readFileSync12(configPath, "utf8");
+    existing = readFileSync13(configPath, "utf8");
   }
   const hadLegacy = existing.includes("[mcp_servers.fable]") || existing.includes("[mcp_servers.loom]") || existing.includes(FABLE_BEGIN) || existing.includes(LOOM_BEGIN) || /Fable multiplayer/i.test(existing) || /Loom multiplayer/i.test(existing);
   const base = stripAllLoomMcpSections(existing);
@@ -16541,8 +17599,8 @@ function projectMcpSnippetToml(opts) {
 }
 
 // packages/adapters/src/codex.ts
-import { mkdirSync as mkdirSync15, writeFileSync as writeFileSync11 } from "fs";
-import { join as join23 } from "path";
+import { mkdirSync as mkdirSync16, writeFileSync as writeFileSync11 } from "fs";
+import { join as join25 } from "path";
 import { homedir as homedir3 } from "os";
 var codexAdapter = {
   id: "codex",
@@ -16573,9 +17631,9 @@ var codexAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join23(opts.cwd, ".loom");
-    mkdirSync15(projectDir, { recursive: true });
-    const snippetPath = join23(projectDir, "codex.mcp.toml");
+    const projectDir = join25(opts.cwd, ".loom");
+    mkdirSync16(projectDir, { recursive: true });
+    const snippetPath = join25(projectDir, "codex.mcp.toml");
     writeFileSync11(snippetPath, projectMcpSnippetToml({
       header: `# Generated by Loom \u2014 Codex MCP (project).
 ` + "# Session entry: read repo AGENTS.md + HANDOFF.md (or `bun run status`); brief user before large work.\n" + "# Prefer: loom run codex",
@@ -16583,7 +17641,7 @@ var codexAdapter = {
       sessionEnv: opts.sessionEnv
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join23(homedir3(), ".codex", "config.toml");
+      const configPath = join25(homedir3(), ".codex", "config.toml");
       const block2 = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv
@@ -16599,8 +17657,8 @@ var codexAdapter = {
 };
 
 // packages/adapters/src/grok.ts
-import { mkdirSync as mkdirSync16, writeFileSync as writeFileSync12 } from "fs";
-import { join as join24 } from "path";
+import { mkdirSync as mkdirSync17, writeFileSync as writeFileSync12 } from "fs";
+import { join as join26 } from "path";
 import { homedir as homedir4 } from "os";
 var grokAdapter = {
   id: "grok",
@@ -16631,9 +17689,9 @@ var grokAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join24(opts.cwd, ".loom");
-    mkdirSync16(projectDir, { recursive: true });
-    const snippetPath = join24(projectDir, "grok.mcp.toml");
+    const projectDir = join26(opts.cwd, ".loom");
+    mkdirSync17(projectDir, { recursive: true });
+    const snippetPath = join26(projectDir, "grok.mcp.toml");
     writeFileSync12(snippetPath, projectMcpSnippetToml({
       header: "# Generated by Loom \u2014 Grok MCP (project). Use: loom run grok --write-user-config to install into ~/.grok/config.toml",
       mcpStdioPath: opts.mcpStdioPath,
@@ -16641,7 +17699,7 @@ var grokAdapter = {
       extraServerLines: ["enabled = true"]
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join24(homedir4(), ".grok", "config.toml");
+      const configPath = join26(homedir4(), ".grok", "config.toml");
       const block2 = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv,
@@ -16657,9 +17715,9 @@ var grokAdapter = {
 };
 
 // packages/adapters/src/shell.ts
-import { basename as basename3 } from "path";
+import { basename as basename4 } from "path";
 function interactiveShellArgs(shellPath) {
-  const base = basename3(shellPath);
+  const base = basename4(shellPath);
   if (base === "fish")
     return ["-i"];
   if (base === "zsh" || base === "bash" || base === "sh" || base === "dash") {
@@ -16748,17 +17806,17 @@ function capabilityMatrix() {
 // packages/mcp-server/src/tools.ts
 var MCP_HIDDEN_KEYS = new Set(["dispatchPeerId"]);
 // packages/mcp-server/src/config.ts
-import { mkdirSync as mkdirSync17, writeFileSync as writeFileSync13 } from "fs";
-import { join as join25 } from "path";
+import { mkdirSync as mkdirSync18, writeFileSync as writeFileSync13 } from "fs";
+import { join as join27 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function resolveMcpStdio() {
   const here = fileURLToPath4(new URL(".", import.meta.url));
-  return join25(here, "stdio.ts");
+  return join27(here, "stdio.ts");
 }
 function writeMcpConfig(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync17(dir, { recursive: true });
-  const path = join25(dir, "mcp.json");
+  mkdirSync18(dir, { recursive: true });
+  const path = join27(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
   const config = {
     mcpServers: {
@@ -16775,8 +17833,8 @@ function writeMcpConfig(opts) {
 }
 function writeAgentHintFile(opts) {
   const dir = opts?.dir ?? loomDir();
-  mkdirSync17(dir, { recursive: true });
-  const path = join25(dir, "AGENT_HINT.txt");
+  mkdirSync18(dir, { recursive: true });
+  const path = join27(dir, "AGENT_HINT.txt");
   const body = opts?.hint ?? [
     "Loom multiplayer room is active.",
     "MCP tools: list_peers, handoff, check_handoffs, claim_handoff, room_chat",
@@ -16793,23 +17851,23 @@ import { spawn as nodeSpawn, spawnSync } from "child_process";
 
 // packages/cli/src/service.ts
 import {
-  chmodSync as chmodSync12,
-  closeSync as closeSync7,
+  chmodSync as chmodSync13,
+  closeSync as closeSync9,
   existsSync as existsSync18,
-  lstatSync as lstatSync4,
-  mkdirSync as mkdirSync19,
-  openSync as openSync7,
-  readFileSync as readFileSync14,
+  lstatSync as lstatSync6,
+  mkdirSync as mkdirSync20,
+  openSync as openSync9,
+  readFileSync as readFileSync15,
   readlinkSync,
-  renameSync as renameSync6,
+  renameSync as renameSync7,
   rmSync as rmSync5,
   statSync as statSync8,
   symlinkSync,
-  unlinkSync as unlinkSync7,
+  unlinkSync as unlinkSync8,
   writeFileSync as writeFileSync15
 } from "fs";
 import { userInfo } from "os";
-import { dirname as dirname13, isAbsolute as isAbsolute6, join as join27, relative as relative3, resolve as resolve6 } from "path";
+import { dirname as dirname14, isAbsolute as isAbsolute8, join as join29, relative as relative3, resolve as resolve6 } from "path";
 init_src();
 init_src2();
 
@@ -17255,6 +18313,202 @@ function serviceSection(input) {
   }
   return { title, lines };
 }
+var MEMORY_DOCTOR_ACTIVE_CAP = 200;
+var MEMORY_DOCTOR_ENTRIES_MAX = 1024 * 1024;
+var MEMORY_DOCTOR_SCAN_KIB = 4096;
+var MEMORY_DOCTOR_IGNORED_SHOWN = 16;
+var PERSONA_DOCTOR_CAP = 8192;
+var INDEX_DOCTOR_CAP = 8192;
+var GUIDELINE_DOCTOR_CAP = 16384;
+function kibText(bytes2) {
+  return `${Math.ceil(bytes2 / 1024)} KiB/1024 KiB`;
+}
+function memorySection(input) {
+  const lines = [];
+  const modes = input.platform !== "win32";
+  const at = `(${input.memoryDir})`;
+  const root = input.root;
+  if (root.state === "absent") {
+    lines.push({ status: "info", message: `no memory yet ${at}` });
+  } else if (root.state === "unsafe") {
+    lines.push({ status: "warn", message: `memory/ is a symlink or not a directory ${at}` });
+  } else {
+    const n = `${input.agents.length} agent stores ${at}`;
+    if (!modes)
+      lines.push({ status: "ok", message: `memory/ \xB7 ${n}` });
+    else if (root.mode !== 448) {
+      lines.push({
+        status: "warn",
+        message: `memory/ mode ${modeText(root.mode)} (expected 0700) \xB7 ${n}`
+      });
+    } else
+      lines.push({ status: "ok", message: `memory/ 0700 \xB7 ${n}` });
+  }
+  if (root.state === "dir") {
+    for (const a of input.agents) {
+      if (a.dir === "unsafe") {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}: store directory is a symlink or not a directory`
+        });
+        continue;
+      }
+      if (a.entries.state === "unsafe") {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}: entries.jsonl is a symlink or not a regular file`
+        });
+        continue;
+      }
+      if (a.entriesReadError !== undefined) {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}: entries.jsonl unreadable (${a.entriesReadError})`
+        });
+        continue;
+      }
+      const bytes2 = a.entries.state === "file" ? a.entries.bytes : 0;
+      const reasons = [];
+      if (bytes2 > MEMORY_DOCTOR_ENTRIES_MAX)
+        reasons.push("writes refused until loom memory compact");
+      let base;
+      if (a.fold === null) {
+        base = `${a.agentKey}: ${kibText(bytes2)} (not scanned: over ${MEMORY_DOCTOR_SCAN_KIB} KiB)`;
+      } else {
+        const f = a.fold;
+        base = `${a.agentKey}: active ${f.active}/${MEMORY_DOCTOR_ACTIVE_CAP} \xB7 proposed ${f.proposed} \xB7 retired ${f.retired} \xB7 ${kibText(bytes2)}`;
+        if (f.active > MEMORY_DOCTOR_ACTIVE_CAP) {
+          reasons.push(`active over the cap (approved past ${MEMORY_DOCTOR_ACTIVE_CAP})`);
+        }
+      }
+      if (modes && a.entries.state === "file" && a.entries.mode !== 384) {
+        reasons.push(`entries.jsonl mode ${modeText(a.entries.mode)} (expected 0600)`);
+      }
+      if (modes && a.archive.state === "file" && a.archive.mode !== 384) {
+        reasons.push(`entries.archive.jsonl mode ${modeText(a.archive.mode)} (expected 0600)`);
+      }
+      if (a.archive.state === "unsafe") {
+        reasons.push("entries.archive.jsonl is a symlink or not a regular file");
+      }
+      if (a.fold && (a.fold.unparseable > 0 || a.fold.conflicts > 0 || a.fold.dangling > 0)) {
+        reasons.push(`unparseable ${a.fold.unparseable} \xB7 conflicts ${a.fold.conflicts} \xB7 dangling ${a.fold.dangling}`);
+      }
+      lines.push(reasons.length > 0 ? { status: "warn", message: `${base} \u2014 ${reasons.join("; ")}` } : { status: "ok", message: base });
+      if (a.fold && a.fold.archivedRefs > 0) {
+        lines.push({
+          status: "info",
+          message: `${a.agentKey}: ${a.fold.archivedRefs} supersedes point into the archive`
+        });
+      }
+    }
+    for (const name of input.ignored.slice(0, MEMORY_DOCTOR_IGNORED_SHOWN)) {
+      lines.push({ status: "info", message: `ignored entry ${name}` });
+    }
+    if (input.ignored.length > MEMORY_DOCTOR_IGNORED_SHOWN) {
+      lines.push({
+        status: "info",
+        message: `\u2026 ${input.ignored.length - MEMORY_DOCTOR_IGNORED_SHOWN} more ignored`
+      });
+    }
+    if (input.agentScanCapped) {
+      lines.push({ status: "info", message: "scan capped at 64 agent stores" });
+    }
+    const present = input.agents.filter((a) => a.persona.state === "file").length;
+    lines.push({
+      status: "info",
+      message: `persona.md: ${present} of ${input.agents.length} agent stores`
+    });
+    for (const a of input.agents) {
+      const p = a.persona;
+      if (p.state === "unsafe") {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}/persona.md is a symlink or not a regular file`
+        });
+      } else if (p.state === "file") {
+        if (p.bytes > PERSONA_DOCTOR_CAP) {
+          lines.push({
+            status: "warn",
+            message: `${a.agentKey}/persona.md is ${p.bytes} B (max ${PERSONA_DOCTOR_CAP} B) \u2014 truncated on read`
+          });
+        }
+        if (modes && p.mode !== 384) {
+          lines.push({
+            status: "info",
+            message: `${a.agentKey}/persona.md mode ${modeText(p.mode)} (human file \u2014 0600 recommended)`
+          });
+        }
+      }
+    }
+  }
+  const k = input.knowledgeIndex;
+  const kAt = `(${input.knowledgeIndexPath})`;
+  if (k.state === "absent") {
+    lines.push({ status: "info", message: `knowledge/INDEX.md: absent ${kAt}` });
+  } else if (k.state === "unsafe") {
+    lines.push({
+      status: "warn",
+      message: `knowledge/INDEX.md is a symlink or not a regular file ${kAt}`
+    });
+  } else {
+    const size = `knowledge/INDEX.md: ${k.bytes}/${INDEX_DOCTOR_CAP} B`;
+    lines.push(k.bytes > INDEX_DOCTOR_CAP ? { status: "warn", message: `${size} \u2014 truncated on read ${kAt}` } : { status: "ok", message: `${size} ${kAt}` });
+    if (modes && k.mode !== 384) {
+      lines.push({
+        status: "info",
+        message: `knowledge/INDEX.md mode ${modeText(k.mode)} (human file \u2014 0600 recommended)`
+      });
+    }
+  }
+  if (input.rooms.state === "unsafe") {
+    lines.push({ status: "warn", message: "rooms/ is a symlink or not a directory" });
+  } else {
+    lines.push({ status: "info", message: `guideline.md: ${input.rooms.guidelines.length} rooms` });
+    for (const g of input.rooms.guidelines) {
+      const name = `rooms/${g.roomKey}/guideline.md`;
+      if (g.file.state === "unsafe") {
+        lines.push({ status: "warn", message: `${name} is a symlink or not a regular file` });
+      } else if (g.file.state === "file" && g.file.bytes > GUIDELINE_DOCTOR_CAP) {
+        lines.push({
+          status: "warn",
+          message: `${name} is ${g.file.bytes} B (max ${GUIDELINE_DOCTOR_CAP} B) \u2014 truncated on read`
+        });
+      }
+    }
+  }
+  if (input.rooms.scanCapped) {
+    lines.push({ status: "info", message: "scan capped at 4096 rooms" });
+  }
+  const r = input.rules;
+  lines.push({
+    status: "ok",
+    message: `rules: bundled ${r.bundled} \xB7 user ${r.user} \xB7 overrides ${r.overrides}`
+  });
+  if (r.invalid > 0) {
+    lines.push({ status: "warn", message: `rules: ${r.invalid} invalid \u2014 see loom rules list` });
+  }
+  if (r.conflicts.length > 0) {
+    lines.push({
+      status: "warn",
+      message: `rules: same-source id conflict: ${r.conflicts.join(", ")}`
+    });
+  }
+  if (r.truncated.length > 0) {
+    lines.push({
+      status: "warn",
+      message: `rules: truncated at 8192 B: ${r.truncated.join(", ")}`
+    });
+  }
+  if (r.disabled > 0) {
+    lines.push({ status: "info", message: `rules: ${r.disabled} disabled by user` });
+  }
+  if (r.scanCapped) {
+    lines.push({ status: "info", message: "rules: scan capped at 256 user files" });
+  }
+  if (!modes)
+    lines.push({ status: "info", message: "mode bits not checked on Windows" });
+  return { title: "Memory", lines };
+}
 function summarizeDoctor(sections) {
   const summary = {
     ok: 0,
@@ -17375,7 +18629,7 @@ function defaultDeps() {
 }
 function readSessionAt(file) {
   try {
-    const text = readFileSync14(file, "utf8").trim();
+    const text = readFileSync15(file, "utf8").trim();
     if (!text)
       return null;
     return normalizeSession(JSON.parse(text));
@@ -17388,7 +18642,7 @@ function serviceHome() {
 }
 function isUnder(path, root) {
   const rel = relative3(resolve6(root), resolve6(path));
-  return rel !== "" && !rel.startsWith("..") && !isAbsolute6(rel);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute8(rel);
 }
 function testHomes(d) {
   return [process.env.LOOM_TEST_HOME, d.env.LOOM_TEST_HOME].filter((v) => typeof v === "string" && v.length > 0);
@@ -17426,7 +18680,7 @@ async function runServiceCommand(verb, opts = {}, deps = {}) {
     setActiveProfile(opts.profile, { explicit: true });
   const home = serviceHome();
   const readOnly = verb === "status";
-  const roLoom = join27(home, ".loom");
+  const roLoom = join29(home, ".loom");
   const roSession = readOnly ? readSessionAt(sessionPathUnder(roLoom)) : undefined;
   const profile = resolveBridgeProfile(roSession);
   const check = serviceProfileNameCheck(profile);
@@ -17438,7 +18692,7 @@ async function runServiceCommand(verb, opts = {}, deps = {}) {
     d.err(check.message);
     return 1;
   }
-  const bridgeDir = readOnly ? join27(roLoom, "bridge") : join27(loomDir(), "bridge");
+  const bridgeDir = readOnly ? join29(roLoom, "bridge") : join29(loomDir(), "bridge");
   if (!isUnder(bridgeDir, home)) {
     d.err(`loom service: ${bridgeDir} is outside the service home (${home}) \u2014 refusing`);
     return 1;
@@ -17478,14 +18732,14 @@ function foreignMessage(path) {
 }
 function readText(path) {
   try {
-    return readFileSync14(path, "utf8");
+    return readFileSync15(path, "utf8");
   } catch {
     return null;
   }
 }
-function lstatOrNull(path) {
+function lstatOrNull2(path) {
   try {
-    return lstatSync4(path);
+    return lstatSync6(path);
   } catch {
     return null;
   }
@@ -17712,24 +18966,24 @@ async function queryLinger(c) {
   return m ? m[1] : "unknown";
 }
 function prepareLog(c) {
-  const dir = join27(loomDir(), "bridge");
-  mkdirSync19(dir, { recursive: true, mode: 448 });
-  chmodSync12(dir, 448);
+  const dir = join29(loomDir(), "bridge");
+  mkdirSync20(dir, { recursive: true, mode: 448 });
+  chmodSync13(dir, 448);
   const log = bridgeLogPath(c.profile);
-  const fd = openSync7(log, "a", 384);
+  const fd = openSync9(log, "a", 384);
   try {
-    chmodSync12(log, 384);
+    chmodSync13(log, 384);
   } finally {
-    closeSync7(fd);
+    closeSync9(fd);
   }
 }
 function writeUnit(path, text) {
-  mkdirSync19(dirname13(path), { recursive: true });
+  mkdirSync20(dirname14(path), { recursive: true });
   const tmp = `${path}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
   try {
     writeFileSync15(tmp, text, { mode: 420 });
-    chmodSync12(tmp, 420);
-    renameSync6(tmp, path);
+    chmodSync13(tmp, 420);
+    renameSync7(tmp, path);
   } catch (e) {
     rmSync5(tmp, { force: true });
     throw e;
@@ -17738,31 +18992,31 @@ function writeUnit(path, text) {
 function ensureWantsLink(paths) {
   if (paths.kind !== "systemd")
     return;
-  const st = lstatOrNull(paths.wantsLinkPath);
+  const st = lstatOrNull2(paths.wantsLinkPath);
   if (st?.isSymbolicLink()) {
     if (readlinkSync(paths.wantsLinkPath) === paths.wantsLinkTarget)
       return;
-    unlinkSync7(paths.wantsLinkPath);
+    unlinkSync8(paths.wantsLinkPath);
   }
-  mkdirSync19(dirname13(paths.wantsLinkPath), { recursive: true });
+  mkdirSync20(dirname14(paths.wantsLinkPath), { recursive: true });
   symlinkSync(paths.wantsLinkTarget, paths.wantsLinkPath);
 }
 function foreignWants(paths) {
   if (paths.kind !== "systemd")
     return null;
-  const st = lstatOrNull(paths.wantsLinkPath);
+  const st = lstatOrNull2(paths.wantsLinkPath);
   return st && !st.isSymbolicLink() ? paths.wantsLinkPath : null;
 }
 function removeUnitFiles(c) {
   const p = c.paths;
-  if (p.kind === "systemd" && lstatOrNull(p.wantsLinkPath)?.isSymbolicLink()) {
-    unlinkSync7(p.wantsLinkPath);
+  if (p.kind === "systemd" && lstatOrNull2(p.wantsLinkPath)?.isSymbolicLink()) {
+    unlinkSync8(p.wantsLinkPath);
   }
   rmSync5(p.unitPath, { force: true });
 }
 function diskRelayToken() {
   try {
-    const raw = JSON.parse(readFileSync14(sessionPath(), "utf8"));
+    const raw = JSON.parse(readFileSync15(sessionPath(), "utf8"));
     return topLevelToBinding(raw).relayToken || undefined;
   } catch {
     return;
@@ -17804,14 +19058,14 @@ async function install(c, force) {
     d.err("M-1: authorizedDispatchers empty \u2014 default deny. Set with: loom bridge start --allow <towerPeerId>");
     return 1;
   }
-  if (!isAbsolute6(d.execPath) || !existsSync18(d.execPath)) {
+  if (!isAbsolute8(d.execPath) || !existsSync18(d.execPath)) {
     d.err(`cannot find bun at ${d.execPath}`);
     return 1;
   }
   let main;
   try {
     main = d.bridgeMainPath();
-    if (!isAbsolute6(main))
+    if (!isAbsolute8(main))
       throw new Error("not absolute");
   } catch {
     d.err("cannot find bridge-main.ts \u2014 run install from the Loom source checkout");
@@ -18004,7 +19258,7 @@ var READ_VERB_SET = new Set(SERVICE_READ_VERBS);
 var READ_TIMEOUT_MS = 2000;
 var REAP_MARGIN_MS = 250;
 var DEFAULT_AGENT_BINS = { claude: "claude", codex: "codex", grok: "grok" };
-var AGENT_KINDS = Object.keys(DEFAULT_AGENT_BINS);
+var AGENT_KINDS2 = Object.keys(DEFAULT_AGENT_BINS);
 function readVerb(argv) {
   if (argv[0] === "systemctl")
     return (argv[1] === "--user" ? argv[2] : argv[1]) ?? "";
@@ -18090,7 +19344,7 @@ function parseInstalledUnit(kind, text) {
 function configuredAgentBins(bridgeDir, profile) {
   let worker;
   try {
-    const raw = JSON.parse(readFileSync14(join27(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"));
+    const raw = JSON.parse(readFileSync15(join29(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"));
     worker = raw?.worker;
   } catch {
     return [];
@@ -18100,14 +19354,14 @@ function configuredAgentBins(bridgeDir, profile) {
   const obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
   const bin = obj(worker.agentBin);
   const conc = obj(worker.maxConcurrent);
-  const named = AGENT_KINDS.filter((k) => (k in bin) || (k in conc));
-  return (named.length > 0 ? named : AGENT_KINDS).map((k) => {
+  const named = AGENT_KINDS2.filter((k) => (k in bin) || (k in conc));
+  return (named.length > 0 ? named : AGENT_KINDS2).map((k) => {
     const v = bin[k];
     return typeof v === "string" && v.length > 0 ? v : DEFAULT_AGENT_BINS[k];
   });
 }
 function resolvableVia(bin, path) {
-  if (isAbsolute6(bin))
+  if (isAbsolute8(bin))
     return existsSync18(bin);
   return Bun.which(bin, { PATH: path }) !== null;
 }
@@ -18254,15 +19508,15 @@ async function serviceDoctorSection(p) {
 
 // packages/cli/src/index.ts
 import {
-  openSync as openSync8,
-  closeSync as closeSync8,
-  writeSync as writeSync3,
-  readSync as readSync3,
-  existsSync as existsSync20,
-  readdirSync as readdirSync5,
-  readFileSync as readFileSync16,
+  openSync as openSync11,
+  closeSync as closeSync11,
+  writeSync as writeSync4,
+  readSync as readSync6,
+  existsSync as existsSync21,
+  readdirSync as readdirSync7,
+  readFileSync as readFileSync17,
   accessSync,
-  constants as fsConstants4
+  constants as fsConstants7
 } from "fs";
 import { join as pathJoin } from "path";
 import { homedir as homedir6 } from "os";
@@ -18270,11 +19524,11 @@ import { homedir as homedir6 } from "os";
 // packages/cli/src/inject-handoffs.ts
 import {
   existsSync as existsSync19,
-  mkdirSync as mkdirSync20,
-  readFileSync as readFileSync15,
+  mkdirSync as mkdirSync21,
+  readFileSync as readFileSync16,
   writeFileSync as writeFileSync16
 } from "fs";
-import { dirname as dirname14, join as join28 } from "path";
+import { dirname as dirname15, join as join30 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -18300,17 +19554,17 @@ function mergeClaudeStopHook(settings, command) {
   return next;
 }
 function ensureClaudeStopHook(cwd, idleMarkerPath) {
-  const settingsPath = join28(cwd, ".claude", "settings.local.json");
+  const settingsPath = join30(cwd, ".claude", "settings.local.json");
   let settings = {};
   if (existsSync19(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync15(settingsPath, "utf8"));
+      settings = JSON.parse(readFileSync16(settingsPath, "utf8"));
     } catch {
       settings = {};
     }
   }
   const merged = mergeClaudeStopHook(settings, claudeStopHookCommand(idleMarkerPath));
-  mkdirSync20(dirname14(settingsPath), { recursive: true });
+  mkdirSync21(dirname15(settingsPath), { recursive: true });
   writeFileSync16(settingsPath, `${JSON.stringify(merged, null, 2)}
 `, {
     encoding: "utf8",
@@ -18319,8 +19573,776 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
   return settingsPath;
 }
 
+// packages/cli/src/memory-cli.ts
+import {
+  closeSync as closeSync10,
+  existsSync as existsSync20,
+  constants as fsConstants6,
+  fstatSync as fstatSync6,
+  lstatSync as lstatSync7,
+  openSync as openSync10,
+  readdirSync as readdirSync6,
+  readSync as readSync5
+} from "fs";
+import { join as join31 } from "path";
+var AGENT_KINDS3 = ["claude", "codex", "grok"];
+var ENTRY_TYPES2 = ["fact", "decision", "preference"];
+var PERSONA_CAP = 8192;
+var INDEX_CAP = 8192;
+var GUIDELINE_CAP = 16384;
+var LIST_READ_MAX_BYTES = 64 * 1024 * 1024;
+var DOCTOR_READ_MAX_BYTES = 4 * 1024 * 1024;
+var DOCTOR_AGENT_SCAN_MAX = 64;
+var DOCTOR_ROOM_SCAN_MAX = 4096;
+var ROOM_KEY_RE = /^[0-9a-f]{16}$/;
+var MEMORY_USAGE = "usage: loom memory add|propose|list|show|approve|retire|compact [--agent claude|codex|grok] [--room <roomId>] \u2026";
+var LIST_USAGE = "usage: loom memory list [--agent claude|codex|grok] [--room <roomId>] [--all] [--json]";
+var AGENT_ERROR = "--agent must be claude, codex or grok";
+var RULES_USAGE = "usage: loom rules list [--json]";
+var SKILLS_USAGE = "usage: loom skills list [--room <roomId>] [--json]";
+
+class UsageError extends Error {
+}
+function idUsage(verb) {
+  return `usage: loom memory ${verb} --agent <claude|codex|grok> <id>${verb === "show" ? " [--json]" : ""}`;
+}
+function agentFlag(flags, required) {
+  const v = flags.agent;
+  if (v === undefined && !required)
+    return;
+  if (typeof v !== "string" || !AGENT_KINDS3.includes(v)) {
+    throw new UsageError(AGENT_ERROR);
+  }
+  return v;
+}
+function roomFlag(flags) {
+  const v = flags.room;
+  if (v === undefined)
+    return null;
+  if (typeof v !== "string" || v.length === 0)
+    throw new UsageError("--room needs a room id");
+  return v;
+}
+function typeFlag(flags) {
+  const v = flags.type;
+  if (v === undefined)
+    return "fact";
+  if (typeof v !== "string" || !ENTRY_TYPES2.includes(v)) {
+    throw new UsageError("--type must be fact, decision or preference");
+  }
+  return v;
+}
+function supersedesFlag(flags) {
+  const v = flags.supersedes;
+  if (v === undefined)
+    return null;
+  if (typeof v !== "string" || v.length === 0) {
+    throw new UsageError("--supersedes needs an entry id");
+  }
+  return v;
+}
+function errText(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function kib(bytes2) {
+  return Math.ceil(bytes2 / 1024);
+}
+function cmpStr2(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function bySeqId(a, b) {
+  return a.seq - b.seq || cmpStr2(a.id, b.id);
+}
+function inspectUnder(base, segs, want) {
+  let cur = base;
+  for (let i = 0;i < segs.length; i++) {
+    cur = join31(cur, segs[i]);
+    let st;
+    try {
+      st = lstatSync7(cur);
+    } catch (err) {
+      const code = err.code;
+      if (code === "ENOENT" || code === "ENOTDIR")
+        return { state: "absent" };
+      return { state: "unsafe", at: cur };
+    }
+    const last = i === segs.length - 1;
+    if (st.isSymbolicLink())
+      return { state: "unsafe", at: cur };
+    const kind = last ? want : "dir";
+    if (kind === "dir" ? !st.isDirectory() : !st.isFile())
+      return { state: "unsafe", at: cur };
+    if (last)
+      return { state: kind, path: cur, bytes: st.size, mode: st.mode & 511 };
+  }
+  return { state: "absent" };
+}
+function errnoName(err) {
+  const code = err?.code;
+  return typeof code === "string" && code.length > 0 ? code : "read error";
+}
+function readNoFollow(path, max) {
+  let fd;
+  try {
+    fd = openSync10(path, fsConstants6.O_RDONLY | fsConstants6.O_NOFOLLOW | fsConstants6.O_NONBLOCK);
+  } catch (err) {
+    const code = errnoName(err);
+    return code === "ELOOP" ? { ok: false, kind: "unsafe" } : { ok: false, kind: "unreadable", code };
+  }
+  try {
+    const st = fstatSync6(fd);
+    if (!st.isFile() || st.size > max)
+      return { ok: false, kind: "unsafe" };
+    const buf = Buffer.alloc(st.size);
+    let off = 0;
+    while (off < buf.length) {
+      const n = readSync5(fd, buf, off, buf.length - off, off);
+      if (n <= 0)
+        break;
+      off += n;
+    }
+    return { ok: true, raw: buf.subarray(0, off).toString("utf8") };
+  } catch (err) {
+    return { ok: false, kind: "unreadable", code: errnoName(err) };
+  } finally {
+    closeSync10(fd);
+  }
+}
+function readStore(loom, agentKey, max) {
+  const p = memoryPaths(loom, agentKey);
+  const base = {
+    agentKey,
+    dir: p.dir,
+    entriesPath: p.entries,
+    unsafeAt: null,
+    readError: null,
+    bytes: 0,
+    fold: null
+  };
+  const ins = inspectUnder(loom, ["memory", agentKey, "entries.jsonl"], "file");
+  if (ins.state === "absent")
+    return { ...base, state: "absent" };
+  if (ins.state === "unsafe")
+    return { ...base, state: "unsafe", unsafeAt: ins.at };
+  if (ins.bytes > max)
+    return { ...base, state: "oversize", bytes: ins.bytes };
+  const r = readNoFollow(p.entries, max);
+  if (!r.ok && r.kind === "unreadable") {
+    return { ...base, state: "unreadable", readError: r.code, bytes: ins.bytes };
+  }
+  if (!r.ok)
+    return { ...base, state: "unsafe", unsafeAt: p.entries };
+  return { ...base, state: "ok", bytes: Buffer.byteLength(r.raw), fold: foldMemoryLines(r.raw) };
+}
+function humanFile(loom, segs, cap) {
+  const path = join31(loom, ...segs);
+  const ins = inspectUnder(loom, segs, "file");
+  if (ins.state === "absent") {
+    return { path, state: "absent", bytes: 0, cap, truncatedOnRead: false };
+  }
+  if (ins.state === "unsafe") {
+    return { path, state: "unsafe", bytes: 0, cap, truncatedOnRead: false };
+  }
+  return { path, state: "file", bytes: ins.bytes, cap, truncatedOnRead: ins.bytes > cap };
+}
+function humanFileText(label, f) {
+  if (f.state === "absent")
+    return `${label}: ${f.path} (absent)`;
+  if (f.state === "unsafe") {
+    return `${label}: ${f.path} (unreadable: symlink or not a regular file)`;
+  }
+  return `${label}: ${f.path} (${f.bytes}/${f.cap} B${f.truncatedOnRead ? ", truncated on read" : ""})`;
+}
+function counts(fold) {
+  let proposed = 0;
+  let retired = 0;
+  if (fold) {
+    for (const e of fold.entries.values()) {
+      if (e.status === "proposed")
+        proposed += 1;
+      else if (e.status === "retired")
+        retired += 1;
+    }
+  }
+  return {
+    active: fold ? fold.visibleActive.length : 0,
+    proposed,
+    retired,
+    unparseable: fold?.counters.unparseable ?? 0,
+    conflicts: fold?.counters.conflicts ?? 0,
+    dangling: fold?.counters.dangling ?? 0,
+    archivedRefs: fold?.counters.archivedRefs ?? 0
+  };
+}
+function supersessors(fold, target) {
+  const out = [];
+  for (const e of fold.entries.values()) {
+    if (e.supersedes === target.id && bySeqId(target, e) < 0)
+      out.push(e);
+  }
+  return out.sort(bySeqId);
+}
+function firstLine2(body) {
+  const line = body.split(`
+`)[0] ?? "";
+  return Array.from(line).slice(0, 80).join("");
+}
+async function runMemoryCommand(verb, args, flags, deps) {
+  const fail = (reason) => {
+    deps.stderr(`loom memory: ${reason}`);
+    return 1;
+  };
+  try {
+    switch (verb) {
+      case "add":
+      case "propose":
+        return memoryAdd2(verb, args, flags, deps, fail);
+      case "approve":
+      case "retire":
+        return memoryTransition(verb, args, flags, deps, fail);
+      case "compact":
+        return memoryCompact(args, flags, deps, fail);
+      case "list":
+        return memoryList(args, flags, deps);
+      case "show":
+        return memoryShow(args, flags, deps, fail);
+      default:
+        return fail(MEMORY_USAGE);
+    }
+  } catch (err) {
+    return fail(errText(err));
+  }
+}
+function refused(r, fail) {
+  return fail(r.message);
+}
+function memoryAdd2(verb, args, flags, deps, fail) {
+  let kind;
+  let room;
+  let type;
+  let supersedes;
+  try {
+    kind = agentFlag(flags, true);
+    room = roomFlag(flags);
+    type = typeFlag(flags);
+    supersedes = supersedesFlag(flags);
+  } catch (err) {
+    if (err instanceof UsageError)
+      return fail(err.message);
+    throw err;
+  }
+  const body = (args.passthrough.length > 0 ? args.passthrough : args.positional).join(" ");
+  const agentKey = agentKeyFor(deps.profile, kind);
+  const r = appendMemoryEntry(deps.loomDir, agentKey, {
+    body,
+    type,
+    appliesTo: room === null ? "project" : `room:${roomKey(room)}`,
+    status: verb === "add" ? "active" : "proposed",
+    supersedes,
+    source: humanMemorySource(deps.displayName)
+  }, { env: deps.env, randomId: deps.randomId, now: deps.now });
+  if (!r.ok)
+    return refused(r, fail);
+  if (verb === "add") {
+    deps.stdout(`added ${r.id} (active, seq ${r.seq}) to ${r.path}`);
+  } else {
+    deps.stdout(`proposed ${r.id} (seq ${r.seq}) \u2014 approve with: loom memory approve --agent ${kind} ${r.id}`);
+  }
+  return 0;
+}
+function memoryTransition(verb, args, flags, deps, fail) {
+  let kind;
+  try {
+    kind = agentFlag(flags, true);
+  } catch (err) {
+    if (err instanceof UsageError)
+      return fail(err.message);
+    throw err;
+  }
+  if (args.positional.length !== 1)
+    return fail(idUsage(verb));
+  const id = args.positional[0];
+  const r = appendMemoryTransition(deps.loomDir, agentKeyFor(deps.profile, kind), {
+    id,
+    to: verb === "approve" ? "active" : "retired",
+    source: humanMemorySource(deps.displayName)
+  }, { now: deps.now });
+  if (!r.ok)
+    return refused(r, fail);
+  deps.stdout(`${verb === "approve" ? "approved" : "retired"} ${r.id} (seq ${r.seq})`);
+  return 0;
+}
+function memoryCompact(args, flags, deps, fail) {
+  let kind;
+  try {
+    kind = agentFlag(flags, true);
+  } catch (err) {
+    if (err instanceof UsageError)
+      return fail(err.message);
+    throw err;
+  }
+  if (args.positional.length > 0 || args.passthrough.length > 0) {
+    return fail("usage: loom memory compact --agent <claude|codex|grok>");
+  }
+  const r = compactMemory(deps.loomDir, agentKeyFor(deps.profile, kind));
+  if (!r.ok)
+    return refused(r, fail);
+  deps.stdout(r.message);
+  return 0;
+}
+function entryJson(fold, e) {
+  return {
+    id: e.id,
+    seq: e.seq,
+    status: e.status,
+    type: e.type,
+    appliesTo: e.appliesTo,
+    body: e.body,
+    source: e.source,
+    supersedes: e.supersedes,
+    supersededBy: supersessors(fold, e).map((s) => s.id),
+    hidden: e.hidden,
+    at: e.at
+  };
+}
+function memoryList(args, flags, deps) {
+  let kind;
+  let room;
+  try {
+    kind = agentFlag(flags, false);
+    room = roomFlag(flags);
+    if (args.positional.length > 0 || args.passthrough.length > 0)
+      throw new UsageError(LIST_USAGE);
+  } catch (err) {
+    if (err instanceof UsageError) {
+      deps.stderr(`loom memory: ${err.message}`);
+      return 1;
+    }
+    throw err;
+  }
+  const loom = deps.loomDir;
+  const rk = room === null ? null : roomKey(room);
+  const all = flags.all === true;
+  const kinds = kind ? [kind] : AGENT_KINDS3;
+  const index = humanFile(loom, ["knowledge", "INDEX.md"], INDEX_CAP);
+  const guideline = rk === null ? null : humanFile(loom, ["rooms", rk, "guideline.md"], GUIDELINE_CAP);
+  const agents = kinds.map((k) => {
+    const agentKey = agentKeyFor(deps.profile, k);
+    const store = readStore(loom, agentKey, LIST_READ_MAX_BYTES);
+    const persona = humanFile(loom, ["memory", agentKey, "persona.md"], PERSONA_CAP);
+    const fold = store.fold;
+    const rows = fold ? [...fold.entries.values()].filter((e) => all || e.status === "proposed" || e.status === "active" && !e.hidden).filter((e) => rk === null || e.appliesTo === "project" || e.appliesTo === `room:${rk}`).sort(bySeqId) : [];
+    return { kind: k, agentKey, store, persona, fold, rows };
+  });
+  if (flags.json === true) {
+    const out = {
+      profile: deps.profile,
+      profileSource: deps.profileSource,
+      room: room === null ? null : { roomId: room, roomKey: rk },
+      knowledgeIndex: index,
+      agents: agents.map((a) => ({
+        agent: a.kind,
+        agentKey: a.agentKey,
+        dir: a.store.dir,
+        entriesPath: a.store.entriesPath,
+        state: a.store.state,
+        ...a.store.unsafeAt ? { unsafePath: a.store.unsafeAt } : {},
+        ...a.store.readError ? { readError: a.store.readError } : {},
+        entriesBytes: a.store.bytes,
+        caps: {
+          active: MEMORY_ACTIVE_CAP,
+          proposed: MEMORY_PROPOSED_CAP,
+          entriesBytes: MEMORY_ENTRIES_MAX_BYTES
+        },
+        counts: counts(a.fold),
+        persona: a.persona,
+        guideline,
+        entries: a.fold ? a.rows.map((e) => entryJson(a.fold, e)) : []
+      }))
+    };
+    deps.stdout(JSON.stringify(out, null, 2));
+    return 0;
+  }
+  deps.stdout(`profile ${deps.profile} (from ${deps.profileSource})`);
+  deps.stdout(humanFileText("knowledge/INDEX.md", index));
+  for (const a of agents) {
+    deps.stdout(`agent ${a.agentKey}  ${a.store.dir}`);
+    if (a.store.state === "unsafe") {
+      deps.stdout(`  entries: unreadable \u2014 ${a.store.unsafeAt} is a symlink or not a regular path`);
+    } else if (a.store.state === "unreadable") {
+      deps.stdout(`  entries: unreadable \u2014 cannot read ${a.store.entriesPath} (${a.store.readError})`);
+    } else if (a.store.state === "oversize") {
+      deps.stdout(`  entries: not read \u2014 entries.jsonl is ${kib(a.store.bytes)} KiB (over ${LIST_READ_MAX_BYTES / 1024} KiB)`);
+    } else {
+      const c = counts(a.fold);
+      deps.stdout(`  entries: active ${c.active}/${MEMORY_ACTIVE_CAP} \xB7 proposed ${c.proposed}/${MEMORY_PROPOSED_CAP} \xB7 retired ${c.retired} \xB7 entries.jsonl ${kib(a.store.bytes)} KiB/${MEMORY_ENTRIES_MAX_BYTES / 1024} KiB \xB7 unparseable ${c.unparseable} \xB7 conflicts ${c.conflicts} \xB7 dangling ${c.dangling} \xB7 archived refs ${c.archivedRefs}`);
+    }
+    deps.stdout(`  ${humanFileText("persona.md", a.persona)}`);
+    if (guideline)
+      deps.stdout(`  ${humanFileText("guideline.md", guideline)}`);
+    for (const e of a.rows) {
+      deps.stdout(`  ${e.id}  ${e.status}  ${e.type}  ${e.appliesTo}  seq ${e.seq}  ${firstLine2(e.body)}`);
+    }
+  }
+  return 0;
+}
+function memoryShow(args, flags, deps, fail) {
+  let kind;
+  try {
+    kind = agentFlag(flags, true);
+  } catch (err) {
+    if (err instanceof UsageError)
+      return fail(err.message);
+    throw err;
+  }
+  if (args.positional.length !== 1)
+    return fail(idUsage("show"));
+  const id = args.positional[0];
+  const agentKey = agentKeyFor(deps.profile, kind);
+  const store = readStore(deps.loomDir, agentKey, LIST_READ_MAX_BYTES);
+  if (store.state === "unsafe") {
+    return fail(`refusing ${store.unsafeAt}: symlink or not a regular path`);
+  }
+  if (store.state === "unreadable") {
+    return fail(`cannot read ${store.entriesPath} (${store.readError})`);
+  }
+  if (store.state === "oversize") {
+    return fail(`entries.jsonl is ${kib(store.bytes)} KiB \u2014 too large to read`);
+  }
+  const fold = store.fold;
+  const e = fold?.entries.get(id);
+  if (!fold || !e)
+    return fail(`entry ${id} not found`);
+  const by = supersessors(fold, e);
+  if (flags.json === true) {
+    deps.stdout(JSON.stringify({
+      agentKey,
+      entry: {
+        id: e.id,
+        seq: e.seq,
+        status: e.status,
+        type: e.type,
+        appliesTo: e.appliesTo,
+        body: e.body,
+        source: e.source,
+        supersedes: e.supersedes,
+        supersedesArchived: e.supersedesArchived,
+        hidden: e.hidden,
+        at: e.at
+      },
+      transitions: e.transitions,
+      supersededBy: by.map((s) => ({ id: s.id, status: s.status }))
+    }, null, 2));
+    return 0;
+  }
+  const out = [
+    e.id,
+    `  status: ${e.status}`,
+    `  type: ${e.type}`,
+    `  appliesTo: ${e.appliesTo}`,
+    `  seq: ${e.seq}`,
+    `  source: ${JSON.stringify(e.source)}`,
+    `  supersedes: ${e.supersedes ?? "none"}${e.supersedesArchived ? " (archived)" : ""}`,
+    ...by.map((s) => `  superseded by ${s.id} (${s.status})`)
+  ];
+  if (e.at !== undefined)
+    out.push(`  at: ${e.at}`);
+  out.push("  history:");
+  if (e.transitions.length === 0)
+    out.push("    (none)");
+  for (const t of e.transitions) {
+    out.push(`    seq ${t.seq}  to ${t.to}  ${JSON.stringify(t.source)}`);
+  }
+  out.push("  body:");
+  for (const l of e.body.split(`
+`))
+    out.push(`    ${l}`);
+  for (const l of out)
+    deps.stdout(l);
+  return 0;
+}
+function ruleStatusText(r) {
+  switch (r.status) {
+    case "bundled":
+      return "bundled";
+    case "user":
+      return "user";
+    case "override":
+      return "user (overrides bundled)";
+    case "disabled":
+      return "disabled by user";
+  }
+}
+async function runRulesCommand(verb, args, flags, deps) {
+  if (verb !== "list" || args.positional.length > 0 || args.passthrough.length > 0) {
+    deps.stderr(`loom rules: ${RULES_USAGE}`);
+    return 1;
+  }
+  let v;
+  try {
+    v = loadRules(deps.loomDir);
+  } catch (err) {
+    deps.stderr(`loom rules: ${errText(err)}`);
+    return 1;
+  }
+  if (flags.json === true) {
+    deps.stdout(JSON.stringify({
+      counts: v.counts,
+      rules: v.rules.map(({ body: _body, ...r }) => r),
+      invalid: v.invalid,
+      conflicts: v.conflicts,
+      userDir: v.userDir,
+      userDirState: v.userDirState,
+      scanCapped: v.scanCapped
+    }, null, 2));
+    return 0;
+  }
+  const c = v.counts;
+  deps.stdout(`rules: bundled ${c.bundled} \xB7 user ${c.user} \xB7 overrides ${c.overrides} \xB7 disabled ${c.disabled} \xB7 invalid ${c.invalid}`);
+  for (const r of v.rules) {
+    deps.stdout(`${r.id}  ${ruleStatusText(r)}  scope=${r.scope}  priority=${r.priority}  ${r.bytes}/${RULE_MAX_BYTES} B${r.truncated ? " truncated" : ""}  ${r.path}`);
+  }
+  for (const i of v.invalid)
+    deps.stdout(`invalid: ${i.file}: ${i.reason}`);
+  for (const k of v.conflicts) {
+    deps.stdout(`conflict: ${k.source} id ${k.id}: kept ${k.kept}, ignored ${k.dropped.join(", ")}`);
+  }
+  if (v.scanCapped)
+    deps.stdout("scan capped at 256 user rule files");
+  return 0;
+}
+async function runSkillsCommand(verb, args, flags, deps) {
+  if (verb !== "list" || args.positional.length > 0 || args.passthrough.length > 0) {
+    deps.stderr(`loom skills: ${SKILLS_USAGE}`);
+    return 1;
+  }
+  let room;
+  try {
+    room = roomFlag(flags);
+  } catch (err) {
+    deps.stderr(`loom skills: ${errText(err)}`);
+    return 1;
+  }
+  let enabled = null;
+  let bridgeConfigError;
+  try {
+    enabled = deps.skillsEnabled ? deps.skillsEnabled() : null;
+  } catch (err) {
+    bridgeConfigError = errText(err);
+  }
+  let policy = null;
+  let policyError = null;
+  try {
+    policy = mergePolicy(builtinPolicyDefaults(), loadPolicy(deps.loomDir), {}).effective.skills;
+  } catch (err) {
+    policyError = errText(err);
+  }
+  const inv = await inventorySkills(deps.loomDir, policy);
+  let roomView = null;
+  if (room !== null) {
+    const rk = roomKey(room);
+    const installed = new Set(inv.skills.filter((s) => s.reason !== "not installed").map((s) => s.name));
+    try {
+      const selected = await readRoomSkillSelection(deps.loomDir, room);
+      roomView = {
+        roomId: room,
+        roomKey: rk,
+        selected,
+        notInstalled: selected.filter((n) => !installed.has(n))
+      };
+    } catch (err) {
+      roomView = { roomId: room, roomKey: rk, selected: [], notInstalled: [], error: errText(err) };
+    }
+  }
+  if (flags.json === true) {
+    deps.stdout(JSON.stringify({
+      profile: deps.profile,
+      skillsEnabled: enabled,
+      ...bridgeConfigError !== undefined ? { bridgeConfigError } : {},
+      policyError,
+      skills: inv.skills,
+      ignored: inv.ignored,
+      userRoot: inv.userRoot,
+      room: roomView
+    }, null, 2));
+    return 0;
+  }
+  const enabledText = bridgeConfigError !== undefined ? `unknown \u2014 bridge config invalid: ${bridgeConfigError}` : enabled === null ? "no bridge config" : String(enabled);
+  deps.stdout(`skills: worker.skills.enabled = ${enabledText} (profile ${deps.profile})`);
+  if (policyError !== null)
+    deps.stdout(`policy invalid: ${policyError}`);
+  for (const s of inv.skills) {
+    const status2 = s.status === "available" ? "available" : s.status === "unknown" ? "unknown" : `unavailable: ${s.reason ?? "unknown reason"}`;
+    const parts = [s.name, s.source, status2];
+    if (s.shadowsBuiltin)
+      parts.push("user shadows builtin");
+    if (s.description)
+      parts.push(s.description);
+    deps.stdout(parts.join("  "));
+  }
+  for (const name of inv.ignored)
+    deps.stdout(`ignored: ${name} (invalid name)`);
+  if (inv.userRoot === "unsafe") {
+    deps.stdout(`ignored: ${join31(deps.loomDir, "skills")} (symlink or not a directory)`);
+  }
+  if (roomView) {
+    if (roomView.error !== undefined) {
+      deps.stdout(`selected in room ${roomView.roomKey}: unreadable \u2014 ${roomView.error}`);
+    } else {
+      const names = roomView.selected.map((n) => roomView?.notInstalled.includes(n) ? `${n} (not installed)` : n);
+      deps.stdout(`selected in room ${roomView.roomKey}: ${names.length > 0 ? names.join(", ") : "(none)"}`);
+    }
+  }
+  return 0;
+}
+function realMemoryCliDeps(flags) {
+  const session = loadSession();
+  const profile = resolveBridgeProfile(session);
+  const profileSource = typeof flags.profile === "string" && flags.profile.length > 0 ? "--profile" : getActiveProfile() ? "LOOM_PROFILE" : session?.displayName ? "displayName" : "default";
+  return {
+    loomDir: loomDir(),
+    profile,
+    profileSource,
+    displayName: session?.displayName || profile,
+    env: process.env,
+    stdout: (l) => console.log(l),
+    stderr: (l) => console.error(l),
+    skillsEnabled: () => {
+      if (!existsSync20(bridgeConfigPath(profile)))
+        return null;
+      return loadBridgeConfig(profile).worker?.skills?.enabled === true;
+    }
+  };
+}
+function fileView(i) {
+  if (i.state === "absent")
+    return { state: "absent" };
+  if (i.state === "file")
+    return { state: "file", bytes: i.bytes, mode: i.mode };
+  return { state: "unsafe" };
+}
+function listDir(path) {
+  try {
+    return readdirSync6(path).sort(cmpStr2);
+  } catch {
+    return null;
+  }
+}
+function doctorAgent(loom, agentKey) {
+  const dir = inspectUnder(loom, ["memory", agentKey], "dir");
+  if (dir.state !== "dir") {
+    return {
+      agentKey,
+      dir: "unsafe",
+      entries: { state: "absent" },
+      fold: null,
+      archive: { state: "absent" },
+      persona: { state: "absent" }
+    };
+  }
+  const entriesIns = inspectUnder(loom, ["memory", agentKey, "entries.jsonl"], "file");
+  const entries = fileView(entriesIns);
+  let fold = null;
+  let entriesReadError;
+  let entriesView = entries;
+  if (entries.state === "absent") {
+    fold = counts(null);
+  } else if (entriesIns.state === "file" && entriesIns.bytes <= DOCTOR_READ_MAX_BYTES) {
+    const r = readNoFollow(entriesIns.path, DOCTOR_READ_MAX_BYTES);
+    if (r.ok)
+      fold = counts(foldMemoryLines(r.raw));
+    else if (r.kind === "unreadable")
+      entriesReadError = r.code;
+    else
+      entriesView = { state: "unsafe" };
+  }
+  return {
+    agentKey,
+    dir: "dir",
+    entries: entriesView,
+    fold,
+    ...entriesReadError !== undefined ? { entriesReadError } : {},
+    archive: fileView(inspectUnder(loom, ["memory", agentKey, "entries.archive.jsonl"], "file")),
+    persona: fileView(inspectUnder(loom, ["memory", agentKey, "persona.md"], "file"))
+  };
+}
+function readMemoryDoctorInput(loom, platform = process.platform) {
+  const memoryDir = join31(loom, "memory");
+  const rootIns = inspectUnder(loom, ["memory"], "dir");
+  const root = rootIns.state === "absent" ? { state: "absent" } : rootIns.state === "dir" ? { state: "dir", mode: rootIns.mode } : { state: "unsafe" };
+  const agents = [];
+  const ignored = [];
+  let agentScanCapped = false;
+  if (root.state === "dir") {
+    for (const name of listDir(memoryDir) ?? []) {
+      if (!isAgentKey(name)) {
+        ignored.push(name);
+        continue;
+      }
+      if (agents.length >= DOCTOR_AGENT_SCAN_MAX) {
+        agentScanCapped = true;
+        continue;
+      }
+      agents.push(doctorAgent(loom, name));
+    }
+  }
+  const roomsIns = inspectUnder(loom, ["rooms"], "dir");
+  const rooms = {
+    state: roomsIns.state === "dir" ? "dir" : roomsIns.state === "absent" ? "absent" : "unsafe",
+    guidelines: [],
+    scanCapped: false
+  };
+  if (roomsIns.state === "dir") {
+    const keys = (listDir(roomsIns.path) ?? []).filter((n) => ROOM_KEY_RE.test(n));
+    if (keys.length > DOCTOR_ROOM_SCAN_MAX)
+      rooms.scanCapped = true;
+    for (const rk of keys.slice(0, DOCTOR_ROOM_SCAN_MAX)) {
+      const g = fileView(inspectUnder(loom, ["rooms", rk, "guideline.md"], "file"));
+      if (g.state !== "absent")
+        rooms.guidelines.push({ roomKey: rk, file: g });
+    }
+  }
+  let rules;
+  try {
+    const v = loadRules(loom);
+    rules = {
+      bundled: v.counts.bundled,
+      user: v.counts.user,
+      overrides: v.counts.overrides,
+      disabled: v.counts.disabled,
+      invalid: v.counts.invalid,
+      conflicts: [...new Set(v.conflicts.map((c) => c.id))],
+      truncated: v.rules.filter((r) => r.truncated).map((r) => r.id),
+      scanCapped: v.scanCapped
+    };
+  } catch {
+    rules = {
+      bundled: 0,
+      user: 0,
+      overrides: 0,
+      disabled: 0,
+      invalid: 1,
+      conflicts: [],
+      truncated: [],
+      scanCapped: false
+    };
+  }
+  return {
+    platform,
+    memoryDir,
+    root,
+    agents,
+    ignored,
+    agentScanCapped,
+    knowledgeIndexPath: join31(loom, "knowledge", "INDEX.md"),
+    knowledgeIndex: fileView(inspectUnder(loom, ["knowledge", "INDEX.md"], "file")),
+    rooms,
+    rules
+  };
+}
+
 // packages/cli/src/index.ts
-var VERSION = "0.34.0";
+var VERSION = "0.35.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
@@ -18340,7 +20362,7 @@ function readBridgeView(profile, bridgeDir) {
 }
 function eprint(msg) {
   try {
-    writeSync3(2, msg);
+    writeSync4(2, msg);
   } catch {
     try {
       console.error(msg.replace(/\x1b\[[0-9;]*m/g, "").replace(/\n$/, ""));
@@ -18349,7 +20371,7 @@ function eprint(msg) {
 }
 function print(msg) {
   try {
-    writeSync3(1, msg);
+    writeSync4(1, msg);
   } catch {
     try {
       console.log(msg.replace(/\n$/, ""));
@@ -18395,6 +20417,8 @@ var BOOLEAN_FLAGS = new Set([
   "inject-handoffs",
   "presence"
 ]);
+var MEMORY_COMMANDS = new Set(["memory", "rules", "skills"]);
+var MEMORY_BOOLEAN_FLAGS = new Set(["all", "json"]);
 function usage() {
   return `
 loom v${VERSION} \u2014 Loom multiplayer AI terminal (PLAN ${VERSION})
@@ -18416,6 +20440,14 @@ Usage:
   loom bridge start | stop | status | quarantine ack  # herdr node bridge (0.22+)
   loom service install|uninstall|start|status [--profile <p>] [--force]
                                     # bridge as launchd/systemd user service (0.34)
+  loom memory add|propose --agent claude|codex|grok [--room <roomId>]
+              [--type fact|decision|preference] [--supersedes <id>] <body\u2026> | -- <body>
+  loom memory approve|retire|show --agent <a> <id> \xB7 compact --agent <a>
+  loom memory list [--agent <a>] [--room <roomId>] [--all] [--json]
+                                    # per-agent memory store (0.35)
+  loom rules list [--json]          # bundled + ~/.loom/rules (0.35)
+  loom skills list [--room <roomId>] [--json]
+                                    # skill sources + shadowing (0.35)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -18476,7 +20508,7 @@ Examples:
 function defaultDisplayName() {
   return process.env.LOOM_NAME || process.env.USER || process.env.LOGNAME || "anon";
 }
-function parseArgs(argv) {
+function parseArgs(argv, extraBoolean = new Set) {
   const args = argv.slice(2);
   const flags = {};
   const positional = [];
@@ -18491,7 +20523,7 @@ function parseArgs(argv) {
       flags.help = true;
     else if (a.startsWith("--")) {
       const key = a.slice(2);
-      if (BOOLEAN_FLAGS.has(key)) {
+      if (BOOLEAN_FLAGS.has(key) || extraBoolean.has(key)) {
         flags[key] = true;
         continue;
       }
@@ -18551,10 +20583,10 @@ async function autoHostAfterSession(flags) {
 }
 function profilesWithSession() {
   const dir = pathJoin(loomDir(), "profiles");
-  if (!existsSync20(dir))
+  if (!existsSync21(dir))
     return [];
   const out = [];
-  for (const name of readdirSync5(dir)) {
+  for (const name of readdirSync7(dir)) {
     if (!name.endsWith(".json"))
       continue;
     if (name.endsWith(".host.json"))
@@ -18594,7 +20626,7 @@ async function cmdUp(flags) {
   console.log("loom up \u2014 sticky hosts:");
   for (const profile of profiles) {
     setActiveProfile(profile, { explicit: true });
-    if (!existsSync20(sessionPath()) || !loadSession()) {
+    if (!existsSync21(sessionPath()) || !loadSession()) {
       console.log(`  ${profile.padEnd(14)} skipped  (no session)`);
       continue;
     }
@@ -19854,10 +21886,10 @@ function readOnlySessionPath(home, flags) {
   return pathJoin(home, "session.json");
 }
 function loadSessionReadOnly(file) {
-  if (!existsSync20(file))
+  if (!existsSync21(file))
     return null;
   try {
-    const text = readFileSync16(file, "utf8").trim();
+    const text = readFileSync17(file, "utf8").trim();
     if (!text)
       return null;
     return normalizeSession(JSON.parse(text));
@@ -19866,11 +21898,11 @@ function loadSessionReadOnly(file) {
   }
 }
 function homeWritableStatus(home) {
-  const homeExists = existsSync20(home);
+  const homeExists = existsSync21(home);
   if (!homeExists)
     return { homeExists, homeWritable: null };
   try {
-    accessSync(home, fsConstants4.W_OK);
+    accessSync(home, fsConstants7.W_OK);
     return { homeExists, homeWritable: true };
   } catch {
     return { homeExists, homeWritable: false };
@@ -19972,7 +22004,8 @@ async function cmdDoctor(flags) {
       rpc: hostRpc
     }),
     bridgeSection(readBridgeView(bridgeProfile, pathJoin(home, "bridge"))),
-    service
+    service,
+    memorySection(readMemoryDoctorInput(home))
   ];
   process.stdout.write(renderDoctor(sections));
   process.exit(doctorExitCode(sections));
@@ -20126,7 +22159,7 @@ Pending inbox:`);
     await new Promise(() => {});
     return;
   }
-  const { readSync: readSync4 } = await import("fs");
+  const { readSync: readSync7 } = await import("fs");
   const decoder = new TextDecoder;
   let lineBuf = "";
   const handleLine = async (line) => {
@@ -20175,7 +22208,7 @@ Pending inbox:`);
   while (!stopping) {
     let n = 0;
     try {
-      n = readSync4(0, buf, 0, buf.length, null);
+      n = readSync7(0, buf, 0, buf.length, null);
     } catch {
       await Bun.sleep(50);
       continue;
@@ -20475,7 +22508,7 @@ async function runTuiAgent(spec) {
   const attempts = [];
   const ptyHelper = pathJoin(import.meta.dir, "../../../scripts/run-with-pty.py");
   const ptyHelperAlt = pathJoin(import.meta.dir, "../../scripts/run-with-pty.py");
-  const helperPath = existsSync20(ptyHelper) ? ptyHelper : existsSync20(ptyHelperAlt) ? ptyHelperAlt : null;
+  const helperPath = existsSync21(ptyHelper) ? ptyHelper : existsSync21(ptyHelperAlt) ? ptyHelperAlt : null;
   if (helperPath && process.platform !== "win32") {
     attempts.push({
       label: "python-pty-winch",
@@ -20520,7 +22553,7 @@ function spawnOnDevTty(spec) {
   return new Promise((resolve7) => {
     const fds = [];
     try {
-      fds.push(openSync8("/dev/tty", "r"), openSync8("/dev/tty", "w"), openSync8("/dev/tty", "w"));
+      fds.push(openSync11("/dev/tty", "r"), openSync11("/dev/tty", "w"), openSync11("/dev/tty", "w"));
     } catch (e) {
       eprint(`\x1B[2m/dev/tty unavailable: ${e instanceof Error ? e.message : e}\x1B[0m
 `);
@@ -20535,7 +22568,7 @@ function spawnOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync8(fd);
+          closeSync11(fd);
         } catch {}
       }
     };
@@ -20587,7 +22620,7 @@ function spawnShellOnDevTty(spec) {
   return new Promise((resolve7) => {
     const fds = [];
     try {
-      fds.push(openSync8("/dev/tty", "r"), openSync8("/dev/tty", "w"), openSync8("/dev/tty", "w"));
+      fds.push(openSync11("/dev/tty", "r"), openSync11("/dev/tty", "w"), openSync11("/dev/tty", "w"));
     } catch {
       resolve7(0);
       return;
@@ -20600,7 +22633,7 @@ function spawnShellOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync8(fd);
+          closeSync11(fd);
         } catch {}
       }
       fds.length = 0;
@@ -20660,7 +22693,7 @@ async function runLoomShellRepl(spec) {
     while (!stopping) {
       let n = 0;
       try {
-        n = readSync3(0, chunk, 0, chunk.length, null);
+        n = readSync6(0, chunk, 0, chunk.length, null);
       } catch (e) {
         const err = e;
         if (err?.code === "EAGAIN" || err?.code === "EWOULDBLOCK") {
@@ -20731,7 +22764,8 @@ async function cmdRoomLeave() {
   console.log("Left room and cleared local session.");
 }
 async function main() {
-  const { flags, positional, passthrough } = parseArgs(process.argv);
+  const scoped = parseArgs(process.argv, MEMORY_BOOLEAN_FLAGS);
+  const { flags, positional, passthrough } = MEMORY_COMMANDS.has(scoped.positional[0] ?? "") ? scoped : parseArgs(process.argv);
   applyProfileFlags(flags);
   if (flags.help || positional[0] === "help" || positional.length === 0) {
     console.log(usage());
@@ -20843,6 +22877,12 @@ async function main() {
     const code = await runServiceCommand(sub ?? "", { force: flags.force === true }, {
       loomVersion: VERSION
     });
+    process.exit(code);
+  }
+  if (cmd === "memory" || cmd === "rules" || cmd === "skills") {
+    const run = cmd === "memory" ? runMemoryCommand : cmd === "rules" ? runRulesCommand : runSkillsCommand;
+    const deps = realMemoryCliDeps(flags);
+    const code = await run(sub ?? "", { positional: rest, passthrough }, flags, deps);
     process.exit(code);
   }
   if (cmd === "conv-hosts") {

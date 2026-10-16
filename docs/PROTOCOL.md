@@ -2,7 +2,7 @@
 
 **철학 (첫 문단):** 이 문서는 Loom **relay WebSocket 와이어(protocol v1)** 만 다룬다 — room·handoff·inbox·presence의 봉투와 라우팅. **herdr 로컬 소켓 RPC**(agent/pane/tab)는 이 파일의 범위가 아니며, as-built 정본은 [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md)다. 이름을 섞어 쓰지 않는다.
 
-**As-built pin:** product / PLAN **v0.34.0** (2026-10-16) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.34.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0, v0.31.0, v0.32.0, v0.33.0 and v0.34.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged), [Skills and policy](#skills-and-policy-v0310--wire-unchanged), [Loom MCP pre-check](#loom-mcp-pre-check-v0320--wire-unchanged), [Bridge lifecycle](#bridge-lifecycle-v0330--wire-unchanged) and [`loom service`](#loom-service-v0340--wire-unchanged)).
+**As-built pin:** product / PLAN **v0.35.0** (2026-10-16) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.35.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0, v0.31.0, v0.32.0, v0.33.0, v0.34.0 and v0.35.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged), [Skills and policy](#skills-and-policy-v0310--wire-unchanged), [Loom MCP pre-check](#loom-mcp-pre-check-v0320--wire-unchanged), [Bridge lifecycle](#bridge-lifecycle-v0330--wire-unchanged), [`loom service`](#loom-service-v0340--wire-unchanged) and [Memory, rules and skills store](#memory-rules-and-skills-store-v0350--wire-unchanged)).
 
 Wire Version: **1** (`v: 1` on every envelope) — not product SemVer; historical origin: M1.1 + M-7 + Loom rename under PLAN 0.9.0
 
@@ -143,6 +143,15 @@ v0.34.0 registers the per-profile bridge as a user-level OS service — launchd 
 - **The unit carries no secret.** Its env is exactly `HOME` · `PATH` · `LOOM_SERVICE=1` · `LOOM_SESSION` · (`LOOM_PROFILE`); the relay token stays in the 0600 session file, and a session whose token lives only in `LOOM_RELAY_TOKEN` / `FABLE_RELAY_TOKEN` is refused at install.
 - **Install refuses a loopback relay** (0.33.0 D1) — checked once at install against the session relay URL; the bridge runtime adds no relay-side guard.
 - **Service-manager calls are local.** `launchctl` / `systemctl --user` / `loginctl` run on the user's own machine; `loom doctor` / `loom service status` use read-only verbs only (`print` · `print-disabled` · `show` · `show-user`).
+
+## Memory, rules and skills store (v0.35.0) — wire unchanged
+
+v0.35.0 adds a local store for per-agent long-term memory, room guidelines, a shared knowledge index and soft rules, plus `loom memory|rules|skills` and a doctor Memory section (user-facing in [`USER_GUIDE.md`](./USER_GUIDE.md) §20). Nothing new crosses the relay:
+
+- **No new envelope, field, label, or version.** `PROTOCOL_VERSION`, `CARD_CONTRACT_VERSION` and `ARGV_TEMPLATE_VERSION` are unchanged; card and conv payload schemas gain **0 fields**; there is no MCP memory tool. `packages/protocol` has no diff (`sanitizePeerText` is imported, not changed).
+- **`entries.jsonl` v1 is a local file format, not wire.** Lines `{"v":1,"kind":"entry"|"transition"|"compact",…}` live under `loomDir()/memory/<agentKey>/` (0700/0600), are written only by the local human CLI under a per-store file lock, and are never sent to the relay or a peer. Its `"v":1` is the store format version, unrelated to the wire `v: 1`. The store-local `seq` is **not** the relay room `seq` (0.29.0) — relay event seq/eventId may appear only as provenance inside an entry's `source` object.
+- **No worker or prompt path reads the store in 0.35.0.** `loadMemorySnapshot` is implemented and tested but imported by no production module; card-start injection is 0.36.0.
+- **Path pieces never come from peer input.** Store paths use the validated `agentKey` (`<claude|codex|grok>.<safe profile token | x.<16 hex>>`), `roomKey` (16 hex, as 0.29.0), and fixed names only.
 
 ## Handoff routing
 
