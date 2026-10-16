@@ -18,6 +18,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   statSync,
@@ -1652,4 +1653,141 @@ for (const platform of PLATFORMS) {
       expect(existsSync(target(platform))).toBe(false);
     });
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// P4+fix verify L2 — loomDir() is cached, serviceHome() is per call: LOOM_TEST_HOME deleted
+// in-process after loomDir() resolved splits the two. Every loomDir-derived path (bridge dir · log)
+// must sit under serviceHome(), or install/uninstall/start refuse before any call or write.
+// SUBPROCESS with HOME=<temp> and LOOM_TEST_HOME=<temp> (deleted only inside the probe).
+// ---------------------------------------------------------------------------------------------
+
+const HOST_INDEX = join(import.meta.dir, "../../host/src/index.ts");
+
+function splitHomeProbe(dir: string): string {
+  const p = join(dir, "split-probe.ts");
+  writeFileSync(
+    p,
+    `import { loomDir } from ${JSON.stringify(HOST_INDEX)};
+import { runServiceCommand } from ${JSON.stringify(SERVICE_TS)};
+const verb = process.env.PROBE_VERB ?? "install";
+const platform = process.env.PROBE_PLATFORM ?? "darwin";
+loomDir(); // cache <LOOM_TEST_HOME>/.loom
+delete process.env.LOOM_TEST_HOME; // serviceHome() now follows HOME
+const calls: string[][] = [];
+const runner = async (argv: string[]) => {
+  calls.push([...argv]);
+  return { code: 0, stdout: "\\tstate = running\\n\\tpid = 4242\\n", stderr: "" };
+};
+let t = 0;
+const lines: string[] = [];
+const code = await runServiceCommand(verb, { profile: "work" }, {
+  runner, platform, uid: 501, user: "t", env: { PATH: "/usr/bin:/bin" },
+  execPath: process.execPath, bridgeMainPath: () => ${JSON.stringify(BRIDGE_MAIN)},
+  now: () => t, sleep: async (ms: number) => { t += ms; },
+  out: (l: string) => lines.push(l), err: (l: string) => lines.push(l),
+  inspectLock: () => ({ kind: "none" }), loomVersion: "0.34.0",
+});
+console.log("PROBE_RESULT " + JSON.stringify({ code, calls, lines }));
+`,
+  );
+  return p;
+}
+
+describe("service home — loomDir() cache split (P4 verify L2)", () => {
+  let fakeHome: string;
+  let scripts: string;
+  beforeEach(() => {
+    fakeHome = mkdtempSync(join(tmpdir(), "loom-svc-HOME-"));
+    scripts = mkdtempSync(join(tmpdir(), "loom-svc-probe-"));
+  });
+  afterEach(() => {
+    for (const d of [fakeHome, scripts]) rmSync(d, { recursive: true, force: true });
+  });
+
+  for (const platform of PLATFORMS) {
+    for (const verb of ["install", "uninstall", "start"]) {
+      test(`${platform} ${verb}: LOOM_TEST_HOME deleted after loomDir() cached → refused, nothing touched`, () => {
+        sessionAt(home);
+        // a Loom-marked unit where the split home would put it (uninstall/start would act on it)
+        const t = serviceTargetPathsFor(fakeHome, platform);
+        if (verb !== "install") {
+          mkdirSync(join(t, ".."), { recursive: true });
+          writeFileSync(t, foreignMarked(platform, PROFILE), { mode: 0o644 });
+        }
+        const before = verb === "install" ? null : readFileSync(t, "utf8");
+        const r = spawnSync(process.execPath, [splitHomeProbe(scripts)], {
+          env: {
+            PATH: process.env.PATH ?? "",
+            HOME: fakeHome,
+            LOOM_TEST_HOME: home,
+            PROBE_VERB: verb,
+            PROBE_PLATFORM: platform,
+          },
+          encoding: "utf8",
+          timeout: 30_000,
+        });
+        const line = (r.stdout ?? "").split("\n").find((l) => l.startsWith("PROBE_RESULT "));
+        if (!line) throw new Error(`probe failed: ${r.stdout}\n${r.stderr}`);
+        const p = JSON.parse(line.slice("PROBE_RESULT ".length)) as Probe;
+        expect(p.code).toBe(1);
+        expect(p.lines.join("\n")).toContain("is outside the service home");
+        expect(p.calls).toEqual([]);
+        if (before === null) expect(existsSync(t)).toBe(false);
+        else expect(readFileSync(t, "utf8")).toBe(before);
+        expect(existsSync(target(platform))).toBe(false);
+      });
+    }
+  }
+});
+
+function serviceTargetPathsFor(root: string, platform: (typeof PLATFORMS)[number]): string {
+  return platform === "darwin"
+    ? join(root, "Library/LaunchAgents", `${LABEL}.plist`)
+    : join(root, ".config/systemd/user", UNIT);
+}
+
+// ---------------------------------------------------------------------------------------------
+// P4+fix verify L3 — `loom service status` is read-only: a legacy-only (~/.fable) home is never
+// migrated (doctor's read-only home rule, not loomDir()).
+// ---------------------------------------------------------------------------------------------
+
+function treeOf(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string, rel: string) => {
+    for (const name of readdirSync(d)) {
+      const r = rel ? `${rel}/${name}` : name;
+      out.push(r);
+      if (lstatSync(join(d, name)).isDirectory()) walk(join(d, name), r);
+    }
+  };
+  walk(dir, "");
+  return out.sort();
+}
+
+for (const platform of PLATFORMS) {
+  for (const profile of [PROFILE, undefined]) {
+    test(`status (${platform}, ${profile ? "--profile" : "no --profile"}) in a legacy-only ~/.fable home → tree unchanged (P4 verify L3)`, async () => {
+      const legacy = join(home, ".fable");
+      mkdirSync(join(legacy, "profiles"), { recursive: true });
+      mkdirSync(join(legacy, "bridge"), { recursive: true });
+      const sess = JSON.stringify({
+        relayUrl: "wss://relay.example.com:7842/ws",
+        relayToken: "tok-SECRET-123",
+        roomId: "r_1",
+        peerId: "p_node",
+        displayName: PROFILE,
+      });
+      writeFileSync(join(legacy, "profiles", `${PROFILE}.json`), sess, { mode: 0o600 });
+      writeFileSync(join(legacy, "session.json"), sess, { mode: 0o600 });
+      writeFileSync(join(legacy, "bridge", `${PROFILE}.json`), JSON.stringify({ authorizedDispatchers: ["p"] }));
+      const before = treeOf(home);
+      const r = await run("status", platform, makeFake(), { profile });
+      expect(r.code).toBe(0);
+      expect(existsSync(join(home, ".loom"))).toBe(false);
+      expect(existsSync(legacy)).toBe(true);
+      expect(treeOf(home)).toEqual(before);
+      expect(writes(r.fake)).toEqual([]);
+    });
+  }
 }

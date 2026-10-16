@@ -16,12 +16,13 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   type BridgeLockInspection,
   renderLaunchdPlist,
@@ -1029,3 +1030,83 @@ test("CLI `loom doctor` with an installed unit under LOOM_TEST_HOME spawns no se
     rmSync(spy.dir, { recursive: true, force: true });
   }
 }, 60_000);
+
+// ---------------------------------------------------------------------------------------------
+// P4+fix verify L1 — a hung read-only launchctl/systemctl/loginctl never outlives the CLI.
+// The CLI runs with HOME=<temp home> and NO LOOM_TEST_HOME (so the read path really spawns), but
+// PATH = spy dir + bun dir only: the real service manager is unreachable (asserted before the run).
+// The spy is a shell that forks `sleep 7` and polls it — both must be gone once the CLI has exited
+// (no `wait`: the shell may inherit SIGCHLD ignored and return at once).
+// ---------------------------------------------------------------------------------------------
+
+function hangingSpyBin(): { dir: string; pids: string } {
+  const dir = mkdtempSync(join(tmpdir(), "loom-docsvc-hang-"));
+  const pids = join(dir, "PIDS");
+  for (const n of ["launchctl", "systemctl", "loginctl"]) {
+    writeFileSync(
+      join(dir, n),
+      `#!/bin/sh\necho $$ >> "${pids}"\n/bin/sleep 7 &\nchild=$!\necho $child >> "${pids}"\nwhile kill -0 $child 2>/dev/null; do /bin/sleep 0.1; done\n`,
+    );
+    chmodSync(join(dir, n), 0o755);
+  }
+  return { dir, pids };
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+for (const args of [["doctor"], ["service", "status"]]) {
+  test(`CLI \`loom ${args.join(" ")}\`: a hung read-only query is reaped before the CLI exits (P4 verify L1)`, async () => {
+    const platform = process.platform === "darwin" ? "darwin" : "linux";
+    installUnit(platform);
+    const spy = hangingSpyBin();
+    const env: Record<string, string> = {
+      HOME: home,
+      PATH: `${spy.dir}:${dirname(process.execPath)}`,
+      LOOM_NO_AUTO_HOST: "1",
+    };
+    let pids: number[] = [];
+    try {
+      for (const n of ["launchctl", "systemctl", "loginctl"]) {
+        // the real service manager must be unreachable from the CLI's PATH
+        expect(Bun.which(n, { PATH: env.PATH })).toBe(join(spy.dir, n));
+      }
+      const t0 = Date.now();
+      const r = spawnSync(process.execPath, [CLI, "--profile", PROFILE, ...args], {
+        env,
+        encoding: "utf8",
+        timeout: 30_000,
+      });
+      const elapsed = Date.now() - t0;
+      expect(r.status).toBe(0);
+      expect(`${r.stdout}`).toMatch(/unknown/);
+      expect(elapsed).toBeLessThan(6_000);
+      pids = existsSync(spy.pids)
+        ? readFileSync(spy.pids, "utf8")
+            .split("\n")
+            .map(Number)
+            .filter((n) => n > 0)
+        : [];
+      expect(pids.length).toBeGreaterThan(0);
+      // a killed child may take a moment to be reaped by init — never 7 s
+      const deadline = Date.now() + 1_500;
+      while (pids.some(pidAlive) && Date.now() < deadline) await Bun.sleep(50);
+      expect(pids.filter(pidAlive)).toEqual([]);
+    } finally {
+      for (const p of pids) {
+        try {
+          process.kill(p, "SIGKILL");
+        } catch {
+          /* gone */
+        }
+      }
+      rmSync(spy.dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+}
