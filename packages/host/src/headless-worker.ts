@@ -15,12 +15,21 @@
  * read): an invalid copy or a different hash is fingerprint_changed →
  * needs_verification. A live pid is never killed for it; its result is pre-empted.
  * Disabled = the 0.30.0/P2 argv, prompt, and fingerprint (manifest hash "").
+ *
+ * PLAN 0.36.0 P2 (D2 · D4 · D5 · D8 · D11 · R2 · R7 · R8 · R13 · R14). With `deps.memory.enabled`
+ * (bridge `worker.memory.enabled`, default off), a fresh first turn reads the memory snapshot
+ * under the per-card lock (after the skills step, before composing), redacts env values outside
+ * the reader, fences it with a per-card nonce drawn after the read, writes the exact fence bytes
+ * to `<cardDir>/memory-snapshot.md` (0600, atomic, before the write-ahead record) and records
+ * sha256(file bytes) as `memorySnapshotHash` + the 6th fingerprint input. The block goes right
+ * below the dispatched-task marker on stdin / grok prompt.txt; argv is unchanged. Off = no
+ * reader call and no filesystem access: 0.35 stdin, prompt.txt, argv, record and fingerprint.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
 import { truncateTail, wrapDispatchedPrompt } from "@loom/protocol";
 import {
@@ -52,8 +61,17 @@ import {
   spawnDetachedWorker,
   type SpawnedWorker,
 } from "./process-group";
+import {
+  composeMemoryWrapped,
+  MEMORY_SNAPSHOT_FILE,
+  type MemoryInjectFlags,
+  renderMemoryBlock,
+} from "./memory-inject";
+import { loadMemorySnapshot } from "./memory-snapshot";
+import { agentKeyFor } from "./memory-store";
 import { parseLstart, readProcessLstart } from "./process-lstart";
 import { redactSecrets } from "./redact";
+import { roomKey } from "./room-event-log";
 import { materializeCardSkills, verifyCardSkillsCopy } from "./skill-materialize";
 import { composeFirstTurnPrompt, renderSkillListing } from "./skill-prompt";
 
@@ -112,6 +130,12 @@ type HeadlessDeps = {
   localPeerId: string;
   node: string;
   commands: Record<AgentKind, HeadlessCommand>;
+  /** 0.36.0 D8: the bridge's already-resolved profile (agentKeyFor). Default "default". */
+  profile?: string;
+  /** 0.36.0 D5: memory injection; only `{enabled: true}` turns it on (omitted = off). */
+  memory?: { enabled: boolean };
+  /** 0.36.0 test seam: the per-card fence nonce. Default 32 lowercase hex from randomBytes(16). */
+  memoryNonce?: () => string;
   /** Maximum wait for abandoned owners during close(). Default: 10_000 ms. */
   closeDeadlineMs?: number;
   /** must not await dispatch() for the same card; it runs under the per-card transition lock */
@@ -248,6 +272,23 @@ function scrubWorkerEnv(cardId: string): NodeJS.ProcessEnv {
   }
   env.LOOM_CARD = cardId;
   return env;
+}
+
+function defaultMemoryNonce(): string {
+  return randomBytes(16).toString("hex");
+}
+
+/** memory-snapshot.md: 0600 temp file in the same directory → rename → chmod 0600. */
+async function writeMemorySnapshotFile(dir: string, target: string, block: string): Promise<void> {
+  const tmp = join(dir, `.${MEMORY_SNAPSHOT_FILE}.tmp.${process.pid}.${Date.now()}`);
+  try {
+    await writeFile(tmp, block, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await rename(tmp, target);
+    await chmod(target, 0o600);
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {});
+    throw err;
+  }
 }
 
 function isPathInside(root: string, target: string): boolean {
@@ -1577,6 +1618,8 @@ export class HeadlessDispatcher {
       let firstTurn = wrapped;
       let built: BuiltAgentArgv | undefined;
       let manifestHash = "";
+      // D11: "" iff no block was injected (never sha256("")).
+      let memorySnapshotHash = "";
       const cwd = plan.cwd;
       const command = this.deps.commands[card.agent];
       const setup = await this.withCardLock<SpawnOutcome | undefined>(card, async () => {
@@ -1592,8 +1635,20 @@ export class HeadlessDispatcher {
         // failure before the write-ahead record (no spawn).
         const skills = await this.skillsForSpawnLocked(card, plan);
         manifestHash = skills.manifestHash;
-        // R6: the listing precedes the marker, first turn only.
-        firstTurn = composeFirstTurnPrompt(skills.listing, wrapped);
+        // 0.36.0 D2 / R2: a fresh first turn (never a resume) snapshots memory when enabled.
+        // Off = no reader call, no filesystem access (R54-L1). A throw is a setup failure
+        // before the write-ahead record (no spawn).
+        const memoryBlock =
+          !plan.resumeSessionId && this.deps.memory?.enabled === true
+            ? await this.memorySnapshotLocked(card, dir)
+            : { block: "", hash: "" };
+        memorySnapshotHash = memoryBlock.hash;
+        // R6: the listing precedes the marker, first turn only. D4: the block sits right
+        // below the marker; no block = wrapDispatchedPrompt(prompt) exactly.
+        firstTurn = composeFirstTurnPrompt(
+          skills.listing,
+          composeMemoryWrapped(card.prompt, memoryBlock.block),
+        );
         const promptBody = plan.resumeSessionId
           ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`
           : firstTurn;
@@ -1623,7 +1678,7 @@ export class HeadlessDispatcher {
           cwd,
           requestedCwd: card.cwd ?? null,
           sessionId: plan.sessionId,
-          promptFingerprint: workerFingerprint(this.deps.config, manifestHash),
+          promptFingerprint: workerFingerprint(this.deps.config, manifestHash, memorySnapshotHash),
           attempts: plan.attempts,
           pid: 0,
           pgid: 0,
@@ -1637,6 +1692,8 @@ export class HeadlessDispatcher {
           procStartedAt: "",
           sendAttempts: 0,
           completedHandoffIds: [...(current?.completedHandoffIds ?? plan.completedHandoffIds)],
+          // R9: "" is never written — an absent key is "" (off = 0.35 session.json bytes).
+          ...(memorySnapshotHash !== "" ? { memorySnapshotHash } : {}),
         }));
         if (owner.abandoned) return { kind: "abandon" };
         // Last path check after all setup awaits. Passing the pinned canonical
@@ -1855,6 +1912,55 @@ export class HeadlessDispatcher {
         if (index >= 0) this.active.splice(index, 1);
       }
     }
+  }
+
+  /**
+   * Caller holds the card lock; fresh first turn with memory enabled only (D2 ①–⑥). Returns the
+   * fence bytes F (also the memory-snapshot.md bytes) and sha256(F), or {"", ""} when the
+   * snapshot text is empty — then a stale memory-snapshot.md is removed (R7 · R54-L1).
+   */
+  private async memorySnapshotLocked(
+    card: HeadlessDispatchCard,
+    dir: string,
+  ): Promise<{ block: string; hash: string }> {
+    const started = performance.now();
+    const snap = loadMemorySnapshot(
+      this.deps.loomDir,
+      agentKeyFor(this.deps.profile ?? "default", card.agent),
+      roomKey(card.roomId),
+    );
+    // R53-L3 · R13: env values are redacted outside the reader, with the spawn-time env.
+    const redacted = redactSecrets(snap.text, process.env);
+    // R5: drawn after the read, so a store author cannot know it.
+    const nonce = (this.deps.memoryNonce ?? defaultMemoryNonce)();
+    const { block, neutralizedLines } = renderMemoryBlock(redacted, nonce);
+    const flags: MemoryInjectFlags = { neutralizedLines, envRedacted: redacted !== snap.text };
+    const target = join(dir, MEMORY_SNAPSHOT_FILE);
+    const id = card.cardId.replace(/[\r\n]/g, " ");
+    if (block === "") {
+      try {
+        await unlink(target);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
+      }
+      const ms = Math.round(performance.now() - started);
+      process.stderr.write(
+        `[headless] memory_snapshot (${id}): empty — no block · load_ms ${ms}\n`,
+      );
+      return { block: "", hash: "" };
+    }
+    await writeMemorySnapshotFile(dir, target, block);
+    // D2 ⑥ · R8: the hash of the exact file bytes, never snap.hash.
+    const hash = createHash("sha256").update(Buffer.from(block, "utf8")).digest("hex");
+    const ms = Math.round(performance.now() - started);
+    const t = snap.flags.truncated;
+    const truncated =
+      (["persona", "index", "guideline", "entries"] as const).filter((k) => t[k]).join(",") ||
+      "none";
+    process.stderr.write(
+      `[headless] memory_snapshot (${id}): block ${Buffer.byteLength(block, "utf8")} B · text ${Buffer.byteLength(snap.text, "utf8")} B · neutralized ${flags.neutralizedLines} · env_redacted ${flags.envRedacted ? "yes" : "no"} · read_errors ${snap.flags.readErrors} · truncated ${truncated} · load_ms ${ms}\n`,
+    );
+    return { block, hash };
   }
 
   private async writeGrokPrompt(

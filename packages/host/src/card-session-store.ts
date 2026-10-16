@@ -36,6 +36,11 @@ export type CardSessionRecord = {
   completedHandoffIds: string[];
   /** Exact result reserved durably before the first delivery attempt. */
   pendingResult?: HeadlessResultFields;
+  /**
+   * 0.36.0 D11: sha256 of `<cardDir>/memory-snapshot.md` (the injected fence bytes), lowercase
+   * hex. Never written when no block was injected — an absent key means "" (R9).
+   */
+  memorySnapshotHash?: string;
 };
 
 export const cardSessionDiagnostics = { invalidRecords: 0 };
