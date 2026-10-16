@@ -44,13 +44,15 @@ type Flags = {
   rulesEnabled: boolean;
   permissions: unknown;
 };
-type ReadFlags = (raw: unknown) => Flags;
+type ReadFlags = (raw: unknown, agentArgv?: unknown) => Flags;
+/** P4c (P3-V-L3): every agent dispatchable — `enabled` then follows maxConcurrent alone. */
+const ALL_ARGV = { claude: ["claude"], codex: ["codex"], grok: ["grok"] };
 /** Looked up at call time so a missing export fails each case on its own (red phase). */
-function readBridgeWorkerFlags(raw: unknown): Flags {
+function readBridgeWorkerFlags(raw: unknown, agentArgv?: unknown): Flags {
   const fn = (bridgeConfig as unknown as { readBridgeWorkerFlags?: ReadFlags })
     .readBridgeWorkerFlags;
   if (typeof fn !== "function") throw new Error("readBridgeWorkerFlags is not exported");
-  return fn(raw);
+  return fn(raw, agentArgv);
 }
 
 function messageOf(fn: () => unknown): string {
@@ -262,7 +264,7 @@ describe("bridge config worker.strictEnforcement · worker.rules (PLAN 0.37.0 P1
     });
 
     test("headless defaults → all agents enabled, every flag false, default permissions", () => {
-      expect(readBridgeWorkerFlags(headless())).toEqual({
+      expect(readBridgeWorkerFlags(headless(), ALL_ARGV)).toEqual({
         backend: "headless",
         enabled: ["claude", "codex", "grok"],
         strictEnforcement: false,
@@ -283,7 +285,7 @@ describe("bridge config worker.strictEnforcement · worker.rules (PLAN 0.37.0 P1
         maxConcurrent: { codex: 2 },
         permissions,
       });
-      const flags = readBridgeWorkerFlags(section);
+      const flags = readBridgeWorkerFlags(section, ALL_ARGV);
       expect(flags.backend).toBe("headless");
       expect(flags.enabled).toEqual(["claude", "codex", "grok"]);
       expect(flags.strictEnforcement).toBe(true);
@@ -454,15 +456,15 @@ describe("bridge config worker.maxConcurrent.<agent>: 0 (PLAN 0.37.0 P2 · D4(c)
   });
 
   test("readBridgeWorkerFlags: a 0 agent is not enabled; errors use the same wording", () => {
-    expect(readBridgeWorkerFlags(headless({ maxConcurrent: { grok: 0 } })).enabled).toEqual([
-      "claude",
-      "codex",
-    ]);
     expect(
-      readBridgeWorkerFlags(headless({ maxConcurrent: { claude: 0, grok: 0 } })).enabled,
+      readBridgeWorkerFlags(headless({ maxConcurrent: { grok: 0 } }), ALL_ARGV).enabled,
+    ).toEqual(["claude", "codex"]);
+    expect(
+      readBridgeWorkerFlags(headless({ maxConcurrent: { claude: 0, grok: 0 } }), ALL_ARGV).enabled,
     ).toEqual(["codex"]);
     expect(
-      readBridgeWorkerFlags(headless({ maxConcurrent: { claude: 0, codex: 0, grok: 0 } })).enabled,
+      readBridgeWorkerFlags(headless({ maxConcurrent: { claude: 0, codex: 0, grok: 0 } }), ALL_ARGV)
+        .enabled,
     ).toEqual([]);
     expect(messageOf(() => readBridgeWorkerFlags(headless({ maxConcurrent: { codex: -1 } })))).toBe(
       errMax("codex"),
@@ -603,6 +605,6 @@ describe("readBridgeWorkerFlags ≡ loadBridgeConfig errors (P1 verify L1 · ②
     save("parity-ok", sec);
     expect(messageOf(() => loadBridgeConfig("parity-ok"))).toBe("");
     expect(messageOf(() => readBridgeWorkerFlags(sec))).toBe("");
-    expect(readBridgeWorkerFlags(sec).enabled).toEqual(["claude", "codex"]);
+    expect(readBridgeWorkerFlags(sec, ALL_ARGV).enabled).toEqual(["claude", "codex"]);
   });
 });

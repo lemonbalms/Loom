@@ -45,8 +45,8 @@ import {
   setActiveProfile,
   workerConfigFromBridge,
 } from "@loom/host";
-import * as doctor from "./doctor";
 import type { BridgeReadInput, DoctorLine, DoctorSection } from "./doctor";
+import * as doctor from "./doctor";
 import { readMemoryDoctorInput } from "./memory-cli";
 
 type Fn = (...args: never[]) => unknown;
@@ -102,9 +102,11 @@ function writePolicy(text: string): void {
   mkdirSync(home, { recursive: true });
   writeFileSync(policyPath(), text);
 }
-function writeBridge(worker: unknown, profile = PROFILE): void {
+/** P4c (P3-V-L3): every agent dispatchable by default — `enabled` then follows maxConcurrent. */
+const ALL_ARGV = { claude: ["claude"], codex: ["codex"], grok: ["grok"] };
+function writeBridge(worker: unknown, profile = PROFILE, agentArgv: unknown = ALL_ARGV): void {
   mkdirSync(join(home, "bridge"), { recursive: true });
-  writeFileSync(bridgePath(profile), JSON.stringify({ worker }));
+  writeFileSync(bridgePath(profile), JSON.stringify({ agentArgv, worker }));
 }
 const headless = (extra: Record<string, unknown> = {}) => ({
   backend: "headless",
@@ -329,13 +331,13 @@ describe("legacy ~/.fable and the read-only home (C3 → R14)", () => {
     expect(s.lines.map((l) => l.message)).not.toContain(LEGACY);
   });
 
-  test("invalid policy keeps the legacy row with the fail row", () => {
+  test("invalid policy (so <root>/.loom exists — nothing migrates, P3-V-L1) → the fail row alone, no legacy row", () => {
     writePolicy("not json");
     mkdirSync(join(root, ".fable"), { recursive: true });
     writeFileSync(join(root, ".fable", "policy.json"), GAP_FREE);
     const s = policySection(readPolicyDoctorInput(home, PROFILE));
-    expect(s.lines.map((l) => l.status)).toEqual(["fail", "info"]);
-    expect(s.lines[1]).toEqual(info(LEGACY));
+    expect(s.lines.map((l) => l.status)).toEqual(["fail"]);
+    expect(s.lines.map((l) => l.message)).not.toContain(LEGACY);
   });
 
   test("readPolicyDoctorInput writes nothing under an existing home either", () => {

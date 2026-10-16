@@ -77,7 +77,7 @@ const LEAD =
   "The operator's Loom policy sets these limits, and this CLI does not fully enforce them for you. Follow them yourself.";
 
 const STRICT_TAIL =
-  "Disable the agent (worker.maxConcurrent.<agent>: 0), fix network/mcp items in policy.json (shell.deny gaps cannot be removed there), or set worker.strictEnforcement to false.";
+  "Disable the agent (worker.maxConcurrent.<agent>: 0 or remove agentArgv.<agent>), fix network/mcp items in policy.json (shell.deny gaps cannot be removed there), or set worker.strictEnforcement to false.";
 
 const CODEX_WARNING =
   "warning: policy shell.deny (11 rules) is not-enforced for codex — the worker is told in its prompt; nothing blocks it";
