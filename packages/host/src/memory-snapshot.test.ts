@@ -7,7 +7,8 @@
  * persona / INDEX / guideline byte-cap truncation on a code-point boundary + marker + flag ·
  * symlink / non-regular → readErrors · entries.jsonl > 4 MiB → entriesOversize · no timestamps ·
  * ESC / CR stripped · secret shapes → [REDACTED] + redactedOnRead · process.env never consulted ·
- * zero writes · bad arguments → TypeError · no production file imports memory-snapshot.
+ * zero writes · bad arguments → TypeError · 0.36.0 D10b: only headless-worker.ts / host index.ts may
+ * import memory-snapshot, and headless-worker.ts must.
  * Deviation 9 follow-up: snapshot text identical before / after compactMemory on an A←B←C approved
  * chain and on a rejected-proposal case.
  * Every store lives under a fresh mkdtemp loomDir passed explicitly; run with HOME and
@@ -770,10 +771,16 @@ describe("compact keeps the snapshot (deviation 9 follow-up · R53-M1)", () => {
   });
 });
 
-describe("not wired (D1 · D8 — production import 0)", () => {
-  test("no production file imports memory-snapshot", () => {
-    const repo = join(import.meta.dir, "..", "..", "..");
-    const offenders: string[] = [];
+describe("wired only through the headless worker (0.36.0 D10b · R15 — import-specifier guard)", () => {
+  const repo = join(import.meta.dir, "..", "..", "..");
+  /** An import / export-from / dynamic-import specifier that resolves to memory-snapshot. */
+  const IMPORT_RE = /(?:from\s+|import\s*\(\s*)["'][^"']*\/memory-snapshot(?:\.ts)?["']/;
+  const WORKER = join("packages", "host", "src", "headless-worker.ts");
+  const ALLOWED = new Set([WORKER, join("packages", "host", "src", "index.ts")]);
+
+  /** Non-test source files under packages/ and scripts/ whose text imports memory-snapshot. */
+  function importers(): string[] {
+    const found: string[] = [];
     const skip = new Set(["node_modules", "dist", ".git"]);
     const walk = (d: string) => {
       for (const name of readdirSync(d)) {
@@ -786,17 +793,43 @@ describe("not wired (D1 · D8 — production import 0)", () => {
           continue;
         }
         if (!/\.(ts|tsx|js|mjs)$/.test(name) || /\.test\.ts$/.test(name)) continue;
-        const rel = relative(repo, p);
-        if (rel === join("packages", "host", "src", "memory-snapshot.ts")) continue;
-        if (readFileSync(p, "utf8").includes("memory-snapshot")) offenders.push(rel);
+        if (IMPORT_RE.test(readFileSync(p, "utf8"))) found.push(relative(repo, p));
       }
     };
     walk(join(repo, "packages"));
     walk(join(repo, "scripts"));
-    expect(offenders).toEqual([]);
+    return found.sort();
+  }
+
+  test("the guard matches import specifiers, not the memory-snapshot.md file name", () => {
+    for (const src of [
+      'import { loadMemorySnapshot } from "./memory-snapshot";',
+      "import { x } from './memory-snapshot.ts';",
+      'export { loadMemorySnapshot } from "../host/src/memory-snapshot";',
+      'const m = await import("./memory-snapshot");',
+    ]) {
+      expect(IMPORT_RE.test(src)).toBe(true);
+    }
+    for (const src of [
+      'export const MEMORY_SNAPSHOT_FILE = "memory-snapshot.md";',
+      'join(cardDir, "memory-snapshot.md")',
+      "// see memory-snapshot.ts",
+      'import { x } from "./memory-snapshot-extra";',
+    ]) {
+      expect(IMPORT_RE.test(src)).toBe(false);
+    }
+  });
+
+  test("no production file outside headless-worker.ts / host index.ts imports memory-snapshot", () => {
+    expect(importers().filter((rel) => !ALLOWED.has(rel))).toEqual([]);
     expect(lstatSync(join(repo, "packages", "host", "src", "memory-snapshot.ts")).isFile()).toBe(
       true,
     );
+  });
+
+  // Declared expected red from 0.36.0 P1 red until P2 green (R54-M1): the worker wiring lands in P2.
+  test("headless-worker.ts imports memory-snapshot (expected red until 0.36.0 P2 green)", () => {
+    expect(importers()).toContain(WORKER);
   });
 });
 
