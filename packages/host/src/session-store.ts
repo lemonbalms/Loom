@@ -270,7 +270,14 @@ export function getActiveProfile(): string | null {
 }
 
 export function sessionPath(): string {
-  const home = loomDir();
+  return sessionPathUnder(loomDir());
+}
+
+/**
+ * `sessionPath()` resolution under a given Loom home, without resolving (or migrating) the home —
+ * read-only callers (`loom service status`) pass `<stateRootHome>/.loom`.
+ */
+export function sessionPathUnder(home: string): string {
   // Explicit --profile must beat LOOM_SESSION inherited from parent agent run
   if (activeProfileExplicit && activeProfile) {
     return join(home, "profiles", `${activeProfile}.json`);

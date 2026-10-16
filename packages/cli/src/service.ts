@@ -56,6 +56,7 @@ import {
   loadBridgeConfig,
   loadSession,
   loomDir,
+  normalizeSession,
   parseLaunchctlPrint,
   parseLaunchctlPrintDisabled,
   parseServiceMarker,
@@ -69,6 +70,7 @@ import {
   serviceProfileNameCheck,
   serviceTargetPaths,
   sessionPath,
+  sessionPathUnder,
   setActiveProfile,
   stateRootHome,
   topLevelToBinding,
@@ -124,33 +126,69 @@ export interface ServiceDeps {
 
 const REAL_PROGRAMS = new Set(["launchctl", "systemctl", "loginctl"]);
 
+/** SIGKILL the child — its whole process group when it leads one (best effort). */
+function killChild(pid: number, group: boolean): void {
+  if (group) {
+    try {
+      process.kill(-pid, "SIGKILL");
+      return;
+    } catch {
+      /* group gone or not a leader — fall back to the pid */
+    }
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    /* already gone */
+  }
+}
+
 /**
  * Spawn the real service manager. Refuses under `LOOM_TEST_HOME` (R9) and anything but
- * launchctl / systemctl / loginctl; the child is SIGKILLed after `timeoutMs`.
+ * launchctl / systemctl / loginctl. After `timeoutMs` the child is SIGKILLed and this call still
+ * waits for its exit (and its pipes) before resolving — nothing it spawned outlives the result
+ * (P4 verify L1). `group` (read-only doctor / status queries): the child leads its own process
+ * group and the whole group is killed, so a forking stand-in cannot leave a grandchild behind.
  */
-async function spawnServiceManager(argv: string[], timeoutMs: number): Promise<ServiceRunnerResult> {
+async function spawnServiceManager(
+  argv: string[],
+  timeoutMs: number,
+  group = false,
+): Promise<ServiceRunnerResult> {
   if (process.env.LOOM_TEST_HOME) return { code: 1, stdout: "", stderr: R9_MESSAGE };
   const program = argv[0] ?? "";
   if (!REAL_PROGRAMS.has(program)) {
     return { code: 1, stdout: "", stderr: `loom service: refusing to run "${program}"` };
   }
+  let proc: ReturnType<typeof Bun.spawn>;
   try {
-    const proc = Bun.spawn({
+    proc = Bun.spawn({
       cmd: argv,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
-      timeout: timeoutMs,
-      killSignal: "SIGKILL",
+      ...(group ? { detached: true } : {}),
     });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { code, stdout, stderr };
   } catch (e) {
     return { code: 127, stdout: "", stderr: e instanceof Error ? e.message : String(e) };
+  }
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    killChild(proc.pid, group);
+  }, timeoutMs);
+  try {
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout as ReadableStream).text(),
+      new Response(proc.stderr as ReadableStream).text(),
+      proc.exited,
+    ]);
+    if (timedOut) {
+      return { code: 137, stdout, stderr: `no answer within ${timeoutMs / 1000} s — killed` };
+    }
+    return { code, stdout, stderr };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -188,7 +226,24 @@ type Ctx = {
   names: ServiceNames;
   paths: ServiceTargetPaths;
   home: string;
+  /** `<loom home>/bridge` — `loomDir()` for the verbs, `<home>/.loom` for read-only status. */
+  bridgeDir: string;
+  /** status only: the session read without resolving the home (null = none). */
+  roSession: LoomSession | null;
+  /** deps.inspectLock was injected (tests) — else status inspects the lock under `bridgeDir`. */
+  customInspect: boolean;
 };
+
+/** Read-only session load (no home resolution / migration) — doctor's `loadSessionReadOnly`. */
+function readSessionAt(file: string): LoomSession | null {
+  try {
+    const text = readFileSync(file, "utf8").trim();
+    if (!text) return null;
+    return normalizeSession(JSON.parse(text) as LoomSession);
+  } catch {
+    return null;
+  }
+}
 
 type SvcState = {
   /** classification of the read query (`no_domain` / `no_bus` = manager unreachable). */
@@ -222,9 +277,9 @@ function testHomes(d: ServiceDeps): string[] {
 }
 
 /** P3 verify M: any LOOM_TEST_HOME (process or injected) must contain every target. */
-function testHomeViolation(d: ServiceDeps, profile: string, paths: ServiceTargetPaths): string | null {
+function testHomeViolation(d: ServiceDeps, logPath: string, paths: ServiceTargetPaths): string | null {
   const roots = testHomes(d);
-  const targets = [paths.unitPath, bridgeLogPath(profile)];
+  const targets = [paths.unitPath, logPath];
   if (paths.kind === "systemd") targets.push(paths.wantsLinkPath);
   for (const root of roots) {
     for (const t of targets) {
@@ -258,24 +313,46 @@ export async function runServiceCommand(
     return 1;
   }
   if (opts.profile) setActiveProfile(opts.profile, { explicit: true });
-  const profile = resolveBridgeProfile();
+  const home = serviceHome();
+  // P4 verify L3: `status` is read-only — doctor's home rule (`<home>/.loom`, never `loomDir()`,
+  // which may migrate a legacy ~/.fable), session and profile read from there.
+  const readOnly = verb === "status";
+  const roLoom = join(home, ".loom");
+  const roSession = readOnly ? readSessionAt(sessionPathUnder(roLoom)) : undefined;
+  const profile = resolveBridgeProfile(roSession);
   const check = serviceProfileNameCheck(profile);
   if (!check.ok) {
-    if (verb === "status") {
+    if (readOnly) {
       d.out(`service: ${check.message}`);
       return 0;
     }
     d.err(check.message);
     return 1;
   }
-  const home = serviceHome();
+  const bridgeDir = readOnly ? join(roLoom, "bridge") : join(loomDir(), "bridge");
+  // P4 verify L2: loomDir() is cached, serviceHome() is not — every loomDir-derived path (bridge
+  // dir: config · status · lock · log) must sit under the service home, else refuse.
+  if (!isUnder(bridgeDir, home)) {
+    d.err(`loom service: ${bridgeDir} is outside the service home (${home}) — refusing`);
+    return 1;
+  }
   const paths = serviceTargetPaths(home, profile, d.platform);
-  const outside = testHomeViolation(d, profile, paths);
+  const outside = testHomeViolation(d, bridgeLogPath(profile, bridgeDir), paths);
   if (outside) {
     d.err(outside);
     return 1;
   }
-  const ctx: Ctx = { d, kind, profile, names: serviceNames(profile), paths, home };
+  const ctx: Ctx = {
+    d,
+    kind,
+    profile,
+    names: serviceNames(profile),
+    paths,
+    home,
+    bridgeDir,
+    roSession: roSession ?? null,
+    customInspect: deps.inspectLock !== undefined,
+  };
   switch (verb as Verb) {
     case "install":
       return install(ctx, opts.force === true);
@@ -861,23 +938,18 @@ async function status(c: Ctx): Promise<number> {
   const { d } = c;
   const name = c.kind === "launchd" ? c.names.label : c.names.unitName;
   d.out(`service: ${name} (${c.paths.unitPath})`);
-  let relayUrl: string | null = null;
-  try {
-    relayUrl = loadSession()?.relayUrl ?? null;
-  } catch {
-    /* no session → no loopback row */
-  }
+  // P4 verify L3: everything below reads under c.bridgeDir (`<home>/.loom/bridge`) — never loomDir().
   const section = await serviceDoctorSection({
     runner: d.runner,
     platform: d.platform,
     uid: d.uid,
     home: c.home,
-    bridgeDir: join(loomDir(), "bridge"),
+    bridgeDir: c.bridgeDir,
     profile: c.profile,
-    relayUrl,
+    relayUrl: c.roSession?.relayUrl ?? null,
     currentPath: d.env.PATH ?? "",
     cliBridgeMainPath: d.bridgeMainPath,
-    inspectLock: () => d.inspectLock(c.profile),
+    inspectLock: (lockPath) => (c.customInspect ? d.inspectLock(c.profile) : inspectBridgeLockAt(lockPath)),
   });
   for (const l of section.lines) d.out(`  ${l.status.padEnd(4)} ${l.message}`);
   return 0;
@@ -892,6 +964,8 @@ export const SERVICE_READ_VERBS: readonly string[] = ["print", "print-disabled",
 const READ_VERB_SET: ReadonlySet<string> = new Set(SERVICE_READ_VERBS);
 /** R12: hard per-call bound. */
 const READ_TIMEOUT_MS = 2_000;
+/** Real read child: killed this much before the race timer, so it is reaped before we return. */
+const REAP_MARGIN_MS = 250;
 const DEFAULT_AGENT_BINS: Record<string, string> = { claude: "claude", codex: "codex", grok: "grok" };
 const AGENT_KINDS = Object.keys(DEFAULT_AGENT_BINS);
 
@@ -1098,8 +1172,11 @@ export async function gatherServiceInput(p: ServiceProbeDeps): Promise<ServiceSe
   if (!isLoomServiceFile(text, p.profile)) return { kind: "foreign", name, unitPath };
 
   const ms = Math.min(p.timeoutMs ?? READ_TIMEOUT_MS, READ_TIMEOUT_MS);
+  // P4 verify L1: the real child is killed (group) and awaited BEFORE the race timer fires, so a
+  // hung launchctl / systemctl / loginctl never outlives the CLI's exit.
+  const reapMs = Math.max(ms - REAP_MARGIN_MS, 100);
   const run: ServiceRunner =
-    p.runner === realServiceRunner ? (argv) => spawnServiceManager(argv, ms) : p.runner;
+    p.runner === realServiceRunner ? (argv) => spawnServiceManager(argv, reapMs, true) : p.runner;
   let state: ServiceProbe<ServiceManagerState>;
   let disabled: ServiceProbe<boolean | null> | undefined;
   let linger: ServiceProbe<"yes" | "no"> | undefined;
