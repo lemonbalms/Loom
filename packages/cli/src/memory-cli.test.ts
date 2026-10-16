@@ -26,9 +26,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { foldMemoryLines, memoryPaths } from "../../host/src/memory-store";
-import { roomKey } from "../../host/src/room-event-log";
-import { BUNDLED_RULES, loadRules } from "../../host/src/rules-store";
+import { BUNDLED_RULES, foldMemoryLines, loadRules, memoryPaths, roomKey } from "@loom/host";
 import {
   type MemoryCliDeps,
   runMemoryCommand,
