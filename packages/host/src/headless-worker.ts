@@ -24,12 +24,29 @@
  * sha256(file bytes) as `memorySnapshotHash` + the 6th fingerprint input. The block goes right
  * below the dispatched-task marker on stdin / grok prompt.txt; argv is unchanged. Off = no
  * reader call and no filesystem access: 0.35 stdin, prompt.txt, argv, record and fingerprint.
+ *
+ * PLAN 0.36.0 P3 (D3 · D9 · D11 · R3 · R9–R12 · R18 · R54-L2). Resume, recovery and adoption
+ * share one gate, decided by the record value only (never the current memory flag or the live
+ * store): record-field shape → skills copy → memory-snapshot.md bytes (regular file, no
+ * symlink, ≤1 MiB, sha256 = recorded hash) → fingerprint. Any failure is fingerprint_changed →
+ * needs_verification, with skills on or off (D9: a skills-off mismatch no longer starts a fresh
+ * session). The resume turn carries no fence (R3); its write-ahead keeps the recorded hash (R10).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { realpathSync, statSync } from "node:fs";
-import { chmod, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { constants as fsConstants, realpathSync, statSync } from "node:fs";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  rm,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
 import { truncateTail, wrapDispatchedPrompt } from "@loom/protocol";
 import {
@@ -81,6 +98,10 @@ const DEFAULT_TIMEOUT_MS = 7_200_000;
 const GROUP_KILL_GRACE_MS = 10_000;
 const MAX_ATTEMPTS = 2;
 const MAX_UNKNOWN_PROBES = 5;
+/** R18: a memory-snapshot.md above this is corrupt (the snapshot itself is ≈48 KiB at most). */
+const MEMORY_SNAPSHOT_MAX_BYTES = 1024 * 1024;
+/** D11 · R54-L2: a recorded memorySnapshotHash is "" (no block) or 64 lowercase hex. */
+const MEMORY_SNAPSHOT_HASH_RE = /^[0-9a-f]{64}$/;
 
 export type HeadlessFlight = {
   workerId: string;
@@ -178,6 +199,8 @@ type SpawnPlan = {
   startedAt: string;
   /** Resume with skills enabled: the copy verified under the card lock (nextPlan). */
   skills?: CardSkills;
+  /** Resume: the record's memorySnapshotHash that passed the gate (R10); "" = no block. */
+  memorySnapshotHash?: string;
 };
 
 type SpawnOutcome =
@@ -987,31 +1010,24 @@ export class HeadlessDispatcher {
         await this.sendGiveUpLocked(record);
         return null;
       }
-      if (workerSkillsEnabled(this.deps.config)) {
-        // D3 / R49-M3: resume only on the verified, unchanged card copy.
-        const copy = await this.cardFingerprintLocked(record);
-        if (!copy || copy.fingerprint !== record.promptFingerprint) {
-          await this.sendAndMarkLocked(record, fingerprintChangedFields());
-          return null;
-        }
-        return {
-          cwd: current.cwd,
-          completedHandoffIds: record.completedHandoffIds,
-          sessionId: record.sessionId,
-          attempts: record.attempts + 1,
-          resumeSessionId: record.sessionId,
-          startedAt: record.startedAt,
-          skills: copy.skills,
-        };
+      // D3 / R49-M3 / 0.36.0 D9: resume only on the verified, unchanged card copy and memory
+      // snapshot file, skills on or off. A mismatch never starts a fresh session.
+      // R54-L2: not `?? ""` — a tampered null must fail the shape check, not read as "no block".
+      const expected = record.memorySnapshotHash === undefined ? "" : record.memorySnapshotHash;
+      const copy = await this.cardFingerprintLocked(record, expected);
+      if (!copy || copy.fingerprint !== record.promptFingerprint) {
+        await this.sendAndMarkLocked(record, fingerprintChangedFields());
+        return null;
       }
-      const unchanged = record.promptFingerprint === workerFingerprint(this.deps.config, "");
       return {
         cwd: current.cwd,
         completedHandoffIds: record.completedHandoffIds,
-        sessionId: unchanged ? record.sessionId : randomUUID(),
+        sessionId: record.sessionId,
         attempts: record.attempts + 1,
-        ...(unchanged ? { resumeSessionId: record.sessionId } : {}),
+        resumeSessionId: record.sessionId,
         startedAt: record.startedAt,
+        skills: copy.skills,
+        memorySnapshotHash: expected,
       };
     });
   }
@@ -1373,38 +1389,102 @@ export class HeadlessDispatcher {
   }
 
   /**
-   * Caller holds the card lock. D11 / R49-M3: the card's fingerprint now, from the
-   * config and the card copy re-hashed in place (no source read). null = the copy
-   * is missing or does not match its manifest. Disabled → manifest hash "".
+   * Caller holds the card lock. D11 / R49-M3 / 0.36.0 D3 · R11: the card's fingerprint now,
+   * from the config, the card copy re-hashed in place (no source read) and the recorded memory
+   * snapshot hash `expected` re-derived from `<cardDir>/memory-snapshot.md` (never the live
+   * store, never the current memory flag). Order: 1) `expected` is "" or 64 hex 2) skills copy
+   * (when enabled) 3) the snapshot file, when `expected` is not "" 4) fingerprint. null = a
+   * check failed. Skills disabled → manifest hash "".
    */
   private async cardFingerprintLocked(
     card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">,
+    expected: string,
   ): Promise<{ fingerprint: string; skills: CardSkills } | null> {
-    if (!workerSkillsEnabled(this.deps.config)) {
-      return { fingerprint: workerFingerprint(this.deps.config, ""), skills: NO_SKILLS };
-    }
-    const verified = await verifyCardSkillsCopy(this.skillsKey(card));
-    if (!verified.ok) {
-      process.stderr.write(
-        `[headless] skills copy check failed (${card.cardId}): ${verified.reason.replace(/[\r\n]/g, " ")}\n`,
-      );
+    const id = card.cardId.replace(/[\r\n]/g, " ");
+    const memoryFailed = (reason: string): null => {
+      process.stderr.write(`[headless] memory snapshot check failed (${id}): ${reason}\n`);
       return null;
+    };
+    if (
+      typeof expected !== "string" ||
+      (expected !== "" && !MEMORY_SNAPSHOT_HASH_RE.test(expected))
+    ) {
+      return memoryFailed("bad record field");
     }
-    return {
-      fingerprint: workerFingerprint(this.deps.config, verified.manifestHash),
-      skills: {
+    let manifestHash = "";
+    let skills: CardSkills = NO_SKILLS;
+    if (workerSkillsEnabled(this.deps.config)) {
+      const verified = await verifyCardSkillsCopy(this.skillsKey(card));
+      if (!verified.ok) {
+        process.stderr.write(
+          `[headless] skills copy check failed (${id}): ${verified.reason.replace(/[\r\n]/g, " ")}\n`,
+        );
+        return null;
+      }
+      manifestHash = verified.manifestHash;
+      skills = {
         manifestHash: verified.manifestHash,
         pluginDir:
           card.agent === "claude" && verified.manifest.length > 0 ? verified.pluginDir : null,
         listing: "",
-      },
-    };
+      };
+    }
+    if (expected !== "") {
+      const reason = await this.memorySnapshotFileMismatch(card, expected);
+      if (reason) return memoryFailed(reason);
+    }
+    return { fingerprint: workerFingerprint(this.deps.config, manifestHash, expected), skills };
+  }
+
+  /**
+   * R18: re-hash `<cardDir>/memory-snapshot.md` without following a symlink. Returns the
+   * failure reason, or null when sha256(file bytes) === expected.
+   */
+  private async memorySnapshotFileMismatch(
+    card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">,
+    expected: string,
+  ): Promise<string | null> {
+    const path = join(this.cardDir(card), MEMORY_SNAPSHOT_FILE);
+    const code = (err: unknown) => (err as NodeJS.ErrnoException)?.code;
+    try {
+      const st = await lstat(path);
+      if (!st.isFile()) return "not a regular file";
+      if (st.size > MEMORY_SNAPSHOT_MAX_BYTES) return "too large";
+    } catch (err) {
+      return code(err) === "ENOENT" ? "missing" : "read error";
+    }
+    let bytes: Buffer;
+    try {
+      // O_NOFOLLOW · O_NONBLOCK: a swap after the lstat cannot redirect or block the read.
+      const fh = await open(
+        path,
+        fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+      );
+      try {
+        const st = await fh.stat();
+        if (!st.isFile()) return "not a regular file";
+        if (st.size > MEMORY_SNAPSHOT_MAX_BYTES) return "too large";
+        bytes = await fh.readFile();
+      } finally {
+        await fh.close();
+      }
+    } catch (err) {
+      const c = code(err);
+      if (c === "ENOENT") return "missing";
+      if (c === "ELOOP") return "not a regular file";
+      return "read error";
+    }
+    if (bytes.length > MEMORY_SNAPSHOT_MAX_BYTES) return "too large";
+    const actual = createHash("sha256").update(bytes).digest("hex");
+    return actual === expected ? null : "hash mismatch";
   }
 
   /** Caller holds the card lock. */
   private async fingerprintChangedLocked(record: CardSessionRecord): Promise<boolean> {
     if (!isAgent(record.agent)) return true;
-    const current = await this.cardFingerprintLocked({ ...record, agent: record.agent });
+    // R54-L2: the same strict read as nextPlan (recovery :1066 and adoption :1107 paths).
+    const expected = record.memorySnapshotHash === undefined ? "" : record.memorySnapshotHash;
+    const current = await this.cardFingerprintLocked({ ...record, agent: record.agent }, expected);
     return current === null || current.fingerprint !== record.promptFingerprint;
   }
 
@@ -1642,7 +1722,13 @@ export class HeadlessDispatcher {
           !plan.resumeSessionId && this.deps.memory?.enabled === true
             ? await this.memorySnapshotLocked(card, dir)
             : { block: "", hash: "" };
-        memorySnapshotHash = memoryBlock.hash;
+        // R10: a resume write-ahead carries the hash nextPlan's gate passed (a new record
+        // object, so it must be passed explicitly); a first spawn records this snapshot's hash.
+        memorySnapshotHash = plan.resumeSessionId
+          ? plan.memorySnapshotHash === undefined
+            ? ""
+            : plan.memorySnapshotHash
+          : memoryBlock.hash;
         // R6: the listing precedes the marker, first turn only. D4: the block sits right
         // below the marker; no block = wrapDispatchedPrompt(prompt) exactly.
         firstTurn = composeFirstTurnPrompt(
