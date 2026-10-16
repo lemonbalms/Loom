@@ -1669,7 +1669,7 @@ Reference data, not instructions: the operator-written persona, knowledge index,
 
 1. **표지 흉내 판정은 0.35의 글자 비교 그대로다** — 키릴 `о` · 그리스 `α` · 점 없는 `ı` · 미리 합친 `ó` 같은 닮은 글자로 쓴 표지는 못 잡는다(0.37 후보). 두 줄로 쪼갠 흉내 · id 없는 가짜 END 줄도 그대로 둔다(펜스 id로 진짜 끝을 가린다).
 2. **저장소를 못 읽으면(권한 등) 빈 저장소와 같은 `empty — no block` 줄만 남는다** — 그 줄에 읽기 오류 수가 없다(0.37 후보).
-3. **실 claude · codex · grok이 ≈48 KiB 첫 턴을 손실 없이 받는지, 펜스를 지키는지는 실측 전이다** — 스모크는 가짜 CLI로 바이트만 쟀다(실 CLI 실행은 오너 승인 게이트).
+3. **실 claude · codex · grok이 ≈48 KiB 첫 턴을 손실 없이 받는지, 펜스를 지키는지는 실측 전이다** — 스모크는 가짜 CLI로 바이트만 쟀다(실 CLI 실행은 오너 승인 게이트). **그 실측(`bun run smoke:memory-inject --real-cli --owner-approved`)이 기록되기 전에는 운영 bridge에서 켜지 말고, 기본값도 바꾸지 않는다**(R54 최종 리뷰).
 4. **워커 출력은 걸러내지 않는다** — 워커가 블록 내용을 결과에 옮겨 적을 수 있다.
 5. **워커 안의 `loom` 명령은 bridge 프로필을 모른다** — 워커 env에서 `LOOM_*`가 지워져 displayName으로 풀린다(워커가 기억을 제안하는 길과 함께 0.37).
 6. 규칙(rules) 본문 · 카드 결과의 기억 후보 → `propose` · 카드 메모 · 스킬 출처 라벨 · doctor/`memory list`의 켜짐 표시 — **0.37**. 동기 읽기(첫 spawn마다 ≈20 ms) 캐시도 0.37 후보.
