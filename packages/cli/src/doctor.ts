@@ -704,6 +704,8 @@ export type MemoryDoctorAgent = {
   entries: MemoryDoctorFile;
   /** Fold counts (zeros when entries.jsonl is absent); null = unreadable or over the scan size. */
   fold: MemoryDoctorCounts | null;
+  /** errno name when entries.jsonl exists but could not be read (EACCES …) — P4 verify L2. */
+  entriesReadError?: string;
   archive: MemoryDoctorFile;
   persona: MemoryDoctorFile;
 };
@@ -742,6 +744,7 @@ export type MemoryDoctorInput = {
 const MEMORY_DOCTOR_ACTIVE_CAP = 200;
 const MEMORY_DOCTOR_ENTRIES_MAX = 1024 * 1024;
 const MEMORY_DOCTOR_SCAN_KIB = 4096;
+const MEMORY_DOCTOR_IGNORED_SHOWN = 16;
 const PERSONA_DOCTOR_CAP = 8192;
 const INDEX_DOCTOR_CAP = 8192;
 const GUIDELINE_DOCTOR_CAP = 16384;
@@ -796,6 +799,13 @@ export function memorySection(input: MemoryDoctorInput): DoctorSection {
         });
         continue;
       }
+      if (a.entriesReadError !== undefined) {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}: entries.jsonl unreadable (${a.entriesReadError})`,
+        });
+        continue;
+      }
       const bytes = a.entries.state === "file" ? a.entries.bytes : 0;
       const reasons: string[] = [];
       if (bytes > MEMORY_DOCTOR_ENTRIES_MAX)
@@ -836,8 +846,15 @@ export function memorySection(input: MemoryDoctorInput): DoctorSection {
         });
       }
     }
-    for (const name of input.ignored) {
+    // P4 verify L4: at most 16 rows, then one summary row
+    for (const name of input.ignored.slice(0, MEMORY_DOCTOR_IGNORED_SHOWN)) {
       lines.push({ status: "info", message: `ignored entry ${name}` });
+    }
+    if (input.ignored.length > MEMORY_DOCTOR_IGNORED_SHOWN) {
+      lines.push({
+        status: "info",
+        message: `… ${input.ignored.length - MEMORY_DOCTOR_IGNORED_SHOWN} more ignored`,
+      });
     }
     if (input.agentScanCapped) {
       lines.push({ status: "info", message: "scan capped at 64 agent stores" });

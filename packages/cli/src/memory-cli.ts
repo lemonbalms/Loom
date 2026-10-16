@@ -194,17 +194,32 @@ function inspectUnder(base: string, segs: readonly string[], want: "file" | "dir
   return { state: "absent" };
 }
 
-/** Read a regular file without following a symlink; null when it changed under us. */
-function readNoFollow(path: string, max: number): string | null {
+type ReadOutcome =
+  | { ok: true; raw: string }
+  /** `unsafe` = became a symlink / non-regular / larger than `max` under us (raced). */
+  | { ok: false; kind: "unsafe" }
+  /** `unreadable` = open/read failed (EACCES, EIO, …) — `code` is the errno name. */
+  | { ok: false; kind: "unreadable"; code: string };
+
+function errnoName(err: unknown): string {
+  const code = (err as NodeJS.ErrnoException | null)?.code;
+  return typeof code === "string" && code.length > 0 ? code : "read error";
+}
+
+/** Read a regular file without following a symlink (P4 verify L2: EACCES is its own reason). */
+function readNoFollow(path: string, max: number): ReadOutcome {
   let fd: number;
   try {
     fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
-  } catch {
-    return null;
+  } catch (err) {
+    const code = errnoName(err);
+    return code === "ELOOP"
+      ? { ok: false, kind: "unsafe" }
+      : { ok: false, kind: "unreadable", code };
   }
   try {
     const st = fstatSync(fd);
-    if (!st.isFile() || st.size > max) return null;
+    if (!st.isFile() || st.size > max) return { ok: false, kind: "unsafe" };
     const buf = Buffer.alloc(st.size);
     let off = 0;
     while (off < buf.length) {
@@ -212,9 +227,9 @@ function readNoFollow(path: string, max: number): string | null {
       if (n <= 0) break;
       off += n;
     }
-    return buf.subarray(0, off).toString("utf8");
-  } catch {
-    return null;
+    return { ok: true, raw: buf.subarray(0, off).toString("utf8") };
+  } catch (err) {
+    return { ok: false, kind: "unreadable", code: errnoName(err) };
   } finally {
     closeSync(fd);
   }
@@ -224,9 +239,11 @@ type StoreView = {
   agentKey: string;
   dir: string;
   entriesPath: string;
-  state: "absent" | "ok" | "unsafe" | "oversize";
+  state: "absent" | "ok" | "unsafe" | "unreadable" | "oversize";
   /** First offending path when unsafe. */
   unsafeAt: string | null;
+  /** errno name when unreadable (P4 verify L2). */
+  readError: string | null;
   bytes: number;
   fold: MemoryFold | null;
 };
@@ -238,6 +255,7 @@ function readStore(loom: string, agentKey: string, max: number): StoreView {
     dir: p.dir,
     entriesPath: p.entries,
     unsafeAt: null,
+    readError: null,
     bytes: 0,
     fold: null,
   };
@@ -245,9 +263,12 @@ function readStore(loom: string, agentKey: string, max: number): StoreView {
   if (ins.state === "absent") return { ...base, state: "absent" };
   if (ins.state === "unsafe") return { ...base, state: "unsafe", unsafeAt: ins.at };
   if (ins.bytes > max) return { ...base, state: "oversize", bytes: ins.bytes };
-  const raw = readNoFollow(p.entries, max);
-  if (raw === null) return { ...base, state: "unsafe", unsafeAt: p.entries };
-  return { ...base, state: "ok", bytes: Buffer.byteLength(raw), fold: foldMemoryLines(raw) };
+  const r = readNoFollow(p.entries, max);
+  if (!r.ok && r.kind === "unreadable") {
+    return { ...base, state: "unreadable", readError: r.code, bytes: ins.bytes };
+  }
+  if (!r.ok) return { ...base, state: "unsafe", unsafeAt: p.entries };
+  return { ...base, state: "ok", bytes: Buffer.byteLength(r.raw), fold: foldMemoryLines(r.raw) };
 }
 
 type HumanFileView = {
@@ -514,6 +535,7 @@ function memoryList(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps): number
         entriesPath: a.store.entriesPath,
         state: a.store.state,
         ...(a.store.unsafeAt ? { unsafePath: a.store.unsafeAt } : {}),
+        ...(a.store.readError ? { readError: a.store.readError } : {}),
         entriesBytes: a.store.bytes,
         caps: {
           active: MEMORY_ACTIVE_CAP,
@@ -536,6 +558,10 @@ function memoryList(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps): number
     deps.stdout(`agent ${a.agentKey}  ${a.store.dir}`);
     if (a.store.state === "unsafe") {
       deps.stdout(`  entries: unreadable — ${a.store.unsafeAt} is a symlink or not a regular path`);
+    } else if (a.store.state === "unreadable") {
+      deps.stdout(
+        `  entries: unreadable — cannot read ${a.store.entriesPath} (${a.store.readError})`,
+      );
     } else if (a.store.state === "oversize") {
       deps.stdout(
         `  entries: not read — entries.jsonl is ${kib(a.store.bytes)} KiB (over ${LIST_READ_MAX_BYTES / 1024} KiB)`,
@@ -571,6 +597,9 @@ function memoryShow(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps, fail: F
   const store = readStore(deps.loomDir, agentKey, LIST_READ_MAX_BYTES);
   if (store.state === "unsafe") {
     return fail(`refusing ${store.unsafeAt}: symlink or not a regular path`);
+  }
+  if (store.state === "unreadable") {
+    return fail(`cannot read ${store.entriesPath} (${store.readError})`);
   }
   if (store.state === "oversize") {
     return fail(`entries.jsonl is ${kib(store.bytes)} KiB — too large to read`);
@@ -890,17 +919,22 @@ function doctorAgent(loom: string, agentKey: string): MemoryDoctorAgent {
   const entriesIns = inspectUnder(loom, ["memory", agentKey, "entries.jsonl"], "file");
   const entries = fileView(entriesIns);
   let fold: MemoryDoctorAgent["fold"] = null;
+  let entriesReadError: string | undefined;
+  let entriesView = entries;
   if (entries.state === "absent") {
     fold = counts(null);
   } else if (entriesIns.state === "file" && entriesIns.bytes <= DOCTOR_READ_MAX_BYTES) {
-    const raw = readNoFollow(entriesIns.path, DOCTOR_READ_MAX_BYTES);
-    if (raw !== null) fold = counts(foldMemoryLines(raw));
+    const r = readNoFollow(entriesIns.path, DOCTOR_READ_MAX_BYTES);
+    if (r.ok) fold = counts(foldMemoryLines(r.raw));
+    else if (r.kind === "unreadable") entriesReadError = r.code;
+    else entriesView = { state: "unsafe" };
   }
   return {
     agentKey,
     dir: "dir",
-    entries,
+    entries: entriesView,
     fold,
+    ...(entriesReadError !== undefined ? { entriesReadError } : {}),
     archive: fileView(inspectUnder(loom, ["memory", agentKey, "entries.archive.jsonl"], "file")),
     persona: fileView(inspectUnder(loom, ["memory", agentKey, "persona.md"], "file")),
   };

@@ -273,10 +273,14 @@ const BOOLEAN_FLAGS = new Set([
   "inject-handoffs",
   // PLAN 0.28.0 M3: quarantine ack key tag
   "presence",
-  // PLAN 0.35.0 P4: loom memory list --all · --json (memory · rules · skills)
-  "all",
-  "json",
 ]);
+
+/**
+ * PLAN 0.35.0 P4 (verify L1): `--all` / `--json` are boolean only for these commands — every
+ * other command keeps the old parse (`--profile all` · `--profile json` stay values).
+ */
+const MEMORY_COMMANDS: ReadonlySet<string> = new Set(["memory", "rules", "skills"]);
+const MEMORY_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["all", "json"]);
 
 function usage(): string {
   return `
@@ -374,7 +378,7 @@ function defaultDisplayName(): string {
   );
 }
 
-function parseArgs(argv: string[]) {
+function parseArgs(argv: string[], extraBoolean: ReadonlySet<string> = new Set()) {
   const args = argv.slice(2);
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
@@ -389,7 +393,7 @@ function parseArgs(argv: string[]) {
     if (a === "--help" || a === "-h") flags.help = true;
     else if (a.startsWith("--")) {
       const key = a.slice(2);
-      if (BOOLEAN_FLAGS.has(key)) {
+      if (BOOLEAN_FLAGS.has(key) || extraBoolean.has(key)) {
         flags[key] = true;
         continue;
       }
@@ -3295,7 +3299,12 @@ async function cmdRoomLeave() {
 }
 
 async function main() {
-  const { flags, positional, passthrough } = parseArgs(process.argv);
+  // The bare-word lookahead never consults the extra booleans, so a value such as
+  // `--profile all` / `--room all` parses the same either way.
+  const scoped = parseArgs(process.argv, MEMORY_BOOLEAN_FLAGS);
+  const { flags, positional, passthrough } = MEMORY_COMMANDS.has(scoped.positional[0] ?? "")
+    ? scoped
+    : parseArgs(process.argv);
   applyProfileFlags(flags);
 
   if (flags.help || positional[0] === "help" || positional.length === 0) {
