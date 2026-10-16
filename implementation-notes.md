@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-16 (0.35.0 memory / rules / skills 저장소) |
+| **Last updated** | 2026-10-16 (0.36.0 카드 시작 기억 스냅샷 + 펜스 주입) |
 
 ---
 
@@ -39,6 +39,48 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.36.0 — headless 워커 카드 시작 기억 스냅샷 + 펜스 주입 (업그레이드 4단계 2부a)
+
+PLAN §0.36.0 (R54 `approved-with-fixes` → `approved`) · 커밋 `b4ce7f6`(R54 게이트) → `fc1d4f6`(P1 red — D10b 뒤집기 포함) → `35af2ec`(P1 조건부 6번째 fingerprint 입력 + 펜스 렌더러) → `f66a12d`(P2 red + P1 검증 공백) → `a869a30`(P2 red 교정) → `38bf86c`(P2 첫 spawn 스냅샷 + 펜스 주입) → `ee5fb82`(P3 red + P2 검증 공백) → `67c2651`(P3 red 교정) → `50d7a37`(P3 resume/recovery 게이트 + D9) → `3b14a5f`(P4 red + P3 검증 경쟁 테스트) → `feeb9e7`(P4 `worker.memory.enabled` + `HeadlessDeps` profile/memory 배선) → `a58dcba`(스모크 + 기록) → PATCH 5 문서(이 절). 독립 검증 Opus 5.5 xhigh(P1 · P2 · P3 · P4 각 1회) · 자문 fable-advisor · P5 문서·스모크 = Claude Opus 5.5 서브에이전트.
+
+**Deviations (계획 대비 실행 방식):**
+
+| Date | Plan / review ref | Deviation (what we did) | Why conservative | Follow-up |
+|------|-------------------|-------------------------|------------------|-----------|
+| 2026-10-16 | P1 ② 렌더러 | **(1) P1:** `renderMemoryBlock`은 빈 text 조기 반환 **전에** nonce를 검사한다 — 잘못된 nonce는 빈 text에서도 throw. | 잘못된 seam이 빈 저장소에서 숨지 않게. | — |
+| 2026-10-16 | P1 테스트 | **(2) P1:** `stableStringify`는 `agent-argv.ts` 안 private — `memory-inject.test.ts`가 로컬 사본을 둔다(`headless-argv.test.ts` 선례). | `agent-argv.ts` diff를 6번째 입력에 한정(Done when (f)). | — |
+| 2026-10-16 | P1 D10b · R54-M1 | **(3) P1:** import 가드를 테스트 셋으로 나눔(정규식 표본 · 허용 importer · `headless-worker.ts` 필수 — 마지막은 P2 green까지 예정된 red). | 실패 원인을 이름으로 구분. | — |
+| 2026-10-16 | P1 검증 V-L4 · 계급 11/13 | **(4) P1 검증(코드 변경 0):** 잠긴 `containsMarker`는 닮은 글자 표지(키릴 о · 그리스 α · 점 없는 ı · NFKC 합성 ó)를 놓친다 — 손실 계급 11/13에 기록. | `skill-prompt.ts` diff = `export` 한 단어(Done when (f)) 유지. | 0.37 후보: NFKD + `\p{M}` 제거 + confusables 골격. |
+| 2026-10-16 | P1 검증 V-L1/2/3/5/6 | **(5) P1 검증:** 테스트 공백(CRLF·꼬리 공백 바이트 유지 · 40자 넘는 접두 뒤 표지 · zero-width/soft-hyphen 표지 · 넓힌 `IMPORT_RE` · `renderMemoryBlock("", bad)` throw)을 P2 red에 접어 넣음. | red/green 규율 유지. | — |
+| 2026-10-16 | ⑦ P2 red/green | **(6) P2:** red `f66a12d`와 green `38bf86c` 사이에 테스트만 커밋 `a869a30` — 하네스 결함: `mockRestore()`가 호출 기록을 지운 뒤 `toHaveBeenCalledWith`(→ call-through mock에서 인자 캡처) · 0500 카드 디렉터리 쓰기 실패 사례가 무효(`spawnOnce` `mkdir0700`이 되돌림) → 제거. 빈 디렉터리 아닌 차단 사례가 `memory-snapshot.md` 쓰기 실패를 계속 덮음. | production 0줄 · 무효 테스트를 남기지 않음. | — |
+| 2026-10-16 | R10 · ⑦ P3 | **(7) P2:** resume write-ahead hash(`SpawnPlan.memorySnapshotHash`, R10)는 ⑦ P3 행대로 P3에 넘김 — P3 전까지 resume write-ahead는 키를 빼고 5-입력 fingerprint. | PATCH 경계 준수. | P3에서 해소. |
+| 2026-10-16 | D2 · R5 | **(8) P2:** 스냅샷 text가 비어도 nonce를 뽑고 검사 — 잘못된 `memoryNonce` seam은 빈 저장소에서도 `spawn_setup_failed`. stderr `text <T> B` = 리더 text의 UTF-8 바이트(env redaction 전). | seam 오류를 숨기지 않음. | — |
+| 2026-10-16 | D2 ⑤ 원자 쓰기 | **(9) P2:** `memory-snapshot.md` 임시 파일을 mode 0600 + flag `"wx"`(배타)로 만든다. | 같은 이름 임시 파일 재사용 차단. | — |
+| 2026-10-16 | P2 검증 V-L1/V-L2 | **(10) P2 검증:** 테스트 공백 V-L1(꺼짐 경로 loadSpy 횟수를 `mockRestore` 뒤에 읽음 — 공허) · V-L2(tmp→rename 원자성 미고정)을 P3 red에 접음 · V-L3(resume에 블록 없음)은 P3 R3 테스트가 덮음. | red/green 규율. | — |
+| 2026-10-16 | P2 검증 · 계급 12 | **(11) P2 검증 메모:** 읽을 수 없는 저장소도 빈 저장소와 같은 `empty — no block` stderr 줄 — read_errors 수가 없다. | 리더 무접촉(D1 `memory-snapshot.ts` diff 0). | 0.37 후보. |
+| 2026-10-16 | ⑦ P3 red/green | **(12) P3:** red `ee5fb82`와 green `50d7a37` 사이에 테스트만 커밋 `67c2651` — (i) 테스트가 reason ≠ `needs_verification`을 단언했으나 파싱된 headless 결과는 모두 그 값 → output `done` + `fingerprint_changed` note 없음으로 단언 · biome 따옴표. | production 0줄. | — |
+| 2026-10-16 | R18 | **(13) P3:** R18 읽기 = lstat → `open(O_NOFOLLOW\|O_NONBLOCK)` → fstat 재검사 → 읽은 뒤 크기 재검사(lstat 뒤 바꿔치기 창을 닫음) · ELOOP → `not a regular file`. | 심링크·FIFO로 막히거나 우회되지 않게. | — |
+| 2026-10-16 | R11 사유 문구 | **(14) P3:** `bad record field`는 `[headless] memory snapshot check failed (<id>):` 접두로 기록 · 기존 skills-copy-failed stderr 줄도 cardId의 CR/LF를 공백으로 바꿈(기존 줄 소폭 변경). | 로그 줄 위조 차단. | — |
+| 2026-10-16 | R3 recovery | **(15) P3:** `recover()`는 prompt `""`로 카드를 다시 만든다 — recovery resume 본문 = `RESUME\n\n` + `wrapDispatchedPrompt("")`(기존 동작, 이제 고정). | 동작 변경 0 · 테스트로 고정. | — |
+| 2026-10-16 | P3 테스트 | **(16) P3:** "read error" 테스트는 root로 돌 때 건너뜀. | root는 모드 비트를 무시. | — |
+| 2026-10-16 | P3 검증 L1 | **(17) P3 검증:** 바꿔치기 하드닝(O_NOFOLLOW/O_NONBLOCK/fstat)에 커밋된 테스트가 없었음 → 경쟁 테스트를 P4 red에 접음(프로브 `p3v-probe.test.ts`). | red/green 규율. | — |
+| 2026-10-16 | D9 · 업그레이드 메모(문서) | **(18) P3 검증(I1, 문서):** D9는 실제로 거의 관측되지 않는다 — 0.35도 recovery/adopt 불일치는 `fingerprintChangedLocked`로 이미 `needs_verification`이었고, 지운 `randomUUID` 갈래는 같은 프로세스 안에서만 닿았으며 `headlessConfig`는 한 번 만들어진다(`bridge-runtime.ts:881`). PLAN 업그레이드 메모의 예(권한/정책 편집)는 0.35에서도 이미 `needs_verification` — P5 문서에서 정정. 메모리 꺼짐 0.35→0.36 업그레이드: resume 8/8 무변경(`5fa8167`이 쓴 레코드로 확인). | 과장된 동작 변경 고지를 바로잡음. | PLAN Known limits에 기록(P5). |
+| 2026-10-16 | P4 테스트 배치 | **(19) P4:** bridge-config memory 테스트는 새 `bridge-config-memory.test.ts`(기존 `bridge-config.test.ts` 없음). | 고정 테스트 파일 무편집. | — |
+| 2026-10-16 | R16 | **(20) P4:** R16 추가 사례 — profile 생략(`resolveBridgeProfile` → displayName 예 `node/wsl-1` → 해시형 agentKey 저장소 읽기) · `{enabled:false}` · bridge는 재기동마다 세션 파일을 다시 읽음. | 해시형 · 꺼짐 갈래까지 덮음. | — |
+| 2026-10-16 | R16 결과 단언 | **(21) P4:** R16 결과는 `failed`/`needs_verification`으로 단언(끝난 headless 카드의 정상 모양). | 실제 결과 모양에 맞춤. | — |
+| 2026-10-16 | R1 파서 순서 | **(22) P4:** `parseMemory`는 `workerConfigFromParts`/`parseAgentBin` 뒤에 돈다 — 무효 절이 여럿이면 앞의 오류가 이긴다. | 기존 오류 우선순위 무변경. | — |
+| 2026-10-16 | R18 테스트 | **(23) P4:** 경쟁 테스트와 함께 비경쟁 테스트 둘(스냅샷 자리에 디렉터리 / FIFO). | `not a regular file` 갈래 고정. | — |
+| 2026-10-16 | UK-6 · D8 (문서) | **(24) P4 검증(UK-6 실측):** 같은 env 프로필 13/13 일치(CLI 쓰기 저장소 == bridge 읽기 저장소) — `--profile` · `LOOM_PROFILE` · `LOOM_SESSION` 조합 · 해시형 displayName · 서비스 유닛 4행 포함. 문서: 서비스 유닛은 `LOOM_SESSION`을 고정하므로 보통 셸의 `loom memory add`는 다른 저장소에 쓸 수 있다 — `--profile <서비스 프로필>`(또는 `LOOM_SESSION`). 0.37 메모: 워커의 scrubbed env(`LOOM_*` 없음)로 친 CLI는 bridge 프로필이 아닌 displayName으로 풀린다 — 워커 제안 기억에 중요. | USER_GUIDE §20.11에 명시. | 0.37. |
+| 2026-10-16 | D5 다운그레이드(문서) | **(25) P4 검증(문서):** 0.35 바이너리는 `worker.memory`를 조용히 무시(꺼짐)하고, 0.35 저장(예: `bridge start --allow`)은 설정 파일에서 그 키를 지운다 — 다운그레이드 노트. | USER_GUIDE §20.11에 명시. | — |
+| 2026-10-16 | R1 런타임 | **(26) P4 검증(낮음, 동등 변이):** 런타임 `memory.enabled === true`는 고정되지 않은 추가 안전장치(파서가 이미 불리언을 보장). | 보수적 이중 검사 유지. | — |
+| 2026-10-16 | P5 스모크 형 | **(27) P5:** 스모크 안쪽 프로세스는 relay·herdr를 띄운 bridge가 아니라 **bridge 설정 경로**(`loadBridgeConfig(resolveBridgeProfile())` → `workerConfigFromBridge` → `headlessAgentCommands` → `bridge-runtime.ts`의 memory 식)로 `HeadlessDispatcher`를 만든다 · 카드 완료 판정 = 결과 output `done`(상태 `failed`/`needs_verification`이 정상 — (21)). | 스모크는 바이트·hash·프로필을 재고, 실 bridge 배선은 R16 테스트가 덮음. | — |
+| 2026-10-16 | P5 가드 · R54-M3 | **(28) P5:** bun의 `os.userInfo().homedir`가 `$HOME`을 따르므로 안쪽 프로세스(HOME=T)는 실 홈을 스스로 알 수 없다 → 바깥이 실 홈을 argv로 넘기고 안쪽이 같은 모드별 가드 + `loomDir()` ⊂ `LOOM_TEST_HOME`을 다시 검사 · 실 홈 비교에 `~/Library/LaunchAgents`(엄격, 깊이 1)를 더함. | 이중 가드 · OS 서비스 무접촉 확인. | — |
+| 2026-10-16 | P5 `--real-cli` | **(29) P5:** `--real-cli`는 `--owner-approved`가 함께 없으면 exit 2(아무것도 만들기 전) — 구현만, **실행 0**(오너 승인 없음). | 실 CLI 실행은 오너 게이트(R54-M3). | UK-1 · UK-3 실측은 오너 승인 뒤. |
+
+**⑥ 밖 변경:** 없음 — P5의 production 변경은 버전 문자열 셋(CLI `VERSION` · `BRIDGE_VERSION` · MCP `serverInfo`)과 dist뿐. (14)의 skills-copy-failed stderr 줄 CR/LF 치환은 P3 green 안의 `headless-worker.ts`(⑥ 안).
+
+**Known limits (이 버전이 보장하지 않는 것 — PLAN ⑤ 수용 손실 계급 5 · 10~16 + 무번호 2):** 카드 시작 뒤 승인된 기억은 그 카드에 안 보임(5 — 설계) · 변조 = `needs_verification`으로 멈춤(10) · 표지 위장 무력화는 줄 단위 · 닮은 글자 놓침(11 · (4)) · 첫 spawn 동기 읽기(12 — 스모크 실측 `load_ms` 중앙값 16–17 ms · 최대 24–25 ms(2회), 가짜 CLI) · 펜스는 권고(13 — UK-3 미실측) · 워커 출력 redaction 없음(14) · D9 동작 변경(15 — 실제로 거의 관측 안 됨, (18)) · 읽을 수 없는 저장소 = 빈 줄과 같은 로그((11)) · 워커 scrubbed env의 CLI 프로필((24) — 0.37) · **실 CLI가 ≈48 KiB 첫 턴을 받는지 미실측**(UK-1 — 실 CLI 실행 0).
 
 ### §0.35.0 — memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더 (업그레이드 4단계 1부)
 

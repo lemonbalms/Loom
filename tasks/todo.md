@@ -19,8 +19,8 @@
    3단계 완료.
 4. [ ] **4단계 — memory / rules / skills 저장소** (분할 — PLAN §0.35.0 D1 · §0.36.0 D1)
    - [x] **1부 — v0.35.0 저장소 + CLI + 순수 스냅샷 리더** (shipped `5fa8167`) — `031aea1` P1 → … → `57e2eeb` P2 검증 교정 → `2b7c9fc` P3 검증 교정 → `dd87870` P4 → `f6253c3` P4b `redact.ts` 선형화 → `c6b6ea5` P4 검증 교정 → `9e92375` 스모크 → PATCH 5(USER_GUIDE §20 · PROTOCOL · implementation-notes §0.35.0 · VERSION 0.35.0 · 스모크 `MEMORY-SMOKE-0350.md` 18/18). Done when (a)~(k). 워커·프롬프트·bridge 변경 0.
-   - [ ] **2부a — v0.36.0 headless 워커 카드 시작 기억 스냅샷 + 펜스 주입** — PLAN §0.36.0 `approved`(R54 approved-with-fixes, M1·M2·M3·L1·L2 반영, no R54b). 다음 = **P1**(red = `memory-snapshot.test.ts` D10b 뒤집기 + `memory-inject.test.ts`, 테스트 파일만 · "`headless-worker.ts` 필수" 단언은 P2 green까지 예정된 red) → P2 첫 spawn 주입 → P3 resume·recovery 게이트(D9) → P4 bridge 설정·profile → P5 스모크 `smoke:memory-inject`·문서. 기본 꺼짐 = 0.35 바이트 동일 · `ARGV_TEMPLATE_VERSION` 무변경. 완료 기준 (a) 인도.
-   - [ ] **2부b — v0.37.0 기억 제안 · 규칙 · 정책 정직성**(다음 후보 — 완료 기준 (c) 옵션 ii 체크리스트 · 다시 나뉠 수 있음)
+   - [x] **2부a — v0.36.0 headless 워커 카드 시작 기억 스냅샷 + 펜스 주입** — `fc1d4f6` P1 red → `35af2ec` P1 → `f66a12d`/`a869a30` P2 red → `38bf86c` P2 → `ee5fb82`/`67c2651` P3 red → `50d7a37` P3(D9) → `3b14a5f` P4 red → `feeb9e7` P4 → `a58dcba` 스모크 → PATCH 5(USER_GUIDE §20.11 · PROTOCOL · implementation-notes §0.36.0 (1)~(29) · VERSION 0.36.0 · 스모크 `MEMORY-INJECT-SMOKE-0360.md` 7/7). 기본 꺼짐 = 0.35 바이트 동일 · `ARGV_TEMPLATE_VERSION` 무변경. 완료 기준 (a) 인도. **`--real-cli` 스모크는 오너 명시 승인 대기 — 미실행.**
+   - [ ] **2부b — v0.37.0 기억 제안 · 규칙 · 정책 정직성**(**다음** — PLAN MINOR + 리뷰 · 완료 기준 (c) 옵션 ii 체크리스트 · 다시 나뉠 수 있음)
 5. [ ] **5단계 — 프롬프트 조립** (미착수)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.

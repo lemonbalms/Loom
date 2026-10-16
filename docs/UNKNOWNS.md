@@ -42,7 +42,7 @@
 
 ## Gate log
 
-### 0.36.0 — headless 워커 카드 시작 기억 스냅샷 + 펜스 주입 (`approved` — R54 approved-with-fixes)
+### 0.36.0 — headless 워커 카드 시작 기억 스냅샷 + 펜스 주입 (`approved` — R54 approved-with-fixes · implemented 2026-10-16)
 
 | Field | Value |
 |-------|-------|
@@ -62,15 +62,15 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R54 판정 |
 |---|------|-------------|----------|
-| UK-1 | 실 CLI 첫 턴 크기 수용 — 블록 ≈48 KiB + 머리 + 목록 ≤4 KiB(0.35 UK-3 승계) | 스모크 = 가짜 CLI 바이트만 · 실 CLI는 `--real-cli` + 오너 승인 | **open, 비차단** — `--real-cli`는 안쪽 프로세스 실 HOME · `LOOM_TEST_HOME`만 tmpdir 가드(R54-M3) |
-| UK-2 | 첫 spawn 정지 시간 — 카드 락 안 동기 읽기 ≤4 MiB + redaction + 쓰기(0.35 UK-5 승계) | 캐시 없음(계급 12) · 스모크 `load_ms` 기록 → 0.37 mtime 캐시/async 결정 | **open, 비차단** |
-| UK-3 | 펜스 준수 — 에이전트가 기억을 자료로 다루는지 | 권고 경계(계급 13) · CI 측정 불가 | **open, 비차단** |
-| UK-4 | 무력화 오탐 — 실제 persona/guideline에서 `containsMarker` 적중 빈도 | 자리표시 + 셈 + stderr(계급 11) | **open, 비차단** |
-| UK-5 | env 값 redaction이 사람 문장을 바꾸는 정도 | `env_redacted` 표시 | **open, 비차단** |
-| UK-6 | profile 일관성 — bridge와 CLI가 같은 agentKey(0.35 UK-1 승계) | D8 · R16 테스트(headless) · pane/sticky host 주입 0 | **open, 비차단** — **R54-M2 실측 1건 추가:** 스모크 dist CLI 자식은 `resolveBridgeProfile`로 풀어 임시 홈에서 `default`가 된다(`memory-cli.ts:860-877`) → 모든 CLI 자식 `LOOM_PROFILE=smoke` · ⓪ `memory list` 머리 `profile smoke (from LOOM_PROFILE)` 단언 · 디스패처 `claude.smoke`와 일치(R16 짝) |
+| UK-1 | 실 CLI 첫 턴 크기 수용 — 블록 ≈48 KiB + 머리 + 목록 ≤4 KiB(0.35 UK-3 승계) | 스모크 = 가짜 CLI 바이트만 · 실 CLI는 `--real-cli` + 오너 승인 | **open, 비차단** — `--real-cli`는 안쪽 프로세스 실 HOME · `LOOM_TEST_HOME`만 tmpdir 가드(R54-M3). **ship: 가짜 CLI 바이트만 실측** — 상한 근처 저장소에서 블록 47874 B · 첫 턴 48063 B(skills 꺼짐) · 세 가짜 CLI 모두 바이트 손실 0(`MEMORY-INJECT-SMOKE-0360.md` ④). 실 CLI 실행 0(오너 승인 없음) |
+| UK-2 | 첫 spawn 정지 시간 — 카드 락 안 동기 읽기 ≤4 MiB + redaction + 쓰기(0.35 UK-5 승계) | 캐시 없음(계급 12) · 스모크 `load_ms` 기록 → 0.37 mtime 캐시/async 결정 | **open, 비차단** — **ship 실측(가짜 CLI · macOS arm64):** 상한 근처(entries.jsonl 4126862 B · persona/INDEX 8000 B · guideline 16000 B) 첫 spawn 15회 `load_ms` 중앙값 16–17 · 최대 24–25 ms(2회) · dispatch 전체 중앙값 ≈55 ms. 이 값만으로는 0.37 캐시 근거 약함 |
+| UK-3 | 펜스 준수 — 에이전트가 기억을 자료로 다루는지 | 권고 경계(계급 13) · CI 측정 불가 | **open, 비차단** — ship: 미측정(실 CLI 실행 0) |
+| UK-4 | 무력화 오탐 — 실제 persona/guideline에서 `containsMarker` 적중 빈도 | 자리표시 + 셈 + stderr(계급 11) | **open, 비차단** — 실제 persona 데이터 없음(미측정). 스모크 ③ = 심은 위조 1줄 → `neutralized 1`. 닮은 글자 미탐(impl-notes (4)) |
+| UK-5 | env 값 redaction이 사람 문장을 바꾸는 정도 | `env_redacted` 표시 | **open, 비차단** — 실제 데이터 미측정. 스모크 ③ = 심은 env 값 → `env_redacted yes` · 파일·stdin에 부재 |
+| UK-6 | profile 일관성 — bridge와 CLI가 같은 agentKey(0.35 UK-1 승계) | D8 · R16 테스트(headless) · pane/sticky host 주입 0 | **open, 비차단** — **R54-M2 실측 1건 추가:** 스모크 dist CLI 자식은 `resolveBridgeProfile`로 풀어 임시 홈에서 `default`가 된다(`memory-cli.ts:860-877`) → 모든 CLI 자식 `LOOM_PROFILE=smoke` · ⓪ `memory list` 머리 `profile smoke (from LOOM_PROFILE)` 단언 · 디스패처 `claude.smoke`와 일치(R16 짝). **ship 실측:** P4 검증 같은 env 13/13 일치(impl-notes (24)) · 스모크 ⓪ PASS · 서비스 유닛 `LOOM_SESSION` 고정 → 보통 셸 쓰기는 `--profile` 필요(USER_GUIDE §20.11) · 워커 scrubbed env CLI = displayName(0.37 메모) |
 | UK-7 | Windows — 원자 rename · 0600 · 심링크(0.35 UK-6 승계) | 테스트는 macOS/Linux | **unverified(Windows 환경 미사용), 비차단** |
 
-**Current decision:** D1~D11 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 amended) · 작성자 정밀화 R1~R18 · 락↔코드 불일치 C1(플래그 경로 — `WorkerConfig`가 `agent-argv.ts`에 있음 → `HeadlessDeps.memory`) · C2(import 가드 부분 문자열 → import 지정자) · 수용 손실 계급 5(실현) · 10~16 + 무번호 2행 · UK-1~UK-7. **R54 `approved-with-fixes` → M1·M2·M3·L1·L2 PLAN 반영 → PLAN `approved`(2026-10-16, no R54b)** · R1~R18 수용(R7→L1 · R10→L2 · R15→M1) · C1→R1 · C2→R15(M1 순서) · UK-1~UK-7 비차단. **Next = P1**(red = D10b 뒤집기 + `memory-inject.test.ts`). 다음 후보 = **0.37.0 제안 · 규칙 · 정책 정직성**(4단계 완료 기준 (c) 인도 — 다시 나뉠 수 있음).
+**Current decision:** D1~D11 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-16 — D9 · D10은 amended) · 작성자 정밀화 R1~R18 · 락↔코드 불일치 C1(플래그 경로 — `WorkerConfig`가 `agent-argv.ts`에 있음 → `HeadlessDeps.memory`) · C2(import 가드 부분 문자열 → import 지정자) · 수용 손실 계급 5(실현) · 10~16 + 무번호 2행 · UK-1~UK-7. **R54 `approved-with-fixes` → M1·M2·M3·L1·L2 PLAN 반영 → PLAN `approved`(2026-10-16, no R54b)** · R1~R18 수용(R7→L1 · R10→L2 · R15→M1) · C1→R1 · C2→R15(M1 순서) · UK-1~UK-7 비차단. **implemented 2026-10-16** — P1~P5(`fc1d4f6` → … → `feeb9e7` → `a58dcba` 스모크 → PATCH 5 문서) · 스모크 `smoke:memory-inject` 7/7 PASS(가짜 CLI · dist 0.36.0) · 실 CLI 실행 0 · ⑥ 밖 production 변경 0. **Next = 0.37.0.** 다음 후보 = **0.37.0 제안 · 규칙 · 정책 정직성**(4단계 완료 기준 (c) 인도 — 다시 나뉠 수 있음).
 
 ### 0.35.0 — memory / rules / skills 저장소 + CLI + 순수 스냅샷 리더 (`approved` — R53 approved-with-fixes · implemented 2026-10-16)
 
@@ -546,3 +546,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-16 | 0.34.0 R52 판정 반영 (UK-1~UK-5 open 비차단 · M1·M2·M3·L2 교훈 Unknown knowns 기재 · PLAN `approved`) |
 | 2026-10-16 | 0.34.0 ship 반영 (UK-2 partly observed — 프로브 사고 알림 · UK-1 · UK-3 open — 라이브 not run(오너 승인 대기) · UK-4 · UK-5 unverified — Linux 미사용 · `SERVICE-SMOKE-0340.md` · R52-L1 `envRelayToken()` 문면 정정) |
 | 2026-10-16 | 0.35.0 ship 반영 (UK-1~UK-5 open 비차단 · UK-6 unverified — Windows 미사용 · `MEMORY-SMOKE-0350.md` 18/18 · P4b `redact.ts` O(n²) 실측·선형화) |
+| 2026-10-16 | 0.36.0 ship 반영 (UK-1 가짜 CLI 바이트만 실측 · 실 CLI 0 · UK-2 `load_ms` 중앙값 16–17 / 최대 24–25 ms(2회) 실측 · UK-3~UK-5 open · UK-6 13/13 + 스모크 ⓪ · UK-7 unverified — Windows 미사용 · `MEMORY-INJECT-SMOKE-0360.md` 7/7) |

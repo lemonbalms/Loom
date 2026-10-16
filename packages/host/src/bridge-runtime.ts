@@ -143,7 +143,7 @@ export type BridgeRuntime = {
  * CLI `VERSION` of the bridge build (status file `version`, lock `owner.json` `version`).
  * Host cannot import the CLI package; a host test pins this to `packages/cli/src/index.ts`.
  */
-export const BRIDGE_VERSION = "0.35.0";
+export const BRIDGE_VERSION = "0.36.0";
 /** PLAN 0.33.0 R2 / R51-M3: headless close() bound inside the outer STOP_BOUND_MS. */
 export const HEADLESS_CLOSE_BOUND_MS = 8_000;
 /** `lastError` recorded when the outer stop bound abandons the async teardown. */

@@ -1,12 +1,13 @@
 # Loom v0.36.0 P5 smoke: first-spawn memory snapshot + fence injection, end to end
 
-Date 2026-10-16. Repo main `feeb9e7` (P4 green, verified) plus the smoke script (this commit). Authority: PLAN §0.36.0 ⑦ P5 row + Done-when (c)(g) (R53-M2 pattern, R54-M2 `LOOM_PROFILE=smoke`, R54-M3 per-mode guard), `UNKNOWNS.md` 0.36.0 UK-1 · UK-2 · UK-6. Reproducible harness: `bun run smoke:memory-inject` (= `scripts/smoke-memory-inject.ts`; `--source` runs `packages/cli/src/index.ts` instead of `dist/loom.js` for the CLI children). Wall time ~3.5 s.
+Date 2026-10-16. Repo main `feeb9e7` (P4 green, verified) plus the smoke script (`a58dcba`); final run against the 0.36.0 dist rebuilt in the P5 docs commit (this file updated there). Authority: PLAN §0.36.0 ⑦ P5 row + Done-when (c)(g) (R53-M2 pattern, R54-M2 `LOOM_PROFILE=smoke`, R54-M3 per-mode guard), `UNKNOWNS.md` 0.36.0 UK-1 · UK-2 · UK-6. Reproducible harness: `bun run smoke:memory-inject` (= `scripts/smoke-memory-inject.ts`; `--source` runs `packages/cli/src/index.ts` instead of `dist/loom.js` for the CLI children). Wall time ~3.5 s.
 
 | Item | Value |
 |---|---|
 | OS | macOS (Darwin 25.6.0, arm64) |
 | bun | 1.3.11 |
-| CLI (this run) | committed `dist/loom.js` (0.35.0 build — `memory propose/approve/list` are 0.35 verbs, so the 0.35 dist is enough) — **7/7 PASS** |
+| CLI (final) | rebuilt 0.36.0 `dist/loom.js` (`bun run build:cli` twice → same sha256 `fe88b71619b3d8f8ae81a945c4153f309efd3edef5bfd5e128f3d9caa993a80e` · `check:dist` ok) — **7/7 PASS** |
+| CLI (first run, `a58dcba`) | the then-committed `dist/loom.js` (0.35.0 build — `memory propose/approve/list` are 0.35 verbs, so the 0.35 dist was enough) — **7/7 PASS** |
 | Worker | `HeadlessDispatcher` from source in the inner process (profile `smoke`, memory from the bridge config) |
 | Agents | **fake** claude · codex · grok (`/bin/sh` scripts) only |
 | Real CLI run | **none** — `--real-cli` exists but needs `--owner-approved` and an explicit owner yes; not run |
@@ -21,7 +22,26 @@ Date 2026-10-16. Repo main `feeb9e7` (P4 green, verified) plus the smoke script 
 - **Fake CLIs** dump stdin to `stdin-$LOOM_CARD`, copy grok's `--prompt-file`, and print one finished stream (claude `result` · codex `item.completed`+`turn.completed` · grok `text`+`end`). The card result counts as finished when its output is `done` (status `failed` · reason `needs_verification` is the normal parsed-headless shape — deviation 21).
 - **Real home before/after** (`os.userInfo().homedir`): `~/.loom` and `~/.fable` **strict** (every path to depth 6 with its `lstat` mtime — 1574 entries here; `~/.fable` absent) · `~/Library/LaunchAgents` **strict** (depth 1 — 11 entries) · `~/.claude` · `~/.codex` · `~/.grok` **new top-level names only**.
 
-## Results — committed dist (0.35.0 build), 7/7
+## Results — 0.36.0 dist (final, 7/7)
+
+```
+PASS ⓪ memory list header (R54-M2 · UK-6) — "profile smoke (from LOOM_PROFILE)" · agentKey claude.smoke
+PASS ① approved project record reaches a room_B card · room:A record does not — 6 records via CLI propose→approve · claude block 563 B nonce 44ccabda… hash ok · codex block 562 B nonce ece88cd3… hash ok · grok block 561 B nonce c7bd26b7… hash ok · control room_A claude card carries both records
+PASS ② memory-off bridge config → first turn M\n\nP — claude · codex · grok first turn == marker + "\n\n" + prompt · no file · no record key · no memory stderr line
+PASS ③ forged marker line + env secret (D4 · R53-L3) — 1 placeholder · "## " kept · marker only once in the turn · secret absent · stderr "neutralized 1 · env_redacted yes"
+PASS ④ UK-1 · UK-2 measurement (near-cap store × 3 CLIs × 5) — persona 8000 B cap 8192 · INDEX 8000 B cap 8192 · guideline 16000 B cap 16384 · entries.jsonl 4126862 B (1988 active project records) per agent · claude block 47874 B · turn 48063 B · load_ms median 16 max 24 · codex block 47874 B · turn 48063 B · load_ms median 16 max 16 · grok block 47874 B · turn 48063 B · load_ms median 16 max 16
+PASS zero persistence — temp home removed — removed
+PASS real home untouched — ~/.loom · ~/.fable 1574 entries · ~/Library/LaunchAgents 11 entries names+mtime identical · ~/.claude · ~/.codex · ~/.grok no new names
+PASS smoke:memory-inject (default · dist CLI) — 7/7 steps
+```
+
+| CLI | block bytes | first-turn bytes | load_ms median | load_ms max | dispatch ms median |
+|---|---|---|---|---|---|
+| claude | 47874 | 48063 | 16 | 24 | 51 |
+| codex | 47874 | 48063 | 16 | 16 | 50 |
+| grok | 47874 | 48063 | 16 | 16 | 53 |
+
+## Results — first run (`a58dcba`, 0.35.0 dist), 7/7
 
 ```
 PASS ⓪ memory list header (R54-M2 · UK-6) — "profile smoke (from LOOM_PROFILE)" · agentKey claude.smoke
@@ -34,7 +54,7 @@ PASS real home untouched — ~/.loom · ~/.fable 1574 entries · ~/Library/Launc
 PASS smoke:memory-inject (default · dist CLI) — 7/7 steps
 ```
 
-## Measurements (UK-1 · UK-2 — fake CLIs, 5 cards per CLI)
+### Measurements, first run (UK-1 · UK-2 — fake CLIs, 5 cards per CLI)
 
 | CLI | block bytes | first-turn bytes | load_ms median | load_ms max | dispatch ms median |
 |---|---|---|---|---|---|
@@ -45,7 +65,7 @@ PASS smoke:memory-inject (default · dist CLI) — 7/7 steps
 Dispatcher stderr line (same for every card, ids elided): `[headless] memory_snapshot (<card>): block 47874 B · text 47412 B · neutralized 0 · env_redacted no · read_errors 0 · truncated entries · load_ms 18`.
 
 - **UK-1 (size):** with every human file just under its cap and `entries.jsonl` just under the 4 MiB read cap, the fence is 47874 B and the whole first turn (marker + fence + prompt, skills off) 48063 B. The entries section hits its 16 KiB render cap (`truncated entries`); persona · INDEX · guideline are not cut. The fake CLIs received every byte (stdin / grok prompt file == marker + `memory-snapshot.md` + prompt). **Whether the real claude / codex / grok accept this first turn without loss is not measured** (no real CLI run).
-- **UK-2 (stall):** `load_ms` (read 4 MiB + fold + redaction + render + 0600 atomic write, under the card lock) median 17 ms, max 25 ms across 15 first spawns on this machine; whole dispatch to the fake result ~55 ms. Synchronous read on the bridge loop at this size is ~20 ms per first spawn — no case for the 0.37 mtime cache / async reader from this data alone.
+- **UK-2 (stall):** `load_ms` (read 4 MiB + fold + redaction + render + 0600 atomic write, under the card lock) median 16–17 ms, max 24–25 ms across 15 first spawns per run (two runs) on this machine; whole dispatch to the fake result ~50–58 ms. Synchronous read on the bridge loop at this size is ~20 ms per first spawn — no case for the 0.37 mtime cache / async reader from this data alone.
 
 ## What each step proves
 
