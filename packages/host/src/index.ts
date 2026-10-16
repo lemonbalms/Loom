@@ -78,6 +78,9 @@ export {
 } from "./mcp-precheck";
 // PLAN 0.34.0 P1 (D4 · D8 · R10): pure `loom service` unit generators, names, marker, parsers.
 export * from "./service-units";
+// PLAN 0.37.0 ②: pure policy-gap core + the honesty table and resolver for the doctor Policy section.
+export * from "./policy-gaps";
+export { POLICY_ENFORCEMENT, resolveWorkerPolicy } from "./policy-compile";
 // PLAN 0.35.0 P4: memory store · rules · skills inventory for `loom memory|rules|skills` + doctor.
 export * from "./memory-store";
 export * from "./rules-store";

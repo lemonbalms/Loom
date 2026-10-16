@@ -19,6 +19,7 @@ import {
 } from "./agent-argv";
 import { loadPolicy } from "./policy";
 import { resolveWorkerPolicy } from "./policy-compile";
+import { enabledAgentsOf } from "./policy-gaps";
 
 export type BridgeConfig = {
   /** M-1: tower peer ids allowed to dispatch. Empty ⇒ default deny. */
@@ -96,6 +97,26 @@ export type BridgeWorkerConfig = {
    * bridge start and handed to `HeadlessDeps.memory` — never part of WorkerConfig.
    */
   memory?: { enabled: boolean };
+  /**
+   * PLAN 0.37.0 D4(a). Absent = false. True → a headless bridge refuses to start while any
+   * enabled agent has a policy gap. Never part of WorkerConfig or policy.json.
+   */
+  strictEnforcement?: boolean;
+  /**
+   * PLAN 0.37.0 D3. `{enabled: boolean}` only; absent = off. Standing rules go into the
+   * first-turn fence when true — handed to `HeadlessDeps.rules`, never part of WorkerConfig.
+   */
+  rules?: { enabled: boolean };
+};
+
+/** PLAN 0.37.0 ② doctor용 — worker flags read without loomDir() / loadPolicy (R14). */
+export type BridgeWorkerFlags = {
+  backend: "pane" | "headless";
+  enabled: AgentKind[];
+  strictEnforcement: boolean;
+  memoryEnabled: boolean;
+  rulesEnabled: boolean;
+  permissions: WorkerPermissions;
 };
 
 const HEADLESS_AGENTS: readonly AgentKind[] = ["claude", "codex", "grok"];
@@ -408,6 +429,29 @@ function parseMemory(raw: unknown): { enabled: boolean } | undefined {
   return { enabled: src.enabled };
 }
 
+/** 0.37.0 D4(a): omitted → undefined; anything but a boolean throws. */
+function parseStrictEnforcement(raw: unknown): boolean | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "boolean") throw new Error("worker.strictEnforcement must be a boolean");
+  return raw;
+}
+
+/** 0.37.0 D3: `parseMemory`-shaped; fail closed on anything but `{enabled: boolean}`. */
+function parseRules(raw: unknown): { enabled: boolean } | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.rules must be an object");
+  }
+  const src = raw as Record<string, unknown>;
+  for (const key of Object.keys(src)) {
+    if (key !== "enabled") throw new Error(`worker.rules.${key} is not a known key`);
+  }
+  if (typeof src.enabled !== "boolean") {
+    throw new Error("worker.rules.enabled must be a boolean");
+  }
+  return { enabled: src.enabled };
+}
+
 function workerConfigFromParts(src: {
   cwd?: unknown;
   allowedRoots?: unknown;
@@ -486,6 +530,8 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
   const parsed = workerConfigFromParts(src);
   const agentBin = parseAgentBin(src.agentBin);
   const memory = parseMemory(src.memory);
+  const rules = parseRules(src.rules);
+  const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);
   return {
     backend: "headless",
     cwd: parsed.cwd,
@@ -496,6 +542,44 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
     agentBin,
     ...(parsed.skills ? { skills: { ...parsed.skills } } : {}),
     ...(memory ? { memory } : {}),
+    ...(rules ? { rules } : {}),
+    ...(strictEnforcement !== undefined ? { strictEnforcement } : {}),
+  };
+}
+
+/**
+ * PLAN 0.37.0 ② doctor용 순수 파서 (R14). `raw` = the config file's `worker` value. Not headless
+ * → pane defaults. Headless → the same parsers (same wording) as loadBridgeConfig for
+ * maxConcurrent · strictEnforcement · memory · rules · permissions. Never calls loomDir() or
+ * loadPolicy.
+ */
+export function readBridgeWorkerFlags(raw: unknown): BridgeWorkerFlags {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return paneWorkerFlags();
+  const src = raw as Record<string, unknown>;
+  if (src.backend !== "headless") return paneWorkerFlags();
+  const permissions = parsePermissions(src.permissions);
+  const maxConcurrent = parseMaxConcurrent(src.maxConcurrent);
+  const memory = parseMemory(src.memory);
+  const rules = parseRules(src.rules);
+  const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);
+  return {
+    backend: "headless",
+    enabled: enabledAgentsOf(maxConcurrent),
+    strictEnforcement: strictEnforcement === true,
+    memoryEnabled: memory?.enabled === true,
+    rulesEnabled: rules?.enabled === true,
+    permissions,
+  };
+}
+
+function paneWorkerFlags(): BridgeWorkerFlags {
+  return {
+    backend: "pane",
+    enabled: [],
+    strictEnforcement: false,
+    memoryEnabled: false,
+    rulesEnabled: false,
+    permissions: defaultWorkerPermissions(),
   };
 }
 
