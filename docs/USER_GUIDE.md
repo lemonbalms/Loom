@@ -1397,8 +1397,9 @@ bun run loom --profile <p> service start     # 새 코드로 기동
 11. **양보한 서비스는 `loom service start`까지 내려가 있다**(§19.4).
 12. **서비스 stderr 로그는 append만 — 회전 없음.** 크래시 루프에서 커진다. 락이 비어 있을 때 수동 `bridge start`는 같은 로그를 절단한다(0.33.0 동작).
 13. **systemd `KillMode=process` 정지 뒤 남은 워커는 그 유닛 cgroup에 남는다** — 다음 `start`에서 systemd가 "left-over process" 경고를 낼 수 있다(의도된 상태 — 입양 대상).
+14. **macOS 개인정보 보호(TCC) 권한은 터미널에서 물려받지 않는다** — LaunchAgent가 띄운 `bun`("Jarred Sumner")은 터미널에 준 폴더 접근 권한이 없다. 프로젝트가 `~/Documents` · `~/Desktop` · `~/Downloads` · 외장/네트워크 볼륨에 있으면 headless 카드가 접근 허용 창을 띄우거나 조용히 EPERM으로 실패한다(카드 실패로만 보임). 프로젝트를 그 밖에 두거나 시스템 설정 → 개인정보 보호에서 bun에 권한을 준다.
 
-**아직 실측하지 않은 것:** 실 launchd/systemd 등록 라이브 스모크는 오너 승인 대기라 돌리지 않았다(스모크는 가짜 서비스 관리자 — `bun run smoke:service`). launchd/systemd 정지 신호 순서 · ssh에서의 `bootstrap` 실제 코드 · Login Items 끈 뒤 `bootstrap` 문구 · Linux 전부(`StandardError=append:` · linger 조회 형식 · 심링크가 `enable`과 같은지)는 미실측이다(`docs/UNKNOWNS.md` 0.34.0).
+**아직 실측하지 않은 것:** 실 launchd/systemd 등록 라이브 스모크는 오너 승인 대기라 돌리지 않았다(스모크는 가짜 서비스 관리자 — `bun run smoke:service`). launchd/systemd 정지 신호 순서 · ssh에서의 `bootstrap` 실제 코드 · Login Items 끈 뒤 `bootstrap` 문구 · Linux 전부(`StandardError=append:` · linger 조회 형식 · 심링크가 `enable`과 같은지)는 미실측이다. **로그인·재부팅 뒤 자동 기동(launchd `RunAtLoad` · systemd `default.target`)은 `--live` 스모크로도 측정되지 않는다** — 실제 `loom service install` 뒤 로그아웃·로그인(또는 재부팅)해야 확인된다(`docs/UNKNOWNS.md` 0.34.0).
 
 ---
 

@@ -52,6 +52,8 @@ Outside the script, `ls -la ~/Library/LaunchAgents` and `ls -la ~/.config/system
 
 The exit code after `bootout` cannot be observed (the job is gone). `stopped` in the status file (written before the bridge's exit 0) stands in for it.
 
+**Not covered even by `--live`:** start at login/reboot (`RunAtLoad`; systemd `default.target`) — the live path never installs into `~/Library/LaunchAgents` and never logs out. That needs a real `loom service install` followed by logout/login (or reboot). macOS TCC (a LaunchAgent `bun` does not inherit the terminal's folder grants) is likewise unmeasured. Both tracked as UK-6.
+
 ## Unknowns
 
 - **UK-1: launchd/systemd stop signal order and grace — open (live not run).** P2 simulated the stop path (SIGTERM to the bridge main pid only → exit 0 ≤10 s · worker pgid survives · next start adopts once). launchd `bootout` / systemd stop were not measured.
