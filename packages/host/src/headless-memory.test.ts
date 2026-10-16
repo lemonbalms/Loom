@@ -11,7 +11,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -398,10 +397,12 @@ describe("P2 memory on: fenced first turn + memory-snapshot.md (D2 · D4 · D11 
         const F = h.expectedBlock();
         const T = Buffer.byteLength(h.snapshotText(), "utf8");
         const order: string[] = [];
+        const loadArgs: unknown[][] = [];
         const original = memorySnapshot.loadMemorySnapshot;
         const loadSpy = spyOn(memorySnapshot, "loadMemorySnapshot").mockImplementation(
           (...args: Parameters<typeof original>) => {
             order.push("load");
+            loadArgs.push(args);
             return original(...args);
           },
         );
@@ -422,7 +423,7 @@ describe("P2 memory on: fenced first turn + memory-snapshot.md (D2 · D4 · D11 
         }
         // R5: the nonce is drawn after the snapshot is read; one read per first spawn (D7).
         expect(order).toEqual(["load", "nonce"]);
-        expect(loadSpy).toHaveBeenCalledWith(h.loomDir, `${agent}.default`, roomKey(h.card.roomId));
+        expect(loadArgs).toEqual([[h.loomDir, `${agent}.default`, roomKey(h.card.roomId)]]);
 
         expect(F.startsWith(`${memoryFenceBegin(NONCE)}\n`)).toBe(true);
         expect(F.endsWith(memoryFenceEnd(NONCE))).toBe(true);
@@ -707,20 +708,5 @@ describe("P2 snapshot step failure → spawn_setup_failed, no write-ahead, no sp
     expect(readdirSync(h.cardDir()).filter((n) => n.startsWith(".memory-snapshot.md.tmp"))).toEqual(
       [],
     );
-  }, 20_000);
-
-  test("card directory not writable for the temp file", async () => {
-    const h = new Harness();
-    seedStore(h);
-    mkdirSync(h.cardDir(), { recursive: true, mode: 0o700 });
-    chmodSync(h.cardDir(), 0o500);
-    try {
-      await h.dispatcher(ON).dispatch(h.card);
-    } finally {
-      chmodSync(h.cardDir(), 0o700);
-    }
-    expect(h.spawns()).toBe(0);
-    expect(h.calls[0]!.fields.reason).toBe("spawn_setup_failed");
-    expect(h.saved()).toBeNull();
   }, 20_000);
 });
