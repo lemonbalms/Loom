@@ -91,6 +91,11 @@ export type BridgeWorkerConfig = {
    * Selection itself lives in the room's skills.json, never here or on the wire.
    */
   skills?: { enabled: boolean };
+  /**
+   * PLAN 0.36.0 D5 · R1. `{enabled: boolean}` only; absent = off (0.35 bytes). Read once at
+   * bridge start and handed to `HeadlessDeps.memory` — never part of WorkerConfig.
+   */
+  memory?: { enabled: boolean };
 };
 
 const HEADLESS_AGENTS: readonly AgentKind[] = ["claude", "codex", "grok"];
@@ -387,6 +392,22 @@ function parseSkills(raw: unknown): { enabled: boolean } | undefined {
   return { enabled: src.enabled };
 }
 
+/** 0.36.0 D5 · R1: `parseSkills`-shaped; fail closed on anything but `{enabled: boolean}`. */
+function parseMemory(raw: unknown): { enabled: boolean } | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("worker.memory must be an object");
+  }
+  const src = raw as Record<string, unknown>;
+  for (const key of Object.keys(src)) {
+    if (key !== "enabled") throw new Error(`worker.memory.${key} is not a known key`);
+  }
+  if (typeof src.enabled !== "boolean") {
+    throw new Error("worker.memory.enabled must be a boolean");
+  }
+  return { enabled: src.enabled };
+}
+
 function workerConfigFromParts(src: {
   cwd?: unknown;
   allowedRoots?: unknown;
@@ -464,6 +485,7 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
   if (src.backend !== "headless") return undefined;
   const parsed = workerConfigFromParts(src);
   const agentBin = parseAgentBin(src.agentBin);
+  const memory = parseMemory(src.memory);
   return {
     backend: "headless",
     cwd: parsed.cwd,
@@ -473,6 +495,7 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
     permissions: parsed.permissions,
     agentBin,
     ...(parsed.skills ? { skills: { ...parsed.skills } } : {}),
+    ...(memory ? { memory } : {}),
   };
 }
 

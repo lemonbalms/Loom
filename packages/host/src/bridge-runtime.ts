@@ -1108,6 +1108,9 @@ async function startLockedBridgeRuntime(
         loomDir: loomDir(),
         localPeerId: session.peerId,
         node: session.displayName,
+        // PLAN 0.36.0 D8 · R1: the profile resolved above (no re-resolution) + the opt-in flag.
+        profile,
+        memory: cfg.worker?.memory?.enabled === true ? { enabled: true } : undefined,
         commands: headlessCommands,
         // PLAN 0.33.0 R2: inner bound below the outer STOP_BOUND_MS.
         closeDeadlineMs: HEADLESS_CLOSE_BOUND_MS,
