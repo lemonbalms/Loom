@@ -148,6 +148,16 @@ export function isLoomServiceFile(text: string, profile: string): boolean {
 function validateSpec(spec: ServiceUnitSpec): ServiceNames {
   const check = serviceProfileNameCheck(spec.profile);
   if (!check.ok) throw new Error(check.message);
+  // P1-L1: the version is written raw into the marker comment — keep it to a version alphabet.
+  if (!/^[0-9A-Za-z.+_-]+$/.test(spec.loomVersion)) {
+    throw new Error(`service unit: invalid loomVersion "${spec.loomVersion}"`);
+  }
+  // P1-L5 / R3: LOOM_PROFILE is only ever the active profile, which IS the service profile.
+  if (spec.loomProfile && spec.loomProfile !== spec.profile) {
+    throw new Error(
+      `service unit: LOOM_PROFILE "${spec.loomProfile}" must be absent or equal to the profile "${spec.profile}"`,
+    );
+  }
   for (const key of ["execPath", "bridgeMainPath", "home", "sessionPath", "logPath"] as const) {
     if (!posix.isAbsolute(spec[key])) {
       throw new Error(`service unit: ${key} must be an absolute path (got "${spec[key]}")`);
@@ -257,8 +267,17 @@ export function renderSystemdUnit(spec: ServiceUnitSpec): string {
   const n = validateSpec(spec);
   const values = [spec.execPath, spec.bridgeMainPath, spec.home, spec.path, spec.sessionPath];
   values.push(spec.logPath, spec.loomProfile ?? "", spec.loomVersion);
-  if (values.some((v) => /[\r\n]/.test(v))) {
-    throw new Error("service unit: value contains a newline");
+  // P1-L2: systemd's line reader also ends a line at NUL.
+  if (values.some((v) => /[\r\n\0]/.test(v))) {
+    throw new Error("service unit: value contains a newline or NUL");
+  }
+  // P1-L3: WorkingDirectory= and StandardError=append: are written raw — a trailing backslash would
+  // continue the line and swallow the next setting. Refuse backslashes there outright.
+  for (const [key, v] of [
+    ["home", spec.home],
+    ["logPath", spec.logPath],
+  ] as const) {
+    if (v.includes("\\")) throw new Error(`service unit: ${key} must not contain a backslash`);
   }
   const lines = [
     renderServiceMarker("systemd", n.profile, spec.loomVersion),
@@ -345,7 +364,8 @@ export function parseLaunchctlPrint(stdout: string): LaunchctlPrint {
     state,
     running: state === "running",
     pid: pid !== null && pid > 0 ? pid : null,
-    lastExitCode: toInt(top.get("last exit code")),
+    // P1-L4: real launchd prints `last exit code = 78: EX_CONFIG` · `(never exited)` → null.
+    lastExitCode: toInt(/^-?\d+/.exec(top.get("last exit code") ?? "")?.[0]),
     path: top.get("path") ?? null,
     program: top.get("program") ?? null,
   };

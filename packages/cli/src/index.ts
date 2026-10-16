@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import {
+  resolveBridgeProfile,
   ensureRelay,
   isRelayUp,
   stopRelay,
@@ -122,6 +123,7 @@ import {
   resolveMcpStdio,
 } from "@loom/mcp-server";
 import { spawn as nodeSpawn, spawnSync } from "node:child_process";
+import { runServiceCommand } from "./service";
 import {
   openSync,
   closeSync,
@@ -278,6 +280,8 @@ Usage:
   loom down [--profiles a,b]            # stop sticky hosts (idempotent)
   loom host start | stop | status   # sticky long-lived relay connection (advanced)
   loom bridge start | stop | status | quarantine ack  # herdr node bridge (0.22+)
+  loom service install|uninstall|start|status [--profile <p>] [--force]
+                                    # bridge as launchd/systemd user service (0.34)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -1783,7 +1787,7 @@ async function cmdBridge(
       console.error("No session. Create or join a room first.");
       process.exit(1);
     }
-    const profile = getActiveProfile() ?? loadSession()!.displayName ?? "default";
+    const profile = resolveBridgeProfile();
     // Optional: loom bridge start --allow <peerId>[,peerId]
     if (flags.allow === true) {
       console.error("--allow requires a peer id");
@@ -1863,7 +1867,7 @@ async function cmdBridge(
       return;
     }
     const profile =
-      getActiveProfile() ?? loadSession()?.displayName ?? "default";
+      resolveBridgeProfile();
     if (r.kind === "rpc_failed") {
       console.error(`drain request failed (pid ${r.pid}): ${r.error}`);
       console.error(`  status file: ${bridgeStatusPath(profile)}`);
@@ -1918,7 +1922,7 @@ async function cmdBridge(
       key = { tag: "seq", seq: n };
     }
     const profile =
-      getActiveProfile() ?? loadSession()?.displayName ?? "default";
+      resolveBridgeProfile();
     const result = await bridgeQuarantineAck({
       cardId,
       dispatchHandoffId,
@@ -1945,7 +1949,7 @@ async function cmdBridge(
   if (sub === "status" || !sub) {
     const st = await bridgeStatus();
     const profile =
-      getActiveProfile() ?? loadSession()?.displayName ?? "default";
+      resolveBridgeProfile();
     if (!st.running) {
       console.log("bridge: offline");
       // Offline unresolved from durable JSONL (no live daemon owns state).
@@ -3362,6 +3366,13 @@ async function main() {
   if (cmd === "bridge") {
     await cmdBridge(sub, rest, flags);
     return;
+  }
+  if (cmd === "service") {
+    // PLAN 0.34.0 P3: exit 0 · 1 refused/error/usage · 3 "written; loads at next login".
+    const code = await runServiceCommand(sub ?? "", { force: flags.force === true }, {
+      loomVersion: VERSION,
+    });
+    process.exit(code);
   }
   if (cmd === "conv-hosts") {
     await cmdConvHosts(sub, rest);

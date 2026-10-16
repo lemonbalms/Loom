@@ -65,7 +65,8 @@ function bridgeLockLooksHeld(profile: string): boolean {
   }
 }
 
-function bridgeMainPath(): string {
+/** Absolute `bridge-main.ts` (module dir, then the source checkout under cwd). Throws when absent. */
+export function bridgeMainPath(): string {
   const here = fileURLToPath(new URL(".", import.meta.url));
   const candidate = join(here, "bridge-main.ts");
   if (existsSync(candidate)) return candidate;
