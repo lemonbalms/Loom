@@ -1,0 +1,92 @@
+# v0.37.0 deviations (for implementation-notes §0.37.0)
+
+1. P1: renderRulesSection strips all trailing newlines of a rule body (/\n+$/); ② says "끝 개행 제거" (count unspecified).
+2. P1: rules byte cap counts entries + "\n\n" separators; heading and omission line not counted (memory-snapshot precedent).
+3. P1: included=0 → `## Standing rules\n- … N more rules omitted` (no blank line); unreachable (rule body ≤8192 B), untested.
+4. P1: readBridgeWorkerFlags validates only maxConcurrent/strictEnforcement/memory/rules/permissions (② literal), not cwd/allowedRoots/timeoutMs/agentBin/skills → P3 doctor could call a config valid that bridge refuses. FLAG for P3.
+5. P1: readBridgeWorkerFlags().enabled = all three until P2 (R55-L4).
+6. P1: explicit `worker.strictEnforcement: false` kept and round-trips; only absent key omitted.
+7. P1: memory-inject.ts type-only import AgentKind from ./agent-argv (② said rules-store type import only); no runtime import.
+8. P1: stale comment memory-inject.test.ts:65 ("Verbatim from PLAN §0.36.0 ②") left (only :66-67 editable).
+9. P1: docs/USER_GUIDE.md:1635 quotes old fence header → P5.
+10. P1: test files biome-formatted before red commit (added lines only).
+
+## P1 verify (Opus xhigh): PASS-with-lows — fold into P3 red (P2 already running in parallel)
+- P1-V-L1 (architect decision: ACCEPT, ② amendment): readBridgeWorkerFlags must run all remaining fs-free parsers in bridge order (skills → permissions → cwd → allowedRoots → maxConcurrent → timeoutMs → agentBin → memory → rules → strict), still no loadPolicy/loomDir. P3 red: table over every workerConfigFromParts/parseAgentBin error asserting messageOf(readBridgeWorkerFlags(sec)) === messageOf(loadBridgeConfig(id)) with valid policy.
+- P1-V-L2 (info): composeFenceText("", "", "\n") === "" (declared); empty-body rule renders "### id\n" (loadRules makes whitespace-only bodies disabled). P3 red: pin compose("", "", "\n") === "" as declared + test loadRules never yields non-disabled empty body.
+- Deviations 1–10 all ruled acceptable. Note: P2 red 1ba49c2 edits 2 comment lines in P1 test bridge-config-policy.test.ts — P2 verifier must confirm declared.
+11. P2: three commits, not two — red 1ba49c2, red-fix cd5130c (test-only), green af47f4d. Record-path agent_disabled goes through sendAndMarkLocked, whose pendingResult reservation adds `timedOut: false` (same as fingerprint_changed); red compared bare ② fields. New-card path delivers the ② shape exactly.
+12. P2: existing-record agent_disabled = `existing && !existing.resultSent && maxConcurrent[card.agent] === 0`, after orphan-group + spawn_state_unknown, before `existing && fingerprintChanged` (so it also precedes the adopt branch's card_already_running for a live different-handoff unsent record — reachable only via direct dispatch() without claim). resultSent+dead record falls through to the new-card check.
+13. P2: stderr `notice <G>` = own gap count (= notice lines); `text <T>` = composed text bytes before env redaction (0.36 used snap.text pre-redaction too).
+14. P2: 1 MiB check runs right after renderMemoryBlock (before stale-file unlink/write); error text `memory snapshot block exceeds 1048576 bytes` (② gives none) → spawn_setup_failed note.
+15. P2: method name memorySnapshotLocked kept (R6 naming); now takes {memory, rules, gaps}.
+16. P2: bridge-config-policy.test.ts header lines 4-5 edited in red ("not exercised here" → points to the appended P2 describe); P2 describe has its own temp-home env setup.
+17. P2: readBridgeWorkerFlags().enabled now excludes 0 agents (closes #5).
+18. P2: a card whose agent has no gaps but other agents do = no step (R10 "이 에이전트 간극"), tested.
+19. P2: bridge-memory-profile.test.ts still passes unedited (bridge-runtime wiring is P3) — P3 red must narrow :246-256.
+
+## P2 verify (Opus xhigh): PASS-with-lows — fold into P4 red (P3 already running)
+- P2-V-L1 (architect: keep ② behaviour, pin + declare): direct dispatch() without claim for new handoff D2 while D1's unsent live record of a disabled agent → agent_disabled to D1, D2 gets no result (unreachable in prod: bridge always passes claim, bridge-runtime.ts:1538-1541/1854). P4 red: pin; impl-notes dev 12 text states "D2 gets no result".
+- P2-V-L2: P4 red append-only cases: (a) orphan_group_alive before agent_disabled, group not killed; (b) reserved pendingResult replayed not replaced; (c) D9 empty line with both fields `empty — no block · read_errors 1 · entries_oversize yes · load_ms`; (d) cross-dispatcher resume with notice block and changed deps (policyGaps [] or rules+memory on) keeps file bytes/mtime/hash, no reader call; (e) removed notice file → needs_verification ("missing").
+- P2-V-L3 (architect: keep ② fingerprint_changed form; pin; new unnumbered accepted loss): exited-but-unsent record (finished transcript, no pendingResult) of a now-disabled agent gets agent_disabled instead of its real result — drain before disabling an agent. P4 red: pin.
+- Notes (0.36 behaviour, not P2): foreign-nonce BEGIN lookalike not neutralized; snapshot file mode not gated (0644 still resumes) → 0.38 candidates.
+- Deviations 11–19 accepted.
+
+## P3 (red b16b900 · red fix ddecf6d · red fix 2 29bbe62 · green 2e82446)
+20. P3: `readPolicyDoctorInput(home, profile)` lives in cli/src/doctor.ts (exported, imported by index.ts), not cli/src/index.ts as ② says — index.ts runs main() on import, so it cannot be unit-tested (precedent: readMemoryDoctorInput in memory-cli.ts). doctor.ts now has runtime imports from @loom/host + node:fs (was type-only).
+21. P3: `PolicyDoctorInput` shape (② open): {home, profile, policyPath, policy: default|file|invalid(message), legacyPolicy, bridgePath, bridge: absent|invalid(message)|ok(flags), hash|null, enabled, gaps, strictEnforcement, worker: WorkerFlagsView}. Gaps are computed in the reader; the Bridge/Memory `WorkerFlagsView` comes from the same raw read.
+22. P3: doctor reads the bridge file the way loadBridgeConfig does — missing → "no bridge config"; unreadable / non-JSON / non-object → defaults (no worker section → pane), not "invalid"; only a readBridgeWorkerFlags throw is the ③ "bridge config invalid" warn.
+23. P3: a resolveWorkerPolicy throw (deprecated bridge list vs policy.json — bridge refuses to start) is shown as the ③ "bridge config invalid: <msg> … showing all agents" warn with default permissions (③ has no row for it); the flags view keeps the parse result.
+24. P3: pane backend (③ silent on agents/gaps): bridge row `backend pane · enabled none` ("none" = empty list) + the pane note; agent rows show levels for all three (not "disabled"); gaps over flags.enabled = [] → ok "no policy gaps for enabled agents"; strict shown false (pane flags, bridge ignores it).
+25. P3: legacy row = existsSync(dirname(home)/.fable/policy.json), printed right after the source row — also after the invalid-policy fail row (part of the ③ 출처 row).
+26. P3: invalid bridge config → strict row `= false` (flags unknown).
+27. P3: memory list — a throwing `memoryEnabled` dep renders "invalid bridge config" (defensive); real deps catch loadBridgeConfig themselves.
+28. P3: bridge start order = deprecated-list warnings (0.31 D8) → gaps → strict throw / gap warnings, i.e. deprecated-list warnings still log before a strict refusal (② "`:883` 바로 뒤").
+29. P3: the strict refusal is thrown verbatim (startBridgeRuntime rejects with renderStrictRefusal), but the status file's lastError keeps the existing 0.33 cap (512 UTF-8 bytes) — the default-policy refusal (~1.3 KB) is cut there. Test pins truncateLastError(refusal).
+30. P3: P1-V-L2 loadRules test sits in memory-inject.test.ts (additions, dynamic imports), not rules-store.test.ts (on the ⑦ byte-unedited list).
+31. P3: two test-only red-fix commits — ddecf6d (agentArgv must name codex/grok or dispatch → agent_kind_not_allowed; lastError cap; status herdr stays initial "down") and 29bbe62 (room peers carry `id`, not `peerId` — the no-join check compared undefineds; caught by typecheck).
+32. P3: ⑦② narrowing — GAP_FREE_POLICY const + writeFileSync(loomDir()/policy.json) inside each of the two narrowed tests (within the :246-256 span); file persists to describe end (the two memory-on tests run earlier, unaffected).
+33. P3: doctor-policy spawn tests keep HOME = the test process temp HOME (bun writes its transpiler cache under $HOME/Library/Caches) and set LOOM_TEST_HOME = a per-test temp root; spy launchctl/systemctl/loginctl first on PATH (none spawned — asserted).
+34. P3 (P1-V-L1): readBridgeWorkerFlags still skips validateWorkerConfig on the assembled config — it is validatePermissions (already run inside parsePermissions) + effectiveWorkerPolicy (policy-dependent), so every fs-free error is covered; the parity table (33 cases incl. bridge-order pairs) is the oracle.
+
+## P4 (red db0cbfb · green bf010c2) · P4b (red a2abb7f · green 1ca58e6)
+35. P4: adapters.test.ts ③ edit also drops the blank line after the :30-33 block (deleted span :30-34); no other existing line touched.
+36. P4: the "@loom/mcp-server has no writeAgentHintFile" assertion imports packages/mcp-server/src/index.ts by a computed path (join(import.meta.dir, "..", "..", "mcp-server", "src", "index.ts")) — @loom/adapters does not depend on @loom/mcp-server (bare specifier unresolvable from adapters), and a literal relative import breaks adapters' tsc rootDir (TS6059).
+37. P4: ② grep criterion (`grep -rn 'systemHint\|loomSystemHint\|fableSystemHint\|writeAgentHintFile' packages --include='*.ts'` = 0 except agent-argv.ts:26 · headless-argv.test.ts:139) is not literally 0 — the P4-row-mandated absence assertions in adapters.test.ts (:107-133) name the symbols as strings. Non-test production .ts: only the agent-argv.ts:26 comment. dist/loom.js still carries them until P5 build:cli; implementation-notes/HANDOFF/tasks/docs mentions → P5.
+38. P4: doctor AGENT_HINT line = last line of Home/profile (after the writable line; ② gives no position). Gathered inline in cmdDoctor (index.ts): existsSync(pathJoin(home, "AGENT_HINT.txt")), home = readOnlyLoomHome() — no doctor.ts gatherer for a single existsSync. Existence only: a directory/symlink named AGENT_HINT.txt also shows the line (existsSync follows symlinks; dangling → no line).
+39. P4: doctor.test.ts additions use new separate import statements (a second `bun:test` import, a second `./doctor` import) so the diff on this ⑦ add-only file is `+` only.
+40. P4: doctor.test.ts spawn tests = real `bun packages/cli/src/index.ts doctor`, HOME = test process temp HOME, LOOM_TEST_HOME = per-test temp root, LOOM_PROFILE=p4hint, spy launchctl/systemctl/loginctl first on PATH (dev 33 pattern); planted file mtime set to 2026-01-02 → bytes, mtimeMs, size, mode unchanged; no-file case → no line, nothing created.
+41. P4 red: the 12 P2-V pins in headless-policy-notice.test.ts pass at red (existing P2 behaviour, declared in the commit). Beyond the brief: two contrast cases — L1 with claim (bridge path) → D2 never claimed, nothing sent, record still unsent; L3 with grok enabled → the same record delivers output "done" (proves the transcript is a finished one). (d) crash = dispatcher 1's worker parked → d1.close() → SIGKILL its group → dispatcher 2 recover(); snapshot mtime pre-set to a past date to detect any rewrite.
+42. P4 (P2-V-L2 (a)(b)): both pinned via dispatch() and recover(); (a) record pid dead + pgid = live detached sleeper; (b) pendingResult replayed verbatim (incl. timedOut false), record.pendingResult unchanged.
+43. P4b: shadowsBuiltin decided against BUILTIN_SKILLS (the set resolveSkill uses), only for accepted (Available) user skills — an unavailable shadowing user skill gets no label (unavailable lines unchanged).
+44. P4b: no existing listing test edited (R19 holds — full suite green apart from the known handoff-checkpoint failure).
+45. P4b: skill-label.test.ts reads SKILL_SHADOW_SUFFIX via namespace import at call time (per-case red); the cap case uses pure renderSkillListing with a synthetic long absolute path: exactly 4096 B un-suffixed fits, the same entry suffixed collapses to `- (+1 more): unavailable: cap`, a suffix-length-shorter path suffixed fits at exactly 4096 B.
+46. P4: `loom run` no longer writes ~/.loom/AGENT_HINT.txt (D7 intended behaviour change; an existing file is left alone — 계급 21).
+
+## P4/P4b (db0cbfb/bf010c2, a2abb7f/1ca58e6) — architect ruling on dev 37
+- ② grep check reads "production .ts only" (tests naming the symbols as absence assertions are allowed); amend ② wording in P5 docs.
+
+## P3 verify (Opus xhigh): PASS-with-lows — architect rulings (fix PATCH "P4c", before P5)
+- P3-V-L1: legacy ~/.fable/policy.json row only when migration is actually pending (legacy file exists AND <root>/.loom absent, i.e. resolveStateHomeDir would migrate); otherwise no row. ③ wording amended in P5 docs.
+- P3-V-L2: doctor worker-flag line must use the same derivation as `memory list` (memory-cli.ts:901): whenever the bridge config is invalid (incl. policy conflict / invalid policy), the view is "invalid bridge config" on every surface.
+- P3-V-L3 (spec amendment, architect): "enabled" for headless = maxConcurrent[k] !== 0 AND k has an agentArgv entry (the dispatch allowlist, bridge-config.ts:130-132, bridge-runtime.ts:1844-1856). Agents that can never spawn get no gap/warning/strict/doctor-warn/notice. Thread through enabledAgentsOf input at all call sites (bridge start, doctor, readBridgeWorkerFlags.enabled, smoke). Default headless config (agentArgv {claude}) → gaps = claude network only. Update ② / class 20 / UK-6 wording in P5 docs.
+- Deviations 20–34 accepted.
+- P3-V-L3 Fable ruling (architect amendment, NOT R55b): AMEND with conditions:
+  1. enabled = maxConcurrent[k] !== 0 AND resolveAgentArgv(cfg, k) !== null (covers empty arrays + shell/sh/bash guard, bridge-config.ts:654-662). Doctor readPolicyDoctorInput (doctor.ts:1072-1082) must pass top-level agentArgv through the same {...DEFAULT_AGENT_ARGV, ...sanitizeAgentArgv(raw)} merge (bridge-config.ts:618-621). ONE shared pure helper for bridge + doctor (+ readBridgeWorkerFlags.enabled); test: identical `enabled` for the same raw file.
+  2. STRICT_REFUSAL_TAIL (policy-gaps.ts:71): "Disable the agent (worker.maxConcurrent.<agent>: 0 or remove agentArgv.<agent>)" — ② text updated in P5 docs.
+  Record in implementation-notes; recompute "default gaps" count for ② / class 20 / UK-6 / R55 wording.
+  Smoke ① (real CLI): bridge config must set agentArgv.codex and agentArgv.grok (non-shell argv); no policy.json.
+
+## P4c (red 4fd633f · green 8140c97)
+47. P4c: shared helper = `enabledHeadlessAgents(maxConcurrent, agentArgv)` + `agentArgvFromRaw(raw)` (= loadBridgeConfig's `{...DEFAULT_AGENT_ARGV, ...sanitizeAgentArgv(raw)}`, loadBridgeConfig now calls it) in bridge-config.ts, exported via @loom/host. `enabledAgentsOf` (policy-gaps.ts) kept as the pure maxConcurrent filter the helper builds on (pure tests unchanged). `resolveAgentArgv` param widened to `Pick<BridgeConfig, "agentArgv">` (type-only; all callers compatible).
+48. P4c: `readBridgeWorkerFlags(raw, rawAgentArgv?)` — 2nd param = the file's top-level `agentArgv` raw value; omitted = key absent → {claude}. Pane → `enabled: []` unchanged.
+49. P4c (beyond brief, honesty): doctor disabled row names its reason — new `PolicyDoctorInput.noAgentArgv` (agents whose merged argv resolves null); row `<a>: disabled (no usable agentArgv.<a>) — not checked` (wins when both apply), else the existing `(worker.maxConcurrent.<a> = 0)` text. ③ wording → P5 docs.
+50. P4c: doctor "no bridge config" (all agents assumed enabled → 6 gaps) and "bridge config invalid … showing all agents" are unchanged — P3-V-L3 applies to a parsed headless config only. The "6 gap" pins in doctor-policy.test.ts (:147 policySection, :534 CLI) are these no-config cases and stay.
+51. P4c: headless-worker.ts has no enabledAgentsOf use — the per-card notice filters `deps.policyGaps` (the bridge-start Gap[]), so it follows the helper automatically. headless-policy-notice.test.ts:187 (mirror harness, all agents dispatchable) unedited.
+52. P4c (not in brief — flag): service.ts PATH-drift check (doctor Service section, R17 · R55-L1) still selects agents by maxConcurrent/agentBin only; an agent without agentArgv is still PATH-checked. Smoke ① (real CLI) untouched (P5).
+53. P4c (P3-V-L2): doctor flag view computed after policy resolution — headless + invalid policy.json → "invalid bridge config" (Policy section still shows only the fail row); headless + deprecated-list conflict → invalid (matches the Policy "bridge config invalid" warn); pane + invalid policy.json → false (loadBridgeConfig never loads the policy for pane — memory list parity).
+54. P4c red tests live in a new cli file (packages/cli/src/policy-enabled-p4c.test.ts — host cannot import cli for the 3-way parity). Bridge-start enabled = agents named by the start warnings under the default policy (every agent has ≥ 1 default gap); the bridge loads the raw file itself (no `config` opt). Passing at red (existing behaviour): rows "agentArgv {claude,codex,grok}" and "no claude key + codex·grok, claude 0"; L1 only-legacy; L2 no-config / valid / parser-invalid / pane+invalid-policy.
+55. P4c existing-0.37-test edits (red): policy-gaps.test.ts:80 STRICT_TAIL; bridge-config-policy.test.ts:47-55 (wrapper passes agentArgv, ALL_ARGV const), :267, :288, :459-468, :608 (pass ALL_ARGV — intent "all dispatchable, maxConcurrent decides"); doctor-policy.test.ts:105-110 (writeBridge writes agentArgv, default ALL_ARGV), :334-341 (invalid policy ⇒ <root>/.loom exists ⇒ no legacy row: expect ["fail"] only).
+56. P4c: a `biome check --write` on production files reformatted unrelated code (import sort, Object.hasOwn, line wraps) — reverted; biome error/warning counts on the 4 production files equal 1ca58e6's (all pre-existing).
+57. P4c: default headless config (agentArgv {claude}, no policy.json) → 1 gap (claude network advisory). Recompute ② / class 20 / UK-6 / R55 "default gaps" wording in P5 (6 = all three agents dispatchable).
+- P4c (4fd633f red / 8140c97 green) architect rulings: noAgentArgv doctor row reason accepted (③ wording in P5); "no bridge config" / "invalid bridge config" doctor still assume all agents enabled — accepted, document in P5; service.ts PATH-drift check unchanged — accepted.

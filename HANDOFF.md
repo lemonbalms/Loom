@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.37.0 **approved** (R55) · 4단계 3부 policy honesty · **next = P1** (red first) · topology full
+> v0.37.0 **approved** (R55) · P1~P4c 커밋 · **next = P4 검증** · 재개: [RESUME](tasks/v0370-wip/RESUME.md)
 
 ## Current loop
 
