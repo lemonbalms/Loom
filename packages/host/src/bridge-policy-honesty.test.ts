@@ -34,7 +34,7 @@ import { RelayServer } from "@loom/relay";
 import { type AgentKind, defaultWorkerPermissions } from "./agent-argv";
 import type { BridgeConfig } from "./bridge-config";
 import { startBridgeRuntime } from "./bridge-runtime";
-import { bridgeStatusPath, readBridgeStatusFileResult } from "./bridge-status";
+import { bridgeStatusPath, readBridgeStatusFileResult, truncateLastError } from "./bridge-status";
 import { cardSessionPath } from "./card-session-store";
 import { MEMORY_SNAPSHOT_FILE } from "./memory-inject";
 import { resolveWorkerPolicy } from "./policy-compile";
@@ -174,7 +174,8 @@ describe("bridge start — policy gap warnings · strictEnforcement · notice/ru
     return {
       authorizedDispatchers: ["p_tower"],
       herdrSocketPath: join(dir, "no-herdr.sock"),
-      agentArgv: { claude: ["claude"] },
+      // Every headless kind must be dispatchable (else `agent_kind_not_allowed` before spawn).
+      agentArgv: { claude: ["claude"], codex: ["codex"], grok: ["grok"] },
       herdrProtocol: 17,
       worker: {
         backend: "headless",
@@ -304,8 +305,11 @@ describe("bridge start — policy gap warnings · strictEnforcement · notice/ru
     expect(st.kind).toBe("ok");
     if (st.kind === "ok") {
       expect(st.status.state).toBe("stopped");
-      expect(st.status.lastError).toBe(refusal);
-      expect(st.status.herdr).toBeUndefined();
+      // The status file keeps the 0.33 cap (512 UTF-8 bytes) — the thrown message is verbatim.
+      expect(st.status.lastError).toBe(truncateLastError(refusal));
+      expect(refusal.startsWith(st.status.lastError!)).toBe(true);
+      // initial "down", never the headless "skipped" — the herdr step was not reached
+      expect(st.status.herdr).toBe("down");
     }
     // The refusal replaces the warning loop (② bridge 기동).
     expect(policyWarnings(from)).toEqual([]);
