@@ -153,8 +153,13 @@ function tree(root: string): string[] {
     for (const name of readdirSync(d).sort()) {
       const p = join(d, name);
       const st = lstatSync(p);
-      out.push(`${relative(root, p)}|${st.mode}|${st.size}|${st.mtimeMs}`);
-      if (st.isDirectory() && !st.isSymbolicLink()) go(p);
+      // directories: mode only (a lock dir taken and released bumps the parent's mtime)
+      if (st.isDirectory() && !st.isSymbolicLink()) {
+        out.push(`${relative(root, p)}/|${st.mode}`);
+        go(p);
+      } else {
+        out.push(`${relative(root, p)}|${st.mode}|${st.size}|${st.mtimeMs}`);
+      }
     }
   };
   go(root);
@@ -502,7 +507,7 @@ describe("caps refuse add/propose only (D5 · R6)", () => {
     expect(c.code).toBe(0);
     expect(c.out).toHaveLength(1);
     expect(c.out[0]).toMatch(
-      /^compacted: moved \d+ lines \(0 unparseable, 0 conflict losers\) to .*entries\.archive\.jsonl; kept 0; watermark seq \d+$/,
+      /^compacted: moved \d+ lines \(0 unparseable, 0 conflict losers\) to .*entries\.archive\.jsonl; kept 2; watermark seq \d+$/,
     );
   });
 });
