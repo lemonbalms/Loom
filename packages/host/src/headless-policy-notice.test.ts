@@ -1156,7 +1156,9 @@ describe("P2 worker.maxConcurrent.<agent>: 0 → agent_disabled (D4(c) · R12)",
       await (via === "dispatch" ? d.dispatch(h.card) : d.recover());
       expect(h.ran("grok")).toBe(false);
       expect(h.calls).toHaveLength(1);
-      expect(h.calls[0]!.fields).toEqual(disabledFields("grok"));
+      // Record path = sendAndMarkLocked: its reservation adds `timedOut: false` (as for
+      // fingerprint_changed); the ② fields are otherwise verbatim.
+      expect(h.calls[0]!.fields).toEqual({ ...disabledFields("grok"), timedOut: false });
       expect(h.calls[0]!.target.dispatchHandoffId).toBe("original-handoff");
       const record = h.saved()!;
       expect(record.resultSent).toBe(true);
@@ -1174,7 +1176,7 @@ describe("P2 worker.maxConcurrent.<agent>: 0 → agent_disabled (D4(c) · R12)",
       expect(d.flights()).toHaveLength(0);
       expect(h.ran("grok")).toBe(false);
       expect(h.calls).toHaveLength(1);
-      expect(h.calls[0]!.fields).toEqual(disabledFields("grok"));
+      expect(h.calls[0]!.fields).toEqual({ ...disabledFields("grok"), timedOut: false });
       const record = h.saved()!;
       expect(record.resultSent).toBe(true);
       expect(record.state).toBe("running");
