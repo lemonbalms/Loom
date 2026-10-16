@@ -1,6 +1,7 @@
 /**
  * PLAN 0.36.0 P2 — first-spawn memory injection (D2 · D4 · D5 · D8 · D10b · D11 · R2 · R7 ·
  * R8 · R9 · R13 · R14 · R17 · R54-L1).
+ * PLAN 0.36.0 P3 — resume / recovery memory gate (D3 · D9 · D11 · R3 · R9–R12 · R18 · R54-L2).
  *
  * Fake CLI = a /bin/sh script that dumps its argv (NUL-separated) and stdin to files, copies
  * grok's `--prompt-file`, and prints a minimal finished stream. Paths are baked into the
@@ -9,8 +10,10 @@
  * file with HOME and LOOM_TEST_HOME pointing at the same temp dir (R17).
  */
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as childProcess from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -19,6 +22,8 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -31,10 +36,16 @@ import {
   defaultWorkerPermissions,
   effectiveWorkerPolicy,
   HEADLESS_WORKER_HINT,
+  RESUME_CONTINUATION_MESSAGE,
   type WorkerConfig,
   workerFingerprint,
 } from "./agent-argv";
-import { type CardSessionRecord, cardSessionPath, readCardSession } from "./card-session-store";
+import {
+  type CardSessionRecord,
+  cardSessionPath,
+  readCardSession,
+  writeCardSession,
+} from "./card-session-store";
 import { HeadlessDispatcher, type HeadlessDispatchCard } from "./headless-worker";
 import {
   MEMORY_LINE_PLACEHOLDER,
@@ -54,7 +65,12 @@ import {
 } from "./memory-store";
 import { redactSecrets } from "./redact";
 import { roomKey } from "./room-event-log";
-import { cardSkillsDir, roomSkillsPath, verifyCardSkillsCopy } from "./skill-materialize";
+import {
+  cardSkillsDir,
+  materializeCardSkills,
+  roomSkillsPath,
+  verifyCardSkillsCopy,
+} from "./skill-materialize";
 
 const PEER = "test-local-peer";
 const M = DISPATCHED_TASK_MARKER;
@@ -77,6 +93,12 @@ for a in "$@"; do
   if [ "$prev" = "--prompt-file" ]; then cp "$a" "$out/promptfile-$kind-$n"; fi
   prev="$a"
 done
+# P3: an attempt marked to fail waits for the test's go file, then exits unfinished (no result).
+if [ -e "$out/fail-$kind-$n" ]; then
+  : > "$out/waiting-$kind-$n"
+  while [ ! -e "$out/go-$kind-$n" ]; do sleep 0.05; done
+  exit 86
+fi
 case "$kind" in
   claude) printf '%s\\n' '{"type":"result","result":"done","is_error":false,"usage":{"input_tokens":1,"output_tokens":1}}' ;;
   codex) printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}' ;;
@@ -101,6 +123,7 @@ class Harness {
   readonly config: WorkerConfig;
   readonly calls: Array<{ fields: { reason?: string; status?: string } }> = [];
   readonly dispatchers: HeadlessDispatcher[] = [];
+  readonly pids: number[] = [];
   card: HeadlessDispatchCard = {
     roomId: "room_beta",
     cardId: "task_mem",
@@ -276,9 +299,119 @@ class Harness {
     return loadMemorySnapshot(this.loomDir, agentKeyFor(profile, card.agent), roomKey(card.roomId))
       .text;
   }
+  // --- P3 helpers: failing attempts, seeded records, live pids ---
+  /** Attempt n of `agent` waits for its go file, then exits 86 without a result. */
+  failAt(agent: AgentKind = this.card.agent, n = 1): void {
+    writeFileSync(join(this.out, `fail-${agent}-${n}`), "");
+  }
+  /** Wait until attempt n is parked, run fn while it waits, then release it. */
+  async whileParked(fn: () => void | Promise<void>, agent = this.card.agent, n = 1) {
+    await waitFor(() => existsSync(join(this.out, `waiting-${agent}-${n}`)));
+    try {
+      await fn();
+    } finally {
+      writeFileSync(join(this.out, `go-${agent}-${n}`), "");
+    }
+  }
+  async manifestHash(): Promise<string> {
+    if (this.config.skills?.enabled !== true) return "";
+    const v = await verifyCardSkillsCopy(this.key());
+    if (!v.ok) throw new Error(`card copy not ok: ${v.reason}`);
+    return v.manifestHash;
+  }
+  /** Materialize the card copy as a first spawn would (skills on). */
+  async materialize(): Promise<string> {
+    this.selectSkills(["loom-card-report"]);
+    const r = await materializeCardSkills({
+      ...this.key(),
+      enabled: true,
+      policy: effectiveWorkerPolicy(this.config).effective[this.card.agent].skills,
+    });
+    return r.manifestHash;
+  }
+  writeSnapshot(bytes: string | Buffer): void {
+    mkdirSync(this.cardDir(), { recursive: true, mode: 0o700 });
+    writeFileSync(this.snapshotPath(), bytes, { mode: 0o600 });
+  }
+  seed(over: Partial<CardSessionRecord> = {}): CardSessionRecord {
+    const record: CardSessionRecord = {
+      roomId: this.card.roomId,
+      cardId: this.card.cardId,
+      agent: this.card.agent,
+      fromPeerId: this.card.fromPeerId,
+      dispatchHandoffId: this.card.dispatchHandoffId,
+      cwd: this.cwd,
+      requestedCwd: null,
+      sessionId: "saved-session",
+      promptFingerprint: workerFingerprint(this.config, ""),
+      attempts: 1,
+      pid: 2_000_000_000,
+      pgid: 2_000_000_000,
+      startedAt: new Date().toISOString(),
+      state: "running",
+      resultSent: false,
+      procStartedAt: "Thu Oct 15 00:00:00 2026",
+      sendAttempts: 0,
+      completedHandoffIds: [],
+      ...over,
+    };
+    writeCardSession({ loomDir: this.loomDir, localPeerId: PEER }, record);
+    writeFileSync(join(this.cardDir(), `transcript-${record.attempts}.jsonl`), "");
+    return record;
+  }
+  /** Overwrite fields of the saved record (raw JSON, so null survives). */
+  tamperRecord(fields: Record<string, unknown>): void {
+    const path = cardSessionPath(this.key());
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    writeFileSync(path, JSON.stringify({ ...raw, ...fields }), { mode: 0o600 });
+  }
+  sleeper(): number {
+    const child = childProcess.spawn("/bin/sleep", ["30"], { detached: true, stdio: "ignore" });
+    const pid = child.pid!;
+    this.pids.push(pid);
+    return pid;
+  }
+  lstart(pid: number): string {
+    return childProcess
+      .execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+        encoding: "utf8",
+        env: { ...process.env, LC_ALL: "C", LANG: "C", TZ: "UTC" },
+      })
+      .trim();
+  }
   async close(): Promise<void> {
+    for (const pid of this.pids) killPid(pid);
     for (const d of this.dispatchers) await d.close();
     rmSync(this.root, { recursive: true, force: true });
+  }
+}
+
+async function waitFor(pred: () => boolean, ms = 10_000): Promise<void> {
+  const start = performance.now();
+  while (!pred()) {
+    if (performance.now() - start > ms) throw new Error("waitFor timeout");
+    await Bun.sleep(20);
+  }
+}
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function killPid(pid: number): void {
+  if (pid <= 1 || pid === process.pid) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    /* not a group leader */
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    /* already dead */
   }
 }
 
@@ -320,6 +453,8 @@ describe("P2 memory off = 0.35 first turn, argv, record, fingerprint (D5 · D10)
           seedStore(h);
           if (skills) h.selectSkills(["loom-card-report", "missing-one"]);
           const loadSpy = spyOn(memorySnapshot, "loadMemorySnapshot");
+          // V-L1: mockRestore() clears the recorded calls, so read the count before it.
+          let loadCalls = -1;
           let nonceCalls = 0;
           const restore = captureStderr();
           try {
@@ -333,10 +468,11 @@ describe("P2 memory off = 0.35 first turn, argv, record, fingerprint (D5 · D10)
               })
               .dispatch(h.card);
           } finally {
+            loadCalls = loadSpy.mock.calls.length;
             restore();
             loadSpy.mockRestore();
           }
-          expect(loadSpy).toHaveBeenCalledTimes(0);
+          expect(loadCalls).toBe(0);
           expect(nonceCalls).toBe(0);
           const wrapped = wrapDispatchedPrompt(h.card.prompt);
           const want = skills ? `${h.listing(agent)}\n\n${wrapped}` : wrapped;
@@ -709,4 +845,516 @@ describe("P2 snapshot step failure → spawn_setup_failed, no write-ahead, no sp
       [],
     );
   }, 20_000);
+
+  test("V-L2 atomic write: the bytes go to the same-dir temp file first; a temp failure keeps the previous file", async () => {
+    const h = new Harness();
+    seedStore(h);
+    h.writeSnapshot("previous bytes\n");
+    const before = statSync(h.snapshotPath());
+    const NOW = 1_760_000_000_000;
+    // The temp name is .memory-snapshot.md.tmp.<pid>.<Date.now()>: occupy it so the temp write fails.
+    const tmp = join(h.cardDir(), `.${MEMORY_SNAPSHOT_FILE}.tmp.${process.pid}.${NOW}`);
+    mkdirSync(join(tmp, "blocker"), { recursive: true });
+    const nowSpy = spyOn(Date, "now").mockReturnValue(NOW);
+    try {
+      await h.dispatcher(ON).dispatch(h.card);
+    } finally {
+      nowSpy.mockRestore();
+    }
+    expect(h.spawns()).toBe(0);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]!.fields.reason).toBe("spawn_setup_failed");
+    expect(h.saved()).toBeNull();
+    // Never written in place: the previous file is byte-, mode- and inode-identical.
+    expect(readFileSync(h.snapshotPath(), "utf8")).toBe("previous bytes\n");
+    const after = statSync(h.snapshotPath());
+    expect(after.ino).toBe(before.ino);
+    expect(after.mode & 0o777).toBe(0o600);
+    expect(existsSync(join(tmp, "blocker"))).toBe(true);
+  }, 20_000);
+
+  test("V-L2 atomic write: success replaces the file by rename (new inode, 0600, no temp left)", async () => {
+    const h = new Harness();
+    seedStore(h);
+    h.writeSnapshot("previous bytes\n");
+    const before = statSync(h.snapshotPath());
+    await h.dispatcher(ON).dispatch(h.card);
+    expect(h.spawns()).toBe(1);
+    const after = statSync(h.snapshotPath());
+    expect(after.ino).not.toBe(before.ino);
+    expect(after.mode & 0o777).toBe(0o600);
+    expect(readFileSync(h.snapshotPath(), "utf8")).toBe(h.expectedBlock());
+    expect(readdirSync(h.cardDir()).filter((n) => n.includes(".tmp."))).toEqual([]);
+  }, 20_000);
+});
+
+// ===========================================================================
+// P3 — resume / recovery memory gate (D3 · D9 · D11 · R3 · R9–R12 · R18 · R54-L2)
+// ===========================================================================
+
+const FENCED_TEXT = "persona: careful\n- use bun for every script\n";
+const FP_NOTE = "fingerprint_changed; not resuming";
+
+/** R3: the resume body. recover() rebuilds the card from the record, whose prompt is "". */
+function resumeBody(h: Harness, prompt = h.card.prompt): string {
+  return `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapDispatchedPrompt(prompt)}`;
+}
+function gateLine(h: Harness, reason: string): string {
+  return `[headless] memory snapshot check failed (${h.card.cardId}): ${reason}\n`;
+}
+function gateLines(): string[] {
+  return stderrLines.filter((l) => l.includes("memory snapshot check failed"));
+}
+/** Run fn with stderr captured and loadMemorySnapshot counted (call-through). */
+async function observed(fn: () => Promise<void>): Promise<{ loads: number }> {
+  const original = memorySnapshot.loadMemorySnapshot;
+  let loads = 0;
+  const loadSpy = spyOn(memorySnapshot, "loadMemorySnapshot").mockImplementation(
+    (...args: Parameters<typeof original>) => {
+      loads += 1;
+      return original(...args);
+    },
+  );
+  const restore = captureStderr();
+  try {
+    await fn();
+  } finally {
+    restore();
+    loadSpy.mockRestore();
+  }
+  return { loads };
+}
+/** A fenced memory-snapshot.md + a record that matches it, as a first spawn wrote them. */
+async function seedWithSnapshot(
+  h: Harness,
+  over: Partial<CardSessionRecord> = {},
+): Promise<{ F: string; hash: string; manifest: string }> {
+  const manifest = h.config.skills?.enabled === true ? await h.materialize() : "";
+  const F = renderMemoryBlock(FENCED_TEXT, NONCE).block;
+  h.writeSnapshot(F);
+  const hash = sha256(Buffer.from(F, "utf8"));
+  h.seed({
+    promptFingerprint: workerFingerprint(h.config, manifest, hash),
+    memorySnapshotHash: hash,
+    ...over,
+  });
+  return { F, hash, manifest };
+}
+function expectNeedsVerification(h: Harness): void {
+  expect(h.calls).toHaveLength(1);
+  expect(h.calls[0]!.fields.reason).toBe("needs_verification");
+  expect((h.calls[0]!.fields as { note?: string }).note).toBe(FP_NOTE);
+}
+function setClaudePermissionMode(h: Harness, mode: string): void {
+  (h.config.permissions.claude as { permissionMode: string }).permissionMode = mode;
+}
+function skillMd(h: Harness): string {
+  return join(cardSkillsDir(h.key()), "plugin", "skills", "loom-card-report", "SKILL.md");
+}
+
+type FileFault = { name: string; reason: string; apply: (h: Harness) => void; root?: boolean };
+const FILE_FAULTS: FileFault[] = [
+  {
+    name: "(ii) one byte changed",
+    reason: "hash mismatch",
+    apply: (h) => {
+      const b = readFileSync(h.snapshotPath());
+      b[b.length - 1] = b[b.length - 1]! ^ 1;
+      writeFileSync(h.snapshotPath(), b);
+    },
+  },
+  { name: "(iii) file removed", reason: "missing", apply: (h) => unlinkSync(h.snapshotPath()) },
+  {
+    name: "(iv) file replaced by a symlink to identical bytes",
+    reason: "not a regular file",
+    apply: (h) => {
+      const elsewhere = join(h.root, "elsewhere-snapshot.md");
+      writeFileSync(elsewhere, readFileSync(h.snapshotPath()));
+      unlinkSync(h.snapshotPath());
+      symlinkSync(elsewhere, h.snapshotPath());
+    },
+  },
+  {
+    name: "(R18) file larger than 1 MiB",
+    reason: "too large",
+    apply: (h) => writeFileSync(h.snapshotPath(), Buffer.alloc(1024 * 1024 + 1, 0x61)),
+  },
+  {
+    name: "(R18) unreadable file",
+    reason: "read error",
+    apply: (h) => chmodSync(h.snapshotPath(), 0o000),
+    root: false,
+  },
+];
+const IS_ROOT = process.getuid?.() === 0;
+const faultsHere = (faults: FileFault[]) => faults.filter((f) => !(IS_ROOT && f.root === false));
+const RECORD_FAULTS: Array<{ name: string; value: unknown }> = [
+  { name: '(v) hash "zz"', value: "zz" },
+  { name: "(v) hash null (R54-L2: never ?? \"\")", value: null },
+  { name: "(v) hash not a string", value: 7 },
+];
+
+for (const skills of [false, true] as const) {
+  const harness = () => new Harness(skills ? true : undefined);
+
+  // -------------------------------------------------------------------------
+  // in-process: attempt 1 exits unfinished → nextPlan → resume (D3 · D9 · R3 · R10)
+  // -------------------------------------------------------------------------
+  describe(`P3 in-process resume gate (skills=${skills})`, () => {
+    for (const agent of AGENTS) {
+      test(`${agent} (i) store changed after spawn → resume OK · RESUME\\n\\nM\\n\\nP · hash kept (R3 · R10)`, async () => {
+        const h = harness();
+        h.card = { ...h.card, agent };
+        seedStore(h);
+        if (skills) h.selectSkills(["loom-card-report"]);
+        h.failAt(agent, 1);
+        let first!: CardSessionRecord;
+        let F1 = "";
+        const { loads } = await observed(async () => {
+          const pending = h.dispatcher(ON).dispatch(h.card);
+          await h.whileParked(
+            () => {
+              first = h.saved()!;
+              F1 = readFileSync(h.snapshotPath(), "utf8");
+              h.approve(h.propose("APPROVED-AFTER-SPAWN entry", "project"));
+            },
+            agent,
+            1,
+          );
+          await pending;
+        });
+        // Resume never re-reads the store (D2: first turn only).
+        expect(loads).toBe(1);
+        expect(h.spawns(agent)).toBe(2);
+        expect(h.sent(agent, 2)).toBe(resumeBody(h));
+        expect(h.sent(agent, 2)).not.toContain("LOOM MEMORY SNAPSHOT");
+        expect(h.sent(agent, 2)).not.toContain("APPROVED-AFTER-SPAWN");
+        expect(readFileSync(h.snapshotPath(), "utf8")).toBe(F1);
+        expect(typeof first.memorySnapshotHash).toBe("string");
+        expect(first.memorySnapshotHash).toBe(sha256(Buffer.from(F1, "utf8")));
+        const record = h.saved()!;
+        expect(record.attempts).toBe(2);
+        expect(record.sessionId).toBe(first.sessionId);
+        expect(h.argv(agent, 2)).toContain(first.sessionId);
+        // R10: the resume write-ahead carries the hash; the 6-input fingerprint is kept.
+        expect(record.memorySnapshotHash).toBe(first.memorySnapshotHash);
+        expect(record.promptFingerprint).toBe(first.promptFingerprint);
+        expect(record.promptFingerprint).toBe(
+          workerFingerprint(h.config, await h.manifestHash(), first.memorySnapshotHash!),
+        );
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.fields.reason).not.toBe("needs_verification");
+        expect(gateLines()).toEqual([]);
+      }, 30_000);
+    }
+
+    for (const fault of faultsHere(FILE_FAULTS)) {
+      test(`claude ${fault.name} between attempts → needs_verification · ${fault.reason}`, async () => {
+        const h = harness();
+        seedStore(h);
+        if (skills) h.selectSkills(["loom-card-report"]);
+        h.failAt();
+        await observed(async () => {
+          const pending = h.dispatcher(ON).dispatch(h.card);
+          await h.whileParked(() => fault.apply(h));
+          await pending;
+        });
+        expect(h.spawns()).toBe(1);
+        expectNeedsVerification(h);
+        expect(h.saved()!.attempts).toBe(1);
+        expect(gateLines()).toEqual([gateLine(h, fault.reason)]);
+      }, 30_000);
+    }
+
+    for (const fault of RECORD_FAULTS) {
+      test(`claude ${fault.name} between attempts → needs_verification · bad record field`, async () => {
+        const h = harness();
+        seedStore(h);
+        if (skills) h.selectSkills(["loom-card-report"]);
+        h.failAt();
+        await observed(async () => {
+          const pending = h.dispatcher(ON).dispatch(h.card);
+          await h.whileParked(async () => {
+            // Let the post-spawn identity writes land first; they spread the stored record.
+            await waitFor(() => {
+              const r = h.saved();
+              return r?.state === "running" && r.procStartedAt !== "";
+            });
+            h.tamperRecord({ memorySnapshotHash: fault.value });
+          });
+          await pending;
+        });
+        expect(h.spawns()).toBe(1);
+        expectNeedsVerification(h);
+        expect(gateLines()).toEqual([gateLine(h, "bad record field")]);
+      }, 30_000);
+    }
+
+    test('claude (vi) hash "" + a stray memory-snapshot.md → file ignored, resume OK', async () => {
+      const h = harness();
+      // Enabled, but an empty snapshot: no block, no key, no file (D11).
+      if (skills) h.selectSkills(["loom-card-report"]);
+      h.failAt();
+      await observed(async () => {
+        const pending = h.dispatcher(ON).dispatch(h.card);
+        await h.whileParked(() => {
+          expect("memorySnapshotHash" in h.saved()!).toBe(false);
+          h.writeSnapshot("stray bytes, not a snapshot\n");
+        });
+        await pending;
+      });
+      expect(h.spawns()).toBe(2);
+      expect(h.sent("claude", 2)).toBe(resumeBody(h));
+      const record = h.saved()!;
+      expect(record.attempts).toBe(2);
+      expect("memorySnapshotHash" in record).toBe(false);
+      expect(record.promptFingerprint).toBe(workerFingerprint(h.config, await h.manifestHash()));
+      expect(readFileSync(h.snapshotPath(), "utf8")).toBe("stray bytes, not a snapshot\n");
+      expect(gateLines()).toEqual([]);
+    }, 30_000);
+
+    test("D9: memory off · permissions changed between attempts → needs_verification, no new session", async () => {
+      const h = harness();
+      if (skills) h.selectSkills(["loom-card-report"]);
+      h.failAt();
+      let first!: CardSessionRecord;
+      const pending = h.dispatcher().dispatch(h.card);
+      await h.whileParked(() => {
+        first = h.saved()!;
+        setClaudePermissionMode(h, "plan");
+      });
+      await pending;
+      // Old skills-off behaviour (removed): a fresh randomUUID session was spawned silently.
+      expect(h.spawns()).toBe(1);
+      expectNeedsVerification(h);
+      expect(h.saved()!.sessionId).toBe(first.sessionId);
+      expect(h.saved()!.attempts).toBe(1);
+    }, 30_000);
+  });
+
+  // -------------------------------------------------------------------------
+  // recovery (dead pid, recover() — :1066 path) and adoption (live pid — :1107 path)
+  // -------------------------------------------------------------------------
+  describe(`P3 recovery / adopt memory gate (skills=${skills})`, () => {
+    for (const memory of [ON, { memory: { enabled: false } }] as const) {
+      const label = memory.memory.enabled ? "memory on" : "memory off (R11 flag toggle)";
+      test(`(i) dead pid, intact file, ${label} → resume OK · no fence · hash kept`, async () => {
+        const h = harness();
+        const { hash, manifest } = await seedWithSnapshot(h);
+        const { loads } = await observed(() => h.dispatcher(memory).recover());
+        expect(loads).toBe(0);
+        expect(h.spawns()).toBe(1);
+        expect(h.sent("claude", 1)).toBe(resumeBody(h, ""));
+        expect(h.argv("claude", 1)).toContain("saved-session");
+        const record = h.saved()!;
+        expect(record.attempts).toBe(2);
+        expect(record.sessionId).toBe("saved-session");
+        expect(record.memorySnapshotHash).toBe(hash);
+        expect(record.promptFingerprint).toBe(workerFingerprint(h.config, manifest, hash));
+        expect(h.calls).toHaveLength(1);
+        expect(h.calls[0]!.fields.reason).not.toBe("needs_verification");
+        expect(gateLines()).toEqual([]);
+      }, 30_000);
+
+      for (const fault of faultsHere(FILE_FAULTS)) {
+        test(`dead pid, ${fault.name}, ${label} → needs_verification · ${fault.reason}`, async () => {
+          const h = harness();
+          await seedWithSnapshot(h);
+          fault.apply(h);
+          await observed(() => h.dispatcher(memory).recover());
+          expect(h.spawns()).toBe(0);
+          expectNeedsVerification(h);
+          expect(gateLines()).toContain(gateLine(h, fault.reason));
+        }, 30_000);
+      }
+    }
+
+    for (const fault of RECORD_FAULTS) {
+      test(`dead pid, ${fault.name} → needs_verification · bad record field`, async () => {
+        const h = harness();
+        await seedWithSnapshot(h);
+        h.tamperRecord({ memorySnapshotHash: fault.value });
+        await observed(() => h.dispatcher(ON).recover());
+        expect(h.spawns()).toBe(0);
+        expectNeedsVerification(h);
+        expect(gateLines()).toContain(gateLine(h, "bad record field"));
+      }, 30_000);
+    }
+
+    test('dead pid, (vi) 0.35-shape record (no key) + a stray file → file ignored, resume OK', async () => {
+      const h = harness();
+      const manifest = skills ? await h.materialize() : "";
+      h.writeSnapshot("stray bytes, not a snapshot\n");
+      h.seed({ promptFingerprint: workerFingerprint(h.config, manifest) });
+      await observed(() => h.dispatcher(ON).recover());
+      expect(h.spawns()).toBe(1);
+      expect(h.sent("claude", 1)).toBe(resumeBody(h, ""));
+      expect("memorySnapshotHash" in h.saved()!).toBe(false);
+      expect(readFileSync(h.snapshotPath(), "utf8")).toBe("stray bytes, not a snapshot\n");
+      expect(gateLines()).toEqual([]);
+    }, 30_000);
+
+    test("flag toggle: 0.35-shape record + memory now on → 5-input resume, no fence, no snapshot", async () => {
+      const h = harness();
+      seedStore(h);
+      const manifest = skills ? await h.materialize() : "";
+      h.seed({ promptFingerprint: workerFingerprint(h.config, manifest) });
+      const { loads } = await observed(() => h.dispatcher(ON).recover());
+      expect(loads).toBe(0);
+      expect(h.spawns()).toBe(1);
+      expect(h.sent("claude", 1)).toBe(resumeBody(h, ""));
+      const record = h.saved()!;
+      expect("memorySnapshotHash" in record).toBe(false);
+      expect(h.sessionJson()).not.toContain("memorySnapshotHash");
+      expect(record.promptFingerprint).toBe(workerFingerprint(h.config, manifest));
+      expect(existsSync(h.snapshotPath())).toBe(false);
+    }, 30_000);
+
+    for (const via of ["dispatch", "recover"] as const) {
+      for (const fault of FILE_FAULTS.slice(0, 2)) {
+        test(`live pid via ${via}(), ${fault.name} → not killed · pre-empted needs_verification`, async () => {
+          const h = harness();
+          const pid = h.sleeper();
+          await seedWithSnapshot(h, { pid, pgid: pid, procStartedAt: h.lstart(pid) });
+          fault.apply(h);
+          const d = h.dispatcher(ON);
+          await observed(() => (via === "dispatch" ? d.dispatch(h.card) : d.recover()));
+          expect(alive(pid)).toBe(true);
+          expect(d.flights()).toHaveLength(0);
+          expect(h.spawns()).toBe(0);
+          expectNeedsVerification(h);
+          expect(h.saved()!.state).toBe("running");
+          expect(gateLines()).toContain(gateLine(h, fault.reason));
+        }, 30_000);
+      }
+    }
+
+    test("live pid, intact file → adopted, then resumed with the hash kept", async () => {
+      const h = harness();
+      const pid = h.sleeper();
+      const { hash, manifest } = await seedWithSnapshot(h, {
+        pid,
+        pgid: pid,
+        procStartedAt: h.lstart(pid),
+      });
+      const d = h.dispatcher(ON);
+      const pending = d.dispatch(h.card);
+      await waitFor(() => d.flights().length === 1);
+      expect(h.calls).toHaveLength(0);
+      killPid(pid);
+      await pending;
+      expect(h.spawns()).toBe(1);
+      expect(h.sent("claude", 1)).toBe(resumeBody(h));
+      expect(h.saved()!.memorySnapshotHash).toBe(hash);
+      expect(h.saved()!.promptFingerprint).toBe(workerFingerprint(h.config, manifest, hash));
+    }, 30_000);
+
+    test("D9: adopted live worker, permissions changed before it exits → needs_verification, no fresh session", async () => {
+      const h = harness();
+      const manifest = skills ? await h.materialize() : "";
+      const pid = h.sleeper();
+      h.seed({
+        pid,
+        pgid: pid,
+        procStartedAt: h.lstart(pid),
+        promptFingerprint: workerFingerprint(h.config, manifest),
+      });
+      const d = h.dispatcher();
+      const pending = d.dispatch(h.card);
+      await waitFor(() => d.flights().length === 1);
+      setClaudePermissionMode(h, "plan");
+      killPid(pid);
+      await pending;
+      expect(h.spawns()).toBe(0);
+      expectNeedsVerification(h);
+      expect(h.saved()!.sessionId).toBe("saved-session");
+    }, 30_000);
+  });
+}
+
+describe("P3 gate order: shape → skills copy → memory file → fingerprint (R11)", () => {
+  test("bad record field is decided before the skills copy is checked", async () => {
+    const h = new Harness(true);
+    await seedWithSnapshot(h, { memorySnapshotHash: "zz" });
+    writeFileSync(skillMd(h), `${readFileSync(skillMd(h), "utf8")}\ntampered\n`);
+    await observed(() => h.dispatcher(ON).recover());
+    expectNeedsVerification(h);
+    expect(gateLines()).toContain(gateLine(h, "bad record field"));
+    expect(stderrLines.some((l) => l.includes("skills copy check failed"))).toBe(false);
+  }, 30_000);
+
+  test("a failed skills copy check stops before the memory file is read", async () => {
+    const h = new Harness(true);
+    await seedWithSnapshot(h);
+    writeFileSync(skillMd(h), `${readFileSync(skillMd(h), "utf8")}\ntampered\n`);
+    unlinkSync(h.snapshotPath());
+    await observed(() => h.dispatcher(ON).recover());
+    expectNeedsVerification(h);
+    expect(stderrLines.some((l) => l.includes("skills copy check failed"))).toBe(true);
+    expect(gateLines()).toEqual([]);
+  }, 30_000);
+
+  test("file intact but the recorded fingerprint lacks the hash → fingerprint mismatch", async () => {
+    const h = new Harness();
+    await seedWithSnapshot(h, { promptFingerprint: workerFingerprint(h.config, "") });
+    await observed(() => h.dispatcher(ON).recover());
+    expect(h.spawns()).toBe(0);
+    expectNeedsVerification(h);
+    expect(gateLines()).toEqual([]);
+  }, 30_000);
+});
+
+describe("P3 reserveShutdownAfterClaimLocked: unchanged code (R12)", () => {
+  async function closeDuringClaim(h: Harness, card: HeadlessDispatchCard): Promise<void> {
+    let resolveClaim!: (claimed: boolean) => void;
+    let claiming = false;
+    const d = h.dispatcher(ON);
+    const pending = d.dispatch({
+      ...card,
+      claim: () => {
+        claiming = true;
+        return new Promise<boolean>((resolve) => {
+          resolveClaim = resolve;
+        });
+      },
+    });
+    await waitFor(() => claiming);
+    const closing = d.close();
+    resolveClaim(true);
+    await Promise.all([pending, closing]);
+  }
+
+  test("a new reservation record has no hash key and workerFingerprint(config, \"\")", async () => {
+    const h = new Harness();
+    seedStore(h);
+    const { loads } = await observed(() => closeDuringClaim(h, h.card));
+    expect(loads).toBe(0);
+    const saved = h.saved()!;
+    expect(saved.pendingResult?.reason).toBe("bridge_shutdown_after_claim");
+    expect("memorySnapshotHash" in saved).toBe(false);
+    expect(h.sessionJson()).not.toContain("memorySnapshotHash");
+    expect(saved.promptFingerprint).toBe(workerFingerprint(h.config, ""));
+    expect(existsSync(h.snapshotPath())).toBe(false);
+    expect(h.spawns()).toBe(0);
+  }, 30_000);
+
+  test("an existing record keeps its hash + fingerprint pair through the reservation spread", async () => {
+    const h = new Harness();
+    const { hash } = await seedWithSnapshot(h, {
+      state: "exited",
+      pid: 0,
+      pgid: 0,
+      procStartedAt: "",
+      resultSent: true,
+      dispatchHandoffId: "old-handoff",
+      completedHandoffIds: ["old-handoff"],
+    });
+    await observed(() => closeDuringClaim(h, { ...h.card, dispatchHandoffId: "new-handoff" }));
+    const saved = h.saved()!;
+    expect(saved.pendingResult?.reason).toBe("bridge_shutdown_after_claim");
+    expect(saved.dispatchHandoffId).toBe("new-handoff");
+    expect(saved.memorySnapshotHash).toBe(hash);
+    expect(saved.promptFingerprint).toBe(workerFingerprint(h.config, "", hash));
+    expect(h.spawns()).toBe(0);
+  }, 30_000);
 });
