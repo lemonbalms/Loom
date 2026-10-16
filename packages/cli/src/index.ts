@@ -150,6 +150,7 @@ import {
   homeProfileSection,
   hostSection,
   installEnvSection,
+  memorySection,
   relaySection,
   offlineBridgeStatusLines,
   renderDoctor,
@@ -161,6 +162,13 @@ import {
   ensureClaudeStopHook,
   shouldActivateHandoffInject,
 } from "./inject-handoffs";
+import {
+  readMemoryDoctorInput,
+  realMemoryCliDeps,
+  runMemoryCommand,
+  runRulesCommand,
+  runSkillsCommand,
+} from "./memory-cli";
 
 const VERSION = "0.34.0";
 
@@ -265,6 +273,9 @@ const BOOLEAN_FLAGS = new Set([
   "inject-handoffs",
   // PLAN 0.28.0 M3: quarantine ack key tag
   "presence",
+  // PLAN 0.35.0 P4: loom memory list --all · --json (memory · rules · skills)
+  "all",
+  "json",
 ]);
 
 function usage(): string {
@@ -288,6 +299,14 @@ Usage:
   loom bridge start | stop | status | quarantine ack  # herdr node bridge (0.22+)
   loom service install|uninstall|start|status [--profile <p>] [--force]
                                     # bridge as launchd/systemd user service (0.34)
+  loom memory add|propose --agent claude|codex|grok [--room <roomId>]
+              [--type fact|decision|preference] [--supersedes <id>] <body…> | -- <body>
+  loom memory approve|retire|show --agent <a> <id> · compact --agent <a>
+  loom memory list [--agent <a>] [--room <roomId>] [--all] [--json]
+                                    # per-agent memory store (0.35)
+  loom rules list [--json]          # bundled + ~/.loom/rules (0.35)
+  loom skills list [--room <roomId>] [--json]
+                                    # skill sources + shadowing (0.35)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -2314,6 +2333,8 @@ async function cmdDoctor(flags: Record<string, string | boolean>) {
     // PLAN 0.33.0 D5 / R6: files + pid only, ok/warn/info — never changes the exit code.
     bridgeSection(readBridgeView(bridgeProfile, pathJoin(home, "bridge"))),
     service,
+    // PLAN 0.35.0 D7 / ③: read-only (no lock, no write), ok/warn/info — never changes the exit code.
+    memorySection(readMemoryDoctorInput(home)),
   ];
   process.stdout.write(renderDoctor(sections));
   process.exit(doctorExitCode(sections));
@@ -3391,6 +3412,14 @@ async function main() {
     const code = await runServiceCommand(sub ?? "", { force: flags.force === true }, {
       loomVersion: VERSION,
     });
+    process.exit(code);
+  }
+  if (cmd === "memory" || cmd === "rules" || cmd === "skills") {
+    // PLAN 0.35.0 P4: exit 0 · 1 refused/error/usage (service idiom — index.ts only exits).
+    const run =
+      cmd === "memory" ? runMemoryCommand : cmd === "rules" ? runRulesCommand : runSkillsCommand;
+    const deps = realMemoryCliDeps(flags);
+    const code = await run(sub ?? "", { positional: rest, passthrough }, flags, deps);
     process.exit(code);
   }
   if (cmd === "conv-hosts") {

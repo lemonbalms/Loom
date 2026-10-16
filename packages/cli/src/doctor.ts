@@ -677,6 +677,280 @@ export function serviceSection(input: ServiceSectionInput): DoctorSection {
   return { title, lines };
 }
 
+// ---------------------------------------------------------------------------------------------
+// PLAN 0.35.0 D7 / ③ — Memory section
+// ---------------------------------------------------------------------------------------------
+
+/** A file below loomDir, judged with lstat (a symlink / non-regular file is `unsafe`). */
+export type MemoryDoctorFile =
+  | { state: "absent" }
+  | { state: "file"; bytes: number; mode: number }
+  | { state: "unsafe" };
+
+export type MemoryDoctorCounts = {
+  active: number;
+  proposed: number;
+  retired: number;
+  unparseable: number;
+  conflicts: number;
+  dangling: number;
+  archivedRefs: number;
+};
+
+export type MemoryDoctorAgent = {
+  agentKey: string;
+  /** `unsafe` = the agentKey entry is a symlink or not a directory (nothing below is read). */
+  dir: "dir" | "unsafe";
+  entries: MemoryDoctorFile;
+  /** Fold counts (zeros when entries.jsonl is absent); null = unreadable or over the scan size. */
+  fold: MemoryDoctorCounts | null;
+  archive: MemoryDoctorFile;
+  persona: MemoryDoctorFile;
+};
+
+export type MemoryDoctorInput = {
+  platform: string;
+  memoryDir: string;
+  root: { state: "absent" } | { state: "dir"; mode: number } | { state: "unsafe" };
+  /** Valid agentKey entries under memory/, at most 64 (R14). */
+  agents: MemoryDoctorAgent[];
+  /** memory/ entries that are not agent keys. */
+  ignored: string[];
+  agentScanCapped: boolean;
+  knowledgeIndexPath: string;
+  knowledgeIndex: MemoryDoctorFile;
+  rooms: {
+    state: "absent" | "dir" | "unsafe";
+    /** Rooms whose guideline.md exists (or is unsafe), at most 4096 rooms scanned (R14). */
+    guidelines: { roomKey: string; file: MemoryDoctorFile }[];
+    scanCapped: boolean;
+  };
+  rules: {
+    bundled: number;
+    user: number;
+    overrides: number;
+    disabled: number;
+    invalid: number;
+    /** Ids with a same-source conflict. */
+    conflicts: string[];
+    /** Ids whose body was cut at 8192 B. */
+    truncated: string[];
+    scanCapped: boolean;
+  };
+};
+
+const MEMORY_DOCTOR_ACTIVE_CAP = 200;
+const MEMORY_DOCTOR_ENTRIES_MAX = 1024 * 1024;
+const MEMORY_DOCTOR_SCAN_KIB = 4096;
+const PERSONA_DOCTOR_CAP = 8192;
+const INDEX_DOCTOR_CAP = 8192;
+const GUIDELINE_DOCTOR_CAP = 16384;
+
+function kibText(bytes: number): string {
+  return `${Math.ceil(bytes / 1024)} KiB/1024 KiB`;
+}
+
+/**
+ * PLAN 0.35.0 D7 / ③ — `loom doctor` Memory section. Pure: the caller gathers files read-only
+ * (no lock, no write — R14 scan caps). Rows top to bottom per ③: store root · one row per
+ * agentKey · persona · knowledge · guideline · rules. ok / warn / info only — never `fail`, so
+ * the doctor exit code never changes. `memory/` absent → one info row and the remaining memory
+ * rows (agents · persona) are omitted. Human files (persona · INDEX) with mode ≠ 0600 are info.
+ */
+export function memorySection(input: MemoryDoctorInput): DoctorSection {
+  const lines: DoctorLine[] = [];
+  const modes = input.platform !== "win32";
+  const at = `(${input.memoryDir})`;
+
+  // store root
+  const root = input.root;
+  if (root.state === "absent") {
+    lines.push({ status: "info", message: `no memory yet ${at}` });
+  } else if (root.state === "unsafe") {
+    lines.push({ status: "warn", message: `memory/ is a symlink or not a directory ${at}` });
+  } else {
+    const n = `${input.agents.length} agent stores ${at}`;
+    if (!modes) lines.push({ status: "ok", message: `memory/ · ${n}` });
+    else if (root.mode !== 0o700) {
+      lines.push({
+        status: "warn",
+        message: `memory/ mode ${modeText(root.mode)} (expected 0700) · ${n}`,
+      });
+    } else lines.push({ status: "ok", message: `memory/ 0700 · ${n}` });
+  }
+
+  if (root.state === "dir") {
+    // one row per agentKey
+    for (const a of input.agents) {
+      if (a.dir === "unsafe") {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}: store directory is a symlink or not a directory`,
+        });
+        continue;
+      }
+      if (a.entries.state === "unsafe") {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}: entries.jsonl is a symlink or not a regular file`,
+        });
+        continue;
+      }
+      const bytes = a.entries.state === "file" ? a.entries.bytes : 0;
+      const reasons: string[] = [];
+      if (bytes > MEMORY_DOCTOR_ENTRIES_MAX)
+        reasons.push("writes refused until loom memory compact");
+      let base: string;
+      if (a.fold === null) {
+        base = `${a.agentKey}: ${kibText(bytes)} (not scanned: over ${MEMORY_DOCTOR_SCAN_KIB} KiB)`;
+      } else {
+        const f = a.fold;
+        base = `${a.agentKey}: active ${f.active}/${MEMORY_DOCTOR_ACTIVE_CAP} · proposed ${f.proposed} · retired ${f.retired} · ${kibText(bytes)}`;
+        if (f.active > MEMORY_DOCTOR_ACTIVE_CAP) {
+          reasons.push(`active over the cap (approved past ${MEMORY_DOCTOR_ACTIVE_CAP})`);
+        }
+      }
+      if (modes && a.entries.state === "file" && a.entries.mode !== 0o600) {
+        reasons.push(`entries.jsonl mode ${modeText(a.entries.mode)} (expected 0600)`);
+      }
+      if (modes && a.archive.state === "file" && a.archive.mode !== 0o600) {
+        reasons.push(`entries.archive.jsonl mode ${modeText(a.archive.mode)} (expected 0600)`);
+      }
+      if (a.archive.state === "unsafe") {
+        reasons.push("entries.archive.jsonl is a symlink or not a regular file");
+      }
+      if (a.fold && (a.fold.unparseable > 0 || a.fold.conflicts > 0 || a.fold.dangling > 0)) {
+        reasons.push(
+          `unparseable ${a.fold.unparseable} · conflicts ${a.fold.conflicts} · dangling ${a.fold.dangling}`,
+        );
+      }
+      lines.push(
+        reasons.length > 0
+          ? { status: "warn", message: `${base} — ${reasons.join("; ")}` }
+          : { status: "ok", message: base },
+      );
+      if (a.fold && a.fold.archivedRefs > 0) {
+        lines.push({
+          status: "info",
+          message: `${a.agentKey}: ${a.fold.archivedRefs} supersedes point into the archive`,
+        });
+      }
+    }
+    for (const name of input.ignored) {
+      lines.push({ status: "info", message: `ignored entry ${name}` });
+    }
+    if (input.agentScanCapped) {
+      lines.push({ status: "info", message: "scan capped at 64 agent stores" });
+    }
+
+    // persona (human file — mode is info)
+    const present = input.agents.filter((a) => a.persona.state === "file").length;
+    lines.push({
+      status: "info",
+      message: `persona.md: ${present} of ${input.agents.length} agent stores`,
+    });
+    for (const a of input.agents) {
+      const p = a.persona;
+      if (p.state === "unsafe") {
+        lines.push({
+          status: "warn",
+          message: `${a.agentKey}/persona.md is a symlink or not a regular file`,
+        });
+      } else if (p.state === "file") {
+        if (p.bytes > PERSONA_DOCTOR_CAP) {
+          lines.push({
+            status: "warn",
+            message: `${a.agentKey}/persona.md is ${p.bytes} B (max ${PERSONA_DOCTOR_CAP} B) — truncated on read`,
+          });
+        }
+        if (modes && p.mode !== 0o600) {
+          lines.push({
+            status: "info",
+            message: `${a.agentKey}/persona.md mode ${modeText(p.mode)} (human file — 0600 recommended)`,
+          });
+        }
+      }
+    }
+  }
+
+  // knowledge
+  const k = input.knowledgeIndex;
+  const kAt = `(${input.knowledgeIndexPath})`;
+  if (k.state === "absent") {
+    lines.push({ status: "info", message: `knowledge/INDEX.md: absent ${kAt}` });
+  } else if (k.state === "unsafe") {
+    lines.push({
+      status: "warn",
+      message: `knowledge/INDEX.md is a symlink or not a regular file ${kAt}`,
+    });
+  } else {
+    const size = `knowledge/INDEX.md: ${k.bytes}/${INDEX_DOCTOR_CAP} B`;
+    lines.push(
+      k.bytes > INDEX_DOCTOR_CAP
+        ? { status: "warn", message: `${size} — truncated on read ${kAt}` }
+        : { status: "ok", message: `${size} ${kAt}` },
+    );
+    if (modes && k.mode !== 0o600) {
+      lines.push({
+        status: "info",
+        message: `knowledge/INDEX.md mode ${modeText(k.mode)} (human file — 0600 recommended)`,
+      });
+    }
+  }
+
+  // guideline
+  if (input.rooms.state === "unsafe") {
+    lines.push({ status: "warn", message: "rooms/ is a symlink or not a directory" });
+  } else {
+    lines.push({ status: "info", message: `guideline.md: ${input.rooms.guidelines.length} rooms` });
+    for (const g of input.rooms.guidelines) {
+      const name = `rooms/${g.roomKey}/guideline.md`;
+      if (g.file.state === "unsafe") {
+        lines.push({ status: "warn", message: `${name} is a symlink or not a regular file` });
+      } else if (g.file.state === "file" && g.file.bytes > GUIDELINE_DOCTOR_CAP) {
+        lines.push({
+          status: "warn",
+          message: `${name} is ${g.file.bytes} B (max ${GUIDELINE_DOCTOR_CAP} B) — truncated on read`,
+        });
+      }
+    }
+  }
+  if (input.rooms.scanCapped) {
+    lines.push({ status: "info", message: "scan capped at 4096 rooms" });
+  }
+
+  // rules
+  const r = input.rules;
+  lines.push({
+    status: "ok",
+    message: `rules: bundled ${r.bundled} · user ${r.user} · overrides ${r.overrides}`,
+  });
+  if (r.invalid > 0) {
+    lines.push({ status: "warn", message: `rules: ${r.invalid} invalid — see loom rules list` });
+  }
+  if (r.conflicts.length > 0) {
+    lines.push({
+      status: "warn",
+      message: `rules: same-source id conflict: ${r.conflicts.join(", ")}`,
+    });
+  }
+  if (r.truncated.length > 0) {
+    lines.push({
+      status: "warn",
+      message: `rules: truncated at 8192 B: ${r.truncated.join(", ")}`,
+    });
+  }
+  if (r.disabled > 0) {
+    lines.push({ status: "info", message: `rules: ${r.disabled} disabled by user` });
+  }
+  if (r.scanCapped) {
+    lines.push({ status: "info", message: "rules: scan capped at 256 user files" });
+  }
+
+  if (!modes) lines.push({ status: "info", message: "mode bits not checked on Windows" });
+  return { title: "Memory", lines };
+}
+
 export function summarizeDoctor(sections: DoctorSection[]): Record<DoctorStatus, number> {
   const summary: Record<DoctorStatus, number> = {
     ok: 0,
