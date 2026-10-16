@@ -722,3 +722,79 @@ describe("package exports (index.ts)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// P1 verification Low items (folded into P3)
+// ---------------------------------------------------------------------------------------------
+describe("P1-L1 · loomVersion is validated (no marker-comment injection)", () => {
+  const evil =
+    "x --><plist version=\"1.0\"><dict><key>Label</key><string>evil</string></dict></plist><!-- ";
+  test("renderLaunchdPlist refuses a loomVersion outside [0-9A-Za-z.+_-]", () => {
+    expect(() => renderLaunchdPlist({ ...BASE, loomVersion: evil })).toThrow(/loomVersion/);
+    expect(() => renderLaunchdPlist({ ...BASE, loomVersion: "0.34.0 x" })).toThrow(/loomVersion/);
+    expect(() => renderLaunchdPlist({ ...BASE, loomVersion: "" })).toThrow(/loomVersion/);
+  });
+  test("renderSystemdUnit refuses it too", () => {
+    expect(() => renderSystemdUnit({ ...BASE, loomVersion: evil })).toThrow(/loomVersion/);
+  });
+  test("ordinary versions pass", () => {
+    for (const v of ["0.34.0", "0.34.0-rc.1", "0.34.0+build_7"]) {
+      expect(renderLaunchdPlist({ ...BASE, loomVersion: v })).toContain(`loom=${v} -->`);
+      expect(renderSystemdUnit({ ...BASE, loomVersion: v })).toContain(`loom=${v}\n`);
+    }
+  });
+});
+
+describe("P1-L2 · systemd refuses NUL in any value", () => {
+  test("NUL in PATH / home / log / session → throws", () => {
+    expect(() => renderSystemdUnit({ ...BASE, path: "/usr/bin\0/bin" })).toThrow();
+    expect(() => renderSystemdUnit({ ...BASE, home: "/Users/u\0x" })).toThrow();
+    expect(() => renderSystemdUnit({ ...BASE, logPath: "/Users/u/.loom/bridge/w\0.log" })).toThrow();
+    expect(() => renderSystemdUnit({ ...BASE, sessionPath: "/Users/u/s\0.json" })).toThrow();
+  });
+});
+
+describe("P1-L3 · systemd raw-written fields refuse backslashes (no line continuation)", () => {
+  test("WorkingDirectory (home) ending in a backslash → throws", () => {
+    expect(() => renderSystemdUnit({ ...BASE, home: "/Users/u\\" })).toThrow(/backslash/);
+    expect(() => renderSystemdUnit({ ...BASE, home: "/Users/a\\b" })).toThrow(/backslash/);
+  });
+  test("StandardError=append: log path with a backslash → throws", () => {
+    expect(() => renderSystemdUnit({ ...BASE, logPath: "/Users/u/.loom/bridge/w.log\\" })).toThrow(
+      /backslash/,
+    );
+  });
+  test("quoted fields still escape backslashes (PATH)", () => {
+    const unit = renderSystemdUnit({ ...BASE, path: "/a\\b:/usr/bin" });
+    expect(unit).toContain('Environment="PATH=/a\\\\b:/usr/bin"');
+  });
+});
+
+describe("P1-L4 · parseLaunchctlPrint reads the leading integer of `last exit code`", () => {
+  const sample = (v: string) =>
+    ["gui/501/com.loom.bridge.work = {", "\tstate = not running", `\tlast exit code = ${v}`, "}"].join(
+      "\n",
+    );
+  test("`78: EX_CONFIG` → 78", () => {
+    expect(parseLaunchctlPrint(sample("78: EX_CONFIG")).lastExitCode).toBe(78);
+  });
+  test("`1: Operation not permitted` → 1 · bare `0` → 0", () => {
+    expect(parseLaunchctlPrint(sample("1: Operation not permitted")).lastExitCode).toBe(1);
+    expect(parseLaunchctlPrint(sample("0")).lastExitCode).toBe(0);
+  });
+  test("`(never exited)` → null", () => {
+    expect(parseLaunchctlPrint(sample("(never exited)")).lastExitCode).toBeNull();
+  });
+});
+
+describe("P1-L5 · LOOM_PROFILE must be absent or equal to the profile (R3)", () => {
+  test("loomProfile ≠ profile → both generators throw", () => {
+    expect(() => renderLaunchdPlist({ ...BASE, loomProfile: "other" })).toThrow(/LOOM_PROFILE/);
+    expect(() => renderSystemdUnit({ ...BASE, loomProfile: "other" })).toThrow(/LOOM_PROFILE/);
+  });
+  test("absent or equal → ok", () => {
+    const { loomProfile: _drop, ...noProfile } = BASE;
+    expect(renderLaunchdPlist(noProfile)).not.toContain("LOOM_PROFILE");
+    expect(renderLaunchdPlist({ ...BASE, loomProfile: "work" })).toContain("LOOM_PROFILE");
+  });
+});
