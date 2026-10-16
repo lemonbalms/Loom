@@ -4,7 +4,6 @@ import {
   getAdapter,
   listAdapters,
   pickDefaultAdapter,
-  loomSystemHint,
 } from "./index";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +14,6 @@ describe("adapters", () => {
     for (const a of listAdapters()) {
       expect(a.capabilities.mcp).toBeTruthy();
       expect(a.capabilities.receive).toBeTruthy();
-      expect(a.systemHint().length).toBeGreaterThan(20);
     }
   });
 
@@ -25,11 +23,6 @@ describe("adapters", () => {
       ["claude", "codex", "grok", "shell"].sort(),
     );
     expect(m.find((r) => r.id === "gemini")).toBeUndefined();
-  });
-
-  test("shared hint mentions check_handoffs", () => {
-    expect(loomSystemHint("x")).toContain("check_handoffs");
-    expect(loomSystemHint("x")).toContain("claim_handoff");
   });
 
   test("pickDefaultAdapter always returns something", async () => {
@@ -108,5 +101,35 @@ describe("adapters", () => {
     const grok = getAdapter("grok")!;
     // May or may not be installed in CI; just ensure detect returns boolean
     expect(typeof (await grok.detect())).toBe("boolean");
+  });
+});
+
+// PLAN 0.37.0 P4 (D7 · R18): AGENT_HINT.txt / systemHint() are gone — nothing read them.
+describe("0.37.0 D7 — systemHint / hints.ts / writeAgentHintFile deleted", () => {
+  test("no adapter carries systemHint", () => {
+    expect(listAdapters()).toHaveLength(4);
+    for (const a of listAdapters()) {
+      expect("systemHint" in a).toBe(false);
+    }
+  });
+
+  test("@loom/adapters exports neither loomSystemHint nor fableSystemHint; hints.ts is gone", async () => {
+    const mod = (await import("@loom/adapters")) as Record<string, unknown>;
+    expect(typeof mod.getAdapter).toBe("function");
+    expect("loomSystemHint" in mod).toBe(false);
+    expect("fableSystemHint" in mod).toBe(false);
+    const local = (await import("./index")) as Record<string, unknown>;
+    expect("loomSystemHint" in local).toBe(false);
+    expect("fableSystemHint" in local).toBe(false);
+    expect(existsSync(join(import.meta.dir, "hints.ts"))).toBe(false);
+  });
+
+  test("@loom/mcp-server (packages/mcp-server/src/index.ts) no longer exports writeAgentHintFile", async () => {
+    // adapters does not depend on @loom/mcp-server — import its entry by path (outside rootDir,
+    // so a computed specifier keeps tsc from pulling it into this package's program).
+    const entry = join(import.meta.dir, "..", "..", "mcp-server", "src", "index.ts");
+    const mod = (await import(entry)) as Record<string, unknown>;
+    expect(typeof mod.writeMcpConfig).toBe("function");
+    expect("writeAgentHintFile" in mod).toBe(false);
   });
 });

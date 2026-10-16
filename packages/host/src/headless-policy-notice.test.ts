@@ -1194,3 +1194,265 @@ describe("P2 worker.maxConcurrent.<agent>: 0 → agent_disabled (D4(c) · R12)",
     expect(h.ran("grok")).toBe(false);
   }, 30_000);
 });
+
+// ---------------------------------------------------------------------------
+// P2 verification lows (P2-V-L1 · L2 · L3) — appended in P4 red. These pin EXISTING P2
+// behaviour (② `agent_disabled` placement · 0.36 resume gate), so they may already pass.
+// ---------------------------------------------------------------------------
+
+const GROK_FINISHED =
+  '{"type":"text","data":"done"}\n{"type":"end","stopReason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}\n';
+const DEAD_PID = 2_000_000_000;
+
+describe("P2-V-L1 direct dispatch() without claim: new handoff D2 vs D1's unsent live record (agent disabled)", () => {
+  test("agent_disabled goes to D1 (record identity), D2 gets no result, live worker not killed", async () => {
+    const h = new Harness({ maxConcurrent: { grok: 0 } });
+    h.card = { ...h.card, agent: "grok" };
+    const pid = h.sleeper();
+    h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid) });
+    const d = h.dispatcher();
+    await d.dispatch({ ...h.card, dispatchHandoffId: "handoff-D2" });
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]!.target.dispatchHandoffId).toBe("original-handoff");
+    expect(h.calls[0]!.fields).toEqual({ ...disabledFields("grok"), timedOut: false });
+    expect(h.calls.some((c) => c.target.dispatchHandoffId === "handoff-D2")).toBe(false);
+    expect(alive(pid)).toBe(true);
+    expect(h.ran("grok")).toBe(false);
+    const record = h.saved()!;
+    expect(record.dispatchHandoffId).toBe("original-handoff");
+    expect(record.resultSent).toBe(true);
+    expect(record.state).toBe("running");
+    expect(record.completedHandoffIds).toEqual(["original-handoff"]);
+  }, 30_000);
+
+  test("contrast — the bridge path (with claim): D2 is not claimed and nothing is sent", async () => {
+    const h = new Harness({ maxConcurrent: { grok: 0 } });
+    h.card = { ...h.card, agent: "grok" };
+    const pid = h.sleeper();
+    h.seed({ pid, pgid: pid, procStartedAt: h.lstart(pid) });
+    let claims = 0;
+    await h.dispatcher().dispatch({
+      ...h.card,
+      dispatchHandoffId: "handoff-D2",
+      claim: async () => {
+        claims += 1;
+        return true;
+      },
+    });
+    expect(claims).toBe(0);
+    expect(h.calls).toHaveLength(0);
+    expect(alive(pid)).toBe(true);
+    expect(h.saved()!.resultSent).toBe(false);
+  }, 30_000);
+});
+
+describe("P2-V-L2 (a)(b): decisions that precede agent_disabled on an existing record", () => {
+  for (const via of ["dispatch", "recover"] as const) {
+    test(`(a) dead leader + live process group, via ${via}() → orphan_group_alive first, group not killed`, async () => {
+      const h = new Harness({ maxConcurrent: { grok: 0 } });
+      h.card = { ...h.card, agent: "grok" };
+      const group = h.sleeper();
+      h.seed({ pid: DEAD_PID, pgid: group });
+      const d = h.dispatcher();
+      await (via === "dispatch" ? d.dispatch(h.card) : d.recover());
+      expect(h.calls).toHaveLength(1);
+      expect(h.calls[0]!.fields.reason).toBe("orphan_group_alive");
+      expect(alive(group)).toBe(true);
+      expect(h.ran("grok")).toBe(false);
+      const record = h.saved()!;
+      expect(record.pendingResult?.reason).toBe("orphan_group_alive");
+      expect(record.pgid).toBe(group);
+    }, 30_000);
+
+    test(`(b) reserved pendingResult, via ${via}() → replayed verbatim, not replaced by agent_disabled`, async () => {
+      const h = new Harness({ maxConcurrent: { grok: 0 } });
+      h.card = { ...h.card, agent: "grok" };
+      const reserved = {
+        status: "failed",
+        reason: "needs_verification",
+        output: "reserved output",
+        truncated: false,
+        summary: "reserved summary",
+        note: "reserved before the agent was disabled",
+        timedOut: false,
+      } as const;
+      h.seed({
+        pid: DEAD_PID,
+        pgid: DEAD_PID,
+        state: "exited",
+        pendingResult: reserved,
+        sendAttempts: 0,
+      } as Partial<CardSessionRecord>);
+      const d = h.dispatcher();
+      await (via === "dispatch" ? d.dispatch(h.card) : d.recover());
+      expect(h.calls).toHaveLength(1);
+      expect(h.calls[0]!.fields).toEqual(reserved);
+      expect(h.calls[0]!.target.dispatchHandoffId).toBe("original-handoff");
+      expect(h.ran("grok")).toBe(false);
+      const record = h.saved()!;
+      expect(record.resultSent).toBe(true);
+      expect(record.pendingResult).toEqual(reserved);
+    }, 30_000);
+  }
+});
+
+describe("P2-V-L2 (c) D9: both fields on the empty line", () => {
+  test.skipIf(IS_ROOT)(
+    "unreadable persona + entries over 4 MiB → empty — no block · read_errors 1 · entries_oversize yes",
+    async () => {
+      const h = new Harness();
+      h.card = { ...h.card, agent: "claude" };
+      h.persona("secret persona\n");
+      const dir = join(h.loomDir, "memory", agentKeyFor("default", "claude"));
+      writeFileSync(
+        join(dir, "entries.jsonl"),
+        Buffer.alloc(memorySnapshot.SNAPSHOT_ENTRIES_READ_MAX_BYTES + 1, 0x20),
+        { mode: 0o600 },
+      );
+      const persona = join(dir, "persona.md");
+      chmodSync(persona, 0o000);
+      try {
+        await observed(() =>
+          h.dispatcher({ memory: { enabled: true }, memoryNonce: () => NONCE }).dispatch(h.card),
+        );
+      } finally {
+        chmodSync(persona, 0o600);
+      }
+      expect(h.sent("claude")).toBe(wrapDispatchedPrompt(h.card.prompt));
+      expect(existsSync(h.snapshotPath())).toBe(false);
+      expect(snapshotLines()).toHaveLength(1);
+      expect(snapshotLines()[0]).toMatch(
+        new RegExp(
+          `^\\[headless\\] memory_snapshot \\(${h.card.cardId}\\): empty — no block · read_errors 1 · entries_oversize yes · load_ms \\d+\\n$`,
+        ),
+      );
+    },
+    30_000,
+  );
+});
+
+describe("P2-V-L2 (d)(e): resume across dispatchers with a notice block (0.36 file gate)", () => {
+  /** Dispatcher 1 spawns codex with the notice block; the worker parks, d1 closes, the worker dies. */
+  async function crashAfterFirstSpawn(h: Harness): Promise<{
+    first: CardSessionRecord;
+    bytes: Buffer;
+    mtimeMs: number;
+  }> {
+    h.failAt("codex", 1);
+    const d1 = h.dispatcher({ policyGaps: h.gaps(), memoryNonce: () => NONCE });
+    let first!: CardSessionRecord;
+    let bytes!: Buffer;
+    let mtimeMs = 0;
+    const restore = captureStderr();
+    try {
+      const pending = d1.dispatch(h.card);
+      await h.whileParked(async () => {
+        first = h.saved()!;
+        const old = new Date("2026-01-02T03:04:05Z");
+        utimesSync(h.snapshotPath(), old, old);
+        bytes = readFileSync(h.snapshotPath());
+        mtimeMs = statSync(h.snapshotPath()).mtimeMs;
+        await d1.close();
+        killPid(first.pid);
+        await waitFor(() => !alive(first.pid));
+      });
+      await pending;
+    } finally {
+      restore();
+    }
+    expect(h.spawns()).toBe(1);
+    expect(h.calls).toHaveLength(0);
+    expect(first.memorySnapshotHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(sha256(bytes)).toBe(first.memorySnapshotHash!);
+    expect(bytes.toString("utf8")).toContain("## Loom policy notice");
+    return { first, bytes, mtimeMs };
+  }
+
+  for (const [name, extra, seed] of [
+    ["policyGaps []", { policyGaps: [] }, false],
+    [
+      "policyGaps [] + rules on + memory on (sources seeded)",
+      { policyGaps: [], rules: { enabled: true }, memory: { enabled: true } },
+      true,
+    ],
+  ] as const) {
+    test(`(d) recover() by a second dispatcher, deps changed (${name}) → resume · file bytes, mtime, hash kept · no reader`, async () => {
+      const h = new Harness();
+      const { first, bytes, mtimeMs } = await crashAfterFirstSpawn(h);
+      if (seed) {
+        seedMemory(h, "codex");
+        seedRules(h);
+      }
+      const { memoryLoads, ruleLoads } = await observed(() =>
+        h.dispatcher({ ...extra, memoryNonce: () => NONCE }).recover(),
+      );
+      expect(memoryLoads).toBe(0);
+      expect(ruleLoads).toBe(0);
+      expect(h.spawns()).toBe(2);
+      expect(h.sent("codex", 2).startsWith(`${RESUME_CONTINUATION_MESSAGE}\n\n`)).toBe(true);
+      expect(h.sent("codex", 2)).not.toContain("Loom policy notice");
+      expect(h.sent("codex", 2)).not.toContain("LOOM MEMORY SNAPSHOT");
+      expect(h.argv("codex", 2)).toContain(first.sessionId);
+      const record = h.saved()!;
+      expect(record.attempts).toBe(2);
+      expect(record.sessionId).toBe(first.sessionId);
+      expect(record.memorySnapshotHash).toBe(first.memorySnapshotHash);
+      expect(record.promptFingerprint).toBe(first.promptFingerprint);
+      expect(readFileSync(h.snapshotPath()).equals(bytes)).toBe(true);
+      expect(statSync(h.snapshotPath()).mtimeMs).toBe(mtimeMs);
+      expect(h.calls).toHaveLength(1);
+      expect((h.calls[0]!.fields as { note?: string }).note ?? "").not.toContain(FP_NOTE);
+      expect(gateLines()).toEqual([]);
+      expect(snapshotLines()).toEqual([]);
+    }, 60_000);
+  }
+
+  test("(e) notice file removed between attempts → needs_verification (missing), no second spawn", async () => {
+    const h = new Harness();
+    h.failAt("codex", 1);
+    await observed(async () => {
+      const pending = h
+        .dispatcher({ policyGaps: h.gaps(), memoryNonce: () => NONCE })
+        .dispatch(h.card);
+      await h.whileParked(() => {
+        rmSync(h.snapshotPath());
+      });
+      await pending;
+    });
+    expect(h.spawns()).toBe(1);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]!.fields.reason).toBe("needs_verification");
+    expect(h.calls[0]!.fields.note).toBe(FP_NOTE);
+    expect(gateLines()).toEqual([
+      `[headless] memory snapshot check failed (${h.card.cardId}): missing\n`,
+    ]);
+    expect(existsSync(h.snapshotPath())).toBe(false);
+  }, 30_000);
+});
+
+describe("P2-V-L3 exited-but-unsent record of a now-disabled agent", () => {
+  test("finished transcript, no pendingResult → agent_disabled, not its real result (drain before disabling)", async () => {
+    const h = new Harness({ maxConcurrent: { grok: 0 } });
+    h.card = { ...h.card, agent: "grok" };
+    h.seed({ pid: DEAD_PID, pgid: DEAD_PID, state: "exited" });
+    writeFileSync(join(h.cardDir(), "transcript-1.jsonl"), GROK_FINISHED);
+    await h.dispatcher().dispatch(h.card);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]!.fields).toEqual({ ...disabledFields("grok"), timedOut: false });
+    expect(h.calls[0]!.fields.output).toBe("");
+    expect(h.ran("grok")).toBe(false);
+    expect(h.saved()!.resultSent).toBe(true);
+  }, 30_000);
+
+  test("contrast — the same record with grok enabled delivers its real result (output done)", async () => {
+    const h = new Harness();
+    h.card = { ...h.card, agent: "grok" };
+    h.seed({ pid: DEAD_PID, pgid: DEAD_PID, state: "exited" });
+    writeFileSync(join(h.cardDir(), "transcript-1.jsonl"), GROK_FINISHED);
+    await h.dispatcher().dispatch(h.card);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]!.fields.reason).not.toBe("agent_disabled");
+    expect(h.calls[0]!.fields.output).toBe("done");
+    expect(h.ran("grok")).toBe(false);
+  }, 30_000);
+});
