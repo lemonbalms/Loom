@@ -268,16 +268,57 @@ describe("deciding risk — unit argv/env only: main-pid SIGTERM keeps the worke
     return Promise.race([b.exited, Bun.sleep(ms).then(() => "timeout" as const)]);
   }
 
-  async function countResults(cardId: string): Promise<number> {
-    let n = 0;
+  type CardResultView = {
+    cardId?: string;
+    status?: string;
+    reason?: string;
+    output?: string;
+    summary?: string;
+    note?: string;
+  };
+
+  async function cardResults(cardId: string): Promise<CardResultView[]> {
+    const out: CardResultView[] = [];
     for (const entry of await tower.listInbox()) {
       for (const attachment of entry.handoff.attachments ?? []) {
         if (attachment.label !== CARD_RESULT_LABEL) continue;
-        const result = JSON.parse(attachment.content) as { cardId?: string };
-        if (result.cardId === cardId) n += 1;
+        const result = JSON.parse(attachment.content) as CardResultView;
+        if (result.cardId === cardId) out.push(result);
       }
     }
-    return n;
+    return out;
+  }
+
+  async function countResults(cardId: string): Promise<number> {
+    return (await cardResults(cardId)).length;
+  }
+
+  /** Pre-emption paths that also post exactly one result but are NOT an adoption. */
+  const NOT_ADOPTION = [
+    "liveness_unknown",
+    "fingerprint_changed",
+    "orphan_group_alive",
+    "spawn_state_unknown",
+  ] as const;
+
+  /**
+   * P2 verify (Medium): the single result must come from the adopted worker's own transcript —
+   * `sendParsed` → reason `needs_verification` with the fake agent's final text (PARTIAL_READY +
+   * `session:<id>` of the one recorded invocation) — not from a pre-emption path.
+   */
+  function expectGenuineAdoption(result: CardResultView | undefined, sessionId: string): void {
+    expect(result).toBeDefined();
+    const r = result as CardResultView;
+    expect(r.status).toBe("failed");
+    expect(r.reason).toBe("needs_verification");
+    for (const bad of NOT_ADOPTION) {
+      expect(r.reason).not.toBe(bad);
+      expect(r.note ?? "").not.toContain(bad);
+      expect(r.summary ?? "").not.toContain(bad.replace(/_/g, " "));
+    }
+    expect(r.summary ?? "").not.toBe("fingerprint changed");
+    expect(r.output ?? "").toContain("PARTIAL_READY");
+    expect(r.output ?? "").toContain(`session:${sessionId}`);
   }
 
   beforeAll(async () => {
@@ -471,7 +512,14 @@ describe("deciding risk — unit argv/env only: main-pid SIGTERM keeps the worke
     await Bun.sleep(1_500);
     expect(await countResults(cardId)).toBe(1);
     // Only one fake-agent invocation ever ran: adopted, not re-spawned.
-    expect(readFileSync(argvDump, "utf8").trim().split("\n")).toHaveLength(1);
+    const invocations = readFileSync(argvDump, "utf8").trim().split("\n");
+    expect(invocations).toHaveLength(1);
+    const { sessionId } = JSON.parse(invocations[0]!) as { sessionId: string };
+    expect(typeof sessionId).toBe("string");
+    expect(sessionId.length).toBeGreaterThan(0);
+    const results = await cardResults(cardId);
+    expect(results).toHaveLength(1);
+    expectGenuineAdoption(results[0], sessionId);
 
     process.kill(b.pid, "SIGTERM");
     expect(await exitWithin(b, 10_000)).toEqual({ code: 0, signal: null });
