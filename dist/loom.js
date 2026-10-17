@@ -14843,14 +14843,17 @@ var memoryStoreTestHooks = {
   failBeforeReplace: false
 };
 function humanMemorySource(displayName) {
-  let by = sanitizePeerName(displayName);
+  return { kind: "human", by: sourceBy(displayName) };
+}
+function sourceBy(name) {
+  let by = sanitizePeerName(name);
   if (by.length > MEMORY_SOURCE_BY_MAX) {
     by = by.slice(0, MEMORY_SOURCE_BY_MAX);
     const last = by.charCodeAt(by.length - 1);
     if (last >= 55296 && last <= 56319)
       by = by.slice(0, -1);
   }
-  return { kind: "human", by };
+  return by;
 }
 function refuse(code, message) {
   return { ok: false, code, message };
@@ -15268,6 +15271,7 @@ function compactMemory(loomDir2, agentKey) {
     };
   });
 }
+var ARCHIVE_SCAN_TAIL_BYTES = 4 * 1024 * 1024;
 
 // packages/host/src/memory-snapshot.ts
 var SNAPSHOT_PERSONA_MAX_BYTES = 8192;
