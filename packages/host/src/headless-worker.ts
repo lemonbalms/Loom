@@ -108,6 +108,7 @@ import {
 } from "./memory-store";
 import { type Gap, renderPolicyNotice } from "./policy-gaps";
 import { parseLstart, readProcessLstart } from "./process-lstart";
+import { writePrivateFileAtomic } from "./prompt-record";
 import { redactSecrets } from "./redact";
 import { roomKey } from "./room-event-log";
 import { loadRules } from "./rules-store";
@@ -351,19 +352,6 @@ function scrubWorkerEnv(cardId: string): NodeJS.ProcessEnv {
 
 function defaultMemoryNonce(): string {
   return randomBytes(16).toString("hex");
-}
-
-/** memory-snapshot.md: 0600 temp file in the same directory → rename → chmod 0600. */
-async function writeMemorySnapshotFile(dir: string, target: string, block: string): Promise<void> {
-  const tmp = join(dir, `.${MEMORY_SNAPSHOT_FILE}.tmp.${process.pid}.${Date.now()}`);
-  try {
-    await writeFile(tmp, block, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    await rename(tmp, target);
-    await chmod(target, 0o600);
-  } catch (err) {
-    await rm(tmp, { force: true }).catch(() => {});
-    throw err;
-  }
 }
 
 function isPathInside(root: string, target: string): boolean {
@@ -2266,7 +2254,8 @@ export class HeadlessDispatcher {
       );
       return { block: "", hash: "" };
     }
-    await writeMemorySnapshotFile(dir, target, block);
+    // 0.41.0 R5: memory-snapshot.md → `.memory-snapshot.md.tmp.<pid>.<ms>` → rename → 0600.
+    await writePrivateFileAtomic(dir, target, block);
     // D2 ⑥ · R8: the hash of the exact file bytes, never snap.hash.
     const hash = createHash("sha256").update(Buffer.from(block, "utf8")).digest("hex");
     const ms = Math.round(performance.now() - started);
