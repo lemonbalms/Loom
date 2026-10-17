@@ -114,3 +114,19 @@ export {
   serializePromptRecord,
   writePromptRecord,
 } from "./prompt-record";
+// PLAN 0.42.0 P1: the declared section manifest and the one assembler (R14).
+export {
+  FENCE_PART_IDS,
+  type FencePartId,
+  PROMPT_MANIFEST,
+  type PromptChannel,
+  type PromptManifestEntry,
+  type PromptSectionId,
+  type PromptTurns,
+} from "./prompt-manifest";
+export {
+  type AssembledPrompt,
+  type AssembleInput,
+  assembleHeadlessPrompt,
+  type SectionTrace,
+} from "./prompt-assemble";
