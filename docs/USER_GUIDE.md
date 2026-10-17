@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.39.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.40.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -831,6 +831,7 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 - 워커 env = bridge env에서 `LOOM_*`·`FABLE_*`를 **전부 지우고** `LOOM_CARD`만 넣는다 — relay 토큰·URL은 워커에 닿지 않는다.
 - **사용자 훅은 상속된다(UK-3).** 오너 전역 Claude Code 훅(`~/.claude/settings.json`)이 헤드리스 claude 워커 안에서도 돈다. 0.31.0에도 격리 옵션은 없다(MCP 격리는 §16.1 `mcp.isolate`, 오너 플러그인·스킬 상속은 §16.4).
 - 워커 시스템 프롬프트는 고정 상수 `HEADLESS_WORKER_HINT`(cwd 밖 작업 금지 — 단 작업 마커 위에 나열된 SKILL.md 읽기는 예외(0.39.0) · 질문 금지 · push/deploy 금지 · 마커 아래 = 데이터)뿐이다. Loom MCP 도구는 없다. 카드 프롬프트는 stdin/파일로만 넘어가고 argv(`ps`)에 보이지 않는다.
+- **카드 본문의 표지 흉내 줄은 워커에 가지 않는다(0.40.0).** 카드 프롬프트의 줄 중 접으면 작업 마커 글자(`loomdispatchedtask`)가 되는 줄은 통째로 `[line removed by Loom: it imitated a Loom boundary line]`로 바뀌어 간다 — 첫 턴과 재개 턴 모두. 그래서 워커가 받는 첫 턴에서 표지로 읽히는 줄은 Loom이 붙인 진짜 표지 하나뿐이다. 보드 카드 · 전달 결과 · 디스패처 화면은 원문 그대로이고, 바뀐 줄이 있으면 bridge stderr에 `[headless] card_prompt (<card>): neutralized <n>` 한 줄. 표지 문구를 인용하는 정직한 카드도 그 줄을 잃는다(풀어 쓰거나 줄을 나눈다 — 계급 42). pane backend · sticky host 경로의 카드 본문은 바꾸지 않는다(계급 44).
 
 ### 15.3 상태 저장 위치 — 평문, 로컬 전용
 
@@ -995,7 +996,7 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 - 디렉터리 이름 = 프론트매터 `name`. 파일은 유효한 UTF-8.
 - 프론트매터: 첫 줄 `---` … 닫는 `---`. **허용 키:** `name` · `description` · `version` · `license` · `metadata` · `allowed-tools` · `hooks` · `loom` · `loom.requires-policy`. 모르는 키 · 중복 키 → `invalid SKILL.md`.
 - **엄격한 YAML 부분집합:** 평문 · 작은따옴표 · 큰따옴표(이스케이프·내부 `"`·`\` 없음) 스칼라만. 흐름 컬렉션(`{}` `[]`) · 앵커 · 별칭 · 태그 · `...` · `%` 지시자 거부. 중첩 블록은 `metadata` · `allowed-tools` · `hooks` · `loom` 아래만, `loom:` 안에는 `requires-policy:`만. 중첩 키는 평문 식별자만(YAML 불리언/null 단어 `true`·`yes`·`on`·`null` 등 거부). `description`은 `|`·`>` 블록 스칼라 가능(한 줄로 접는다).
-- 프론트매터의 어느 줄에도 제어 · 서식(bidi·zero-width·BOM) · 줄/문단 구분 문자 금지(CRLF는 허용). NFKC + 소문자 + 문자·숫자만 남긴 결과에 `loomdispatchedtask`(작업 마커 머리)가 들어가면 거부.
+- 프론트매터의 어느 줄에도 제어 · 서식(bidi·zero-width·BOM) · 줄/문단 구분 문자 금지(CRLF는 허용). 표지 접기(0.40.0 — NFKD → 결합 부호 제거 → 닮은 글자 표 → 소문자 → 표 한 번 더 → 문자·숫자만) 결과에 `loomdispatchedtask`(작업 마커 머리)가 들어가면 거부(0.39.0까지는 NFKC + 소문자 + 문자·숫자만 — §20.11 한계 1).
 - **`description` 필수:** 제어 문자는 공백, 서식 문자는 제거, 공백 압축 후 **한 줄 · 1~160자(코드 포인트)** · 마커 글자 없음 → 아니면 `bad description`.
 - **`allowScripts`가 필요한 것** — 아래 중 하나라도 있으면 `policy.json` `skills.allowScripts`에 그 이름이 있어야 복사한다(없으면 `requires policy`): `scripts/` 디렉터리 아래 정규 파일 · 실행 비트가 있는 파일 · `allowed-tools` 키 · `hooks` 키 · `loom.requires-policy`(값이 정확히 `false`가 아니면) · 중첩 블록 안의 `requires-policy` 언급.
 - **상한:** 스킬당 **1 MiB · 정규 파일 256개**(탐색 항목 1,024개 · 디렉터리당 512개) → 넘으면 `too large`. 심볼릭 링크 · 비정규 파일 · 이상한 경로 → `unsafe source`.
@@ -1021,6 +1022,7 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 
 - 목록은 argv에 없고(stdin · grok은 `--prompt-file`), **첫 턴에만** 들어간다 — 재개 턴은 세션이 기억한다.
 - **목록 상한: 항목 20줄 · 블록 전체 4,096바이트**(UTF-8, 머리줄 포함). 넘는 항목은 한 줄 `- (+N more): unavailable: cap`. 순서는 사용 가능 → 불가, 각각 이름순. 복사는 상한과 무관하게 전부 한다 → **claude는 플러그인으로 모든 사용 가능 스킬을 보지만 codex/grok은 목록에 든 것만 안내받는다.**
+- **스킬 이름도 표지 판정을 받는다(0.40.0).** 목록에 오르는 이름(사용 가능 줄이든 `unavailable` 줄이든 · 방 `skills.json` 선택 · `~/.loom/skills/<name>` · 내장 어느 출처든)이 접어서 작업 마커 글자가 되면 그 카드는 spawn하지 않고 `failed` reason `spawn_setup_failed`(note `skill listing: skill name contains the task marker`) — 세 에이전트 모두. ASCII 이름 `loom-dispatched-task`도 걸린다 → 0.39.0에서 돌던 방 설정이 0.40.0에서 새로 멈출 수 있다(이름을 바꾸거나 선택에서 뺀다). 이름 · 설명 · 경로가 각각은 깨끗해도 조립된 목록 항목 줄이 표지로 접히면(예: 이름 `loom-dispatched` + 설명 `task`) 역시 `spawn_setup_failed`(note `skill listing: skill entry contains the task marker`) — 실제로는 codex · grok 카드(claude는 사용 가능 줄을 그리지 않는다).
 
 **`unavailable` 사유:**
 
@@ -1060,7 +1062,7 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 | reason / note | 원인 |
 |---------------|------|
 | bridge **기동 거부** | 무효 `policy.json` · 조회 실패 · deprecated allow와 `shell.allow` 공존 · deprecated deny의 `p*`(0.30.0 기본 항목과 글자 그대로 같은 것은 제외) · `worker.skills` 형식 오류 |
-| reason `spawn_setup_failed` (note = 오류 문구 ≤500자) | 무효/심볼릭 링크 `skills.json` · 카드 디렉터리 경로 중간의 심볼릭 링크 · 복사 쓰기 실패 · SKILL.md 절대경로나 description에 제어 문자 또는 작업 마커 글자(예: `loomDir` 경로 자체가 그 글자를 담은 경우) — spawn하지 않는다 |
+| reason `spawn_setup_failed` (note = 오류 문구 ≤500자) | 무효/심볼릭 링크 `skills.json` · 카드 디렉터리 경로 중간의 심볼릭 링크 · 복사 쓰기 실패 · SKILL.md 절대경로나 description에 제어 문자 또는 작업 마커 글자(예: `loomDir` 경로 자체가 그 글자를 담은 경우) · 목록 스킬 이름이 접어서 작업 마커 글자(0.40.0 — `skill listing: skill name contains the task marker`) — spawn하지 않는다 |
 | reason `needs_verification`, note `fingerprint_changed; not resuming` | §16.2 · §16.3 — 정책 · 권한 · 템플릿 · 스킬 복사본이 기록과 다름 |
 
 ---
@@ -1675,7 +1677,13 @@ The operator's Loom policy sets these limits, and this CLI does not fully enforc
 
 **한계 — 설계상 수용 (0.36.0).**
 
-1. **표지 흉내 판정은 0.35의 글자 비교 그대로다** — 키릴 `о` · 그리스 `α` · 점 없는 `ı` · 미리 합친 `ó` 같은 닮은 글자로 쓴 표지는 못 잡는다(0.37 후보). 두 줄로 쪼갠 흉내 · id 없는 가짜 END 줄도 그대로 둔다(펜스 id로 진짜 끝을 가린다).
+1. ~~표지 흉내 판정은 0.35의 글자 비교 그대로다 — 닮은 글자로 쓴 표지는 못 잡는다~~ — **0.40.0에서 강화:** 표지 판정은 이제 접기 하나를 함께 쓴다 — **NFKD → 결합 부호 제거 → 고정 닮은 글자 표(`confusables.txt`에서 키릴 · 그리스 · 라틴 확장/IPA · 아르메니아 · 체로키 문자 → 라틴 한 글자) → 소문자 → 표 한 번 더 → 문자·숫자만.** 그래서 키릴 `о` · 그리스 `α` · 점 없는 `ı` · `ɑ` · 작은 대문자 `ʟ` · 미리 합친 `ó` · `o`+결합 부호로 쓴 표지도 잡는다. 같은 판정이 스킬 목록(경로 · 설명 · 이름) · 이 펜스의 줄 무력화 · 카드 기억 후보 필터(§20.13) · 헤드리스 카드 본문(§15.2)에 쓰인다. 깨끗한(ASCII) 입력은 0.39.0과 바이트 같다 — fingerprint 무변경 · 업그레이드 drain 불필요. **남는 것(설계상 수용):**
+   - **줄을 가로지르는 분할**(`Loom dispatched` / `task …`) — 펜스 · 카드 본문은 줄 단위라 못 잡는다(계급 39). id 없는 가짜 END 줄도 그대로 둔다(펜스 id로 진짜 끝을 가린다).
+   - **표 밖 문자**(표에 없는 문자 체계 · NFKD가 풀지 않는 기호 · `🅻` 류) · **ASCII 숫자 ↔ 글자 바꿔치기**(`L00M` · `1oom`) · 기억 후보 필터의 울타리 흉내 중 `⹀` U+2E40 · `꞊` U+A78A(`confusables.txt`는 `=`로 대응시키지만 울타리 문자 집합 `= ═ ᐀ ꓿ ゠`에 없다 — 다음 후보)(계급 40).
+   - **이미지 · 첨부 · 링크 너머 텍스트**는 검사하지 않는다(계급 41).
+   - **정직한 카드 본문이 표지 문구를 인용하면 그 줄을 잃는다**(계급 42 — §15.2).
+   - **더 엄격해진 만큼 오탐**이 생길 수 있다 — 비라틴 문면이 우연히 표지로 접히면 스킬 unavailable · 펜스 줄 자리표시 · 후보 `marker` 버림 · 카드 줄 자리표시 · 스킬 이름이면 `spawn_setup_failed`(계급 43). 표지 18글자를 철자해야만 걸리고, 모두 막는 쪽이며 stderr · `dropped.marker`로 센다.
+   - **카드 본문의 가짜 목록 머리 · 항목 줄 · 표지를 철자하지 않고 자칭하는 줄**은 남는다(계급 46) — 진짜 표지가 언제나 먼저 오므로 본문 안 목록 흉내는 표지 아래 = 데이터다(hint 마지막 줄).
 2. ~~저장소를 못 읽으면 빈 저장소와 같은 줄만 남는다~~ — **0.37.0에서 해소:** 빈 text라도 `read_errors N` · `entries_oversize yes`를 찍는다(§20.12).
 3. **실 claude · codex · grok이 ≈48 KiB 첫 턴을 손실 없이 받는지, 펜스를 지키는지는 실측 전이다** — 스모크는 가짜 CLI로 바이트만 쟀다(실 CLI 실행은 오너 승인 게이트). **그 실측(`bun run smoke:memory-inject --real-cli --owner-approved`)이 기록되기 전에는 운영 bridge에서 켜지 말고, 기본값도 바꾸지 않는다**(R54 최종 리뷰).
 4. **워커 출력은 걸러내지 않는다** — 워커가 블록 내용을 결과에 옮겨 적을 수 있다.
@@ -1820,7 +1828,7 @@ LOOM-MEMORY-END
 
 - **언제나 `proposed`, 언제나 그 방 범위**(`room:<roomKey>`) · `supersedes` 없음. 워커는 `project` 범위를 고를 수 없고, 후보는 승인돼도 기존 항목을 은퇴 · 대체하지 못한다. 넓히려면 사람이 `loom memory add`로 project 항목을 쓴다.
 - **사람이 `loom memory approve`하기 전에는 어떤 워커 프롬프트에도 들어가지 않는다**(스냅샷은 `active`만 렌더 — §20.11). 승인 뒤에는 그 방의 **새 카드** 첫 턴 펜스에 들어간다.
-- **버리는 후보(센다):** 본문이 비거나 2000자를 넘음 → `invalid` · redaction이 본문을 바꿈(env 비밀 값 · 비밀 모양) → `secret` · Loom 표지 · 펜스 `===== BEGIN/END LOOM …` 줄 흉내 · `LOOM-MEMORY-` / `LOOM-REPORT-`(대문자 그대로) → `marker` · 상한 → `cap` · 저장소 락을 250 ms 안에 못 잡음 → `busy` · 같은 카드 시도를 이미 올림 → `dup`.
+- **버리는 후보(센다):** 본문이 비거나 2000자를 넘음 → `invalid` · redaction이 본문을 바꿈(env 비밀 값 · 비밀 모양) → `secret` · Loom 표지 · 펜스 `===== BEGIN/END LOOM …` 줄 흉내 · `LOOM-MEMORY-` / `LOOM-REPORT-`(대문자 그대로) → `marker`(0.40.0부터 같은 표지 접기 — §20.11 한계 1: 울타리 = `=`류(`=` · `＝` · `═` · `⁼` · `᐀` · `꓿` · `゠` …) 3개 이상 뒤가 접어서 `beginloom`/`endloom`으로 시작 · 블록 = 닮은 글자를 라틴으로 바꾸고 서식 문자를 뺀 뒤 대문자 `LOOM` + 구분자 0~1개 + `MEMORY`/`REPORT` — 그래서 `LOOM MEMORY` · `LOOMREPORT`도 버린다 · 소문자 `loom-memory-candidates` 언급은 계속 통과) · 상한 → `cap` · 저장소 락을 250 ms 안에 못 잡음 → `busy` · 같은 카드 시도를 이미 올림 → `dup`.
 - **상한:** 카드 시도당 5 · 방당 카드 출처 proposed 10 · 에이전트 저장소당 카드 출처 proposed 50 · 기존 proposed 합계 200(사람 + 카드) · `entries.jsonl` 1 MiB. 차면 승인하거나 은퇴시켜야 다시 들어간다.
 - **같은 카드 시도는 두 번 올리지 않는다** — 재기동 recovery가 같은 출력을 다시 처리해도 `dup`. 다음 handoff는 새로 올린다.
 - **결과 전송은 기억을 기다리지 않는다** — 저장소 락은 사람 CLI와 같은 락이고 bridge는 ≤250 ms만 기다린다. 기억 쪽 실패는 결과 전송을 막지 않는다.
@@ -1854,6 +1862,7 @@ loom memory: refused — LOOM_CARD is set (this shell belongs to a Loom card wor
 
 - 업그레이드는 0.34.0 관행대로 `loom bridge drain` → 교체 → 기동. cardWrites를 켤 때 `policy.json` `skills.allow`가 목록이면 `loom-memory-candidates`를 더한다.
 - **0.39.0으로 올릴 때(및 0.38.0으로 되돌릴 때): `loom bridge drain` → `loom bridge status`(또는 상태 파일 `~/.loom/bridge/<p>.status.json`)에서 진행 중 0 확인 → 교체 → `loom service start`(또는 `bridge start`).** 0.39.0은 워커 지시(`HEADLESS_WORKER_HINT`)를 바꿔 모든 카드의 fingerprint가 달라진다 — 올리는 순간 결과를 아직 안 보낸 카드 · 살아 있는 카드 · 재시도 resume은 재기동 때 한 번 `needs_verification`(`fingerprint_changed`)이 된다(살아 있는 워커는 죽이지 않지만 그 결과는 버려진다). **bridge는 drain 마감이 지나 진행 중 카드를 남긴 채 내려가도 exit 0이므로**(§18.4) 확인 단계를 건너뛰면 이 손실이 조용히 생긴다. 이미 결과를 보낸 카드의 새 dispatch는 새 세션이라 영향이 없다.
+- **0.40.0으로 올릴 때(및 0.39.0으로 되돌릴 때)는 drain이 필수가 아니다** — 워커 지시 · argv · fingerprint 입력과 값이 그대로라 진행 중 카드에 `needs_verification`이 생기지 않는다(재개는 저장된 스킬 사본 · 스냅샷을 쓴다). 바뀌는 것은 표지 판정뿐이다: 새 카드부터 닮은 글자 흉내가 잡히고(§20.11 한계 1), 재개 턴의 카드 본문에 표지 흉내 줄이 있었다면 이번엔 자리표시로 간다. 표지로 접히는 스킬 이름을 고른 방은 새 카드가 `spawn_setup_failed`로 멈춘다(§16.3).
 - **cardWrites를 켜면 새 카드의 fingerprint가 한 번 바뀐다**(카드 스킬 사본에 새 스킬이 들어가 `manifestHash`가 달라짐 — 켠 뒤 **새 첫 spawn**부터). **진행 중 카드는 자기 사본으로 이어진다** — `needs_verification`은 없고, 새 스킬이 없으니 후보도 안 나올 가능성이 높다. 켰다 끈 뒤 이어지는 카드는 사본에 스킬이 남지만 host가 블록을 읽지 않는다.
 - **0.37 바이너리로 되돌리려면 먼저 `worker.memory.cardWrites` 키를 지운다.** 0.37은 이 키를 무시하지 않고 거부한다 — headless bridge 기동 거부 · 0.37 doctor · `loom skills list`는 `invalid bridge config`. 0.38이 쓴 카드 출처 `proposed` 줄은 0.37도 그대로 읽고 승인할 수 있다(출처 표시만 없음).
 
@@ -1864,7 +1873,7 @@ loom memory: refused — LOOM_CARD is set (this shell belongs to a Loom card wor
 3. **`notes.md`는 요약이 아니라 사본**(계급 25).
 4. **상한 기아**(계급 27) — 시끄러운 방들이 에이전트당 50을 채우면 다른 방 후보는 승인 · 은퇴 전까지 `cap`.
 5. **락 `busy` 버림**(계급 28) — 사람 CLI · compact가 락을 쥐고 있으면 그 시도의 후보는 사라진다(재시도 없음 · recovery 재처리 때만 다시 기회). bridge가 락을 쥔 채 죽으면 재기동 뒤 5초 동안 recovery 재처리도 `busy`.
-6. **표지 필터 오탐** — 펜스 줄 모양 · `LOOM-MEMORY-` / `LOOM-REPORT-` 표지를 문자 그대로 담은 정당한 후보는 `marker`로 버려진다.
+6. **표지 필터 오탐** — 펜스 줄 모양 · `LOOM-MEMORY-` / `LOOM-REPORT-` 표지를 문자 그대로 담은 정당한 후보는 `marker`로 버려진다. 0.40.0부터 범위가 넓어졌다(닮은 글자 · `LOOM MEMORY` · `=== - BEGIN LOOM` — 계급 43). `LOOM_MEMORY` · 하이픈류 둘 이상(`LOOM‐‑MEMORY`)은 여전히 못 잡는다.
 7. **실 CLI 관찰은 한 번뿐** — 2026-10-18 실 claude · grok은 후보를 하나씩 올렸고 codex는 0개(위 경고). 실제 운용에서 쓸모 있는 사실을 고르는지는 아직 관찰하지 않았다. 스모크 결과는 [`spikes/MEMORY-WRITE-SMOKE-0380.md`](./spikes/MEMORY-WRITE-SMOKE-0380.md).
 8. Windows 미검증.
 

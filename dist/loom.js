@@ -13453,6 +13453,212 @@ init_src();
 // packages/host/src/skill-prompt.ts
 import { isAbsolute as isAbsolute4 } from "path";
 
+// packages/host/src/marker-fold.ts
+var MARKER_FOLDED = "loomdispatchedtask";
+var MARKER_CONFUSABLES = new Map([
+  [305, "i"],
+  [383, "f"],
+  [388, "b"],
+  [397, "g"],
+  [402, "f"],
+  [406, "l"],
+  [422, "R"],
+  [423, "2"],
+  [439, "3"],
+  [444, "5"],
+  [445, "s"],
+  [447, "p"],
+  [448, "l"],
+  [540, "3"],
+  [546, "8"],
+  [547, "8"],
+  [567, "j"],
+  [588, "R"],
+  [593, "a"],
+  [609, "g"],
+  [611, "y"],
+  [617, "i"],
+  [618, "i"],
+  [623, "w"],
+  [644, "f"],
+  [651, "u"],
+  [655, "y"],
+  [671, "L"],
+  [895, "J"],
+  [913, "A"],
+  [914, "B"],
+  [917, "E"],
+  [918, "Z"],
+  [919, "H"],
+  [921, "l"],
+  [922, "K"],
+  [924, "M"],
+  [925, "N"],
+  [927, "O"],
+  [929, "P"],
+  [932, "T"],
+  [933, "Y"],
+  [935, "X"],
+  [945, "a"],
+  [947, "y"],
+  [953, "i"],
+  [957, "v"],
+  [959, "o"],
+  [961, "p"],
+  [963, "o"],
+  [965, "u"],
+  [978, "Y"],
+  [988, "F"],
+  [1000, "2"],
+  [1004, "6"],
+  [1005, "o"],
+  [1009, "p"],
+  [1010, "c"],
+  [1011, "j"],
+  [1016, "p"],
+  [1017, "C"],
+  [1018, "M"],
+  [1029, "S"],
+  [1030, "l"],
+  [1032, "J"],
+  [1040, "A"],
+  [1042, "B"],
+  [1045, "E"],
+  [1047, "3"],
+  [1050, "K"],
+  [1052, "M"],
+  [1053, "H"],
+  [1054, "O"],
+  [1056, "P"],
+  [1057, "C"],
+  [1058, "T"],
+  [1059, "Y"],
+  [1061, "X"],
+  [1068, "b"],
+  [1072, "a"],
+  [1073, "6"],
+  [1075, "r"],
+  [1077, "e"],
+  [1086, "o"],
+  [1088, "p"],
+  [1089, "c"],
+  [1091, "y"],
+  [1093, "x"],
+  [1096, "w"],
+  [1109, "s"],
+  [1110, "i"],
+  [1112, "j"],
+  [1121, "w"],
+  [1140, "V"],
+  [1141, "v"],
+  [1198, "Y"],
+  [1199, "y"],
+  [1210, "h"],
+  [1211, "h"],
+  [1213, "e"],
+  [1216, "l"],
+  [1231, "l"],
+  [1248, "3"],
+  [1281, "d"],
+  [1292, "G"],
+  [1306, "Q"],
+  [1307, "q"],
+  [1308, "W"],
+  [1309, "w"],
+  [1349, "3"],
+  [1357, "U"],
+  [1359, "S"],
+  [1365, "O"],
+  [1377, "w"],
+  [1379, "q"],
+  [1382, "q"],
+  [1392, "h"],
+  [1397, "j"],
+  [1400, "n"],
+  [1404, "n"],
+  [1405, "u"],
+  [1409, "g"],
+  [1410, "i"],
+  [1412, "f"],
+  [1413, "o"],
+  [5024, "D"],
+  [5025, "R"],
+  [5026, "T"],
+  [5029, "i"],
+  [5033, "Y"],
+  [5034, "A"],
+  [5035, "J"],
+  [5036, "E"],
+  [5043, "W"],
+  [5047, "M"],
+  [5051, "H"],
+  [5053, "Y"],
+  [5056, "G"],
+  [5058, "h"],
+  [5059, "Z"],
+  [5070, "4"],
+  [5071, "b"],
+  [5074, "R"],
+  [5076, "W"],
+  [5077, "S"],
+  [5081, "V"],
+  [5082, "S"],
+  [5086, "L"],
+  [5087, "C"],
+  [5090, "P"],
+  [5094, "K"],
+  [5095, "d"],
+  [5102, "6"],
+  [5107, "G"],
+  [5108, "B"],
+  [7428, "c"],
+  [7439, "o"],
+  [7441, "o"],
+  [7452, "u"],
+  [7456, "v"],
+  [7457, "w"],
+  [7458, "z"],
+  [7462, "r"],
+  [43893, "i"],
+  [43905, "r"],
+  [43907, "w"],
+  [43923, "z"],
+  [43934, "4"],
+  [43940, "w"],
+  [43945, "v"],
+  [43946, "s"],
+  [43951, "c"],
+  [43966, "6"]
+]);
+function applyTable(s) {
+  let out = "";
+  for (const ch of s)
+    out += MARKER_CONFUSABLES.get(ch.codePointAt(0) ?? 0) ?? ch;
+  return out;
+}
+function markerSkeleton(s) {
+  return applyTable(s.normalize("NFKD").replace(/\p{M}/gu, ""));
+}
+function foldMarkerText(s) {
+  return applyTable(markerSkeleton(s).toLowerCase()).replace(/[^\p{L}\p{N}]/gu, "");
+}
+function containsMarker(text) {
+  return foldMarkerText(text).includes(MARKER_FOLDED);
+}
+var CARD_PROMPT_MARKER_PLACEHOLDER = "[line removed by Loom: it imitated a Loom boundary line]";
+function neutralizeCardPrompt(prompt) {
+  let neutralizedLines = 0;
+  const lines = prompt.split(`
+`).map((line) => {
+    if (!containsMarker(line))
+      return line;
+    neutralizedLines += 1;
+    return CARD_PROMPT_MARKER_PLACEHOLDER;
+  });
+  return { text: neutralizedLines === 0 ? prompt : lines.join(`
+`), neutralizedLines };
+}
+
 // packages/host/src/skill-materialize.ts
 import { createHash as createHash9, randomUUID as randomUUID2 } from "crypto";
 import { constants as fsConstants3 } from "fs";
@@ -13520,7 +13726,6 @@ var SKILL_MAX_ENTRIES = 1024;
 var DIR_MAX_ENTRIES = 512;
 var PLUGIN_JSON_TEXT = `${JSON.stringify({ name: CARD_SKILLS_PLUGIN_NAME })}
 `;
-var MARKER_LETTERS = "loomdispatchedtask";
 var GATED_KEYS = new Set(["allowed-tools", "hooks"]);
 var BLOCK_KEYS = new Set(["allowed-tools", "hooks", "metadata", "loom"]);
 var SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -13687,16 +13892,13 @@ async function readRoomSkillSelection(loomDir2, roomId) {
   });
   return names;
 }
-function foldedLetters(text) {
-  return text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-}
 function sanitizeSkillDescription(raw) {
   const text = raw.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
   if (text.length === 0)
     return null;
   if ([...text].length > SKILL_DESCRIPTION_MAX)
     return null;
-  if (foldedLetters(text).includes(MARKER_LETTERS))
+  if (containsMarker(text))
     return null;
   return text;
 }
@@ -13742,7 +13944,7 @@ function parseFrontmatter(text) {
   if (!closed)
     return null;
   for (const line of ["---", ...body]) {
-    if (RAW_FORBIDDEN.test(line) || foldedLetters(line).includes(MARKER_LETTERS))
+    if (RAW_FORBIDDEN.test(line) || containsMarker(line))
       return null;
   }
   const top = new Map;
@@ -14433,13 +14635,11 @@ var SKILL_LISTING_MAX_ENTRIES = 20;
 var SKILL_LISTING_MAX_BYTES = 4096;
 var SKILL_SHADOW_SUFFIX = " (user, shadows bundled)";
 var UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-var MARKER_LETTERS2 = "loomdispatchedtask";
-function containsMarker(text) {
-  return text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "").includes(MARKER_LETTERS2);
-}
 function assertName(name) {
   if (!SKILL_NAME_RE.test(name))
     throw new Error(`skill listing: invalid skill name ${JSON.stringify(name)}`);
+  if (containsMarker(name))
+    throw new Error("skill listing: skill name contains the task marker");
 }
 function assertSkillMdPath(path) {
   if (!isAbsolute4(path) || UNSAFE_TEXT.test(path)) {
@@ -14454,6 +14654,11 @@ function assertDescription(description) {
   }
   if (containsMarker(description))
     throw new Error("skill listing: description contains the task marker");
+}
+function assertEntry(entry) {
+  if (containsMarker(entry))
+    throw new Error("skill listing: skill entry contains the task marker");
+  return entry;
 }
 function capLine(omitted) {
   return `- (+${omitted} more): unavailable: cap`;
@@ -14473,14 +14678,14 @@ function renderSkillListing(agent, skills) {
       assertDescription(skill.description);
       assertSkillMdPath(skill.skillMdPath);
       const label = skill.shadowsBuiltin === true ? SKILL_SHADOW_SUFFIX : "";
-      entries.push(`- ${skill.name}: ${skill.description} \u2014 ${skill.skillMdPath}${label}`);
+      entries.push(assertEntry(`- ${skill.name}: ${skill.description} \u2014 ${skill.skillMdPath}${label}`));
     }
   }
   for (const skill of skills.unavailable) {
     assertName(skill.name);
     if (UNSAFE_TEXT.test(skill.reason))
       throw new Error("skill listing: unsafe unavailable reason");
-    entries.push(`- ${skill.name}: unavailable: ${skill.reason}`);
+    entries.push(assertEntry(`- ${skill.name}: unavailable: ${skill.reason}`));
   }
   if (entries.length === 0)
     return "";
@@ -15399,8 +15604,8 @@ var CARD_CANDIDATES_PER_ATTEMPT = 5;
 var CARD_LOCK_BUDGET_MS = 250;
 var ARCHIVE_SCAN_TAIL_BYTES = 4 * 1024 * 1024;
 var HEX16_RE = /^[0-9a-f]{16}$/;
-var FENCE_LOOKALIKE_RE = /={3,}\s*(BEGIN|END)\s+LOOM\b/i;
-var LOOM_BLOCK_MARKER_RE = /LOOM-(MEMORY|REPORT)-/;
+var FENCE_RUN_RE = /[=\u2550\u1400\uA4FF\u30A0]{3,}/gu;
+var LOOM_BLOCK_MARKER_RE = /LOOM\W?(?:MEMORY|REPORT)/u;
 function cardMemorySource(x) {
   for (const k of ["room", "card", "handoff"]) {
     if (typeof x[k] !== "string" || !HEX16_RE.test(x[k])) {
@@ -15422,7 +15627,15 @@ function cardMemorySource(x) {
   };
 }
 function looksLikeLoomMarker(body) {
-  return containsMarker(body) || FENCE_LOOKALIKE_RE.test(body.normalize("NFKC")) || LOOM_BLOCK_MARKER_RE.test(body);
+  if (containsMarker(body))
+    return true;
+  const s = markerSkeleton(body).replace(/\p{Cf}/gu, "");
+  for (const m of s.matchAll(FENCE_RUN_RE)) {
+    const rest = foldMarkerText(s.slice(m.index + m[0].length));
+    if (rest.startsWith("beginloom") || rest.startsWith("endloom"))
+      return true;
+  }
+  return LOOM_BLOCK_MARKER_RE.test(s);
 }
 function isCardKey(source, key) {
   return source.kind === "card" && source.card === key.card && source.handoff === key.handoff && source.attempt === key.attempt;
@@ -17509,7 +17722,12 @@ class HeadlessDispatcher {
       await mkdir0700(dir);
       const transcriptPath = join20(dir, `transcript-${plan.attempts}.jsonl`);
       const stderrPath = join20(dir, `transcript-${plan.attempts}.stderr`);
-      const wrapped = wrapDispatchedPrompt(card.prompt);
+      const body = neutralizeCardPrompt(card.prompt);
+      if (body.neutralizedLines > 0) {
+        process.stderr.write(`[headless] card_prompt (${card.cardId.replace(/[\r\n]/g, " ")}): neutralized ${body.neutralizedLines}
+`);
+      }
+      const wrapped = wrapDispatchedPrompt(body.text);
       let firstTurn = wrapped;
       let built;
       let manifestHash = "";
@@ -17535,7 +17753,7 @@ class HeadlessDispatcher {
         };
         const memoryBlock = !plan.resumeSessionId && (sources.memory || sources.rules || sources.gaps.length > 0) ? await this.memorySnapshotLocked(card, dir, sources) : { block: "", hash: "" };
         memorySnapshotHash = plan.resumeSessionId ? plan.memorySnapshotHash === undefined ? "" : plan.memorySnapshotHash : memoryBlock.hash;
-        firstTurn = composeFirstTurnPrompt(skills.listing, composeMemoryWrapped(card.prompt, memoryBlock.block));
+        firstTurn = composeFirstTurnPrompt(skills.listing, composeMemoryWrapped(body.text, memoryBlock.block));
         const promptBody = plan.resumeSessionId ? `${RESUME_CONTINUATION_MESSAGE}
 
 ${wrapped}` : firstTurn;
@@ -21650,7 +21868,7 @@ function readMemoryDoctorInput(loom, platform = process.platform) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.39.0";
+var VERSION = "0.40.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);

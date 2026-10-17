@@ -5,32 +5,33 @@
 
 ## One-line resume
 
-> v0.40.0 **approved** (R59) · marker fold hardening · **next = P1** · 0.39.0 shipped
+> v0.40.0 **shipped** (R59) · marker fold hardening · **next = roadmap stage 5 (prompt assembly) PLAN**
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.40.0 `approved`** (R59) · next P1 | `docs/PLAN.md` |
+| Product | **v0.40.0 shipped** (R59) · next stage 5 PLAN | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.40.0 approved (R59) · next = P1 fold module red → green
+### v0.40.0 shipped · next = roadmap stage 5 (prompt assembly) PLAN
 
-**Goal:** 4단계 4부 — memory write path: opt-in `worker.memory.cardWrites` (needs `memory.enabled` + `skills.enabled`) · new builtin skill `loom-memory-candidates` (forced only — R56-L2) · last complete `LOOM-MEMORY-CANDIDATES` block in the final output → room-scoped `proposed` (`supersedes: null`, human `approve` only) · caps 50/10/5 · secret/marker filters (case-sensitive — L1) · `(card, handoff, attempt)` dedupe incl. archive tail 4 MiB (M2) · same mkdir lock ≤250 ms async + fail-open · `notes.md` redacted copy · CLI refuses writes under `LOOM_CARD` · card rows `+<n> chars` + `approve` full body (M3). Off = 0.37 bytes. Wire · argv · hint · template · fence · `policy.json` unchanged. Authority `docs/PLAN.md` §0.38.0 · `docs/plan_review.md` R56 (M1–M4 · L1–L4 in PLAN). Shipped 2026-10-18 · real-CLI ① PASS (claude 1 · grok 1 · codex 0 · all `notes.md`).
+**Goal:** 업그레이드 5단계 — 프롬프트 조립(`docs/UPGRADE-PLAN.md`). Evidence pack (Opus) → architect decision list → PLAN §0.41.0 draft (lane) → R60 (advise) → implement. 0.40.0 shipped 2026-10-18: one marker fold (`marker-fold.ts` — NFKD · marks · confusables 172+1 · lowercase · table again) for every marker check · R8 on the same fold · headless card-body marker lines → `[line removed by Loom: it imitated a Loom boundary line]` · skill names (R59-M1) + composed listing entries (P3b — Astra 0077 M) → `spawn_setup_failed`. Clean input = 0.39 bytes · no real-CLI (R59 ⑥).
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:memory-write` · `smoke:memory-inject`
-2. P1–P5 done · each PATCH Astra-verified (findings fixed or accepted — `implementation-notes.md` §0.38.0) · fake smoke `smoke:memory-write` 10/10 · suite 3309/1 known fail · final advise (0051) = ship · VERSION 0.38.0 + dist committed locally · pinned tests byte-unedited except the 12 declared P2 edits (R56-M1) · every test/smoke child: HOME + `LOOM_TEST_HOME` temp (+ `LOOM_PROFILE=smoke`)
-3. **0.40 candidates (owner picks):** snapshot mtime cache · lookalike-marker hardening · codex 0.162.1 vs 0.163.0 A/B (UK-2, owner-approved) — codex skills fixed in 0.39.0 (`MEMORY-WRITE-SMOKE-0390.md`)
-4. Carry: Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7 · `pane-cleanup.test.ts` ⑥ flaky under load
+2. 0.40.0 evidence: verify 0073/0075 PASS · 0077 FAIL 1 M → P3b · 0080 PASS · final advise 0082 = SHIP · suite 3410/1 known fail · `implementation-notes.md` §0.40.0 (1)–(5)
+3. Stage 5 first step: evidence pack on the current first-turn composition (`composeFirstTurnPrompt` · `composeMemoryWrapped` · listing · fence · rules · policy notice) vs `UPGRADE-PLAN.md` stage 5
+4. Later candidates: snapshot mtime cache · U+2E40/U+A78A fence lookalikes (UK-6) · class 46 (UK-7) · watch `card_prompt … neutralized` counts in the first dogfood wave (advise 0082)
+5. Carry: Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7 · `pane-cleanup.test.ts` ⑥ flaky under load
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** 0.40.0 P1–P4 (fold · R8 · card-body · docs/VERSION) each Astra-verified · suite + fake smokes green · no real-CLI required (R59 ⑥) · then roadmap stage 5 PLAN. Unshipped commits (incl. `1c78062` docs fix — pre-push dist check reads the working tree) stay local until ship.
+**Done when (this handoff):** stage 5 PLAN `approved` (R60) and its PATCHes each Astra-verified · suite green · ship. Unshipped commits stay local until ship (pre-push dist check reads the working tree).
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -40,7 +41,7 @@
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 mandatory (opt. Q3 skipped) | dev-process, own commits | `HEADLESS-LANES-DESIGN.md` |
 | Known fail | `handoff-checkpoint` live Evidence · pre-existing (`9ffc100`) | not a regression | suite 3308/2 (+ flaky pane-cleanup) |
-| v0.39.0 · v0.38.0 | **shipped** 2026-10-18 | 0.39 real-CLI PASS (codex reads skills) · 0.38 real-CLI ① PASS | `MEMORY-WRITE-SMOKE-0380.md` |
+| v0.40.0 · v0.39.0 · v0.38.0 | **shipped** 2026-10-18 | 0.39 real-CLI PASS (codex reads skills) · 0.38 real-CLI ① PASS | `MEMORY-WRITE-SMOKE-0380.md` |
 | v0.32–0.37 | **shipped** `9567f87`·`0a20173`·`dbab890`·`5fa8167`·`acd53a0`·`d6f7cc2` | steps 2–4.2a · 0.34 live (macOS) / 0.36 real-CLI PASS 2026-10-17 | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
@@ -52,7 +53,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| after 0.40 | roadmap stage 5 (prompt assembly) next per owner "단계별로 모두 진행해" | proceed | `UPGRADE-PLAN.md` |
+| stage 5 | prompt assembly next per owner "단계별로 모두 진행해" | proceed | `UPGRADE-PLAN.md` |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
