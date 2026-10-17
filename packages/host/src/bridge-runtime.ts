@@ -1138,7 +1138,14 @@ async function startLockedBridgeRuntime(
         node: session.displayName,
         // PLAN 0.36.0 D8 · R1: the profile resolved above (no re-resolution) + the opt-in flag.
         profile,
-        memory: cfg.worker?.memory?.enabled === true ? { enabled: true } : undefined,
+        // PLAN 0.38.0 ② HeadlessDeps.memory: `cardWrites: true` only when the config says so.
+        memory:
+          cfg.worker?.memory?.enabled === true
+            ? {
+                enabled: true,
+                ...(cfg.worker.memory.cardWrites === true ? { cardWrites: true as const } : {}),
+              }
+            : undefined,
         // PLAN 0.37.0 R4 · D3: the start-time Gap[] (the worker keeps its card agent's gaps) and
         // the opt-in standing rules.
         policyGaps: policyGapsAtStart,

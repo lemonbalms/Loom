@@ -76,6 +76,7 @@ import {
   cardKeyHash,
   cardSessionPath,
   listCardSessions,
+  MEMORY_PROPOSED_MAX,
   readCardSession,
   readCardSessionAsync,
   writeCardSessionAsync,
@@ -96,8 +97,14 @@ import {
   renderMemoryBlock,
   renderRulesSection,
 } from "./memory-inject";
+import { parseMemoryCandidates } from "./memory-candidates";
 import { loadMemorySnapshot } from "./memory-snapshot";
-import { agentKeyFor } from "./memory-store";
+import {
+  agentKeyFor,
+  appendMemoryEntriesAsync,
+  type CardDropCounts,
+  cardMemorySource,
+} from "./memory-store";
 import { type Gap, renderPolicyNotice } from "./policy-gaps";
 import { parseLstart, readProcessLstart } from "./process-lstart";
 import { redactSecrets } from "./redact";
@@ -116,6 +123,10 @@ const MAX_UNKNOWN_PROBES = 5;
 const MEMORY_SNAPSHOT_MAX_BYTES = 1024 * 1024;
 /** D11 · R54-L2: a recorded memorySnapshotHash is "" (no block) or 64 lowercase hex. */
 const MEMORY_SNAPSHOT_HASH_RE = /^[0-9a-f]{64}$/;
+/** 0.38.0 D15: the redacted copy of a card's final output, beside `skills/` (never read back). */
+export const CARD_NOTES_FILE = "notes.md";
+/** 0.38.0 D4: the builtin forced into a fresh first spawn's copy while cardWrites is on. */
+const MEMORY_CANDIDATES_SKILL = "loom-memory-candidates";
 
 export type HeadlessFlight = {
   workerId: string;
@@ -167,8 +178,11 @@ type HeadlessDeps = {
   commands: Record<AgentKind, HeadlessCommand>;
   /** 0.36.0 D8: the bridge's already-resolved profile (agentKeyFor). Default "default". */
   profile?: string;
-  /** 0.36.0 D5: memory injection; only `{enabled: true}` turns it on (omitted = off). */
-  memory?: { enabled: boolean };
+  /**
+   * 0.36.0 D5: memory injection; only `{enabled: true}` turns it on (omitted = off).
+   * 0.38.0 D3: `cardWrites: true` turns on card candidates → `proposed` + notes.md (omitted = 0.37).
+   */
+  memory?: { enabled: boolean; cardWrites?: true };
   /** 0.36.0 test seam: the per-card fence nonce. Default 32 lowercase hex from randomBytes(16). */
   memoryNonce?: () => string;
   /**
@@ -296,6 +310,22 @@ function summaryLine(text: string): string {
     if (trimmed.length > 0) return trimmed.slice(0, SUMMARY_CAP);
   }
   return "";
+}
+
+type SendAndMarkOptions = {
+  allowPersistenceFailure?: boolean;
+  preserveWorkerState?: boolean;
+  /** 0.38.0 R9: add this card-candidate key to `memoryProposed` in the first persist. */
+  memoryProposedKey?: string;
+};
+
+function oneLine(text: string): string {
+  return text.replace(/[\r\n]/g, " ");
+}
+
+/** 0.38.0 R21: an error as one line of at most 200 characters. */
+function errorLine(err: unknown): string {
+  return oneLine(err instanceof Error ? err.message : String(err)).slice(0, 200);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -948,7 +978,7 @@ export class HeadlessDispatcher {
   private async sendAndMark(
     record: CardSessionRecord,
     fields: HeadlessResultFields,
-    opts: { allowPersistenceFailure?: boolean; preserveWorkerState?: boolean } = {},
+    opts: SendAndMarkOptions = {},
   ): Promise<void> {
     await this.withCardLock(record, () => this.sendAndMarkLocked(record, fields, opts));
   }
@@ -956,8 +986,9 @@ export class HeadlessDispatcher {
   private async sendAndMarkLocked(
     record: CardSessionRecord,
     fields: HeadlessResultFields,
-    opts: { allowPersistenceFailure?: boolean; preserveWorkerState?: boolean } = {},
+    opts: SendAndMarkOptions = {},
   ): Promise<void> {
+    const proposedKey = opts.memoryProposedKey;
     const persist = async (update: (current: CardSessionRecord) => CardSessionRecord) => {
       try {
         Object.assign(
@@ -990,6 +1021,15 @@ export class HeadlessDispatcher {
         },
         resultSent: false,
         sendAttempts: (sameHandoff ? current.sendAttempts : 0) + 1,
+        // 0.38.0 R9: the card-candidate key rides the first persist (under this lock).
+        ...(proposedKey
+          ? {
+              memoryProposed: [
+                ...(current.memoryProposed ?? []).filter((k) => k !== proposedKey),
+                proposedKey,
+              ].slice(-MEMORY_PROPOSED_MAX),
+            }
+          : {}),
       };
     });
     // Sending under the lock prevents another handoff reserving the slot
@@ -1366,6 +1406,8 @@ export class HeadlessDispatcher {
       );
     }
     const fullText = parsed.finalText.length > 0 ? parsed.finalText : raw;
+    // 0.38.0 D5 · D15: the give-up path writes notes.md only (already under the card lock).
+    if (this.deps.memory?.cardWrites === true) await this.writeCardNotes(record, fullText);
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const truncated = truncationNote(capped.truncated, transcriptPath, fullText);
     const attemptsNote = `attempts ${record.attempts} exhausted; not resuming`;
@@ -1404,6 +1446,15 @@ export class HeadlessDispatcher {
     // Timeout keeps the whole partial transcript. Parsed finalText alone
     // drops the remainder once any text has been parsed.
     const fullText = outcome.timedOut ? outcome.raw : outcome.parsed.finalText;
+    // 0.38.0 ② result-path steps, before sendAndMark and outside the card lock (D11):
+    // ① notes.md ② propose (not on timeout) ③ the stderr line (inside ②) ④ sendAndMark + key.
+    let memoryProposedKey: string | undefined;
+    if (this.deps.memory?.cardWrites === true) {
+      await this.writeCardNotes(record, fullText);
+      if (!outcome.timedOut) {
+        memoryProposedKey = await this.proposeCardMemory(record, outcome.parsed.finalText);
+      }
+    }
     const summary = summaryLine(fullText);
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const note = [
@@ -1413,15 +1464,110 @@ export class HeadlessDispatcher {
       .filter(Boolean)
       .join("; ")
       .slice(0, 500);
-    await this.sendAndMark(record, {
-      status: "failed",
-      reason: outcome.timedOut ? "timeout" : "needs_verification",
-      timedOut: outcome.timedOut,
-      output: capped.text,
-      truncated: capped.truncated,
-      summary,
-      ...(note ? { note } : {}),
-    });
+    await this.sendAndMark(
+      record,
+      {
+        status: "failed",
+        reason: outcome.timedOut ? "timeout" : "needs_verification",
+        timedOut: outcome.timedOut,
+        output: capped.text,
+        truncated: capped.truncated,
+        summary,
+        ...(note ? { note } : {}),
+      },
+      memoryProposedKey ? { memoryProposedKey } : {},
+    );
+  }
+
+  /**
+   * 0.38.0 D15 · R15: `<cardDir>/notes.md` = the env-redacted, capped copy of `fullText` (0600,
+   * same-directory temp file → rename). Empty text writes nothing and keeps an older file. A
+   * failure is one stderr line and never blocks delivery.
+   */
+  private async writeCardNotes(record: CardSessionRecord, fullText: string): Promise<void> {
+    if (fullText === "") return;
+    const dir = this.cardDir(record);
+    const tmp = join(dir, `.${CARD_NOTES_FILE}.tmp.${process.pid}.${randomUUID()}`);
+    const target = join(dir, CARD_NOTES_FILE);
+    try {
+      const text = truncateTail(redactSecrets(fullText, process.env), OUTPUT_CAP).text;
+      await writeFile(tmp, text, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      await rename(tmp, target);
+      await chmod(target, 0o600);
+    } catch (err) {
+      await rm(tmp, { force: true }).catch(() => {});
+      process.stderr.write(
+        `[headless] card_notes (${oneLine(record.cardId)}): failed — ${errorLine(err)}\n`,
+      );
+    }
+  }
+
+  /**
+   * 0.38.0 D5 · D11 · D13 · D14 · R9 · R13 · R21 — card candidates of a non-timeout final text →
+   * `proposed` in the bridge profile's store (room scope). Outside the card lock. Writes exactly
+   * one stderr line. Returns the record key to persist when the store finished its under-lock
+   * step (or the record already had it); undefined on busy, IO error, no block or no profile.
+   * Never throws.
+   */
+  private async proposeCardMemory(
+    record: CardSessionRecord,
+    finalText: string,
+  ): Promise<string | undefined> {
+    const write = (body: string) =>
+      process.stderr.write(`[headless] memory_propose (${oneLine(record.cardId)}): ${body}\n`);
+    const profile = this.deps.profile;
+    if (!profile) {
+      write("skipped — no profile");
+      return undefined;
+    }
+    try {
+      const handoff = createHash("sha256")
+        .update(record.dispatchHandoffId)
+        .digest("hex")
+        .slice(0, 16);
+      const key = `${handoff}.${record.attempts}`;
+      const parsed = parseMemoryCandidates(finalText);
+      const dropped: CardDropCounts = { secret: 0, marker: 0, cap: 0, busy: 0, dup: 0, invalid: 0 };
+      let proposed = 0;
+      let result: string | undefined;
+      if ((record.memoryProposed ?? []).includes(key)) {
+        // Fast path (R9): this attempt already finished the store step — no store access.
+        dropped.dup = parsed.candidates.length;
+        result = key;
+      } else if (parsed.block) {
+        dropped.invalid += parsed.invalid;
+        dropped.cap += parsed.overflow;
+        const room = roomKey(record.roomId);
+        const r = await appendMemoryEntriesAsync(
+          this.deps.loomDir,
+          agentKeyFor(profile, record.agent),
+          {
+            source: cardMemorySource({
+              room,
+              card: cardKeyHash(record.roomId, record.agent, record.cardId),
+              handoff,
+              attempt: record.attempts as 1 | 2,
+              by: record.fromPeerId,
+            }),
+            appliesTo: `room:${room}`,
+            candidates: parsed.candidates,
+          },
+          { env: process.env },
+        );
+        proposed = r.proposed;
+        for (const k of Object.keys(dropped) as (keyof CardDropCounts)[]) dropped[k] += r.dropped[k];
+        // A busy drop leaves the key off so a later reprocess may retry (R9).
+        if (r.dropped.busy === 0) result = key;
+      }
+      const m = Object.values(dropped).reduce((a, b) => a + b, 0);
+      write(
+        `proposed ${proposed} · dropped ${m} (secret ${dropped.secret} · marker ${dropped.marker} · cap ${dropped.cap} · busy ${dropped.busy} · dup ${dropped.dup} · invalid ${dropped.invalid})`,
+      );
+      return result;
+    } catch (err) {
+      write(`failed — ${errorLine(err)}`);
+      return undefined;
+    }
   }
 
   private skillsKey(card: Pick<HeadlessDispatchCard, "roomId" | "agent" | "cardId">) {
@@ -1549,6 +1695,8 @@ export class HeadlessDispatcher {
       ...this.skillsKey(card),
       enabled: true,
       policy: effectiveWorkerPolicy(this.deps.config).effective[card.agent].skills,
+      // 0.38.0 D4 · R5: fresh first spawn only — a resume returned the verified copy above (C2).
+      ...(this.deps.memory?.cardWrites === true ? { forced: [MEMORY_CANDIDATES_SKILL] } : {}),
     });
     return {
       manifestHash: result.manifestHash,

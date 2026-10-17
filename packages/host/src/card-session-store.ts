@@ -41,7 +41,16 @@ export type CardSessionRecord = {
    * hex. Never written when no block was injected — an absent key means "" (R9).
    */
   memorySnapshotHash?: string;
+  /**
+   * 0.38.0 D11 · R9: `${sha16(dispatchHandoffId)}.${attempt}` keys whose card candidates already
+   * finished the store's under-lock step, oldest first (at most 16). Absent means [].
+   */
+  memoryProposed?: string[];
 };
+
+/** 0.38.0 R9: a memoryProposed element. */
+export const MEMORY_PROPOSED_KEY_RE = /^[0-9a-f]{16}\.[12]$/;
+export const MEMORY_PROPOSED_MAX = 16;
 
 export const cardSessionDiagnostics = { invalidRecords: 0 };
 
@@ -71,6 +80,11 @@ function validRecord(raw: unknown): raw is CardSessionRecord {
       typeof f.truncated !== "boolean" || typeof f.summary !== "string" ||
       (f.note !== undefined && typeof f.note !== "string") ||
       (f.timedOut !== undefined && typeof f.timedOut !== "boolean")) return false;
+  }
+  if (r.memoryProposed !== undefined) {
+    const m = r.memoryProposed;
+    if (!Array.isArray(m) || m.length > MEMORY_PROPOSED_MAX ||
+      m.some(k => typeof k !== "string" || !MEMORY_PROPOSED_KEY_RE.test(k))) return false;
   }
   return true;
 }

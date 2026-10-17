@@ -83,6 +83,8 @@ export * from "./policy-gaps";
 export { POLICY_ENFORCEMENT, resolveWorkerPolicy } from "./policy-compile";
 // PLAN 0.35.0 P4: memory store · rules · skills inventory for `loom memory|rules|skills` + doctor.
 export * from "./memory-store";
+// PLAN 0.38.0 ②: pure LOOM-MEMORY-CANDIDATES parser (CLI · smoke).
+export * from "./memory-candidates";
 export * from "./rules-store";
 export { roomKey } from "./room-event-log";
 export {
