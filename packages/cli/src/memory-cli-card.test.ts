@@ -7,13 +7,16 @@
  * never hand-written JSON. Run with HOME and LOOM_TEST_HOME pointing at a temp dir.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   appendMemoryEntriesAsync,
+  appendMemoryTransition,
   cardMemorySource,
+  compactMemory,
   foldMemoryLines,
+  humanMemorySource,
   type MemoryEntryType,
   memoryPaths,
   roomKey,
@@ -81,12 +84,18 @@ const cardIds = counterIds(0xc000);
 /** One card attempt's candidates through the host store (P1). */
 async function proposeCard(
   bodies: readonly string[],
-  opts: { room?: string; attempt?: 1 | 2; handoff?: string; type?: MemoryEntryType } = {},
+  opts: {
+    room?: string;
+    attempt?: 1 | 2;
+    handoff?: string;
+    type?: MemoryEntryType;
+    agent?: string;
+  } = {},
 ): Promise<string[]> {
   const rk = roomKey(opts.room ?? "r1");
   const r = await appendMemoryEntriesAsync(
     L,
-    AGENT,
+    opts.agent ?? AGENT,
     {
       source: cardMemorySource({
         room: rk,
@@ -111,6 +120,23 @@ const seqOf = (id: string): number => {
   return e.seq;
 };
 const rowLines = (out: readonly string[]) => out.filter((l) => l.startsWith("  mem_"));
+
+/** Every path under `root` (lstat — names, kinds, sizes, mtimes; `*.lock` dirs included). */
+function snapshotTree(root: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string, rel: string) => {
+    for (const name of readdirSync(dir).sort()) {
+      const p = join(dir, name);
+      const r = rel ? `${rel}/${name}` : name;
+      const st = lstatSync(p);
+      const kind = st.isSymbolicLink() ? "link" : st.isDirectory() ? "dir" : "file";
+      out.push(`${r} ${kind} ${kind === "file" ? st.size : "-"} ${st.mtimeMs}`);
+      if (kind === "dir") walk(p, r);
+    }
+  };
+  walk(root, "");
+  return out;
+}
 
 describe("memory list — card rows (D8 · R16 · R56-M3)", () => {
   test("card row gets the [card by X] suffix · human row stays 0.37 bytes", async () => {
@@ -196,8 +222,32 @@ describe("memory list — header K (D14)", () => {
   test("K sums every listed agent", async () => {
     const s = session();
     await proposeCard(["a", "b"]);
+    await proposeCard(["c"], { agent: "codex.default", room: "r2" });
     const r = await s.call("list", [], {});
-    expect(r.out[1]).toBe("memory: 2 card proposals awaiting review");
+    expect(r.out[1]).toBe("memory: 3 card proposals awaiting review");
+    const claude = await s.call("list", [], { agent: "claude" });
+    expect(claude.out[1]).toBe("memory: 2 card proposals awaiting review");
+    const codex = await s.call("list", [], { agent: "codex" });
+    expect(codex.out[1]).toBe("memory: 1 card proposals awaiting review");
+  });
+
+  test("K ignores --room / --source row filters (whole stores of the listed agents)", async () => {
+    const s = session();
+    await s.call("add", ["human fact"], { agent: "claude" });
+    await proposeCard(["a", "b"]);
+    await proposeCard(["c"], { agent: "codex.default", room: "r2" });
+    const K = "memory: 3 card proposals awaiting review";
+    const filters: Record<string, string>[] = [
+      { room: "r2" },
+      { room: "r9" },
+      { source: "human" },
+      { source: "card", room: "r1" },
+    ];
+    for (const f of filters) {
+      const r = await s.call("list", [], f);
+      expect(r.code).toBe(0);
+      expect(r.out[1]).toBe(K);
+    }
   });
 });
 
@@ -304,6 +354,54 @@ describe("memory approve — activated line (R56-M3)", () => {
     ]);
   });
 
+  // Verify 0045 M: the stdout callback runs after the transition released its lock and before the
+  // `activated:` line — the deterministic injection point for a racing writer / failing reader.
+  async function approveWithHook(onApproved: (cid: string) => void, failActivated = false) {
+    const lines: string[] = [];
+    const [first] = await proposeCard(["raced card fact"]);
+    const cid = first as string;
+    const s = session({
+      stdout: (l) => {
+        if (l.startsWith("activated:") && failActivated) throw new Error("EPIPE");
+        lines.push(l);
+        if (l.startsWith("approved ")) onApproved(cid);
+      },
+    });
+    const seq = seqOf(cid);
+    const r = await s.call("approve", [cid], { agent: "claude" });
+    return { r, lines, cid, seq };
+  }
+
+  const activatedLine = `activated: fact room:${roomKey("r1")} — raced card fact (source card by ${BY})`;
+
+  test("retire + compact of the same id racing before the print cannot hide the line", async () => {
+    const { r, lines, cid, seq } = await approveWithHook((id) => {
+      const t = appendMemoryTransition(L, AGENT, {
+        id,
+        to: "retired",
+        source: humanMemorySource("Other"),
+      });
+      expect(t.ok).toBe(true);
+      expect(compactMemory(L, AGENT).ok).toBe(true);
+      expect(foldMemoryLines(readFileSync(entriesPath(), "utf8")).entries.has(id)).toBe(false);
+    });
+    expect(r).toEqual({ code: 0, out: [], err: [] });
+    expect(lines).toEqual([`approved ${cid} (seq ${seq + 1})`, activatedLine]);
+  });
+
+  test("store unreadable after a successful approve → exit 0 · approved + activated lines", async () => {
+    const { r, lines, cid, seq } = await approveWithHook(() => chmodSync(entriesPath(), 0o000));
+    chmodSync(entriesPath(), 0o600);
+    expect(r).toEqual({ code: 0, out: [], err: [] });
+    expect(lines).toEqual([`approved ${cid} (seq ${seq + 1})`, activatedLine]);
+  });
+
+  test("printing the activated line throws → exit 0 · approved line kept", async () => {
+    const { r, lines, cid, seq } = await approveWithHook(() => {}, true);
+    expect(r).toEqual({ code: 0, out: [], err: [] });
+    expect(lines).toEqual([`approved ${cid} (seq ${seq + 1})`]);
+  });
+
   test("human source → only the 0.37 `approved` line", async () => {
     const s = session();
     await s.call("propose", ["human idea"], { agent: "claude" });
@@ -331,15 +429,23 @@ describe("D16' — LOOM_CARD refuses memory writes (R17)", () => {
   ];
 
   for (const [verb, pos] of writes) {
-    test(`${verb} → exit 1 · wording · entries.jsonl bytes + mtime unchanged`, async () => {
+    test(`${verb} → exit 1 · wording · store tree + entries.jsonl bytes unchanged`, async () => {
       const { s, cid } = await seeded();
       const before = readFileSync(entriesPath());
-      const mtime = statSync(entriesPath()).mtimeMs;
+      const tree = snapshotTree(L);
+      expect(tree.some((l) => l.startsWith("memory/claude.default/entries.jsonl file"))).toBe(true);
       s.deps.env = { LOOM_CARD: "x" };
       const r = await s.call(verb, pos(cid), { agent: "claude" });
       expect(r).toEqual({ code: 1, out: [], err: [REFUSAL] });
       expect(readFileSync(entriesPath()).equals(before)).toBe(true);
-      expect(statSync(entriesPath()).mtimeMs).toBe(mtime);
+      expect(snapshotTree(L)).toEqual(tree);
+    });
+
+    test(`${verb} in a fresh loomDir → exit 1 · no store directory or file created`, async () => {
+      const s = session({ env: { LOOM_CARD: "x" } });
+      const r = await s.call(verb, pos(ID(0xa001)), { agent: "claude" });
+      expect(r).toEqual({ code: 1, out: [], err: [REFUSAL] });
+      expect(snapshotTree(L)).toEqual([]);
     });
   }
 
