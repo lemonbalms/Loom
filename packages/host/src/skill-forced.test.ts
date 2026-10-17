@@ -179,7 +179,9 @@ describe("materializeCardSkills forced (R5 · R56-L2)", () => {
     const a = setup();
     select(a.loomDir, a.key.roomId, ["loom-card-report"]);
     const omitted = await materializeCardSkills({ ...a.key, enabled: true, policy: OPEN });
-    const expected = skillsManifestHash([
+    // 0.37 manifestHash for [loom-card-report] — builtin unchanged since d6f7cc2.
+    const expected = "a721600a5e812c65f6e051b14a2a3ec058fd4ec0bedabefa967b81e88c98cac6";
+    expect(omitted.manifest).toEqual([
       {
         name: "loom-card-report",
         source: "builtin",
@@ -226,6 +228,23 @@ describe("materializeCardSkills forced (R5 · R56-L2)", () => {
       expect(res.manifest!.map((m) => m.name)).toEqual(["loom-card-report"]);
       expect(existsSync(join(res.pluginDir!, "skills", NAME))).toBe(false);
     }
+  });
+
+  test("room alone selects the builtin under skills.allow [] → policy deny, same bytes as an unknown name", async () => {
+    const { loomDir, key } = setup();
+    select(loomDir, key.roomId, [NAME, "nope"]);
+    const res = await materializeCardSkills({
+      ...key,
+      enabled: true,
+      policy: { allow: [], allowScripts: [] },
+    });
+    expect(res.available).toEqual([]);
+    expect(res.unavailable).toEqual([
+      { name: NAME, reason: "not allowed by policy" },
+      { name: "nope", reason: "not allowed by policy" },
+    ]);
+    expect(res.manifest).toEqual([]);
+    expect(existsSync(join(res.pluginDir!, "skills", NAME))).toBe(false);
   });
 
   test("room alone selects the name and a user skill of that name exists → user copy materializes", async () => {
