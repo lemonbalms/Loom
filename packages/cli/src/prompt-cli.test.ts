@@ -581,3 +581,283 @@ describe("spawn: bun packages/cli/src/index.ts prompt show (HOME = LOOM_TEST_HOM
     60_000,
   );
 });
+
+// ---------------------------------------------------------------------------------------------
+// Astra verify 0094 — six findings
+// ---------------------------------------------------------------------------------------------
+
+/** The card dir `cardSessionPath` gives for PEER / ROOM / claude / CARD (not created). */
+function cardDirOf(s: { loomDir?: string; peer?: string; agent?: Agent } = {}): string {
+  return dirname(
+    cardSessionPath({
+      loomDir: s.loomDir ?? L,
+      localPeerId: s.peer ?? PEER,
+      roomId: ROOM,
+      agent: s.agent ?? "claude",
+      cardId: CARD,
+    }),
+  );
+}
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting no raw control characters
+const RAW_UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
+
+/** Captures anything written straight to process.stderr while `fn` runs. */
+async function captureProcessStderr<T>(fn: () => Promise<T>): Promise<{ value: T; text: string }> {
+  const chunks: string[] = [];
+  const orig = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    chunks.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    const value = await fn();
+    return { value, text: chunks.join("") };
+  } finally {
+    process.stderr.write = orig;
+  }
+}
+
+/** A temp HOME's tree without bun's own `Library/Caches` (HOME = T for the child). */
+function snapshotHome(T: string): string[] {
+  return readdirSync(T)
+    .filter((n) => n !== "Library")
+    .sort()
+    .flatMap((n) => snapshot(join(T, n)));
+}
+
+function spawnPrompt(T: string, args: string[], extra: Record<string, string> = {}) {
+  return spawnSync(process.execPath, [CLI, ...args], {
+    env: childEnv(T, extra),
+    encoding: "utf8",
+    timeout: 20_000,
+  });
+}
+
+describe("Astra 0094 #1 — strictly read-only (no .corrupt-* backup, no .fable migration)", () => {
+  test("a malformed card session.json next to the match: shown, and the tree is unchanged (names · bytes · mtimes)", async () => {
+    const dir = seedSession();
+    await seedRecord(dir, rec("claude", 1));
+    const bad = seedSession({ room: "room-bad" });
+    writeFileSync(join(bad, "session.json"), "{ not json");
+    const before = snapshot(L);
+    const bytesBefore = readFileSync(join(bad, "session.json"));
+    const { value: r } = await captureProcessStderr(() => cli()([CARD]));
+    expect(r.code).toBe(0);
+    await captureProcessStderr(() => cli()(["nope"]));
+    expect(snapshot(L)).toEqual(before);
+    expect(readdirSync(bad)).toEqual(["session.json"]);
+    expect(readFileSync(join(bad, "session.json")).equals(bytesBefore)).toBe(true);
+  });
+
+  test(
+    "real entry with only a legacy ~/.fable layout: nothing is renamed, copied or deleted",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-fable-"));
+      try {
+        const fable = join(T, ".fable");
+        mkdirSync(fable, { recursive: true });
+        writeFileSync(
+          join(fable, "session.json"),
+          JSON.stringify({ peerId: PEER, displayName: "Kim", relayUrl: "ws://127.0.0.1:7842" }),
+        );
+        const dir = seedSession({ loomDir: fable });
+        writeFileSync(promptRecordPath(dir, 1), serializePromptRecord(rec("claude", 1)));
+        const before = snapshotHome(T);
+        const r = spawnPrompt(T, ["prompt", "show", CARD]);
+        expect(r.status).toBe(1);
+        expect(snapshotHome(T)).toEqual(before);
+        expect(readdirSync(T).filter((n) => n !== "Library")).toEqual([".fable"]);
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  test(
+    "real entry with a malformed profile session.json: no session, tree unchanged",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-badsess-"));
+      try {
+        const loom = join(T, ".loom");
+        mkdirSync(loom, { recursive: true });
+        writeFileSync(join(loom, "session.json"), "{ broken");
+        const before = snapshotHome(T);
+        const r = spawnPrompt(T, ["prompt", "show", CARD]);
+        expect(r.status).toBe(1);
+        expect(r.stderr).toBe("loom prompt: profile default has no session (join a room first)\n");
+        expect(snapshotHome(T)).toEqual(before);
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+});
+
+describe("Astra 0094 #2 — the scan follows no symlink and never blocks", () => {
+  test("a symlinked card dir pointing at another peer's matching card is not shown", async () => {
+    const other = seedSession({ peer: OTHER_PEER });
+    await seedRecord(other, rec("claude", 1));
+    const mine = cardDirOf();
+    mkdirSync(dirname(mine), { recursive: true });
+    symlinkSync(other, mine);
+    const r = await captureProcessStderr(() => cli()([CARD]));
+    expect(r.value.code).toBe(1);
+    expect(r.value.out).toEqual([]);
+    expect(r.value.err[0]).toBe(noneLine(CARD));
+  });
+
+  test("a session.json symlink is skipped", async () => {
+    const other = seedSession({ peer: OTHER_PEER });
+    await seedRecord(other, rec("claude", 1));
+    const mine = cardDirOf();
+    mkdirSync(mine, { recursive: true });
+    symlinkSync(join(other, "session.json"), join(mine, "session.json"));
+    await seedRecord(mine, rec("claude", 1));
+    const r = await captureProcessStderr(() => cli()([CARD]));
+    expect(r.value.code).toBe(1);
+    expect(r.value.out).toEqual([]);
+    expect(r.value.err[0]).toBe(noneLine(CARD));
+  });
+
+  test(
+    "a FIFO session.json is skipped promptly (real entry, killed after 20 s if it blocks)",
+    () => {
+      if (process.platform === "win32") return;
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-fifo-"));
+      try {
+        const loom = join(T, ".loom");
+        mkdirSync(loom, { recursive: true });
+        writeFileSync(
+          join(loom, "session.json"),
+          JSON.stringify({ peerId: PEER, displayName: "Kim", relayUrl: "ws://127.0.0.1:7842" }),
+        );
+        const mine = cardDirOf({ loomDir: loom });
+        mkdirSync(mine, { recursive: true });
+        if (Bun.spawnSync(["mkfifo", join(mine, "session.json")]).exitCode !== 0) return;
+        const started = Date.now();
+        const r = spawnPrompt(T, ["prompt", "show", CARD]);
+        expect(r.signal).toBeNull();
+        expect(r.status).toBe(1);
+        expect(r.stderr.split("\n")[0]).toBe(noneLine(CARD, "Kim"));
+        expect(Date.now() - started).toBeLessThan(15_000);
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  test("a session.json over 1 MiB is skipped", async () => {
+    const mine = seedSession();
+    await seedRecord(mine, rec("claude", 1));
+    const text = readFileSync(join(mine, "session.json"), "utf8");
+    writeFileSync(join(mine, "session.json"), text.replace(/\n$/, `${" ".repeat(1024 * 1024)}\n`));
+    const r = await captureProcessStderr(() => cli()([CARD]));
+    expect(r.value.code).toBe(1);
+    expect(r.value.err[0]).toBe(noneLine(CARD));
+  });
+});
+
+describe("Astra 0094 #3 — the record agent must be the session agent", () => {
+  test("a valid codex record in a claude card dir → invalid: agent mismatch, exit 1 (text and --json)", async () => {
+    const dir = seedSession({ agent: "claude" });
+    await seedRecord(dir, rec("codex", 1));
+    const run = cli();
+    const want = [`loom prompt: invalid prompt record ${promptRecordPath(dir, 1)}: agent mismatch`];
+    const t = await run([CARD], { agent: "claude" });
+    expect(t.code).toBe(1);
+    expect(t.out).toEqual([]);
+    expect(t.err).toEqual(want);
+    const j = await run([CARD], { json: true });
+    expect(j.code).toBe(1);
+    expect(j.bytes.length).toBe(0);
+    expect(j.err).toEqual(want);
+  });
+
+  test("an agent-mismatched record is not offered as an available attempt", async () => {
+    const dir = seedSession({ agent: "claude", attempts: 2 });
+    await seedRecord(dir, rec("codex", 2));
+    const r = await cli()([CARD], { attempt: "1" });
+    expect(r.code).toBe(1);
+    expect(r.err).toEqual([missingLine(1)]);
+  });
+});
+
+describe("Astra 0094 #4 — nothing from the scan reaches stderr unescaped", () => {
+  test("invalid sessions under a loomDir with ESC / U+009B / U+202E: no raw control on either stderr channel", async () => {
+    const odd = join(L, "x\u001b[2Jy\u009bz‮w");
+    const badA = cardDirOf({ loomDir: odd });
+    mkdirSync(badA, { recursive: true });
+    writeFileSync(join(badA, "session.json"), "{}\n");
+    const badB = seedSession({ loomDir: odd, room: "room-c" });
+    writeFileSync(join(badB, "session.json"), "{ nope");
+    const { value: r, text } = await captureProcessStderr(() => cli({ loomDir: odd })([CARD]));
+    expect(r.code).toBe(1);
+    expect(text).not.toMatch(RAW_UNSAFE);
+    for (const line of [...r.err, ...r.out]) expect(line).not.toMatch(RAW_UNSAFE);
+    expect(r.err[0]).toBe(noneLine(CARD));
+  });
+});
+
+describe("Astra 0094 #5 — only canonical record bytes are accepted", () => {
+  test("a record rewritten with plain JSON.stringify (raw U+009B) → invalid: not canonical, exit 1 (text and --json)", async () => {
+    const dir = seedSession();
+    const r1 = rec("claude", 1, { user: "c1 \u009b[31m red\n" });
+    writeFileSync(promptRecordPath(dir, 1), `${JSON.stringify(r1, null, 2)}\n`, { mode: 0o600 });
+    const run = cli();
+    const want = [`loom prompt: invalid prompt record ${promptRecordPath(dir, 1)}: not canonical`];
+    const t = await run([CARD]);
+    expect(t.code).toBe(1);
+    expect(t.out).toEqual([]);
+    expect(t.err).toEqual(want);
+    const j = await run([CARD], { json: true });
+    expect(j.code).toBe(1);
+    expect(j.bytes.length).toBe(0);
+    expect(j.err).toEqual(want);
+  });
+});
+
+describe("Astra 0094 #6 — LOOM_CARD refuses before help and argument handling (real entry)", () => {
+  test(
+    "`LOOM_CARD=x loom prompt show c --help` (and --profile / -h forms) → the refusal, exit 1",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-help-"));
+      try {
+        for (const args of [
+          ["prompt", "show", "c", "--help"],
+          ["prompt", "--help"],
+          ["--profile", "work", "prompt", "show", "c", "-h"],
+          ["prompt", "show", "--json", "c", "--help"],
+        ]) {
+          const before = snapshotHome(T);
+          const r = spawnPrompt(T, args, { LOOM_CARD: "x" });
+          expect(r.status).toBe(1);
+          expect(r.stdout).toBe("");
+          expect(r.stderr).toBe(`${REFUSAL}\n`);
+          expect(snapshotHome(T)).toEqual(before);
+        }
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  test(
+    "without LOOM_CARD, `loom prompt show c --help` still prints the usage, exit 0",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-help2-"));
+      try {
+        const r = spawnPrompt(T, ["prompt", "show", "c", "--help"]);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain("loom prompt show <cardId>");
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+});

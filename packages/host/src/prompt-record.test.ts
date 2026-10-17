@@ -429,6 +429,94 @@ describe("readPromptRecord — shape checks fail closed (R9 · R60-L3)", () => {
     expect(r.bytes.toString("utf8")).toBe(serializePromptRecord(rec));
   });
 
+  test("Astra 0094 #5: a record rewritten with plain JSON.stringify (raw U+009B) → invalid: not canonical", async () => {
+    const { readPromptRecord } = await pr();
+    const rec = await build("claude", "first", "esc \u009b[31m red");
+    const dir = tempDir();
+    put(dir, 1, `${JSON.stringify(rec, null, 2)}\n`);
+    expect(readPromptRecord(dir, 1)).toEqual({ kind: "invalid", reason: "not canonical" });
+  });
+
+  test("Astra 0094 #5: compact JSON / reordered keys / trailing whitespace → invalid: not canonical", async () => {
+    const { readPromptRecord, serializePromptRecord } = await pr();
+    const rec = await build("codex", "resume", "plain body");
+    const { user, ...rest } = rec;
+    const reordered = { user, ...rest };
+    for (const text of [
+      JSON.stringify(rec),
+      `${JSON.stringify(reordered, null, 2)}\n`,
+      `${serializePromptRecord(rec)} `,
+      serializePromptRecord(rec).trimEnd(),
+    ]) {
+      const dir = tempDir();
+      put(dir, 2, text);
+      expect(readPromptRecord(dir, 2)).toEqual({ kind: "invalid", reason: "not canonical" });
+    }
+  });
+});
+
+describe("readBoundedRegularFile — the generic fd-based bounded reader (Astra 0094 #2)", () => {
+  test("regular file → its bytes · missing → missing", async () => {
+    const { readBoundedRegularFile } = await pr();
+    const dir = tempDir();
+    const path = join(dir, "session.json");
+    writeFileSync(path, "{\"a\":1}\n");
+    const r = readBoundedRegularFile(path, 1024);
+    expect(Buffer.isBuffer(r)).toBe(true);
+    if (Buffer.isBuffer(r)) expect(r.toString("utf8")).toBe("{\"a\":1}\n");
+    expect(readBoundedRegularFile(join(dir, "nope.json"), 1024)).toEqual({ kind: "missing" });
+  });
+
+  test("the cap is the caller's: size > maxBytes → too large · exactly maxBytes → bytes", async () => {
+    const { readBoundedRegularFile } = await pr();
+    const dir = tempDir();
+    const path = join(dir, "s.json");
+    writeFileSync(path, Buffer.alloc(17, 0x20));
+    expect(readBoundedRegularFile(path, 16)).toEqual({ kind: "invalid", reason: "too large" });
+    const r = readBoundedRegularFile(path, 17);
+    expect(Buffer.isBuffer(r) && r.length === 17).toBe(true);
+  });
+
+  test("symlink · directory → not a regular file", async () => {
+    const { readBoundedRegularFile } = await pr();
+    const dir = tempDir();
+    const real = join(dir, "real.json");
+    writeFileSync(real, "{}");
+    symlinkSync(real, join(dir, "link.json"));
+    mkdirSync(join(dir, "d.json"));
+    expect(readBoundedRegularFile(join(dir, "link.json"), 1024)).toEqual({
+      kind: "invalid",
+      reason: "not a regular file",
+    });
+    expect(readBoundedRegularFile(join(dir, "d.json"), 1024)).toEqual({
+      kind: "invalid",
+      reason: "not a regular file",
+    });
+  });
+
+  test("FIFO → not a regular file, promptly", async () => {
+    if (process.platform === "win32") return;
+    const { readBoundedRegularFile } = await pr();
+    const dir = tempDir();
+    const fifo = join(dir, "session.json");
+    if (Bun.spawnSync(["mkfifo", fifo]).exitCode !== 0) return;
+    const started = Date.now();
+    expect(readBoundedRegularFile(fifo, 1024)).toEqual({ kind: "invalid", reason: "not a regular file" });
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+
+describe("readPromptRecord — content never echoed", () => {
+  async function invalidReason(text: string, attempt = 1): Promise<string> {
+    const { readPromptRecord } = await pr();
+    const dir = tempDir();
+    writeFileSync(join(dir, `prompt-${attempt}.json`), text, { mode: 0o600 });
+    const r = readPromptRecord(dir, attempt);
+    expect(r.kind).toBe("invalid");
+    if (r.kind !== "invalid") return "";
+    return r.reason;
+  }
+
   test("invalid reasons never carry file content", async () => {
     const samples = [
       "SECRET-BODY",
