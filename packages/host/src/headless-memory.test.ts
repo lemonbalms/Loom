@@ -231,7 +231,7 @@ class Harness {
     if (agent === "claude") return "Unavailable skills:\n- missing-one: unavailable: not installed";
     const md = join(cardSkillsDir(this.key()), "plugin", "skills", "loom-card-report", "SKILL.md");
     return [
-      "Available skills — read the SKILL.md before use:",
+      "Available skills — Loom copied these for this card outside the working directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read the SKILL.md before use:",
       `- loom-card-report: ${REPORT_DESCRIPTION} — ${md}`,
       "- missing-one: unavailable: not installed",
     ].join("\n");

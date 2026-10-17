@@ -369,7 +369,7 @@ async function fixture(
 function listingFor(h: Harness, agent: AgentKind): string {
   if (agent === "claude") return "Unavailable skills:\n- missing-one: unavailable: not installed";
   return [
-    "Available skills — read the SKILL.md before use:",
+    "Available skills — Loom copied these for this card outside the working directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read the SKILL.md before use:",
     `- loom-card-report: ${REPORT_DESCRIPTION} — ${h.skillMd(agent)}`,
     "- missing-one: unavailable: not installed",
   ].join("\n");
@@ -403,7 +403,7 @@ describe("P4 (e) skill listing", () => {
   test("codex/grok: header + Available line with absolute SKILL.md + unavailable line", async () => {
     const { renderSkillListing } = await sp();
     const want = [
-      "Available skills — read the SKILL.md before use:",
+      "Available skills — Loom copied these for this card outside the working directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read the SKILL.md before use:",
       `- alpha: Does alpha things. — ${A.skillMdPath}`,
       "- bravo: unavailable: requires policy",
     ].join("\n");
