@@ -17,7 +17,7 @@
  * session.json through `readBoundedRegularFile`; skipped sessions are only counted.
  */
 import { createHash } from "node:crypto";
-import { lstatSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   type CardSessionRecord,
@@ -319,9 +319,22 @@ function printRecord(
 }
 
 /**
- * The CLI entry's deps: `<stateRootHome>/.loom` (honours LOOM_TEST_HOME; like doctor's
- * `readOnlyLoomHome` it never resolves or migrates `.fable` — Astra 0094), the bridge's profile
- * resolution (active profile → session displayName → "default", as `resolveBridgeProfile`) and that
+ * Astra 0097 M2: the read-only mirror of the bridge's `resolveStateHomeDir()` under
+ * `stateRootHome()` (honours LOOM_TEST_HOME) — `.loom` if it exists, else `.fable` if it exists
+ * (where the bridge stays while live legacy pids block the migration), else `.loom`. It never
+ * migrates, prints or caches (Astra 0094); `existsSync` exactly as the bridge tests both roots.
+ */
+function readOnlyStateHome(): string {
+  const root = stateRootHome();
+  const loom = join(root, ".loom");
+  if (existsSync(loom)) return loom;
+  const legacy = join(root, ".fable");
+  return existsSync(legacy) ? legacy : loom;
+}
+
+/**
+ * The CLI entry's deps: `readOnlyStateHome()` (never migrates `.fable` — Astra 0094 · 0097 M2),
+ * the bridge's profile resolution (active profile → session displayName → "default", as `resolveBridgeProfile`) and that
  * session's `peerId` (R8 — `bridge-runtime` uses `session.peerId` as the local peer) read through the
  * bounded non-following reader, process.env, console output. Resolution is lazy so the LOOM_CARD
  * refusal reads nothing (R11).
@@ -330,7 +343,7 @@ export function realPromptCliDeps(): PromptCliDeps {
   return {
     env: process.env,
     resolve: () => {
-      const home = join(stateRootHome(), ".loom");
+      const home = readOnlyStateHome();
       const session = readJsonObject(sessionPathUnder(home));
       const displayName = nonEmpty(session?.displayName) ? session.displayName : null;
       return {
