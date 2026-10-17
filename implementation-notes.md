@@ -40,6 +40,15 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
 
+### §0.38.1 — codex/grok 첫 턴 스킬 목록 머리 문면 (implemented P1 · real-CLI 결과 ① → D8 · not shipped 2026-10-18)
+
+PLAN §0.38.1 (R57 `approved-with-fixes` → `approved`) · 커밋 `0603e7f`(P1 red — 새 머리 축자 · 184 B · 표지/제어 문자 0 · 상한 계산 · 선언 다섯 리터럴) → `7348d15`(P1 green — `skill-prompt.ts` 상수 + JSDoc) → `76be19b`(P1b — +1 B 경계를 정확히 4097 B로). 독립 검증 = GPT-6 Astra high verify 0059(FAIL 1 M — "+1 B" 케이스가 경로에 `/p`를 붙여 4098 B를 시험 · 4097 B 미시험) → impl 레인 0060이 테스트만 고침(`entryFor(HEADER_VERBATIM, 4097)` · 13 pass · production 0줄) = P1b. **실 CLI D7(2026-10-18 · 오너 승인 1회 · `76be19b`) = 결과 ①**: codex 목록 경로 읽기 0 · `proposed 0` · "Blocked … worker instructions prohibit accessing those paths." → **D8 — 0.38.1은 고침으로 ship하지 않는다**(버전 · dist · CHANGELOG · USER_GUIDE 무변경) · 0.38.0 UK-8 open · 다음 = hint MINOR(오너 선택) · 기록 `docs/spikes/MEMORY-WRITE-SMOKE-0381.md`.
+
+| # | PATCH · ref | Deviation (what we did) | 판정 |
+|---|---|---|---|
+| (1) | P1b · verify 0059 | P1 red의 "+1 B" 경계 테스트가 실제로는 +2 B(4098 B)였다 → P1b가 정확히 4097 B 블록을 만들어 접힘을 단언(테스트만 · production 0줄). | 수용 |
+| (2) | P2 · D8 | P2(버전 · dist · 문서 ship) 미수행 — D7 결과 ①이라 D8대로 기록만 한다. 커밋된 P1 머리 상수는 main에 남는다(fingerprint 무변경 · 동작은 codex/grok 첫 턴 목록 한 줄). | 수용(D8) |
+
 ### §0.38.0 — 기억 쓰기 경로 (업그레이드 4단계 4부 — shipped 2026-10-18)
 
 PLAN §0.38.0 (R56 `approved-with-fixes` → `approved`) · 커밋(red/green 순) `c552b04`/`4ec5267`(P1 — 저장소 async append · 상한 · 필터 · dedupe · `withFileLockAsync`) → `7597d0b`/`8d27fa4`(P1b) → `4741f43`/`63b94b6`(P2 — `cardWrites` 설정 · 강제 스킬 · 기동 검사) → `c019a9c`(P2b) → `6b6e4e5`/`63ecbd4`(P3 — 결과 경로 파싱 → 제안 · `notes.md` · stderr) → `f67e985`/`8999fa6`(P3b — verify 0042) → `806a09d`/`23f9f10`(P4 — CLI) → `2119c85`/`69a42f3`(P4b — verify 0045) → `f79d1cf`(P5 스모크 `smoke:memory-write`) → `67a3745`(VERSION · `BRIDGE_VERSION` · MCP 0.38.0 + dist) → P5b 문서 `4fcde28` → `d7a59e0`(P5c — `smoke:memory-write --only <agent>`(real-cli 전용) + 카드별 실 CLI 진단) → P5d ship 문서(이 절). 독립 검증 = GPT-6 Astra high(`lane.ts verify`) + 아키텍트 재실행. 전체 스위트(P4b 뒤) 3309 pass / 1 fail(알려진 `handoff-checkpoint` live checkpoint). **실 CLI 스모크 ① PASS(2026-10-18 — 오너 승인 · R56-M4 · UK-1 closed)** → shipped 2026-10-18.
