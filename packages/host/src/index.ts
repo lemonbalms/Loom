@@ -95,3 +95,19 @@ export {
   type SkillInventoryItem,
   type SkillPolicy,
 } from "./skill-materialize";
+// PLAN 0.41.0 P3: prompt records + the card-session lookup for `loom prompt show` (R8 · C1).
+export { type CardSessionRecord, cardSessionPath, listCardSessions } from "./card-session-store";
+export {
+  buildPromptRecord,
+  PROMPT_RECORD_READ_MAX_BYTES,
+  PROMPT_RECORD_VERSION,
+  type PromptRecord,
+  type PromptRecordInput,
+  type PromptRecordRead,
+  type PromptTurn,
+  type PromptUserChannel,
+  promptRecordPath,
+  readPromptRecord,
+  serializePromptRecord,
+  writePromptRecord,
+} from "./prompt-record";

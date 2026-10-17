@@ -170,6 +170,7 @@ import {
   runRulesCommand,
   runSkillsCommand,
 } from "./memory-cli";
+import { realPromptCliDeps, runPromptCommand } from "./prompt-cli";
 
 const VERSION = "0.40.0";
 
@@ -279,8 +280,9 @@ const BOOLEAN_FLAGS = new Set([
 /**
  * PLAN 0.35.0 P4 (verify L1): `--all` / `--json` are boolean only for these commands — every
  * other command keeps the old parse (`--profile all` · `--profile json` stay values).
+ * PLAN 0.41.0 R60-L3(b): `prompt` too (`prompt show --json <cardId>`).
  */
-const MEMORY_COMMANDS: ReadonlySet<string> = new Set(["memory", "rules", "skills"]);
+const MEMORY_COMMANDS: ReadonlySet<string> = new Set(["memory", "rules", "skills", "prompt"]);
 const MEMORY_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["all", "json"]);
 
 function usage(): string {
@@ -312,6 +314,8 @@ Usage:
   loom rules list [--json]          # bundled + ~/.loom/rules (0.35)
   loom skills list [--room <roomId>] [--json]
                                     # skill sources + shadowing (0.35)
+  loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent <a>] [--json]
+                                    # what a headless card worker was sent (0.41)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -3439,6 +3443,12 @@ async function main() {
     const deps = realMemoryCliDeps(flags);
     const code = await run(sub ?? "", { positional: rest, passthrough }, flags, deps);
     process.exit(code);
+  }
+  if (cmd === "prompt") {
+    // PLAN 0.41.0 P3: exit 0 · 1 refused/none/ambiguous/invalid/STALE/MISMATCH/usage. exitCode
+    // (not exit) so a large `--json` write to a pipe is flushed before the process ends.
+    process.exitCode = await runPromptCommand(sub ?? "", { positional: rest }, flags, realPromptCliDeps());
+    return;
   }
   if (cmd === "conv-hosts") {
     await cmdConvHosts(sub, rest);
