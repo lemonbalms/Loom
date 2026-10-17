@@ -92,6 +92,7 @@
 - [orchestration] 2026-10-17 규칙 문서(CLAUDE.md·AGENTS.md·traps·SESSION-START) 수정 후 **`bun run rules:check` 필수** — 규칙 2(`orch.model-explicit`)는 PREREG 3.0 봉인 fixture라 본문 수정 금지(덮어쓰기는 다른 규칙에서 "대체"로).
 - [orchestration] 2026-10-17 헤드리스 레인 P4 실호출: **가짜 바이너리 테스트 77건이 못 본 결함 4건**(env-prefix allow 규칙 불일치 · `; echo $?` 덧붙이기 · heredoc 쓰기 · untracked 수정 미감지). 레인 자기보고는 "거부 없음"이라 거짓 — **`meta.json`이 판정**.
 - [orchestration] 2026-10-17 레인 스펙 검증 명령에 **`bun run typecheck` 필수** — P4d 레인이 테스트·lint만 돌려 import 타입 오류를 남겼다(아키텍트 재실행이 잡음). verify 레인은 heredoc·임시파일 금지(샌드박스 거부 2회).
+- [orchestration] 2026-10-17 **미출시 작업은 main에 push하지 않는다** — 로컬 커밋 + 필요 시 `wip/v<ver>` 백업 브랜치, main은 ship 때(0.37 선례 `bd22505`). 0.38 P1을 pre-push dist 수리 흐름에 휩쓸려 main에 올렸다(`b955aa6`).
 
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 
