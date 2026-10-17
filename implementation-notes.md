@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-17 (0.37.0 정책 정직성 — implemented · ship 대기) |
+| **Last updated** | 2026-10-17 (0.37.0 정책 정직성 — shipped 2026-10-17) |
 
 ---
 
@@ -40,7 +40,7 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
 
-### §0.37.0 — 정책 정직성 (업그레이드 4단계 3부 — implemented · ship 대기)
+### §0.37.0 — 정책 정직성 (업그레이드 4단계 3부 — shipped 2026-10-17)
 
 PLAN §0.37.0 (R55 `approved-with-fixes` → `approved`) · 커밋 `5860990`(R55 게이트) → `addcd52`/`ae65e42`(P1 red/green — `policy-gaps.ts` 순수 코어 · 머리말 · `composeFenceText`/`renderRulesSection` · `strictEnforcement`/`rules` 파서 · `readBridgeWorkerFlags`) → `1ba49c2`/`cd5130c`/`af47f4d`(P2 red · red 교정 · green — 펜스 안 안내문 · 규칙 · D9 stderr · `agent_disabled` · `maxConcurrent` 0) → `b16b900`/`ddecf6d`/`29bbe62`/`2e82446`(P3 red · red 교정 2 · green — bridge 기동 경고 · strict 거부 · doctor Policy 절 · flags 줄 · `memory list` 머리 · `configuredAgentBins`) → `db0cbfb`/`bf010c2`(P4 — AGENT_HINT/`systemHint` 삭제) → `a2abb7f`/`1ca58e6`(P4b — 스킬 가림 라벨) → `4fd633f`/`8140c97`(P4c — `enabledHeadlessAgents` · 레거시 행 · flag 뷰) → `bd22505`(WIP dist 백업) → `9c0ad0e`/`00af288`(P4d — Service PATH 검사 = bridge 켜짐 집합 · strict 꼬리) → `f4c7073`(P5a 스모크 `smoke:policy`) → `9a402e4`(P5b 버전 0.37.0 + dist) → P5c 문서(이 절). 독립 검증: P1 · P2 · P3 = Opus xhigh(읽기 전용) · P4~P4c = GPT-6 Astra high(`lane.ts verify` 0020) + 아키텍트 재실행 → P4d · P4d = Astra 0022 · P5a 스모크는 구현 레인이 작성 · P3-V-L3 판정은 Fable 자문. 원 로그 `tasks/v0370-wip/v0370-deviations.md`(이 절이 정본 — 그 파일은 기록용으로 남김).
 

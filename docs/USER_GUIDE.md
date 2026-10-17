@@ -1778,7 +1778,7 @@ Policy
 3. **codex · grok을 켠 bridge는 경고가 영구**(정책으로 못 없앤다) · strict는 그 둘을 끈 bridge에서만 통과.
 4. `memory-snapshot.md` · `LOOM MEMORY SNAPSHOT` · `memory_snapshot` 이름은 이제 안내문 · 규칙도 담지만 호환을 위해 그대로.
 5. 실 CLI 실측은 기본 정책 · 기억 · 규칙 꺼짐 한 모양뿐 — 규칙 · 기억을 모두 켠 ≈64 KB 첫 턴은 가짜 CLI 바이트만 쟀다(블록 63577–63978 B · `load_ms` 중앙값 18–20 ms — [`spikes/POLICY-HONESTY-SMOKE-0370.md`](./spikes/POLICY-HONESTY-SMOKE-0370.md)).
-6. Windows 미검증.
+6. Windows 미검증 · Linux: 실 실행 없음(단위 테스트만).
 
 ---
 

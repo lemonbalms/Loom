@@ -5,12 +5,12 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.37.0** — implemented · ship은 최종 리뷰 대기) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.37.0** — shipped 2026-10-17) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
 
 ---
 
-## 0.37.0 — 2026-10-17 (implemented · ship 대기 — release commit `TBD`)
+## 0.37.0 — 2026-10-17
 
 **정책이 정직해진다** (업그레이드 4단계 3부) — `policy.json`이 CLI마다 실제로 얼마나 강제되는지(정직 표 — §16.4)를 이제 **오너와 워커 모두가 본다.** bridge 기동 경고 · doctor Policy 절 · 워커 첫 턴의 **정책 안내문**이 한 원천(간극 목록)에서 같은 문장으로 나온다. codex의 기본 정책은 doctor에 `not-enforced`로 보이고, codex 워커의 첫 턴은 그 사실과 금지 명령 11개를 **그대로** 말한다 — 4단계 완료 기준 (c). **안내문은 기본 켜짐**(간극이 있는 에이전트에만) · 규칙 본문은 옵트인.
 
@@ -36,11 +36,13 @@
 | doctor는 `policy.json`을 안 읽었다 | 무효 `policy.json`이면 doctor exit 1(bridge 기동 · MCP 호출도 이미 막고 있던 사실) |
 | `policy.json`을 고치면 간극이 사라질 줄 알았다 | codex · grok의 `shell.deny` 간극은 **정책으로 못 없앤다**(내장 deny는 항상 합집합) — strict를 켜려면 codex · grok을 끄고 claude는 `network: true`이거나 끈다 |
 | 0.36 바이너리로 내려도 설정이 그대로 | 0.36은 `worker.rules` · `worker.strictEnforcement`를 무시하고 저장 시 지운다 · `maxConcurrent` 0이면 0.36 bridge가 기동을 거부한다 |
+| headless claude 카드 첫 턴에 정책 문장이 없었다 | 기본 정책(`network: false`)이면 **모든 headless claude 카드**가 첫 턴에 `- policy network (false) is advisory for claude — the CLI blocks only some forms. Do not access the network.`를 받는다(claude `network` advisory 간극) — 설치 · 내려받기를 사양할 수 있다 · `policy.json`에 `"network": true`면 이 줄이 사라진다 |
+| doctor가 bridge 설정 없이도 조용했다 | bridge 설정이 **아예 없으면** doctor Policy 절은 모든 에이전트가 켜졌다고 가정해 실제로 안 돌릴 수 있는 워커까지 간극 warn **6줄**을 보인다(exit code 무변경 — Deviation (50)) · 설정 없이 실제로 뜨는 bridge는 pane backend라 간극 0 |
 
 ### 불변
 
 - 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · 표지 · `ARGV_TEMPLATE_VERSION` · hint · argv · 완료 권한 · `policy.json` 스키마 · `policyHash` · 기억 저장소 형식 · MCP 게이트 무변경 · `packages/protocol` · `agent-argv.ts` · `policy-compile.ts` · `policy.ts` diff 0 · pane backend · sticky host · relay 무변경. **원천 없음(기억 꺼짐 · 규칙 꺼짐 · 간극 없는 정책)이면 첫 턴은 0.36과 바이트 같다.**
-- **정직 고지(설계상 수용 손실):** 안내문은 **권고** — codex는 여전히 금지 명령을 실행할 **수 있다**(UK-2 — 실 응답 `"ok"` ×3은 관찰일 뿐 준수 증거가 아니다) · 위조된 안내문/규칙 섹션은 진짜와 구별되지 않는다 · strict 거부는 서비스에서 10초마다 재시작 루프 · 끝났지만 아직 결과를 안 보낸 카드의 에이전트를 끄면 진짜 결과 대신 `agent_disabled` — **끄기 전에 `loom bridge drain`** · 실 CLI 실측은 기본 정책 · 기억 · 규칙 꺼짐 한 모양뿐(≈64 KB 첫 턴은 가짜 CLI 바이트만) · pane/sticky 워커는 안내문을 받지 않는다.
+- **정직 고지(설계상 수용 손실):** 안내문은 **권고** — codex는 여전히 금지 명령을 실행할 **수 있다**(UK-2 — 실 응답 `"ok"` ×3은 관찰일 뿐 준수 증거가 아니다) · 위조된 안내문/규칙 섹션은 진짜와 구별되지 않는다 · strict 거부는 서비스에서 10초마다 재시작 루프 · 끝났지만 아직 결과를 안 보낸 카드의 에이전트를 끄면 진짜 결과 대신 `agent_disabled` — **끄기 전에 `loom bridge drain`** · 실 CLI 실측은 기본 정책 · 기억 · 규칙 꺼짐 한 모양뿐(≈64 KB 첫 턴은 가짜 CLI 바이트만) · pane/sticky 워커는 안내문을 받지 않는다 · Windows 미검증 · Linux: 실 실행 없음(단위 테스트만).
 
 ### 정본
 

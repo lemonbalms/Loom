@@ -42,7 +42,7 @@
 
 ## Gate log
 
-### 0.37.0 — 정책 정직성 · 펜스 안 정책 안내문 + 규칙 본문 · strict · `agent_disabled` · AGENT_HINT 삭제 (`approved` — R55 approved-with-fixes · implemented 2026-10-17 · ship 대기)
+### 0.37.0 — 정책 정직성 · 펜스 안 정책 안내문 + 규칙 본문 · strict · `agent_disabled` · AGENT_HINT 삭제 (`approved` — R55 approved-with-fixes · implemented · shipped 2026-10-17)
 
 | Field | Value |
 |-------|-------|
@@ -70,7 +70,7 @@
 | UK-6 | 경고 소음과 strict 채택 — 기본 정책 bridge 경고 6줄 · doctor warn 6줄(exit code 무변경) | C1 → D1 문면(R55) — 기본 6줄 | **open, 비차단** — **codex/grok을 켠 bridge는 경고 2~3줄이 영구**(설계 — R55-M1: 그 `shell.deny` 간극은 내장 deny 합집합 `policy.ts:766`으로 어떤 `policy.json`에서도 남는다 · 끄는 것만 없앤다). **P4c 정정(implementation-notes §0.37.0 (57)):** "켜짐" = `maxConcurrent ≠ 0` ∧ 쓸 수 있는 `agentArgv`(P3-V-L3) → **기본 bridge 설정(`agentArgv {claude}`) = 경고 · warn 1줄**(claude `network` advisory) · **6줄 = 세 에이전트 모두 dispatch 가능할 때** · doctor "no bridge config" / "invalid bridge config"는 모든 에이전트 가정 → 간극 warn 6줄(무효 설정은 설정 오류 warn 1줄 추가) |
 | UK-7 | Windows(0.36 UK-7 승계) | 테스트는 macOS/Linux | **unverified(Windows 환경 미사용), 비차단** |
 
-**Current decision:** D1~D9 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-17) · 작성자 정밀화 R1~R21 · 락↔코드 불일치 C1(claude `network` 기본 간극 · 계급 20 문면) · C2(`Gap.values`) · C3(doctor 정책 경로) · C4(머리말 고정 = 상수 `:66-67`) · 수용 손실 계급 17~22 + 무번호 4행 · UK-1~UK-7. **R55 `approved-with-fixes` → M1·M2·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-17, no R55b)** · R1~R21 수용(R17→L1) · C1 → D1 문면(6개) · C2 → R1 · C3 → R14(+③ 레거시 info 줄) · C4 수용 · **UK-1 ship 차단(오너 승인 필요 — 실 CLI ① 한정 1회 PASS)** · UK-2~UK-7 비차단(UK-6 영구 경고 명시). **implemented 2026-10-17** — P1~P4d · P5a 스모크 `f4c7073` · P5b 버전 `9a402e4` · P5c 문서 · 스모크 `smoke:policy` source 10/10 · dist 10/10 · **real-cli ① 4/4(UK-1 조건 충족)** · UK-6 기본 간극 수 정정(기본 설정 1 · 모두 dispatch 가능 6). **ship 대기** — ship 검사 + 최종 리뷰 뒤(release commit `TBD`). 다음 후보 = **0.38.0 기억 쓰기 경로**(card-report 후보 → `propose` · `notes.md` · mtime 캐시/async 리더 · 닮은 글자 표지 강화).
+**Current decision:** D1~D9 아키텍트 락(아키텍트 + fable-advisor 자문 2026-10-17) · 작성자 정밀화 R1~R21 · 락↔코드 불일치 C1(claude `network` 기본 간극 · 계급 20 문면) · C2(`Gap.values`) · C3(doctor 정책 경로) · C4(머리말 고정 = 상수 `:66-67`) · 수용 손실 계급 17~22 + 무번호 4행 · UK-1~UK-7. **R55 `approved-with-fixes` → M1·M2·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-17, no R55b)** · R1~R21 수용(R17→L1) · C1 → D1 문면(6개) · C2 → R1 · C3 → R14(+③ 레거시 info 줄) · C4 수용 · **UK-1 ship 차단(오너 승인 필요 — 실 CLI ① 한정 1회 PASS)** · UK-2~UK-7 비차단(UK-6 영구 경고 명시). **implemented 2026-10-17** — P1~P4d · P5a 스모크 `f4c7073` · P5b 버전 `9a402e4` · P5c 문서 · 스모크 `smoke:policy` source 10/10 · dist 10/10 · **real-cli ① 4/4(UK-1 조건 충족)** · UK-6 기본 간극 수 정정(기본 설정 1 · 모두 dispatch 가능 6). **shipped 2026-10-17** — ship 검사 green(기존 실패 1 · biome 기존 오류만) + 최종 리뷰(loom-advisor Opus 5.5 high) = ship. 다음 후보 = **0.38.0 기억 쓰기 경로**(card-report 후보 → `propose` · `notes.md` · mtime 캐시/async 리더 · 닮은 글자 표지 강화).
 
 ### 0.36.0 — headless 워커 카드 시작 기억 스냅샷 + 펜스 주입 (`approved` — R54 approved-with-fixes · implemented 2026-10-16)
 
@@ -578,4 +578,5 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-16 | 0.35.0 ship 반영 (UK-1~UK-5 open 비차단 · UK-6 unverified — Windows 미사용 · `MEMORY-SMOKE-0350.md` 18/18 · P4b `redact.ts` O(n²) 실측·선형화) |
 | 2026-10-16 | 0.36.0 ship 반영 (UK-1 가짜 CLI 바이트만 실측 · 실 CLI 0 · UK-2 `load_ms` 중앙값 16–17 / 최대 24–25 ms(2회) 실측 · UK-3~UK-5 open · UK-6 13/13 + 스모크 ⓪ · UK-7 unverified — Windows 미사용 · `MEMORY-INJECT-SMOKE-0360.md` 7/7) |
 | 2026-10-17 | 0.37.0 정책 정직성 unknowns (UK-1~UK-7 요약 · UK-1 기본 켜짐 안내문 실 CLI 미검증 = R55 판정 요청 · 코드 실측 Known knowns · C1~C4 · R55 approved-with-fixes → UK-1 ship 차단(오너 승인 · 실 CLI ① 한정 1회) · UK-2~UK-7 비차단 · UK-6 영구 경고) |
-| 2026-10-17 | 0.37.0 implemented 반영 (UK-1 실 CLI ① 4/4 PASS — 응답 `"ok"` ×3 · UK-2 관찰만 · UK-3 미측정 · UK-4 블록 63577–63978 B · 첫 턴 63766–64167 B · UK-5 `load_ms` 중앙값 18–20 / 최대 19–26 ms · UK-6 기본 간극 1(기본 설정) vs 6(모두 dispatch 가능) · UK-7 unverified · `POLICY-HONESTY-SMOKE-0370.md` · ship 대기) |
+| 2026-10-17 | 0.37.0 implemented 반영 (UK-1 실 CLI ① 4/4 PASS — 응답 `"ok"` ×3 · UK-2 관찰만 · UK-3 미측정 · UK-4 블록 63577–63978 B · 첫 턴 63766–64167 B · UK-5 `load_ms` 중앙값 18–20 / 최대 19–26 ms · UK-6 기본 간극 1(기본 설정) vs 6(모두 dispatch 가능) · UK-7 unverified · `POLICY-HONESTY-SMOKE-0370.md`) |
+| 2026-10-17 | 0.37.0 shipped (ship 검사 green · 최종 리뷰 loom-advisor Opus 5.5 high = ship · UK 상태 변화 없음) |
