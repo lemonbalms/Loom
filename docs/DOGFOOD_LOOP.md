@@ -21,7 +21,7 @@
 | **`fable-advisor` plugin** | Orchestration tooling (DannyMac180, MIT) providing the grok/codex/fable lanes — **the dev tool, not the product**. Currently **v3.1.0**. |
 | **directory `fable-advisor/`** | Local checkout path only — the product is **Loom** (remote: `lemonbalms/Loom`). Dir name is historical, pending rename. |
 
-**Lane version pins:** Grok 4.5 · GPT-5.6 Sol (codex, high reasoning) · advisor = Opus 5.5 high advisor subagent (read-only) · independent verify = **GPT-6 Astra high** (`codex exec -m gpt-6-astra -c model_reasoning_effort=high`) (CLAUDE.md rule 8) · plugin **v3.1.0**.
+**Lane version pins:** implement = **Opus 5.5 · effort medium** (CLAUDE.md rule 8) · Grok 4.5 / GPT-5.6 Sol (historical, unpinned) · advisor = Opus 5.5 high advisor subagent (read-only) · independent verify = **GPT-6 Astra high** (`codex exec -m gpt-6-astra -c model_reasoning_effort=high`) (CLAUDE.md rule 8) · plugin **v3.1.0**.
 When the `fable-advisor` plugin updates, bump these pins here so cache drift stays visible.
 
 ---
@@ -283,6 +283,13 @@ authors specs, reviews, and verifies. It **does not write product code from an
 approved/locked spec** — implementation is delegated. Pick a lane by
 **availability**, escalating down this chain (check first, don't assume from a
 stale HANDOFF note):
+
+> **Owner pin 2026-10-17 (CLAUDE.md rule 8) supersedes the chain below:** implementation =
+> **Opus 5.5 (`claude-opus-5-5`) · effort medium** — in-harness `Agent` (`model: "opus"`,
+> `effort: "medium"`) or pane `claude-impl` with `--model claude-opus-5-5 --effort medium`.
+> Verification = GPT-6 Astra high (codex CLI), so implementer and verifier stay cross-vendor.
+> The grok → codex → lower-tier chain and the "Opus tier to implement ⇒ spec not locked"
+> corollary below are kept for history and apply only if the owner lifts the pin.
 
 1. **Default:** `grok-impl` (Grok) — verify auth (`grok` CLI logged in). If expired, don't stop here.
 2. **Cross-vendor fallback:** `codex-impl` (Codex / GPT-5.x) — verify `codex` CLI installed + authenticated. Use when grok is down or a second model family is wanted.

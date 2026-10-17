@@ -302,7 +302,7 @@ cross-ref: verification (51)·(4)·(10).
 
 cross-ref: orchestration (24) 레인 분리 · verification (51).
 
-## 2026-10-17 — 오너 모델 고정: 검증 = GPT-6 Astra high · 자문 = Opus 5.5 high
+## 2026-10-17 — 오너 모델 고정: 구현 = Opus 5.5 medium · 검증 = GPT-6 Astra high · 자문 = Opus 5.5 high
 
 오너 지시: "Opus xhigh -> Opus high, fable-advisor -> opus high 로 이 프로젝트에서 고정".
 배경: v0.37.0 P1~P4c는 문서상 레인(구현 grok · 검증 codex · 자문 Fable)과 달리 구현 Opus 5.5 ·
@@ -315,5 +315,7 @@ cross-ref: orchestration (24) 레인 분리 · verification (51).
 같은 날 3차 지시: 같은 계열 검증(구현 Opus → 검증 Opus) 문제를 풀려고 "밴더는 astra 6" — 검증 =
 GPT-6 Astra(`codex exec -m gpt-6-astra`) · reasoning high, 그리고 "opus 는 5.5" — 자문 모델 = Opus 5.5.
 Agent 도구 `model`은 별칭만 받으므로 `opus` 전달 후 해상 모델을 확인한다.
+4차 지시 "구현은 opus 5.5 medium": 구현 = Opus 5.5 · effort medium. DOGFOOD §1.2의 grok→codex→하위 티어
+체인은 오너가 고정을 풀 때까지 쓰지 않는다. 구현(Anthropic)·검증(OpenAI)으로 교차 벤더가 유지된다.
 교훈: 레인·모델을 바꿨으면 그 자리에서 사유와 함께 규칙 파일에 적는다 — 기록 없는 전환은 다음 세션에서
 규칙 위반으로 보인다.

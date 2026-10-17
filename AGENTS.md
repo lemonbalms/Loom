@@ -139,7 +139,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
 | Claude R{n} | **Must** consult the **Opus 5.5 high advisor subagent** (`Plan` · `model: opus` → Opus 5.5 · `effort: high` — CLAUDE.md rule 8) before writing R{n} |
-| **Impl delegation** | Execution routing SSOT = `docs/DOGFOOD_LOOP.md §0.5`. **`single`** = bounded current session implements + objective-command verifies + ships; lockedness alone does not force delegation. **`full`** = architect routes approved/locked product implementation down **`grok-impl` → `codex-impl` → lower-tier** and independently verifies (§1.2). New unresolved product/security/trust decisions promote `single` → `full`. |
+| **Impl delegation** | Execution routing SSOT = `docs/DOGFOOD_LOOP.md §0.5`. **`single`** = bounded current session implements + objective-command verifies + ships; lockedness alone does not force delegation. **`full`** = architect routes approved/locked product implementation to the pinned **Opus 5.5 · effort medium** implementer and independently verifies with **GPT-6 Astra high** (CLAUDE.md rule 8 · §1.2). New unresolved product/security/trust decisions promote `single` → `full`. |
 
 ### Pause only when (true blockers)
 

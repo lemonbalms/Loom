@@ -14,14 +14,14 @@
    서브에이전트가 선례 형식으로 문안 확장·파일 작성(볼륨) → 본세션 1회 검수(락-인접
    문구는 직접 교정 필수 — R35 M-1이 문안 오류발 M이었음) → R{n} 게이트.
 2. **서브에이전트 model 명시 필수, 기본 = `opus`.** 미지정 = 본세션 모델(Fable) 조용한
-   상속 = 결함. `fable` 모델은 이 프로젝트에서 쓰지 않는다(규칙 8). (구현 레인은 종전대로 grok/codex CLI.)
+   상속 = 결함. `fable` 모델은 이 프로젝트에서 쓰지 않는다(규칙 8). (구현·검증 레인 모델은 규칙 8.)
 3. **병렬화 기본.** 독립 태스크는 단일 메시지 다중 스폰. 정형 다단계(게이트→구현→검증
    팬아웃→스모크→docs)는 **Workflow 도구 사용 — 오너 상비 옵트인 성립(2026-07-19)**.
 4. **세션 시작 리추얼에 `tasks/lessons.md`(인덱스) 정독 + 작업 유형 매칭 카테고리는
    착수 전 로드 의무**(`tasks/lessons/<category>.md` — handoff만으로 부족, 기록 교훈
    재범 2회 실증). 위임 시작 전 `fable-advisor:orchestration` 스킬 로드.
 5. **Topology `full` 레인 배치 고정 (오너 지시 2026-07-20 — 구두 반복 4회발, 이제 규칙).**
-   **구현 = `grok`** · **검증 = GPT-6 Astra high (codex CLI)** · **자문 = Opus 5.5 high 자문 서브에이전트**(read-only) — 모델 고정은 규칙 8.
+   **구현 = Opus 5.5 medium** · **검증 = GPT-6 Astra high (codex CLI)** · **자문 = Opus 5.5 high 자문 서브에이전트**(read-only) — 모델 고정은 규칙 8.
    검증을 구현자와 같은 레인에 주지 않는다 — 발견자와 수정자를 분리해야 교차 검증이 성립한다.
    **실작업 표면 = herdr pane 카드가 기본**이고 in-harness `Agent`는 pane 불가 시 폴백이다.
    조사·브리프 작성도 예외가 아니다(2026-07-20 오라우팅 실증). 디스패치 전
@@ -45,7 +45,9 @@
    result 전송 뒤 106ms/4ms 만의 정상 정리였다). `PaneDied for unknown pane`은 **herdr 내부
    경고**이지 브릿지가 통지를 버렸다는 증거가 아니다 — 이 오독으로 아키텍트가 오늘 잘못된
    진단을 오너에게 보고했다. 설계 정본 `docs/spikes/PANE-DEATH-DESIGN.md`.
-8. **검증·자문 모델 고정 (오너 지시 2026-10-17).** 독립 검증 = **GPT-6 Astra · reasoning high**,
+8. **구현·검증·자문 모델 고정 (오너 지시 2026-10-17).** 구현 = **Opus 5.5(`claude-opus-5-5`) · effort
+   medium** — in-harness `Agent` `model: "opus"` · `effort: "medium"`(pane `claude-impl`이면
+   `--model claude-opus-5-5 --effort medium`); DOGFOOD §1.2의 grok→codex→하위 티어 체인 대체. 독립 검증 = **GPT-6 Astra · reasoning high**,
    codex CLI `codex exec -m gpt-6-astra -c model_reasoning_effort=high`(기본 `-s read-only`, 테스트를
    돌려야 하면 `git archive` 검증 트리를 `-C`로 주고 `-s workspace-write`) — 종전 codex Sol·Opus xhigh 대체.
    자문 = **Opus 5.5(`claude-opus-5-5`) · effort high** 일반 서브에이전트 `Agent`(`subagent_type: Plan`
@@ -53,7 +55,7 @@
    해상 모델이 Opus 5.5인지 `/tasks`로 확인).
    **`fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제**(전역 CLAUDE.md의 fable-advisor
    자문·최종 리뷰 지시도 이 자문 서브에이전트로 대체). R{n} 필수 자문·딜리버러블 최종 리뷰 모두 이 설정.
-   구현(Claude/grok)과 검증(GPT-6 Astra)은 벤더가 다르다 — 교차 벤더 검증. 해제·변경은 오너만.
+   구현(Opus 5.5)과 검증(GPT-6 Astra)은 벤더가 다르다 — 교차 벤더 검증. 해제·변경은 오너만.
 
 ## On session start
 
