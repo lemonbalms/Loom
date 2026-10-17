@@ -5451,20 +5451,20 @@ import {
   copyFileSync as copyFileSync2,
   readdirSync as readdirSync5,
   statSync as statSync7,
-  lstatSync as lstatSync6,
+  lstatSync as lstatSync7,
   realpathSync as realpathSync3,
   unlinkSync as unlinkSync7,
   rmSync as rmSync4
 } from "fs";
-import { join as join29, dirname as dirname13, basename as basename5, resolve as resolve5, sep as sep5 } from "path";
-import { createHash as createHash13 } from "crypto";
+import { join as join30, dirname as dirname13, basename as basename6, resolve as resolve5, sep as sep5 } from "path";
+import { createHash as createHash14 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
-  return join29(homedir5(), ".loom", "relay-state");
+  return join30(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
-  const h = createHash13("sha256").update(roomId).digest("hex").slice(0, 16);
-  return join29(stateDir2, `${h}.json`);
+  const h = createHash14("sha256").update(roomId).digest("hex").slice(0, 16);
+  return join30(stateDir2, `${h}.json`);
 }
 function isPidAlive4(pid) {
   if (!Number.isFinite(pid) || pid <= 0)
@@ -5477,10 +5477,10 @@ function isPidAlive4(pid) {
   }
 }
 function processLockDir(stateDir2) {
-  return join29(stateDir2, ".relay-writer.lock");
+  return join30(stateDir2, ".relay-writer.lock");
 }
 function lockPidPath2(lockDir) {
-  return join29(lockDir, "owner.pid");
+  return join30(lockDir, "owner.pid");
 }
 function acquireStateDirLock(stateDir2) {
   mkdirSync19(stateDir2, { recursive: true });
@@ -5556,13 +5556,13 @@ function writeAtomicJson2(filePath, data) {
   } catch {
     realParent = parent;
   }
-  const base = basename5(filePath);
+  const base = basename6(filePath);
   if (!base || base === "." || base === "..") {
     throw new Error(`Invalid snapshot basename: ${filePath}`);
   }
-  const finalPath = join29(realParent, base);
+  const finalPath = join30(realParent, base);
   try {
-    const st = lstatSync6(finalPath);
+    const st = lstatSync7(finalPath);
     if (st.isSymbolicLink()) {
       unlinkSync7(finalPath);
     } else if (st.isDirectory()) {
@@ -5575,7 +5575,7 @@ function writeAtomicJson2(filePath, data) {
         throw e;
     }
   }
-  const tmp = join29(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
+  const tmp = join30(realParent, `.${base}.tmp.${process.pid}.${Date.now()}`);
   const body = JSON.stringify(data, null, 2) + `
 `;
   try {
@@ -5725,7 +5725,7 @@ function loadAllSnapshots(stateDir2) {
   for (const name of names) {
     if (!name.endsWith(".json") || name.startsWith("."))
       continue;
-    const path = join29(stateDir2, name);
+    const path = join30(stateDir2, name);
     try {
       const st = statSync7(path);
       if (!st.isFile())
@@ -5776,9 +5776,9 @@ var ROOM_SNAPSHOT_VERSION = 1, LOCK_STALE_MS3 = 5000;
 var init_persist = () => {};
 
 // packages/relay/src/room.ts
-import { createHash as createHash14, randomUUID as randomUUID4 } from "crypto";
+import { createHash as createHash15, randomUUID as randomUUID4 } from "crypto";
 function clientEventBodyHash(material) {
-  return createHash14("sha256").update(material, "utf8").digest("hex");
+  return createHash15("sha256").update(material, "utf8").digest("hex");
 }
 function handoffClientEventMaterial(h) {
   const attachments = h.attachments == null || Array.isArray(h.attachments) && h.attachments.length === 0 ? null : h.attachments;
@@ -12153,7 +12153,7 @@ async function bridgeQuarantineAck(args) {
 // packages/host/src/bridge-runtime.ts
 init_src();
 init_src();
-import { join as join23 } from "path";
+import { join as join24 } from "path";
 
 // packages/host/src/conv-state.ts
 init_session_store();
@@ -12879,20 +12879,20 @@ init_src();
 init_src();
 import { AsyncLocalStorage } from "async_hooks";
 import { execFile } from "child_process";
-import { createHash as createHash12, randomBytes as randomBytes3, randomUUID as randomUUID3 } from "crypto";
-import { constants as fsConstants7, realpathSync as realpathSync2, statSync as statSync5 } from "fs";
+import { createHash as createHash13, randomBytes as randomBytes3, randomUUID as randomUUID3 } from "crypto";
+import { constants as fsConstants8, realpathSync as realpathSync2, statSync as statSync5 } from "fs";
 import {
-  chmod as chmod4,
+  chmod as chmod5,
   lstat as lstat2,
   mkdir as mkdir4,
   open as open3,
   readFile as readFile3,
-  rename as rename4,
-  rm as rm3,
+  rename as rename5,
+  rm as rm4,
   unlink as unlink2,
-  writeFile as writeFile3
+  writeFile as writeFile4
 } from "fs/promises";
-import { dirname as dirname10, isAbsolute as isAbsolute8, join as join20, sep as sep4 } from "path";
+import { dirname as dirname10, isAbsolute as isAbsolute8, join as join21, sep as sep4 } from "path";
 
 // packages/host/src/agent-stream-parsers.ts
 function isRecord2(value) {
@@ -16061,18 +16061,224 @@ function parseLstart(value) {
   return date.getTime();
 }
 
+// packages/host/src/prompt-record.ts
+import { createHash as createHash12 } from "crypto";
+import { closeSync as closeSync8, constants as fsConstants6, fstatSync as fstatSync5, lstatSync as lstatSync4, openSync as openSync8, readSync as readSync5 } from "fs";
+import { chmod as chmod4, rename as rename4, rm as rm3, writeFile as writeFile3 } from "fs/promises";
+import { basename as basename4, join as join19 } from "path";
+var PROMPT_RECORD_VERSION = 1;
+var PROMPT_RECORD_READ_MAX_BYTES = 8 * 1024 * 1024;
+var CHANNELS = {
+  claude: { system: "claude --append-system-prompt", user: "stdin" },
+  codex: { system: "codex -c developer_instructions", user: "stdin" },
+  grok: { system: "grok --rules", user: "grok --prompt-file" }
+};
+var REQUIRED_KEYS = [
+  "version",
+  "agent",
+  "turn",
+  "attempt",
+  "dispatchHandoffId",
+  "fingerprint",
+  "systemChannel",
+  "system",
+  "userChannel",
+  "user",
+  "userSha256"
+];
+function promptRecordPath(dir, attempt) {
+  return join19(dir, `prompt-${attempt}.json`);
+}
+function buildPromptRecord(input) {
+  const ch = CHANNELS[input.agent];
+  const user = input.user.toWellFormed();
+  const record = {
+    version: PROMPT_RECORD_VERSION,
+    agent: input.agent,
+    turn: input.turn,
+    attempt: input.attempt,
+    dispatchHandoffId: input.dispatchHandoffId,
+    fingerprint: input.fingerprint,
+    systemChannel: ch.system,
+    system: input.system,
+    userChannel: ch.user,
+    user,
+    userSha256: createHash12("sha256").update(Buffer.from(user, "utf8")).digest("hex")
+  };
+  if (input.agent === "codex" && input.turn === "resume") {
+    record.userArgv = RESUME_CONTINUATION_MESSAGE;
+  }
+  return record;
+}
+var UNSAFE_RAW_RE = /[\u007f-\u009f\u202A-\u202E\u2066-\u2069]/g;
+function serializePromptRecord(record) {
+  return `${JSON.stringify(record, null, 2)}
+`.replace(UNSAFE_RAW_RE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+async function writePrivateFileAtomic(dir, target, text) {
+  const tmp = join19(dir, `.${basename4(target)}.tmp.${process.pid}.${Date.now()}`);
+  try {
+    await writeFile3(tmp, text, { encoding: "utf8", mode: 384, flag: "wx" });
+    await rename4(tmp, target);
+    await chmod4(target, 384);
+  } catch (err) {
+    await rm3(tmp, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+async function writePromptRecord(dir, record) {
+  await writePrivateFileAtomic(dir, promptRecordPath(dir, record.attempt), serializePromptRecord(record));
+}
+function isPlainObject3(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function checkShape(value, attempt) {
+  if (!isPlainObject3(value))
+    return "not a JSON object";
+  for (const key of Object.keys(value)) {
+    if (key !== "userArgv" && !REQUIRED_KEYS.includes(key))
+      return "unknown key";
+  }
+  for (const key of REQUIRED_KEYS) {
+    if (!Object.hasOwn(value, key))
+      return `missing ${key}`;
+  }
+  if (value.version !== PROMPT_RECORD_VERSION)
+    return "unsupported version";
+  const agent = value.agent;
+  if (agent !== "claude" && agent !== "codex" && agent !== "grok")
+    return "bad agent";
+  if (value.turn !== "first" && value.turn !== "resume")
+    return "bad turn";
+  if (typeof value.attempt !== "number" || !Number.isInteger(value.attempt) || value.attempt < 1) {
+    return "bad attempt";
+  }
+  for (const key of ["dispatchHandoffId", "fingerprint", "systemChannel", "system", "user", "userSha256"]) {
+    if (typeof value[key] !== "string")
+      return `bad ${key}`;
+  }
+  const ch = CHANNELS[agent];
+  if (value.systemChannel !== ch.system)
+    return "bad systemChannel";
+  if (value.userChannel !== ch.user)
+    return "bad userChannel";
+  const codexResume = agent === "codex" && value.turn === "resume";
+  if (Object.hasOwn(value, "userArgv")) {
+    if (!codexResume || typeof value.userArgv !== "string")
+      return "bad userArgv";
+  } else if (codexResume) {
+    return "missing userArgv";
+  }
+  if (value.attempt !== attempt)
+    return "attempt mismatch";
+  return value;
+}
+function unreadable(err) {
+  const code = err?.code;
+  return { kind: "invalid", reason: `unreadable ${typeof code === "string" ? code : "unknown"}` };
+}
+function readBoundedRegularFile(path, maxBytes) {
+  try {
+    const st = lstatSync4(path);
+    if (!st.isFile())
+      return { kind: "invalid", reason: "not a regular file" };
+    if (st.size > maxBytes)
+      return { kind: "invalid", reason: "too large" };
+  } catch (err) {
+    if (err?.code === "ENOENT")
+      return { kind: "missing" };
+    return unreadable(err);
+  }
+  let fd;
+  try {
+    fd = openSync8(path, fsConstants6.O_RDONLY | fsConstants6.O_NOFOLLOW | fsConstants6.O_NONBLOCK);
+  } catch (err) {
+    const code = err?.code;
+    if (code === "ENOENT")
+      return { kind: "missing" };
+    if (code === "ELOOP" || code === "EMLINK")
+      return { kind: "invalid", reason: "not a regular file" };
+    return unreadable(err);
+  }
+  try {
+    const st = fstatSync5(fd);
+    if (!st.isFile())
+      return { kind: "invalid", reason: "not a regular file" };
+    if (st.size > maxBytes)
+      return { kind: "invalid", reason: "too large" };
+    let buf = Buffer.alloc(st.size + 1);
+    let total = 0;
+    for (;; ) {
+      if (total === buf.length) {
+        if (buf.length > maxBytes)
+          break;
+        const grown = Buffer.alloc(maxBytes + 1);
+        buf.copy(grown, 0, 0, total);
+        buf = grown;
+      }
+      const n = readSync5(fd, buf, total, buf.length - total, null);
+      if (n === 0)
+        break;
+      total += n;
+    }
+    if (total > maxBytes)
+      return { kind: "invalid", reason: "too large" };
+    return buf.subarray(0, total);
+  } catch (err) {
+    return unreadable(err);
+  } finally {
+    try {
+      closeSync8(fd);
+    } catch {}
+  }
+}
+function canonicalRecord(r) {
+  const out = {};
+  for (const key of REQUIRED_KEYS)
+    out[key] = r[key];
+  if (r.userArgv !== undefined)
+    out.userArgv = r.userArgv;
+  return out;
+}
+function readPromptRecord(dir, attempt) {
+  const read = readBoundedRegularFile(promptRecordPath(dir, attempt), PROMPT_RECORD_READ_MAX_BYTES);
+  if (!Buffer.isBuffer(read))
+    return read;
+  const bytes2 = read;
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes2);
+  } catch {
+    return { kind: "invalid", reason: "not UTF-8" };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { kind: "invalid", reason: "not JSON" };
+  }
+  const shaped = checkShape(parsed, attempt);
+  if (typeof shaped === "string")
+    return { kind: "invalid", reason: shaped };
+  const record = canonicalRecord(shaped);
+  if (!bytes2.equals(Buffer.from(serializePromptRecord(record), "utf8"))) {
+    return { kind: "invalid", reason: "not canonical" };
+  }
+  return { kind: "ok", record, bytes: bytes2 };
+}
+
 // packages/host/src/rules-store.ts
 init_src();
 import {
-  closeSync as closeSync8,
-  constants as fsConstants6,
-  fstatSync as fstatSync5,
-  lstatSync as lstatSync4,
-  openSync as openSync8,
+  closeSync as closeSync9,
+  constants as fsConstants7,
+  fstatSync as fstatSync6,
+  lstatSync as lstatSync5,
+  openSync as openSync9,
   readdirSync as readdirSync3,
-  readSync as readSync5
+  readSync as readSync6
 } from "fs";
-import { isAbsolute as isAbsolute7, join as join19 } from "path";
+import { isAbsolute as isAbsolute7, join as join20 } from "path";
 
 // packages/host/rules/report-blockers.md
 var report_blockers_default = `---
@@ -16184,7 +16390,7 @@ function decodeStrict(buf) {
 function readUserRule(path) {
   let st;
   try {
-    st = lstatSync4(path);
+    st = lstatSync5(path);
   } catch {
     return { reason: "unreadable" };
   }
@@ -16196,15 +16402,15 @@ function readUserRule(path) {
   let size = 0;
   let cut = false;
   try {
-    const fd = openSync8(path, fsConstants6.O_RDONLY | fsConstants6.O_NOFOLLOW | fsConstants6.O_NONBLOCK);
+    const fd = openSync9(path, fsConstants7.O_RDONLY | fsConstants7.O_NOFOLLOW | fsConstants7.O_NONBLOCK);
     try {
-      const fst = fstatSync5(fd);
+      const fst = fstatSync6(fd);
       if (!fst.isFile())
         return { reason: "not a regular file" };
       const all = Buffer.alloc(RULE_READ_MAX_BYTES + 1);
       let total = 0;
       while (total < all.length) {
-        const n = readSync5(fd, all, total, all.length - total, null);
+        const n = readSync6(fd, all, total, all.length - total, null);
         if (n === 0)
           break;
         total += n;
@@ -16213,7 +16419,7 @@ function readUserRule(path) {
       buf = cut ? cutAt2(all, RULE_READ_MAX_BYTES) : all.subarray(0, total);
       size = Math.max(fst.size, total);
     } finally {
-      closeSync8(fd);
+      closeSync9(fd);
     }
   } catch (err) {
     return { reason: errCode4(err) === "ELOOP" ? "symlink" : "unreadable" };
@@ -16264,13 +16470,13 @@ function loadRules(loomDir2) {
       invalid.push({ source: "bundled", file: b.file, path, reason: p.reason });
   }
   const bundled = dedupe("bundled", bundledCandidates, conflicts);
-  const userDir = join19(loomDir2, "rules");
+  const userDir = join20(loomDir2, "rules");
   let userDirState = "absent";
   let scanCapped = false;
   const userCandidates = [];
   let st = null;
   try {
-    st = lstatSync4(userDir);
+    st = lstatSync5(userDir);
   } catch (err) {
     const code = errCode4(err);
     if (code !== "ENOENT" && code !== "ENOTDIR") {
@@ -16303,7 +16509,7 @@ function loadRules(loomDir2) {
           md = md.slice(0, RULES_USER_SCAN_MAX);
         }
         for (const file of md) {
-          const path = join19(userDir, file);
+          const path = join20(userDir, file);
           if (!RULE_FILE_RE.test(file)) {
             invalid.push({ source: "user", file, path, reason: "invalid file name" });
             continue;
@@ -16467,17 +16673,6 @@ function scrubWorkerEnv(cardId) {
 function defaultMemoryNonce() {
   return randomBytes3(16).toString("hex");
 }
-async function writeMemorySnapshotFile(dir, target, block2) {
-  const tmp = join20(dir, `.${MEMORY_SNAPSHOT_FILE}.tmp.${process.pid}.${Date.now()}`);
-  try {
-    await writeFile3(tmp, block2, { encoding: "utf8", mode: 384, flag: "wx" });
-    await rename4(tmp, target);
-    await chmod4(target, 384);
-  } catch (err) {
-    await rm3(tmp, { force: true }).catch(() => {});
-    throw err;
-  }
-}
 function isPathInside(root, target) {
   if (target === root)
     return true;
@@ -16486,7 +16681,7 @@ function isPathInside(root, target) {
 }
 async function mkdir0700(dir) {
   await mkdir4(dir, { recursive: true, mode: 448 });
-  await chmod4(dir, 448);
+  await chmod5(dir, 448);
 }
 function resolveWorkerCwd(cardCwd, config) {
   const requested = cardCwd ?? config.cwd;
@@ -17361,7 +17556,7 @@ class HeadlessDispatcher {
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const truncated = truncationNote(capped.truncated, transcriptPath, fullText);
     const attemptsNote = `attempts ${record.attempts} exhausted; not resuming`;
-    const stderrLine = lastStderrLine(await readTranscript(join20(this.cardDir(record), `transcript-${record.attempts}.stderr`)));
+    const stderrLine = lastStderrLine(await readTranscript(join21(this.cardDir(record), `transcript-${record.attempts}.stderr`)));
     const note = [
       denialNote(parsed),
       attemptsNote,
@@ -17407,15 +17602,15 @@ class HeadlessDispatcher {
     if (fullText === "")
       return;
     const dir = this.cardDir(record);
-    const tmp = join20(dir, `.${CARD_NOTES_FILE}.tmp.${process.pid}.${randomUUID3()}`);
-    const target = join20(dir, CARD_NOTES_FILE);
+    const tmp = join21(dir, `.${CARD_NOTES_FILE}.tmp.${process.pid}.${randomUUID3()}`);
+    const target = join21(dir, CARD_NOTES_FILE);
     try {
       const text = truncateTail(redactSecrets(fullText, process.env), OUTPUT_CAP).text;
-      await writeFile3(tmp, text, { encoding: "utf8", mode: 384, flag: "wx" });
-      await rename4(tmp, target);
-      await chmod4(target, 384);
+      await writeFile4(tmp, text, { encoding: "utf8", mode: 384, flag: "wx" });
+      await rename5(tmp, target);
+      await chmod5(target, 384);
     } catch (err) {
-      await rm3(tmp, { force: true }).catch(() => {});
+      await rm4(tmp, { force: true }).catch(() => {});
       process.stderr.write(`[headless] card_notes (${oneLine(record.cardId)}): failed \u2014 ${errorLine(err)}
 `);
     }
@@ -17429,7 +17624,7 @@ class HeadlessDispatcher {
       return;
     }
     try {
-      const handoff = createHash12("sha256").update(record.dispatchHandoffId).digest("hex").slice(0, 16);
+      const handoff = createHash13("sha256").update(record.dispatchHandoffId).digest("hex").slice(0, 16);
       const key = `${handoff}.${record.attempts}`;
       const parsed = parseMemoryCandidates(finalText);
       const dropped = { secret: 0, marker: 0, cap: 0, busy: 0, dup: 0, invalid: 0 };
@@ -17510,7 +17705,7 @@ class HeadlessDispatcher {
     return { fingerprint: workerFingerprint(this.deps.config, manifestHash, expected), skills };
   }
   async memorySnapshotFileMismatch(card, expected) {
-    const path = join20(this.cardDir(card), MEMORY_SNAPSHOT_FILE);
+    const path = join21(this.cardDir(card), MEMORY_SNAPSHOT_FILE);
     const code = (err) => err?.code;
     try {
       const st = await lstat2(path);
@@ -17523,7 +17718,7 @@ class HeadlessDispatcher {
     }
     let bytes2;
     try {
-      const fh = await open3(path, fsConstants7.O_RDONLY | fsConstants7.O_NOFOLLOW | fsConstants7.O_NONBLOCK);
+      const fh = await open3(path, fsConstants8.O_RDONLY | fsConstants8.O_NOFOLLOW | fsConstants8.O_NONBLOCK);
       try {
         const st = await fh.stat();
         if (!st.isFile())
@@ -17544,7 +17739,7 @@ class HeadlessDispatcher {
     }
     if (bytes2.length > MEMORY_SNAPSHOT_MAX_BYTES)
       return "too large";
-    const actual = createHash12("sha256").update(bytes2).digest("hex");
+    const actual = createHash13("sha256").update(bytes2).digest("hex");
     return actual === expected ? null : "hash mismatch";
   }
   async fingerprintChangedLocked(record) {
@@ -17577,7 +17772,7 @@ class HeadlessDispatcher {
     return dirname10(cardSessionPath({ loomDir: this.deps.loomDir, localPeerId: this.deps.localPeerId, ...card }));
   }
   transcriptPath(card, attempts) {
-    return join20(this.cardDir(card), `transcript-${attempts}.jsonl`);
+    return join21(this.cardDir(card), `transcript-${attempts}.jsonl`);
   }
   async persistSessionId(record, raw) {
     const sessionId = parseAgentStream(record.agent, raw).sessionId;
@@ -17720,8 +17915,8 @@ class HeadlessDispatcher {
     try {
       const dir = this.cardDir(card);
       await mkdir0700(dir);
-      const transcriptPath = join20(dir, `transcript-${plan.attempts}.jsonl`);
-      const stderrPath = join20(dir, `transcript-${plan.attempts}.stderr`);
+      const transcriptPath = join21(dir, `transcript-${plan.attempts}.jsonl`);
+      const stderrPath = join21(dir, `transcript-${plan.attempts}.stderr`);
       const body = neutralizeCardPrompt(card.prompt);
       if (body.neutralizedLines > 0) {
         process.stderr.write(`[headless] card_prompt (${card.cardId.replace(/[\r\n]/g, " ")}): neutralized ${body.neutralizedLines}
@@ -17775,12 +17970,13 @@ ${wrapped}` : firstTurn;
             await this.reserveShutdownAfterClaimLocked(card);
           return { kind: "abandon" };
         }
+        const promptFingerprint2 = workerFingerprint(this.deps.config, manifestHash, memorySnapshotHash);
         record = await this.updateRecordLocked(card, (current) => ({
           agent: card.agent,
           cwd,
           requestedCwd: card.cwd ?? null,
           sessionId: plan.sessionId,
-          promptFingerprint: workerFingerprint(this.deps.config, manifestHash, memorySnapshotHash),
+          promptFingerprint: promptFingerprint2,
           attempts: plan.attempts,
           pid: 0,
           pgid: 0,
@@ -17797,6 +17993,21 @@ ${wrapped}` : firstTurn;
           ...current?.memoryProposed ? { memoryProposed: [...current.memoryProposed] } : {},
           ...memorySnapshotHash !== "" ? { memorySnapshotHash } : {}
         }));
+        try {
+          await writePromptRecord(dir, buildPromptRecord({
+            agent: card.agent,
+            turn: plan.resumeSessionId ? "resume" : "first",
+            attempt: plan.attempts,
+            dispatchHandoffId: card.dispatchHandoffId,
+            fingerprint: promptFingerprint2,
+            system: HEADLESS_WORKER_HINT,
+            user: promptBody
+          }));
+        } catch (err) {
+          const code = err?.code;
+          process.stderr.write(`[headless] prompt_record (${card.cardId.replace(/[\r\n]/g, " ")}): write failed ${typeof code === "string" ? code : "unknown"}
+`);
+        }
         if (owner.abandoned)
           return { kind: "abandon" };
         const checked = resolveWorkerCwd(card.cwd, this.deps.config);
@@ -18002,7 +18213,7 @@ ${wrapped}` : firstTurn : "";
       throw new Error(`memory snapshot block exceeds ${MEMORY_SNAPSHOT_MAX_BYTES} bytes`);
     }
     const flags = { neutralizedLines, envRedacted: redacted !== text };
-    const target = join20(dir, MEMORY_SNAPSHOT_FILE);
+    const target = join21(dir, MEMORY_SNAPSHOT_FILE);
     const id = card.cardId.replace(/[\r\n]/g, " ");
     const readErrors = snap?.flags.readErrors ?? 0;
     const oversize = snap?.flags.entriesOversize === true ? " \xB7 entries_oversize yes" : "";
@@ -18019,8 +18230,8 @@ ${wrapped}` : firstTurn : "";
 `);
       return { block: "", hash: "" };
     }
-    await writeMemorySnapshotFile(dir, target, block2);
-    const hash = createHash12("sha256").update(Buffer.from(block2, "utf8")).digest("hex");
+    await writePrivateFileAtomic(dir, target, block2);
+    const hash = createHash13("sha256").update(Buffer.from(block2, "utf8")).digest("hex");
     const ms = Math.round(performance.now() - started);
     const t = snap?.flags.truncated;
     const truncated = ["persona", "index", "guideline", "entries"].filter((k) => t?.[k]).join(",") || "none";
@@ -18033,9 +18244,9 @@ ${wrapped}` : firstTurn : "";
   async writeGrokPrompt(agent, dir, wrapped) {
     if (agent !== "grok")
       return;
-    const promptFile = join20(dir, "prompt.txt");
-    await writeFile3(promptFile, wrapped, { encoding: "utf8", mode: 384 });
-    await chmod4(promptFile, 384);
+    const promptFile = join21(dir, "prompt.txt");
+    await writeFile4(promptFile, wrapped, { encoding: "utf8", mode: 384 });
+    await chmod5(promptFile, 384);
     return promptFile;
   }
 }
@@ -18054,14 +18265,14 @@ import {
   statSync as statSync6,
   writeFileSync as writeFileSync7
 } from "fs";
-import { dirname as dirname11, join as join21 } from "path";
+import { dirname as dirname11, join as join22 } from "path";
 init_session_store();
 var LOCK_INCOMPLETE_GRACE_MS = 5000;
 function bridgeLockPath(profile, bridgeDir) {
-  return join21(bridgeDir ?? join21(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.lock`);
+  return join22(bridgeDir ?? join22(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.lock`);
 }
 function ownerPath(lockPath) {
-  return join21(lockPath, "owner.json");
+  return join22(lockPath, "owner.json");
 }
 function parseOwner(raw) {
   if (!raw || typeof raw !== "object")
@@ -18151,14 +18362,14 @@ var releasedHandles = new WeakSet;
 
 // packages/host/src/bridge-status.ts
 import { readFileSync as readFileSync11 } from "fs";
-import { join as join22 } from "path";
+import { join as join23 } from "path";
 init_session_store();
 var HEARTBEAT_MS = 5000;
 var STATUS_STALE_MS = 3 * HEARTBEAT_MS;
 var LAST_ERROR_MAX_BYTES = 512;
 var BRIDGE_STATES = ["starting", "running", "draining", "stopping", "stopped"];
 function bridgeStatusPath(profile, bridgeDir) {
-  return join22(bridgeDir ?? join22(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.status.json`);
+  return join23(bridgeDir ?? join23(loomDir(), "bridge"), `${sanitizeProfileLogName(profile)}.status.json`);
 }
 function shortValue(v) {
   const s = typeof v === "string" ? JSON.stringify(v) : String(v);
@@ -18252,20 +18463,20 @@ function parseDrainTimeoutSec(raw) {
     return null;
   return raw;
 }
-var DEFAULT_BRIDGE_MAIN_PATH = join23(import.meta.dir, "bridge-main.ts");
+var DEFAULT_BRIDGE_MAIN_PATH = join24(import.meta.dir, "bridge-main.ts");
 var STILL_RUNNING_MAX_MS = 5 * 60000;
 // packages/host/src/card-ops.ts
 init_src();
 
 // packages/host/src/mcp-precheck.ts
 import {
-  closeSync as closeSync9,
+  closeSync as closeSync10,
   constants as constants2,
   fchmodSync,
-  fstatSync as fstatSync6,
-  lstatSync as lstatSync5,
+  fstatSync as fstatSync7,
+  lstatSync as lstatSync6,
   mkdirSync as mkdirSync12,
-  openSync as openSync9,
+  openSync as openSync10,
   readdirSync as readdirSync4,
   renameSync as renameSync5,
   unlinkSync as unlinkSync6,
@@ -18292,7 +18503,7 @@ import {
   writeFileSync as writeFileSync8,
   readFileSync as readFileSync12
 } from "fs";
-import { join as join24 } from "path";
+import { join as join25 } from "path";
 var CONV_NODE_PEER_ID_RE = /^p_[a-f0-9]{16}$/;
 var CONV_NODE_HOST_RE = /^[A-Za-z0-9._@-]+$/;
 function validateConvNodePeerId(peerId) {
@@ -18321,7 +18532,7 @@ function isWellFormedConvNodeMapping(peerId, host) {
   return validateConvNodePeerId(peerId) === null && validateConvNodeHost(host) === null;
 }
 function convNodeHostsPath() {
-  return join24(loomDir(), "conv-node-hosts.json");
+  return join25(loomDir(), "conv-node-hosts.json");
 }
 function loadConvNodeHosts() {
   const p = convNodeHostsPath();
@@ -18684,7 +18895,7 @@ async function resolveCommand(candidates) {
 
 // packages/adapters/src/claude.ts
 import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync9 } from "fs";
-import { join as join25 } from "path";
+import { join as join26 } from "path";
 var claudeAdapter = {
   id: "claude",
   label: "Claude Code",
@@ -18719,9 +18930,9 @@ var claudeAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const dir = join25(opts.cwd, ".loom");
+    const dir = join26(opts.cwd, ".loom");
     mkdirSync14(dir, { recursive: true });
-    const path = join25(dir, "claude.mcp.json");
+    const path = join26(dir, "claude.mcp.json");
     const config = {
       mcpServers: {
         loom: {
@@ -18885,7 +19096,7 @@ function projectMcpSnippetToml(opts) {
 
 // packages/adapters/src/codex.ts
 import { mkdirSync as mkdirSync16, writeFileSync as writeFileSync11 } from "fs";
-import { join as join26 } from "path";
+import { join as join27 } from "path";
 import { homedir as homedir3 } from "os";
 var codexAdapter = {
   id: "codex",
@@ -18916,9 +19127,9 @@ var codexAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join26(opts.cwd, ".loom");
+    const projectDir = join27(opts.cwd, ".loom");
     mkdirSync16(projectDir, { recursive: true });
-    const snippetPath = join26(projectDir, "codex.mcp.toml");
+    const snippetPath = join27(projectDir, "codex.mcp.toml");
     writeFileSync11(snippetPath, projectMcpSnippetToml({
       header: `# Generated by Loom \u2014 Codex MCP (project).
 ` + "# Session entry: read repo AGENTS.md + HANDOFF.md (or `bun run status`); brief user before large work.\n" + "# Prefer: loom run codex",
@@ -18926,7 +19137,7 @@ var codexAdapter = {
       sessionEnv: opts.sessionEnv
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join26(homedir3(), ".codex", "config.toml");
+      const configPath = join27(homedir3(), ".codex", "config.toml");
       const block2 = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv
@@ -18940,7 +19151,7 @@ var codexAdapter = {
 
 // packages/adapters/src/grok.ts
 import { mkdirSync as mkdirSync17, writeFileSync as writeFileSync12 } from "fs";
-import { join as join27 } from "path";
+import { join as join28 } from "path";
 import { homedir as homedir4 } from "os";
 var grokAdapter = {
   id: "grok",
@@ -18971,9 +19182,9 @@ var grokAdapter = {
     };
   },
   async ensureMcpConfig(opts) {
-    const projectDir = join27(opts.cwd, ".loom");
+    const projectDir = join28(opts.cwd, ".loom");
     mkdirSync17(projectDir, { recursive: true });
-    const snippetPath = join27(projectDir, "grok.mcp.toml");
+    const snippetPath = join28(projectDir, "grok.mcp.toml");
     writeFileSync12(snippetPath, projectMcpSnippetToml({
       header: "# Generated by Loom \u2014 Grok MCP (project). Use: loom run grok --write-user-config to install into ~/.grok/config.toml",
       mcpStdioPath: opts.mcpStdioPath,
@@ -18981,7 +19192,7 @@ var grokAdapter = {
       extraServerLines: ["enabled = true"]
     }), "utf8");
     if (opts.writeUserConfig) {
-      const configPath = join27(homedir4(), ".grok", "config.toml");
+      const configPath = join28(homedir4(), ".grok", "config.toml");
       const block2 = buildFableMcpTomlBlock({
         mcpStdioPath: opts.mcpStdioPath,
         sessionEnv: opts.sessionEnv,
@@ -18994,9 +19205,9 @@ var grokAdapter = {
 };
 
 // packages/adapters/src/shell.ts
-import { basename as basename4 } from "path";
+import { basename as basename5 } from "path";
 function interactiveShellArgs(shellPath) {
-  const base = basename4(shellPath);
+  const base = basename5(shellPath);
   if (base === "fish")
     return ["-i"];
   if (base === "zsh" || base === "bash" || base === "sh" || base === "dash") {
@@ -19078,16 +19289,16 @@ function capabilityMatrix() {
 var MCP_HIDDEN_KEYS = new Set(["dispatchPeerId"]);
 // packages/mcp-server/src/config.ts
 import { mkdirSync as mkdirSync18, writeFileSync as writeFileSync13 } from "fs";
-import { join as join28 } from "path";
+import { join as join29 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function resolveMcpStdio() {
   const here = fileURLToPath4(new URL(".", import.meta.url));
-  return join28(here, "stdio.ts");
+  return join29(here, "stdio.ts");
 }
 function writeMcpConfig(opts) {
   const dir = opts?.dir ?? loomDir();
   mkdirSync18(dir, { recursive: true });
-  const path = join28(dir, "mcp.json");
+  const path = join29(dir, "mcp.json");
   const stdioEntry = resolveMcpStdio();
   const config = {
     mcpServers: {
@@ -19108,11 +19319,11 @@ import { spawn as nodeSpawn, spawnSync } from "child_process";
 // packages/cli/src/service.ts
 import {
   chmodSync as chmodSync13,
-  closeSync as closeSync10,
+  closeSync as closeSync11,
   existsSync as existsSync19,
-  lstatSync as lstatSync7,
+  lstatSync as lstatSync8,
   mkdirSync as mkdirSync20,
-  openSync as openSync10,
+  openSync as openSync11,
   readFileSync as readFileSync16,
   readlinkSync,
   renameSync as renameSync7,
@@ -19123,13 +19334,13 @@ import {
   writeFileSync as writeFileSync15
 } from "fs";
 import { userInfo } from "os";
-import { dirname as dirname15, isAbsolute as isAbsolute9, join as join31, relative as relative3, resolve as resolve6 } from "path";
+import { dirname as dirname15, isAbsolute as isAbsolute9, join as join32, relative as relative3, resolve as resolve6 } from "path";
 init_src();
 init_src2();
 
 // packages/cli/src/doctor.ts
 import { existsSync as existsSync18, readFileSync as readFileSync15 } from "fs";
-import { dirname as dirname14, join as join30 } from "path";
+import { dirname as dirname14, join as join31 } from "path";
 function redactToken(input) {
   return input.replace(/([?&]token=)[^&\s]*/gi, "$1<redacted>");
 }
@@ -19790,9 +20001,9 @@ function errText(e) {
   return e instanceof Error ? e.message : String(e);
 }
 function readPolicyDoctorInput(home, profile) {
-  const policyPath = join30(home, "policy.json");
-  const legacyPolicy = existsSync18(join30(dirname14(home), ".fable", "policy.json")) && !existsSync18(home);
-  const bridgePath = join30(home, "bridge", `${bridgeConfigSafeName(profile)}.json`);
+  const policyPath = join31(home, "policy.json");
+  const legacyPolicy = existsSync18(join31(dirname14(home), ".fable", "policy.json")) && !existsSync18(home);
+  const bridgePath = join31(home, "bridge", `${bridgeConfigSafeName(profile)}.json`);
   let bridge;
   let rawAgentArgv;
   if (!existsSync18(bridgePath)) {
@@ -20125,7 +20336,7 @@ async function runServiceCommand(verb, opts = {}, deps = {}) {
     setActiveProfile(opts.profile, { explicit: true });
   const home = serviceHome();
   const readOnly = verb === "status";
-  const roLoom = join31(home, ".loom");
+  const roLoom = join32(home, ".loom");
   const roSession = readOnly ? readSessionAt(sessionPathUnder(roLoom)) : undefined;
   const profile = resolveBridgeProfile(roSession);
   const check = serviceProfileNameCheck(profile);
@@ -20137,7 +20348,7 @@ async function runServiceCommand(verb, opts = {}, deps = {}) {
     d.err(check.message);
     return 1;
   }
-  const bridgeDir = readOnly ? join31(roLoom, "bridge") : join31(loomDir(), "bridge");
+  const bridgeDir = readOnly ? join32(roLoom, "bridge") : join32(loomDir(), "bridge");
   if (!isUnder(bridgeDir, home)) {
     d.err(`loom service: ${bridgeDir} is outside the service home (${home}) \u2014 refusing`);
     return 1;
@@ -20184,7 +20395,7 @@ function readText(path) {
 }
 function lstatOrNull2(path) {
   try {
-    return lstatSync7(path);
+    return lstatSync8(path);
   } catch {
     return null;
   }
@@ -20411,15 +20622,15 @@ async function queryLinger(c) {
   return m ? m[1] : "unknown";
 }
 function prepareLog(c) {
-  const dir = join31(loomDir(), "bridge");
+  const dir = join32(loomDir(), "bridge");
   mkdirSync20(dir, { recursive: true, mode: 448 });
   chmodSync13(dir, 448);
   const log = bridgeLogPath(c.profile);
-  const fd = openSync10(log, "a", 384);
+  const fd = openSync11(log, "a", 384);
   try {
     chmodSync13(log, 384);
   } finally {
-    closeSync10(fd);
+    closeSync11(fd);
   }
 }
 function writeUnit(path, text) {
@@ -20790,7 +21001,7 @@ function configuredAgentBins(bridgeDir, profile) {
   let worker;
   let rawAgentArgv;
   try {
-    const raw = JSON.parse(readFileSync16(join31(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"));
+    const raw = JSON.parse(readFileSync16(join32(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"));
     worker = raw?.worker;
     rawAgentArgv = raw?.agentArgv;
   } catch {
@@ -20955,15 +21166,15 @@ async function serviceDoctorSection(p) {
 
 // packages/cli/src/index.ts
 import {
-  openSync as openSync12,
-  closeSync as closeSync12,
+  openSync as openSync13,
+  closeSync as closeSync13,
   writeSync as writeSync4,
-  readSync as readSync7,
-  existsSync as existsSync22,
-  readdirSync as readdirSync7,
+  readSync as readSync8,
+  existsSync as existsSync23,
+  readdirSync as readdirSync8,
   readFileSync as readFileSync18,
   accessSync,
-  constants as fsConstants9
+  constants as fsConstants10
 } from "fs";
 import { join as pathJoin } from "path";
 import { homedir as homedir6 } from "os";
@@ -20975,7 +21186,7 @@ import {
   readFileSync as readFileSync17,
   writeFileSync as writeFileSync16
 } from "fs";
-import { dirname as dirname16, join as join32 } from "path";
+import { dirname as dirname16, join as join33 } from "path";
 function shouldActivateHandoffInject(agentId, flags) {
   return Boolean(flags["inject-handoffs"]) && agentId === "claude";
 }
@@ -21001,7 +21212,7 @@ function mergeClaudeStopHook(settings, command) {
   return next;
 }
 function ensureClaudeStopHook(cwd, idleMarkerPath) {
-  const settingsPath = join32(cwd, ".claude", "settings.local.json");
+  const settingsPath = join33(cwd, ".claude", "settings.local.json");
   let settings = {};
   if (existsSync20(settingsPath)) {
     try {
@@ -21022,16 +21233,16 @@ function ensureClaudeStopHook(cwd, idleMarkerPath) {
 
 // packages/cli/src/memory-cli.ts
 import {
-  closeSync as closeSync11,
+  closeSync as closeSync12,
   existsSync as existsSync21,
-  constants as fsConstants8,
-  fstatSync as fstatSync7,
-  lstatSync as lstatSync8,
-  openSync as openSync11,
+  constants as fsConstants9,
+  fstatSync as fstatSync8,
+  lstatSync as lstatSync9,
+  openSync as openSync12,
   readdirSync as readdirSync6,
-  readSync as readSync6
+  readSync as readSync7
 } from "fs";
-import { join as join33 } from "path";
+import { join as join34 } from "path";
 var AGENT_KINDS3 = ["claude", "codex", "grok"];
 var ENTRY_TYPES2 = ["fact", "decision", "preference"];
 var PERSONA_CAP = 8192;
@@ -21113,10 +21324,10 @@ function bySeqId(a, b) {
 function inspectUnder(base, segs, want) {
   let cur = base;
   for (let i = 0;i < segs.length; i++) {
-    cur = join33(cur, segs[i]);
+    cur = join34(cur, segs[i]);
     let st;
     try {
-      st = lstatSync8(cur);
+      st = lstatSync9(cur);
     } catch (err) {
       const code = err.code;
       if (code === "ENOENT" || code === "ENOTDIR")
@@ -21141,19 +21352,19 @@ function errnoName(err) {
 function readNoFollow(path, max) {
   let fd;
   try {
-    fd = openSync11(path, fsConstants8.O_RDONLY | fsConstants8.O_NOFOLLOW | fsConstants8.O_NONBLOCK);
+    fd = openSync12(path, fsConstants9.O_RDONLY | fsConstants9.O_NOFOLLOW | fsConstants9.O_NONBLOCK);
   } catch (err) {
     const code = errnoName(err);
     return code === "ELOOP" ? { ok: false, kind: "unsafe" } : { ok: false, kind: "unreadable", code };
   }
   try {
-    const st = fstatSync7(fd);
+    const st = fstatSync8(fd);
     if (!st.isFile() || st.size > max)
       return { ok: false, kind: "unsafe" };
     const buf = Buffer.alloc(st.size);
     let off = 0;
     while (off < buf.length) {
-      const n = readSync6(fd, buf, off, buf.length - off, off);
+      const n = readSync7(fd, buf, off, buf.length - off, off);
       if (n <= 0)
         break;
       off += n;
@@ -21162,7 +21373,7 @@ function readNoFollow(path, max) {
   } catch (err) {
     return { ok: false, kind: "unreadable", code: errnoName(err) };
   } finally {
-    closeSync11(fd);
+    closeSync12(fd);
   }
 }
 function readStore(loom, agentKey, max) {
@@ -21192,7 +21403,7 @@ function readStore(loom, agentKey, max) {
   return { ...base, state: "ok", bytes: Buffer.byteLength(r.raw), fold: foldMemoryLines(r.raw) };
 }
 function humanFile(loom, segs, cap) {
-  const path = join33(loom, ...segs);
+  const path = join34(loom, ...segs);
   const ins = inspectUnder(loom, segs, "file");
   if (ins.state === "absent") {
     return { path, state: "absent", bytes: 0, cap, truncatedOnRead: false };
@@ -21700,7 +21911,7 @@ async function runSkillsCommand(verb, args, flags, deps) {
   for (const name of inv.ignored)
     deps.stdout(`ignored: ${name} (invalid name)`);
   if (inv.userRoot === "unsafe") {
-    deps.stdout(`ignored: ${join33(deps.loomDir, "skills")} (symlink or not a directory)`);
+    deps.stdout(`ignored: ${join34(deps.loomDir, "skills")} (symlink or not a directory)`);
   }
   if (roomView) {
     if (roomView.error !== undefined) {
@@ -21793,7 +22004,7 @@ function doctorAgent(loom, agentKey) {
   };
 }
 function readMemoryDoctorInput(loom, platform = process.platform) {
-  const memoryDir = join33(loom, "memory");
+  const memoryDir = join34(loom, "memory");
   const rootIns = inspectUnder(loom, ["memory"], "dir");
   const root = rootIns.state === "absent" ? { state: "absent" } : rootIns.state === "dir" ? { state: "dir", mode: rootIns.mode } : { state: "unsafe" };
   const agents = [];
@@ -21860,15 +22071,243 @@ function readMemoryDoctorInput(loom, platform = process.platform) {
     agents,
     ignored,
     agentScanCapped,
-    knowledgeIndexPath: join33(loom, "knowledge", "INDEX.md"),
+    knowledgeIndexPath: join34(loom, "knowledge", "INDEX.md"),
     knowledgeIndex: fileView(inspectUnder(loom, ["knowledge", "INDEX.md"], "file")),
     rooms,
     rules
   };
 }
 
+// packages/cli/src/prompt-cli.ts
+import { createHash as createHash16 } from "crypto";
+import { existsSync as existsSync22, lstatSync as lstatSync10, readdirSync as readdirSync7 } from "fs";
+import { join as join35 } from "path";
+var AGENT_KINDS4 = ["claude", "codex", "grok"];
+var ATTEMPTS = [1, 2];
+var SESSION_READ_MAX_BYTES = 1024 * 1024;
+var CARD_KEY_RE = /^[0-9a-f]{16}$/;
+var USAGE = "usage: loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent claude|codex|grok] [--json] [--profile <p>]";
+var AGENT_ERROR2 = "--agent must be claude, codex or grok";
+var CARD_REFUSAL2 = "refused \u2014 LOOM_CARD is set (this shell belongs to a Loom card worker); prompt records are for the operator.";
+var ATTEMPT_RE = /^[1-9][0-9]*$/;
+var UNSAFE_TEXT_RE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202A-\u202E\u2066-\u2069]/g;
+function visibleText(s) {
+  return s.replace(UNSAFE_TEXT_RE, (c) => `\\u{${c.charCodeAt(0).toString(16)}}`);
+}
+function utf8Bytes(s) {
+  return Buffer.byteLength(s, "utf8");
+}
+function cmpStr3(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+async function runPromptCommand(verb, args, flags, deps) {
+  const fail = (reason) => {
+    deps.stderr(`loom prompt: ${reason}`);
+    return 1;
+  };
+  const card = deps.env.LOOM_CARD;
+  if (typeof card === "string" && card.length > 0)
+    return fail(CARD_REFUSAL2);
+  if (verb !== "show" || args.positional.length !== 1)
+    return fail(USAGE);
+  const cardId = args.positional[0];
+  if (cardId.length === 0)
+    return fail(USAGE);
+  const attemptFlag = flags.attempt;
+  if (attemptFlag !== undefined && (typeof attemptFlag !== "string" || !ATTEMPT_RE.test(attemptFlag))) {
+    return fail(USAGE);
+  }
+  const json = flags.json;
+  if (json !== undefined && json !== true)
+    return fail(USAGE);
+  const room = flags.room;
+  if (room !== undefined && (typeof room !== "string" || room.length === 0))
+    return fail(USAGE);
+  const agent = flags.agent;
+  if (agent !== undefined && (typeof agent !== "string" || !AGENT_KINDS4.includes(agent))) {
+    return fail(AGENT_ERROR2);
+  }
+  const env2 = deps.resolve();
+  const profile = visibleText(env2.profile);
+  if (!env2.peerId)
+    return fail(`profile ${profile} has no session (join a room first)`);
+  const scan = scanPeerCards(env2.loomDir, env2.peerId);
+  const matches = scan.cards.filter((m) => m.session.cardId === cardId).filter((m) => room === undefined || m.session.roomId === room).filter((m) => agent === undefined || m.session.agent === agent).sort((a, b) => cmpStr3(a.session.roomId, b.session.roomId) || cmpStr3(a.session.agent, b.session.agent));
+  if (matches.length === 0) {
+    deps.stderr(`loom prompt: no headless card session for ${visibleText(cardId)} under profile ${profile} (cards from an earlier peer id of this profile are not searched)`);
+    if (scan.skipped > 0) {
+      deps.stderr(`loom prompt: ${scan.skipped} card session(s) under profile ${profile} skipped (not a regular file, too large, or invalid)`);
+    }
+    return 1;
+  }
+  if (matches.length > 1) {
+    deps.stderr(`loom prompt: ${visibleText(cardId)} matches ${matches.length} headless card sessions under profile ${profile}`);
+    for (const { session: r } of matches) {
+      deps.stderr(`  ${visibleText(r.roomId)} \xB7 ${r.agent} \xB7 attempts ${r.attempts} \xB7 started ${visibleText(r.startedAt)}`);
+    }
+    deps.stderr("pick one with --room <roomId> --agent <agent>");
+    return 1;
+  }
+  const { dir, session } = matches[0];
+  const attempt = attemptFlag === undefined ? session.attempts : Number(attemptFlag);
+  const read = readPromptRecord(dir, attempt);
+  if (read.kind === "missing") {
+    deps.stderr(`loom prompt: attempt ${attempt} of ${visibleText(cardId)} has no prompt record (the write failed, or the attempt ran before Loom 0.41.0)`);
+    const available = currentAttempts(dir, session, attempt);
+    if (available.length > 0)
+      deps.stderr(`available attempts: ${available.join(", ")}`);
+    return 1;
+  }
+  if (read.kind === "invalid") {
+    return fail(`invalid prompt record ${visibleText(promptRecordPath(dir, attempt))}: ${visibleText(read.reason)}`);
+  }
+  const record = read.record;
+  if (record.agent !== session.agent) {
+    return fail(`invalid prompt record ${visibleText(promptRecordPath(dir, attempt))}: agent mismatch`);
+  }
+  const stale = record.dispatchHandoffId !== session.dispatchHandoffId ? record.dispatchHandoffId : null;
+  const shaOk = sha256Hex2(record.user) === record.userSha256;
+  if (json === true) {
+    deps.stdoutBytes(read.bytes);
+    if (stale !== null) {
+      deps.stderr(`loom prompt: attempt ${attempt} of ${visibleText(cardId)} is STALE \u2014 earlier dispatch ${visibleText(stale)}`);
+    }
+    if (!shaOk)
+      deps.stderr(`loom prompt: attempt ${attempt} of ${visibleText(cardId)}: sha256 MISMATCH`);
+    return stale === null && shaOk ? 0 : 1;
+  }
+  printRecord(deps, cardId, record, stale, shaOk);
+  return stale === null && shaOk ? 0 : 1;
+}
+function sha256Hex2(text) {
+  return createHash16("sha256").update(Buffer.from(text, "utf8")).digest("hex");
+}
+function currentAttempts(dir, session, except) {
+  const out = [];
+  for (const n of ATTEMPTS) {
+    if (n === except)
+      continue;
+    const r = readPromptRecord(dir, n);
+    if (r.kind === "ok" && r.record.agent === session.agent && r.record.dispatchHandoffId === session.dispatchHandoffId) {
+      out.push(n);
+    }
+  }
+  return out;
+}
+function isPlainObject4(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function readJsonObject(path) {
+  const read = readBoundedRegularFile(path, SESSION_READ_MAX_BYTES);
+  if (!Buffer.isBuffer(read))
+    return null;
+  try {
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(read));
+    return isPlainObject4(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+function nonEmpty(v) {
+  return typeof v === "string" && v.length > 0;
+}
+function sessionView(raw, cardKey) {
+  const { agent, roomId, cardId, attempts, startedAt, dispatchHandoffId } = raw;
+  if (typeof agent !== "string" || !AGENT_KINDS4.includes(agent))
+    return null;
+  if (!nonEmpty(roomId) || !nonEmpty(cardId) || !nonEmpty(dispatchHandoffId) || !nonEmpty(startedAt)) {
+    return null;
+  }
+  if (!Number.isFinite(Date.parse(startedAt)))
+    return null;
+  if (attempts !== 1 && attempts !== 2)
+    return null;
+  if (cardKeyHash(roomId, agent, cardId) !== cardKey)
+    return null;
+  return { agent, roomId, cardId, attempts, startedAt, dispatchHandoffId };
+}
+function scanPeerCards(loomDir2, peerId) {
+  const root = join35(loomDir2, "cards", cardPeerHash(peerId));
+  const cards = [];
+  let skipped = 0;
+  let names;
+  try {
+    if (!lstatSync10(root).isDirectory())
+      return { cards, skipped };
+    names = readdirSync7(root).sort();
+  } catch {
+    return { cards, skipped };
+  }
+  for (const name of names) {
+    if (!CARD_KEY_RE.test(name))
+      continue;
+    const dir = join35(root, name);
+    try {
+      if (!lstatSync10(dir).isDirectory()) {
+        skipped += 1;
+        continue;
+      }
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    const raw = readJsonObject(join35(dir, "session.json"));
+    const session = raw === null ? null : sessionView(raw, name);
+    if (session === null) {
+      skipped += 1;
+      continue;
+    }
+    cards.push({ dir, session });
+  }
+  return { cards, skipped };
+}
+function printRecord(deps, cardId, r, stale, shaOk) {
+  const v = visibleText;
+  deps.stdout(`card ${v(cardId)} \xB7 agent ${r.agent} \xB7 turn ${r.turn} \xB7 attempt ${r.attempt}${stale !== null ? ` \xB7 STALE \u2014 earlier dispatch ${v(stale)}` : ""}`);
+  deps.stdout(`fingerprint ${v(r.fingerprint)}`);
+  deps.stdout(`system: ${v(r.systemChannel)} \xB7 ${utf8Bytes(r.system)} B`);
+  deps.stdout(`user: ${v(r.userChannel)} \xB7 ${utf8Bytes(r.user)} B \xB7 sha256 ${v(r.userSha256)} ${shaOk ? "ok" : "MISMATCH"}`);
+  deps.stdout("");
+  deps.stdout(`--- system (${v(r.systemChannel)}) ---`);
+  deps.stdout(v(r.system));
+  deps.stdout(`--- user (${v(r.userChannel)}) ---`);
+  deps.stdout(v(r.user));
+  if (r.userArgv !== undefined) {
+    deps.stdout("--- user argv (codex exec resume positional) ---");
+    deps.stdout(v(r.userArgv));
+  }
+}
+function readOnlyStateHome() {
+  const root = stateRootHome();
+  const loom = join35(root, ".loom");
+  if (existsSync22(loom))
+    return loom;
+  const legacy = join35(root, ".fable");
+  return existsSync22(legacy) ? legacy : loom;
+}
+function realPromptCliDeps() {
+  return {
+    env: process.env,
+    resolve: () => {
+      const home = readOnlyStateHome();
+      const session = readJsonObject(sessionPathUnder(home));
+      const displayName = nonEmpty(session?.displayName) ? session.displayName : null;
+      return {
+        loomDir: home,
+        profile: getActiveProfile() || displayName || "default",
+        peerId: nonEmpty(session?.peerId) ? session.peerId : null
+      };
+    },
+    stdout: (l) => console.log(l),
+    stdoutBytes: (b) => {
+      process.stdout.write(b);
+    },
+    stderr: (l) => console.error(l)
+  };
+}
+
 // packages/cli/src/index.ts
-var VERSION = "0.40.0";
+var VERSION = "0.41.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
@@ -21943,7 +22382,7 @@ var BOOLEAN_FLAGS = new Set([
   "inject-handoffs",
   "presence"
 ]);
-var MEMORY_COMMANDS = new Set(["memory", "rules", "skills"]);
+var MEMORY_COMMANDS = new Set(["memory", "rules", "skills", "prompt"]);
 var MEMORY_BOOLEAN_FLAGS = new Set(["all", "json"]);
 function usage() {
   return `
@@ -21974,6 +22413,8 @@ Usage:
   loom rules list [--json]          # bundled + ~/.loom/rules (0.35)
   loom skills list [--room <roomId>] [--json]
                                     # skill sources + shadowing (0.35)
+  loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent <a>] [--json]
+                                    # what a headless card worker was sent (0.41)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -22109,10 +22550,10 @@ async function autoHostAfterSession(flags) {
 }
 function profilesWithSession() {
   const dir = pathJoin(loomDir(), "profiles");
-  if (!existsSync22(dir))
+  if (!existsSync23(dir))
     return [];
   const out = [];
-  for (const name of readdirSync7(dir)) {
+  for (const name of readdirSync8(dir)) {
     if (!name.endsWith(".json"))
       continue;
     if (name.endsWith(".host.json"))
@@ -22152,7 +22593,7 @@ async function cmdUp(flags) {
   console.log("loom up \u2014 sticky hosts:");
   for (const profile of profiles) {
     setActiveProfile(profile, { explicit: true });
-    if (!existsSync22(sessionPath()) || !loadSession()) {
+    if (!existsSync23(sessionPath()) || !loadSession()) {
       console.log(`  ${profile.padEnd(14)} skipped  (no session)`);
       continue;
     }
@@ -23412,7 +23853,7 @@ function readOnlySessionPath(home, flags) {
   return pathJoin(home, "session.json");
 }
 function loadSessionReadOnly(file) {
-  if (!existsSync22(file))
+  if (!existsSync23(file))
     return null;
   try {
     const text = readFileSync18(file, "utf8").trim();
@@ -23424,11 +23865,11 @@ function loadSessionReadOnly(file) {
   }
 }
 function homeWritableStatus(home) {
-  const homeExists = existsSync22(home);
+  const homeExists = existsSync23(home);
   if (!homeExists)
     return { homeExists, homeWritable: null };
   try {
-    accessSync(home, fsConstants9.W_OK);
+    accessSync(home, fsConstants10.W_OK);
     return { homeExists, homeWritable: true };
   } catch {
     return { homeExists, homeWritable: false };
@@ -23516,7 +23957,7 @@ async function cmdDoctor(flags) {
       profile,
       homeExists: writable.homeExists,
       homeWritable: writable.homeWritable,
-      agentHintFile: existsSync22(pathJoin(home, "AGENT_HINT.txt")) ? pathJoin(home, "AGENT_HINT.txt") : null
+      agentHintFile: existsSync23(pathJoin(home, "AGENT_HINT.txt")) ? pathJoin(home, "AGENT_HINT.txt") : null
     }),
     sessionSection(session),
     relaySection({
@@ -23691,7 +24132,7 @@ Pending inbox:`);
     await new Promise(() => {});
     return;
   }
-  const { readSync: readSync8 } = await import("fs");
+  const { readSync: readSync9 } = await import("fs");
   const decoder2 = new TextDecoder;
   let lineBuf = "";
   const handleLine = async (line) => {
@@ -23740,7 +24181,7 @@ Pending inbox:`);
   while (!stopping) {
     let n = 0;
     try {
-      n = readSync8(0, buf, 0, buf.length, null);
+      n = readSync9(0, buf, 0, buf.length, null);
     } catch {
       await Bun.sleep(50);
       continue;
@@ -24036,7 +24477,7 @@ async function runTuiAgent(spec) {
   const attempts = [];
   const ptyHelper = pathJoin(import.meta.dir, "../../../scripts/run-with-pty.py");
   const ptyHelperAlt = pathJoin(import.meta.dir, "../../scripts/run-with-pty.py");
-  const helperPath = existsSync22(ptyHelper) ? ptyHelper : existsSync22(ptyHelperAlt) ? ptyHelperAlt : null;
+  const helperPath = existsSync23(ptyHelper) ? ptyHelper : existsSync23(ptyHelperAlt) ? ptyHelperAlt : null;
   if (helperPath && process.platform !== "win32") {
     attempts.push({
       label: "python-pty-winch",
@@ -24081,7 +24522,7 @@ function spawnOnDevTty(spec) {
   return new Promise((resolve7) => {
     const fds = [];
     try {
-      fds.push(openSync12("/dev/tty", "r"), openSync12("/dev/tty", "w"), openSync12("/dev/tty", "w"));
+      fds.push(openSync13("/dev/tty", "r"), openSync13("/dev/tty", "w"), openSync13("/dev/tty", "w"));
     } catch (e) {
       eprint(`\x1B[2m/dev/tty unavailable: ${e instanceof Error ? e.message : e}\x1B[0m
 `);
@@ -24096,7 +24537,7 @@ function spawnOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync12(fd);
+          closeSync13(fd);
         } catch {}
       }
     };
@@ -24148,7 +24589,7 @@ function spawnShellOnDevTty(spec) {
   return new Promise((resolve7) => {
     const fds = [];
     try {
-      fds.push(openSync12("/dev/tty", "r"), openSync12("/dev/tty", "w"), openSync12("/dev/tty", "w"));
+      fds.push(openSync13("/dev/tty", "r"), openSync13("/dev/tty", "w"), openSync13("/dev/tty", "w"));
     } catch {
       resolve7(0);
       return;
@@ -24161,7 +24602,7 @@ function spawnShellOnDevTty(spec) {
     const closeFds = () => {
       for (const fd of fds) {
         try {
-          closeSync12(fd);
+          closeSync13(fd);
         } catch {}
       }
       fds.length = 0;
@@ -24221,7 +24662,7 @@ async function runLoomShellRepl(spec) {
     while (!stopping) {
       let n = 0;
       try {
-        n = readSync7(0, chunk, 0, chunk.length, null);
+        n = readSync8(0, chunk, 0, chunk.length, null);
       } catch (e) {
         const err = e;
         if (err?.code === "EAGAIN" || err?.code === "EWOULDBLOCK") {
@@ -24293,6 +24734,13 @@ async function cmdRoomLeave() {
 }
 async function main() {
   const scoped = parseArgs(process.argv, MEMORY_BOOLEAN_FLAGS);
+  if (scoped.positional[0] === "prompt") {
+    const card = process.env.LOOM_CARD;
+    if (typeof card === "string" && card.length > 0) {
+      process.exitCode = await runPromptCommand("", { positional: [] }, {}, realPromptCliDeps());
+      return;
+    }
+  }
   const { flags, positional, passthrough } = MEMORY_COMMANDS.has(scoped.positional[0] ?? "") ? scoped : parseArgs(process.argv);
   applyProfileFlags(flags);
   if (flags.help || positional[0] === "help" || positional.length === 0) {
@@ -24412,6 +24860,10 @@ async function main() {
     const deps = realMemoryCliDeps(flags);
     const code = await run(sub ?? "", { positional: rest, passthrough }, flags, deps);
     process.exit(code);
+  }
+  if (cmd === "prompt") {
+    process.exitCode = await runPromptCommand(sub ?? "", { positional: rest }, flags, realPromptCliDeps());
+    return;
   }
   if (cmd === "conv-hosts") {
     await cmdConvHosts(sub, rest);

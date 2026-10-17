@@ -5,8 +5,39 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.40.0** — shipped 2026-10-18) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.41.0** — shipped 2026-10-18) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.41.0 — 2026-10-18
+
+**헤드리스 워커가 실제로 받은 프롬프트를 다시 볼 수 있다** — 0.40.0까지는 워커가 무엇을 받았는지 아무도 다시 볼 수 없었다. claude · codex의 stdin은 저장되지 않았고, grok의 `prompt.txt`는 재개 때 덮어써졌으며, hint는 지금 바이너리의 상수로만 남았다. 펜스 nonce가 무작위이고 스킬 목록의 unavailable 줄도 저장되지 않아 나중에 다시 계산할 수도 없다. 0.41.0은 spawn 시도마다 Loom이 시스템 채널과 사용자 채널로 보낸 정확한 바이트를 카드 디렉터리에 남기고, `loom prompt show`로 그것을 보여 준다. 워커가 받는 바이트는 하나도 바뀌지 않는다. 업그레이드 5단계(프롬프트 조립)의 첫 조각 — 관측이다.
+
+### 가능해진 것
+
+- **시도마다 `prompt-<N>.json`** — `~/.loom/cards/<peer>/<card>/prompt-<N>.json`(0600 · 원자 쓰기 · `<N>` = `transcript-<N>.jsonl`과 같은 번호)에 에이전트 · 턴(first/resume) · 시도 · dispatch id · fingerprint · 시스템 채널과 그 문자열(hint) · 사용자 채널과 그 바이트 전체(스킬 목록 · 표지 · 기억 펜스 · 카드 본문) · sha256을 남긴다. codex 재개는 위치 인자도 `userArgv`로 남긴다. 쓰기 전용이라 재개 · recovery · 입양 · fingerprint가 다시 읽지 않고, 쓰기에 실패해도 카드는 계속 돈다(stderr `[headless] prompt_record (<card>): write failed <code>`).
+- **`loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent claude|codex|grok] [--json]`** — bridge와 같은 규칙(프로필 세션의 peer id 네임스페이스)으로 카드를 찾아 최신 시도(`session.json`의 `attempts`)를 보인다. 텍스트 모드는 제어 · bidi 문자를 보이는 표기로 바꿔 터미널을 지키고, `--json`은 파일 바이트를 그대로 낸다. 같은 카드의 이전 dispatch가 남긴 기록은 **STALE**, sha256이 맞지 않는 기록은 **MISMATCH**로 표시하고 exit 1.
+- **`show`의 invalid 사유 둘 추가** — 기록의 `agent`가 세션의 에이전트와 다르면 `agent mismatch`, 파일 바이트가 Loom의 정규 직렬화와 다르면 `not canonical`(`--json`도 그런 바이트는 내지 않는다) — exit 1.
+- **레거시 `~/.fable` 루트에서도 찾는다** — `~/.loom`이 없고 `~/.fable`이 있으면 그 아래 기록을 읽는다(bridge와 같은 순서) · `show`는 엄격 read-only라 이주 · 백업 · 새 디렉터리를 만들지 않는다.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.40.0) | 지금 (0.41.0) |
+|---------------|---------------|
+| claude · codex 카드 본문은 디스크에 남지 않았다(grok만 `prompt.txt`) | **세 에이전트 모두 카드 본문이 `prompt-<N>.json`에 축자로 남는다** — redaction 없음 · 정리 명령 없음(운영자가 카드 디렉터리를 지운다) |
+| 카드 디렉터리 = `session.json` · `transcript-*` (+ `memory-snapshot.md` · `skills/` · grok `prompt.txt`) | 시도마다 `prompt-<N>.json`이 하나씩 는다 — 디렉터리 목록을 정확히 단언하는 도구가 있으면 갱신한다 |
+| 워커가 무엇을 받았는지는 코드를 읽어 추정했다 | `loom prompt show`로 본다 — 단 기록은 "Loom이 보낸 것"이지 모델이 본 전부가 아니다(CLI 기본 프롬프트 · `AGENTS.md` · 플러그인 스킬 주입은 없음) |
+| 0.39.0 업그레이드는 drain 필수 | **0.41.0은 drain 필수 아님** — argv · stdin · hint · fingerprint 무변경 |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · `HEADLESS_WORKER_HINT` · `ARGV_TEMPLATE_VERSION "0.31.0-v1"` · argv 모양 · stdin · grok `prompt.txt`(재개 덮어쓰기 포함) · fingerprint 입력과 값 · `session.json` 스키마 · 완료 권위 · pane/conv 경로 · sticky host · relay 무변경. 실 CLI 실행 없음(워커가 받는 바이트가 0.40.0과 같다 — 기록 = 가짜 CLI가 받은 바이트임은 테스트가 세 에이전트 × 첫 턴/재개로 덮는다).
+- **정직 고지(설계상 수용 손실):** 기록은 증거이지 권위가 아니다(계급 47) · 쓰기 실패한 시도는 기록 없음(계급 48) · 새 dispatch는 `prompt-1.json`만 덮어쓰고 나머지는 STALE(계급 49) · 카드 본문의 디스크 잔류 · 정리 경로 없음(계급 50) · 0.41.0 이전 시도는 기록 없음(계급 51) · 기록 ≠ 모델이 본 전부(계급 52) · pane/conv 카드는 기록 없음(계급 53) · `LOOM_CARD` 거부는 가드이지 경계가 아니다(계급 54) · 기록 ≠ spawn 증거(spawn하지 않은 시도에도 남는다 — `transcript-<N>.jsonl`로 판단) · 기록은 "같다"를 증명하지 않는다(펜스 nonce 무작위 — 0.42.0 골든 몫).
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §15.3 · §15.6 · PLAN 0.41.0 · R60 · `implementation-notes.md` §0.41.0
 
 ---
 

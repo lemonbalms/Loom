@@ -42,13 +42,14 @@
 
 ## Gate log
 
-### 0.41.0 — 헤드리스 워커가 받은 프롬프트 기록 + `loom prompt show` (`approved` — R60 approved-with-fixes · no R60b)
+### 0.41.0 — 헤드리스 워커가 받은 프롬프트 기록 + `loom prompt show` (`approved` — R60 approved-with-fixes · no R60b · implemented (P1–P4 + P1b) · shipped 2026-10-18)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.41.0 (`approved` — R60 approved-with-fixes, 반영 완료 · no R60b · author-close 불가) · MINOR · 업그레이드 5단계 1부(관측) · 근거 = `UPGRADE-PLAN.md:101-105` · `:173-204` + 0.40.0 Next + 아키텍트 증거 팩(HEAD `cf44097`) · 범위 = 락 D1~D9(아키텍트 2026-10-18) |
 | **Date** | 2026-10-18 |
 | **Review** | R60 **done 2026-10-18** — approved-with-fixes H0 · M3 · L3 (M1 쓰는 자리 = write-ahead 직후 · `if (owner.abandoned)` 바로 앞 · 기록 ≠ spawn 증거 · M2 레코드 키 `dispatchHandoffId` · `show` STALE + exit 1 · 계급 49 정정 · M3 C3 편집 2곳 `headless-memory-write.test.ts:416` + `smoke-memory-write.ts:507` · L1 완료 기준 "nonce 제외 동일" · L2 모든 출력 필드 표기 변환 + bidi · 직렬화 DEL · C1 · bidi 이스케이프 · `user` = `promptBody.toWellFormed()` · L3 `lstat` 일반 파일 · 읽기 8 MiB · `MEMORY_COMMANDS` 참조 · R8 0개 꼬리) — (`WORKFLOW.md` §5.1 신규 제품 표면 `loom prompt show` + 영속성 · 신뢰 경계 — claude/codex 카드 본문이 디스크에 남음 · `LOOM_CARD` 거부) |
+| **Implemented** | 2026-10-18 — P1 `87e5b76` → `1b7c07a` · verify 0088 FAIL 1 M → P1b `9b3bff5` → `0fd635b` · verify 0092 PASS · P2 `b9cc6ee` → `147514e` · verify 0090 PASS · P3 `e8e1a7d` → `13f1dae` · verify 0094 FAIL 5 M · 1 L(read-only 아님 · 심링크/FIFO · agent 검사 없음 · 원문 진단 · 비정규 바이트 · `LOOM_CARD` + `--help`) → P3b `51f1556` → `fe43974` · verify 0097 FAIL 2 M(M1 탐색 중 카드 디렉터리 → 심링크 교체 = 선언한 동일 사용자 한계로 수용 · M2 레거시 `.fable` 루트 → P3c `8fd7793` → `76049e6`) · P3c verify 0099 FAIL 1 M (accepted, (11)) · 최종 advise 0101 = FIX-FIRST (docs) → fixed · 스위트 3517 pass / 1 알려진 fail · 실 CLI 0회 |
 | **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `cf44097`) · `agent-argv.ts:28-36` · `:331-335` · `:371-387` · `:405-408` · `:421-424` · `:436` · `:446-448` · `:476-482` · `headless-worker.ts:121` · `:124` · `:340-348` · `:357-367` · `:375-378` · `:1083` · `:1100` · `:1272-1280` · `:1710-1714` · `:1890-1900` · `:1943-1956` · `:1971-2014` · `:2107-2114` · `:2242-2249` · `:2269` · `:2285-2295` · `card-session-store.ts:106-127` · `:141-165` · `bridge-runtime.ts:1137` · `memory-cli.ts:113-122` · `:388-392` · `:960-976` · `cli/src/index.ts:283-284` · `:3435-3442` · `skill-prompt.ts:45-46` · `packages/protocol/src/card-contract.ts:27` · `headless-memory-write.test.ts:414-419` · `HEADLESS-WORKER-PROBE.md:158` · `:161` · `:198-205` |
 
 | 분면 | 내용 |
@@ -62,13 +63,13 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R60 판정 |
 |---|------|-------------|----------|
-| UK-1 | **기록 쓰기 비용** — 카드 락 안 ≤ ~1.2 MiB 원자 쓰기 하나의 spawn 지연 | P2에서 큰 펜스 · 상한 본문 1회 시간 기록(단언 아님) | 비차단 수용(쓰는 자리 = write-ahead 직후 — R60-M1) |
+| UK-1 | **기록 쓰기 비용** — 카드 락 안 ≤ ~1.2 MiB 원자 쓰기 하나의 spawn 지연 | P2에서 큰 펜스 · 상한 본문 1회 시간 기록(단언 아님) | 비차단 수용(쓰는 자리 = write-ahead 직후 — R60-M1). **표본 1회(P2 · 2026-10-18 · 이 머신):** 60,704 B 기록 59.3 ms — 표본 하나이지 측정이 아니다 · open 유지 |
 | UK-2 | **codex 재개의 두 사용자 입력** — 위치 인자와 stdin을 codex가 어떻게 합치는지 | 기록은 둘 다 남긴다(`userArgv` — R3) · 0.43 실 CLI 또는 별도 프로브 | 비차단 수용 |
 | UK-3 | **디스크 노출 크기** — 카드 디렉터리 누적 · 카드 본문 비밀 빈도 | 정리 명령은 다음 후보 · 계급 50 | 비차단 수용(정리 명령 = 다음 후보) |
 | UK-4 | **claude/grok 시스템 채널 수신 효과** — hint가 행동을 바꾸는지 · 재개 재전달이 교체인지 중복인지 | 0.41은 보낸 바이트만 기록 · **0.43 착수 전 차단 후보** | 비차단 수용(0.41) · 0.43 착수 전 차단 후보 유지 |
 | UK-5 | **`show` 모호성 빈도** — 같은 cardId의 다른 방 · 에이전트 디스패치 | C2 필터 · 목록 출력 | 비차단 수용(C2 draft 수용) |
 
-**Current decision:** **`approved` (R60 approved-with-fixes → M1·M2·M3·L1·L2·L3 반영, no R60b, 2026-10-18).** D1~D9 아키텍트 락(2026-10-18 — D2 키에 `dispatchHandoffId` 추가는 R60-M2 · D1 완료 기준 문면은 R60-L1) · 작성자 정밀화 R1~R14(R1 → 수정 R60-M1 · 나머지 수용) · C1 · C2 draft 수용 · C3 → 수정(R60-M3 — 편집 2곳) · 수용 손실 계급 47~54(49 정정) + 무번호(기록 ≠ spawn 증거 신설) · UK-1~UK-5(전부 비차단 수용 · UK-4는 0.43 착수 전 차단 후보). 구현 착수 = **P1**.
+**Current decision:** **`approved` (R60 approved-with-fixes → M1·M2·M3·L1·L2·L3 반영, no R60b, 2026-10-18).** D1~D9 아키텍트 락(2026-10-18 — D2 키에 `dispatchHandoffId` 추가는 R60-M2 · D1 완료 기준 문면은 R60-L1) · 작성자 정밀화 R1~R14(R1 → 수정 R60-M1 · 나머지 수용) · C1 · C2 draft 수용 · C3 → 수정(R60-M3 — 편집 2곳) · 수용 손실 계급 47~54(49 정정) + 무번호(기록 ≠ spawn 증거 신설) · UK-1~UK-5(전부 비차단 수용 · UK-4는 0.43 착수 전 차단 후보). 구현 착수 = **P1**. **2026-10-18 — implemented (P1 `87e5b76`/`1b7c07a` · P2 `b9cc6ee`/`147514e` · P1b `9b3bff5`/`0fd635b` · P3 `e8e1a7d`/`13f1dae` · P4) · shipped:** verify P1 0088 FAIL(1 M — `readPromptRecord` `lstat` → `readFileSync` TOCTOU → P1b) · P2 0090 PASS · P1b 0092 PASS · P3 verify 0094 FAIL 5 M · 1 L → P3b → 0097 FAIL 2 M(M1 수용 · M2 → P3c) → 0099 FAIL 1 M(수용 · implementation-notes (11)) · 최종 advise 0101 = FIX-FIRST(문서) → 반영 · 실 CLI 0회(D8). UK-1 표본 1회(위 — 60,704 B · 59.3 ms · 측정 아님) · UK-2 미확인(0.43 실 CLI 또는 프로브) · UK-3 · UK-5 미관찰(실 운용 전) · UK-4 open(0.43 착수 전 차단 후보 유지). **Next = 0.42.0 섹션 manifest (5단계 2부).**
 
 ### 0.40.0 — 표지 흉내 접기 강화 · R8 같은 접기 · 헤드리스 카드 본문 표지 줄 무력화 (`approved` — R59 approved-with-fixes · no R59b · implemented (P1–P4) · shipped 2026-10-18)
 

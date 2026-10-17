@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.40.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.41.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -840,9 +840,10 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
   session.json            # agent · cwd · sessionId · fingerprint · attempts · pid/pgid · state · resultSent …
   transcript-<N>.jsonl    # N번째 시도의 stdout 원문 (스트림 JSON)
   transcript-<N>.stderr   # 같은 시도의 stderr
+  prompt-<N>.json         # 0.41.0 · N번째 시도에 Loom이 보낸 시스템 · 사용자 채널 바이트 (§15.6)
 ```
 
-- 디렉터리 0700 · 파일 0600. **redaction 없는 평문** — 카드 프롬프트·도구 출력·코드가 그대로 남는다. 업로드 경로는 없다. 회전·GC도 아직 없다(직접 지운다).
+- 디렉터리 0700 · 파일 0600. **redaction 없는 평문** — 카드 프롬프트·도구 출력·코드가 그대로 남는다. 업로드 경로는 없다. 회전·GC도 아직 없다(직접 지운다). 0.41.0부터 `prompt-<N>.json`이 claude · codex 카드에서도 카드 본문을 축자로 남긴다(grok은 0.30부터 `prompt.txt`) — §15.6.
 - **완료된 cardId를 다시 디스패치하면 같은 카드 디렉터리를 재사용하고 이전 `transcript-N.jsonl`을 덮어쓴다.** 보존하려면 먼저 복사해 둔다.
 - 같은 머신의 프로필마다 peer id가 달라 디렉터리가 나뉜다. **프로필 하나에 bridge는 하나만** 돈다 — 0.33.0부터 프로필 락이 두 번째 bridge를 보유자 pid와 함께 거부한다(§18.1).
 
@@ -881,6 +882,85 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 - `output`은 최종 텍스트 원문(TUI 스트립 없음) ≤ 200,000자. 넘으면 앞을 잘라 꼬리를 남기고 `truncated: true` + note에 transcript 경로·바이트 수. `summary` = 첫 비공백 줄 ≤ 900자.
 - 와이어는 그대로다(`CardResultPayload` 필드 추가 없음) — 구 타워도 받는다.
 - 0.31.0도 bridge 기동에 **herdr가 필요하다**(헤드리스만 써도).
+
+### 15.6 워커가 받은 프롬프트 보기 — `loom prompt show` (v0.41.0)
+
+**하고 싶은 일:** "이 헤드리스 워커가 **실제로** 무엇을 받았나"를 한 명령으로 본다. 0.40.0까지는 다시 볼 길이 없었다 — claude · codex의 stdin은 저장되지 않고, grok `prompt.txt`는 재개 때 덮어써지며, hint는 지금 바이너리의 상수로만 남았다.
+
+**기록 — `prompt-<N>.json`.** 헤드리스 spawn 시도마다 bridge가 카드 디렉터리(§15.3)에 `prompt-<N>.json`(0600 · 원자 쓰기 · `<N>` = `transcript-<N>.jsonl`과 같은 시도 번호)을 남긴다. Loom이 두 채널로 보낸 정확한 바이트다:
+
+| 키 | 뜻 |
+|----|----|
+| `version` · `agent` · `turn` · `attempt` | `1` · `claude`/`codex`/`grok` · `first`/`resume` · 시도 번호 |
+| `dispatchHandoffId` | 이 기록이 어느 dispatch의 것인지(재개 · 입양도 원 dispatch) |
+| `fingerprint` | 이 spawn이 `session.json`에 미리 적은 값 그대로 |
+| `systemChannel` · `system` | claude `claude --append-system-prompt` · codex `codex -c developer_instructions` · grok `grok --rules` — 그 채널로 넘긴 hint 문자열 |
+| `userChannel` · `user` · `userSha256` | claude · codex `stdin` · grok `grok --prompt-file` — 사용자 채널 바이트 전체(첫 턴 = 스킬 목록 · 작업 표지 · 기억 펜스 · 카드 본문(0.40.0 무력화 뒤) / 재개 = 고정 재개 문구 + 표지 · 본문)와 그 sha256 |
+| `userArgv` | **codex 재개에만** — `codex exec resume`의 위치 인자(고정 재개 문구) |
+
+- **워커가 받는 바이트는 하나도 바뀌지 않는다** — argv · stdin · grok `prompt.txt` · hint · fingerprint · `session.json` 그대로. 그래서 0.41.0으로 올릴 때(및 0.40.0으로 되돌릴 때) **drain이 필요 없다**. 되돌리면 기록 파일은 남고 아무도 읽지 않는다.
+- **쓰기 전용이다.** 재개 · recovery · 입양 · fingerprint 어느 것도 이 파일을 다시 읽지 않는다 — 지우거나 고쳐도 워커 동작은 그대로다.
+- **쓰기에 실패해도 카드는 돈다** — bridge stderr `[headless] prompt_record (<card>): write failed <code>` 한 줄(`ENOSPC` · `EACCES` · 아니면 `unknown`) 뒤 spawn 계속. 성공 줄은 찍지 않는다.
+- **기록 ≠ spawn 증거.** 기록은 write-ahead 직후 · 마지막 경로 검사(abandon · cwd 재검사 · 살아 있는 그룹 재검사) 앞에 쓰인다 → spawn하지 않은 시도(`cwd_not_allowed` 등)에도 남는다. 워커가 실제로 떴는지는 `transcript-<N>.jsonl`이 있는지로 본다.
+- **추가 redaction 없음.** 펜스는 원래대로 env redaction 뒤 바이트, 카드 본문은 제3자 텍스트 축자다. 카드 본문에 비밀을 넣었다면 그대로 디스크에 남는다. 정리 명령은 없다 — 카드 디렉터리를 직접 지운다.
+- pane backend · sticky host 경로의 카드는 기록이 없다(hint도 받지 않는다).
+
+```text
+loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent claude|codex|grok] [--json] [--profile <p>]
+```
+
+- **카드 찾기 = bridge와 같은 규칙.** 그 프로필(`--profile` · `LOOM_PROFILE` · 기본) 세션의 peer id 네임스페이스(`~/.loom/cards/<sha16(peer id)>/…`)에서 `session.json`의 `cardId`로 고른다. 다른 프로필의 카드는 보지 않는다(그 프로필로 `--profile`). 프로필이 다시 가입해 peer id가 바뀌면 **이전 peer id 아래 카드는 찾지 않는다**.
+- **엄격 read-only.** `show`는 아무것도 쓰지 않는다 — 형식 오류 세션의 `.corrupt-*` 백업도, `~/.fable` → `~/.loom` 이주도, 새 디렉터리도 만들지 않는다. 디렉터리는 `lstat`으로 보고 심링크 · FIFO 등 일반 파일이 아닌 항목은 따라가지 않고 건너뛴다 — 예외: 검사와 읽기 사이에 같은 OS 사용자가 카드 디렉터리를 심링크로 바꾸면 따라갈 수 있다(read-only · 잘못 귀속된 표시뿐 — 아래 한계 11 · verify 0097 M1)(건너뛴 세션은 셈만 하고 원문 진단은 찍지 않는다 · 세션 파일 상한 1 MiB). 프로필 세션 파일이 심링크면(또는 `LOOM_SESSION`이 심링크를 가리키면) "프로필 세션 없음"으로 읽는다.
+- **레거시 `~/.fable` 루트.** 상태 루트는 bridge와 같은 순서로 고른다 — `~/.loom`이 있으면 그것 → 없고 `~/.fable`이 있으면 `~/.fable` → 둘 다 없으면 `~/.loom`(세션 없음). 아직 `~/.fable`을 쓰는 bridge의 기록도 찾는다 — 예외: 부분 이주가 `~/.loom`을 남긴 경우(이주 복사가 실패해 bridge는 `~/.fable`을 계속 쓴다) `show`는 `~/.loom`을 읽어 복사된 더 오래된 기록을 STALE 표시 없이 보일 수 있다(아래 한계 12).
+- 같은 `cardId`가 다른 방 · 다른 에이전트로 두 번 디스패치됐으면 후보 목록을 보이고 끝난다 — `--room` · `--agent`로 하나를 고른다(후보가 하나여도 일치 검사다 — 다르면 0개).
+- **기본 = 최신 시도 = `session.json`의 `attempts`**(디렉터리의 가장 큰 번호가 아니다 — 쓰기에 실패한 최신 시도는 "기록 없음"으로 보인다). `--attempt <n>`은 1 이상의 정수.
+- **텍스트 출력**(머리 → 빈 줄 → 절):
+
+```text
+card <cardId> · agent <a> · turn <first|resume> · attempt <n>[ · STALE — earlier dispatch <id>]
+fingerprint <hex>
+system: <systemChannel> · <bytes> B
+user: <userChannel> · <bytes> B · sha256 <hex> ok|MISMATCH
+
+--- system (<systemChannel>) ---
+<hint>
+--- user (<userChannel>) ---
+<사용자 채널 바이트>
+--- user argv (codex exec resume positional) ---    ← codex 재개 기록에만
+<위치 인자>
+```
+
+- **텍스트 모드는 터미널을 지킨다** — 출력하는 모든 필드(본문 · 머리 줄 · 후보 목록의 `roomId` · `startedAt` · 경로 · 오류 사유)의 C0 제어(TAB · LF 제외) · DEL · C1 · bidi 제어를 `\u{1b}` 꼴 보이는 표기로 바꾼다. 그래서 **텍스트 출력 ≠ 축자 바이트**다. 바이트 수는 원본 기준.
+- **`--json` = 검사를 통과한 파일 바이트 그대로**(다시 직렬화하지 않는다). 파일은 쓸 때 이미 DEL · C1 · bidi를 `\u00XX` / `\u20XX`로 이스케이프했으므로 터미널에 안전하다. STALE · MISMATCH면 바이트는 그대로 stdout에 내고 stderr에 한 줄(`loom prompt: attempt <n> of <cardId> is STALE — earlier dispatch <id>` / `…: sha256 MISMATCH`) 뒤 exit 1.
+- **카드 워커 안에서는 거부한다** — `LOOM_CARD`가 비어 있지 않으면 인자를 보기 전에, 아무것도 읽지 않고 exit 1. **가드이지 경계가 아니다**(워커가 카드 디렉터리를 직접 읽는 것은 막지 못한다 — hint "cwd 밖 금지" · CLI 샌드박스가 남는 방어).
+
+| 상황 | 출력 (stderr) | exit |
+|------|---------------|------|
+| 보여 줌 | stdout에 위 형식(또는 `--json` 바이트) | **0** |
+| 카드 워커 셸 | `loom prompt: refused — LOOM_CARD is set (this shell belongs to a Loom card worker); prompt records are for the operator.` | 1 |
+| 프로필 세션 없음 | `loom prompt: profile <p> has no session (join a room first)` | 1 |
+| 카드 0개 | `loom prompt: no headless card session for <cardId> under profile <p> (cards from an earlier peer id of this profile are not searched)` | 1 |
+| 모호 | `loom prompt: <cardId> matches <k> headless card sessions under profile <p>` · 후보마다 `  <roomId> · <agent> · attempts <n> · started <startedAt>` · 마지막 `pick one with --room <roomId> --agent <agent>` | 1 |
+| 기록 없음 | `loom prompt: attempt <n> of <cardId> has no prompt record (the write failed, or the attempt ran before Loom 0.41.0)` · 같은 dispatch의 다른 시도 기록이 있으면 `available attempts: <n>` | 1 |
+| 형식 오류 | `loom prompt: invalid prompt record <path>: <reason>`(예: `not a regular file` · `too large`(8 MiB 초과 — 읽지 않는다) · 깨진 JSON · 모르는 키 · `agent mismatch`(기록의 `agent` ≠ 세션의 에이전트) · `not canonical`(파일 바이트 ≠ Loom이 쓴 정규 직렬화 — 손으로 고친 흔적, `--json`도 내지 않는다)) — 사유에 파일 내용은 싣지 않는다 | 1 |
+| **STALE** | 머리 줄 끝 ` · STALE — earlier dispatch <id>` 뒤 본문을 보인다 — 기록의 `dispatchHandoffId` ≠ `session.json`의 것(같은 카드의 이전 dispatch가 남긴 기록) · "최신"과 `available attempts`에서 빠진다 | 1 |
+| **MISMATCH** | 머리 줄 `sha256 <hex> MISMATCH` 뒤 본문을 보인다 — `user`를 다시 해시한 값이 `userSha256`과 다르다(손상 · 고친 흔적) | 1 |
+| 사용법 | `loom prompt: usage: loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent claude|codex|grok] [--json] [--profile <p>]` · `--agent` 값 오류는 `loom prompt: --agent must be claude, codex or grok` | 1 |
+
+**한계 — 설계상 수용 (0.41.0 · PLAN 계급 47~54):**
+
+1. **기록은 증거이지 권위가 아니다**(계급 47) — `show`는 고친 내용을 그대로 보인다. `userSha256`은 `user`만 덮으므로 해시까지 같이 고치면 못 잡는다. 서명 없음 · 0600 / 0700이 남는 방어.
+2. **쓰기에 실패한 시도는 기록이 없다**(계급 48 — 디스크 가득 · 권한 · 임시 이름 충돌) — stderr 한 줄 · `show`는 "기록 없음".
+3. **같은 카드의 새 dispatch는 `prompt-1.json`만 덮어쓴다**(계급 49) — 이전 dispatch의 `prompt-2.json`(또는 쓰기 실패로 남은 이전 `prompt-1.json`)은 남고 `show`가 **STALE + exit 1**로 보인다. 이전 dispatch의 `prompt-1` 기록은 사라진다(`transcript-<N>`과 같은 규칙).
+4. **카드 본문이 claude · codex 카드에서도 디스크에 남고, 정리 경로가 없다**(계급 50) — 본문의 비밀은 redaction 없이 그대로. 운영자가 카드 디렉터리를 지운다.
+5. **0.41.0 이전에 시작한 시도는 기록이 없다**(계급 51) — 0.40.0에서 첫 턴을 받고 0.41.0에서 재개된 카드는 `prompt-2.json`만 있다(기본 `show`는 보이고 `--attempt 1`은 "기록 없음").
+6. **기록 = Loom이 두 채널로 보낸 것이지 모델이 본 전부가 아니다**(계급 52) — CLI 기본 시스템 프롬프트 · codex가 스스로 읽는 `AGENTS.md` · grok 신뢰 폴더 규칙 · claude `--plugin-dir` 스킬 주입 · 정책 argv · 재개 때 CLI가 이전 대화를 다시 싣는 방식 · codex 재개의 위치 인자와 stdin을 codex가 어떻게 합치는지는 기록에 없거나 해석되지 않는다.
+7. **pane/conv 경로는 기록하지 않는다**(계급 53).
+8. **`LOOM_CARD` 거부는 가드다**(계급 54) — 워커가 파일을 직접 읽는 것 · `LOOM_CARD`를 지운 셸은 막지 못한다.
+9. **기록은 "무엇을 보냈나"를 보일 뿐 "같다"를 증명하지 않는다** — 기억 펜스 nonce가 일부러 무작위라, 펜스가 켜진 같은 카드의 두 dispatch는 바이트가 다르다("nonce를 빼면 같다" — 증명은 0.42.0 골든 테스트 몫).
+10. **JSON 이스케이프 팽창** — 제어 문자가 많은 펜스 · 본문은 기록이 원문보다 최대 6배 커진다(새 쓰기 상한 없음 · 읽기 상한 8 MiB). Windows 미검증.
+11. **동일 사용자의 탐색 중 교체** — `show`가 카드 디렉터리를 검사한 뒤 읽기 전에 같은 사용자 프로세스가 그것을 심링크로 바꾸면 다른 기록을 그 카드의 것으로 보일 수 있다(Node에 openat 없음 · 0.31과 같은 계급 · read-only라 쓰기는 없다). 위 "심링크는 따라가지 않는다"의 예외다(verify 0097 M1).
+12. **부분 이주가 남긴 `~/.loom`** — 이주 복사가 실패한 뒤 `~/.fable`을 캐시한 bridge 프로세스가 돌고 부분 `~/.loom`이 있으면, `show`는 `~/.loom`을 읽어 복사된 더 오래된 기록을 STALE 표시 없이 보일 수 있다(0.41 이전부터의 분할 상태 — 모든 CLI 명령이 같이 겪는다 · 프로세스 안의 일시 상태라 재시작한 bridge도 `~/.loom`을 고른다 · verify 0099 M).
 
 ## 16. 스킬과 정책 (v0.31.0)
 
@@ -1892,6 +1972,7 @@ bun run loom --profile <p> bridge start|stop|status|drain [--timeout <s>]
 bun run loom --profile <p> service install|uninstall|start|status [--force]
 bun run loom --profile <p> memory add|propose|approve|retire|compact|list|show --agent claude|codex|grok …
 bun run loom --profile <p> rules list | skills list [--room <roomId>]
+bun run loom --profile <p> prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent <a>] [--json]
 bun run loom --profile <p> pack show|set|add|note|…
 bun run loom --profile <p> board | board add|set|assign|export|import|…
 bun run loom --profile <p> run [claude|codex|grok|shell]
