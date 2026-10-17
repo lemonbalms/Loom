@@ -5,14 +5,12 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.37.0** — shipped 2026-10-17) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.38.0** — shipped 2026-10-18) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
 
 ---
 
-## 0.38.0 — 구현 완료 · 출시 대기 (오너 승인 실 CLI 스모크 전)
-
-> **implemented — release pending the owner-approved real-CLI smoke.** 아래는 구현 · 가짜 CLI 스모크까지 끝난 내용이다. 실 claude · codex · grok으로 새 스킬 문면을 돌리는 스모크(`smoke:memory-write --real-cli --owner-approved` ①)를 오너 승인 아래 통과해야 출시된다 — 코드의 버전 문자열(`loom --version` · `BRIDGE_VERSION` · MCP)은 이미 0.38.0이지만, 출시(shipped 표기 · main push)는 ① PASS 뒤다.
+## 0.38.0 — 2026-10-18
 
 **워커가 기억 후보를 올린다** (업그레이드 4단계 4부) — 옵트인 `worker.memory.cardWrites`를 켠 headless bridge는 워커 최종 출력의 `LOOM-MEMORY-CANDIDATES` 블록을 읽어 **그 방 범위 `proposed` 후보**로 저장소에 올린다. **사람이 `loom memory approve`해야만** 이후 카드에 들어간다. 카드 디렉터리에는 최종 출력의 redaction된 사본 `notes.md`가 남는다. **기본은 꺼짐**이고, 꺼짐이면 0.37과 바이트 같다.
 
@@ -24,7 +22,7 @@
 - **검토 표시** — `loom memory list` 머리 `memory: K card proposals awaiting review` · 카드 행 접미 `[card by <디스패처> · +<n> chars — loom memory show <id>]` · `--source <kind>` 필터 · `show`의 `origin:` 줄 · `approve`의 `activated:` 줄(본문 전체).
 - **카드 메모 `notes.md`** — `<cardDir>/notes.md`(0600) = 최종 출력(타임아웃이면 raw)의 redaction된 사본. Loom은 다시 읽지 않는다.
 - **워커 셸의 `loom memory` 쓰기 거부** — `LOOM_CARD`가 설정된 셸에서 `add|propose|approve|retire|compact`는 exit 1.
-- 스모크 `bun run smoke:memory-write` — dist CLI + 가짜 claude · codex · grok 카드로 ①~⑧(제안 · 멱등 · 상한 · 필터 · `notes.md` · 승인 → 다음 카드 펜스 · `LOOM_CARD` 거부 · 꺼짐 = 0.37) 10/10 PASS. **실 CLI ①은 아직 돌리지 않았다.**
+- 스모크 `bun run smoke:memory-write` — dist CLI + 가짜 claude · codex · grok 카드로 ①~⑧(제안 · 멱등 · 상한 · 필터 · `notes.md` · 승인 → 다음 카드 펜스 · `LOOM_CARD` 거부 · 꺼짐 = 0.37) 10/10 PASS · **실 claude · codex · grok 1카드씩**(`--real-cli --owner-approved`, 오너 승인 1회) — claude · grok은 후보를 하나씩 올렸고 codex는 0개(아래 정직 고지) · 세 카드 모두 `notes.md`.
 
 ### 바뀐 습관 (깨진 가정)
 
@@ -39,7 +37,8 @@
 ### 불변
 
 - 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · `ARGV_TEMPLATE_VERSION` · hint · argv · 완료 권한 · 펜스 · `loom-card-report` · `policy.json` 스키마 · `policyHash` · `entries.jsonl` v1 줄 스키마 · MCP 도구 표면 무변경 · `packages/protocol` diff 0 · pane backend · sticky host · relay 무변경. **전달 결과 텍스트는 변형하지 않는다**(후보 블록이 그대로 남는다).
-- **정직 고지(설계상 수용 손실):** **셸이 있는 워커는 여전히 승인을 건너뛸 수 있다** — `env -u LOOM_CARD loom memory add …`나 `entries.jsonl` 직접 쓰기로 사람 승인 없이 `active` 항목을 만든다(계급 23). `LOOM_CARD` 거부는 실수 방지 가드이지 경계가 아니다. 그 밖에: 디스패처가 기각할 작업의 후보도 올라간다(계급 24 — 사람 승인이 유일한 통제) · `notes.md`는 생성 요약이 아니라 사본(계급 25) · 상한 기아 · 락 `busy` 버림(계급 27 · 28) · 표지 필터 오탐 · 실 CLI 미검증(UK-1 — 출시 조건) · Windows 미검증.
+- **정직 고지(설계상 수용 손실):** **셸이 있는 워커는 여전히 승인을 건너뛸 수 있다** — `env -u LOOM_CARD loom memory add …`나 `entries.jsonl` 직접 쓰기로 사람 승인 없이 `active` 항목을 만든다(계급 23). `LOOM_CARD` 거부는 실수 방지 가드이지 경계가 아니다. 그 밖에: 디스패처가 기각할 작업의 후보도 올라간다(계급 24 — 사람 승인이 유일한 통제) · `notes.md`는 생성 요약이 아니라 사본(계급 25) · 상한 기아 · 락 `busy` 버림(계급 27 · 28) · 표지 필터 오탐 · Windows 미검증.
+- **codex 카드는 지금 스킬을 읽지 못한다(0.38 이전부터 있던 문제 — 0.39에서 고칠 예정).** codex 워커는 "현재 작업 디렉터리 밖은 건드리지 말라"는 지시를 받는데, 카드 스킬 사본은 작업 디렉터리 밖(`~/.loom/cards/…/skills`)에 있다. 그래서 실 codex는 스킬을 찾지 못하고 `Blocked`로 답했다 — **실측에서 codex 카드는 기억 후보를 0개 올렸고**(두 번 모두), skills를 켠 codex 카드는 0.31부터 스킬을 쓰지 못했을 가능성이 높다. claude(플러그인) · grok은 영향 없음.
 
 ### 정본
 

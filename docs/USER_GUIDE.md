@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.37.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.38.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -1784,7 +1784,7 @@ Policy
 
 **하고 싶은 일:** 워커가 카드에서 알게 된 사실 · 결정 · 선호를 결과 텍스트 안에서 흘려보내지 않고, **사람이 검토할 후보**로 남긴다. 승인한 것만 이후 카드의 첫 턴에 들어간다(§20.11 경로). **headless 카드 워커(§15)만** — pane backend · sticky host 워커는 후보도 `notes.md`도 내지 않는다.
 
-> **현재 상태(2026-10-18):** 0.38.0은 구현 · 가짜 CLI 스모크까지 끝났고, **실 claude · codex · grok으로 새 스킬 문면을 돌리는 스모크는 아직 돌리지 않았다**(오너 승인 대기 — 출시 조건). 실 워커가 후보 블록을 실제로 쓰는지는 미확인이다.
+> ⚠️ **codex 카드는 지금 스킬을 읽지 못한다(0.38 이전부터 있던 문제 — 고칠 예정).** codex 워커는 "작업 디렉터리 밖은 건드리지 말라"는 지시를 받는데 카드 스킬 사본은 작업 디렉터리 밖에 있어서, 실 codex는 `loom-memory-candidates`를 찾지 못하고 후보를 0개 올렸다(2026-10-18 실 CLI 스모크). 지금은 **claude · grok 카드에서만 후보가 올라온다고 보면 된다** — skills를 켠 codex 카드의 다른 스킬도 마찬가지일 가능성이 높다.
 
 **켜기 — `worker.memory.cardWrites`(기본 꺼짐).**
 
@@ -1864,7 +1864,7 @@ loom memory: refused — LOOM_CARD is set (this shell belongs to a Loom card wor
 4. **상한 기아**(계급 27) — 시끄러운 방들이 에이전트당 50을 채우면 다른 방 후보는 승인 · 은퇴 전까지 `cap`.
 5. **락 `busy` 버림**(계급 28) — 사람 CLI · compact가 락을 쥐고 있으면 그 시도의 후보는 사라진다(재시도 없음 · recovery 재처리 때만 다시 기회). bridge가 락을 쥔 채 죽으면 재기동 뒤 5초 동안 recovery 재처리도 `busy`.
 6. **표지 필터 오탐** — 펜스 줄 모양 · `LOOM-MEMORY-` / `LOOM-REPORT-` 표지를 문자 그대로 담은 정당한 후보는 `marker`로 버려진다.
-7. **실 CLI 미검증** — 실 claude · codex · grok이 블록을 쓰는지 · 쓸모 있는 사실을 고르는지는 아직 관찰하지 않았다(오너 승인 대기). 가짜 CLI 스모크 결과는 [`spikes/MEMORY-WRITE-SMOKE-0380.md`](./spikes/MEMORY-WRITE-SMOKE-0380.md).
+7. **실 CLI 관찰은 한 번뿐** — 2026-10-18 실 claude · grok은 후보를 하나씩 올렸고 codex는 0개(위 경고). 실제 운용에서 쓸모 있는 사실을 고르는지는 아직 관찰하지 않았다. 스모크 결과는 [`spikes/MEMORY-WRITE-SMOKE-0380.md`](./spikes/MEMORY-WRITE-SMOKE-0380.md).
 8. Windows 미검증.
 
 ---

@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-18 (0.38.0 기억 쓰기 경로 — implemented · ship pending real-CLI ①) |
+| **Last updated** | 2026-10-18 (0.38.0 기억 쓰기 경로 — shipped 2026-10-18) |
 
 ---
 
@@ -40,9 +40,9 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
 
-### §0.38.0 — 기억 쓰기 경로 (업그레이드 4단계 4부 — implemented · ship pending real-CLI ①)
+### §0.38.0 — 기억 쓰기 경로 (업그레이드 4단계 4부 — shipped 2026-10-18)
 
-PLAN §0.38.0 (R56 `approved-with-fixes` → `approved`) · 커밋(red/green 순) `c552b04`/`4ec5267`(P1 — 저장소 async append · 상한 · 필터 · dedupe · `withFileLockAsync`) → `7597d0b`/`8d27fa4`(P1b) → `4741f43`/`63b94b6`(P2 — `cardWrites` 설정 · 강제 스킬 · 기동 검사) → `c019a9c`(P2b) → `6b6e4e5`/`63ecbd4`(P3 — 결과 경로 파싱 → 제안 · `notes.md` · stderr) → `f67e985`/`8999fa6`(P3b — verify 0042) → `806a09d`/`23f9f10`(P4 — CLI) → `2119c85`/`69a42f3`(P4b — verify 0045) → `f79d1cf`(P5 스모크 `smoke:memory-write`) → `67a3745`(VERSION · `BRIDGE_VERSION` · MCP 0.38.0 + dist) → P5b 문서(이 절). 독립 검증 = GPT-6 Astra high(`lane.ts verify`) + 아키텍트 재실행. 전체 스위트(P4b 뒤) 3309 pass / 1 fail(알려진 `handoff-checkpoint` live checkpoint). **실 CLI 스모크 ①은 돌리지 않았다** — 오너 승인 대기(R56-M4 · UK-1 · ship 차단).
+PLAN §0.38.0 (R56 `approved-with-fixes` → `approved`) · 커밋(red/green 순) `c552b04`/`4ec5267`(P1 — 저장소 async append · 상한 · 필터 · dedupe · `withFileLockAsync`) → `7597d0b`/`8d27fa4`(P1b) → `4741f43`/`63b94b6`(P2 — `cardWrites` 설정 · 강제 스킬 · 기동 검사) → `c019a9c`(P2b) → `6b6e4e5`/`63ecbd4`(P3 — 결과 경로 파싱 → 제안 · `notes.md` · stderr) → `f67e985`/`8999fa6`(P3b — verify 0042) → `806a09d`/`23f9f10`(P4 — CLI) → `2119c85`/`69a42f3`(P4b — verify 0045) → `f79d1cf`(P5 스모크 `smoke:memory-write`) → `67a3745`(VERSION · `BRIDGE_VERSION` · MCP 0.38.0 + dist) → P5b 문서 `4fcde28` → `d7a59e0`(P5c — `smoke:memory-write --only <agent>`(real-cli 전용) + 카드별 실 CLI 진단) → P5d ship 문서(이 절). 독립 검증 = GPT-6 Astra high(`lane.ts verify`) + 아키텍트 재실행. 전체 스위트(P4b 뒤) 3309 pass / 1 fail(알려진 `handoff-checkpoint` live checkpoint). **실 CLI 스모크 ① PASS(2026-10-18 — 오너 승인 · R56-M4 · UK-1 closed)** → shipped 2026-10-18.
 
 **Deviations · 레인 해석 (계획 대비 — 한 줄씩):**
 
@@ -58,6 +58,10 @@ PLAN §0.38.0 (R56 `approved-with-fixes` → `approved`) · 커밋(red/green 순
 | (8) | P4b | `approve`는 전이 **전에** 대상을 읽는다 — 전이 뒤 읽기 경합 · 실패 · stdout throw가 성공한 approve의 exit code를 바꾸지 못한다(verify 0045 M). | 수용 |
 | (9) | 레인 0041 | impl 레인 0041이 exit 5로 끝남 — 원인은 작업 뒤 `git status` 권한 거부 하나뿐. 아키텍트 diff 검토 + 테스트 재실행 + `lane.ts verify` 뒤 수용. | 수용 |
 | (10) | 스위트 | 동시 verify 부하 아래 전체 스위트 1회에서 원인 미확인 flaky 실패 1건 관찰 — 재실행에서는 알려진 `handoff-checkpoint` 실패뿐. 이름을 특정하지 못함. | 기록(미해결 관찰) |
+| (11) | 레인 0049(P5a — 스모크 + VERSION + dist) | impl 레인 0049가 exit 5(`denied`)로 끝남 — 거부 둘: `git log --oneline -15 --grep=0.37.0`(0.37 ship 커밋 찾기) · `bun run build:cli`(dist 재빌드 — 레인 밖에서 수행, `67a3745`). 거부는 레인 안 조회 · 빌드 명령뿐 → 아키텍트 diff 검토 뒤 수용. | 수용 |
+| (12) | 레인 0050(P5b — 문서) | impl 레인 0050이 exit 5(`denied`)로 끝남 — 거부 하나: `bun run rules:check`. 문서 diff는 아키텍트 검토 뒤 수용. | 수용 |
+| (13) | 레인 0052(P5c — `--only` + 진단) | impl 레인 0052가 exit 5(`denied`)로 끝남 — 거부 하나: `bun run smoke:memory-write`(가짜 CLI 기본 실행 — 레인 안 검증 명령). 아키텍트 diff 검토 뒤 수용(`d7a59e0`). | 수용 |
+| (14) | 실 CLI ① codex `proposed 0` | **0.38 변경 아님 — 0.31부터 있던 문제(0.39 후보).** codex `developer_instructions`(`HEADLESS_WORKER_HINT`)의 *"Work only inside the current working directory. Do not touch paths outside it."* ↔ 카드 스킬 사본은 cwd 밖(`~/.loom/cards/…/skills`). codex는 cwd만 찾았고(`rg --files --hidden -g 'SKILL.md' -g 'AGENTS.md' …` exit 1) "Blocked"로 답했다. 사본은 정상(SKILL.md 둘). claude = `--plugin-dir` 플러그인 · grok = 절대 경로를 읽음. 고치면 hint 또는 스킬 프롬프트 문면 → fingerprint 변경 → 0.38 범위 밖. 오너 판정 2026-10-18 "원인 확인 후 결정" → 기록 후 ship. | 기록(0.39 후보 · UNKNOWNS UK-8) |
 
 **검증 판정:**
 
@@ -65,7 +69,7 @@ PLAN §0.38.0 (R56 `approved-with-fixes` → `approved`) · 커밋(red/green 순
 - **verify 0045(P4) M — P4b로 고침:** (8).
 - **verify 0048 Lows — 수용(Low backlog):** **(a)** `approve`의 전이 전 읽기는 id로 대상을 찾는다 — retire → compact → **같은 id로 다시 propose**된 뒤에만 낡은 본문을 찍을 수 있는데, 그러려면 무작위 id 충돌이 필요하다. **(b)** D16' 거부 테스트는 "저장소에 지속 변경 없음"(바이트 · mtime)을 증명할 뿐 "읽기 0"을 증명하지 않는다.
 
-**스모크(P5 — `f79d1cf` · 기록 [`docs/spikes/MEMORY-WRITE-SMOKE-0380.md`](docs/spikes/MEMORY-WRITE-SMOKE-0380.md)):** `bun run smoke:memory-write` 10/10 PASS(2026-10-18 — ①~⑧ + 임시 홈 삭제 + 실 홈 무접촉). `--real-cli --owner-approved` ①은 **미실행**(오너 승인 대기).
+**스모크(P5 — `f79d1cf` · 기록 [`docs/spikes/MEMORY-WRITE-SMOKE-0380.md`](docs/spikes/MEMORY-WRITE-SMOKE-0380.md)):** `bun run smoke:memory-write` 10/10 PASS(2026-10-18 — ①~⑧ + 임시 홈 삭제 + 실 홈 무접촉). **실 CLI ①**(`--real-cli --owner-approved` · 오너 승인 · dist v0.38.0 · `codex-cli 0.163.0` · `claude 2.1.302` · `grok 1.0.54 (4e18c5517b4e) [stable]` · macOS) **3/3 PASS** — claude `proposed 1` · grok `proposed 1` · codex `proposed 0` · 세 카드 모두 `notes.md` · 실 홈 무접촉 → R56-M4 PASS. 오너 승인 codex 단독 진단(`--only codex`) 3/3 PASS · codex `proposed 0` — 원인 (14).
 
 ### §0.37.0 — 정책 정직성 (업그레이드 4단계 3부 — shipped 2026-10-17)
 
