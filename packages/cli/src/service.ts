@@ -43,12 +43,14 @@ import {
   type ServiceRunnerResult,
   type ServiceTargetPaths,
   type ServiceUnitSpec,
+  agentArgvFromRaw,
   bridgeConfigSafeName,
   bridgeLockPath,
   bridgeLogPath,
   bridgeMainPath,
   bridgeStatusPath,
   classifyRunnerResult,
+  enabledHeadlessAgents,
   getActiveProfile,
   inspectBridgeLockAt,
   isLoomServiceFile,
@@ -75,7 +77,7 @@ import {
   stateRootHome,
   topLevelToBinding,
 } from "@loom/host";
-import { parseRelayUrl } from "@loom/protocol";
+import { type AgentKind, parseRelayUrl } from "@loom/protocol";
 import { isLoopbackHost } from "@loom/relay";
 import {
   type DoctorSection,
@@ -1099,19 +1101,21 @@ export function parseInstalledUnit(
 
 /**
  * Agent binaries this profile's bridge can launch, read raw — no throw. Pane (or no / invalid
- * config) → none (agents run in herdr panes, not from the unit PATH). Headless → the agents the
- * config names in `worker.agentBin` / `worker.maxConcurrent` (agentBin path or default name);
- * a headless config naming none can launch any agent → all defaults. Agents set to
- * `worker.maxConcurrent.<agent>: 0` are disabled and never checked (0.37.0 R17 · R55-L1).
+ * config) → none (agents run in herdr panes, not from the unit PATH). Headless → the bridge's
+ * enabled set, `enabledHeadlessAgents(maxConcurrent, agentArgvFromRaw(agentArgv))` (0.37.0 P4d ·
+ * R17 · R55-L1: `maxConcurrent.<agent>: 0` or an unusable argv is never launched, never checked);
+ * per agent the `worker.agentBin` path or the default name.
  */
 function configuredAgentBins(bridgeDir: string, profile: string): string[] {
   type W = { backend?: unknown; agentBin?: unknown; maxConcurrent?: unknown };
   let worker: W | undefined;
+  let rawAgentArgv: unknown;
   try {
     const raw = JSON.parse(
       readFileSync(join(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"),
-    ) as { worker?: W };
+    ) as { worker?: W; agentArgv?: unknown };
     worker = raw?.worker;
+    rawAgentArgv = raw?.agentArgv;
   } catch {
     return [];
   }
@@ -1120,10 +1124,12 @@ function configuredAgentBins(bridgeDir: string, profile: string): string[] {
     v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
   const bin = obj(worker.agentBin);
   const conc = obj(worker.maxConcurrent);
-  // PLAN 0.37.0 R17 · R55-L1: a `worker.maxConcurrent.<agent>: 0` agent is never launched.
-  const enabled = AGENT_KINDS.filter((k) => conc[k] !== 0);
-  const named = enabled.filter((k) => k in bin || k in conc);
-  return (named.length > 0 ? named : enabled).map((k) => {
+  // Missing key = enabled, explicit 0 = disabled (parseMaxConcurrent's 0/≥1 split, without its throw).
+  const mc = Object.fromEntries(AGENT_KINDS.map((k) => [k, conc[k] === 0 ? 0 : 1])) as Record<
+    AgentKind,
+    number
+  >;
+  return enabledHeadlessAgents(mc, agentArgvFromRaw(rawAgentArgv)).map((k) => {
     const v = bin[k];
     return typeof v === "string" && v.length > 0 ? v : DEFAULT_AGENT_BINS[k]!;
   });

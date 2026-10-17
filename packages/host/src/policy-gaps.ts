@@ -68,7 +68,7 @@ export const POLICY_NOTICE_LEAD =
   "The operator's Loom policy sets these limits, and this CLI does not fully enforce them for you. Follow them yourself.";
 
 const STRICT_REFUSAL_TAIL =
-  "Disable the agent (worker.maxConcurrent.<agent>: 0 or remove agentArgv.<agent>), fix network/mcp items in policy.json (shell.deny gaps cannot be removed there), or set worker.strictEnforcement to false.";
+  "Disable the agent (worker.maxConcurrent.<agent>: 0; for codex/grok, removing agentArgv.<agent> also works), fix network/mcp items in policy.json (shell.deny gaps cannot be removed there), or set worker.strictEnforcement to false.";
 
 /** Agents whose `maxConcurrent` value is not 0, in claude → codex → grok order. */
 export function enabledAgentsOf(maxConcurrent: Readonly<Record<AgentKind, number>>): AgentKind[] {
