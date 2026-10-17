@@ -95,9 +95,11 @@ export {
   type SkillInventoryItem,
   type SkillPolicy,
 } from "./skill-materialize";
-// PLAN 0.41.0 P3: prompt records + the card-session lookup for `loom prompt show` (R8 · C1).
-export { type CardSessionRecord, cardSessionPath, listCardSessions } from "./card-session-store";
+// PLAN 0.41.0 P3: prompt records + the card-session keys for `loom prompt show` (R8 · C1); the
+// command walks the peer namespace itself, read-only (Astra 0094).
+export { type CardSessionRecord, cardKeyHash, cardPeerHash, cardSessionPath } from "./card-session-store";
 export {
+  type BoundedFileFailure,
   buildPromptRecord,
   PROMPT_RECORD_READ_MAX_BYTES,
   PROMPT_RECORD_VERSION,
@@ -107,6 +109,7 @@ export {
   type PromptTurn,
   type PromptUserChannel,
   promptRecordPath,
+  readBoundedRegularFile,
   readPromptRecord,
   serializePromptRecord,
   writePromptRecord,

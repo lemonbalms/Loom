@@ -3,33 +3,49 @@
  * [--agent claude|codex|grok] [--json] [--profile <p>]` (D6 · R8 · R9 · R10 · R11 · C1 · C2 ·
  * R60-M2 · R60-L2 · R60-L3).
  *
- * Read-only: finds the card the way the bridge does — the profile session's `peerId` namespace
- * (`listCardSessions`), filtered by cardId (and `--room` / `--agent`) — and prints the
- * `prompt-<n>.json` record. Like `memory-cli.ts` it returns an exit code (0 shown · 1 refused /
- * none / ambiguous / invalid / STALE / MISMATCH / usage) and `index.ts` only maps it. The
- * `LOOM_CARD` refusal runs before argument parsing and before anything is resolved or read (R11 —
- * a guard, not a boundary). Text mode makes C0 (except TAB · LF), DEL, C1 and bidi controls
- * visible in every printed field (R10); `--json` writes the checked file bytes verbatim (R6 already
- * escaped DEL · C1 · bidi at write time).
+ * Read-only: finds the card the way the bridge does — the profile session's `peerId` namespace,
+ * filtered by cardId (and `--room` / `--agent`) — and prints the `prompt-<n>.json` record. Like
+ * `memory-cli.ts` it returns an exit code (0 shown · 1 refused / none / ambiguous / invalid / STALE /
+ * MISMATCH / usage) and `index.ts` only maps it. The `LOOM_CARD` refusal runs before argument
+ * parsing and before anything is resolved or read (R11 — a guard, not a boundary). Text mode makes
+ * C0 (except TAB · LF), DEL, C1 and bidi controls visible in every printed field (R10); `--json`
+ * writes the checked file bytes verbatim (the reader accepts only the canonical, escaped P1 bytes).
+ *
+ * Astra 0094: strictly read-only and non-blocking — no `loadSession()` / `loomDir()` (they can
+ * migrate `.fable`), no `listCardSessions` (its reader writes `.corrupt-*` backups and prints raw
+ * paths). The namespace walk `lstat`s each card dir (a symlink is skipped) and reads every
+ * session.json through `readBoundedRegularFile`; skipped sessions are only counted.
  */
 import { createHash } from "node:crypto";
-import { dirname } from "node:path";
+import { lstatSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import {
   type CardSessionRecord,
-  cardSessionPath,
-  listCardSessions,
-  loadSession,
-  loomDir,
+  cardKeyHash,
+  cardPeerHash,
+  getActiveProfile,
   type PromptRecord,
   promptRecordPath,
+  readBoundedRegularFile,
   readPromptRecord,
-  resolveBridgeProfile,
+  sessionPathUnder,
+  stateRootHome,
 } from "@loom/host";
 
 type AgentKind = "claude" | "codex" | "grok";
 const AGENT_KINDS: readonly AgentKind[] = ["claude", "codex", "grok"];
 /** `MAX_ATTEMPTS` of the headless worker (R4) — the attempts a card can have a record for. */
 const ATTEMPTS = [1, 2] as const;
+/** Astra 0094: read bound for a card session.json and the profile session file. */
+const SESSION_READ_MAX_BYTES = 1024 * 1024;
+const CARD_KEY_RE = /^[0-9a-f]{16}$/;
+
+/** The session.json fields `prompt show` uses. */
+type CardSessionView = Pick<
+  CardSessionRecord,
+  "agent" | "roomId" | "cardId" | "attempts" | "startedAt" | "dispatchHandoffId"
+>;
+type CardMatch = { dir: string; session: CardSessionView };
 
 export type PromptCliDeps = {
   /** Injected env (R11 — `""` = not set). */
@@ -107,21 +123,30 @@ export async function runPromptCommand(
   if (!env.peerId) return fail(`profile ${profile} has no session (join a room first)`);
 
   // R8 · C1: the bridge's peer namespace only; C2: --room / --agent are match checks.
-  const matches = listCardSessions(env.loomDir, env.peerId)
-    .filter((r) => r.cardId === cardId)
-    .filter((r) => room === undefined || r.roomId === room)
-    .filter((r) => agent === undefined || r.agent === agent)
-    .sort((a, b) => cmpStr(a.roomId, b.roomId) || cmpStr(a.agent, b.agent));
-  if (matches.length === 0) {
-    return fail(
-      `no headless card session for ${visibleText(cardId)} under profile ${profile} (cards from an earlier peer id of this profile are not searched)`,
+  const scan = scanPeerCards(env.loomDir, env.peerId);
+  const matches = scan.cards
+    .filter((m) => m.session.cardId === cardId)
+    .filter((m) => room === undefined || m.session.roomId === room)
+    .filter((m) => agent === undefined || m.session.agent === agent)
+    .sort(
+      (a, b) => cmpStr(a.session.roomId, b.session.roomId) || cmpStr(a.session.agent, b.session.agent),
     );
+  if (matches.length === 0) {
+    deps.stderr(
+      `loom prompt: no headless card session for ${visibleText(cardId)} under profile ${profile} (cards from an earlier peer id of this profile are not searched)`,
+    );
+    if (scan.skipped > 0) {
+      deps.stderr(
+        `loom prompt: ${scan.skipped} card session(s) under profile ${profile} skipped (not a regular file, too large, or invalid)`,
+      );
+    }
+    return 1;
   }
   if (matches.length > 1) {
     deps.stderr(
       `loom prompt: ${visibleText(cardId)} matches ${matches.length} headless card sessions under profile ${profile}`,
     );
-    for (const r of matches) {
+    for (const { session: r } of matches) {
       deps.stderr(
         `  ${visibleText(r.roomId)} · ${r.agent} · attempts ${r.attempts} · started ${visibleText(r.startedAt)}`,
       );
@@ -129,16 +154,7 @@ export async function runPromptCommand(
     deps.stderr("pick one with --room <roomId> --agent <agent>");
     return 1;
   }
-  const session = matches[0]!;
-  const dir = dirname(
-    cardSessionPath({
-      loomDir: env.loomDir,
-      localPeerId: env.peerId,
-      roomId: session.roomId,
-      agent: session.agent,
-      cardId: session.cardId,
-    }),
-  );
+  const { dir, session } = matches[0]!;
 
   // R9: latest = session.json attempts (a write-failed latest attempt shows as missing).
   const attempt = attemptFlag === undefined ? session.attempts : Number(attemptFlag);
@@ -158,6 +174,10 @@ export async function runPromptCommand(
   }
 
   const record = read.record;
+  // Astra 0094 · R9: a record of another agent in this card dir is not this card's prompt.
+  if (record.agent !== session.agent) {
+    return fail(`invalid prompt record ${visibleText(promptRecordPath(dir, attempt))}: agent mismatch`);
+  }
   const stale = record.dispatchHandoffId !== session.dispatchHandoffId ? record.dispatchHandoffId : null;
   const shaOk = sha256Hex(record.user) === record.userSha256;
 
@@ -180,15 +200,92 @@ function sha256Hex(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
 
-/** R9 · R60-M2: other attempts whose record reads and belongs to the current dispatch. */
-function currentAttempts(dir: string, session: CardSessionRecord, except: number): number[] {
+/** R9 · R60-M2: other attempts whose record reads and belongs to the current dispatch and agent. */
+function currentAttempts(dir: string, session: CardSessionView, except: number): number[] {
   const out: number[] = [];
   for (const n of ATTEMPTS) {
     if (n === except) continue;
     const r = readPromptRecord(dir, n);
-    if (r.kind === "ok" && r.record.dispatchHandoffId === session.dispatchHandoffId) out.push(n);
+    if (
+      r.kind === "ok" &&
+      r.record.agent === session.agent &&
+      r.record.dispatchHandoffId === session.dispatchHandoffId
+    ) {
+      out.push(n);
+    }
   }
   return out;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** Bounded, non-following, non-blocking JSON object read; null on any failure. */
+function readJsonObject(path: string): Record<string, unknown> | null {
+  const read = readBoundedRegularFile(path, SESSION_READ_MAX_BYTES);
+  if (!Buffer.isBuffer(read)) return null;
+  try {
+    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(read));
+    return isPlainObject(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function nonEmpty(v: unknown): v is string {
+  return typeof v === "string" && v.length > 0;
+}
+
+/** The used fields of a card session.json, checked like the bridge's record check; null = invalid. */
+function sessionView(raw: Record<string, unknown>, cardKey: string): CardSessionView | null {
+  const { agent, roomId, cardId, attempts, startedAt, dispatchHandoffId } = raw;
+  if (typeof agent !== "string" || !(AGENT_KINDS as readonly string[]).includes(agent)) return null;
+  if (!nonEmpty(roomId) || !nonEmpty(cardId) || !nonEmpty(dispatchHandoffId) || !nonEmpty(startedAt)) {
+    return null;
+  }
+  if (!Number.isFinite(Date.parse(startedAt))) return null;
+  if (attempts !== 1 && attempts !== 2) return null;
+  if (cardKeyHash(roomId, agent, cardId) !== cardKey) return null;
+  return { agent: agent as AgentKind, roomId, cardId, attempts, startedAt, dispatchHandoffId };
+}
+
+/**
+ * Astra 0094: the profile peer namespace, read-only — a card dir must be a real directory (lstat),
+ * session.json a bounded regular file; anything else is skipped and counted, never printed.
+ */
+function scanPeerCards(loomDir: string, peerId: string): { cards: CardMatch[]; skipped: number } {
+  const root = join(loomDir, "cards", cardPeerHash(peerId));
+  const cards: CardMatch[] = [];
+  let skipped = 0;
+  let names: string[];
+  try {
+    if (!lstatSync(root).isDirectory()) return { cards, skipped };
+    names = readdirSync(root).sort();
+  } catch {
+    return { cards, skipped };
+  }
+  for (const name of names) {
+    if (!CARD_KEY_RE.test(name)) continue;
+    const dir = join(root, name);
+    try {
+      if (!lstatSync(dir).isDirectory()) {
+        skipped += 1;
+        continue;
+      }
+    } catch {
+      skipped += 1;
+      continue;
+    }
+    const raw = readJsonObject(join(dir, "session.json"));
+    const session = raw === null ? null : sessionView(raw, name);
+    if (session === null) {
+      skipped += 1;
+      continue;
+    }
+    cards.push({ dir, session });
+  }
+  return { cards, skipped };
 }
 
 /** R10: head lines → blank → system section → user section (→ codex resume positional, R3). */
@@ -222,20 +319,24 @@ function printRecord(
 }
 
 /**
- * The CLI entry's deps: `loomDir()` (stateRootHome — honours LOOM_TEST_HOME), the bridge's
- * profile resolution and that session's `peerId` (R8 — `bridge-runtime` uses `session.peerId` as
- * the local peer), process.env, console output. Resolution is lazy so the LOOM_CARD refusal reads
- * nothing (R11).
+ * The CLI entry's deps: `<stateRootHome>/.loom` (honours LOOM_TEST_HOME; like doctor's
+ * `readOnlyLoomHome` it never resolves or migrates `.fable` — Astra 0094), the bridge's profile
+ * resolution (active profile → session displayName → "default", as `resolveBridgeProfile`) and that
+ * session's `peerId` (R8 — `bridge-runtime` uses `session.peerId` as the local peer) read through the
+ * bounded non-following reader, process.env, console output. Resolution is lazy so the LOOM_CARD
+ * refusal reads nothing (R11).
  */
 export function realPromptCliDeps(): PromptCliDeps {
   return {
     env: process.env,
     resolve: () => {
-      const session = loadSession();
+      const home = join(stateRootHome(), ".loom");
+      const session = readJsonObject(sessionPathUnder(home));
+      const displayName = nonEmpty(session?.displayName) ? session.displayName : null;
       return {
-        loomDir: loomDir(),
-        profile: resolveBridgeProfile(session),
-        peerId: session?.peerId ? session.peerId : null,
+        loomDir: home,
+        profile: getActiveProfile() || displayName || "default",
+        peerId: nonEmpty(session?.peerId) ? session.peerId : null,
       };
     },
     stdout: (l) => console.log(l),

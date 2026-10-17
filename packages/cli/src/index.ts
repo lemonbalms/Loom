@@ -3315,6 +3315,15 @@ async function main() {
   // The bare-word lookahead never consults the extra booleans, so a value such as
   // `--profile all` / `--room all` parses the same either way.
   const scoped = parseArgs(process.argv, MEMORY_BOOLEAN_FLAGS);
+  // PLAN 0.41.0 R11 · Astra 0094: `prompt` under a card worker is refused before any flag is
+  // applied and before help (the pure word scan above only locates the command word).
+  if (scoped.positional[0] === "prompt") {
+    const card = process.env.LOOM_CARD;
+    if (typeof card === "string" && card.length > 0) {
+      process.exitCode = await runPromptCommand("", { positional: [] }, {}, realPromptCliDeps());
+      return;
+    }
+  }
   const { flags, positional, passthrough } = MEMORY_COMMANDS.has(scoped.positional[0] ?? "")
     ? scoped
     : parseArgs(process.argv);

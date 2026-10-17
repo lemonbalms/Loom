@@ -6,7 +6,8 @@
  * `loom prompt show` reads it. Keys are serialised in the fixed order of `PromptRecord`; DEL, C1
  * and bidi controls are escaped after `JSON.stringify` so the file bytes are terminal-safe while
  * parsing to the same value. `readPromptRecord` fails closed: a regular file only, ≤ 8 MiB, the
- * exact key set and types, and an `invalid` reason never carries file content.
+ * exact key set and types, the canonical serialised bytes, and an `invalid` reason never carries
+ * file content.
  */
 import { createHash } from "node:crypto";
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
@@ -169,7 +170,10 @@ function checkShape(value: unknown, attempt: number): PromptRecord | string {
   return value as unknown as PromptRecord;
 }
 
-function unreadable(err: unknown): PromptRecordRead {
+/** A `readBoundedRegularFile` failure — the reason never carries file content. */
+export type BoundedFileFailure = { kind: "missing" } | { kind: "invalid"; reason: string };
+
+function unreadable(err: unknown): BoundedFileFailure {
   const code = (err as NodeJS.ErrnoException)?.code;
   return { kind: "invalid", reason: `unreadable ${typeof code === "string" ? code : "unknown"}` };
 }
@@ -178,13 +182,14 @@ function unreadable(err: unknown): PromptRecordRead {
  * Astra 0088 · R60-L3: every check after the open is on the opened fd — `O_NOFOLLOW` (a swapped-in
  * symlink → ELOOP), `O_NONBLOCK` (a FIFO never blocks the open), `fstat` (regular file, size), and at
  * most cap + 1 bytes are read (a file grown past the cap is `too large`). The `lstat` pre-check keeps
- * an oversized or non-regular path from being opened at all.
+ * an oversized or non-regular path from being opened at all. Astra 0094: the cap is the caller's
+ * (`loom prompt show` also reads card session.json through it).
  */
-function readBoundedRegularFile(path: string): Buffer | PromptRecordRead {
+export function readBoundedRegularFile(path: string, maxBytes: number): Buffer | BoundedFileFailure {
   try {
     const st = lstatSync(path);
     if (!st.isFile()) return { kind: "invalid", reason: "not a regular file" };
-    if (st.size > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
+    if (st.size > maxBytes) return { kind: "invalid", reason: "too large" };
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return { kind: "missing" };
     return unreadable(err);
@@ -201,15 +206,15 @@ function readBoundedRegularFile(path: string): Buffer | PromptRecordRead {
   try {
     const st = fstatSync(fd);
     if (!st.isFile()) return { kind: "invalid", reason: "not a regular file" };
-    if (st.size > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
+    if (st.size > maxBytes) return { kind: "invalid", reason: "too large" };
     // Sized to the fstat size + 1 so EOF is seen in one buffer; a file that grew is read on into a
     // cap + 1 buffer.
     let buf = Buffer.alloc(st.size + 1);
     let total = 0;
     for (;;) {
       if (total === buf.length) {
-        if (buf.length > PROMPT_RECORD_READ_MAX_BYTES) break;
-        const grown = Buffer.alloc(PROMPT_RECORD_READ_MAX_BYTES + 1);
+        if (buf.length > maxBytes) break;
+        const grown = Buffer.alloc(maxBytes + 1);
         buf.copy(grown, 0, 0, total);
         buf = grown;
       }
@@ -217,7 +222,7 @@ function readBoundedRegularFile(path: string): Buffer | PromptRecordRead {
       if (n === 0) break;
       total += n;
     }
-    if (total > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
+    if (total > maxBytes) return { kind: "invalid", reason: "too large" };
     return buf.subarray(0, total);
   } catch (err) {
     return unreadable(err);
@@ -228,9 +233,21 @@ function readBoundedRegularFile(path: string): Buffer | PromptRecordRead {
   }
 }
 
-/** R9 · R60-L3: missing / invalid / ok — never throws, never echoes file content. */
+/** The checked record rebuilt in the fixed `PromptRecord` key order (userArgv last). */
+function canonicalRecord(r: PromptRecord): PromptRecord {
+  const out: Record<string, unknown> = {};
+  for (const key of REQUIRED_KEYS) out[key] = r[key];
+  if (r.userArgv !== undefined) out.userArgv = r.userArgv;
+  return out as unknown as PromptRecord;
+}
+
+/**
+ * R9 · R60-L3: missing / invalid / ok — never throws, never echoes file content. Astra 0094: the
+ * bytes must be exactly `serializePromptRecord` of the parsed record (`not canonical` otherwise),
+ * so every accepted file is the escaped P1 serialisation — `--json` can emit it verbatim.
+ */
 export function readPromptRecord(dir: string, attempt: number): PromptRecordRead {
-  const read = readBoundedRegularFile(promptRecordPath(dir, attempt));
+  const read = readBoundedRegularFile(promptRecordPath(dir, attempt), PROMPT_RECORD_READ_MAX_BYTES);
   if (!Buffer.isBuffer(read)) return read;
   const bytes = read;
   let text: string;
@@ -247,5 +264,9 @@ export function readPromptRecord(dir: string, attempt: number): PromptRecordRead
   }
   const shaped = checkShape(parsed, attempt);
   if (typeof shaped === "string") return { kind: "invalid", reason: shaped };
-  return { kind: "ok", record: shaped, bytes };
+  const record = canonicalRecord(shaped);
+  if (!bytes.equals(Buffer.from(serializePromptRecord(record), "utf8"))) {
+    return { kind: "invalid", reason: "not canonical" };
+  }
+  return { kind: "ok", record, bytes };
 }
