@@ -51,10 +51,10 @@ const FULL = {
   mcp: { deny: ["github__create_issue", "loom__handoff"], isolate: false },
   skills: { allow: ["tdd", "code-review"], allowScripts: ["tdd"] },
 };
-/** 0.31.0 promptFingerprint pins (copied from policy-fingerprint.test.ts PINNED). */
+/** 0.31.0 promptFingerprint pins (copied from policy-fingerprint.test.ts PINNED). promptFingerprint re-pinned 0.39.0 (hint line 2 — PLAN 0.39.0 D2); policyHash/workerPolicyHash remain 0.31.0. */
 const PINNED_FP = {
-  absent: "d2ed90a8d01095c6a055eb844caeabbabeae419ad4face221dfc89181c0cd9cb",
-  full: "4949d5c41864a21bbdde7df1decc199bd3a9b0deed656cf0639ae927134fc0ef",
+  absent: "ef589e5754bf8811bd9380a661eed8ddf2416eddd1c715c5512b8f1ac1397460",
+  full: "533cc708e56f3438d7becf7795404f0054a50450f452d3b0ea00700a167605d5",
 } as const;
 
 const H1 = "a".repeat(64);

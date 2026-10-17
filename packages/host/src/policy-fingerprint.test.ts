@@ -44,22 +44,22 @@ const FULL = {
   skills: { allow: ["tdd", "code-review"], allowScripts: ["tdd"] },
 };
 
-/** 0.31.0 values (sha256 hex). */
+/** 0.31.0 values (sha256 hex). promptFingerprint re-pinned 0.39.0 (hint line 2 — PLAN 0.39.0 D2); policyHash/workerPolicyHash remain 0.31.0. */
 const PINNED = {
   absent: {
     policyHash: "796b516226c7dff228e70a945f9c924922003fdaf79576091cc15a40fd814c67",
     workerPolicyHash: "21109f95a2954981345dca63e9492b72467671812c7db3078c2f94c3ada58c31",
-    promptFingerprint: "d2ed90a8d01095c6a055eb844caeabbabeae419ad4face221dfc89181c0cd9cb",
+    promptFingerprint: "ef589e5754bf8811bd9380a661eed8ddf2416eddd1c715c5512b8f1ac1397460",
   },
   minimal: {
     policyHash: "796b516226c7dff228e70a945f9c924922003fdaf79576091cc15a40fd814c67",
     workerPolicyHash: "21109f95a2954981345dca63e9492b72467671812c7db3078c2f94c3ada58c31",
-    promptFingerprint: "d2ed90a8d01095c6a055eb844caeabbabeae419ad4face221dfc89181c0cd9cb",
+    promptFingerprint: "ef589e5754bf8811bd9380a661eed8ddf2416eddd1c715c5512b8f1ac1397460",
   },
   full: {
     policyHash: "4f3b8c5616cefd2738d4d8cd48d8788f962e8edbed5f0f0eac0aa42efbbcad05",
     workerPolicyHash: "f4ee5c1cde58ceb5a932a84801ee7805732c51687c4905c785cf94b76c929b5b",
-    promptFingerprint: "4949d5c41864a21bbdde7df1decc199bd3a9b0deed656cf0639ae927134fc0ef",
+    promptFingerprint: "533cc708e56f3438d7becf7795404f0054a50450f452d3b0ea00700a167605d5",
   },
 } as const;
 
