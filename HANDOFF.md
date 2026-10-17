@@ -38,12 +38,11 @@
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| v0.37.0 | **approved** (R55) | 4단계 3부 · next P1 · ship needs real-CLI ① | `docs/PLAN.md` |
+| Headless lanes | **P1 done** `85e4318` · next P2 | dev-process, own commits | `HEADLESS-LANES-DESIGN.md` |
+| Known fail | `handoff-checkpoint` live Evidence · pre-existing (`9ffc100`) | not a regression | suite 3016/1 |
+| v0.37.0 | **approved** (R55) | P1–P4c committed · next P4 verify · ship needs real-CLI ① | `docs/PLAN.md` |
 | v0.36.0 | **shipped** `acd53a0` | 4단계 2부a · smoke 7/7 PASS (fake CLIs) · real CLI not run | `docs/PLAN.md` |
-| v0.35.0 | **shipped** `5fa8167` | 4단계 1부 · smoke 18/18 PASS · no worker wiring | `docs/PLAN.md` |
-| v0.34.0 | **shipped** `dbab890` | 3단계 2부 · smoke ①~⑥ PASS · live not run | `docs/PLAN.md` |
-| v0.33.0 | **shipped** `0a20173` | 3단계 1부 · smoke ①~④ PASS | `docs/PLAN.md` |
-| v0.32.0 | **shipped** `9567f87` | step 2 done | `docs/PLAN.md` |
+| v0.32–0.35 | **shipped** `9567f87`·`0a20173`·`dbab890`·`5fa8167` | steps 2–4.1 · smokes PASS · 0.34 live not run | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
 | 3.3–3.4b live | **false** | blocked | consts false · RESULT |
