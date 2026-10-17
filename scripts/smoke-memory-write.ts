@@ -504,7 +504,7 @@ const resultText = (c: InnerCardOut) =>
   `result ${c.resultStatus}/${c.resultReason} ${JSON.stringify((c.resultOutput ?? "").slice(0, 200))}`;
 /** The 0.37 card directory (memory + skills on, default-policy fence) — PLAN ⑧. */
 const baseCardFiles = (agent: Agent) =>
-  ["memory-snapshot.md", "session.json", "skills", "transcript-1.jsonl", "transcript-1.stderr"]
+  ["memory-snapshot.md", "prompt-1.json", "session.json", "skills", "transcript-1.jsonl", "transcript-1.stderr"]
     .concat(agent === "grok" ? ["prompt.txt"] : [])
     .sort();
 function cardOf(out: InnerOut, id: string): InnerCardOut {

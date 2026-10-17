@@ -413,7 +413,7 @@ describe("P3 cardWrites off = 0.37 first turn · argv · fingerprint · card dir
           expect("memoryProposed" in record).toBe(false);
           const files = readdirSync(h.cardDir()).sort();
           expect(files).not.toContain(CARD_NOTES);
-          const want = ["session.json", "transcript-1.jsonl", "transcript-1.stderr"];
+          const want = ["prompt-1.json", "session.json", "transcript-1.jsonl", "transcript-1.stderr"];
           if (skills) want.push("skills");
           if (agent === "grok") want.push("prompt.txt");
           expect(files).toEqual(want.sort());
