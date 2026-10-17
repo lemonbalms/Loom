@@ -28,7 +28,7 @@
 3. Ship gate: `smoke:policy --real-cli --owner-approved` ① only (1 card each, `Reply with the single word ok.`) must PASS — needs owner yes (UK-1 ship-blocking, R55-M2)
 4. Carry: `smoke:memory-inject --real-cli` (owner yes) · live `smoke:service --live` (owner yes) · Linux live unverified · service log rotation · codex MCP approval · 0.36 UK-1–UK-7
 
-**Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Opus-high verify + fable-advisor(Opus high) advise (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
+**Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Grok→Opus-high verify + Opus-high advisor subagent (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
 **Done when (this handoff):** P1 red→green committed and independently verified.
 

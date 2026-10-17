@@ -16,12 +16,12 @@
 | Name | Role |
 |------|------|
 | **Loom** | Product CLI / MCP (`loom`, `@loom/*`) |
-| **Fable 5 / fable-advisor** | Review judgment model / agent — **not** the product |
-| **`fable-advisor` subagent** | Claude Code advisor consult spawned via Task/Agent with **`model: opus` · `effort: high`** override (owner pin 2026-10-17 · CLAUDE.md rule 8; agent file default is Fable) |
+| **Fable 5 (role name)** | Review judgment role — **not** the product. Filled by the Opus-high advisor subagent (CLAUDE.md rule 8) |
+| **Opus-high advisor subagent** | Claude Code advisor consult: `Agent` `subagent_type: Plan` (read-only) · **`model: opus` · `effort: high`** (owner pin 2026-10-17 · CLAUDE.md rule 8). The `fable-advisor:fable-advisor` agent is **excluded** in this project |
 | **`fable-advisor` plugin** | Orchestration tooling (DannyMac180, MIT) providing the grok/codex/fable lanes — **the dev tool, not the product**. Currently **v3.1.0**. |
 | **directory `fable-advisor/`** | Local checkout path only — the product is **Loom** (remote: `lemonbalms/Loom`). Dir name is historical, pending rename. |
 
-**Lane version pins:** Grok 4.5 · GPT-5.6 Sol (codex, high reasoning) · advisor = `fable-advisor` agent on **Opus high** (read-only) · independent verify = **Opus high** (CLAUDE.md rule 8) · plugin **v3.1.0**.
+**Lane version pins:** Grok 4.5 · GPT-5.6 Sol (codex, high reasoning) · advisor = Opus-high advisor subagent (read-only) · independent verify = **Opus high** (CLAUDE.md rule 8) · plugin **v3.1.0**.
 When the `fable-advisor` plugin updates, bump these pins here so cache drift stays visible.
 
 ---
@@ -57,7 +57,7 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 | Choice | Orchestrator → implementation → verification/advice |
 |---|---|
 | **Current inherited default** | **Codex → Grok → Codex verification** |
-| Claude line | **Claude → Grok → Claude Advisor** (`fable-advisor`) |
+| Claude line | **Claude → Grok → Claude Advisor** (Opus-high advisor subagent) |
 | Grok line | **Grok → Grok → Claude + Codex verification**; 둘 다 불가하면 **Grok verification fallback** |
 | Other CLI | 설치·인증된 CLI를 선택할 수 있으나, 시작 전에 세 역할과 fallback을 명시 |
 
@@ -313,7 +313,7 @@ no-op(`reason=same_tab`)이므로 재배치는 임시 탭 경유(`--new-tab` →
 
 ---
 
-## 2. Claude Code — **must** consult the `fable-advisor` subagent for reviews
+## 2. Claude Code — **must** consult the Opus-high advisor subagent for reviews
 
 When Claude (profile `claude-rev` or any Claude session) receives a Loom **review request**
 (`[R-REQUEST]`, “Fable 리뷰”, “R{n}”, plan pending-review handoff):
@@ -321,7 +321,7 @@ When Claude (profile `claude-rev` or any Claude session) receives a Loom **revie
 ### Mandatory sequence
 
 1. **Do not implement.** Read-only except `docs/plan_review.md` (and Open/header sync).
-2. Spawn the **`fable-advisor`** subagent (`model: opus` · `effort: high` override — CLAUDE.md rule 8; read-only).
+2. Spawn the **Opus-high advisor subagent** (`Agent` · `subagent_type: Plan` · `model: opus` · `effort: high` — CLAUDE.md rule 8; read-only). Never `fable-advisor:fable-advisor`.
 3. Pass the advisor:
    - decision = approve vs pending-revision for **PLAN vX.Y.Z**
    - constraints = WORKFLOW §5, security boundaries, stated non-goals
@@ -332,7 +332,7 @@ When Claude (profile `claude-rev` or any Claude session) receives a Loom **revie
 ### Forbidden for Claude-on-review
 
 - Writing product code / “quick fixes” in packages/
-- Rubber-stamp `approved` without a `fable-advisor` consult
+- Rubber-stamp `approved` without an advisor-subagent consult
 - Confusing **Loom MCP tools** with plan approval
 
 ### Claude session system note (paste into first message or CLAUDE.md)
@@ -340,13 +340,13 @@ When Claude (profile `claude-rev` or any Claude session) receives a Loom **revie
 ```text
 You are claude-review on the Loom dogfood room. When you get [R-REQUEST] or
 "Fable 리뷰" / R{n}:
-1) Spawn the fable-advisor subagent (Task/Agent tool) BEFORE writing plan_review.
+1) Spawn the Opus-high advisor subagent (Agent tool, Plan, model opus, effort high) BEFORE writing plan_review.
 2) Write docs/plan_review.md Review R{n} from the advisor verdict + your code read.
 3) Handoff [R-RESULT] to the requesting implementer. Never implement.
 ```
 
 Plugin: `fable-advisor` installed (`claude plugin install fable-advisor`).  
-Agent file: `agents/fable-advisor.md` (`model: fable` default — overridden to `opus` · `effort: high` in this project).
+The plugin's `fable-advisor` agent is not used for advice in this project (CLAUDE.md rule 8).
 
 ---
 
@@ -402,7 +402,7 @@ Never write docs/plan_review.md R{n} verdicts — that's claude-rev's job.
 - Focus: security, races, fail-open, auth, data loss.
 - May add High/Med findings; does **not** alone close R{n} without Claude primary body
   (unless Owner says otherwise).
-- No `fable-advisor` consult (Claude-only capability). Codex uses its own adversarial pass.
+- No advisor-subagent consult (Claude-only capability). Codex uses its own adversarial pass.
 - Do not implement product code or claim implementer work from this profile.
 
 ### 3.2 Implementer (`codex-impl`)
@@ -437,13 +437,13 @@ author your own docs/plan_review.md R{n} verdict.
 All implementer profiles use the same templates below. Route results back to
 the requesting peer (`@grok-impl`, `@claude-impl`, or `@codex-impl`).
 
-### 4.1 Review request → Claude (requires fable-advisor consult)
+### 4.1 Review request → Claude (requires advisor-subagent consult)
 
 ```text
 [R-REQUEST] PLAN vX.Y.Z pending-review
 Scope: <one sentence>
 Read: docs/PLAN.md, docs/plan_review.md, <paths>
-YOU MUST: spawn the fable-advisor subagent first, then write
+YOU MUST: spawn the Opus-high advisor subagent first, then write
 docs/plan_review.md Review R{n} (WORKFLOW §5.2).
 Verdict: approved | pending-revision | on-hold
 Do not implement. Reply with [R-RESULT] handoff.
@@ -456,7 +456,7 @@ bun run loom --profile grok-impl handoff @claude-review "$(cat <<'EOF'
 [R-REQUEST] PLAN v0.14.0 pending-review
 Scope: durable inbox P2
 Read: docs/PLAN.md, packages/relay/**
-YOU MUST: fable-advisor subagent first, then plan_review.md R15.
+YOU MUST: Opus-high advisor subagent first, then plan_review.md R15.
 Do not implement.
 EOF
 )"
@@ -478,7 +478,7 @@ Report High/Med only with file:line. Do not implement.
 Blocking: M-xx …
 Non-blocking: L-xx …
 Next: fix M-xx only; re-request R15b
-Advisor: fable-advisor consulted (yes/no)
+Advisor: opus-advisor consulted (yes/no)
 ```
 
 ### 4.4 Verify
@@ -495,7 +495,7 @@ Advisor: fable-advisor consulted (yes/no)
 |------|-----|
 | PLAN/spec + route + independent verify | Codex (`codex-arch`) — never claims locked-spec implementation |
 | Implement locked spec | Grok (`grok-impl`) by default; Claude (`claude-impl`) or Codex (`codex-impl`) fallback — claim first, §1.1 |
-| R{n} primary + `fable-advisor` consult | Claude Code (`claude-rev`) |
+| R{n} primary + advisor-subagent consult | Claude Code (`claude-rev`) |
 | R{n} security second pass | Codex (`codex-rev`) |
 | Owner go/no-go | Human |
 

@@ -47,7 +47,7 @@
 | 이름 | 역할 | 비고 |
 |------|------|------|
 | **Loom** | **제품** (CLI `loom`, 패키지 `@loom/*`) | 구 이름 Fable — dual-compat만 예외 |
-| **fable-advisor / Fable 5** | **리뷰·조언 에이전트** (제품 아님) | 제품 CLI와 혼동 금지 |
+| **Fable 5 (역할명)** | **리뷰·조언 역할** — Opus high 자문 서브에이전트가 수행 (제품 아님) | 제품 CLI와 혼동 금지 |
 | **Plan author / implementer** | PLAN 작성·코드 구현·PATCH 반영 | |
 | **Reviewer** | `plan_review.md`에 R{n} 작성 | 코드 실증 권장 |
 | **Owner** | 우선순위·승인 최종 판단 | 사용자 |
@@ -226,13 +226,13 @@ CLI `VERSION` 문자열과 PLAN Version을 **같은 숫자**로 맞춘다 (`pack
 | 이름 | 역할 | PLAN에 남기는 것 |
 |------|------|------------------|
 | **Owner** (사용자) | 제품 우선순위·최종 go/no-go | 선택적으로 Approval block “Owner” 행 |
-| **Fable 5 / fable-advisor** | **계획·보안·코드 대조 리뷰 에이전트** (제품 Loom 아님) | `plan_review.md` **R{n}** 결론 (`approved` / `pending-revision` / `on-hold`) |
+| **Fable 5 (역할명)** | **계획·보안·코드 대조 리뷰 역할** (제품 Loom 아님) | `plan_review.md` **R{n}** 결론 (`approved` / `pending-revision` / `on-hold`) |
 | **Plan author / implementer** | PLAN 작성·코드 구현·문서 동기화 | Changelog; Low만 **author-close** 가능 (출처 명시) |
 
 **“Fable 승인”** = Fable 5가 `docs/plan_review.md`에 **R{n}** 을 쓰고 결론을 **`approved`** 로 남기는 것.  
 Git 커밋 author 이름이나 bare `PLAN Status=approved` 만으로 “Fable 승인”이 된 것이 **아니다**.
 
-> **모델 고정 (오너 지시 2026-10-17):** 이 프로젝트에서 Fable 5 역할은 `fable-advisor` 에이전트를 **Opus high**(`model: opus` · `effort: high`)로 오버라이드해 수행한다(CLAUDE.md 규칙 8). 역할명 “Fable 리뷰/승인”은 유지.
+> **모델 고정 (오너 지시 2026-10-17):** 이 프로젝트에서 Fable 5 역할은 일반 자문 서브에이전트(`Plan` · `model: opus` · `effort: high`)가 수행하며 `fable-advisor` 에이전트는 배제한다(CLAUDE.md 규칙 8). 역할명 “Fable 리뷰/승인”은 유지.
 
 ### 5.1 언제 **Fable 5 리뷰(R{n})가 필요한가**
 
@@ -386,7 +386,7 @@ blocking 없을 때 기본 순서:
 | 사용자 말 | 에이전트 행동 |
 |-----------|----------------|
 | **진행해 / 단계적으로 진행해** | §3 웨이브 규칙대로 다음 단계 실행 (승인 대기 없음) |
-| **리뷰해 / plan_review 피드백 / Fable 리뷰 / R{n}** | Fable 5(또는 동등) 게이트: PLAN+코드 대조 → `plan_review.md` R{n}; **필수 상황 §5.1**. Claude Code dogfood: **`fable-advisor` 서브에이전트 필수** → [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md) |
+| **리뷰해 / plan_review 피드백 / Fable 리뷰 / R{n}** | Fable 5(또는 동등) 게이트: PLAN+코드 대조 → `plan_review.md` R{n}; **필수 상황 §5.1**. Claude Code dogfood: **Opus high 자문 서브에이전트 필수** → [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md) |
 | **승인 / approve** (Owner) | Owner 최종 go — PLAN Approval block에 Owner 행 (선택·권장 when MINOR) |
 | **미지 / blindspot / 블라인드** | 코드베이스 스캔 → 4분면 표 + 관련 unknown unknowns (§3.5, `docs/UNKNOWNS.md`) |
 | **인터뷰해** | 아키텍처를 바꿀 질문을 **한 번에 1개** (우선순위: 분기 큰 것) |

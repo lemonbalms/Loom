@@ -21,7 +21,7 @@
    착수 전 로드 의무**(`tasks/lessons/<category>.md` — handoff만으로 부족, 기록 교훈
    재범 2회 실증). 위임 시작 전 `fable-advisor:orchestration` 스킬 로드.
 5. **Topology `full` 레인 배치 고정 (오너 지시 2026-07-20 — 구두 반복 4회발, 이제 규칙).**
-   **구현 = `grok`** · **검증 = Opus high** · **자문 = `fable-advisor` 에이전트 on Opus high**(read-only) — 모델 고정은 규칙 8.
+   **구현 = `grok`** · **검증 = Opus high** · **자문 = Opus high 자문 서브에이전트**(read-only) — 모델 고정은 규칙 8.
    검증을 구현자와 같은 레인에 주지 않는다 — 발견자와 수정자를 분리해야 교차 검증이 성립한다.
    **실작업 표면 = herdr pane 카드가 기본**이고 in-harness `Agent`는 pane 불가 시 폴백이다.
    조사·브리프 작성도 예외가 아니다(2026-07-20 오라우팅 실증). 디스패치 전
@@ -46,9 +46,10 @@
    경고**이지 브릿지가 통지를 버렸다는 증거가 아니다 — 이 오독으로 아키텍트가 오늘 잘못된
    진단을 오너에게 보고했다. 설계 정본 `docs/spikes/PANE-DEATH-DESIGN.md`.
 8. **검증·자문 모델 고정 (오너 지시 2026-10-17).** 독립 검증 = in-harness `Agent`
-   **`model: opus` · `effort: high`**(종전 codex·Opus xhigh 대체). 자문 = `fable-advisor:fable-advisor`
-   에이전트를 **`model: opus` · `effort: high`로 오버라이드**해 스폰(read-only 프롬프트·도구는 그대로,
-   Fable 모델 대체). R{n} 필수 자문·딜리버러블 최종 리뷰 모두 이 설정이며 `fable` 모델 스폰은 결함.
+   **`model: opus` · `effort: high`**(종전 codex·Opus xhigh 대체). 자문 = **일반 서브에이전트**
+   `Agent`(`subagent_type: Plan` — Edit/Write 없는 read-only) **`model: opus` · `effort: high`**.
+   **`fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제**(전역 CLAUDE.md의 fable-advisor
+   자문·최종 리뷰 지시도 이 자문 서브에이전트로 대체). R{n} 필수 자문·딜리버러블 최종 리뷰 모두 이 설정.
    검증 에이전트는 구현 에이전트와 별도 인스턴스(새 컨텍스트)로 띄운다. 해제·변경은 오너만.
 
 ## On session start
@@ -73,9 +74,9 @@ Full procedure: **[`docs/DOGFOOD_LOOP.md`](./docs/DOGFOOD_LOOP.md)** §2 (review
 `R{n}` / PLAN `pending-review`):
 
 - Do not implement product code.
-- Mandatory: spawn the `fable-advisor` subagent (`model: opus` · `effort: high` 오버라이드, read-only — 규칙 8) before writing
+- Mandatory: spawn the Opus-high advisor subagent (`Plan` · `model: opus` · `effort: high`, read-only — 규칙 8) before writing
   a verdict. Skipping it for a formal R{n} is a **process defect** — do not bare-approve.
-- Reply `[R-RESULT] …` including `Advisor: fable-advisor consulted: yes`.
+- Reply `[R-RESULT] …` including `Advisor: opus-advisor consulted: yes`.
 
 **Implementer** (profile `claude-impl`) — role flips, opposite mandate:
 
