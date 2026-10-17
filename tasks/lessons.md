@@ -89,6 +89,7 @@
 - [orchestration] 2026-07-26 (53) 오너 지적: **하네스 웨이브라도 제품 구동 스모크를 붙여라** — "제품 코드 미변경"은 스위트 실패를 환경성으로 넘길 근거가 아니다. `doctor` + durable/desktop/uc 스모크가 상시 실패 1건을 드러냈다.
 - [orchestration] 2026-07-26 (54) `single`에서 **검증 피어 스폰 금지**(§0.5.1) — 레인 분리는 세션 승계로 성립(REVIEW 헤더 "저자 = 직전 세션"). 자문(fable)은 line 안이라 무관. 안 띄운 레인의 부재는 블로커가 아니다.
 - [orchestration] 2026-10-17 오너 모델 고정: **구현 = Opus 5.5 medium · 검증 = GPT-6 Astra high(codex) · 자문 = `loom-advisor` Opus 5.5 high**, `fable-advisor` 에이전트 배제(CLAUDE.md 규칙 8).
+- [orchestration] 2026-10-17 규칙 문서(CLAUDE.md·AGENTS.md·traps·SESSION-START) 수정 후 **`bun run rules:check` 필수** — 규칙 2(`orch.model-explicit`)는 PREREG 3.0 봉인 fixture라 본문 수정 금지(덮어쓰기는 다른 규칙에서 "대체"로).
 
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 

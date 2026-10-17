@@ -11,17 +11,17 @@ policy_version: "2026-07-26.p1"
 
 sources:
   - file: "AGENTS.md"
-    sha8: "e72e4681"
+    sha8: "e960e02d"
     triage:
-      for_sha8: "e72e4681"
-      note: "Phase 1 최초 등록 — 신규 유닛 13건 등록"
-      at: "2026-07-26"
+      for_sha8: "e960e02d"
+      note: "신규 유닛 없음 — 2026-10-17 오너 레인 모델 고정(CLAUDE.md 규칙 8) 반영: Review agent·Claude R{n}·Impl delegation 행 문구 갱신; 기존 유닛 agents.impl-delegation·agents.claude-rn 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 13건)"
+      at: "2026-10-17"
   - file: "CLAUDE.md"
-    sha8: "7079ac9d"
+    sha8: "4b28db3b"
     triage:
-      for_sha8: "7079ac9d"
-      note: "Phase 1 최초 등록 — 신규 유닛 7건 등록"
-      at: "2026-07-26"
+      for_sha8: "4b28db3b"
+      note: "신규 유닛 없음(보류) — 2026-10-17 규칙 8(구현·검증·자문 모델 고정) 신설, 규칙 5 문구 갱신; 규칙 2(orch.model-explicit, PREREG 3.0 봉인 fixture)는 원문 유지 — 대체 내용은 규칙 8에. 규칙 8은 훅(check-agent-model.ts)이 강제하므로 라우팅 유닛 등록은 Phase 3 soft close 동안 보류 — 등록은 별도 판단. 기존 유닛 orch.lane-placement 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 7건)"
+      at: "2026-10-17"
   - file: "docs/SESSION-START.md"
     sha8: "5ef7c5f4"
     triage:
@@ -72,13 +72,13 @@ units:
     pin: false
     cost_chars: 187
   - id: "orch.lane-placement"
-    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|Topology full 레인 배치 고정", sha8: "ad17bdbd" }
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|Topology full 레인 배치 고정", sha8: "3b117299" }
     grade: "G"   # B2/B3 — claim·pane 선행조건은 코드화 가능, 예외는 판단
     layer: ["L1", "L2"]
     surface: ["dispatch", "delegation"]
     triggers: ["디스패치", "dispatch", "grok", "codex", "pane", "claim", "레인"]
     pin: false
-    cost_chars: 734
+    cost_chars: 786
   - id: "orch.watch-card"
     source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|워커 감시는", sha8: "b55b3df6" }
     grade: "A"   # C2 — 관측기는 후보 신호까지만, 사후 탐지
@@ -131,13 +131,13 @@ units:
     pin_source: "grade-J"
     cost_chars: 162
   - id: "agents.impl-delegation"
-    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Impl delegation", sha8: "b40cec78" }
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Impl delegation", sha8: "1f4f8e7b" }
     grade: "G"   # 라우팅 SSOT는 부분 중개
     layer: ["L1"]
     surface: ["delegation", "dispatch"]
     triggers: ["위임", "topology", "single", "full", "구현", "레인"]
     pin: false
-    cost_chars: 439
+    cost_chars: 490
   - id: "agents.plan-ssot"
     source: { file: "AGENTS.md", anchor: "row:## Standing rules|Plan SSOT", sha8: "b26caa62" }
     grade: "J"   # 정본 인식은 사람 판단
@@ -175,14 +175,14 @@ units:
     pin_source: "grade-J"
     cost_chars: 108
   - id: "agents.claude-rn"
-    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Claude R{n}", sha8: "aca66b5c" }
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Claude R{n}", sha8: "d216a7d3" }
     grade: "J"   # 자문 수행 여부는 receipt 없음 (B1 계열)
     layer: ["L5"]
     surface: ["review"]
     triggers: ["R{n}", "리뷰", "fable-advisor", "자문", "verdict"]
     pin: true
     pin_source: "grade-J"
-    cost_chars: 87
+    cost_chars: 121
   - id: "agents.author-close"
     source: { file: "AGENTS.md", anchor: "row:## Standing rules|Author-close", sha8: "0189e023" }
     grade: "J"   # 등급 판단

@@ -324,3 +324,12 @@ Agent 도구 `model`은 별칭만 받으므로 `opus` 전달 후 해상 모델�
 이유(공식 문서): `Plan`·`Explore`는 CLAUDE.md 없이 시작하고, Agent 도구 `model`은 별칭만 받아 버전을 못 묶는다.
 정의 frontmatter(`model: claude-opus-5-5`, `effort: high`, `tools: Read, Grep, Glob`)로 고정하고 훅으로 강제한다.
 
+## 2026-10-17 — 규칙 문서 수정이 봉인 fixture와 레지스트리를 깼다
+
+경위: 레인 모델 고정 작업에서 CLAUDE.md 규칙 2·5와 AGENTS.md 행들을 고쳤다. `handoff:check`만 돌리고 커밋했는데,
+전체 스위트에서 `rules:check`(파일·유닛 다이제스트 + triage receipt)와 `rule-router-jit` canary가 실패했다.
+규칙 2 본문은 Phase 3.0 PREREG 봉인 fixture(`CANARY_BODY_SHA8 = de04b1fa`)였고 HANDOFF 불변식은 "sealed 3.0–3.4b immutable".
+조치: 규칙 2 원문 복원 + 대체 내용은 규칙 8에 "규칙 2를 대체"로 명시, `rules/registry.yaml` 다이제스트·triage receipt 갱신.
+교훈: 규칙 문서를 고친 웨이브는 `handoff:check`에 더해 `bun run rules:check`와 rule-router 테스트를 돌린다.
+봉인된 유닛 본문은 고치지 않고, 바뀐 규칙은 새 위치에서 "대체"로 선언한다. 전체 스위트는 커밋 전에 돌린다(이번엔 커밋 뒤에 발견).
+
