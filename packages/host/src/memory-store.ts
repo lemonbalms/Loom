@@ -30,6 +30,7 @@ import { sanitizePeerName, sanitizePeerText } from "@loom/protocol";
 import type { AgentKind } from "./agent-argv";
 import { withFileLock, withFileLockAsync } from "./atomic-json";
 import { redactSecrets } from "./redact";
+import { foldMarkerText, markerSkeleton } from "./marker-fold";
 import { containsMarker } from "./skill-prompt";
 
 // ---------------------------------------------------------------------------------------------
@@ -1003,10 +1004,13 @@ const CARD_LOCK_BUDGET_MS = 250;
 /** R11 · R56-M2: only the archive tail is scanned — same value as SNAPSHOT_ENTRIES_READ_MAX_BYTES. */
 const ARCHIVE_SCAN_TAIL_BYTES = 4 * 1024 * 1024;
 const HEX16_RE = /^[0-9a-f]{16}$/;
-/** R8: a fence BEGIN/END line lookalike (`memory-inject.ts` fence shape), matched after NFKC. */
-const FENCE_LOOKALIKE_RE = /={3,}\s*(BEGIN|END)\s+LOOM\b/i;
-/** R8 · R56-L1: candidate / report block markers — case-sensitive like the parser's marker lines. */
-const LOOM_BLOCK_MARKER_RE = /LOOM-(MEMORY|REPORT)-/;
+/**
+ * R8 · R4: a maximal run of 3+ `=`-like characters on markerSkeleton text (NFKD already turns
+ * U+FF1D · U+FE66 · U+207C · U+208C into `=`; U+2550 · U+1400 · U+A4FF · U+30A0 listed).
+ */
+const FENCE_RUN_RE = /[=═᐀꓿゠]{3,}/gu;
+/** R8 · R5 · R59-L2: candidate / report block markers on markerSkeleton text — case-sensitive (R56-L1). */
+const LOOM_BLOCK_MARKER_RE = /LOOM\W?(?:MEMORY|REPORT)/u;
 
 export type CardMemorySource = {
   kind: "card";
@@ -1073,13 +1077,19 @@ export function cardMemorySource(x: {
   };
 }
 
-/** R8: Loom task marker · fence BEGIN/END lookalike · candidate/report block marker. */
+/**
+ * R8: Loom task marker · fence BEGIN/END lookalike (R4 — after a `=`-like run, the rest folds to
+ * "beginloom…" / "endloom…") · candidate/report block marker (R5). Both lookalike checks read
+ * markerSkeleton(body) with \p{Cf} removed.
+ */
 function looksLikeLoomMarker(body: string): boolean {
-  return (
-    containsMarker(body) ||
-    FENCE_LOOKALIKE_RE.test(body.normalize("NFKC")) ||
-    LOOM_BLOCK_MARKER_RE.test(body)
-  );
+  if (containsMarker(body)) return true;
+  const s = markerSkeleton(body).replace(/\p{Cf}/gu, "");
+  for (const m of s.matchAll(FENCE_RUN_RE)) {
+    const rest = foldMarkerText(s.slice(m.index + m[0].length));
+    if (rest.startsWith("beginloom") || rest.startsWith("endloom")) return true;
+  }
+  return LOOM_BLOCK_MARKER_RE.test(s);
 }
 
 function isCardKey(source: MemorySource, key: CardMemorySource): boolean {
