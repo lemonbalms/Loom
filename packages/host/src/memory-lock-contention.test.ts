@@ -2,7 +2,7 @@
  * PLAN 0.38.0 P1 — D12 required: the human CLI (sync `withFileLock`, 4 s wait) and the bridge
  * (`appendMemoryEntriesAsync` → `withFileLockAsync`, ≤250 ms) exclude each other on the SAME mkdir
  * lock dir (C3 · R10). Done-when (b): CLI-side holder → async `busy` inside the budget, event loop
- * not blocked · async holder → the real CLI waits and then succeeds (or `busy` exit 1) · both sides
+ * not blocked · async holder past the CLI's 4 s wait → the real CLI refuses `busy` (exit 1) · both sides
  * hammering at once → no duplicate seq · no torn line · a consistent fold.
  * Children run the real CLI entry (`packages/cli/src/index.ts`) or the sync lock primitive it uses,
  * with HOME = LOOM_TEST_HOME = temp T and LOOM_PROFILE=smoke (R22) — never the real home.
@@ -158,14 +158,17 @@ withFileLock(${JSON.stringify(p.entries)}, () => { process.stdout.write("held\\n
   );
 
   test(
-    "the bridge holding the lock → the real CLI propose waits, writes nothing meanwhile, then succeeds (or busy exit 1)",
+    "the bridge holding the lock past the CLI's 4 s wait → the real CLI refuses busy (exit 1), file unchanged",
     async () => {
       const p = memoryPaths(loomDir, AGENT);
       let child: ReturnType<typeof cliPropose> | null = null;
       let duringHold: Obj[] = [];
+      // Hold longer than LOCK_WAIT_MS (4000) plus the child's startup. Exceeding LOCK_STALE_MS (5000)
+      // is harmless: stale reclaim never removes a lock whose owner pid (this process) is alive.
+      // Incompatible locks → the CLI writes during the hold and exits 0 → this test fails.
       const r = await withLockAsync(p.entries, 250, () => {
         child = cliPropose("written by the human cli");
-        lock.sleepMs(2000); // hold the lock (fn is synchronous — R10)
+        lock.sleepMs(9000); // hold the lock (fn is synchronous — R10)
         duringHold = lines();
         return true;
       });
@@ -173,16 +176,10 @@ withFileLock(${JSON.stringify(p.entries)}, () => { process.stdout.write("held\\n
       expect(duringHold).toEqual([]);
       const c = child as unknown as ReturnType<typeof cliPropose>;
       const code = await c.exited;
-      const out = await new Response(c.stdout).text();
       const err = await new Response(c.stderr).text();
-      if (code === 0) {
-        expect(out).toMatch(/^proposed mem_[0-9a-f]{16} \(seq 1\)/);
-        expect(lines().length).toBe(1);
-      } else {
-        expect(code).toBe(1);
-        expect(err).toContain("store busy");
-        expect(lines()).toEqual([]);
-      }
+      expect(code).toBe(1);
+      expect(err).toContain("store busy");
+      expect(lines()).toEqual([]);
     },
     { timeout: 30_000 },
   );

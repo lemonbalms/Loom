@@ -484,6 +484,32 @@ describe("caps (D9 · R12)", () => {
     expect(r).toEqual({ proposed: 0, ids: [], dropped: drops({ cap: 2, invalid: 1 }) });
     expect(readFileSync(p.entries, "utf8")).toBe(big);
   });
+
+  test("entries.jsonl of 256 MiB (sparse) → cap from the size alone: never opened or read, fast (D12 · R21 · R56-L4)", async () => {
+    const p = paths();
+    mkdirSync(p.dir, { recursive: true });
+    writeFileSync(p.entries, "");
+    fs.truncateSync(p.entries, 256 * 1024 * 1024);
+    const opens = spyOn(fs, "openSync");
+    const reads = spyOn(fs, "readFileSync");
+    let r: Result;
+    let elapsed: number;
+    try {
+      const t0 = Date.now();
+      r = await propose(facts("a", "b"));
+      elapsed = Date.now() - t0;
+      expect(opens.mock.calls.filter((c) => c[0] === p.entries)).toEqual([]);
+      // the lock's owner.pid read is fine; an fd (number) or the entries path is the store read
+      expect(reads.mock.calls.filter((c) => typeof c[0] === "number" || c[0] === p.entries)).toEqual([]);
+    } finally {
+      opens.mockRestore();
+      reads.mockRestore();
+    }
+    expect(r).toEqual({ proposed: 0, ids: [], dropped: drops({ cap: 2 }) });
+    expect(elapsed).toBeLessThan(250);
+    expect(statSync(p.entries).size).toBe(256 * 1024 * 1024);
+    expect(existsSync(p.lock)).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -546,6 +572,22 @@ describe("dedupe key (card, handoff, attempt) — main store and archive tail (D
     writeFileSync(p.archive, `${"w".repeat(ARCHIVE_TAIL + 777)}\n${near}\n`);
     const r = await propose(facts("x"), { source: cardSource({ handoff: H2 }) });
     expect(r.skipped).toBe("dup");
+  });
+
+  test("a leading fragment whose suffix is itself a valid key line is discarded → proposed", async () => {
+    const p = paths();
+    mkdirSync(p.dir, { recursive: true });
+    const keyLine = JSON.stringify(entry(2, { appliesTo: APPLIES, source: cardSource({ handoff: H2 }), status: "retired" }));
+    expect(Buffer.byteLength(keyLine, "utf8")).toBe(keyLine.length);
+    // "w"×777 + keyLine is ONE line (unparseable); the scan starts exactly at keyLine's first byte
+    // (size − 4 MiB − 1), so only the fragment-discard keeps it from reading as the key → dup.
+    const filler = `${"q".repeat(ARCHIVE_TAIL - keyLine.length - 1)}\n`;
+    const text = `${"w".repeat(777)}${keyLine}\n${filler}`;
+    writeFileSync(p.archive, text);
+    expect(text.length - ARCHIVE_TAIL - 1).toBe(777);
+    expect(JSON.parse(text.slice(777).split("\n")[0]!)).toEqual(JSON.parse(keyLine));
+    const r = await propose(facts("x"), { source: cardSource({ handoff: H2 }) });
+    expect(r).toEqual({ proposed: 1, ids: [ID(0xc001)], dropped: NO_DROPS });
   });
 });
 
