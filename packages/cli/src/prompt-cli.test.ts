@@ -665,7 +665,7 @@ describe("Astra 0094 #1 — strictly read-only (no .corrupt-* backup, no .fable 
         writeFileSync(promptRecordPath(dir, 1), serializePromptRecord(rec("claude", 1)));
         const before = snapshotHome(T);
         const r = spawnPrompt(T, ["prompt", "show", CARD]);
-        expect(r.status).toBe(1);
+        expect(r.status).toBe(0); // Astra 0097 M2: the blocked-migration .fable root is read in place
         expect(snapshotHome(T)).toEqual(before);
         expect(readdirSync(T).filter((n) => n !== "Library")).toEqual([".fable"]);
       } finally {
@@ -688,6 +688,89 @@ describe("Astra 0094 #1 — strictly read-only (no .corrupt-* backup, no .fable 
         expect(r.status).toBe(1);
         expect(r.stderr).toBe("loom prompt: profile default has no session (join a room first)\n");
         expect(snapshotHome(T)).toEqual(before);
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+});
+
+describe("Astra 0097 M2 — the state root mirrors the bridge (.loom → .fable → .loom), read-only", () => {
+  /** A profile session + card session + attempt-1 record (user text `user`) under `root`. */
+  function seedRoot(root: string, user: string): string {
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      join(root, "session.json"),
+      JSON.stringify({ peerId: PEER, displayName: "Kim", relayUrl: "ws://127.0.0.1:7842" }),
+    );
+    const dir = seedSession({ loomDir: root });
+    writeFileSync(promptRecordPath(dir, 1), serializePromptRecord(rec("claude", 1, { user })));
+    return dir;
+  }
+
+  test(
+    "only ~/.fable (migration blocked or not yet run): the card is shown from .fable; names · bytes · mtimes unchanged, no .loom",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-m2-fable-"));
+      try {
+        const dir = seedRoot(join(T, ".fable"), "legacy user text\n");
+        const before = snapshotHome(T);
+        const recordBytes = readFileSync(promptRecordPath(dir, 1));
+        const sessionBytes = readFileSync(join(dir, "session.json"));
+        const r = spawnPrompt(T, ["prompt", "show", CARD]);
+        expect(r.stderr).toBe("");
+        expect(r.status).toBe(0);
+        expect(r.stdout).toBe(`${textOf(rec("claude", 1, { user: "legacy user text\n" })).join("\n")}\n`);
+        const j = spawnSync(process.execPath, [CLI, "prompt", "show", "--json", CARD], {
+          env: childEnv(T),
+          timeout: 20_000,
+        });
+        expect(j.status).toBe(0);
+        expect(Buffer.from(j.stdout).equals(recordBytes)).toBe(true);
+        expect(snapshotHome(T)).toEqual(before);
+        expect(readFileSync(promptRecordPath(dir, 1)).equals(recordBytes)).toBe(true);
+        expect(readFileSync(join(dir, "session.json")).equals(sessionBytes)).toBe(true);
+        expect(readdirSync(T).filter((n) => n !== "Library")).toEqual([".fable"]);
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  test(
+    "both ~/.loom and ~/.fable: .loom wins; neither tree changes",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-m2-both-"));
+      try {
+        seedRoot(join(T, ".loom"), "loom user text\n");
+        seedRoot(join(T, ".fable"), "legacy user text\n");
+        const before = snapshotHome(T);
+        const r = spawnPrompt(T, ["prompt", "show", CARD]);
+        expect(r.stderr).toBe("");
+        expect(r.status).toBe(0);
+        expect(r.stdout).toBe(`${textOf(rec("claude", 1, { user: "loom user text\n" })).join("\n")}\n`);
+        expect(snapshotHome(T)).toEqual(before);
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  test(
+    "neither ~/.loom nor ~/.fable: the existing no-session path, and nothing is created",
+    () => {
+      const T = mkdtempSync(join(tmpdir(), "loom-promptcli-m2-none-"));
+      try {
+        const before = snapshotHome(T);
+        const r = spawnPrompt(T, ["prompt", "show", CARD]);
+        expect(r.status).toBe(1);
+        expect(r.stdout).toBe("");
+        expect(r.stderr).toBe("loom prompt: profile default has no session (join a room first)\n");
+        expect(snapshotHome(T)).toEqual(before);
+        expect(readdirSync(T).filter((n) => n !== "Library")).toEqual([]);
       } finally {
         rmSync(T, { recursive: true, force: true });
       }
