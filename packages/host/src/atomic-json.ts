@@ -207,3 +207,39 @@ export function withFileLock<T>(filePath: string, fn: () => T): T {
     releaseLock(lockDir);
   }
 }
+
+/** PLAN 0.38.0 D12 · R10: the async path never waits longer than this. */
+const LOCK_ASYNC_BUDGET_MAX_MS = 250;
+
+/**
+ * PLAN 0.38.0 D12 · R10 · C3 — the same mkdir lock dir, owner.pid and stale rules as
+ * `withFileLock` (so the two exclude each other across processes), but the wait is an awaited
+ * retry timer bounded by `budgetMs` (clamped to 0..250). Not acquired in time → `{ok: false}`
+ * (fail-open for the caller). `fn` runs synchronously while the lock is held.
+ */
+export async function withFileLockAsync<T>(
+  filePath: string,
+  budgetMs: number,
+  fn: () => T,
+): Promise<{ ok: true; value: T } | { ok: false }> {
+  const lockDir = `${filePath}.lock`;
+  mkdirSync(dirname(filePath), { recursive: true });
+  const budget = Math.min(
+    Math.max(Number.isFinite(budgetMs) ? budgetMs : LOCK_ASYNC_BUDGET_MAX_MS, 0),
+    LOCK_ASYNC_BUDGET_MAX_MS,
+  );
+  const start = Date.now();
+  while (!tryAcquireLock(lockDir)) {
+    tryReclaimStaleLock(lockDir);
+    if (tryAcquireLock(lockDir)) break;
+    const elapsed = Date.now() - start;
+    if (elapsed > budget) return { ok: false };
+    const wait = Math.max(1, Math.min(LOCK_POLL_MS, budget - elapsed));
+    await new Promise<void>((resolve) => setTimeout(resolve, wait));
+  }
+  try {
+    return { ok: true, value: fn() };
+  } finally {
+    releaseLock(lockDir);
+  }
+}

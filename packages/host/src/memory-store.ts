@@ -28,8 +28,9 @@ import {
 import { basename, dirname, isAbsolute, join } from "node:path";
 import { sanitizePeerName, sanitizePeerText } from "@loom/protocol";
 import type { AgentKind } from "./agent-argv";
-import { withFileLock } from "./atomic-json";
+import { withFileLock, withFileLockAsync } from "./atomic-json";
 import { redactSecrets } from "./redact";
+import { containsMarker } from "./skill-prompt";
 
 // ---------------------------------------------------------------------------------------------
 // agentKey (R1 · R53-L2)
@@ -482,13 +483,18 @@ export const memoryStoreTestHooks: { failBeforeReplace: boolean } = {
 
 /** `{kind:"human", by}` — by = sanitizePeerName(displayName), ≤64 UTF-16 units (D4 · ②). */
 export function humanMemorySource(displayName: string): MemorySource {
-  let by = sanitizePeerName(displayName);
+  return { kind: "human", by: sourceBy(displayName) };
+}
+
+/** sanitizePeerName → ≤64 UTF-16 units, a dangling high surrogate at the cut dropped. */
+function sourceBy(name: string): string {
+  let by = sanitizePeerName(name);
   if (by.length > MEMORY_SOURCE_BY_MAX) {
     by = by.slice(0, MEMORY_SOURCE_BY_MAX);
     const last = by.charCodeAt(by.length - 1);
     if (last >= 0xd800 && last <= 0xdbff) by = by.slice(0, -1);
   }
-  return { kind: "human", by };
+  return by;
 }
 
 function refuse(code: MemoryRefusalCode, message: string): MemoryRefusal {
@@ -981,4 +987,299 @@ export function compactMemory(loomDir: string, agentKey: string): CompactResult 
       message: `compacted: moved ${moved.length} lines (${unparseable} unparseable, ${conflictLosers} conflict losers) to ${p.archive}; kept ${kept.length}; watermark seq ${n > 0 ? n : "none"}`,
     };
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// PLAN 0.38.0 P1 — card candidates → proposed (D9 · D10 · D11 · D12 · R2 · R8 · R10–R12 · R18)
+// ---------------------------------------------------------------------------------------------
+
+/** D9 caps on card-sourced proposed entries (inside the shared MEMORY_PROPOSED_CAP). */
+export const MEMORY_CARD_PROPOSED_CAP = 50;
+export const MEMORY_CARD_ROOM_CAP = 10;
+/** D9 per card attempt — the parser's MEMORY_CANDIDATES_PER_ATTEMPT (P3) is the same 5. */
+const CARD_CANDIDATES_PER_ATTEMPT = 5;
+/** D12 — room-event-log's ≤250 ms budget; withFileLockAsync clamps to it as well. */
+const CARD_LOCK_BUDGET_MS = 250;
+/** R11 · R56-M2: only the archive tail is scanned — same value as SNAPSHOT_ENTRIES_READ_MAX_BYTES. */
+const ARCHIVE_SCAN_TAIL_BYTES = 4 * 1024 * 1024;
+const HEX16_RE = /^[0-9a-f]{16}$/;
+/** R8: a fence BEGIN/END line lookalike (`memory-inject.ts` fence shape), matched after NFKC. */
+const FENCE_LOOKALIKE_RE = /={3,}\s*(BEGIN|END)\s+LOOM\b/i;
+/** R8 · R56-L1: candidate / report block markers — case-sensitive like the parser's marker lines. */
+const LOOM_BLOCK_MARKER_RE = /LOOM-(MEMORY|REPORT)-/;
+
+export type CardMemorySource = {
+  kind: "card";
+  /** roomKey(card.roomId) — 16 hex. */
+  room: string;
+  /** cardKeyHash(roomId, agent, cardId) — 16 hex (R1). */
+  card: string;
+  /** sha256(dispatchHandoffId) first 16 hex (R2 · C1). */
+  handoff: string;
+  attempt: 1 | 2;
+  /** Dispatcher peer id, cut like humanMemorySource's `by`. */
+  by: string;
+};
+
+export type CardCandidateBatch = {
+  source: CardMemorySource;
+  appliesTo: `room:${string}`;
+  candidates: readonly { type: MemoryEntryType; body: string }[];
+};
+
+export type CardDropCounts = {
+  secret: number;
+  marker: number;
+  cap: number;
+  busy: number;
+  dup: number;
+  invalid: number;
+};
+
+export type CardProposeResult = {
+  proposed: number;
+  ids: string[];
+  dropped: CardDropCounts;
+  skipped?: "dup";
+};
+
+/**
+ * `{kind:"card", room, card, handoff, attempt, by}` (D8 · R2). `room` · `card` · `handoff` are the
+ * caller's already-derived 16-hex values (never raw ids); bad values → TypeError.
+ */
+export function cardMemorySource(x: {
+  room: string;
+  card: string;
+  handoff: string;
+  attempt: 1 | 2;
+  by: string;
+}): CardMemorySource {
+  for (const k of ["room", "card", "handoff"] as const) {
+    if (typeof x[k] !== "string" || !HEX16_RE.test(x[k])) {
+      throw new TypeError(`cardMemorySource: ${k} must be 16 lowercase hex`);
+    }
+  }
+  if (x.attempt !== 1 && x.attempt !== 2) {
+    throw new TypeError("cardMemorySource: attempt must be 1 or 2");
+  }
+  if (typeof x.by !== "string") throw new TypeError("cardMemorySource: by must be a string");
+  return {
+    kind: "card",
+    room: x.room,
+    card: x.card,
+    handoff: x.handoff,
+    attempt: x.attempt,
+    by: sourceBy(x.by),
+  };
+}
+
+/** R8: Loom task marker · fence BEGIN/END lookalike · candidate/report block marker. */
+function looksLikeLoomMarker(body: string): boolean {
+  return (
+    containsMarker(body) ||
+    FENCE_LOOKALIKE_RE.test(body.normalize("NFKC")) ||
+    LOOM_BLOCK_MARKER_RE.test(body)
+  );
+}
+
+function isCardKey(source: MemorySource, key: CardMemorySource): boolean {
+  return (
+    source.kind === "card" &&
+    source.card === key.card &&
+    source.handoff === key.handoff &&
+    source.attempt === key.attempt
+  );
+}
+
+/** R11 · R56-M2: scan the last 4 MiB of the archive (first partial line dropped) for the key. */
+function archiveHasCardKey(p: MemoryPaths, key: CardMemorySource): boolean {
+  const st = fileState(p.archive);
+  if (st === "absent") return false;
+  if (st !== "file") throw new Error(st.message);
+  const fd = openSync(p.archive, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  let text: string;
+  try {
+    const size = fstatSync(fd).size;
+    // From one byte before the cut: dropping through the first "\n" then lands on a line start.
+    const from = size > ARCHIVE_SCAN_TAIL_BYTES ? size - ARCHIVE_SCAN_TAIL_BYTES - 1 : 0;
+    const buf = Buffer.alloc(size - from);
+    let off = 0;
+    while (off < buf.length) {
+      const n = readSync(fd, buf, off, buf.length - off, from + off);
+      if (n <= 0) break;
+      off += n;
+    }
+    text = buf.subarray(0, off).toString("utf8");
+    if (from > 0) {
+      const nl = text.indexOf("\n");
+      text = nl < 0 ? "" : text.slice(nl + 1);
+    }
+  } finally {
+    closeSync(fd);
+  }
+  for (const piece of text.split("\n")) {
+    if (!piece.includes(key.handoff)) continue;
+    const line = parseMemoryLine(piece.endsWith("\r") ? piece.slice(0, -1) : piece);
+    if (line && line.kind === "entry" && isCardKey(line.source, key)) return true;
+  }
+  return false;
+}
+
+/**
+ * PLAN 0.38.0 D11 · D12 — append one card attempt's candidates as `proposed` lines.
+ * Outside the lock: per-attempt cap 5, sanitize → empty / >2000 → `invalid`, marker filter (R8) →
+ * `marker`, redaction would change it → `secret`. Then the store's own mkdir lock via
+ * `withFileLockAsync` (≤250 ms) — not acquired → the rest `busy`. Under the lock (synchronous,
+ * bounded): read (>1 MiB → `cap`), fold, dedupe on (card, handoff, attempt) in the fold or the
+ * archive tail (→ `dup` · `skipped: "dup"`), caps (card 50 · room 10 · proposed 200 → `cap`), one
+ * `appendLines` for the whole batch. Throws only on IO-class errors — the caller catches (R21).
+ */
+export async function appendMemoryEntriesAsync(
+  loomDir: string,
+  agentKey: string,
+  batch: CardCandidateBatch,
+  deps: {
+    env: Record<string, string | undefined>;
+    budgetMs?: number;
+    randomId?: () => string;
+    now?: () => Date;
+  },
+): Promise<CardProposeResult> {
+  const p = memoryPaths(loomDir, agentKey);
+  if (typeof batch.appliesTo !== "string" || !/^room:[0-9a-f]{16}$/.test(batch.appliesTo)) {
+    throw new TypeError("appendMemoryEntriesAsync: appliesTo must be room:<16 hex>");
+  }
+  assertSource(batch.source, "appendMemoryEntriesAsync");
+  if (batch.source.kind !== "card") {
+    throw new TypeError("appendMemoryEntriesAsync: source must be a card source");
+  }
+  if (!Array.isArray(batch.candidates)) {
+    throw new TypeError("appendMemoryEntriesAsync: candidates must be an array");
+  }
+  if (!deps || typeof deps.env !== "object" || deps.env === null) {
+    throw new TypeError("appendMemoryEntriesAsync: deps.env is required");
+  }
+
+  const dropped: CardDropCounts = { secret: 0, marker: 0, cap: 0, busy: 0, dup: 0, invalid: 0 };
+  const ids: string[] = [];
+  const result = (): CardProposeResult => ({ proposed: ids.length, ids, dropped });
+
+  // ① outside the lock
+  dropped.cap += Math.max(0, batch.candidates.length - CARD_CANDIDATES_PER_ATTEMPT);
+  const ready: { type: MemoryEntryType; body: string }[] = [];
+  for (const c of batch.candidates.slice(0, CARD_CANDIDATES_PER_ATTEMPT)) {
+    const body = sanitizePeerText(typeof c?.body === "string" ? c.body : "");
+    if (!ENTRY_TYPES.includes(c?.type) || body.trim() === "" || body.length > MEMORY_BODY_MAX) {
+      dropped.invalid += 1;
+    } else if (looksLikeLoomMarker(body)) {
+      dropped.marker += 1;
+    } else if (redactSecrets(body, deps.env) !== body) {
+      dropped.secret += 1;
+    } else {
+      ready.push({ type: c.type, body });
+    }
+  }
+  if (ready.length === 0) return result();
+
+  const dirs = prepareStoreDirs(loomDir, p, true);
+  if (dirs !== "ready" && dirs !== "absent") throw new Error(dirs.message);
+  const pre = fileState(p.entries);
+  if (pre !== "absent" && pre !== "file") throw new Error(pre.message);
+
+  const key = batch.source;
+  const locked = await withFileLockAsync(
+    p.entries,
+    deps.budgetMs ?? CARD_LOCK_BUDGET_MS,
+    (): CardProposeResult => {
+      // ② under the lock — synchronous and bounded (≤1 MiB entries + ≤4 MiB archive tail)
+      const read = readEntries(p);
+      if ("ok" in read) throw new Error(read.message);
+      if (read.size > MEMORY_ENTRIES_MAX_BYTES) {
+        dropped.cap += ready.length;
+        return result();
+      }
+      const f = foldMemoryLines(read.raw);
+      let dup = false;
+      for (const e of f.entries.values()) {
+        if (isCardKey(e.source, key)) {
+          dup = true;
+          break;
+        }
+      }
+      if (dup || archiveHasCardKey(p, key)) {
+        dropped.dup += ready.length;
+        return { ...result(), skipped: "dup" };
+      }
+
+      let cardAll = 0;
+      let cardRoom = 0;
+      let proposedAll = 0;
+      for (const e of f.entries.values()) {
+        if (e.status !== "proposed") continue;
+        proposedAll += 1;
+        if (e.source.kind !== "card") continue;
+        cardAll += 1;
+        if (e.appliesTo === batch.appliesTo) cardRoom += 1;
+      }
+
+      const gen = deps.randomId ?? defaultRandomId;
+      const taken = new Set(f.entries.keys());
+      const lines: string[] = [];
+      let seq = f.maxSeq;
+      for (let i = 0; i < ready.length; i++) {
+        const c = ready[i]!;
+        if (
+          cardAll >= MEMORY_CARD_PROPOSED_CAP ||
+          cardRoom >= MEMORY_CARD_ROOM_CAP ||
+          proposedAll >= MEMORY_PROPOSED_CAP ||
+          !Number.isSafeInteger(seq + 1)
+        ) {
+          dropped.cap += ready.length - i;
+          break;
+        }
+        let id: string | null = null;
+        for (let d = 0; d < ID_DRAWS; d++) {
+          const cand = gen();
+          if (typeof cand !== "string" || !MEMORY_ID_RE.test(cand)) {
+            throw new TypeError("appendMemoryEntriesAsync: randomId must return mem_ + 16 hex");
+          }
+          if (!taken.has(cand)) {
+            id = cand;
+            break;
+          }
+        }
+        if (id === null) {
+          dropped.busy += 1; // no fresh id — transient like the CLI's id_collision ("try again")
+          continue;
+        }
+        seq += 1;
+        const line: MemoryEntryLine = {
+          v: 1,
+          kind: "entry",
+          id,
+          seq,
+          type: c.type,
+          appliesTo: batch.appliesTo,
+          body: c.body,
+          source: key,
+          status: "proposed",
+          supersedes: null,
+          at: nowIso(deps),
+        };
+        lines.push(JSON.stringify(line));
+        taken.add(id);
+        ids.push(id);
+        cardAll += 1;
+        cardRoom += 1;
+        proposedAll += 1;
+      }
+      if (lines.length > 0) appendLines(p.entries, lines);
+      return result();
+    },
+  );
+  if (!locked.ok) {
+    dropped.busy += ready.length;
+    return result();
+  }
+  return locked.value;
 }
