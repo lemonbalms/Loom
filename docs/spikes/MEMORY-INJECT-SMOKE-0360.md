@@ -10,7 +10,7 @@ Date 2026-10-16. Repo main `feeb9e7` (P4 green, verified) plus the smoke script 
 | CLI (first run, `a58dcba`) | the then-committed `dist/loom.js` (0.35.0 build — `memory propose/approve/list` are 0.35 verbs, so the 0.35 dist was enough) — **7/7 PASS** |
 | Worker | `HeadlessDispatcher` from source in the inner process (profile `smoke`, memory from the bridge config) |
 | Agents | **fake** claude · codex · grok (`/bin/sh` scripts) only |
-| Real CLI run | **none** — `--real-cli` exists but needs `--owner-approved` and an explicit owner yes; not run |
+| Real CLI run | none in 0.36.0 — **run 2026-10-17 with owner approval against the v0.37.0 dist: 4/4 PASS** (see "Real-CLI run" below) |
 
 ## Setup (R53-M2 · R54-M2 · R54-M3)
 
@@ -75,12 +75,28 @@ Dispatcher stderr line (same for every card, ids elided): `[headless] memory_sna
 - ③ a persona line carrying the task marker becomes the one placeholder line, a `## ` line stays byte for byte, the marker appears once in the turn (the real one), an env value of `SMOKE_SECRET_TOKEN` (inner env only) is replaced by `[REDACTED]` in the file and the turn, and the stderr line says `neutralized 1 · env_redacted yes` — the card still runs (D4 · R53-L3 · Done-when (d)(e)).
 - ④ the UK-1 · UK-2 numbers above.
 
-## `--real-cli` (implemented, not run)
+## Real-CLI run (owner-approved 2026-10-17, v0.37.0 dist)
 
-`bun run smoke:memory-inject --real-cli --owner-approved` runs ⓪ and ① against the real `claude` / `codex` / `grok` on `PATH`: the inner process has `HOME` = the real home (CLI auth), `LOOM_TEST_HOME=T`, `LOOM_PROFILE=smoke`; the dist CLI children get the same env, and `loomDir()` prefers `LOOM_TEST_HOME`, so `~/.loom` is not touched. It checks the fence file / record hash and that each reply quotes the project token and not the room:A token. Without `--owner-approved` it exits 2 before creating anything (by code — the check sits before `mkdtemp`; not executed here). **Not run in 0.36.0 — it needs an explicit owner yes.** UK-1 (real-CLI acceptance of ≈48 KiB) and UK-3 (fence compliance) stay unmeasured.
+The owner approved one run; the architect ran `bun run smoke:memory-inject --real-cli --owner-approved` against the v0.37.0 `dist/loom.js` with the real `claude` / `codex` / `grok` on `PATH`. Verbatim output:
+
+```
+PASS ⓪ memory list header (R54-M2 · UK-6) — "profile smoke (from LOOM_PROFILE)" · agentKey claude.smoke
+PASS ① approved project record reaches a room_B card · room:A record does not — 6 records via CLI propose→approve · claude block 621 B nonce fff0be89… hash ok · codex block 620 B nonce 1ff94bd3… hash ok · grok block 619 B nonce 3b7fec81… hash ok
+PASS zero persistence — temp home removed — removed
+PASS real home untouched — ~/.loom · ~/.fable 1575 entries · ~/Library/LaunchAgents 11 entries names+mtime identical · ~/.claude · ~/.codex · ~/.grok no new names
+PASS smoke:memory-inject (real-cli · dist CLI) — 4/4 steps
+```
+
+- **UK-3 (fence compliance), observed on one sample per CLI:** all three real CLIs passed ①: each reply quoted the project token and not the room:A token, with the room filter applied and the fence hash matching the session record.
+- **UK-1 (size acceptance):** real CLIs accepted a first turn with a small fence (619–621 B blocks). The near-cap ≈48 KiB first turn (④) is a default-mode step and was **not** sent to a real CLI, so real-CLI acceptance at the cap is still unmeasured.
+- macOS only (Darwin arm64). Linux and Windows were not run.
+
+## `--real-cli` (implemented in 0.36.0; first run 2026-10-17 above)
+
+`bun run smoke:memory-inject --real-cli --owner-approved` runs ⓪ and ① against the real `claude` / `codex` / `grok` on `PATH`: the inner process has `HOME` = the real home (CLI auth), `LOOM_TEST_HOME=T`, `LOOM_PROFILE=smoke`; the dist CLI children get the same env, and `loomDir()` prefers `LOOM_TEST_HOME`, so `~/.loom` is not touched. It checks the fence file / record hash and that each reply quotes the project token and not the room:A token. Without `--owner-approved` it exits 2 before creating anything (by code — the check sits before `mkdtemp`; not executed here). Not run in 0.36.0 because it needs an explicit owner yes. It was run once on 2026-10-17 with owner approval (above). UK-3 now has one observed sample per CLI. Real-CLI acceptance at ≈48 KiB (UK-1) is still unmeasured.
 
 ## Not covered
 
-- Real CLIs (above). Windows (UK-7). Linux not run.
+- Real CLIs at the near-cap size (④ runs only with the fake CLIs). Windows (UK-7). Linux not run.
 - Resume / recovery / tamper → `needs_verification` (P3 unit tests — resume matrix, Done-when (b)); D8 through a real in-process bridge (P4 `bridge-memory-profile.test.ts`).
 - Skills on + memory on (the P2 unit tests cover listing + fence ordering).

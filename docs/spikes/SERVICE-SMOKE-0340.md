@@ -7,8 +7,8 @@ Date 2026-10-16. Repo main `fb89d75` (P5 green: reap hung read-only queries · l
 | OS | macOS (Darwin 25.6.0, arm64) |
 | bun | 1.3.11 |
 | CLI | `dist/loom.js` from `bun run build:cli` at `fb89d75` (and `--source`, same result) |
-| Live smoke | **not run — awaiting owner approval** (`--live` + `LOOM_SERVICE_LIVE_SMOKE=1` gate) |
-| Linux | not run (no Linux environment used; no VM) — **unverified** |
+| Live smoke | not run in 0.34.0 — **macOS live run 2026-10-17 with owner approval (v0.37.0 dist): PASS** (see "Live run" below) |
+| Linux | not run (no Linux environment used; no VM) — **unverified** (live included) |
 
 ## Setup
 
@@ -37,7 +37,37 @@ The doctor's own exit 1 in ④ comes from the Relay section (the `.invalid` rela
 
 Outside the script, `ls -la ~/Library/LaunchAgents` and `ls -la ~/.config/systemd` were identical before and after every run. `~/.config/systemd` does not exist on this machine.
 
-## Optional live smoke (implemented, not run)
+## Live run (owner-approved 2026-10-17, macOS, v0.37.0 dist)
+
+The owner approved one run; the architect ran `LOOM_SERVICE_LIVE_SMOKE=1 bun run smoke:service --live` against the v0.37.0 `dist/loom.js` on macOS. Verbatim output:
+
+```
+PASS ① install — exit 0 · unit 0644 · log 0600 · bridge dir 0700 · launchctl bootstrap gui/501 /private/var/folders/mz/z0wh5lpj1cqcghk7f8dl0k040000gn/T/loom-smoke-service-Gw0AjY/home/Library/LaunchAgents/com.loom.bridge.smoke.plist · running pid 10466
+PASS ② re-install no-op — exit 0 · "already installed (up to date, pid 10466)" · write verbs 0 · bytes/mtime unchanged
+PASS ③ status — exit 0 · installed + running pid 10466 · read verbs only (print-disabled, print)
+PASS ④ doctor Service section — 6 rows · 0 fail · read verbs only · doctor exit 1 (fail only in: Relay)
+PASS ⑤ no_domain → exit 3 — exit 3 · "written; loads at next login (/private/var/folders/mz/z0wh5lpj1cqcghk7f8dl0k040000gn/T/loom-smoke-service-Gw0AjY/home/Library/LaunchAgents/com.loom.bridge.smoke.plist)" · file kept
+PASS ⑥ uninstall — exit 0 · launchctl bootout gui/501/com.loom.bridge.smoke · file removed · second uninstall "not installed" exit 0
+live: bootstrap exit 0 
+live: running=true pid=10583 after 217 ms
+live: print-disabled entry: (none) (UK-2)
+live: bootout exit 0 
+live: not-found=true stopped=true after 215 ms (UK-1)
+live: SSH_CONNECTION unset (UK-3)
+PASS live (macOS · owner gate) — bootstrap → running pid match → bootout → stopped · scratch plist and temp home removed
+PASS smoke:service — 7/7 steps · live pass
+PASS zero persistence — temp root removed
+PASS real home untouched — ~/Library/LaunchAgents · ~/.config/systemd · ~/.loom listings identical
+```
+
+Afterwards, `launchctl print gui/$UID/com.loom.bridge.smoke` reported the job as not loaded (clean).
+
+- **UK-1 (macOS):** after real `bootout`, the job was not found and the status file said `stopped` 215 ms later. That is well inside the bridge's 10 s stop cap and launchd's `ExitTimeOut 20`. Signal order and SIGKILL timing were not observed directly. Not measured on systemd.
+- **UK-2:** the scratch label had no `print-disabled` entry (`(none)`). Behaviour after a user turns the item off is still unmeasured.
+- **UK-3:** run from a GUI session (`SSH_CONNECTION` unset). The ssh/no-GUI code is still unmeasured.
+- Linux live (UK-4 · UK-5) is still **unverified**. Login/reboot auto-start and TCC (UK-6) are not covered by `--live`.
+
+## Optional live smoke (implemented in 0.34.0; macOS run 2026-10-17 above)
 
 `bun run smoke:service --live` with `LOOM_SERVICE_LIVE_SMOKE=1` (both are required; without them it prints `SKIP … owner gate`; on Linux it prints `unverified`). The live path:
 
@@ -56,8 +86,8 @@ The exit code after `bootout` cannot be observed (the job is gone). `stopped` in
 
 ## Unknowns
 
-- **UK-1: launchd/systemd stop signal order and grace — open (live not run).** P2 simulated the stop path (SIGTERM to the bridge main pid only → exit 0 ≤10 s · worker pgid survives · next start adopts once). launchd `bootout` / systemd stop were not measured.
-- **UK-2: macOS Login Items — partly observed.** The P3 verification incident showed that **writing** a Loom plist into the real `~/Library/LaunchAgents` (no `launchctl` call) is enough for macOS to post a "Background Items Added" notification. The item appears under bun's code signer, **"Jarred Sumner"**, not under the label. Still not measured: the `bootstrap` / `kickstart` code and wording when the item is turned off, and the `print-disabled` wording.
-- **UK-3: launchd from ssh (no GUI session) — open.** Only scripted (`Bootstrap failed: 5: Input/output error` → exit 3 in ⑤). The real code and wording are unmeasured.
+- **UK-1: launchd/systemd stop signal order and grace — macOS observed 2026-10-17; systemd open.** P2 simulated the stop path (SIGTERM to the bridge main pid only → exit 0 ≤10 s · worker pgid survives · next start adopts once). Live macOS run: `bootout` exit 0, then not-found + `stopped` after 215 ms. Signal order and SIGKILL timing were not observed directly. systemd stop was not measured.
+- **UK-2: macOS Login Items — partly observed.** The P3 verification incident showed that **writing** a Loom plist into the real `~/Library/LaunchAgents` (no `launchctl` call) is enough for macOS to post a "Background Items Added" notification. The item appears under bun's code signer, **"Jarred Sumner"**, not under the label. Live run 2026-10-17: the scratch label had no `print-disabled` entry (`(none)`). Still not measured: the `bootstrap` / `kickstart` code and wording when the item is turned off.
+- **UK-3: launchd from ssh (no GUI session) — open.** Only scripted (`Bootstrap failed: 5: Input/output error` → exit 3 in ⑤). The 2026-10-17 live run was in a GUI session (`SSH_CONNECTION` unset), so the real ssh code and wording are still unmeasured.
 - **UK-4: Linux live — unverified.** No Linux environment was used. This covers `StandardError=append:`, the left-over warning after `KillMode=process`, the linger query format, and whether the hand-made wants symlink behaves like `enable`.
 - **UK-5: Linux `ps -o lstart=` — unverified** (0.33.0 UK-2 carry-over). Fail-safe as before: an unreadable lstart means "live, unverified" → refused (in service mode: yield exit 0).

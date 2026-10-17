@@ -25,13 +25,13 @@
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · brief owner; wait for the next-step pick (no code before pick + PLAN + R{n})
 2. On pick: PLAN section → UNKNOWNS → R{n} (loom-advisor) → P1 red via `lane.ts impl` → `lane.ts verify`
-3. Carry: `smoke:memory-inject --real-cli` (owner yes) · live `smoke:service --live` (owner yes) · Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7
+3. Carry: Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
 **Done when (this handoff):** owner has picked the next step and its PLAN section is drafted for review.
 
-**Must not:** run live launchd/systemd registration (`smoke:service --live`) or real-CLI smoke (`smoke:memory-inject --real-cli` · `smoke:policy --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 
@@ -40,7 +40,7 @@
 | Headless lanes | **P1–P4 done** · live smoke 7/7 mandatory (opt. Q3 skipped) | dev-process, own commits | `HEADLESS-LANES-DESIGN.md` |
 | Known fail | `handoff-checkpoint` live Evidence · pre-existing (`9ffc100`) | not a regression | suite 3139/1 |
 | v0.37.0 | **shipped** `d6f7cc2` 2026-10-17 | smoke fake 10/10 · real-CLI ① 4/4 | `docs/PLAN.md` |
-| v0.32–0.36 | **shipped** `9567f87`·`0a20173`·`dbab890`·`5fa8167`·`acd53a0` | steps 2–4.2a · 0.34 live / 0.36 real-CLI not run | `docs/PLAN.md` |
+| v0.32–0.36 | **shipped** `9567f87`·`0a20173`·`dbab890`·`5fa8167`·`acd53a0` | steps 2–4.2a · 0.34 live (macOS) / 0.36 real-CLI PASS 2026-10-17 | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
 | 3.3–3.4b live | **false** | blocked | consts false · RESULT |
@@ -52,8 +52,6 @@
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
 | Next step pick | 0.37.0 shipped · 0.38.0 memory write path is the PLAN candidate | wait — no code | PLAN §0.37.0 Next |
-| 0.36.0 real-CLI smoke | `--real-cli --owner-approved` runs real claude/codex/grok — UK-1/UK-3 | not run | `MEMORY-INJECT-SMOKE-0360.md` |
-| 0.34.0 live OS smoke | 3단계 go = "진행해" 2026-10-16 · real launchd/systemd write needs separate yes · 7단계 last — 재질문 금지 | not run | PLAN §0.34.0 P5 |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
@@ -83,4 +81,6 @@
 - 3.3–3.4b remeasure / COMPLY soften / live without T1(a).  
 - default-on JIT · silent product MINOR (owner picks each step).  
 - B-4 as B-7 closed · UC-3 leave while sticky live.  
-- 0.37.0 real-CLI ① (PASS 2026-10-17).
+- 0.37.0 real-CLI ① (PASS 2026-10-17).  
+- 0.36.0 real-CLI smoke (PASS 2026-10-17).  
+- 0.34.0 live launchd smoke (PASS 2026-10-17, macOS).
