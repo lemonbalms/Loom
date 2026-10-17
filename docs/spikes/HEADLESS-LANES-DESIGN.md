@@ -208,6 +208,16 @@ counterexamples: [`docs/spikes/tla/lane-lock/`](./tla/lane-lock/).
 Probe (2026-10-17, Bun on darwin): A `flock`=0 and sleeps; B `flock`=−1; `kill -9 A`; C `flock`=0 — the file
 remains, the lock does not.
 
+### 4.6b P1 implementation rulings (2026-10-17, verify rounds 1–3 with GPT-6 Astra high)
+
+| Topic | Ruling |
+|---|---|
+| codex model evidence | read **only child stderr**, only the header block between the first two `--------` lines; no block → `mainModel` null → exit 4; header `reasoning effort` ≠ `high` → exit 4; `meta.effortResolved` (`string\|null`) added |
+| impl needs git | impl `--cwd` must be a git work tree (`rev-parse --is-inside-work-tree` = `true`), else exit 1 before lock/run dir; any `status`/`diff` snapshot failure before or after → exit 1 `process-error` (`diffEmpty` null on that path only) |
+| process group | timeout = SIGTERM group → SIGKILL after 5 s grace; normal exit → reap group; every group signal is preceded by a `kill(-pgid, 0)` probe (100 ms during grace) and skipped when the group is gone. **Residual (accepted, Low):** the probe proves existence, not identity — reuse needs the PID space to wrap to that exact number within ~100 ms; a group-anchor process would close it and is deferred as disproportionate |
+| failure evidence | every failure after arg parsing writes run stderr + `meta.json` + summary line (spawn throw, async spawn error, argv > 900 000 bytes) |
+| host env | `CLAUDE_CODE_*` and `CLAUDECODE` stripped for all lanes (§4.2) |
+
 ### 4.7 LANE PREAMBLE (draft, verbatim)
 
 impl:
