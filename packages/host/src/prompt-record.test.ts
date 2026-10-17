@@ -396,6 +396,39 @@ describe("readPromptRecord — shape checks fail closed (R9 · R60-L3)", () => {
     if (r.kind === "invalid") expect(r.reason).not.toBe("too large");
   });
 
+  test("FIFO → invalid: not a regular file, promptly (no blocking open)", async () => {
+    if (process.platform === "win32") return;
+    const { readPromptRecord } = await pr();
+    const dir = tempDir();
+    const fifo = join(dir, "prompt-1.json");
+    const made = Bun.spawnSync(["mkfifo", fifo]);
+    if (made.exitCode !== 0) return; // no mkfifo on this platform
+    const started = Date.now();
+    expect(readPromptRecord(dir, 1)).toEqual({ kind: "invalid", reason: "not a regular file" });
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  test("Astra 0088: the read goes through one fd (O_NOFOLLOW · O_NONBLOCK · fstat), never re-opens the path", () => {
+    const src = readFileSync(join(import.meta.dir, "prompt-record.ts"), "utf8");
+    expect(src).not.toContain("readFileSync(");
+    expect(src).toContain("O_NOFOLLOW");
+    expect(src).toContain("O_NONBLOCK");
+    expect(src).toContain("fstatSync(");
+    expect(src).toContain("closeSync(");
+  });
+
+  test("round trip still ok after the fd read", async () => {
+    const { writePromptRecord, readPromptRecord, serializePromptRecord } = await pr();
+    const dir = tempDir();
+    const rec = await build("codex", "resume", "hello fd");
+    await writePromptRecord(dir, rec);
+    const r = readPromptRecord(dir, 2);
+    expect(r.kind).toBe("ok");
+    if (r.kind !== "ok") return;
+    expect(r.record).toEqual(rec);
+    expect(r.bytes.toString("utf8")).toBe(serializePromptRecord(rec));
+  });
+
   test("invalid reasons never carry file content", async () => {
     const samples = [
       "SECRET-BODY",
