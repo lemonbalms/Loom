@@ -481,9 +481,21 @@ function memoryTransition(
   }
   if (args.positional.length !== 1) return fail(idUsage(verb));
   const id = args.positional[0] as string;
+  const agentKey = agentKeyFor(deps.profile, kind);
+  // PLAN 0.38.0 R56-M3 (verify 0045 M): read the target BEFORE the transition — entry bodies are
+  // immutable per id, so a retire/compact racing after the lock is released cannot hide the line,
+  // and a read failure here only drops the `activated:` line, never the exit code.
+  let pre: FoldedEntry | undefined;
+  if (verb === "approve") {
+    try {
+      pre = readStore(deps.loomDir, agentKey, LIST_READ_MAX_BYTES).fold?.entries.get(id);
+    } catch {
+      pre = undefined;
+    }
+  }
   const r = appendMemoryTransition(
     deps.loomDir,
-    agentKeyFor(deps.profile, kind),
+    agentKey,
     {
       id,
       to: verb === "approve" ? "active" : "retired",
@@ -493,14 +505,14 @@ function memoryTransition(
   );
   if (!r.ok) return refused(r, fail);
   deps.stdout(`${verb === "approve" ? "approved" : "retired"} ${r.id} (seq ${r.seq})`);
-  if (verb === "approve") {
+  if (pre && pre.id === r.id && pre.source.kind !== "human") {
     // PLAN 0.38.0 R16 · R56-M3: what a card proposal activated — full body, no cut.
-    const e = readStore(deps.loomDir, agentKeyFor(deps.profile, kind), LIST_READ_MAX_BYTES).fold
-      ?.entries.get(id);
-    if (e && e.source.kind !== "human") {
+    try {
       deps.stdout(
-        `activated: ${e.type} ${e.appliesTo} — ${e.body} (source ${e.source.kind} by ${sourceBy(e)})`,
+        `activated: ${pre.type} ${pre.appliesTo} — ${pre.body} (source ${pre.source.kind} by ${sourceBy(pre)})`,
       );
+    } catch {
+      // never changes the exit code of a successful approve
     }
   }
   return 0;
