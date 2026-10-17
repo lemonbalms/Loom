@@ -616,6 +616,10 @@ describe("P3 reprocessing is idempotent (D11 · R9)", () => {
     await observed(() => h.dispatcher(ON).dispatch(h.card));
     const before = readFileSync(h.entriesPath(), "utf8");
     const mtime = statSync(h.entriesPath()).mtimeMs;
+    // Hold the store lock: any store access would report `busy`, not `dup`.
+    const lockDir = `${h.entriesPath()}.lock`;
+    mkdirSync(lockDir);
+    writeFileSync(join(lockDir, "owner.pid"), String(process.pid));
     h.unsend();
     await observed(() => h.dispatcher(ON).recover());
     expect(proposeLines()).toEqual([
@@ -623,7 +627,7 @@ describe("P3 reprocessing is idempotent (D11 · R9)", () => {
     ]);
     expect(readFileSync(h.entriesPath(), "utf8")).toBe(before);
     expect(statSync(h.entriesPath()).mtimeMs).toBe(mtime);
-    expect(existsSync(`${h.entriesPath()}.lock`)).toBe(false);
+    expect(readFileSync(join(lockDir, "owner.pid"), "utf8")).toBe(String(process.pid));
     expect(h.calls.length).toBe(2);
     expect(h.calls[1]!.fields.output).toBe(REPORT2);
     expect(h.saved()!.memoryProposed).toEqual([`${sha16(h.card.dispatchHandoffId)}.1`]);
@@ -679,9 +683,47 @@ describe("P3 reprocessing is idempotent (D11 · R9)", () => {
       sha16("second-handoff"),
     ]);
     expect(lines.every((l) => (l.source as { attempt: number }).attempt === 1)).toBe(true);
-    // A fresh first spawn writes a new record; the store's dedupe still guards the old key.
-    expect(h.saved()!.memoryProposed).toEqual([`${sha16("second-handoff")}.1`]);
+    // A fresh first spawn writes a new record and carries the previous keys over.
+    expect(h.saved()!.memoryProposed).toEqual([`${sha16("original-handoff")}.1`, `${sha16("second-handoff")}.1`]);
   }, 30_000);
+
+  test("next handoff with 16 carried keys → the 17th append keeps the newest 16", async () => {
+    const h = new Harness();
+    h.stream(REPORT2, 1);
+    h.stream(REPORT2, 2);
+    const d = h.dispatcher(ON);
+    await observed(() => d.dispatch(h.card));
+    const old = Array.from({ length: 16 }, (_, i) => `${sha16(`old-${i}`)}.1`);
+    h.tamperRecord({ memoryProposed: old });
+    await observed(() => d.dispatch({ ...h.card, dispatchHandoffId: "second-handoff" }));
+    expect(h.saved()!.memoryProposed).toEqual([...old.slice(1), `${sha16("second-handoff")}.1`]);
+  }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// record key only after the store's under-lock step (R9)
+// ---------------------------------------------------------------------------
+
+describe("P3 record key: written only when the store reached its under-lock step (R9)", () => {
+  test("every candidate filtered before the lock (secret) → no record key", async () => {
+    const h = new Harness();
+    h.stream(["LOOM-MEMORY-CANDIDATES", `- fact: key ${SECRET}`, `- decision: also ${SECRET}`, "LOOM-MEMORY-END"].join("\n"));
+    await observed(() => h.dispatcher(ON).dispatch(h.card));
+    expect(proposeLines()).toEqual([
+      line("task_mem", "proposed 0 · dropped 2 (secret 2 · marker 0 · cap 0 · busy 0 · dup 0 · invalid 0)"),
+    ]);
+    expect(h.entryLines()).toEqual([]);
+    expect("memoryProposed" in h.saved()!).toBe(false);
+  }, 20_000);
+
+  test("block with zero candidate lines → no record key", async () => {
+    const h = new Harness();
+    h.stream(["report", "LOOM-MEMORY-CANDIDATES", "LOOM-MEMORY-END"].join("\n"));
+    await observed(() => h.dispatcher(ON).dispatch(h.card));
+    expect(proposeLines()).toEqual([line("task_mem", `proposed 0 · dropped 0 (${ZERO})`)]);
+    expect(h.storeFiles()).toEqual([]);
+    expect("memoryProposed" in h.saved()!).toBe(false);
+  }, 20_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -720,7 +762,7 @@ describe("P3 fail-open: no profile · busy · IO error never block delivery", ()
     const last = h.calls.at(-1)!;
     expect(last.fields.output).toBe(REPORT2);
     // ≤250 ms budget + bounded work; the synchronous CLI wait would be 4 s.
-    expect(last.at - exitedAt).toBeLessThan(1_500);
+    expect(last.at - exitedAt).toBeLessThan(750);
     expect("memoryProposed" in h.saved()!).toBe(false);
   }, 20_000);
 
