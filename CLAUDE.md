@@ -21,7 +21,7 @@
    착수 전 로드 의무**(`tasks/lessons/<category>.md` — handoff만으로 부족, 기록 교훈
    재범 2회 실증). 위임 시작 전 `fable-advisor:orchestration` 스킬 로드.
 5. **Topology `full` 레인 배치 고정 (오너 지시 2026-07-20 — 구두 반복 4회발, 이제 규칙).**
-   **구현 = `grok`** · **검증 = Opus high** · **자문 = Opus high 자문 서브에이전트**(read-only) — 모델 고정은 규칙 8.
+   **구현 = `grok`** · **검증 = GPT-6 Astra high (codex CLI)** · **자문 = Opus 5.5 high 자문 서브에이전트**(read-only) — 모델 고정은 규칙 8.
    검증을 구현자와 같은 레인에 주지 않는다 — 발견자와 수정자를 분리해야 교차 검증이 성립한다.
    **실작업 표면 = herdr pane 카드가 기본**이고 in-harness `Agent`는 pane 불가 시 폴백이다.
    조사·브리프 작성도 예외가 아니다(2026-07-20 오라우팅 실증). 디스패치 전
@@ -45,12 +45,15 @@
    result 전송 뒤 106ms/4ms 만의 정상 정리였다). `PaneDied for unknown pane`은 **herdr 내부
    경고**이지 브릿지가 통지를 버렸다는 증거가 아니다 — 이 오독으로 아키텍트가 오늘 잘못된
    진단을 오너에게 보고했다. 설계 정본 `docs/spikes/PANE-DEATH-DESIGN.md`.
-8. **검증·자문 모델 고정 (오너 지시 2026-10-17).** 독립 검증 = in-harness `Agent`
-   **`model: opus` · `effort: high`**(종전 codex·Opus xhigh 대체). 자문 = **일반 서브에이전트**
-   `Agent`(`subagent_type: Plan` — Edit/Write 없는 read-only) **`model: opus` · `effort: high`**.
+8. **검증·자문 모델 고정 (오너 지시 2026-10-17).** 독립 검증 = **GPT-6 Astra · reasoning high**,
+   codex CLI `codex exec -m gpt-6-astra -c model_reasoning_effort=high`(기본 `-s read-only`, 테스트를
+   돌려야 하면 `git archive` 검증 트리를 `-C`로 주고 `-s workspace-write`) — 종전 codex Sol·Opus xhigh 대체.
+   자문 = **Opus 5.5(`claude-opus-5-5`) · effort high** 일반 서브에이전트 `Agent`(`subagent_type: Plan`
+   — Edit/Write 없는 read-only, `model: "opus"` · `effort: "high"`; 도구 `model`은 별칭만 받으므로
+   해상 모델이 Opus 5.5인지 `/tasks`로 확인).
    **`fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제**(전역 CLAUDE.md의 fable-advisor
    자문·최종 리뷰 지시도 이 자문 서브에이전트로 대체). R{n} 필수 자문·딜리버러블 최종 리뷰 모두 이 설정.
-   검증 에이전트는 구현 에이전트와 별도 인스턴스(새 컨텍스트)로 띄운다. 해제·변경은 오너만.
+   구현(Claude/grok)과 검증(GPT-6 Astra)은 벤더가 다르다 — 교차 벤더 검증. 해제·변경은 오너만.
 
 ## On session start
 
@@ -74,7 +77,7 @@ Full procedure: **[`docs/DOGFOOD_LOOP.md`](./docs/DOGFOOD_LOOP.md)** §2 (review
 `R{n}` / PLAN `pending-review`):
 
 - Do not implement product code.
-- Mandatory: spawn the Opus-high advisor subagent (`Plan` · `model: opus` · `effort: high`, read-only — 규칙 8) before writing
+- Mandatory: spawn the Opus 5.5 high advisor subagent (`Plan` · `model: opus` → Opus 5.5 · `effort: high`, read-only — 규칙 8) before writing
   a verdict. Skipping it for a formal R{n} is a **process defect** — do not bare-approve.
 - Reply `[R-RESULT] …` including `Advisor: opus-advisor consulted: yes`.
 
