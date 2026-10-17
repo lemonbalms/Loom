@@ -119,8 +119,8 @@ describe("renderSkillListing — byte cap with the longer header (D5)", () => {
   });
 
   test("one more path byte → collapses into the cap line", () => {
-    const e = entryFor(HEADER_VERBATIM, 4096);
-    const longer = { ...e, skillMdPath: `/p${e.skillMdPath}` };
+    const longer = entryFor(HEADER_VERBATIM, 4097);
+    expect(bytes(`${HEADER_VERBATIM}\n- ${name}: ${description} — ${longer.skillMdPath}`)).toBe(4097);
     expect(renderSkillListing("codex", { available: [longer], unavailable: [] })).toBe(capped);
     expect(renderSkillListing("grok", { available: [longer], unavailable: [] })).toBe(capped);
   });
