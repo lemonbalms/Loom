@@ -11,7 +11,7 @@
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.37.0 shipped** 2026-10-17 · next = owner pick | `docs/PLAN.md` |
+| Product | **v0.37.0 shipped** `d6f7cc2` 2026-10-17 · next = owner pick | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
@@ -39,7 +39,7 @@
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 mandatory (opt. Q3 skipped) | dev-process, own commits | `HEADLESS-LANES-DESIGN.md` |
 | Known fail | `handoff-checkpoint` live Evidence · pre-existing (`9ffc100`) | not a regression | suite 3139/1 |
-| v0.37.0 | **shipped** 2026-10-17 | smoke fake 10/10 · real-CLI ① 4/4 | `docs/PLAN.md` |
+| v0.37.0 | **shipped** `d6f7cc2` 2026-10-17 | smoke fake 10/10 · real-CLI ① 4/4 | `docs/PLAN.md` |
 | v0.32–0.36 | **shipped** `9567f87`·`0a20173`·`dbab890`·`5fa8167`·`acd53a0` | steps 2–4.2a · 0.34 live / 0.36 real-CLI not run | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | 3.0–3.2 soft live | **opt-in** | JIT | consts true · RESULT |
