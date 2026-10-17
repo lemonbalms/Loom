@@ -47,6 +47,7 @@
     "smoke:memory": "bun run scripts/smoke-memory.ts",
     "smoke:memory-inject": "bun run scripts/smoke-memory-inject.ts",
     "smoke:policy": "bun run scripts/smoke-policy-honesty.ts",
+    "smoke:memory-write": "bun run scripts/smoke-memory-write.ts",
     "dogfood:room": "bash scripts/dogfood-room-up.sh",
     "dogfood:up": "bash scripts/dogfood-up.sh",
     "dogfood:status": "bash scripts/dogfood-room-status.sh",
