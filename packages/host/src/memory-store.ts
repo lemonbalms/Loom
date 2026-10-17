@@ -1130,7 +1130,7 @@ function archiveHasCardKey(p: MemoryPaths, key: CardMemorySource): boolean {
  * Outside the lock: per-attempt cap 5, sanitize → empty / >2000 → `invalid`, marker filter (R8) →
  * `marker`, redaction would change it → `secret`. Then the store's own mkdir lock via
  * `withFileLockAsync` (≤250 ms) — not acquired → the rest `busy`. Under the lock (synchronous,
- * bounded): read (>1 MiB → `cap`), fold, dedupe on (card, handoff, attempt) in the fold or the
+ * bounded): lstat (>1 MiB → `cap`, never read), read, fold, dedupe on (card, handoff, attempt) in the fold or the
  * archive tail (→ `dup` · `skipped: "dup"`), caps (card 50 · room 10 · proposed 200 → `cap`), one
  * `appendLines` for the whole batch. Throws only on IO-class errors — the caller catches (R21).
  */
@@ -1191,7 +1191,14 @@ export async function appendMemoryEntriesAsync(
     p.entries,
     deps.budgetMs ?? CARD_LOCK_BUDGET_MS,
     (): CardProposeResult => {
-      // ② under the lock — synchronous and bounded (≤1 MiB entries + ≤4 MiB archive tail)
+      // ② under the lock — synchronous and bounded (≤1 MiB entries + ≤4 MiB archive tail).
+      // lstat first: >1 MiB → cap without reading (R56-L4); the lock keeps it from growing before the read.
+      const st = lstatOrNull(p.entries);
+      if (st && (st.isSymbolicLink() || !st.isFile())) throw new Error(unsafePath(p.entries).message);
+      if (st && st.size > MEMORY_ENTRIES_MAX_BYTES) {
+        dropped.cap += ready.length;
+        return result();
+      }
       const read = readEntries(p);
       if ("ok" in read) throw new Error(read.message);
       if (read.size > MEMORY_ENTRIES_MAX_BYTES) {
