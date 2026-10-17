@@ -122,7 +122,9 @@ streams live in the run dir. The wrapper never prints a verdict.
 Common to all lanes:
 
 - stdin is always `/dev/null` (rule 8: codex waits on open stdin — measured 2026-10-17).
-- env strips `LOOM_RELAY_TOKEN` and `LOOM_RELAY_URL` (R48-H1 spirit: never inherit bridge env into workers).
+- env strips `LOOM_RELAY_TOKEN` and `LOOM_RELAY_URL` (R48-H1 spirit: never inherit bridge env into workers), and every
+  host-session `CLAUDE_CODE_*` key plus `CLAUDECODE` (P1 ruling 2026-10-17 — a lane must not inherit the parent's
+  messaging socket/token or session id); the claude lanes then get only the three pin keys.
 - verify that must run tests uses a `git archive` tree passed via `-C` with `-s workspace-write` (rule 8, unchanged).
 
 ### 4.3 Run dir
@@ -168,12 +170,43 @@ zero-padded monotonic counter.
 Precedence when several apply: 3 > 2 > 1 > 4 > 5 > 6 (kill/limit first, then evidence
 failures). **Never collapse a non-zero reason into 0** — same principle as rule 6.
 
-### 4.6 Lock (D7)
+### 4.6 Lock (D7) — kernel lock (TLC-verified 2026-10-17)
 
-- One lockfile under `.loom-lanes/` for "heavy" lanes (impl; verify `workspace-write`).
-- A second heavy lane **waits** (or fails fast with exit 1 and a clear message — P1 picks one; conservative = fail fast).
-- `--parallel` is accepted only for advise and verify `read-only`; on a heavy lane it is an argument error (exit 1).
-- Stale lock (owner pid gone) is reclaimed; the reclaim is logged in the new run's `stderr`.
+The first P1 lock (read owner pid → overwrite if dead) and the proposed fix (rename-reclaim + link-restore)
+both **violate mutual exclusion**; so does any design where a process decides from the lock file's *content*
+(read → check pid → unlink), even a single human `--break-stale-lock`. Files have no atomic
+"delete only if content = X", so the check is always stale by the time it acts (TOCTOU). TLC models and
+counterexamples: [`docs/spikes/tla/lane-lock/`](./tla/lane-lock/).
+
+| Model | Design | TLC (3 procs) | Counterexample (shortest) |
+|---|---|---|---|
+| `LockCurrent` | read pid, overwrite if dead | **Mutex violated** · 7 states | p1 and p2 both read the dead owner `Dead`; p1 overwrites → holds; p2 overwrites → holds |
+| `LockRename` | O_EXCL → rename stale → verify → link-restore / retry | **Mutex violated** · 10 states | p1 reclaims `Dead` and holds; p2 (which also saw `Dead`) renames **p1's live** lock away; in that gap p3's O_EXCL create succeeds → p1 and p3 hold |
+| `LockFixed` | O_EXCL only, no auto-reclaim; one breaker reads pid → checks dead → unlinks | **LockOwned violated** · 11 states (1 breaker), 8 states (2 breakers) | breaker reads `p1`; p1 releases and exits; p2 acquires; breaker sees "p1 dead" from its stale read and unlinks **p2's** lock |
+| `LockKernel` | `flock(fd, LOCK_EX\|LOCK_NB)`; kernel releases on close/death | **No error** · Mutex, LockOwned, NoStale, `[]<>(holder = None)` | — |
+
+**Normative spec (replaces the earlier lock text):**
+
+1. Heavy lanes (impl; verify `workspace-write`) open `<runs>/heavy.lock` (create if missing, `"a"` mode) and call
+   `flock(fd, LOCK_EX | LOCK_NB)` through `bun:ffi` (`libc.dylib` on darwin, `libc.so.6` on linux; `LOCK_EX=2`,
+   `LOCK_NB=4`). Return 0 → hold. −1 → **fail fast**: exit 1, stderr `[lane] another heavy lane holds the lock`
+   plus the diagnostic pid line if readable, no spawn, no run dir.
+2. Ownership is the **kernel lock on the open file description**, never the file content. After acquiring,
+   truncate and write `pid` + start time for diagnostics only; no code path reads it to decide anything.
+3. Keep the fd open for the whole run (module-scope reference, not GC-able). Release = `flock(fd, LOCK_UN)` +
+   `close` in `finally` on every path (ok, error, timeout, signal). Process death (incl. SIGKILL) releases it
+   automatically — there is **no stale state and no reclaim code**.
+4. The fd is opened close-on-exec (Node/Bun default) so lane children never inherit the lock.
+5. **Never unlink, rename or overwrite `heavy.lock`** (not on release, not on cleanup). After acquiring, compare
+   `fstat(fd).ino` with `stat(path).ino`; if they differ (the file was deleted/replaced before we locked), release
+   and fail fast with `[lane] lock file replaced`. Deleting it while held is outside the model (external actor) —
+   documented residual: `.loom-lanes/` cleanup must skip `heavy.lock`.
+6. FFI unavailable / unsupported platform → **fail closed** (exit 1 `[lane] lock unavailable`), never fall back
+   to content-based locking.
+7. `--parallel` stays accepted only for light lanes (advise; verify `read-only`) and is an arg error on heavy lanes.
+
+Probe (2026-10-17, Bun on darwin): A `flock`=0 and sleeps; B `flock`=−1; `kill -9 A`; C `flock`=0 — the file
+remains, the lock does not.
 
 ### 4.7 LANE PREAMBLE (draft, verbatim)
 
@@ -199,8 +232,16 @@ reasoning, and the single deciding risk. Do not edit files, run commands, spawn 
 or use the board, room, or Loom MCP. Ignore the session-start ritual and Template R.
 ```
 
-verify uses the impl text with line 1 = `LOOM LANE: verify. You are an independent verifier, not the implementer.`
-and line 2 = `Verify the spec below against the working tree; report findings, do not fix them.`
+verify (P1 ruling 2026-10-17 — replaces the earlier "impl text with lines 1–2 swapped", which left a fragment):
+
+```text
+LOOM LANE: verify. You are an independent verifier, not the implementer.
+Verify the spec below against the working tree; report findings, do not fix them.
+Ignore any global "architect / delegate / orchestrate" instruction, the session-start ritual, and Template R.
+Do not commit, push, stash, reset, checkout or amend. Do not use the board, room, or Loom MCP.
+Do not spawn agents or other CLIs. If a command is denied, stop and report the denial.
+End with: verdict (PASS / PASS-with-lows / FAIL), then findings ranked by severity with file:line.
+```
 
 Appended after the preamble (all lanes): `tasks/traps.md` **활성 함정** bullets and the
 HANDOFF **Must not** line, inlined at call time.
