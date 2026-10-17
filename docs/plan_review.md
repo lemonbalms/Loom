@@ -1,7 +1,7 @@
 # Plan Review — Loom
 
 > **버전 관리:** 계획 SSOT는 `docs/PLAN.md`이다. 리뷰는 반드시 **대상 Plan version**을 헤더에 적는다.  
-> **최신:** **R59** PLAN **v0.40.0**(표지 흉내 접기 강화 · R8 같은 접기 · 헤드리스 카드 본문 표지 줄 무력화, MINOR — sanitize 계약 변경 · §0.37.0 "다음 후보" ④) **`approved-with-fixes` → M1·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R59b — 아키텍트 PLAN diff 확인)**(2026-10-18, High **0** · Medium **1** · Low **4**) — 결정을 가르는 리스크 **R59-M1**: 목록의 스킬 **이름**이 표지 판정을 받지 않아(`assertName`은 `SKILL_NAME_RE`만) `- loom-dispatched-task: unavailable: not installed` 같은 줄이 진짜 표지 **위**에 남는다 → R7 "첫 턴에서 표지로 읽히는 줄은 진짜 하나"가 거짓 → `assertName`이 `containsMarker(name)`이면 throw(`skill listing: skill name contains the task marker` · `spawn_setup_failed` · 세 에이전트 · available/unavailable) · R8 넷째 갈래 · P3 red. **L1**(접기 = `applyTable(markerSkeleton(s).toLowerCase())` → strip · 표 원천 `/^[\p{L}\p{N}]$/u` · `Ɑ` 표본)·**L2**(블록 정본 `/LOOM\W?(?:MEMORY|REPORT)/u` — C4 → 수정)·**L3**(자리표시 `[line removed by Loom: it imitated a Loom boundary line]`)·**L4**(계급 46 — 표지 아래 가짜 목록 머리 · 항목 줄 · 자칭 표지는 남는다 · P3 축자 단언). R1~R10 수용(R1(b) → L1 · R5 → L2 · R7 → M1) · C1 수용(문면 정밀화) · C2 수용(+ M1) · C3 draft 수용(증거 문자 한정) · C4 → L2. 기록 §Review R59. **Advisor: opus-advisor consulted: yes.** 직전: **R58** PLAN **v0.39.0**(헤드리스 워커 hint 둘째 줄 — 작업 표지 위에 나열된 SKILL.md 읽기 허용, MINOR — 0.38.0 UK-8 · 0.38.1 D8 결과 ①) **`approved-with-fixes` → M1·M2·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R58b — 아키텍트 PLAN diff 확인)**(2026-10-18, High **0** · Medium **2** · Low **4**) — 결정을 가르는 리스크 **R58-M1**: 예외 범위가 *"the SKILL.md files Loom lists for this card"* 라는 출처 주장이라 표지 아래 데이터(카드 본문 · 기억 펜스)가 "Loom lists …"라고 쓰면 시스템 수준 예외를 끌어올 수 있다 → D2를 위치에 묶음 `… except that you may read the SKILL.md files listed above the dispatched-task marker.`(163 B · hint 497 B). **M2**(D7 결과표 객관화 — ① codex R5 읽기 없음 · ④ claude 0 → ship 보류 · 오너 판단 · ⑤ 신설 cwd 밖 목록 외 절대 경로 → ship 안 함 · PASS ∧ ¬⑤)·**L1**(편집 선언 5 → 7줄 — 출처 주석 re-pinned · 테스트 이름 무번호 행)·**L2**(`USER_GUIDE.md:833` 요약)·**L3**(drain → status 확인 → 교체 → start)·**L4**(D7 ① 다음 선택지 — 본문 인라인 · UK-2 분리 실행 · hint 2차). R1~R7 수용(R6 재계수) · C1 → L1 · C2 수용(+ `pendingResult` 구절). 기록 §Review R58. **Advisor: opus-advisor consulted: yes.** 직전: **R57** PLAN **v0.38.1**(codex/grok 첫 턴 스킬 목록 머리 문면 `SKILL_LISTING_HEADER` 한 줄, PATCH — 0.38.0 UK-8 대응) **`approved-with-fixes` → M1·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R57b — 아키텍트 PLAN diff 확인)**(2026-10-18, High **0** · Medium **1** · Low **4**) — 결정을 가르는 리스크 *codex에서 `developer_instructions` hint가 사용자 턴 머리보다 우선할 수 있다* → D7 결과표(M1)가 판정.  
+> **최신:** **R60** PLAN **v0.41.0**(헤드리스 워커가 받은 프롬프트 기록 + `loom prompt show`, MINOR — 업그레이드 5단계 1부: 관측) **`approved-with-fixes` → M1·M2·M3·L1·L2·L3 반영 완료 · PLAN `approved`(no R60b — 아키텍트 PLAN diff 확인)**(2026-10-18, High **0** · Medium **3** · Low **3**) — 결정을 가르는 리스크 **R60-M1**: 기록 쓰기 await가 `spawnDetachedWorker`(`:2014`) 바로 앞에 놓여 abandon · cwd 재검사 · `group_alive` 재검사가 "모든 setup await 뒤"가 아니게 된다(`:1996` 불변식 — cwd 교체 TOCTOU 창 · close() 뒤 abandon에도 spawn) → 쓰는 자리 = write-ahead(`:1971-1994`) 직후 · `if (owner.abandoned)`(`:1995`) 바로 앞 · 무번호 행 "기록 ≠ spawn 증거" · P2 `cwd_denied` → 기록 있음 · transcript 없음. **M2**(D2 키 `dispatchHandoffId` — `attempt` 뒤 · `show` STALE 표시 + exit 1 · `available attempts` · 최신에서 제외 · 계급 49 정정)·**M3**(C3 편집 2곳 — `headless-memory-write.test.ts:416` + `smoke-memory-write.ts:507` · ⑥ 무접촉 예외 · R9 멈춤 규칙 스모크 두 종에도)·**L1**(D1 완료 기준 = "nonce 제외 동일" · 0.41 = 보낸 바이트 관측)·**L2**(출력 모든 필드 표기 변환 + bidi · R6 직렬화 DEL · C1 · bidi 이스케이프 · `user` = `promptBody.toWellFormed()`)·**L3**(`lstat` 일반 파일 · 읽기 8 MiB 상한 · `invalid` reason에 내용 없음 · `MEMORY_COMMANDS` 참조 정정 · R8 0개 꼬리). R1 → M1 · R2 · R3 수용 · R4 수용(+M2) · R5 수용 · R6 수용(+L2) · R7 수용 · R8 수용(+L3(c)) · R9 수용(+M2 · L3(a)) · R10 수용(+L2) · R11 · R12 수용(L3(b)) · R13 · R14 수용 · C1 · C2 draft 수용 · C3 → M3. 기록 §Review R60. **Advisor: opus-advisor consulted: yes.** 직전: **R59** PLAN **v0.40.0**(표지 흉내 접기 강화 · R8 같은 접기 · 헤드리스 카드 본문 표지 줄 무력화, MINOR — sanitize 계약 변경 · §0.37.0 "다음 후보" ④) **`approved-with-fixes` → M1·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R59b — 아키텍트 PLAN diff 확인)**(2026-10-18, High **0** · Medium **1** · Low **4**) — 결정을 가르는 리스크 **R59-M1**: 목록의 스킬 **이름**이 표지 판정을 받지 않아(`assertName`은 `SKILL_NAME_RE`만) `- loom-dispatched-task: unavailable: not installed` 같은 줄이 진짜 표지 **위**에 남는다 → R7 "첫 턴에서 표지로 읽히는 줄은 진짜 하나"가 거짓 → `assertName`이 `containsMarker(name)`이면 throw(`skill listing: skill name contains the task marker` · `spawn_setup_failed` · 세 에이전트 · available/unavailable) · R8 넷째 갈래 · P3 red. **L1**(접기 = `applyTable(markerSkeleton(s).toLowerCase())` → strip · 표 원천 `/^[\p{L}\p{N}]$/u` · `Ɑ` 표본)·**L2**(블록 정본 `/LOOM\W?(?:MEMORY|REPORT)/u` — C4 → 수정)·**L3**(자리표시 `[line removed by Loom: it imitated a Loom boundary line]`)·**L4**(계급 46 — 표지 아래 가짜 목록 머리 · 항목 줄 · 자칭 표지는 남는다 · P3 축자 단언). R1~R10 수용(R1(b) → L1 · R5 → L2 · R7 → M1) · C1 수용(문면 정밀화) · C2 수용(+ M1) · C3 draft 수용(증거 문자 한정) · C4 → L2. 기록 §Review R59. **Advisor: opus-advisor consulted: yes.** 직전: **R58** PLAN **v0.39.0**(헤드리스 워커 hint 둘째 줄 — 작업 표지 위에 나열된 SKILL.md 읽기 허용, MINOR — 0.38.0 UK-8 · 0.38.1 D8 결과 ①) **`approved-with-fixes` → M1·M2·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R58b — 아키텍트 PLAN diff 확인)**(2026-10-18, High **0** · Medium **2** · Low **4**) — 결정을 가르는 리스크 **R58-M1**: 예외 범위가 *"the SKILL.md files Loom lists for this card"* 라는 출처 주장이라 표지 아래 데이터(카드 본문 · 기억 펜스)가 "Loom lists …"라고 쓰면 시스템 수준 예외를 끌어올 수 있다 → D2를 위치에 묶음 `… except that you may read the SKILL.md files listed above the dispatched-task marker.`(163 B · hint 497 B). **M2**(D7 결과표 객관화 — ① codex R5 읽기 없음 · ④ claude 0 → ship 보류 · 오너 판단 · ⑤ 신설 cwd 밖 목록 외 절대 경로 → ship 안 함 · PASS ∧ ¬⑤)·**L1**(편집 선언 5 → 7줄 — 출처 주석 re-pinned · 테스트 이름 무번호 행)·**L2**(`USER_GUIDE.md:833` 요약)·**L3**(drain → status 확인 → 교체 → start)·**L4**(D7 ① 다음 선택지 — 본문 인라인 · UK-2 분리 실행 · hint 2차). R1~R7 수용(R6 재계수) · C1 → L1 · C2 수용(+ `pendingResult` 구절). 기록 §Review R58. **Advisor: opus-advisor consulted: yes.** 직전: **R57** PLAN **v0.38.1**(codex/grok 첫 턴 스킬 목록 머리 문면 `SKILL_LISTING_HEADER` 한 줄, PATCH — 0.38.0 UK-8 대응) **`approved-with-fixes` → M1·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R57b — 아키텍트 PLAN diff 확인)**(2026-10-18, High **0** · Medium **1** · Low **4**) — 결정을 가르는 리스크 *codex에서 `developer_instructions` hint가 사용자 턴 머리보다 우선할 수 있다* → D7 결과표(M1)가 판정.  
 > **이전:** **R56** PLAN **v0.38.0**(기억 쓰기 경로 — 카드 후보 → 방 범위 `proposed` · `notes.md` · `LOOM_CARD` CLI 거부, MINOR — 업그레이드 4단계 4부) **`approved-with-fixes` → M1·M2·M3·M4·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R56b — 아키텍트 PLAN diff 확인)**(2026-10-17, High **0** · Medium **4** · Low **4**) — 결정을 가르는 리스크 **R56-M3**: 사람 승인이 유일한 통제인데 `list`가 신뢰 낮은 카드 본문(≤2000자)을 80자만 보인다 → 카드 출처 행 `+<n> chars — loom memory show <id>` 접미 · `approve` `activated:` 본문 전체. **M1**(고정 테스트 편집 선언 12곳 — `skill-inventory.test.ts` 9 · `memory-cli.test.ts` 3)·**M2**(아카이브 끝 4 MiB만 읽기 — 상한 초과 = 영구 기능 정지를 `busy`로 표기하던 갈래 삭제)·**M4**(실 CLI ① = 세 카드 `notes.md` · 적어도 한 카드 `proposed ≥ 1`)·**L1**(표지 정규식 대소문자 구분)·**L2**(내장 스킬 `forced`로만)·**L3**(exited-recovery 타임아웃 갈래 선언)·**L4**(D12 문면 · `agentKey` · R11 인용 · show `origin:`) · 계급 28 보강. C1 → R2 · C2 수용 · C3 → R10 · C4 → M2 · C5 → M1 · C6 수용. 기록 §Review R56. **Advisor: opus-advisor consulted: yes.**  
 > **직전:** **R55** PLAN **v0.37.0**(정책 정직성 — `policyGaps` 단일 원천 · 펜스 안 정책 안내문 + 규칙 본문 · strict · `agent_disabled` · AGENT_HINT 삭제, MINOR — 업그레이드 4단계 3부) **`approved-with-fixes` → M1·M2·L1·L2·L3·L4 반영 완료 · PLAN `approved`(no R55b — 아키텍트 PLAN diff 확인)**(2026-10-17, High **0** · Medium **2** · Low **4**) — 결정적 **R55-M2**: UK-1 — 옵트인 없는 production 첫 턴 변경(기본 켜짐 정책 안내문)을 실 CLI 0회로 ship하지 않는다 → **ship 차단(오너 승인 필요)** · ship 조건 = `smoke:policy --real-cli --owner-approved` ① 한정 1회 PASS(codex · grok · claude 각 1카드 · `Reply with the single word ok.` · 기본 정책 · 기억 · 규칙 꺼짐). **M1**(`mergePolicy`가 내장 deny 9개를 항상 합집합 `policy.ts:766` → codex · grok `shell.deny` 간극은 정책으로 제거 불가 → 계급 20 = codex · grok 끔 + claude `network: true`/끔 · strict 거부 꼬리 교체 · UK-6 영구 경고)·**L1**(`configuredAgentBins` 켜진 에이전트 기준)·**L2**(스모크 안쪽 자식 = bridge와 같은 두 호출)·**L3**(`POLICY_NOTICE_LEAD` "Loom policy")·**L4**(`maxConcurrent` 0 파서 → P2). C1 → D1 문면(간극 6개) · C2 → R1 · C3 → R14 · C4 수용. 기록 §Review R55.  
 > **직전:** **R54** PLAN **v0.36.0**(headless 워커 카드 시작 기억 스냅샷 + 펜스 주입, MINOR — 업그레이드 4단계 2부a) **`approved-with-fixes` → M1·M2·M3·L1·L2 반영 완료 · PLAN `approved`(no R54b — 아키텍트 PLAN diff 확인)**(2026-10-16, High **0** · Medium **3** · Low **2**) — 결정적 **R54-M1**: P1 green이 `memory-inject.ts`에 `"memory-snapshot.md"` 리터럴을 넣는 순간 아직 뒤집지 않은 부분 문자열 import 가드(`memory-snapshot.test.ts:791`, `scripts/`까지 전수)가 red → **D10b 뒤집기를 P1 red로**("`headless-worker.ts` 필수" 단언은 P2 green까지 예정된 red) · M2 스모크 CLI 자식 `LOOM_PROFILE=smoke` · M3 스모크 가드 모드별 · L1 꺼짐 파일시스템 무접촉 · L2 레코드 `null` 변조 차단  
@@ -151,6 +151,94 @@ author-close(Fable 사전 승인, no R41b) — verdict `pending-revision`의 M-1
 - **M-2 반영**: "conv 턴 delta화" 행에 슬라이스 메커니즘 단락(정규화 오프셋→원문 오프셋 인덱스 맵 동반 구축 → 마지막 출현 매치 끝의 원문 오프셋에서 원문 슬라이스, 정규화본 슬라이스 금지) + "0.23.5 프로브 동일 기법" 인용을 매칭 원리 한정으로 정정 · 테스트 ④에 슬라이스 원문 무결성 어서션 보강.
 - **L-1**: "32k 트리거와의 관계" 행 신설(임계 판정·패키징 입력 = 필터 후 full scrape·delta 미적용·앵커는 패키징 턴에도 갱신) + 테스트 ⑪ 신설. **L-2**: delta 적용 턴 상시 통계 note `delta: kept N/M chars` 명기 + Security ② 정정. **L-3**: 빈 delta note `delta empty (no new output)` 명기. **L-4**: "done_proposal 판정 입력" 행 신설(delta 텍스트 선두 기준 + 폴백 턴 현행 유지 — 권고안 채택). **L-5**: settle 비교 = `stripAnsi` 후 텍스트 기준 명기.
 - PLAN 헤더 Status/Fable-when·섹션 헤더·Approved by 갱신 → **`approved`** (no R31b, Fable 사전 승인 조건 충족).
+
+---
+
+## Review R60 — Plan v0.41.0 (헤드리스 워커가 받은 프롬프트 기록 + `loom prompt show`, MINOR)
+
+**검토 대상:** `docs/PLAN.md` 헤더(Version · Status · Supersedes · Fable 5 when)와 §0.41.0 draft. 범위는 권위 고지 · Why · MINOR 근거 · D1~D9 · ② 인터페이스 정본 · 업그레이드 메모 · R1~R14 · C1~C3 · 계급 47~54와 무번호 행 · ⑥ · ⑦ P1~P4 · Non-goals · Security · 추정/실측 · UK-1~5 · Done (a)~(e)다. `docs/UNKNOWNS.md` §0.41.0과 아키텍트 증거 팩도 함께 봤다. 코드 대조 기준은 HEAD `cf44097`이다.
+- 코드: `headless-worker.ts:590-611`(`owner.abandon`) · `:1070-1106`(`nextPlan`) · `:1225-1281` · `:1350-1390` · `:1865-2212`(`spawnOnce`) · `:2222-2295` · `agent-argv.ts:395-483` · `card-session-store.ts:98-165` · `bridge-runtime.ts:834-875` · `:1134-1137` · `session-store.ts:366-377` · `cli/src/index.ts:279-284` · `:3310-3317`
+- 테스트: `headless-memory-write.test.ts:255-274` · `:400-459` · `headless-p5r3.test.ts:154-184`
+- 스모크: `smoke-memory-write.ts:216-252` · `:506-509` · `:693-697` · `:749` · `:1030-1109`
+- grep: host · cli `*.test.ts`와 `scripts/**`의 `readdirSync|readdir(` 전수 · `"transcript-1\.jsonl"|"session\.json",` 전수 · `cardFiles` · `baseCardFiles`
+
+**검토자:** loom-advisor (Opus 5.5 high — CLAUDE.md 규칙 8). **Advisor: opus-advisor consulted: yes.**
+**날짜:** 2026-10-18
+**결론:** **`approved-with-fixes`** — High 0 · Medium 3(M1~M3) · Low 3(L1~L3).
+- 골격은 코드와 맞는다. 세 에이전트의 사용자 바이트 = `promptBody`, `system` = hint 값, codex 재개 `userArgv`, `<n>` = `plan.attempts`가 모두 확인된다.
+- M1은 쓰는 자리를 옮기는 문제다. 지금 draft의 위치는 기존 보안 불변식("마지막 경로 검사는 모든 setup await 뒤")을 깬다.
+- M2는 같은 카드를 다시 dispatch했을 때, 이전 dispatch의 기록이 지금 dispatch의 것으로 보이는 문제다. 키 하나를 더해야 한다(D2 락에 대한 정당한 도전).
+- M3은 C3 계수 누락이다. 고정 스모크가 하나 더 깨진다.
+- L1~L3은 문안과 읽기 경로를 다듬는 것이다. 제품 범위는 늘지 않는다.
+- **no R60b**: 아래 문안대로 반영하면 `approved`다.
+
+### 결정적 발견
+**바이트 대응은 코드로 확인된다.**
+- 첫 턴 stdin은 `argv.continuationMessage`가 undefined이면 `firstTurn`이다(`agent-argv.ts:477`). 재개 stdin은 `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`이다(`:478-482` · `headless-worker.ts:2107-2112`). 둘 다 `promptBody`(`:1947-1949`)와 같다.
+- grok은 같은 값을 `prompt.txt`에 쓰고(`:1950`) stdin에는 `""`를 보낸다.
+- codex 재개 argv의 마지막 원소는 `RESUME_CONTINUATION_MESSAGE`다(`agent-argv.ts:408`). `developer_instructions`는 첫 spawn(`:422`)과 재개(`:406`) 모두 같은 hint다.
+- 재개 · recovery는 `nextPlan`의 `attempts + 1`(`:1100`)을 쓰고, 새 spawn은 `1`(`:1278`)을 쓴다. 입양은 spawn하지 않으므로 기록도 없다. 이 규칙은 `transcript-<n>`(`:1890`)과 일치한다.
+
+**결정을 가르는 리스크는 R1의 쓰는 자리(M1)다.**
+- `:1996` 주석은 *"Last path check after all setup awaits"*이다. abandon 검사(`:1995`) → cwd 재검사(`:1999-2002`) → `group_alive` 재검사(`:2003`) → `spawnDetachedWorker`(`:2014`)는 **await 없는 동기 구간**이다.
+- R1은 그 구간 한가운데(`:2014` 바로 앞)에 ≤ ~1.2 MiB 파일 쓰기 await를 넣는다. 그러면 두 창이 다시 열린다.
+  - cwd 심볼릭 링크 교체 TOCTOU 창이 넓어진다.
+  - `owner.abandon()`(`:603-607` — 락 없이 동기로 뒤집힌다)이 검사를 통과한 뒤에도 spawn이 일어난다.
+- 관측 기능이 경계 검사의 순서를 바꾸는 것은 D7의 취지("관측이 관측 대상을 바꾸지 않는다")와도 어긋난다.
+
+### Checklist
+- [ ] ① D2 · R1~R6 기록 바이트 · 쓰는 자리 · 번호 — **FAIL → M1**(자리) · **M2**(이전 dispatch 기록)
+  - `user` = `promptBody` · `system` = hint · `userArgv` · 키 순서 · `<n>` 규칙은 PASS다.
+- [x] ② D3 fail-open vs "같은 카드 = 같은 프롬프트" — PASS(+L1 · M2)
+  - 기록은 관측이고 결정성의 증명이 아니다. M2로 fail-open이 오귀속을 만들지 않게 한다.
+- [x] ③ D5 · R13 · 계급 50 노출 — PASS
+  - 추가 redaction이 필요한 항목은 없다. 근거는 Decision notes에 적었다.
+- [x] ④ D6 · R8~R12 · C1 · C2 — PASS(+L2 표시 범위 · L3 읽기 강화)
+  - 경로 순회는 불가능하다. `cardId`는 필터로만 쓰이고, `<n>`은 `/^[1-9][0-9]*$/`, 피어 디렉터리는 해시다.
+- [ ] ⑤ C3 고정 테스트 편집 — **FAIL → M3**(`smoke-memory-write.ts:506-509`)
+- [x] ⑥ D7 · D8 바이트 동일 · 실 CLI 없이 ship — PASS(M1 반영 전제)
+  - 워커 바이트가 바뀌지 않으므로 실 CLI 1회는 실패할 수 없다(Next-action test 탈락).
+- [x] ⑦ D1 분할 · pane/conv 범위 밖 — PASS(+L1 완료 기준 문면)
+- [x] ⑧ red 커밋 production 0줄 · green 커밋 테스트 0줄 — PASS(M3 편집도 P2 red에 넣는다)
+- [x] ⑨ §3.5 Unknowns — UK-1~UK-5 모두 비차단으로 수용한다. UK-4는 0.43 착수 전 차단 후보로 둔다.
+
+### Findings
+| ID | Sev | 위치 | 결함 | 수정 |
+|---|---|---|---|---|
+| **R60-M1** | Med | R1 · ② 배선 행 · R7 · P2 · 추정/실측 | 기록 쓰기(await)가 `spawnDetachedWorker`(`:2014`) 바로 앞에 놓인다.<br>그러면 abandon(`:1995`) · cwd 재검사(`:1999-2002`) · `group_alive` 재검사(`:2003-2013`)가 더 이상 "모든 setup await 뒤"가 아니다(`:1996` 주석의 불변식).<br>결과: cwd 교체 TOCTOU 창이 넓어지고, close() 뒤 abandon이 뒤집혀도 spawn이 일어날 수 있다. | **쓰는 자리를 write-ahead(`:1971-1994`) 직후 · `if (owner.abandoned)`(`:1995`) 바로 앞으로 옮긴다.** 세 검사와 spawn 사이에는 await 0개를 유지한다.<br>대가: write-ahead를 지났지만 spawn하지 않은 시도(`abandon` · `cwd_denied` · `group_alive`)에도 기록이 남는다.<br>R1의 문장을 고친다. 옛 문장 "기록이 있으면 그 바이트로 프로세스가 시작됐다"를 다음으로 바꾼다: "기록 = 그 시도가 write-ahead까지 간 증거다. spawn 여부는 `transcript-<n>.jsonl`이 있는지로 판단한다."<br>무번호 행을 신설한다: "기록 ≠ spawn 증거".<br>P2 "spawn 없는 시도 → 기록 없음"을 뒤집는다: cwd 재검사 실패 → 기록 **있음** · transcript 없음 · `cwd_denied` 결과.<br>대안(쓴 뒤 세 검사를 다시 하기)은 기각한다. 검사가 중복되고 순서 불변식을 문서로만 지키게 된다. |
+| **R60-M2** | Med | D2 키 · ② 레코드 · R4 · R9 · 계급 49 · P1 · P3 | 같은 카드의 새 dispatch는 `attempts: 1`로 다시 시작한다(`:1272-1280`). 이때 덮어쓰는 것은 `prompt-1.json`뿐이다. 이전 dispatch의 `prompt-2.json`은 남는다. 그래서 계급 49 문면 "(· `prompt-2.json`)을 덮어쓴다"는 거짓이다.<br>D3 fail-open으로 새 `prompt-1` 쓰기가 실패하면 이전 dispatch의 `prompt-1`도 남는다.<br>레코드에는 dispatch를 식별하는 값이 없다. 그래서 `show`는 다른 dispatch의 프롬프트를 이 카드의 시도로 보여 준다. `available attempts` 줄도 마찬가지다. 관측 표면이 거짓 귀속을 만든다. | **D2 키에 `dispatchHandoffId`를 추가한다**(`attempt` 바로 뒤 · 값 = `runCard.dispatchHandoffId` — 입양 · 재개 모두 원 dispatch로 고정된다 `:1253-1259`).<br>`show`는 `session.json`의 `dispatchHandoffId`와 비교한다. 다르면 머리 줄에 `STALE — earlier dispatch <id>`를 표시하고 exit 1로 끝낸다(MISMATCH와 같은 형). `available attempts`와 "최신"에서는 제외한다.<br>계급 49 문면을 정정한다: "새 dispatch는 `prompt-1.json`만 덮어쓰고, 나머지는 STALE로 표시된다".<br>P1 키 순서 리터럴과 P3 stale 두 건(남은 `prompt-2` · fail-open으로 남은 `prompt-1`)을 추가한다.<br>대안 두 가지를 기각한다.<br>· 첫 spawn에서 `prompt-2` 삭제: 삭제도 fail-open이라 오귀속이 남는다.<br>· `startedAt` 비교: 의미가 간접적이다. |
+| **R60-M3** | Med | C3 · ⑥ 무접촉 `scripts/smoke-*.ts` · ⑦ 머리 · P4 "스모크 코드 변경 0" · Done (c)(e) | 카드 디렉터리 목록을 정확히 단언하는 곳이 하나 더 있다. `smoke-memory-write.ts:506-509` `baseCardFiles`가 `:693` · `:749`에서 `same(c.cardFiles, …)`로 쓰인다.<br>`prompt-1.json`이 생기면 `smoke:memory-write`가 FAIL한다. P4 · (e)가 요구하는 "스모크 PASS · 스모크 코드 변경 0"을 함께 만족할 수 없다.<br>그 밖의 목록 단언은 전수 확인했다. `headless-memory-write.test.ts:449`는 두 실행을 비교하므로 성립한다. `smoke-headless.ts:204`는 transcript만 거른다. `headless-memory.test.ts`의 `.tmp.` 필터는 R5로 성립한다. | **C3 편집 선언을 2곳으로 고친다:** `headless-memory-write.test.ts:416` `want` + `smoke-memory-write.ts:507` 배열에 각각 `"prompt-1.json"` 원소를 추가한다. 둘 다 P2 red 커밋에 넣는다.<br>⑥ 무접촉 행에서 `scripts/smoke-*.ts`를 "`smoke-memory-write.ts:507` 원소 1개 제외"로 바꾼다. P4 · (c) · 추정/실측 행("1줄")도 맞춘다.<br>R9의 멈춤 규칙(green 전체 스위트에서 예상 밖 red가 나면 멈추고 보고)을 **스모크 두 종에도** 적용한다. |
+| **R60-L1** | Low | D1 · Review impact · UNKNOWNS Known knowns | 증명 문면이 과하다. D1은 "같은 카드 = 같은 프롬프트는 기록된 바이트(0.41) + 골든(0.42)으로 증명"이라고 쓴다. 하지만 펜스 nonce가 의도적으로 무작위다(`:2244` — R5 보안). 그래서 펜스가 켜진 같은 카드의 두 dispatch는 바이트가 다르다.<br>기록이 증명하는 것은 "무엇을 보냈나"다. "같다"는 증명하지 못한다. | D1 대응 문면을 이렇게 바꾼다:<br>· 0.41 = 보낸 바이트를 관측할 수 있게 한다.<br>· 0.42 골든 = "같은 입력 + 같은 nonce(주입 `memoryNonce`) → 같은 바이트".<br>완료 기준은 "nonce를 제외하면 같다"로 재진술한다. |
+| **R60-L2** | Low | R6 · R10 · ② CLI · P1 · P3 · 무번호 행 | (a) R10의 이스케이프 범위가 "텍스트"로만 적혀 있다. 그런데 머리 줄 · 모호 목록의 `roomId` · `cardId` · `startedAt` · `invalid` reason · 경로도 원격이나 파일에서 온 문자열이다.<br>(b) `--json`은 "JSON이 C0을 이스케이프"하므로 안전하다고 했다. 하지만 `JSON.stringify`는 DEL과 C1(U+0080–U+009F — 예: CSI U+009B)을 날것으로 둔다.<br>(c) 짝 없는 서로게이트는 stdin과 파일에서 U+FFFD로 인코딩된다. `user`에는 `\udXXX`로 남는다(`userSha256`은 보낸 바이트와 일치한다). | (a) 출력하는 **모든 필드**에 같은 표기 변환을 적용한다. 대상에 bidi 제어(U+202A–202E · U+2066–2069)를 추가한다.<br>(b) R6 직렬화에서 DEL · C1 · bidi 제어를 `\u00XX` / `\u20XX`로 이스케이프한다. 파싱하면 값이 같고, `--json` = 파일 바이트 축자이면서 터미널에 안전하다.<br>(c) `user` = `promptBody.toWellFormed()`(보낸 바이트와 같은 논리 값)로 정하거나, 무번호 행으로 선언한다.<br>P1 · P3 표본에 U+009B · U+202E · `\ud800`을 넣는다. |
+| **R60-L3** | Low | R9 · R8 · ② CLI 행 · ⑥ · P3 | (a) `readPromptRecord`에 크기 상한과 파일 종류 검사가 없다. 손상되었거나 심어진 수 GB 파일 · 심볼릭 링크를 그대로 읽는다.<br>(b) ② CLI 행 · ⑥ · P3의 "R12 — `--json` 불리언"이 잘못된 참조다. R12는 크기 상한이다.<br>(c) 프로필이 다시 가입해 `peerId`가 바뀌면, 이전 피어 해시 아래 카드는 보이지 않는다(브리지 recovery도 같다). | (a) `lstat` → 일반 파일이 아니면 `invalid: not a regular file`. 크기가 > 8 MiB(R12 합 × 이스케이프 여유)이면 `invalid: too large`. 읽기에만 거는 상한이므로 D9(쓰기 상한 없음)와 충돌하지 않는다. `invalid` reason에 파일 내용을 싣지 않는다.<br>(b) 참조를 "`MEMORY_COMMANDS`에 `"prompt"` 추가(`index.ts:283`)"로 바로잡는다.<br>(c) R8의 0개 문구에 꼬리 `(cards from an earlier peer id of this profile are not searched)`를 붙인다. |
+
+### Decision notes
+- **질문 1 — D2 수용(+M1 · M2).**
+  - 첫 턴 · 재개 · 세 CLI의 채널 바이트 대응은 맞다.
+  - codex 재개의 두 사용자 입력을 모두 남기는 R3은 맞다. 합성 방식은 UK-2로 정직하게 남겨 두었다.
+  - 번호: 재개 · recovery = `attempts + 1`, 입양 = spawn 없음, 새 dispatch = `1`이다. transcript와 일치한다. 남는 것은 dispatch 간 오귀속(M2)뿐이다.
+- **질문 2 — D3 수용.** 관측이 작업을 막지 않는다는 원칙이 우선이다. "같은 카드 = 같은 프롬프트"는 기록이 아니라 0.42 골든이 맡는다(L1). 실패한 시도는 missing으로 보이고, 다른 dispatch로 보이지 않는다(M2).
+- **질문 3 — D5 수용(추가 redaction 불요).**
+  - 카드 본문의 비밀은 발신자가 쓴 것이다. 이미 보드 · relay에 있고, grok `prompt.txt`(0.30~)에도 같은 바이트가 남아 있다.
+  - 여기에 `redactSecrets(process.env)`를 적용하면 "받은 것"이 깨지고, 보호 이득은 없다.
+  - 펜스는 이미 env redaction을 거쳤다(`:2242`). 워커 env와 정책 argv는 기록하지 않는다(R13).
+  - 0600 / 0700 · 정리 경로 없음 선언은 정직하다. 정리 명령은 UK-3 다음 후보로 둔다.
+- **질문 4 — D6 수용(+L2 · L3).**
+  - `LOOM_CARD`를 인자 해석 전에 거부하는 것은 0.38 D16'과 같은 형이다. 가드이지 경계가 아니라는 선언(계급 54)도 맞다.
+  - exit 0/1 분류는 service · memory 관례와 맞다.
+- **질문 5 — C3 → 수정(M3).** 기록을 카드 디렉터리 밖으로 옮기는 대안은 기각한다. D2(카드 수명 · 같은 `<n>`)와 충돌하고, 편집도 없어지지 않는다(밖에 두어도 정리 · 해석 표면이 새로 생긴다).
+- **질문 6 — D7 · D8 수용.** M1 반영 뒤에도 argv · stdin · `prompt.txt` · fingerprint 값은 바뀌지 않는다(쓰기는 값을 읽기만 한다). MINOR에 실 CLI 없이 ship하는 것은 0.40 D7 형으로 수용한다.
+- **질문 7 — D1 수용(+L1).**
+  - A → B → C 순서는 관측 표면을 먼저 만든다는 점에서 맞다.
+  - pane/conv를 "headless만"으로 해소한 것(계급 53)을 수용한다. `PLAN.md:898`의 모호함은 여기서 닫는다.
+- **R1 → 수정(M1)** · **R2 · R3 수용** · **R4 수용**(계급 49 문면은 M2로 정정) · **R5 수용**(임시 이름 바이트가 같아 `headless-memory.test.ts:614` · `:845` · `:888`이 성립한다) · **R6 수용**(+L2 직렬화 이스케이프) · **R7 수용**(잡는 범위 = 기록 쓰기 하나 · M1 자리에서도 같다) · **R8 수용**(+L3(c)) · **R9 수용**(+M2 · L3(a)) · **R10 수용**(+L2) · **R11 · R12 수용**(참조 오기는 L3(b)) · **R13 · R14 수용**.
+- **C1 draft 수용.** 브리지와 같은 피어 해시를 쓰고(`bridge-runtime.ts:1137`), 같은 레코드 검증(`listCardSessions`)을 거친다. 전체 스캔 대안은 다른 프로필의 카드까지 노출하므로 기각한다.
+- **C2 draft 수용.** `--room` · `--agent`는 값 플래그다. `--agent`는 세 값으로 열거 검사한다.
+- **C3 → 수정(M3).**
+
+---
+
+**참고:** 이 리뷰는 읽기 전용 대조만으로 작성했습니다. 테스트와 스모크는 실행하지 않았고, M3의 스모크 실패는 `smoke-memory-write.ts:506-509` 코드 독해에 근거한 판단입니다.
 
 ---
 

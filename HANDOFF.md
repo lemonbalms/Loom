@@ -5,33 +5,33 @@
 
 ## One-line resume
 
-> v0.40.0 **shipped** (R59) · marker fold hardening · **next = roadmap stage 5 (prompt assembly) PLAN**
+> v0.41.0 **approved** (R60) · stage 5 part 1 — prompt record + `loom prompt show` · **next = P1** · 0.40.0 shipped
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.40.0 shipped** (R59) · next stage 5 PLAN | `docs/PLAN.md` |
+| Product | **v0.41.0 `approved`** (R60) · next P1 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.40.0 shipped · next = roadmap stage 5 (prompt assembly) PLAN
+### v0.41.0 approved (R60) · next = P1 prompt record red → green
 
-**Goal:** 업그레이드 5단계 — 프롬프트 조립(`docs/UPGRADE-PLAN.md`). Evidence pack (Opus) → architect decision list → PLAN §0.41.0 draft (lane) → R60 (advise) → implement. 0.40.0 shipped 2026-10-18: one marker fold (`marker-fold.ts` — NFKD · marks · confusables 172+1 · lowercase · table again) for every marker check · R8 on the same fold · headless card-body marker lines → `[line removed by Loom: it imitated a Loom boundary line]` · skill names (R59-M1) + composed listing entries (P3b — Astra 0077 M) → `spawn_setup_failed`. Clean input = 0.39 bytes · no real-CLI (R59 ⑥).
+**Goal:** 업그레이드 5단계 1부(관측) — per-attempt `<cardDir>/prompt-<n>.json` (exact system-channel + user bytes, `dispatchHandoffId` — R60-M2, written after write-ahead before the abandon/cwd/group checks — R60-M1, fail-open, write-only) + `loom prompt show <cardId>` (read-only, STALE marking, escaped output, refused under `LOOM_CARD`). Worker bytes · fingerprint unchanged · no real-CLI. Two pinned list edits (R60-M3). Authority `docs/PLAN.md` §0.41.0 · R60. 0.42 = section manifest (byte-preserving) · 0.43 = semantic move (real-CLI). 0.40.0 shipped 2026-10-18: one marker fold (`marker-fold.ts` — NFKD · marks · confusables 172+1 · lowercase · table again) for every marker check · R8 on the same fold · headless card-body marker lines → `[line removed by Loom: it imitated a Loom boundary line]` · skill names (R59-M1) + composed listing entries (P3b — Astra 0077 M) → `spawn_setup_failed`. Clean input = 0.39 bytes · no real-CLI (R59 ⑥).
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:memory-write` · `smoke:memory-inject`
 2. 0.40.0 evidence: verify 0073/0075 PASS · 0077 FAIL 1 M → P3b · 0080 PASS · final advise 0082 = SHIP · suite 3410/1 known fail · `implementation-notes.md` §0.40.0 (1)–(5)
-3. Stage 5 first step: evidence pack on the current first-turn composition (`composeFirstTurnPrompt` · `composeMemoryWrapped` · listing · fence · rules · policy notice) vs `UPGRADE-PLAN.md` stage 5
+3. 0.41.0 P1 → P4 per PLAN §0.41.0 ⑦ (each PATCH red/green + Astra verify) · stage-5 evidence pack `scratchpad v041/evidence.md` (lane 0083)
 4. Later candidates: snapshot mtime cache · U+2E40/U+A78A fence lookalikes (UK-6) · class 46 (UK-7) · watch `card_prompt … neutralized` counts in the first dogfood wave (advise 0082)
 5. Carry: Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7 · `pane-cleanup.test.ts` ⑥ flaky under load
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** stage 5 PLAN `approved` (R60) and its PATCHes each Astra-verified · suite green · ship. Unshipped commits stay local until ship (pre-push dist check reads the working tree).
+**Done when (this handoff):** 0.41.0 P1–P4 each Astra-verified · suite + fake smokes green · final advise = ship · push. Unshipped commits stay local until ship (pre-push dist check reads the working tree).
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -53,7 +53,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| stage 5 | prompt assembly next per owner "단계별로 모두 진행해" | proceed | `UPGRADE-PLAN.md` |
+| stage 5 | 0.41 → 0.42 → 0.43 per owner "단계별로 모두 진행해" · 0.43 needs owner real-CLI yes | proceed | `UPGRADE-PLAN.md` |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 

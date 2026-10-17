@@ -42,6 +42,34 @@
 
 ## Gate log
 
+### 0.41.0 — 헤드리스 워커가 받은 프롬프트 기록 + `loom prompt show` (`approved` — R60 approved-with-fixes · no R60b)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.41.0 (`approved` — R60 approved-with-fixes, 반영 완료 · no R60b · author-close 불가) · MINOR · 업그레이드 5단계 1부(관측) · 근거 = `UPGRADE-PLAN.md:101-105` · `:173-204` + 0.40.0 Next + 아키텍트 증거 팩(HEAD `cf44097`) · 범위 = 락 D1~D9(아키텍트 2026-10-18) |
+| **Date** | 2026-10-18 |
+| **Review** | R60 **done 2026-10-18** — approved-with-fixes H0 · M3 · L3 (M1 쓰는 자리 = write-ahead 직후 · `if (owner.abandoned)` 바로 앞 · 기록 ≠ spawn 증거 · M2 레코드 키 `dispatchHandoffId` · `show` STALE + exit 1 · 계급 49 정정 · M3 C3 편집 2곳 `headless-memory-write.test.ts:416` + `smoke-memory-write.ts:507` · L1 완료 기준 "nonce 제외 동일" · L2 모든 출력 필드 표기 변환 + bidi · 직렬화 DEL · C1 · bidi 이스케이프 · `user` = `promptBody.toWellFormed()` · L3 `lstat` 일반 파일 · 읽기 8 MiB · `MEMORY_COMMANDS` 참조 · R8 0개 꼬리) — (`WORKFLOW.md` §5.1 신규 제품 표면 `loom prompt show` + 영속성 · 신뢰 경계 — claude/codex 카드 본문이 디스크에 남음 · `LOOM_CARD` 거부) |
+| **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `cf44097`) · `agent-argv.ts:28-36` · `:331-335` · `:371-387` · `:405-408` · `:421-424` · `:436` · `:446-448` · `:476-482` · `headless-worker.ts:121` · `:124` · `:340-348` · `:357-367` · `:375-378` · `:1083` · `:1100` · `:1272-1280` · `:1710-1714` · `:1890-1900` · `:1943-1956` · `:1971-2014` · `:2107-2114` · `:2242-2249` · `:2269` · `:2285-2295` · `card-session-store.ts:106-127` · `:141-165` · `bridge-runtime.ts:1137` · `memory-cli.ts:113-122` · `:388-392` · `:960-976` · `cli/src/index.ts:283-284` · `:3435-3442` · `skill-prompt.ts:45-46` · `packages/protocol/src/card-contract.ts:27` · `headless-memory-write.test.ts:414-419` · `HEADLESS-WORKER-PROBE.md:158` · `:161` · `:198-205` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) 헤드리스 입력은 두 채널 — 시스템 = hint(claude `--append-system-prompt` · codex `-c developer_instructions` · grok `--rules`) · 사용자 = claude/codex stdin · grok `prompt.txt`. (2) 세 에이전트의 사용자 바이트는 모두 `promptBody`(`headless-worker.ts:1947-1949`)와 같다. (3) 첫 턴 전문은 어디에도 남지 않는다(stdin 미저장 · grok 파일은 재개 때 덮어씀 · hint 기록 없음) · 펜스 nonce가 무작위라 다시 계산해서는 같은 바이트를 얻을 수 없다 — 그래서 펜스가 켜진 같은 카드의 두 dispatch도 바이트가 다르다. **기록은 "무엇을 보냈나"를 관측할 수 있게 할 뿐 "같다"를 증명하지 않는다** · "같은 카드 = 같은 프롬프트" = **nonce를 제외하면 같다** · 증명은 0.42 골든("같은 입력 + 같은 nonce(주입 `memoryNonce`) → 같은 바이트")(R60-L1). (4) 카드 디렉터리를 지우는 production 코드가 없다. (5) 카드당 시도 ≤ 2(`MAX_ATTEMPTS`). (6) codex는 hint를 받고 재개에도 유지한다(실측). |
+| Known unknowns | **UK-1~UK-5**(아래 표, 정본 = PLAN §0.41.0). 요지: 기록 쓰기 비용 · codex 재개의 두 사용자 입력 합성 · 디스크 노출 크기 · claude/grok의 시스템 채널 수신 효과 · `show` 모호성 빈도. |
+| Unknown knowns | `cardKeyHash`는 `(roomId, agent, cardId)` 해시라 cardId만으로 카드 디렉터리를 찾을 수 없다 → 프로필 피어 네임스페이스의 `session.json`을 읽어 거른다(C1). 같은 cardId가 다른 방 · 에이전트로 디스패치되면 락의 인자로는 고를 수 없다(C2 — `--room` · `--agent` draft). 카드 디렉터리 목록을 정확히 단언하는 고정 테스트 하나와 고정 스모크 하나가 있어 새 파일이 곧 편집이다(C3 → R60-M3 — `headless-memory-write.test.ts:416` + `smoke-memory-write.ts:507`). 같은 카드의 새 dispatch는 `attempts: 1`로 다시 시작해 `prompt-1.json`만 덮어쓰고 이전 dispatch의 `prompt-2.json`은 남는다 → 레코드 키 `dispatchHandoffId`로 구별해 `show`가 STALE로 표시한다(R4 · R60-M2 · 계급 49). 기록 쓰기를 `spawnDetachedWorker` 바로 앞에 두면 `:1995-2014` 동기 구간("모든 setup await 뒤" 불변식)이 깨진다 → write-ahead 직후 · 마지막 경로 검사 앞(R60-M1 — 기록 ≠ spawn 증거). 스냅샷 원자 쓰기 도우미는 임시 이름이 파일에 묶여 있어 일반화해야 재사용된다(R5). |
+| Unknown unknowns | 운영자가 기록을 근거로 무엇을 결정하게 되는지(기록이 사실상 권위가 되는 압력) · CLI가 Loom 두 채널 밖에서 덧붙이는 컨텍스트의 크기와 변동 · 0.42 manifest화가 기록 형식에 무엇을 요구할지. |
+
+**Unknowns 요약 (정본 = PLAN §0.41.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R60 판정 |
+|---|------|-------------|----------|
+| UK-1 | **기록 쓰기 비용** — 카드 락 안 ≤ ~1.2 MiB 원자 쓰기 하나의 spawn 지연 | P2에서 큰 펜스 · 상한 본문 1회 시간 기록(단언 아님) | 비차단 수용(쓰는 자리 = write-ahead 직후 — R60-M1) |
+| UK-2 | **codex 재개의 두 사용자 입력** — 위치 인자와 stdin을 codex가 어떻게 합치는지 | 기록은 둘 다 남긴다(`userArgv` — R3) · 0.43 실 CLI 또는 별도 프로브 | 비차단 수용 |
+| UK-3 | **디스크 노출 크기** — 카드 디렉터리 누적 · 카드 본문 비밀 빈도 | 정리 명령은 다음 후보 · 계급 50 | 비차단 수용(정리 명령 = 다음 후보) |
+| UK-4 | **claude/grok 시스템 채널 수신 효과** — hint가 행동을 바꾸는지 · 재개 재전달이 교체인지 중복인지 | 0.41은 보낸 바이트만 기록 · **0.43 착수 전 차단 후보** | 비차단 수용(0.41) · 0.43 착수 전 차단 후보 유지 |
+| UK-5 | **`show` 모호성 빈도** — 같은 cardId의 다른 방 · 에이전트 디스패치 | C2 필터 · 목록 출력 | 비차단 수용(C2 draft 수용) |
+
+**Current decision:** **`approved` (R60 approved-with-fixes → M1·M2·M3·L1·L2·L3 반영, no R60b, 2026-10-18).** D1~D9 아키텍트 락(2026-10-18 — D2 키에 `dispatchHandoffId` 추가는 R60-M2 · D1 완료 기준 문면은 R60-L1) · 작성자 정밀화 R1~R14(R1 → 수정 R60-M1 · 나머지 수용) · C1 · C2 draft 수용 · C3 → 수정(R60-M3 — 편집 2곳) · 수용 손실 계급 47~54(49 정정) + 무번호(기록 ≠ spawn 증거 신설) · UK-1~UK-5(전부 비차단 수용 · UK-4는 0.43 착수 전 차단 후보). 구현 착수 = **P1**.
+
 ### 0.40.0 — 표지 흉내 접기 강화 · R8 같은 접기 · 헤드리스 카드 본문 표지 줄 무력화 (`approved` — R59 approved-with-fixes · no R59b · implemented (P1–P4) · shipped 2026-10-18)
 
 | Field | Value |
@@ -700,3 +728,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-17 | 0.37.0 shipped (ship 검사 green · 최종 리뷰 loom-advisor Opus 5.5 high = ship · UK 상태 변화 없음) |
 | 2026-10-17 | 오너 승인 라이브 스모크 2건 반영(dist v0.37.0 · macOS만) — 0.36.0 `smoke:memory-inject --real-cli` 4/4 PASS(UK-1 작은 펜스 실 CLI 수용 · ≈48 KiB 미측정 · UK-3 CLI당 표본 1 PASS) · 0.34.0 `smoke:service --live` 7/7 live pass(UK-1 bootout → `stopped` 215 ms · UK-2 `print-disabled` (none) · UK-3 GUI 세션이라 ssh 미실측 · UK-4/UK-5 Linux unverified 유지) · 전부 open 비차단 유지 |
 | 2026-10-17 | 0.38.0 기억 쓰기 경로 unknowns (UK-1~UK-7 요약 · UK-1 새 스킬 문면 실 CLI 미검증 · 코드 실측 Known knowns · C1~C6 · R56 approved-with-fixes → UK-1 ship 차단(오너 승인 · 실 CLI ① 한정 1회 + 세 카드 `notes.md` · 적어도 한 카드 `proposed ≥ 1` — R56-M4) · UK-2~UK-7 비차단 · UK-6 unverified) |
+| 2026-10-18 | 0.41.0 헤드리스 워커 프롬프트 기록 + `loom prompt show` unknowns (UK-1~UK-5 요약 · 전부 비차단 제안 · UK-4 claude/grok 시스템 채널 수신 효과 = 0.43 착수 전 차단 후보 · C1~C3 · `pending-review` R60) |
