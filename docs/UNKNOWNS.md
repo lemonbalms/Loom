@@ -42,6 +42,36 @@
 
 ## Gate log
 
+### 0.42.0 — 헤드리스 워커 입력의 선언형 섹션 manifest + 단일 조립기 · 바이트 보존 · 프롬프트 기록 v2 (`approved` — R61 approved-with-fixes · no R61b)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.42.0 (`approved` — R61 approved-with-fixes, 반영 완료 · no R61b · author-close 불가) · MINOR · 업그레이드 5단계 2부(구조화) · 근거 = §0.41.0 D1 · R60-L1 + 0.41.0 Next + 아키텍트 증거 팩(HEAD `cf44097` — §7 후보 B) · 범위 = 락 D1~D9(아키텍트 2026-10-18) |
+| **Date** | 2026-10-18 |
+| **Review** | R61 **done 2026-10-18** — approved-with-fixes H0 · M2 · L4 (M1 v2 검사 기준표 = `prompt-record.ts` 동결 상수 `PROMPT_RECORD_V2_SECTIONS` · `PROMPT_MANIFEST` 투영 테스트 · R9 구조 변경 = 새 레코드 버전 · R14 · UK-1 · UK-5 · M2 C3 편집 5곳 · 2파일 — `prompt-cli.test.ts:249` · `:250` · L1 R3 max 규칙 · `task-marker` 0.30.0 · P1 착수 전 이력 명령 · L2 `memory-snapshot` 판정 = `composeFenceText` 식 · 조립기 parts ⇔ 블록 일관성 throw · L3 골든 리터럴 기대값 · 빈 본문 칸 · grep `composeMemoryWrapped` · `assembled` 자리 · L4 v2 변조 `user` → `bad sections`) — (`WORKFLOW.md` §5.1 영속 형식 변경(기록 `version: 2`) · 운영자 CLI 출력 변경(`show` `sections:` 블록) · 시스템/데이터 경계를 만드는 조립 경로 교체) |
+| **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `ec11d00`) · `headless-worker.ts:188-189` · `:1853` · `:1882-1888` · `:1919-1921` · `:1931-1944` · `:1957` · `:1985-2007` · `:2120-2125` · `:2235-2297` · `:2299-2309` · `agent-argv.ts:20-36` · `:286` · `:476-482` · `skill-prompt.ts:103` · `:130-132` · `memory-inject.ts:6` · `:11-12` · `:65-83` · `:96-99` · `memory-snapshot.ts:193` · `:310-312` · `memory-snapshot.test.ts:225` · `card-contract.ts:27` · `:123-128` · `marker-fold.ts:229-244` · `prompt-record.ts:18` · `:52-64` · `:82-114` · `:142-171` · `:237-272` · `prompt-cli.ts:184-193` · `:292-319` · `prompt-record.test.ts:92-104` · `:317-321` · `headless-prompt-record.test.ts:67-79` · `:412-414` · `:493-497` · `prompt-cli.test.ts:169-185` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) 오늘의 헤드리스 입력 = 시스템 섹션 하나(`HEADLESS_WORKER_HINT` 497 B) + 사용자 섹션 넷(첫 턴: 목록 · 표지 · 펜스 · 본문 / 재개: 재개 문구 · 표지 · 본문). (2) 사용자 채널 구분자는 모두 `"\n\n"` · 본문은 마지막이라 꼬리 없음. (3) 조립은 `spawnOnce` 인라인 사슬(`:1888-1937`)과 spawn 뒤 stdin 재선택(`:2120-2125`) 두 자리 · stdin 값 = `promptBody`(§0.41.0 R1 실측). (4) 펜스 F는 결합 → 전체 env redaction 한 번 → 줄 무력화 → 감싸기 순이라 원천별 바이트 구간이 구성상 정의되지 않는다. (5) 0.41 기록 v1에는 섹션 정보가 없고 소급 계산할 수 없다(nonce · 목록 · 경계). (6) 섹션 version 이력(R61-L1 — draft 레인 `history.txt` 대조): `memory-snapshot.ts` 커밋은 0.35.0뿐 · `memory-inject.ts` 0.36 · 0.37 · `skill-prompt.ts` 0.40은 throw만 · hint 0.39(`d5a82db`) → version 규칙 = max(헤드리스 워커 입력에 처음 들어간 shipped 릴리스, 전이 변환 포함 생산 코드가 출력을 바꾼 마지막 shipped 릴리스) · `task-marker` 0.30.0 · `memory-snapshot` 0.36.0 정당화 · `card-contract.ts` · `redact.ts` · `marker-fold.ts` 이력은 P1 착수 전 구현 레인이 확인. |
+| Known unknowns | **UK-1~UK-5**(아래 표, 정본 = PLAN §0.42.0). 요지: 0.43 의미 이동이 manifest 형에 맞는지 · 조립기 + sha 비용 · 펜스 원천별 구별의 필요 · 섹션 version 표류 · v1 읽기 갈래 수명. |
+| Unknown knowns | 리더(`loadMemorySnapshot`)는 persona · 지식 색인 · 방 지침 · 기억을 한 텍스트로 돌려주고 반환 객체 전체가 고정 테스트(`memory-snapshot.test.ts:225`)에 묶여 있어 parts 여섯은 리더 편집 없이 얻을 수 없다(C2 → parts 셋). v1 `show` 텍스트 출력을 축자로 고정한 `textOf`(`prompt-cli.test.ts:169-185`)는 D8 편집 예외 문면("version 1 / v1 키 목록") 밖이다(C3). `prompt-record.test.ts:317-321` "version 2 → invalid"는 v1 몸체에 `version`만 바꾼 기록이라 v2 검사에서도 `missing sections`로 invalid — 무편집 green(R9). `buildPromptRecord`를 `sections` 유무로 갈라 v1 빌더를 남기면 0.41 고정 테스트 대부분이 무편집으로 남는다(R8). 경계를 도우미 출력에서 검색해 자르면 본문 · 펜스 안 위조 텍스트에 속는다 → 추적은 구성에서 · 바이트는 도우미에서 · 둘의 같음은 실행 시 검사(R4). |
+| Unknown unknowns | 섹션 추적이 운영자에게 "섹션 = 모델이 보는 구조"라는 오해를 낳는지(계급 58) · 0.43이 시스템 채널을 여러 섹션으로 나눌 때 CLI별 시스템 채널의 길이 · 구분자 제약 · manifest를 파일 템플릿으로 옮길 때(0.43+) 동결 상수와의 대조 방법. |
+
+**Unknowns 요약 (정본 = PLAN §0.42.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R61 판정 |
+|---|------|-------------|----------|
+| UK-1 | **0.43 의미 이동과 manifest 형의 적합** — 시스템 채널 다중 섹션 · 구분자 · 리더 분할 · version과 fingerprint | R2 꼬리 귀속이 임의 구분자 흡수 · 안 맞으면 0.43이 레코드 v3과 함께 변경 | 비차단 수용(R61-M1로 위험 감소 — R9 구조 변경 = 새 레코드 버전 · v2 기준표 `PROMPT_RECORD_V2_SECTIONS`는 읽기 갈래로 남음 · 투영 테스트가 결정 강제) |
+| UK-2 | **조립기 + 섹션 sha 비용** — spawn마다 sha ≤ 5개 + 자체 검사 비교(최대 ~1.2 MiB) | P2에서 큰 펜스 · 상한 본문 1회 시간 기록(단언 아님) | 비차단 수용 |
+| UK-3 | **펜스 원천별 구간 · persona/색인/지침/기억 구별의 필요** | parts = `{ id, version }` 셋(C1 · C2) · 0.43 persona 이동 때 재검토 | 비차단 수용(C1 · C2 draft 수용) |
+| UK-4 | **섹션 version 표류** — 바이트 변경에 version 미갱신 | 골든 red가 리뷰 강제 · 0.43에서 version이 fingerprint에 들어가면 차단 후보 | 비차단 수용(R3 max 규칙 — R61-L1 · 이력 명령 하나로 검산) |
+| UK-5 | **v1 읽기 갈래 수명** — 0.41 기록 잔존량 · 걷어낼 시점 | 정리 경로 없음(§0.41.0 계급 50) → 유지 | 비차단 수용(R61-M1로 위험 감소 — v2도 같은 형 · 동결 기준표 덕분에 0.43 manifest 변경이 v2 기록을 `invalid`로 만들지 않음) |
+
+**승계:** §0.41.0 UK-4(claude · grok 시스템 채널 수신 효과 — 0.43 착수 전 차단 후보) · UK-2(codex 재개 두 입력) — 0.42는 채널을 옮기지 않으므로 상태 변화 없음.
+
+**Current decision:** **`approved` (R61 approved-with-fixes → M1·M2·L1·L2·L3·L4 반영, no R61b, 2026-10-18).** D1~D9 아키텍트 락(2026-10-18 — D2 version 규칙 적용 문면은 R3 max 규칙, R61-L1) · 작성자 정밀화 R1~R14(R9 → 수정 R61-M1 — 기준표 `PROMPT_RECORD_V2_SECTIONS` · 나머지 수용 · R3 + L1 · R5 + L3(c)(d) · R6 + L2 · R7 + L3(a)(b) · R10 + L4 · R14 + M1 문면) · C1 · C2 draft 수용 · C3 → 수정(R61-M2 — 편집 5곳 · 2파일) · 수용 손실 계급 55~61(61에 parts ⇔ 블록 불일치 포함) + 무번호 · UK-1~UK-5(전부 비차단 수용 · UK-1 · UK-5는 M1로 위험 감소) · §0.41.0 UK-4 승계는 0.43 착수 전 차단 후보 유지. 구현 착수 = **P1**(착수 전 이력 명령 — R61-L1).
+
 ### 0.41.0 — 헤드리스 워커가 받은 프롬프트 기록 + `loom prompt show` (`approved` — R60 approved-with-fixes · no R60b · implemented (P1–P4 + P1b) · shipped 2026-10-18)
 
 | Field | Value |
@@ -730,3 +760,4 @@ R13 pending-revision material; see plan_review R13 + PLAN 0.11.1.
 | 2026-10-17 | 오너 승인 라이브 스모크 2건 반영(dist v0.37.0 · macOS만) — 0.36.0 `smoke:memory-inject --real-cli` 4/4 PASS(UK-1 작은 펜스 실 CLI 수용 · ≈48 KiB 미측정 · UK-3 CLI당 표본 1 PASS) · 0.34.0 `smoke:service --live` 7/7 live pass(UK-1 bootout → `stopped` 215 ms · UK-2 `print-disabled` (none) · UK-3 GUI 세션이라 ssh 미실측 · UK-4/UK-5 Linux unverified 유지) · 전부 open 비차단 유지 |
 | 2026-10-17 | 0.38.0 기억 쓰기 경로 unknowns (UK-1~UK-7 요약 · UK-1 새 스킬 문면 실 CLI 미검증 · 코드 실측 Known knowns · C1~C6 · R56 approved-with-fixes → UK-1 ship 차단(오너 승인 · 실 CLI ① 한정 1회 + 세 카드 `notes.md` · 적어도 한 카드 `proposed ≥ 1` — R56-M4) · UK-2~UK-7 비차단 · UK-6 unverified) |
 | 2026-10-18 | 0.41.0 헤드리스 워커 프롬프트 기록 + `loom prompt show` unknowns (UK-1~UK-5 요약 · 전부 비차단 제안 · UK-4 claude/grok 시스템 채널 수신 효과 = 0.43 착수 전 차단 후보 · C1~C3 · `pending-review` R60) |
+| 2026-10-18 | 0.42.0 섹션 manifest + 단일 조립기 · 기록 v2 unknowns (UK-1~UK-5 요약 · 전부 비차단 제안 · 0.41.0 UK-2 · UK-4 승계 · C1~C3 · `pending-review` R61) |

@@ -182,6 +182,8 @@
 
 ## verification — 차집합 판정·dist 재빌드 순서·독립검증·provenance·힌트 교차검증
 
+- [verification] 2026-10-18 새 읽기 전용 CLI 표면(0.41 `prompt show`)은 스펙에 하드닝 체크리스트를 처음부터 넣는다 — 공유 헬퍼의 숨은 쓰기(.corrupt 백업·마이그레이션) · 심링크/FIFO · 경로 재해석 TOCTOU · 브리지와 같은 상태 루트 · 모든 출력 필드 이스케이프. 빠뜨리면 Astra가 3라운드(6→2→1건)로 나눠 찾는다.
+
 - [verification] 2026-07-28 listen leave vs sticky: sticky owns presence → listen must not leave; host status≠roster (UC-3 peer_unknown).
 
 - [verification] 2026-07-26 (57) 준수 측정 3함정: **임의 토큰 카나리아 = 인젝션으로 거부**(21/21) · **문자열 포함으로 준수를 정의하면 거부를 준수로 셈**(위양성 14/14) · 채널(prefix vs JIT)은 신뢰도를 안 가름.

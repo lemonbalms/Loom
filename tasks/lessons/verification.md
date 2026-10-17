@@ -784,3 +784,18 @@ cross-ref: verification (28) 대조군 · (55) 도달 범위 · (33) 서술은 �
 **규칙:** sticky host가 presence를 소유하면 listen 종료는 **leave 금지** (close + sticky bounce). smoke host start는 `started|already running` 모두 성공(UC-3.7). “host running” ≠ roster online.
 
 cross-ref: `packages/cli/src/index.ts` shutdownListen · `scripts/smoke-uc.ts` · TEST_PLAN UC-3.7.
+
+
+### 2026-10-18 — 새 읽기 전용 CLI 표면은 하드닝 체크리스트를 스펙에 선기입 (0.41 `loom prompt show`)
+
+**경위:** P3 스펙은 "read-only · LOOM_CARD 거부 · 이스케이프"만 적었다. Astra verify가 세 라운드로 나눠 찾았다 — 0094: 공유 헬퍼
+`listCardSessions`(손상 파일 `.corrupt-*` 백업)·`loadSession()`(`.fable` 마이그레이션)의 숨은 쓰기 · 스캔의 심링크/FIFO · 기록 agent
+불일치 · 진단 원문 출력 · 비정규 바이트 `--json` · `--help`의 LOOM_CARD 우회(5 M + 1 L) → 0097: 디렉터리→심링크 교체 경합 ·
+상태 루트 `.loom` 고정(2 M) → 0099: 부분 마이그레이션 분열 상태(1 M, 수용).
+
+**규칙:** 운영자용 읽기 전용 표면 스펙에는 처음부터 (1) 호출하는 공유 헬퍼의 부작용(쓰기·백업·마이그레이션·캐시) 금지 목록,
+(2) 모든 파일 읽기 = lstat + O_NOFOLLOW|O_NONBLOCK + fstat + 상한 읽기, (3) 상태 루트·프로필·피어 해석 = 브리지와 같은 결과의
+무부작용 사본, (4) 출력되는 모든 필드의 이스케이프, (5) 진입점(help·플래그 파싱)보다 앞선 거부를 적는다. Node에 openat이 없어
+남는 디렉터리 교체 경합은 같은 사용자 한계로 선언한다.
+
+cross-ref: `packages/cli/src/prompt-cli.ts` · `packages/host/src/prompt-record.ts` · `implementation-notes.md` §0.41.0 (8)–(11).
