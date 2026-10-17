@@ -13,8 +13,8 @@
    objective-command 검증 + ship을 접는다(DOGFOOD §0.5). **Full에서 PLAN 등 장문 문서도 4단 분업**: 본세션 압축 결정 목록(판단) → opus
    서브에이전트가 선례 형식으로 문안 확장·파일 작성(볼륨) → 본세션 1회 검수(락-인접
    문구는 직접 교정 필수 — R35 M-1이 문안 오류발 M이었음) → R{n} 게이트.
-2. **서브에이전트 model 명시 필수, 기본 = `opus`.** 미지정 = 본세션 모델(Fable) 조용한
-   상속 = 결함. `fable` 모델은 이 프로젝트에서 쓰지 않는다(규칙 8). (구현·검증 레인 모델은 규칙 8.)
+2. **서브에이전트 model 명시 필수, 기본 = `opus`.** 미지정 = 본세션 모델 조용한
+   상속 = 결함. 예외: `loom-advisor`는 정의가 고정하므로 `model`을 넘기지 않는다(훅이 강제). `fable` 모델은 이 프로젝트에서 쓰지 않는다(규칙 8). (구현·검증 레인 모델은 규칙 8.)
 3. **병렬화 기본.** 독립 태스크는 단일 메시지 다중 스폰. 정형 다단계(게이트→구현→검증
    팬아웃→스모크→docs)는 **Workflow 도구 사용 — 오너 상비 옵트인 성립(2026-07-19)**.
 4. **세션 시작 리추얼에 `tasks/lessons.md`(인덱스) 정독 + 작업 유형 매칭 카테고리는
@@ -48,11 +48,17 @@
 8. **구현·검증·자문 모델 고정 (오너 지시 2026-10-17).** 구현 = **Opus 5.5(`claude-opus-5-5`) · effort
    medium** — in-harness `Agent` `model: "opus"` · `effort: "medium"`(pane `claude-impl`이면
    `--model claude-opus-5-5 --effort medium`); DOGFOOD §1.2의 grok→codex→하위 티어 체인 대체. 독립 검증 = **GPT-6 Astra · reasoning high**,
-   codex CLI `codex exec -m gpt-6-astra -c model_reasoning_effort=high`(기본 `-s read-only`, 테스트를
+   codex CLI `codex exec -m gpt-6-astra -c model_reasoning_effort=high … < /dev/null`(stdin을 닫지 않으면 입력 대기로
+   멈춤 — 2026-10-17 실증; 기본 `-s read-only`, 테스트를
    돌려야 하면 `git archive` 검증 트리를 `-C`로 주고 `-s workspace-write`) — 종전 codex Sol·Opus xhigh 대체.
-   자문 = **Opus 5.5(`claude-opus-5-5`) · effort high** 일반 서브에이전트 `Agent`(`subagent_type: Plan`
-   — Edit/Write 없는 read-only, `model: "opus"` · `effort: "high"`; 도구 `model`은 별칭만 받으므로
-   해상 모델이 Opus 5.5인지 `/tasks`로 확인).
+   자문 = **Opus 5.5(`claude-opus-5-5`) · effort high** 프로젝트 에이전트 **`loom-advisor`**
+   (`.claude/agents/loom-advisor.md` — frontmatter가 model·effort를 고정, 도구 Read/Grep/Glob만).
+   호출 시 `model`·`effort`를 넘기지 않는다(호출 파라미터가 frontmatter를 덮어씀).
+   훅 `scripts/hooks/check-agent-model.ts`가 강제: `fable-advisor` 에이전트·`fable` 모델 차단,
+   `loom-advisor`에 `model` 또는 high 아닌 `effort`가 붙으면 차단, 그 밖의 타입은 `model` 필수.
+   `loom-advisor`가 로드되지 않은 세션(정의 파일보다 먼저 시작)이면 재시작하거나, `general-purpose`
+   `model: "opus"` · `effort: "high"`에 `loom-advisor.md` 본문을 지시로 붙여 대신한다 — 자문 생략 금지.
+   훅이 못 막는 틈: `fork`는 `model`을 무시하고 본세션 모델로 돈다(본세션이 Opus 5.5일 때만 안전).
    **`fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제**(전역 CLAUDE.md의 fable-advisor
    자문·최종 리뷰 지시도 이 자문 서브에이전트로 대체). R{n} 필수 자문·딜리버러블 최종 리뷰 모두 이 설정.
    구현(Opus 5.5)과 검증(GPT-6 Astra)은 벤더가 다르다 — 교차 벤더 검증. 해제·변경은 오너만.
@@ -79,7 +85,7 @@ Full procedure: **[`docs/DOGFOOD_LOOP.md`](./docs/DOGFOOD_LOOP.md)** §2 (review
 `R{n}` / PLAN `pending-review`):
 
 - Do not implement product code.
-- Mandatory: spawn the Opus 5.5 high advisor subagent (`Plan` · `model: opus` → Opus 5.5 · `effort: high`, read-only — 규칙 8) before writing
+- Mandatory: spawn the `loom-advisor` subagent (Opus 5.5 high pinned by its definition, read-only — 규칙 8) before writing
   a verdict. Skipping it for a formal R{n} is a **process defect** — do not bare-approve.
 - Reply `[R-RESULT] …` including `Advisor: opus-advisor consulted: yes`.
 

@@ -319,3 +319,8 @@ Agent 도구 `model`은 별칭만 받으므로 `opus` 전달 후 해상 모델�
 체인은 오너가 고정을 풀 때까지 쓰지 않는다. 구현(Anthropic)·검증(OpenAI)으로 교차 벤더가 유지된다.
 교훈: 레인·모델을 바꿨으면 그 자리에서 사유와 함께 규칙 파일에 적는다 — 기록 없는 전환은 다음 세션에서
 규칙 위반으로 보인다.
+
+5차 지시 "loom-advisor 만들고 훅도 맞춰줘": 자문을 `Plan`에서 프로젝트 에이전트 `loom-advisor`로 바꿨다.
+이유(공식 문서): `Plan`·`Explore`는 CLAUDE.md 없이 시작하고, Agent 도구 `model`은 별칭만 받아 버전을 못 묶는다.
+정의 frontmatter(`model: claude-opus-5-5`, `effort: high`, `tools: Read, Grep, Glob`)로 고정하고 훅으로 강제한다.
+

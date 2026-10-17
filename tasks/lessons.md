@@ -88,7 +88,7 @@
 - [orchestration] 2026-07-21 (46) **레인 다운 시 재배정은 규칙의 문자가 아니라 목적으로** — 발견자≠수정자 + 벤더 다양성이 둘 다 성립하는가로 판정. 워커의 임의 대체는 결함. 레인 배치는 연쇄 결정(검증에 쓴 레인은 그 트랙 구현에 못 씀). grok 헤드리스는 읽기전용 allowlist 필수.
 - [orchestration] 2026-07-26 (53) 오너 지적: **하네스 웨이브라도 제품 구동 스모크를 붙여라** — "제품 코드 미변경"은 스위트 실패를 환경성으로 넘길 근거가 아니다. `doctor` + durable/desktop/uc 스모크가 상시 실패 1건을 드러냈다.
 - [orchestration] 2026-07-26 (54) `single`에서 **검증 피어 스폰 금지**(§0.5.1) — 레인 분리는 세션 승계로 성립(REVIEW 헤더 "저자 = 직전 세션"). 자문(fable)은 line 안이라 무관. 안 띄운 레인의 부재는 블로커가 아니다.
-- [orchestration] 2026-10-17 오너 모델 고정: **구현 = Opus 5.5 medium · 검증 = GPT-6 Astra high(codex) · 자문 = 일반 서브에이전트(Plan) Opus 5.5 high**, `fable-advisor` 에이전트 배제(CLAUDE.md 규칙 8).
+- [orchestration] 2026-10-17 오너 모델 고정: **구현 = Opus 5.5 medium · 검증 = GPT-6 Astra high(codex) · 자문 = `loom-advisor` Opus 5.5 high**, `fable-advisor` 에이전트 배제(CLAUDE.md 규칙 8).
 
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 

@@ -122,7 +122,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Topic | Rule |
 |-------|------|
 | Product | **Loom** — CLI `loom`, packages `@loom/*` |
-| Review agent | **Opus 5.5 high advisor subagent** (`Plan` · `model: opus` → Opus 5.5 · `effort: high`) ≠ product · verify = **GPT-6 Astra high** (codex CLI) · `fable-advisor` 에이전트 배제 (CLAUDE.md 규칙 8, 2026-10-17) |
+| Review agent | **`loom-advisor`** subagent (Opus 5.5 high, `.claude/agents/loom-advisor.md`) ≠ product · verify = **GPT-6 Astra high** (codex CLI) · `fable-advisor` 에이전트 배제 (CLAUDE.md 규칙 8, 2026-10-17) |
 | Plan SSOT | `docs/PLAN.md` |
 | Reviews | `docs/plan_review.md` R{n}; **when Fable 5 required → `docs/WORKFLOW.md` §5.0–5.1** |
 | Author-close | Low only + label `(author-close, Low backlog)` + Changelog provenance |
@@ -138,7 +138,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Commit/push | **Default at end of a completed gate wave** (green tests + docs sync). Do not ask “커밋할까요?” — do it. Exception: user said “커밋 금지” / dry-run only. |
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
-| Claude R{n} | **Must** consult the **Opus 5.5 high advisor subagent** (`Plan` · `model: opus` → Opus 5.5 · `effort: high` — CLAUDE.md rule 8) before writing R{n} |
+| Claude R{n} | **Must** consult the **`loom-advisor`** subagent (Opus 5.5 high — CLAUDE.md rule 8) before writing R{n} |
 | **Impl delegation** | Execution routing SSOT = `docs/DOGFOOD_LOOP.md §0.5`. **`single`** = bounded current session implements + objective-command verifies + ships; lockedness alone does not force delegation. **`full`** = architect routes approved/locked product implementation to the pinned **Opus 5.5 · effort medium** implementer and independently verifies with **GPT-6 Astra high** (CLAUDE.md rule 8 · §1.2). New unresolved product/security/trust decisions promote `single` → `full`. |
 
 ### Pause only when (true blockers)

@@ -232,7 +232,7 @@ CLI `VERSION` 문자열과 PLAN Version을 **같은 숫자**로 맞춘다 (`pack
 **“Fable 승인”** = Fable 5가 `docs/plan_review.md`에 **R{n}** 을 쓰고 결론을 **`approved`** 로 남기는 것.  
 Git 커밋 author 이름이나 bare `PLAN Status=approved` 만으로 “Fable 승인”이 된 것이 **아니다**.
 
-> **모델 고정 (오너 지시 2026-10-17):** 이 프로젝트에서 Fable 5 역할은 일반 자문 서브에이전트(`Plan` · Opus 5.5 · `effort: high`)가 수행하며 `fable-advisor` 에이전트는 배제한다. 독립 검증 = GPT-6 Astra high(codex CLI)(CLAUDE.md 규칙 8). 역할명 “Fable 리뷰/승인”은 유지.
+> **모델 고정 (오너 지시 2026-10-17):** 이 프로젝트에서 Fable 5 역할은 자문 서브에이전트 `loom-advisor`(Opus 5.5 · `effort: high`)가 수행하며 `fable-advisor` 에이전트는 배제한다. 독립 검증 = GPT-6 Astra high(codex CLI)(CLAUDE.md 규칙 8). 역할명 “Fable 리뷰/승인”은 유지.
 
 ### 5.1 언제 **Fable 5 리뷰(R{n})가 필요한가**
 

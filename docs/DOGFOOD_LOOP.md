@@ -17,7 +17,7 @@
 |------|------|
 | **Loom** | Product CLI / MCP (`loom`, `@loom/*`) |
 | **Fable 5 (role name)** | Review judgment role — **not** the product. Filled by the Opus 5.5 high advisor subagent (CLAUDE.md rule 8) |
-| **Opus 5.5 high advisor subagent** | Claude Code advisor consult: `Agent` `subagent_type: Plan` (read-only) · **Opus 5.5 (`claude-opus-5-5`, via `model: opus`) · `effort: high`** (owner pin 2026-10-17 · CLAUDE.md rule 8). The `fable-advisor:fable-advisor` agent is **excluded** in this project |
+| **Opus 5.5 high advisor subagent** | Claude Code advisor consult: project agent **`loom-advisor`** (`.claude/agents/loom-advisor.md`, tools Read/Grep/Glob) · **Opus 5.5 (`claude-opus-5-5`) · `effort: high`** pinned in its frontmatter (owner pin 2026-10-17 · CLAUDE.md rule 8). The `fable-advisor:fable-advisor` agent is **excluded** in this project |
 | **`fable-advisor` plugin** | Orchestration tooling (DannyMac180, MIT) providing the grok/codex/fable lanes — **the dev tool, not the product**. Currently **v3.1.0**. |
 | **directory `fable-advisor/`** | Local checkout path only — the product is **Loom** (remote: `lemonbalms/Loom`). Dir name is historical, pending rename. |
 
@@ -57,7 +57,7 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 | Choice | Orchestrator → implementation → verification/advice |
 |---|---|
 | **Current inherited default** | **Codex → Grok → Codex verification** |
-| Claude line | **Claude → Grok → Claude Advisor** (Opus 5.5 high advisor subagent) |
+| Claude line | **Claude → Opus 5.5 medium → GPT-6 Astra high verification + `loom-advisor`** (owner pin 2026-10-17 · CLAUDE.md rule 8; was Claude → Grok → Claude Advisor) |
 | Grok line | **Grok → Grok → Claude + Codex verification**; 둘 다 불가하면 **Grok verification fallback** |
 | Other CLI | 설치·인증된 CLI를 선택할 수 있으나, 시작 전에 세 역할과 fallback을 명시 |
 
@@ -134,7 +134,7 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 | Profile (`--profile`) | Display name | Agent | Role (default — owner may reassign) |
 |----------------------|--------------|-------|------|
 | `codex-arch` | `codex-architect` | Codex | **architect** — PLAN/spec, implementation routing, review, independent verify |
-| `grok-impl` | `grok-impl` | Grok | **default implementer** — code/test/docs/ship from the architect's locked spec |
+| `grok-impl` | `grok-impl` | Grok | **default implementer** — code/test/docs/ship from the architect's locked spec (Claude line: superseded by the Opus 5.5 medium pin — CLAUDE.md rule 8) |
 | `claude-impl` | `claude-impl` | Claude Code | parallel/fallback implementation lane |
 | `codex-impl` | `codex-impl` | Codex | cross-vendor fallback implementation lane; workspace-write |
 | `claude-rev` | `claude-review` | Claude Code | **primary** plan_review R{n} |
@@ -328,7 +328,7 @@ When Claude (profile `claude-rev` or any Claude session) receives a Loom **revie
 ### Mandatory sequence
 
 1. **Do not implement.** Read-only except `docs/plan_review.md` (and Open/header sync).
-2. Spawn the **Opus 5.5 high advisor subagent** (`Agent` · `subagent_type: Plan` · `model: opus` → Opus 5.5 · `effort: high` — CLAUDE.md rule 8; read-only). Never `fable-advisor:fable-advisor`.
+2. Spawn the **Opus 5.5 high advisor subagent** (`Agent` · `subagent_type: loom-advisor`, no `model`/`effort` params — CLAUDE.md rule 8; read-only). Never `fable-advisor:fable-advisor`.
 3. Pass the advisor:
    - decision = approve vs pending-revision for **PLAN vX.Y.Z**
    - constraints = WORKFLOW §5, security boundaries, stated non-goals
@@ -347,7 +347,7 @@ When Claude (profile `claude-rev` or any Claude session) receives a Loom **revie
 ```text
 You are claude-review on the Loom dogfood room. When you get [R-REQUEST] or
 "Fable 리뷰" / R{n}:
-1) Spawn the Opus 5.5 high advisor subagent (Agent tool, Plan, model opus → Opus 5.5, effort high) BEFORE writing plan_review.
+1) Spawn the Opus 5.5 high advisor subagent (Agent tool, subagent_type loom-advisor) BEFORE writing plan_review.
 2) Write docs/plan_review.md Review R{n} from the advisor verdict + your code read.
 3) Handoff [R-RESULT] to the requesting implementer. Never implement.
 ```
@@ -501,7 +501,7 @@ Advisor: opus-advisor consulted (yes/no)
 | Gate | Who |
 |------|-----|
 | PLAN/spec + route + independent verify | Codex (`codex-arch`) — never claims locked-spec implementation |
-| Implement locked spec | Grok (`grok-impl`) by default; Claude (`claude-impl`) or Codex (`codex-impl`) fallback — claim first, §1.1 |
+| Implement locked spec | Claude line: Opus 5.5 medium (CLAUDE.md rule 8). Otherwise Grok (`grok-impl`) by default; Claude (`claude-impl`) or Codex (`codex-impl`) fallback — claim first, §1.1 |
 | R{n} primary + advisor-subagent consult | Claude Code (`claude-rev`) |
 | R{n} security second pass | Codex (`codex-rev`) |
 | Owner go/no-go | Human |
