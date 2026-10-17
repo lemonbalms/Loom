@@ -108,7 +108,7 @@ import {
 } from "./memory-store";
 import { type Gap, renderPolicyNotice } from "./policy-gaps";
 import { parseLstart, readProcessLstart } from "./process-lstart";
-import { writePrivateFileAtomic } from "./prompt-record";
+import { buildPromptRecord, writePrivateFileAtomic, writePromptRecord } from "./prompt-record";
 import { redactSecrets } from "./redact";
 import { roomKey } from "./room-event-log";
 import { loadRules } from "./rules-store";
@@ -1953,6 +1953,8 @@ export class HeadlessDispatcher {
           if (card.claim) await this.reserveShutdownAfterClaimLocked(card);
           return { kind: "abandon" };
         }
+        // PLAN 0.41.0 R6: one value for the write-ahead and the prompt record.
+        const promptFingerprint = workerFingerprint(this.deps.config, manifestHash, memorySnapshotHash);
         // Write-ahead: a crash from this point consumes this attempt. There is
         // still a residual orphan window between spawn and the pid write; a
         // spawning record without a pid cannot prove whether exec happened.
@@ -1961,7 +1963,7 @@ export class HeadlessDispatcher {
           cwd,
           requestedCwd: card.cwd ?? null,
           sessionId: plan.sessionId,
-          promptFingerprint: workerFingerprint(this.deps.config, manifestHash, memorySnapshotHash),
+          promptFingerprint,
           attempts: plan.attempts,
           pid: 0,
           pgid: 0,
@@ -1980,6 +1982,29 @@ export class HeadlessDispatcher {
           // R9: "" is never written — an absent key is "" (off = 0.35 session.json bytes).
           ...(memorySnapshotHash !== "" ? { memorySnapshotHash } : {}),
         }));
+        // PLAN 0.41.0 D2 · R1 (R60-M1): the write-only prompt record goes here — after the
+        // write-ahead, before the last checks, so no await separates them from the spawn. A
+        // record proves the attempt reached the write-ahead, not that it spawned (the
+        // transcript does). D3 · R7: a failed write logs one line and the spawn goes on.
+        try {
+          await writePromptRecord(
+            dir,
+            buildPromptRecord({
+              agent: card.agent,
+              turn: plan.resumeSessionId ? "resume" : "first",
+              attempt: plan.attempts,
+              dispatchHandoffId: card.dispatchHandoffId,
+              fingerprint: promptFingerprint,
+              system: HEADLESS_WORKER_HINT,
+              user: promptBody,
+            }),
+          );
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code;
+          process.stderr.write(
+            `[headless] prompt_record (${card.cardId.replace(/[\r\n]/g, " ")}): write failed ${typeof code === "string" ? code : "unknown"}\n`,
+          );
+        }
         if (owner.abandoned) return { kind: "abandon" };
         // Last path check after all setup awaits. Passing the pinned canonical
         // path also avoids following a changed requested symlink in the child.
