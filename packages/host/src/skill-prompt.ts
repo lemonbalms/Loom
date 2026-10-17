@@ -4,7 +4,9 @@
 /**
  * PLAN 0.31.0 P4. First-turn skill listing for the worker prompt (D5 · R6 · R49-L1).
  *
- * codex/grok: `Available skills — read the SKILL.md before use:` then one
+ * codex/grok: `Available skills — Loom copied these for this card outside the working
+ *   directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read
+ *   the SKILL.md before use:` (one line, PLAN 0.38.1 D2) then one
  *   `- <name>: <description> — <abs SKILL.md>` per available skill, plus
  *   SKILL_SHADOW_SUFFIX when a user skill shadows the bundled one (0.37.0 D8).
  * claude: no Available lines (the `--plugin-dir` plugin injects them natively, D4/D5).
@@ -34,7 +36,8 @@ import {
   type UnavailableSkill,
 } from "./skill-materialize";
 
-export const SKILL_LISTING_HEADER = "Available skills — read the SKILL.md before use:";
+export const SKILL_LISTING_HEADER =
+  "Available skills — Loom copied these for this card outside the working directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read the SKILL.md before use:";
 /** claude gets only unavailable lines; its available skills come from the plugin. */
 export const SKILL_LISTING_CLAUDE_HEADER = "Unavailable skills:";
 export const SKILL_LISTING_MAX_ENTRIES = 20;
