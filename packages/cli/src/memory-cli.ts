@@ -107,6 +107,19 @@ const MEMORY_USAGE =
 const LIST_USAGE =
   "usage: loom memory list [--agent claude|codex|grok] [--room <roomId>] [--all] [--json]";
 const AGENT_ERROR = "--agent must be claude, codex or grok";
+/** PLAN 0.38.0 `memory list --source` — the store's SOURCE_KIND_RE shape. */
+const SOURCE_KIND_RE = /^[a-z][a-z0-9-]{0,31}$/;
+const SOURCE_ERROR = "--source must be a source kind (e.g. human, card)";
+/** PLAN 0.38.0 D16' · R17 — write verbs refused while LOOM_CARD is set. */
+const CARD_REFUSED_VERBS: ReadonlySet<string> = new Set([
+  "add",
+  "propose",
+  "approve",
+  "retire",
+  "compact",
+]);
+const CARD_REFUSAL =
+  "refused — LOOM_CARD is set (this shell belongs to a Loom card worker); memory writes go through card proposals. Unset LOOM_CARD to write deliberately.";
 const RULES_USAGE = "usage: loom rules list [--json]";
 const SKILLS_USAGE = "usage: loom skills list [--room <roomId>] [--json]";
 
@@ -338,6 +351,26 @@ function firstLine(body: string): string {
   return Array.from(line).slice(0, 80).join("");
 }
 
+function sourceText(v: unknown): string {
+  return typeof v === "string" ? v : String(v);
+}
+
+/** `source.by` when a non-empty string, else "". */
+function sourceBy(e: FoldedEntry): string {
+  return typeof e.source.by === "string" ? e.source.by : "";
+}
+
+/**
+ * PLAN 0.38.0 R16 · R56-M3: the list-row suffix for a non-human source — empty for human rows
+ * (0.37 bytes). `n` = body code points − the shown `firstLine(body)` code points.
+ */
+function sourceSuffix(e: FoldedEntry): string {
+  if (e.source.kind === "human") return "";
+  const by = sourceBy(e);
+  const n = Array.from(e.body).length - Array.from(firstLine(e.body)).length;
+  return `  [${e.source.kind}${by ? ` by ${by}` : ""}${n > 0 ? ` · +${n} chars — loom memory show ${e.id}` : ""}]`;
+}
+
 // ---------------------------------------------------------------------------------------------
 // loom memory
 // ---------------------------------------------------------------------------------------------
@@ -352,6 +385,11 @@ export async function runMemoryCommand(
     deps.stderr(`loom memory: ${reason}`);
     return 1;
   };
+  // D16' · R17: before argument parsing; injected env, "" = not set. A guard, not a boundary.
+  const card = deps.env.LOOM_CARD;
+  if (CARD_REFUSED_VERBS.has(verb) && typeof card === "string" && card.length > 0) {
+    return fail(CARD_REFUSAL);
+  }
   try {
     switch (verb) {
       case "add":
@@ -455,6 +493,16 @@ function memoryTransition(
   );
   if (!r.ok) return refused(r, fail);
   deps.stdout(`${verb === "approve" ? "approved" : "retired"} ${r.id} (seq ${r.seq})`);
+  if (verb === "approve") {
+    // PLAN 0.38.0 R16 · R56-M3: what a card proposal activated — full body, no cut.
+    const e = readStore(deps.loomDir, agentKeyFor(deps.profile, kind), LIST_READ_MAX_BYTES).fold
+      ?.entries.get(id);
+    if (e && e.source.kind !== "human") {
+      deps.stdout(
+        `activated: ${e.type} ${e.appliesTo} — ${e.body} (source ${e.source.kind} by ${sourceBy(e)})`,
+      );
+    }
+  }
   return 0;
 }
 
@@ -494,9 +542,16 @@ function entryJson(fold: MemoryFold, e: FoldedEntry) {
 function memoryList(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps): number {
   let kind: AgentKind | undefined;
   let room: string | null;
+  let sourceKind: string | null = null;
   try {
     kind = agentFlag(flags, false);
     room = roomFlag(flags);
+    if (flags.source !== undefined) {
+      if (typeof flags.source !== "string" || !SOURCE_KIND_RE.test(flags.source)) {
+        throw new UsageError(SOURCE_ERROR);
+      }
+      sourceKind = flags.source;
+    }
     if (args.positional.length > 0 || args.passthrough.length > 0) throw new UsageError(LIST_USAGE);
   } catch (err) {
     if (err instanceof UsageError) {
@@ -522,6 +577,7 @@ function memoryList(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps): number
       ? [...fold.entries.values()]
           .filter((e) => all || e.status === "proposed" || (e.status === "active" && !e.hidden))
           .filter((e) => rk === null || e.appliesTo === "project" || e.appliesTo === `room:${rk}`)
+          .filter((e) => sourceKind === null || e.source.kind === sourceKind)
           .sort(bySeqId)
       : [];
     return { kind: k, agentKey, store, persona, fold, rows };
@@ -567,6 +623,14 @@ function memoryList(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps): number
     }
     deps.stdout(`memory: worker.memory.enabled = ${enabled} (profile ${deps.profile})`);
   }
+  // PLAN 0.38.0 D14: card proposals across the listed agents' whole stores (not the row filters).
+  let cardProposed = 0;
+  for (const a of agents) {
+    for (const e of a.fold?.entries.values() ?? []) {
+      if (e.status === "proposed" && e.source.kind === "card") cardProposed += 1;
+    }
+  }
+  if (cardProposed > 0) deps.stdout(`memory: ${cardProposed} card proposals awaiting review`);
   deps.stdout(humanFileText("knowledge/INDEX.md", index));
   for (const a of agents) {
     deps.stdout(`agent ${a.agentKey}  ${a.store.dir}`);
@@ -590,7 +654,7 @@ function memoryList(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps): number
     if (guideline) deps.stdout(`  ${humanFileText("guideline.md", guideline)}`);
     for (const e of a.rows) {
       deps.stdout(
-        `  ${e.id}  ${e.status}  ${e.type}  ${e.appliesTo}  seq ${e.seq}  ${firstLine(e.body)}`,
+        `  ${e.id}  ${e.status}  ${e.type}  ${e.appliesTo}  seq ${e.seq}  ${firstLine(e.body)}${sourceSuffix(e)}`,
       );
     }
   }
@@ -669,6 +733,13 @@ function memoryShow(args: CliArgs, flags: CliFlags, deps: MemoryCliDeps, fail: F
   }
   out.push("  body:");
   for (const l of e.body.split("\n")) out.push(`    ${l}`);
+  // PLAN 0.38.0 R56-L4(d): `origin:` (not a second `source:`) — non-human sources only.
+  if (e.source.kind !== "human") {
+    const s = e.source;
+    out.push(
+      `  origin: ${s.kind} · by ${sourceBy(e)} · room ${sourceText(s.room)} · card ${sourceText(s.card)} · attempt ${sourceText(s.attempt)}`,
+    );
+  }
   for (const l of out) deps.stdout(l);
   return 0;
 }

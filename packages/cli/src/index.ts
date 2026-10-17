@@ -307,7 +307,7 @@ Usage:
   loom memory add|propose --agent claude|codex|grok [--room <roomId>]
               [--type fact|decision|preference] [--supersedes <id>] <body…> | -- <body>
   loom memory approve|retire|show --agent <a> <id> · compact --agent <a>
-  loom memory list [--agent <a>] [--room <roomId>] [--all] [--json]
+  loom memory list [--agent <a>] [--room <roomId>] [--source <kind>] [--all] [--json]
                                     # per-agent memory store (0.35)
   loom rules list [--json]          # bundled + ~/.loom/rules (0.35)
   loom skills list [--room <roomId>] [--json]
