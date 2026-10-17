@@ -20146,9 +20146,11 @@ function parseInstalledUnit(kind, text) {
 }
 function configuredAgentBins(bridgeDir, profile) {
   let worker;
+  let rawAgentArgv;
   try {
     const raw = JSON.parse(readFileSync16(join31(bridgeDir, `${bridgeConfigSafeName(profile)}.json`), "utf8"));
     worker = raw?.worker;
+    rawAgentArgv = raw?.agentArgv;
   } catch {
     return [];
   }
@@ -20157,9 +20159,8 @@ function configuredAgentBins(bridgeDir, profile) {
   const obj = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
   const bin = obj(worker.agentBin);
   const conc = obj(worker.maxConcurrent);
-  const enabled = AGENT_KINDS2.filter((k) => conc[k] !== 0);
-  const named = enabled.filter((k) => (k in bin) || (k in conc));
-  return (named.length > 0 ? named : enabled).map((k) => {
+  const mc = Object.fromEntries(AGENT_KINDS2.map((k) => [k, conc[k] === 0 ? 0 : 1]));
+  return enabledHeadlessAgents(mc, agentArgvFromRaw(rawAgentArgv)).map((k) => {
     const v = bin[k];
     return typeof v === "string" && v.length > 0 ? v : DEFAULT_AGENT_BINS[k];
   });
@@ -21164,7 +21165,7 @@ function readMemoryDoctorInput(loom, platform = process.platform) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.36.0";
+var VERSION = "0.37.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);

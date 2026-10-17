@@ -171,7 +171,7 @@ import {
   runSkillsCommand,
 } from "./memory-cli";
 
-const VERSION = "0.36.0";
+const VERSION = "0.37.0";
 
 /**
  * PLAN 0.33.0 D5 readers (P4): status file + pid liveness + read-only lock view for one
