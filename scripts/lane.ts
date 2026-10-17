@@ -175,7 +175,7 @@ export function lanePreamble(lane: Lane): string {
       "Do not commit, push, stash, reset, checkout or amend. Do not use the board, room, or Loom MCP.",
       "Do not spawn agents or other CLIs. If a command is denied, stop and report the denial.",
       "Do not use here-documents, process substitution or temp files (the sandbox denies them); use git, rg/grep, sed and cat.",
-      "Harmless sandbox warnings on stderr (e.g. git's `xcrun_db ... Operation not permitted`) are not denials — continue; stop only when a command itself fails.",
+      "Harmless sandbox warnings on stderr (e.g. git's `xcrun_db ... Operation not permitted`) are not denials — continue. If a command fails because of your own mistake (wrong path, typo, bad flag), fix it and continue; stop only on a permission denial.",
       "End with: verdict (PASS / PASS-with-lows / FAIL), then findings ranked by severity with file:line.",
     ].join("\n");
   }
