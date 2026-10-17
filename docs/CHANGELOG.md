@@ -12,7 +12,7 @@
 
 ## 0.38.0 — 구현 완료 · 출시 대기 (오너 승인 실 CLI 스모크 전)
 
-> **implemented — release pending the owner-approved real-CLI smoke.** 아래는 구현 · 가짜 CLI 스모크까지 끝난 내용이다. 실 claude · codex · grok으로 새 스킬 문면을 돌리는 스모크(`smoke:memory-write --real-cli --owner-approved` ①)를 오너 승인 아래 통과해야 출시된다 — 그 전까지 제품 버전 SSOT는 0.37.0이다.
+> **implemented — release pending the owner-approved real-CLI smoke.** 아래는 구현 · 가짜 CLI 스모크까지 끝난 내용이다. 실 claude · codex · grok으로 새 스킬 문면을 돌리는 스모크(`smoke:memory-write --real-cli --owner-approved` ①)를 오너 승인 아래 통과해야 출시된다 — 코드의 버전 문자열(`loom --version` · `BRIDGE_VERSION` · MCP)은 이미 0.38.0이지만, 출시(shipped 표기 · main push)는 ① PASS 뒤다.
 
 **워커가 기억 후보를 올린다** (업그레이드 4단계 4부) — 옵트인 `worker.memory.cardWrites`를 켠 headless bridge는 워커 최종 출력의 `LOOM-MEMORY-CANDIDATES` 블록을 읽어 **그 방 범위 `proposed` 후보**로 저장소에 올린다. **사람이 `loom memory approve`해야만** 이후 카드에 들어간다. 카드 디렉터리에는 최종 출력의 redaction된 사본 `notes.md`가 남는다. **기본은 꺼짐**이고, 꺼짐이면 0.37과 바이트 같다.
 
