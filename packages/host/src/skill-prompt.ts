@@ -22,7 +22,7 @@
  * Fail closed: a SKILL.md path that is not absolute or carries a control, format,
  * or line/paragraph separator character (loomDir / HOME can hold anything), or a
  * description that is not one clean line of ≤ 160 code points, throws. So does a
- * path or description that folds to the dispatched-task marker head `loomdispatchedtask`
+ * name, path or description that folds to the dispatched-task marker head `loomdispatchedtask`
  * (marker-fold.ts — the same fold skill-materialize applies to descriptions, PLAN 0.40.0
  * D2) — so nothing interpolated can forge the system/data boundary. The caller does not
  * spawn (spawn_setup_failed).
@@ -53,6 +53,8 @@ export { containsMarker };
 
 function assertName(name: string): void {
   if (!SKILL_NAME_RE.test(name)) throw new Error(`skill listing: invalid skill name ${JSON.stringify(name)}`);
+  // PLAN 0.40.0 R59-M1: available and unavailable lines alike, every agent and name source.
+  if (containsMarker(name)) throw new Error("skill listing: skill name contains the task marker");
 }
 
 function assertSkillMdPath(path: string): void {

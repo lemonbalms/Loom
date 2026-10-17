@@ -98,6 +98,7 @@ import {
   renderRulesSection,
 } from "./memory-inject";
 import { parseMemoryCandidates } from "./memory-candidates";
+import { neutralizeCardPrompt } from "./marker-fold";
 import { loadMemorySnapshot } from "./memory-snapshot";
 import {
   agentKeyFor,
@@ -1888,7 +1889,15 @@ export class HeadlessDispatcher {
       await mkdir0700(dir);
       const transcriptPath = join(dir, `transcript-${plan.attempts}.jsonl`);
       const stderrPath = join(dir, `transcript-${plan.attempts}.stderr`);
-      const wrapped = wrapDispatchedPrompt(card.prompt);
+      // PLAN 0.40.0 D4 · R6: body lines that fold to the marker are replaced once per spawn;
+      // first turn and resume use the same text. The board card and argv keep card.prompt.
+      const body = neutralizeCardPrompt(card.prompt);
+      if (body.neutralizedLines > 0) {
+        process.stderr.write(
+          `[headless] card_prompt (${card.cardId.replace(/[\r\n]/g, " ")}): neutralized ${body.neutralizedLines}\n`,
+        );
+      }
+      const wrapped = wrapDispatchedPrompt(body.text);
       // Set under the card lock below (0.31.0 P4: skills decide argv and prompt).
       let firstTurn = wrapped;
       let built: BuiltAgentArgv | undefined;
@@ -1933,7 +1942,7 @@ export class HeadlessDispatcher {
         // below the marker; no block = wrapDispatchedPrompt(prompt) exactly.
         firstTurn = composeFirstTurnPrompt(
           skills.listing,
-          composeMemoryWrapped(card.prompt, memoryBlock.block),
+          composeMemoryWrapped(body.text, memoryBlock.block),
         );
         const promptBody = plan.resumeSessionId
           ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`

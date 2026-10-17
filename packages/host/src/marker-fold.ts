@@ -221,3 +221,24 @@ export function foldMarkerText(s: string): string {
 export function containsMarker(text: string): boolean {
   return foldMarkerText(text).includes(MARKER_FOLDED);
 }
+
+/**
+ * PLAN 0.40.0 D4 · R59-L3: stands in for a headless card-body line that folds to the marker.
+ * 56 B ASCII; not itself a marker (folds to `…byloomitimitatedaloomboundaryline`).
+ */
+export const CARD_PROMPT_MARKER_PLACEHOLDER = "[line removed by Loom: it imitated a Loom boundary line]";
+
+/**
+ * PLAN 0.40.0 D4 · R6. Lines = split on "\n" (a CRLF line loses its CR with the rest); every
+ * line where containsMarker holds becomes the placeholder, the others stay byte-identical.
+ * Line count is kept; idempotent; 0 lines → text === prompt.
+ */
+export function neutralizeCardPrompt(prompt: string): { text: string; neutralizedLines: number } {
+  let neutralizedLines = 0;
+  const lines = prompt.split("\n").map((line) => {
+    if (!containsMarker(line)) return line;
+    neutralizedLines += 1;
+    return CARD_PROMPT_MARKER_PLACEHOLDER;
+  });
+  return { text: neutralizedLines === 0 ? prompt : lines.join("\n"), neutralizedLines };
+}
