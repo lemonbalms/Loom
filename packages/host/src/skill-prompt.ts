@@ -22,13 +22,14 @@
  * Fail closed: a SKILL.md path that is not absolute or carries a control, format,
  * or line/paragraph separator character (loomDir / HOME can hold anything), or a
  * description that is not one clean line of ≤ 160 code points, throws. So does a
- * path or description whose letters/digits (after NFKC + lowercase) contain the
- * dispatched-task marker head `loomdispatchedtask` — the same fold skill-materialize
- * applies to descriptions — so nothing interpolated can forge the system/data
- * boundary. The caller does not spawn (spawn_setup_failed).
+ * path or description that folds to the dispatched-task marker head `loomdispatchedtask`
+ * (marker-fold.ts — the same fold skill-materialize applies to descriptions, PLAN 0.40.0
+ * D2) — so nothing interpolated can forge the system/data boundary. The caller does not
+ * spawn (spawn_setup_failed).
  */
 import { isAbsolute } from "node:path";
 import type { AgentKind } from "./agent-argv";
+import { containsMarker } from "./marker-fold";
 import {
   type AvailableSkill,
   SKILL_DESCRIPTION_MAX,
@@ -46,16 +47,9 @@ export const SKILL_LISTING_MAX_BYTES = 4096;
 export const SKILL_SHADOW_SUFFIX = " (user, shadows bundled)";
 
 const UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-/** Letters/digits of the DISPATCHED_TASK_MARKER head ("Loom dispatched task"). */
-const MARKER_LETTERS = "loomdispatchedtask";
 
-export function containsMarker(text: string): boolean {
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]/gu, "")
-    .includes(MARKER_LETTERS);
-}
+/** Re-exported so memory-store / memory-inject / tests keep importing it from here. */
+export { containsMarker };
 
 function assertName(name: string): void {
   if (!SKILL_NAME_RE.test(name)) throw new Error(`skill listing: invalid skill name ${JSON.stringify(name)}`);

@@ -20,9 +20,10 @@
  * Residual (out of scope): a same-user process swapping directories mid-traversal; it
  * already holds the owner's privileges.
  *
- * Marker lookalikes: descriptions and every raw frontmatter line are checked after NFKC +
- * lowercase + letters/digits only. Accepted Low residual: cross-script homoglyphs (e.g.
- * Cyrillic "е" for Latin "e") are not folded by NFKC and are not caught.
+ * Marker lookalikes: descriptions and every raw frontmatter line are checked with the one
+ * marker fold (marker-fold.ts — NFKD, marks removed, a fixed confusables table, lowercase,
+ * letters/digits only; PLAN 0.40.0 D2). Cross-script homoglyphs in the table's blocks
+ * (e.g. Cyrillic "е" for Latin "e") are caught now; scripts outside the table are not.
  *
  * Concurrency: materialize swaps the copy with two renames, so a concurrent verify can see
  * no skills dir (→ ok:false → fingerprint_changed, fail closed) and two concurrent
@@ -54,6 +55,7 @@ import {
   cardPeerHash,
   cardSessionPath,
 } from "./card-session-store";
+import { containsMarker } from "./marker-fold";
 import type { EffectivePolicy } from "./policy";
 import { roomKey } from "./room-event-log";
 
@@ -91,8 +93,6 @@ const SKILL_MAX_ENTRIES = 1024;
 /** Entries read from any single directory before giving up. */
 const DIR_MAX_ENTRIES = 512;
 const PLUGIN_JSON_TEXT = `${JSON.stringify({ name: CARD_SKILLS_PLUGIN_NAME })}\n`;
-/** Letters/digits of the dispatched-task marker head, after NFKC + case folding. */
-const MARKER_LETTERS = "loomdispatchedtask";
 const GATED_KEYS = new Set(["allowed-tools", "hooks"]);
 /** Keys whose value may be a nested block. */
 const BLOCK_KEYS = new Set(["allowed-tools", "hooks", "metadata", "loom"]);
@@ -371,14 +371,6 @@ export async function readRoomSkillSelection(loomDir: string, roomId: string): P
   return names;
 }
 
-/** NFKC + lowercase + letters/digits only (marker lookalike check). */
-function foldedLetters(text: string): string {
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]/gu, "");
-}
-
 /** R49-L1. null = bad description. */
 export function sanitizeSkillDescription(raw: string): string | null {
   const text = raw
@@ -390,7 +382,7 @@ export function sanitizeSkillDescription(raw: string): string | null {
   if ([...text].length > SKILL_DESCRIPTION_MAX) return null;
   // Must not forge the system/data boundary, including fullwidth, case, and
   // punctuation lookalikes of the marker head.
-  if (foldedLetters(text).includes(MARKER_LETTERS)) return null;
+  if (containsMarker(text)) return null;
   return text;
 }
 
@@ -452,7 +444,7 @@ function parseFrontmatter(text: string): Frontmatter | null {
   }
   if (!closed) return null;
   for (const line of ["---", ...body]) {
-    if (RAW_FORBIDDEN.test(line) || foldedLetters(line).includes(MARKER_LETTERS)) return null;
+    if (RAW_FORBIDDEN.test(line) || containsMarker(line)) return null;
   }
 
   const top = new Map<string, TopEntry>();
