@@ -58,10 +58,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
-import { truncateTail, wrapDispatchedPrompt } from "@loom/protocol";
+import { truncateTail } from "@loom/protocol";
 import {
-  HEADLESS_WORKER_HINT,
-  RESUME_CONTINUATION_MESSAGE,
   buildAgentArgv,
   effectiveWorkerPolicy,
   validateWorkerConfig,
@@ -91,7 +89,6 @@ import {
 } from "./process-group";
 import {
   composeFenceText,
-  composeMemoryWrapped,
   MEMORY_SNAPSHOT_FILE,
   type MemoryInjectFlags,
   renderMemoryBlock,
@@ -108,12 +105,14 @@ import {
 } from "./memory-store";
 import { type Gap, renderPolicyNotice } from "./policy-gaps";
 import { parseLstart, readProcessLstart } from "./process-lstart";
+import { type AssembledPrompt, assembleHeadlessPrompt, memoryFenceParts } from "./prompt-assemble";
+import type { FencePartId } from "./prompt-manifest";
 import { buildPromptRecord, writePrivateFileAtomic, writePromptRecord } from "./prompt-record";
 import { redactSecrets } from "./redact";
 import { roomKey } from "./room-event-log";
 import { loadRules } from "./rules-store";
 import { materializeCardSkills, verifyCardSkillsCopy } from "./skill-materialize";
-import { composeFirstTurnPrompt, renderSkillListing } from "./skill-prompt";
+import { renderSkillListing } from "./skill-prompt";
 
 const OUTPUT_CAP = 200_000;
 const SUMMARY_CAP = 900;
@@ -1885,9 +1884,9 @@ export class HeadlessDispatcher {
           `[headless] card_prompt (${card.cardId.replace(/[\r\n]/g, " ")}): neutralized ${body.neutralizedLines}\n`,
         );
       }
-      const wrapped = wrapDispatchedPrompt(body.text);
-      // Set under the card lock below (0.31.0 P4: skills decide argv and prompt).
-      let firstTurn = wrapped;
+      // PLAN 0.42.0 D3 · R61-L3(d): set once under the card lock below (0.31.0 P4: skills decide
+      // argv and prompt); the stdin payload after the lock reads it.
+      let assembled: AssembledPrompt | undefined;
       let built: BuiltAgentArgv | undefined;
       let manifestHash = "";
       // D11: "" iff no block was injected (never sha256("")).
@@ -1918,7 +1917,7 @@ export class HeadlessDispatcher {
         const memoryBlock =
           !plan.resumeSessionId && (sources.memory || sources.rules || sources.gaps.length > 0)
             ? await this.memorySnapshotLocked(card, dir, sources)
-            : { block: "", hash: "" };
+            : { block: "", hash: "", parts: [] };
         // R10: a resume write-ahead carries the hash nextPlan's gate passed (a new record
         // object, so it must be passed explicitly); a first spawn records this snapshot's hash.
         memorySnapshotHash = plan.resumeSessionId
@@ -1926,22 +1925,25 @@ export class HeadlessDispatcher {
             ? ""
             : plan.memorySnapshotHash
           : memoryBlock.hash;
-        // R6: the listing precedes the marker, first turn only. D4: the block sits right
-        // below the marker; no block = wrapDispatchedPrompt(prompt) exactly.
-        firstTurn = composeFirstTurnPrompt(
-          skills.listing,
-          composeMemoryWrapped(body.text, memoryBlock.block),
-        );
-        const promptBody = plan.resumeSessionId
-          ? `${RESUME_CONTINUATION_MESSAGE}\n\n${wrapped}`
-          : firstTurn;
-        const promptFile = await this.writeGrokPrompt(card.agent, dir, promptBody);
+        // PLAN 0.42.0 D3 · R4: the one assembler — first turn = [listing] · marker · [fence] ·
+        // body; resume = continuation · marker · body (0.41.0 bytes). A self-check throw is a
+        // setup failure before the write-ahead record (no spawn — class 61).
+        const prompt = assembleHeadlessPrompt({
+          agent: card.agent,
+          turn: plan.resumeSessionId ? "resume" : "first",
+          listing: skills.listing,
+          memoryBlock: memoryBlock.block,
+          memoryParts: memoryBlock.parts,
+          cardBody: body.text,
+        });
+        assembled = prompt;
+        const promptFile = await this.writeGrokPrompt(card.agent, dir, prompt.user);
         built = buildAgentArgv({
           agent: card.agent,
           cwd,
           sessionId: plan.sessionId,
           resumeSessionId: plan.resumeSessionId,
-          hint: HEADLESS_WORKER_HINT,
+          hint: prompt.system,
           prompt: card.prompt,
           promptFile,
           permissions: this.deps.config.permissions,
@@ -1995,8 +1997,9 @@ export class HeadlessDispatcher {
               attempt: plan.attempts,
               dispatchHandoffId: card.dispatchHandoffId,
               fingerprint: promptFingerprint,
-              system: HEADLESS_WORKER_HINT,
-              user: promptBody,
+              system: prompt.system,
+              user: prompt.user,
+              sections: prompt.sections,
             }),
           );
         } catch (err) {
@@ -2117,12 +2120,8 @@ export class HeadlessDispatcher {
         stdin.on("error", () => {
           /* child exited before stdin finished */
         });
-        const payload =
-          argv.promptTransport === "stdin"
-            ? argv.continuationMessage
-              ? `${argv.continuationMessage}\n\n${wrapped}`
-              : firstTurn
-            : "";
+        // PLAN 0.42.0 R5: the assembled user text (the resume continuation included).
+        const payload = argv.promptTransport === "stdin" ? assembled!.user : "";
         try {
           stdin.end(payload);
         } catch (err) {
@@ -2230,13 +2229,14 @@ export class HeadlessDispatcher {
    * ⑤ env redaction once over the whole text ⑥ nonce (after the reads) → fence ⑦ > 1 MiB throws
    * ⑧ write. Returns the fence bytes F (also the memory-snapshot.md bytes) and sha256(F), or
    * {"", ""} when the composed text is empty — then a stale memory-snapshot.md is removed
-   * (R7 · R54-L1).
+   * (R7 · R54-L1). PLAN 0.42.0 R6: also the fence parts, decided from the values already held
+   * (never by parsing the fence text); [] with no block.
    */
   private async memorySnapshotLocked(
     card: HeadlessDispatchCard,
     dir: string,
     sources: { memory: boolean; rules: boolean; gaps: readonly Gap[] },
-  ): Promise<{ block: string; hash: string }> {
+  ): Promise<{ block: string; hash: string; parts: FencePartId[] }> {
     const started = performance.now();
     const snap = sources.memory
       ? loadMemorySnapshot(
@@ -2277,7 +2277,7 @@ export class HeadlessDispatcher {
       process.stderr.write(
         `[headless] memory_snapshot (${id}): empty — no block${errors}${oversize} · load_ms ${ms}\n`,
       );
-      return { block: "", hash: "" };
+      return { block: "", hash: "", parts: [] };
     }
     // 0.41.0 R5: memory-snapshot.md → `.memory-snapshot.md.tmp.<pid>.<ms>` → rename → 0600.
     await writePrivateFileAtomic(dir, target, block);
@@ -2293,7 +2293,7 @@ export class HeadlessDispatcher {
     process.stderr.write(
       `[headless] memory_snapshot (${id}): block ${Buffer.byteLength(block, "utf8")} B · text ${Buffer.byteLength(text, "utf8")} B${noticeField}${rulesField} · neutralized ${flags.neutralizedLines} · env_redacted ${flags.envRedacted ? "yes" : "no"} · read_errors ${readErrors}${oversize} · truncated ${truncated} · load_ms ${ms}\n`,
     );
-    return { block, hash };
+    return { block, hash, parts: memoryFenceParts(notice, rules?.section ?? "", snap?.text ?? "") };
   }
 
   private async writeGrokPrompt(

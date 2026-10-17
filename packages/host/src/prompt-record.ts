@@ -8,22 +8,76 @@
  * parsing to the same value. `readPromptRecord` fails closed: a regular file only, ≤ 8 MiB, the
  * exact key set and types, the canonical serialised bytes, and an `invalid` reason never carries
  * file content.
+ *
+ * PLAN 0.42.0 D5 · R8 · R9 (R61-M1): version 2 adds `sections` (the assembler's trace) right after
+ * `userSha256`. The writer picks the version from the input (sections → 2, none → the 0.41 bytes);
+ * the reader keeps a v1 branch. v2 sections are checked against `PROMPT_RECORD_V2_SECTIONS`, a frozen
+ * table in this file — not the live manifest, so a later manifest change cannot turn a v2 record on
+ * disk invalid. A change to a section's id · channel · turns · required · order = a new record
+ * version, the old table staying as its read branch.
  */
 import { createHash } from "node:crypto";
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { chmod, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { RESUME_CONTINUATION_MESSAGE, type AgentKind } from "./agent-argv";
+import type { SectionTrace } from "./prompt-assemble";
+import type { FencePartId, PromptChannel, PromptSectionId, PromptTurns } from "./prompt-manifest";
 
-export const PROMPT_RECORD_VERSION = 1;
+/** The writer's version (D5). */
+export const PROMPT_RECORD_VERSION = 2;
+/** The 0.41.0 record: the read branch and the builder without sections (R8). */
+export const PROMPT_RECORD_V1 = 1;
 /** R60-L3: a read-only bound (D9 sets no write bound). */
 export const PROMPT_RECORD_READ_MAX_BYTES = 8 * 1024 * 1024;
 
 export type PromptTurn = "first" | "resume";
 export type PromptUserChannel = "stdin" | "grok --prompt-file";
 
+export type PromptRecordSectionRule = {
+  readonly id: PromptSectionId;
+  readonly channel: PromptChannel;
+  readonly turns: PromptTurns;
+  readonly required: boolean;
+  /** `memory-fence` only: its part ids in declaration order. */
+  readonly parts?: readonly FencePartId[];
+};
+
+function freezeRules(rows: PromptRecordSectionRule[]): readonly PromptRecordSectionRule[] {
+  for (const row of rows) {
+    if (row.parts) Object.freeze(row.parts);
+    Object.freeze(row);
+  }
+  return Object.freeze(rows);
+}
+
+/**
+ * R9 · R61-M1: the v2 check table — the 0.42.0 manifest's id · channel · turns · required · order
+ * and the fence part ids, frozen here (a P2 test pins it to the manifest projection).
+ */
+export const PROMPT_RECORD_V2_SECTIONS: readonly PromptRecordSectionRule[] = freezeRules([
+  { id: "worker-hint", channel: "system", turns: "both", required: true },
+  { id: "resume-continuation", channel: "user", turns: "resume", required: true },
+  { id: "skill-listing", channel: "user", turns: "first", required: false },
+  { id: "task-marker", channel: "user", turns: "both", required: true },
+  {
+    id: "memory-fence",
+    channel: "user",
+    turns: "first",
+    required: false,
+    parts: ["policy-notice", "standing-rules", "memory-snapshot"],
+  },
+  { id: "card-body", channel: "user", turns: "both", required: true },
+]);
+
+/** R12: read-check bounds (the manifest has six sections; one record carries at most five). */
+const SECTIONS_MAX = 8;
+const PARTS_MAX = 3;
+const SECTION_VERSION_RE = /^\d+\.\d+\.\d+$/;
+const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
+
 export interface PromptRecord {
-  version: 1;
+  version: 1 | 2;
   agent: AgentKind;
   turn: PromptTurn;
   attempt: number;
@@ -34,6 +88,8 @@ export interface PromptRecord {
   userChannel: PromptUserChannel;
   user: string;
   userSha256: string;
+  /** Version 2 only (D5): the sections tiling `system` and `user`. */
+  sections?: SectionTrace[];
   /** R3: codex resume only — the `exec resume` positional argument. */
   userArgv?: string;
 }
@@ -62,6 +118,8 @@ const REQUIRED_KEYS = [
   "user",
   "userSha256",
 ] as const;
+const REQUIRED_KEYS_V2 = [...REQUIRED_KEYS, "sections"] as const;
+const SECTION_KEYS = ["id", "channel", "version", "offset", "bytes", "sha256"] as const;
 
 export function promptRecordPath(dir: string, attempt: number): string {
   return join(dir, `prompt-${attempt}.json`);
@@ -79,12 +137,29 @@ export interface PromptRecordInput {
   user: string;
 }
 
-export function buildPromptRecord(input: PromptRecordInput): PromptRecord {
+/** A trace element rebuilt in the fixed key order (parts: `id · version`). */
+function canonicalSection(s: SectionTrace): SectionTrace {
+  const out: SectionTrace = {
+    id: s.id,
+    channel: s.channel,
+    version: s.version,
+    offset: s.offset,
+    bytes: s.bytes,
+    sha256: s.sha256,
+  };
+  if (s.parts !== undefined) out.parts = s.parts.map((p) => ({ id: p.id, version: p.version }));
+  return out;
+}
+
+/** R8: with `sections` → version 2 (the worker's one call site always passes them); without → v1. */
+export function buildPromptRecord(
+  input: PromptRecordInput & { sections?: readonly SectionTrace[] },
+): PromptRecord {
   const ch = CHANNELS[input.agent];
   // ES2024 String#toWellFormed (Bun runtime); the tsconfig lib predates it.
   const user = (input.user as string & { toWellFormed(): string }).toWellFormed();
   const record: PromptRecord = {
-    version: PROMPT_RECORD_VERSION,
+    version: input.sections === undefined ? PROMPT_RECORD_V1 : PROMPT_RECORD_VERSION,
     agent: input.agent,
     turn: input.turn,
     attempt: input.attempt,
@@ -96,6 +171,7 @@ export function buildPromptRecord(input: PromptRecordInput): PromptRecord {
     user,
     userSha256: createHash("sha256").update(Buffer.from(user, "utf8")).digest("hex"),
   };
+  if (input.sections !== undefined) record.sections = input.sections.map(canonicalSection);
   if (input.agent === "codex" && input.turn === "resume") {
     record.userArgv = RESUME_CONTINUATION_MESSAGE;
   }
@@ -139,15 +215,82 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const own = Object.keys(value);
+  return own.length === keys.length && keys.every((k) => Object.hasOwn(value, k));
+}
+
+function isCount(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+
+/**
+ * R9: v2 `sections` against PROMPT_RECORD_V2_SECTIONS — ids · channels · turns · required ·
+ * order · parts, and per channel an exact tiling of the text's UTF-8 bytes with each range's
+ * sha256. Every failure is `bad sections` (no content).
+ */
+function sectionsOk(sections: unknown, turn: PromptTurn, system: string, user: string): boolean {
+  if (!Array.isArray(sections) || sections.length < 1 || sections.length > SECTIONS_MAX) return false;
+  const texts: Record<PromptChannel, Buffer> = {
+    system: Buffer.from(system, "utf8"),
+    user: Buffer.from(user, "utf8"),
+  };
+  const cursor: Record<PromptChannel, number> = { system: 0, user: 0 };
+  const seen = new Set<PromptSectionId>();
+  let last = -1;
+  for (const el of sections) {
+    if (!isPlainObject(el)) return false;
+    const at = PROMPT_RECORD_V2_SECTIONS.findIndex((row) => row.id === el.id);
+    if (at < 0) return false;
+    const row = PROMPT_RECORD_V2_SECTIONS[at]!;
+    if (!exactKeys(el, row.parts ? [...SECTION_KEYS, "parts"] : SECTION_KEYS)) return false;
+    if (el.channel !== row.channel) return false;
+    if (row.turns !== "both" && row.turns !== turn) return false;
+    if (at <= last) return false;
+    last = at;
+    seen.add(row.id);
+    if (typeof el.version !== "string" || !SECTION_VERSION_RE.test(el.version)) return false;
+    if (!isCount(el.offset) || !isCount(el.bytes)) return false;
+    const text = texts[row.channel];
+    if (el.offset !== cursor[row.channel] || el.offset + el.bytes > text.length) return false;
+    cursor[row.channel] = el.offset + el.bytes;
+    if (typeof el.sha256 !== "string" || !SHA256_HEX_RE.test(el.sha256)) return false;
+    const range = text.subarray(el.offset, el.offset + el.bytes);
+    if (createHash("sha256").update(range).digest("hex") !== el.sha256) return false;
+    if (row.parts && !partsOk(el.parts, row.parts)) return false;
+  }
+  for (const row of PROMPT_RECORD_V2_SECTIONS) {
+    const onTurn = row.turns === "both" || row.turns === turn;
+    if (row.required && onTurn && !seen.has(row.id)) return false;
+  }
+  return cursor.system === texts.system.length && cursor.user === texts.user.length;
+}
+
+function partsOk(parts: unknown, ids: readonly FencePartId[]): boolean {
+  if (!Array.isArray(parts) || parts.length < 1 || parts.length > PARTS_MAX) return false;
+  let last = -1;
+  for (const p of parts) {
+    if (!isPlainObject(p) || !exactKeys(p, ["id", "version"])) return false;
+    const at = ids.indexOf(p.id as FencePartId);
+    if (at < 0 || at <= last) return false;
+    last = at;
+    if (typeof p.version !== "string" || !SECTION_VERSION_RE.test(p.version)) return false;
+  }
+  return true;
+}
+
 function checkShape(value: unknown, attempt: number): PromptRecord | string {
   if (!isPlainObject(value)) return "not a JSON object";
+  // D5: the version picks the key set — a v1 record with `sections` is an unknown key.
+  const v2 = value.version === PROMPT_RECORD_VERSION;
+  const keys: readonly string[] = v2 ? REQUIRED_KEYS_V2 : REQUIRED_KEYS;
   for (const key of Object.keys(value)) {
-    if (key !== "userArgv" && !(REQUIRED_KEYS as readonly string[]).includes(key)) return "unknown key";
+    if (key !== "userArgv" && !keys.includes(key)) return "unknown key";
   }
-  for (const key of REQUIRED_KEYS) {
+  for (const key of keys) {
     if (!Object.hasOwn(value, key)) return `missing ${key}`;
   }
-  if (value.version !== PROMPT_RECORD_VERSION) return "unsupported version";
+  if (value.version !== PROMPT_RECORD_V1 && !v2) return "unsupported version";
   const agent = value.agent;
   if (agent !== "claude" && agent !== "codex" && agent !== "grok") return "bad agent";
   if (value.turn !== "first" && value.turn !== "resume") return "bad turn";
@@ -165,6 +308,9 @@ function checkShape(value: unknown, attempt: number): PromptRecord | string {
     if (!codexResume || typeof value.userArgv !== "string") return "bad userArgv";
   } else if (codexResume) {
     return "missing userArgv";
+  }
+  if (v2 && !sectionsOk(value.sections, value.turn, value.system as string, value.user as string)) {
+    return "bad sections";
   }
   if (value.attempt !== attempt) return "attempt mismatch";
   return value as unknown as PromptRecord;
@@ -233,10 +379,14 @@ export function readBoundedRegularFile(path: string, maxBytes: number): Buffer |
   }
 }
 
-/** The checked record rebuilt in the fixed `PromptRecord` key order (userArgv last). */
+/**
+ * The checked record rebuilt in the fixed `PromptRecord` key order — v2 `sections` after
+ * `userSha256` with element and part keys in their fixed order (R9), userArgv last.
+ */
 function canonicalRecord(r: PromptRecord): PromptRecord {
   const out: Record<string, unknown> = {};
   for (const key of REQUIRED_KEYS) out[key] = r[key];
+  if (r.version === PROMPT_RECORD_VERSION) out.sections = (r.sections ?? []).map(canonicalSection);
   if (r.userArgv !== undefined) out.userArgv = r.userArgv;
   return out as unknown as PromptRecord;
 }
