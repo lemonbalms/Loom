@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.37.0 **approved** (R55) · P1~P4c 커밋 · **next = P4 검증** · 재개: [RESUME](tasks/v0370-wip/RESUME.md)
+> v0.37.0 **approved** (R55) · P1~P4d 커밋·검증 · **next = P5** · 재개: [RESUME](tasks/v0370-wip/RESUME.md)
 
 ## Current loop
 
@@ -40,7 +40,7 @@
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 mandatory (opt. Q3 skipped) | dev-process, own commits | `HEADLESS-LANES-DESIGN.md` |
 | Known fail | `handoff-checkpoint` live Evidence · pre-existing (`9ffc100`) | not a regression | suite 3133/1 |
-| v0.37.0 | **approved** (R55) | P1–P4c committed · next P4 verify · ship needs real-CLI ① | `docs/PLAN.md` |
+| v0.37.0 | **approved** (R55) | P1–P4d committed · P4 verified (Astra) · next P5 · ship needs real-CLI ① | `docs/PLAN.md` |
 | v0.36.0 | **shipped** `acd53a0` | 4단계 2부a · smoke 7/7 PASS (fake CLIs) · real CLI not run | `docs/PLAN.md` |
 | v0.32–0.35 | **shipped** `9567f87`·`0a20173`·`dbab890`·`5fa8167` | steps 2–4.1 · smokes PASS · 0.34 live not run | `docs/PLAN.md` |
 | P3 soft close | **closed** | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
@@ -53,7 +53,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| 0.37.0 real-CLI smoke ① | ship-blocking (R55-M2 · UK-1) — default-on policy notice reaches real codex/grok/claude first turns | not run · ship waits | PLAN §0.37.0 (j) |
+| 0.37.0 real-CLI smoke ① | ship-blocking (R55-M2 · UK-1) — default-on policy notice reaches real codex/grok/claude first turns | **owner yes 2026-10-17** · run once after P5 builds `smoke:policy` | PLAN §0.37.0 (j) |
 | 0.36.0 real-CLI smoke | `--real-cli --owner-approved` runs real claude/codex/grok — UK-1/UK-3 | not run | `MEMORY-INJECT-SMOKE-0360.md` |
 | 0.34.0 live OS smoke | 3단계 go = "진행해" 2026-10-16 · real launchd/systemd write needs separate yes · 7단계 last — 재질문 금지 | not run | PLAN §0.34.0 P5 |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |

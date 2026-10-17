@@ -10,7 +10,8 @@
 - P4 `db0cbfb`/`bf010c2` (AGENT_HINT·systemHint 삭제) · P4b `a2abb7f`/`1ca58e6` (스킬 라벨) · P4c `4fd633f`/`8140c97` (enabledHeadlessAgents · legacy 행 · flag 줄 일치) — **검증 미완(중지됨)**
 
 ## 다음 순서
-1. P4·P4b·P4c 검증 (GPT-6 Astra high via `codex exec -m gpt-6-astra` — CLAUDE.md 규칙 8, 읽기 전용, `git archive 8140c97` 트리 · node_modules는 **심볼릭 링크** · 테스트는 하나씩 · 전체 1회). 검증 범위·체크리스트는 이전 프롬프트와 같음: deviations 35–57 판정 포함.
+0. (2026-10-17 오후) P4–P4c 검증 = Astra 0020 + 아키텍트 재실행 → Low 2건 P4d `9c0ad0e`/`00af288`로 수정, Astra 0022 PASS-with-lows(테스트 Low 2건 수정 반영) · dev 56 숨은 동작 변경 없음. **1번 완료 — 다음 = 2번 P5.** 검증은 이제 `bun run scripts/lane.ts verify` (codex exec 직접 금지). 실 CLI ① 오너 yes 받음(HANDOFF Owner pending).
+1. ~~P4·P4b·P4c 검증~~ (GPT-6 Astra high via `codex exec -m gpt-6-astra` — CLAUDE.md 규칙 8, 읽기 전용, `git archive 8140c97` 트리 · node_modules는 **심볼릭 링크** · 테스트는 하나씩 · 전체 1회). 검증 범위·체크리스트는 이전 프롬프트와 같음: deviations 35–57 판정 포함.
 2. P5: `scripts/smoke-policy-honesty.ts`(가짜 CLI) + 문서(USER_GUIDE fence 머리말 :1635, ② grep 문구 = production .ts만, ③ legacy/disabled 행 문구, 기본 간극 6→1 재계산 — dev 57, class 20/UK-6/strict 꼬리, implementation-notes §0.37.0 deviations 1–57+) + VERSION 0.37.0 (cli index.ts VERSION, bridge-runtime.ts BRIDGE_VERSION, mcp-server stdio.ts) + dist 재빌드.
 3. ship 검사 재실행 (full bun test 임시 HOME · typecheck · biome · handoff:check · build:cli 재현성 · 보호 파일 diff · 버전 핀).
 4. **ship 차단(R55-M2):** 실 CLI ① 1회 — `smoke:policy --real-cli --owner-approved`, codex·grok·claude 각 1카드 `Reply with the single word ok.`, policy.json 없음, 기억·규칙 꺼짐, **bridge 설정에 agentArgv.codex·agentArgv.grok 명시**(Fable 판정). 오너 "yes" 필요.
