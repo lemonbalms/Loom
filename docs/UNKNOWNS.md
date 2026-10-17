@@ -42,6 +42,34 @@
 
 ## Gate log
 
+### 0.39.0 — 헤드리스 워커 hint 둘째 줄 — 작업 표지 위에 나열된 SKILL.md 읽기 허용 (`approved` — R58 approved-with-fixes · no R58b)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.39.0 (`approved` — R58 approved-with-fixes, 반영 완료 · no R58b · author-close 불가) · MINOR · 근거 = 0.38.1 D8 결과 ①(codex가 목록 머리 허락보다 hint를 따름) · 0.38.0 UK-8 · 범위 = 락 D1~D8(아키텍트 2026-10-18) · `HEADLESS_WORKER_HINT` 둘째 줄만(D2) · 0.38.1(ship 안 됨)을 대체하고 그 목록 머리를 함께 싣는다(D1) |
+| **Date** | 2026-10-18 |
+| **Review** | R58 **done 2026-10-18** — approved-with-fixes H0 · M2 · L4 (M1 D2 위치 묶음 문면 `… listed above the dispatched-task marker.` · 163 B · 497 B · M2 D7 결과표 ①~⑤ · PASS ∧ ¬⑤ · L1 편집 선언 5 → 7줄 · L2 `USER_GUIDE.md:833` · L3 drain → status 확인 → 교체 → start · L4 D7 ① 다음 선택지) — (fingerprint를 바꾸는 워커 지시 변경 · 시스템 수준 지시의 읽기 범위가 cwd 밖 표지 위 목록 SKILL.md까지 넓어진다) |
+| **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `6c5c501`) · `agent-argv.ts:18` · `:28-36` · `:259-293` · `:333-335` · `:371-387` · `:403-406` · `:419-422` · `:446-448` · `headless-worker.ts:565-574` · `:1060-` · `:1089-1093` · `:1195-1196` · `:1228-1235` · `:1245-1249` · `:1271-1280` · `:1676-1682` · `:1947` · `skill-prompt.ts:39-40` · `:52` · `MEMORY-WRITE-SMOKE-0381.md:28` · `:36` · `:46` · `:49` · `:60` · 테스트 hex `policy-fingerprint.test.ts:52` · `:57` · `:62` · `memory-inject.test.ts:56` · `:57` · 문면 고정 `headless-argv.test.ts:141` · `memory-inject.test.ts:167-169` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) codex는 `developer_instructions` hint를 사용자 턴 목록 머리보다 앞에 둔다(n = 1 — `MEMORY-WRITE-SMOKE-0381.md:60`). (2) hint는 세 에이전트에 같은 상수로 간다(claude `--append-system-prompt` · codex `developer_instructions=` · grok `--rules`) · 호출자 하나(`headless-worker.ts:1947`). (3) hint는 fingerprint 입력 — 값이 바뀌면 재개 · recovery · 입양 게이트가 `fingerprint_changed` → `needs_verification`(살아 있는 워커 kill 0). (4) 깨지는 고정 테스트 = hex 다섯 줄(+ R58-L1 출처 주석 두 줄 = 편집 선언 7줄) · hint 문면 고정 두 자리(1 · 7번 줄)는 무편집 통과(R3). (5) 새 둘째 줄에 따옴표 · 역슬래시가 없어 codex argv는 맨 형식 그대로(R2). |
+| Known unknowns | **UK-1~UK-5**(아래 표, 정본 = PLAN §0.39.0). 요지: 새 hint가 codex 거절을 푸는가 · 원인 분리(버전 vs 문구) · grok · claude 반응 · 시스템 수준 허락의 과대 해석 · 업그레이드 실 영향. |
+| Unknown knowns | 완료된 카드(결과 전송 · 워커 없음)의 새 dispatch는 게이트를 지나지 않고 새 세션으로 간다 — D4 "every existing record"보다 영향이 좁다(C2). 고정 테스트의 "0.31.0" 주석 · 테스트 이름이 새 promptFingerprint hex와 어긋난다(C1). 새 hex는 상수에서 다시 계산하면 안 된다 — 리터럴 hint + 무변경 함수로 한 번 얻는다(R1). |
+| Unknown unknowns | 한 줄 안의 금지 + 예외를 codex가 어떻게 가중하는지 · codex 다음 버전에서 `developer_instructions` 우선순위가 바뀌는지 · 시스템 지시 변경이 세 에이전트의 다른 작업 행동(cwd 밖 탐색 빈도)을 바꾸는지. |
+
+**Unknowns 요약 (정본 = PLAN §0.39.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R58 판정 |
+|---|------|-------------|----------|
+| UK-1 | **새 hint가 codex 거절을 푸는가 — 실 CLI 0회** | ship 조건 = D7(오너 승인 `smoke:memory-write --real-cli --owner-approved` 1회 — PASS = codex 목록 SKILL.md 읽기(R5) ∧ codex `proposed ≥ 1` ∧ grok `proposed ≥ 1` ∧ 세 카드 `notes.md` ∧ 실 홈 무접촉 ∧ ¬⑤) · 실패 → D7 결과표(R58-M2): ① codex transcript에 R5 읽기가 없다(응답 문면 · `proposed`와 무관) → ship 안 함 · 기록 · 다음 = 오너 선택(codex 고유 `<cwd>/.agents/skills` — cwd 쓰기 · 이전 기각 · SKILL.md 본문 인라인 · UK-2 분리 실행 · hint 문면 2차 · 또는 codex 스킬 없음 수용 — R58-L4) · ② R5 읽기 있음 ∧ codex `proposed 0` → 현행대로(ship 안 함 · 다음 = 스킬 문면 / 프롬프트) · ③ grok → 현행대로(`proposed 0` 또는 `notes.md` 없음 → ship 안 함 · 회귀) · ④ claude `proposed 0` → ship **보류** · 기록 · 오너 판단(자동 통과도 자동 차단도 아니다) · `notes.md`는 필수 · ⑤ 세 에이전트 중 어느 transcript든 명령 · 읽기 인자에 cwd 밖이면서 그 카드의 목록 SKILL.md가 아닌 절대 경로 → ship 안 함 · 기록 · 오너 판단 · 재실행은 매번 오너 명시 승인 | **R58: ship 차단**(결과표 ①~⑤ — M2) |
+| UK-2 | **원인 분리** — `codex-cli` 0.162.1(0310 h2 — 옛 hint로 읽음) ↔ 0.163.0(세 번 거절) | PASS는 "이 hint면 읽는다"만 증명 · 기록에 CLI 버전 축자 | **R58: 비차단** |
+| UK-3 | **grok · claude 반응** — 시스템 지시 문면 변경이 출력을 흔드는지 | D7이 grok `proposed ≥ 1` · 세 카드 `notes.md`로 관찰 · 결과 ③(grok `proposed 0` 또는 `notes.md` 없음) → ship 안 함 · 결과 ④(claude `proposed 0`) → ship **보류** · 기록 · 오너 판단(자동 통과도 자동 차단도 아니다 — claude `--append-system-prompt` 자체가 바뀐다 · 계급 36) | **R58: 비차단 · 단 결과 ③ 차단 · 결과 ④ 보류(M2)** |
+| UK-4 | **허락의 과대 해석**(계급 37) — 목록 밖 cwd 밖 경로(형제 파일 · 다른 카드 · home) 읽기 · 범위 = 표지 위 목록 · 표지 아래 주장은 데이터(R58-M1) | 실 CLI transcript 명령 · 읽기 인자를 기록에서 본다(세 에이전트) · D7 결과 ⑤: 어느 transcript든 cwd 밖이면서 그 카드의 목록 SKILL.md가 아닌 절대 경로 → ship 안 함 · 기록 · 오너 판단 | **R58: 비차단 · 단 D7 실행에서만 차단(결과 ⑤ — M2)** |
+| UK-5 | **업그레이드 실 영향**(계급 35) — drain 없이 올린 운용 bridge에서 선점되는 레코드 수 | 업그레이드 메모(drain → `loom bridge status` 진행 중 0 확인 → 교체 → start — R58-L3) · CHANGELOG 정직 줄 | **R58: 비차단** |
+
+**Current decision:** D1~D8 아키텍트 락(2026-10-18) · 작성자 정밀화 R1~R7(R58 수용) · 락↔코드 불일치 C1(→ 대안 R58-L1) · C2(수용 + `pendingResult` 구절) · 수용 손실 계급 35~38 + 무번호 · UK-1~UK-5. **R58 `approved-with-fixes` → M1 · M2 · L1~L4 반영 · no R58b → `approved` (2026-10-18). Next = P1.** 0.38.0 UK-8은 0.39.0 D7 PASS에서만 closed(D8).
+
 ### 0.38.1 — codex/grok 첫 턴 스킬 목록 머리 문면 (`approved` — R57 approved-with-fixes · implemented P1 · real-CLI 결과 ① → D8 · not shipped)
 
 | Field | Value |

@@ -5,20 +5,20 @@
 
 ## One-line resume
 
-> v0.38.1 not shipped (D8 — codex refused again) · **next = 0.39.0 hint MINOR PLAN** · 0.38.0 shipped
+> v0.39.0 **approved** (R58) · hint line 2 read-exception · **next = P1** · 0.38.0 shipped
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.38.1** implemented · not shipped (D8) · next 0.39.0 PLAN | `docs/PLAN.md` |
+| Product | **v0.39.0 `approved`** (R58) · next P1 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.38.1 D8 (codex refused) · next = 0.39.0 hint MINOR PLAN → R58
+### v0.39.0 approved (R58) · next = P1 hint line 2 red → green
 
 **Goal:** 4단계 4부 — memory write path: opt-in `worker.memory.cardWrites` (needs `memory.enabled` + `skills.enabled`) · new builtin skill `loom-memory-candidates` (forced only — R56-L2) · last complete `LOOM-MEMORY-CANDIDATES` block in the final output → room-scoped `proposed` (`supersedes: null`, human `approve` only) · caps 50/10/5 · secret/marker filters (case-sensitive — L1) · `(card, handoff, attempt)` dedupe incl. archive tail 4 MiB (M2) · same mkdir lock ≤250 ms async + fail-open · `notes.md` redacted copy · CLI refuses writes under `LOOM_CARD` · card rows `+<n> chars` + `approve` full body (M3). Off = 0.37 bytes. Wire · argv · hint · template · fence · `policy.json` unchanged. Authority `docs/PLAN.md` §0.38.0 · `docs/plan_review.md` R56 (M1–M4 · L1–L4 in PLAN). Shipped 2026-10-18 · real-CLI ① PASS (claude 1 · grok 1 · codex 0 · all `notes.md`).
 
@@ -30,7 +30,7 @@
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** 0.39.0 PLAN (hint line allows reading Loom-listed SKILL.md; carries the 0.38.1 header) approved by R58. Unshipped commits (incl. `1c78062` docs fix — pre-push dist check reads the working tree) stay local until ship.
+**Done when (this handoff):** 0.39.0 P1 red→green + Astra verify · P2 smoke/docs/VERSION/dist · owner-approved real-CLI per R58-M2 table ①–⑤. Unshipped commits (incl. `1c78062` docs fix — pre-push dist check reads the working tree) stay local until ship.
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 

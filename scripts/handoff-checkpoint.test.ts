@@ -138,7 +138,7 @@ describe("Phase B fixture presence", () => {
 
 describe("V1 — SSOT no-conflict", () => {
   test("PLAN version/status and fixture gate agree; no second PLAN authority", () => {
-    expect(planHead).toMatch(/\*\*Version\*\*\s*\|\s*\*\*0\.38\.1\*\*/);
+    expect(planHead).toMatch(/\*\*Version\*\*\s*\|\s*\*\*0\.39\.0\*\*/);
     expect(planHead).toMatch(/\*\*Status\*\*\s*\|\s*\*\*`approved`/);
     const errs = validateCheckpoint(fixture, { planVersion: "0.28.0" });
     expect(errs).toEqual([]);
@@ -257,7 +257,7 @@ describe("V5 — restoration questions", () => {
 describe("live checkpoint (current gate)", () => {
   test("live HANDOFF is the canonical checkpoint with all V2 information", () => {
     const errs = validateCheckpoint(liveHandoff, {
-      planVersion: "0.38.1",
+      planVersion: "0.39.0",
       trapsText: liveTraps,
     });
     expect(errs).toEqual([]);
@@ -471,8 +471,8 @@ describe("Phase D — status fail-loud + Dashboard v1", () => {
   test("healthy live dashboard is compact and parse-clean", () => {
     const s = buildStatus();
     expect(s.startsWith("## Loom · session")).toBe(true);
-    expect(s).toMatch(/\| Product \| v0\.38\.1 · `approved` \|/i);
-    expect(s).toMatch(/\| Review \| R57 · open \*\*없음\*\* \|/);
+    expect(s).toMatch(/\| Product \| v0\.39\.0 · `approved` \|/i);
+    expect(s).toMatch(/\| Review \| R58 · open \*\*없음\*\* \|/);
     expect(s).toMatch(/\| Gate \| [^|]+ \|/);
     // injectHealth only when CLI passes it — default buildStatus has no inject: tag
     expect(s).not.toMatch(/inject:full/);
@@ -592,7 +592,7 @@ describe("Phase D — SessionStart vs no-hook equivalence (V4; view ≠ model dr
       "## Evidence\n\n<details>\n\nhidden history\n\n</details>\n\n",
     );
     expect(
-      validateCheckpoint(withDetails, { planVersion: "0.38.1" }).some((e) =>
+      validateCheckpoint(withDetails, { planVersion: "0.39.0" }).some((e) =>
         e.includes("<details>"),
       ),
     ).toBe(true);
@@ -612,7 +612,7 @@ describe("Phase D — SessionStart vs no-hook equivalence (V4; view ≠ model dr
     expect(manual).toEqual(injected);
     expect(state).toMatch(/required HANDOFF sections missing: Don't redo/);
     expect(
-      validateCheckpoint(renamed, { planVersion: "0.38.1" }).some((e) =>
+      validateCheckpoint(renamed, { planVersion: "0.39.0" }).some((e) =>
         e.includes("missing required heading: Don't redo"),
       ),
     ).toBe(true);
