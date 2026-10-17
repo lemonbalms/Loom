@@ -5,20 +5,20 @@
 
 ## One-line resume
 
-> v0.39.0 **shipped** 2026-10-18 (codex reads Loom skills) · **next = owner picks** (0.40 candidates)
+> v0.40.0 **approved** (R59) · marker fold hardening · **next = P1** · 0.39.0 shipped
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.39.0 shipped** 2026-10-18 · next = owner pick | `docs/PLAN.md` |
+| Product | **v0.40.0 `approved`** (R59) · next P1 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.39.0 shipped · next = owner picks the 0.40 step
+### v0.40.0 approved (R59) · next = P1 fold module red → green
 
 **Goal:** 4단계 4부 — memory write path: opt-in `worker.memory.cardWrites` (needs `memory.enabled` + `skills.enabled`) · new builtin skill `loom-memory-candidates` (forced only — R56-L2) · last complete `LOOM-MEMORY-CANDIDATES` block in the final output → room-scoped `proposed` (`supersedes: null`, human `approve` only) · caps 50/10/5 · secret/marker filters (case-sensitive — L1) · `(card, handoff, attempt)` dedupe incl. archive tail 4 MiB (M2) · same mkdir lock ≤250 ms async + fail-open · `notes.md` redacted copy · CLI refuses writes under `LOOM_CARD` · card rows `+<n> chars` + `approve` full body (M3). Off = 0.37 bytes. Wire · argv · hint · template · fence · `policy.json` unchanged. Authority `docs/PLAN.md` §0.38.0 · `docs/plan_review.md` R56 (M1–M4 · L1–L4 in PLAN). Shipped 2026-10-18 · real-CLI ① PASS (claude 1 · grok 1 · codex 0 · all `notes.md`).
 
@@ -30,7 +30,7 @@
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** owner picks the 0.40 step → PLAN draft → R59. Unshipped commits (incl. `1c78062` docs fix — pre-push dist check reads the working tree) stay local until ship.
+**Done when (this handoff):** 0.40.0 P1–P4 (fold · R8 · card-body · docs/VERSION) each Astra-verified · suite + fake smokes green · no real-CLI required (R59 ⑥) · then roadmap stage 5 PLAN. Unshipped commits (incl. `1c78062` docs fix — pre-push dist check reads the working tree) stay local until ship.
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -52,7 +52,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| 0.40 step pick | snapshot mtime cache · lookalike-marker hardening · codex 0.162.1 A/B (UK-2) | owner picks | PLAN §0.38.0 다음 후보 |
+| after 0.40 | roadmap stage 5 (prompt assembly) next per owner "단계별로 모두 진행해" | proceed | `UPGRADE-PLAN.md` |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 

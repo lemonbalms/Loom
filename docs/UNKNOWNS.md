@@ -42,6 +42,34 @@
 
 ## Gate log
 
+### 0.40.0 — 표지 흉내 접기 강화 · R8 같은 접기 · 헤드리스 카드 본문 표지 줄 무력화 (`approved` — R59 approved-with-fixes · no R59b)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.40.0 (`approved` — R59 approved-with-fixes, 반영 완료 · no R59b · author-close 불가) · MINOR · 근거 = §0.36.0 계급 11 · Deviation (4)부터 이월된 ④ 닮은 글자 표지 강화 + 0.39.0 위치 묶음(R58-M1) 뒤의 새 압력점(카드 본문) · 범위 = 락 D1~D8(아키텍트 2026-10-18) |
+| **Date** | 2026-10-18 |
+| **Review** | R59 **done 2026-10-18** — approved-with-fixes H0 · M1 · L4 (M1 목록 스킬 이름 — `assertName` `containsMarker(name)` throw · `spawn_setup_failed` · 세 에이전트 · available/unavailable · R8 넷째 갈래 · L1 접기 = 소문자 뒤 표 재적용 · 표 원천 `/^[\p{L}\p{N}]$/u` · L2 블록 정본 `/LOOM\W?(?:MEMORY|REPORT)/u` · L3 자리표시 `[line removed by Loom: it imitated a Loom boundary line]` · L4 계급 46) — (`WORKFLOW.md` §5.1 sanitize 계약 행 · 시스템/데이터 경계 판정 의미 변경 · 워커 입력(카드 본문) 첫 변형) |
+| **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `a074e0b`) · `skill-prompt.ts:22-28` · `:50` · `:52-58` · `:64-80` · `:127-129` · `skill-materialize.ts:23-25` · `:95` · `:374-380` · `:393` · `:454-456` · `:685` · `:785` · `:848` · `:1111-1117` · `memory-store.ts:115` · `:1006-1009` · `:1077-1083` · `:1174-1175` · `memory-inject.ts:28-29` · `:65-71` · `:79-83` · `headless-worker.ts:1622` · `:1625-1628` · `:1891` · `:1934-1940` · `:1948` · `:2098-2102` · `:2271` · `agent-argv.ts:3` · `:30` · `:259-293` · `:308` · `card-contract.ts:27` · `:123-129` · `bridge-runtime.ts:2054` · `:2221` · `:2344` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) `containsMarker`(NFKC → lower → 글자/숫자)는 키릴 `о` · `с` · 그리스 `α` · `ı` · `ɑ` · `ʟ` · 합친 `ó` · `o`+U+0301을 놓친다 · R8 울타리 정규식은 키릴 `О` · ZWSP · `═`를, 블록 정규식은 U+2011을 놓친다(증거 팩). (2) 같은 접기 사본 `foldedLetters`가 있다(`skill-materialize.ts:374-380`). (3) 헤드리스 카드 본문은 검사 · 정제 없이 표지 아래로 간다(`headless-worker.ts:1891` · `:1936`) · argv에는 들어가지 않는다. (4) 재개는 저장된 스킬 사본 · 스냅샷 파일을 재해시한다 → 새 접기는 게이트를 움직이지 않는다 · fingerprint 입력 무변경. (5) 고정 테스트 편집 0줄(R9 — grep). |
+| Known unknowns | **UK-1~UK-5**(아래 표, 정본 = PLAN §0.40.0). 요지: 표의 실제 내용(`confusables.txt` 버전 · 증거 문자 포함 여부) · 오탐 빈도 · 실 CLI의 자리표시 반응 · 다른 경계 위조 모양 · 큰 카드 본문 비용. |
+| Unknown knowns | 목록 SKILL.md 경로 갈래는 unavailable이 아니라 `spawn_setup_failed`다(C2 · R8). 소문자 표로는 대소문자 구분 블록 규칙이 키릴 대문자를 놓친다 → prototype을 대소문자 정규화 없이 그대로 쓰는 표(C1 — R59 문면 정밀화). 블록 정규식의 꼬리 `\W?`는 무효이고 가운데 `\W?`는 구분자 없음도 허용한다(C4 · R5 → R59-L2 정본 `/LOOM\W?(?:MEMORY|REPORT)/u`). 목록의 스킬 **이름**은 표지 판정을 받지 않았다(`assertName` = `SKILL_NAME_RE`만 — R59-M1 → throw · `spawn_setup_failed`). 표를 소문자화 앞에서만 적용하면 `Ɑ` U+2C6D 류를 놓친다(R59-L1 → 소문자 뒤 재적용). ASCII 숫자 ↔ 글자 바꿔치기(`L00M`)는 표가 ASCII를 다루지 않아 남는다(R3 · 계급 40). |
+| Unknown unknowns | 모델이 자리표시 줄 · 가짜 목록 줄(진짜 표지 아래)을 어떻게 가중하는지 · 글꼴에 따라 표 밖 문자가 라틴처럼 보이는 정도 · 다음 Unicode 버전의 새 동형 문자. |
+
+**Unknowns 요약 (정본 = PLAN §0.40.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R59 판정 |
+|---|------|-------------|----------|
+| UK-1 | **표의 실제 내용** — `confusables.txt` 버전 · 항목 수 · 증거 문자(`ʟ` · `ɑ` · `ı` …)의 라틴 한 글자 prototype · `=` 대응(`᐀` · `꓿` · `゠`) | P1/P2 red가 확인 · 커밋 메시지에 기재 · 없으면 C3 draft(증거 예외 항목) / R4(빼고 기록) | **R59: 비차단 수용** — P1/P2 red가 고정 · 커밋 메시지에 기재 · C3 draft 수용(증거 예외 = **증거 목록 문자에 한정** · 각 항목은 시각적으로 대신하는 라틴 글자 하나 · P1이 예외 집합 리터럴 고정(항목 수 · 코드 포인트)) · C1 I류 → `l` 항목(U+0399 · U+0406)도 확인(prototype 그대로 · 대소문자 교정 없음) |
+| UK-2 | **오탐 실제 빈도** — 비라틴 스킬 · persona · 규칙 · 카드 본문 | 셈으로 관찰(stderr `neutralized` · `card_prompt` · `dropped.marker` · `loom skills list` 사유) · fail-closed 방향 | **R59: 비차단** |
+| UK-3 | **실 CLI의 자리표시 반응** — 줄이 사라진 카드 본문에 워커가 혼란을 보이는지 | 깨끗한 입력에선 생기지 않는다(R10) · 실 CLI 0회 · 오너 요청 시 1회(명시 승인) | **R59: 비차단** — 깨끗한 실행으로는 관찰되지 않는다 · 오너 요청 시 1회 수용(실행마다 명시 승인) |
+| UK-4 | **다른 경계 위조 모양** — 가짜 목록 머리 · 가짜 펜스 줄 · "system:" 류 | hint 7번 줄 · 펜스 nonce가 남는 방어 · 다음 후보 | **R59: 비차단 · 계급 46으로 연결(L4)** — 카드 본문의 가짜 목록 머리 · 항목 줄 · 철자하지 않는 자칭 표지는 무력화하지 않는다(진짜 표지가 언제나 첫 표지 → 표지 아래 = 데이터) · P3 축자 단언(가짜 항목 줄 유지)이 고정 · 다음 후보 |
+| UK-5 | **비용** — 60,000자 카드 본문 줄별 접기 | 선형 · P3에서 상한 본문 1회 시간 기록(단언 아님) | **R59: 비차단** |
+
+**Current decision:** D1~D8 아키텍트 락(2026-10-18) · 작성자 정밀화 R1~R10 · 락↔코드 불일치 C1~C4(R59 판정 — C1 수용(문면 정밀화) · C2 수용(+ M1) · C3 draft 수용(한정) · C4 → 수정(L2)) · 수용 손실 계급 39~46 + 무번호 · UK-1~UK-5(전부 비차단). **R59 approved-with-fixes → M1 · L1~L4 반영 · no R59b → `approved`.** **Next = P1.**
+
 ### 0.39.0 — 헤드리스 워커 hint 둘째 줄 — 작업 표지 위에 나열된 SKILL.md 읽기 허용 (`approved` — R58 approved-with-fixes · no R58b · implemented (P1–P2) · shipped 2026-10-18)
 
 | Field | Value |
