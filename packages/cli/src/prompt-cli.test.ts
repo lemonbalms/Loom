@@ -172,6 +172,7 @@ function textOf(r: PromptRecord, card = CARD, verdict = "ok", stale?: string): s
     `fingerprint ${r.fingerprint}`,
     `system: ${r.systemChannel} · ${bytes(r.system)} B`,
     `user: ${r.userChannel} · ${bytes(r.user)} B · sha256 ${r.userSha256} ${verdict}`,
+    "sections: (not recorded — Loom 0.41.0 record)",
     "",
     `--- system (${r.systemChannel}) ---`,
     r.system,
@@ -246,8 +247,8 @@ describe("loom prompt show — default attempt, --attempt, text and --json", () 
     expect(r.code).toBe(0);
     expect(r.out[2]).toBe(`system: claude --append-system-prompt · ${bytes(system)} B`);
     expect(r.out[3]).toBe(`user: stdin · ${bytes(user)} B · sha256 ${r1.userSha256} ok`);
-    expect(r.out[6]).toBe("sys\\u{7}bell\\u{2069}");
-    expect(r.out[8]).toBe("a\\u{1b}[2Jb\\u{9b}c\\u{202e}d\\u{2066}e\\u{7f}f\\u{d}g\th\ni");
+    expect(r.out[7]).toBe("sys\\u{7}bell\\u{2069}");
+    expect(r.out[9]).toBe("a\\u{1b}[2Jb\\u{9b}c\\u{202e}d\\u{2066}e\\u{7f}f\\u{d}g\th\ni");
     for (const line of r.out) {
       // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting no raw control characters
       expect(line).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f‪-‮⁦-⁩]/);
