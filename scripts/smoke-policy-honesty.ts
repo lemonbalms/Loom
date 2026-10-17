@@ -653,8 +653,8 @@ try {
       const sec = doctorSection(r, "Policy");
       const row = sec.find((l) => l.message.startsWith("grok: disabled"));
       check(
-        row?.message.startsWith("grok: disabled (worker.maxConcurrent.grok = 0)"),
-        `doctor grok row: expected "grok: disabled (worker.maxConcurrent.grok = 0)…" · got ${JSON.stringify(row?.message ?? sec.filter((l) => l.message.startsWith("grok")).map((l) => l.message))}`,
+        row?.message === "grok: disabled (worker.maxConcurrent.grok = 0) — not checked",
+        `doctor grok row: expected "grok: disabled (worker.maxConcurrent.grok = 0) — not checked" · got ${JSON.stringify(row?.message ?? sec.filter((l) => l.message.startsWith("grok")).map((l) => l.message))}`,
       );
       const warns = sec.filter((l) => l.status === "warn").map((l) => l.message);
       const wantWarns = EXPECTED_DOCTOR_WARN.filter((l) => !l.includes(" for grok "));

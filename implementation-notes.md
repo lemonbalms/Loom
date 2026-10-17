@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-16 (0.36.0 카드 시작 기억 스냅샷 + 펜스 주입) |
+| **Last updated** | 2026-10-17 (0.37.0 정책 정직성 — implemented · ship 대기) |
 
 ---
 
@@ -39,6 +39,98 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.37.0 — 정책 정직성 (업그레이드 4단계 3부 — implemented · ship 대기)
+
+PLAN §0.37.0 (R55 `approved-with-fixes` → `approved`) · 커밋 `5860990`(R55 게이트) → `addcd52`/`ae65e42`(P1 red/green — `policy-gaps.ts` 순수 코어 · 머리말 · `composeFenceText`/`renderRulesSection` · `strictEnforcement`/`rules` 파서 · `readBridgeWorkerFlags`) → `1ba49c2`/`cd5130c`/`af47f4d`(P2 red · red 교정 · green — 펜스 안 안내문 · 규칙 · D9 stderr · `agent_disabled` · `maxConcurrent` 0) → `b16b900`/`ddecf6d`/`29bbe62`/`2e82446`(P3 red · red 교정 2 · green — bridge 기동 경고 · strict 거부 · doctor Policy 절 · flags 줄 · `memory list` 머리 · `configuredAgentBins`) → `db0cbfb`/`bf010c2`(P4 — AGENT_HINT/`systemHint` 삭제) → `a2abb7f`/`1ca58e6`(P4b — 스킬 가림 라벨) → `4fd633f`/`8140c97`(P4c — `enabledHeadlessAgents` · 레거시 행 · flag 뷰) → `bd22505`(WIP dist 백업) → `9c0ad0e`/`00af288`(P4d — Service PATH 검사 = bridge 켜짐 집합 · strict 꼬리) → `f4c7073`(P5a 스모크 `smoke:policy`) → `9a402e4`(P5b 버전 0.37.0 + dist) → P5c 문서(이 절). 독립 검증: P1 · P2 · P3 = Opus xhigh(읽기 전용) · P4~P4c = GPT-6 Astra high(`lane.ts verify` 0020) + 아키텍트 재실행 → P4d · P4d = Astra 0022 · P5a 스모크는 구현 레인이 작성 · P3-V-L3 판정은 Fable 자문. 원 로그 `tasks/v0370-wip/v0370-deviations.md`(이 절이 정본 — 그 파일은 기록용으로 남김).
+
+**Deviations (계획 대비 실행 방식 — 한 줄씩, 번호 유지):**
+
+| # | PATCH · ref | Deviation (what we did) | 판정 |
+|---|---|---|---|
+| (1) | P1 ② 규칙 섹션 | `renderRulesSection`은 규칙 본문 끝 개행을 **전부** 지운다(`/\n+$/` — ② "끝 개행 제거"는 개수 미지정). | 수용 |
+| (2) | P1 상한 | 규칙 상한은 항목 + `\n\n` 구분자를 센다 · 머리 줄 · 생략 줄은 안 센다(memory-snapshot 선례). | 수용 |
+| (3) | P1 | included=0이면 `## Standing rules\n- … N more rules omitted`(빈 줄 없음) — 도달 불가(본문 ≤8192 B) · 테스트 없음. | 수용 |
+| (4) | P1 `readBridgeWorkerFlags` | P1은 ② 문면대로 maxConcurrent/strict/memory/rules/permissions만 검사 — doctor가 bridge가 거부할 설정을 유효로 볼 수 있음 → P3로 FLAG. | P1-V-L1로 해소 |
+| (5) | P1 | `readBridgeWorkerFlags().enabled` = P2 전까지 셋 다(R55-L4). | (17)로 해소 |
+| (6) | P1 | 명시 `worker.strictEnforcement: false`는 보존 · 왕복 — 키가 없을 때만 생략. | 수용 |
+| (7) | P1 import | `memory-inject.ts`가 `./agent-argv`에서 `AgentKind`를 **type**만 import(② = rules-store type import만) — 런타임 import 0. | 수용 |
+| (8) | P1 | `memory-inject.test.ts:65` 옛 주석("Verbatim from PLAN §0.36.0 ②") 남김(편집 허용 = `:66-67`뿐). | 수용 |
+| (9) | P1 문서 | `USER_GUIDE.md:1635`가 옛 펜스 머리말 인용 → P5. | P5c에서 해소 |
+| (10) | P1 | 테스트 파일은 red 커밋 전 biome 포맷(추가 줄만). | 수용 |
+| (11) | P2 커밋 | 커밋 셋 — red `1ba49c2` · 테스트만 교정 `cd5130c` · green `af47f4d`. 레코드 경로 `agent_disabled`는 `sendAndMarkLocked`의 `pendingResult` 예약이 `timedOut: false`를 더한다(`fingerprint_changed`와 같음) · 새 카드 경로는 ② 모양 그대로. | 수용 |
+| (12) | P2 R12 위치 | 기존 레코드 `agent_disabled` = `existing && !existing.resultSent && maxConcurrent[agent] === 0` · orphan group · `spawn_state_unknown` 뒤 · `fingerprintChanged` 앞(입양 갈래의 `card_already_running`보다도 앞 — claim 없는 직접 `dispatch()`에서만 닿음: **D2는 결과를 못 받는다**, P2-V-L1) · `resultSent`+죽은 레코드는 새 카드 검사로 내려감. | 수용 + 고정 |
+| (13) | P2 stderr | `notice <G>` = 자기 간극 수(= 안내문 줄 수) · `text <T>` = env redaction 전 합성 text 바이트(0.36도 redaction 전 text). | 수용 |
+| (14) | P2 R8 | 1 MiB 검사는 `renderMemoryBlock` 직후(남은 파일 삭제 · 쓰기 전) · 문구 `memory snapshot block exceeds 1048576 bytes`(② 미지정) → `spawn_setup_failed` note. | 수용 |
+| (15) | P2 R6 | 메서드 이름 `memorySnapshotLocked` 유지 — 이제 `{memory, rules, gaps}`를 받는다. | 수용 |
+| (16) | P2 테스트 | `bridge-config-policy.test.ts` 머리 주석 4-5줄을 red에서 편집("not exercised here" → 덧붙인 P2 describe 가리킴) · P2 describe는 자기 임시 홈 env. | 수용 |
+| (17) | P2 | `readBridgeWorkerFlags().enabled`가 0 에이전트를 뺀다((5) 해소). | — |
+| (18) | P2 D3 | 자기 간극은 없고 다른 에이전트만 간극인 카드 = 스냅샷 단계 없음(R10 "이 에이전트 간극") · 테스트. | 수용 |
+| (19) | P2 | `bridge-memory-profile.test.ts`는 P2에서 무편집 통과(bridge 배선은 P3) — P3 red가 `:246-256`을 좁힌다. | P3에서 해소 |
+| (20) | P3 위치 | `readPolicyDoctorInput(home, profile)`은 `cli/src/doctor.ts`(export · index.ts가 import) — ② `cli/src/index.ts`는 import 시 `main()`이 돌아 단위 테스트 불가(선례 `readMemoryDoctorInput`) · doctor.ts가 `@loom/host` · `node:fs` 런타임 import를 갖게 됨. | 수용 |
+| (21) | P3 모양 | `PolicyDoctorInput` = {home, profile, policyPath, policy(default\|file\|invalid), legacyPolicy, bridgePath, bridge(absent\|invalid\|ok), hash\|null, enabled, gaps, strictEnforcement, worker} · 간극은 리더에서 계산 · Bridge/Memory flags 뷰는 같은 원문 읽기에서. | 수용 |
+| (22) | P3 읽기 | doctor는 `loadBridgeConfig`처럼 읽는다 — 없음 → "no bridge config" · 읽기 불가/비JSON/비객체 → 기본값(worker 없음 → pane) · `readBridgeWorkerFlags` throw만 ③ "bridge config invalid" warn. | 수용 |
+| (23) | P3 | `resolveWorkerPolicy` throw(deprecated bridge 목록 vs `policy.json` — bridge 기동 거부)는 ③ "bridge config invalid: <msg> … showing all agents" warn + 기본 권한으로(③에 행 없음). | 수용 |
+| (24) | P3 pane | pane backend: bridge 행 `backend pane · enabled none` + pane 안내 줄 · 에이전트 행은 셋 다 수준 표시(disabled 아님) · 간극 = [] → ok `no policy gaps for enabled agents` · strict 값은 false로 표시(bridge가 무시). | 수용 |
+| (25) | P3 레거시 | 레거시 행 = `existsSync(dirname(home)/.fable/policy.json)` · 출처 행 바로 뒤(무효 정책 fail 행 뒤에도). | P3-V-L1로 조건 강화 |
+| (26) | P3 | 무효 bridge 설정 → strict 행 `= false`(flags 모름). | 수용 |
+| (27) | P3 | `memory list` — throw하는 `memoryEnabled` dep는 "invalid bridge config"로(방어 — 실 deps는 스스로 잡음). | 수용 |
+| (28) | P3 순서 | bridge 기동 순서 = deprecated 목록 경고(0.31 D8) → 간극 → strict throw / 간극 경고 — strict 거부 전에도 deprecated 경고가 먼저 찍힌다(② "`:883` 바로 뒤"). | 수용 |
+| (29) | P3 R13 | strict 거부는 그대로 throw(`startBridgeRuntime` reject = `renderStrictRefusal`) · 상태 파일 `lastError`는 기존 0.33 상한 512 UTF-8 B — 기본 정책 거부(~1.3 KB)는 거기서 잘림 · 테스트는 `truncateLastError(refusal)` 고정. | 수용 |
+| (30) | P3 테스트 배치 | P1-V-L2 `loadRules` 테스트는 `memory-inject.test.ts`(추가 · 동적 import) — `rules-store.test.ts`는 ⑦ 무편집 목록. | 수용 |
+| (31) | P3 커밋 | 테스트만 red 교정 둘 — `ddecf6d`(dispatch allowlist에 codex/grok `agentArgv` · `lastError` 상한 · status herdr 초기 "down") · `29bbe62`(룸 peer는 `peerId`가 아니라 `id` — no-join 검사가 undefined끼리 비교, typecheck가 잡음). | 수용 |
+| (32) | P3 ⑦② | 좁히기 = `GAP_FREE_POLICY` 상수 + 두 테스트 안에서 `loomDir()/policy.json` 쓰기(`:246-256` 범위 안) · 파일은 describe 끝까지 남음(먼저 도는 기억 켜짐 테스트 둘은 무영향). | 수용 |
+| (33) | P3 spawn 테스트 | doctor-policy spawn 테스트는 HOME = 테스트 프로세스 임시 HOME(bun 트랜스파일 캐시가 `$HOME/Library/Caches`) · `LOOM_TEST_HOME` = 테스트별 임시 루트 · `launchctl`/`systemctl`/`loginctl` 스파이를 PATH 앞에(실행 0 단언). | 수용 |
+| (34) | P3 P1-V-L1 | `readBridgeWorkerFlags`는 조립된 설정에 `validateWorkerConfig`를 다시 돌리지 않는다 — 그것은 `validatePermissions`(이미 `parsePermissions` 안) + 정책 의존 `effectiveWorkerPolicy`뿐 · fs 없는 오류는 전부 덮임 · 패리티 표 33케이스가 오라클. | 수용 |
+| (35) | P4 ⑦③ | `adapters.test.ts` ③ 편집이 `:30-33` 블록 뒤 빈 줄까지 지움(삭제 범위 `:30-34`) · 다른 기존 줄 무접촉. | 수용 |
+| (36) | P4 테스트 | "`@loom/mcp-server`에 `writeAgentHintFile` 없음" 단언은 `packages/mcp-server/src/index.ts`를 계산 경로로 import — adapters는 mcp-server에 의존하지 않고 리터럴 상대 import는 tsc rootDir(TS6059)을 깨뜨림. | 수용 |
+| (37) | P4 ② grep | ② grep 기준(`systemHint\|loomSystemHint\|fableSystemHint\|writeAgentHintFile` = 0, 예외 둘)은 문자 그대로 0이 아니다 — P4 행이 요구한 부재 단언(`adapters.test.ts:107-133`)이 기호 이름을 문자열로 담음 · production .ts는 `agent-argv.ts:26` 주석뿐 · dist는 P5 `build:cli`까지 남음. | **아키텍트: ② = "production .ts only"** — P5 문서에서 ② 문면 정정 |
+| (38) | P4 doctor | AGENT_HINT 줄 = Home/profile 절 마지막 줄(writable 줄 뒤) · `cmdDoctor`에서 `existsSync(pathJoin(readOnlyLoomHome(), "AGENT_HINT.txt"))` 인라인 · 존재만 — 같은 이름 디렉터리/심링크도 줄을 냄(dangling → 줄 없음). | 수용 |
+| (39) | P4 테스트 | `doctor.test.ts` 추가분은 별도 import 문(둘째 `bun:test` · 둘째 `./doctor`) — ⑦ 추가만 파일의 diff가 `+`뿐이게. | 수용 |
+| (40) | P4 spawn | `doctor.test.ts` spawn = 실 `bun packages/cli/src/index.ts doctor` · (33) env 형 · `LOOM_PROFILE=p4hint` · 심은 파일 mtime 2026-01-02 → 바이트 · mtimeMs · size · mode 무변경 · 파일 없음 → 줄 없음 · 생성 0. | 수용 |
+| (41) | P4 red | P2-V 고정 12개는 red에서 이미 통과(기존 P2 동작 — 커밋에 선언) · 대조 둘 추가: L1 claim 경유 → D2 claim 0 · 전송 0 · 레코드 미전송 · L3 grok 켜짐 → 같은 레코드가 output "done" 전달 · (d) 크래시 = 디스패처 1 워커 정지 → `d1.close()` → 그룹 SIGKILL → 디스패처 2 `recover()`(스냅샷 mtime을 과거로 두어 재쓰기 탐지). | 수용 |
+| (42) | P4 P2-V-L2 | (a)(b) 모두 `dispatch()`와 `recover()`로 고정 — (a) 레코드 pid 죽음 + pgid = 살아 있는 분리 sleeper · (b) `pendingResult` 그대로 재생(`timedOut false` 포함) · 레코드 무변경. | 수용 |
+| (43) | P4b D8 | `shadowsBuiltin`은 `BUILTIN_SKILLS`(resolveSkill이 쓰는 집합) 기준 · 수락된(Available) 사용자 스킬에만 — 가리는데 unavailable인 스킬은 라벨 없음. | 수용 |
+| (44) | P4b R19 | 기존 목록 테스트 편집 0(전체 스위트 green — 알려진 handoff-checkpoint 실패 제외). | — |
+| (45) | P4b 테스트 | `skill-label.test.ts`는 `SKILL_SHADOW_SUFFIX`를 호출 시점 네임스페이스 import로(케이스별 red) · 상한 케이스 = 순수 `renderSkillListing` + 긴 절대 경로: 접미 없이 정확히 4096 B는 들어감 · 같은 항목 접미 붙이면 `- (+1 more): unavailable: cap` · 접미 길이만큼 짧은 경로 + 접미 = 정확히 4096 B 들어감. | 수용 |
+| (46) | P4 D7 | `loom run`은 더 이상 `~/.loom/AGENT_HINT.txt`를 쓰지 않는다(의도된 동작 변경) · 있는 파일은 그대로(계급 21). | 수용 |
+| (47) | P4c 헬퍼 | 공유 헬퍼 = `enabledHeadlessAgents(maxConcurrent, agentArgv)` + `agentArgvFromRaw(raw)`(= `loadBridgeConfig`의 `{...DEFAULT_AGENT_ARGV, ...sanitizeAgentArgv(raw)}` — `loadBridgeConfig`도 이제 이것을 부름) · `bridge-config.ts` · `@loom/host` export · `enabledAgentsOf`(순수 maxConcurrent 필터)는 유지 · `resolveAgentArgv` 매개변수를 `Pick<BridgeConfig, "agentArgv">`로 넓힘(type만). | 수용 |
+| (48) | P4c | `readBridgeWorkerFlags(raw, rawAgentArgv?)` — 둘째 인자 = 파일 최상위 `agentArgv` 원문 · 생략 = 키 없음 → {claude} · pane → `enabled: []` 그대로. | 수용 |
+| (49) | P4c doctor | (brief 밖 · 정직) doctor 꺼짐 행이 사유를 밝힌다 — `PolicyDoctorInput.noAgentArgv` · `<a>: disabled (no usable agentArgv.<a>) — not checked`(둘 다면 이것) · 아니면 `(worker.maxConcurrent.<a> = 0)`. | 수용(③ 문면 P5) |
+| (50) | P4c doctor | "no bridge config"(모두 켜짐 가정 → 6개) · "bridge config invalid … showing all agents"는 그대로 — P3-V-L3는 파싱된 headless 설정에만 · `doctor-policy.test.ts` 6개 고정(`:147` · `:534`)은 이 무설정 경우라 유지. | 수용(문서화) |
+| (51) | P4c 워커 | `headless-worker.ts`는 `enabledAgentsOf`를 안 씀 — 카드 안내문은 `deps.policyGaps`(bridge 기동 `Gap[]`)를 거르므로 헬퍼를 자동으로 따름 · `headless-policy-notice.test.ts:187`(모두 dispatch 가능 하네스) 무편집. | 수용 |
+| (52) | P4c Service | (brief 밖 — FLAG) `service.ts` PATH 드리프트 검사는 아직 maxConcurrent/agentBin만으로 고름 — `agentArgv` 없는 에이전트도 검사됨. | 수용 → **P4d에서 해소**((58)) |
+| (53) | P4c P3-V-L2 | doctor flag 뷰는 정책 해석 뒤 계산 — headless + 무효 `policy.json` → "invalid bridge config"(Policy 절은 fail 행만) · headless + deprecated 목록 충돌 → invalid · pane + 무효 `policy.json` → false(pane은 정책을 안 읽음 — `memory list` 패리티). | 수용 |
+| (54) | P4c 테스트 | red 테스트는 새 cli 파일 `policy-enabled-p4c.test.ts`(host가 cli를 import 못 함 — 3방 패리티) · bridge 기동 enabled = 기본 정책 기동 경고가 이름 짓는 에이전트(모든 에이전트가 기본 간극 ≥1) · red에서 이미 통과한 행 다수(기존 동작). | 수용 |
+| (55) | P4c 기존 0.37 테스트 편집 | red: `policy-gaps.test.ts:80` STRICT_TAIL · `bridge-config-policy.test.ts:47-55`(ALL_ARGV) · `:267` · `:288` · `:459-468` · `:608` · `doctor-policy.test.ts:105-110`(writeBridge가 agentArgv 씀) · `:334-341`(무효 정책 ⇒ `<root>/.loom` 있음 ⇒ 레거시 행 없음). | 수용 |
+| (56) | P4c biome | production 파일 `biome check --write`가 무관한 코드를 고침 → 되돌림 · 4개 production 파일의 biome 오류/경고 수 = `1ca58e6`과 같음(전부 기존). | 수용 |
+| (57) | P4c 기본 간극 | 기본 headless 설정(`agentArgv {claude}` · `policy.json` 없음) → **간극 1개**(claude network advisory) · 6 = 세 에이전트 모두 dispatch 가능일 때 → ② · 계급 20 · UK-6 · R55 "기본 간극" 문면을 P5에서 다시 셈. | P5c에서 해소 |
+| (58) | P4d Service | `configuredAgentBins` mc: throw 없는 maxConcurrent 헬퍼가 export돼 있지 않아(`parseMaxConcurrent`는 private · throw) `conc[k] === 0 ? 0 : 1`로 인라인 유도 — 없음/0 아님 = 켜짐 · 명시 0 = 꺼짐(종전과 같음) · bridge가 거부할 잘못된 값은 여기선 켜짐(throw 없음, 종전과 같음) · 켜짐 집합 = `enabledHeadlessAgents(mc, agentArgvFromRaw(raw))`. | 수용 |
+| (59) | P4d 테스트 | `doctor-service.test.ts` 기존 테스트 편집: `writeWorker`에 선택 최상위 `agentArgv` + `ALL_ARGV` · "agent binary not resolvable … → warn" · "only {codex: 0} named → claude · grok still checked"가 ALL_ARGV를 씀 · "checks only the agents the config names" 제목 변경(argv 없는 codex agentBin은 켜짐 아님 — 단언 무변경) · red(두 플랫폼): 새 P4d 테스트 3 + STRICT_TAIL 테스트 3 · `policy-enabled-p4c.test.ts` 머리 주석의 P4c 꼬리 문구는 기록으로 남김. | 수용 |
+| (60) | P4d 검증 0022 Low | `doctor-service.test.ts`만 조임: "agentBin (absolute) is checked as configured"가 ALL_ARGV로 grok을 켜 그 절대 경로를 실제로 해석 · 미해석 경고 없음 단언 + 절대 경로 grok 없음 케이스(경고가 그 경로를 이름) · "headless checks only enabled agents"는 codex `agentBin`을 없는 절대 경로로 두고 경고가 그것을 이름 짓지 않음을 단언(종전: 있는 codex 바이너리라 검사 ≡ 건너뜀). | 수용 |
+
+**검증 · 아키텍트 판정 (원 로그 그대로 요약):**
+
+- **P1 검증(Opus xhigh) PASS-with-lows → P3 red로 접음:** **P1-V-L1**(수용 · ② 보정) — `readBridgeWorkerFlags`는 남은 fs 없는 파서 전부를 bridge 순서(skills → permissions → cwd → allowedRoots → maxConcurrent → timeoutMs → agentBin → memory → rules → strict)로 돌린다 · `loadPolicy`/`loomDir` 호출 0 · P3 red = 모든 `workerConfigFromParts`/`parseAgentBin` 오류에 대해 `messageOf(readBridgeWorkerFlags(sec)) === messageOf(loadBridgeConfig(id))` 표. **P1-V-L2**(info) — `composeFenceText("", "", "\n") === ""`(선언) · 빈 본문 규칙은 `### id\n`(`loadRules`가 공백뿐 본문을 disabled로) → P3 red가 둘 다 고정. 편차 (1)~(10) 수용 · P2 red `1ba49c2`가 P1 테스트 주석 2줄을 편집 — P2 검증이 선언 확인.
+- **P2 검증(Opus xhigh) PASS-with-lows → P4 red로 접음:** **P2-V-L1**(② 동작 유지 · 고정 · 선언) — claim 없는 직접 `dispatch()`에서 꺼진 에이전트의 미전송 D1 레코드 + 새 handoff D2 → D1에 `agent_disabled`, D2는 결과 없음(프로덕션 도달 불가 — bridge는 항상 claim 전달). **P2-V-L2** 추가 케이스 (a) orphan_group_alive가 agent_disabled보다 먼저 · 그룹 kill 0 (b) 예약 `pendingResult` 재생 (c) D9 빈 줄 두 필드 `empty — no block · read_errors 1 · entries_oversize yes · load_ms` (d) 다른 디스패처 resume — 안내문 블록 + 바뀐 deps에도 파일 바이트 · mtime · hash 유지 · 리더 호출 0 (e) 지운 안내문 파일 → `needs_verification`("missing"). **P2-V-L3**(② `fingerprint_changed` 형 유지 · 고정 · **새 무번호 수용 손실**) — 끝났지만 미전송인 레코드(끝난 transcript · `pendingResult` 없음)의 에이전트를 끄면 진짜 결과 대신 `agent_disabled` — **에이전트를 끄기 전에 drain한다.** 0.36 동작 메모(P2 무관): 다른 nonce BEGIN 흉내 미무력화 · 스냅샷 파일 모드 미검사(0644도 resume) → 0.38 후보. 편차 (11)~(19) 수용.
+- **P3 검증(Opus xhigh) PASS-with-lows → 수정 PATCH "P4c"(P5 전):** **P3-V-L1** — 레거시 `~/.fable/policy.json` 행은 **이관이 실제로 대기 중일 때만**(레거시 파일 있음 ∧ `<root>/.loom` 없음 — `resolveStateHomeDir`가 옮길 상황) · 아니면 행 없음(③ 문면 P5). **P3-V-L2** — doctor worker-flag 줄은 `memory list`(`memory-cli.ts:901`)와 같은 유도 — bridge 설정이 무효(정책 충돌 · 무효 정책 포함)면 모든 표면이 "invalid bridge config". **P3-V-L3**(사양 보정 — 아키텍트 · fable-advisor 판정, **R55b 아님**) — headless "켜짐" = `maxConcurrent[k] !== 0` ∧ `resolveAgentArgv(cfg, k) !== null`(빈 배열 · shell/sh/bash 가드 포함, `bridge-config.ts:654-662`) · doctor `readPolicyDoctorInput`도 최상위 `agentArgv`를 같은 `{...DEFAULT_AGENT_ARGV, ...sanitizeAgentArgv(raw)}` 병합으로 · bridge · doctor · `readBridgeWorkerFlags.enabled`가 **한 공유 순수 헬퍼** · 같은 원문 → 같은 `enabled` 테스트 · `STRICT_REFUSAL_TAIL` 교체 · 기본 간극 수 재계산 · 스모크 ①은 bridge 설정에 `agentArgv.codex` · `agentArgv.grok`(정책 파일 없음). 편차 (20)~(34) 수용.
+- **P4/P4b 판정:** 편차 (37) — ② grep 검사는 **"production .ts only"**(부재 단언으로 기호를 이름 짓는 테스트 허용) · ② 문면은 P5 문서에서 정정.
+- **P4c 판정(`4fd633f`/`8140c97`):** `noAgentArgv` doctor 행 사유 수용(③ 문면 P5) · "no bridge config" / "invalid bridge config" doctor는 여전히 모든 에이전트 켜짐 가정 — 수용 · 문서화 · `service.ts` PATH 드리프트 검사 무변경 — 수용(→ P4d가 이어서 고침).
+- **P4~P4c 검증(GPT-6 Astra high `lane.ts verify` 0020) + 아키텍트 재실행 → P4d:** Service PATH 검사가 bridge의 켜짐 집합을 써야 함 · strict 꼬리 문구가 claude에 거짓("remove agentArgv.<agent>"는 claude에 안 통함 — `DEFAULT_AGENT_ARGV`가 claude를 다시 채움). **P4d(`9c0ad0e`/`00af288`):** `configuredAgentBins = enabledHeadlessAgents(mc, agentArgvFromRaw(raw))` · 꼬리 = `Disable the agent (worker.maxConcurrent.<agent>: 0; for codex/grok, removing agentArgv.<agent> also works), fix network/mcp items in policy.json (shell.deny gaps cannot be removed there), or set worker.strictEnforcement to false.`(`policy-gaps.ts:70-71`). **P4d 검증(Astra 0022) PASS-with-lows** — 테스트 Low는 (60)으로 고침.
+
+**P5 판정(아키텍트 — 스모크 `f4c7073` · 기록 [`docs/spikes/POLICY-HONESTY-SMOKE-0370.md`](docs/spikes/POLICY-HONESTY-SMOKE-0370.md)):**
+
+| # | 판정 |
+|---|---|
+| (61) | 스모크 간극 = `enabledHeadlessAgents(config.maxConcurrent, cfg.agentArgv)` — **P4c가 R55-L2 문자 그대로의 공식**(`enabledAgentsOf(config.maxConcurrent)`)**을 대체**한다(스모크는 bridge 기동과 같은 식). |
+| (62) | 스모크 bridge 설정은 세 에이전트 모두에 `agentArgv`를 둔다 — 기본 `{claude}`면 codex/grok이 켜짐 아님 → 간극 0 → (c)④ codex 안내문을 보일 수 없다((57)). |
+| (63) | ⓪ "fail 0" = Policy 절에 `fail` 행 0 **그리고** doctor exit = 빈 홈 기준 실행과 같음(임시 홈의 다른 절은 이 스모크의 대상이 아님). |
+| (64) | `--real-cli`는 ⓪ + ①만(R55-M2 범위) · 실 응답 `"ok"` ×3은 관찰만(UK-2). |
+| (65) | ③은 실 doctor 행 텍스트 `grok: disabled (worker.maxConcurrent.grok = 0) — not checked`를 통째로 단언 · ④는 claude 전용(간극 없는 정책은 claude 간극만 없앤다 — codex/grok `shell.deny`는 정책으로 못 없앰, 계급 20) · 단계 10개 = ⓪~⑦ + 정리 둘(임시 홈 삭제 · 실 홈 무접촉). |
+
+**⑥ 밖 변경:** P5의 production 변경은 버전 문자열 셋(CLI `VERSION` · `BRIDGE_VERSION` · MCP `serverInfo`)과 dist뿐. `packages/host/src/bridge-config.ts`의 `agentArgvFromRaw` · `enabledHeadlessAgents`(P4c)는 ⑥ 설정 행 안.
+
+**Known limits (PLAN ⑤ 계급 17~22 + 무번호):** 안내문은 권고(17 — UK-2 관찰만) · 위조 섹션 구별 불가(18) · 0.36 저장은 새 키를 지우고 `maxConcurrent` 0은 0.36 기동 거부(19) · **strict는 codex · grok을 끄고 claude가 `network: true`이거나 꺼진 경우만 통과**(20) · 남은 `AGENT_HINT.txt`는 info만(21) · `memory-snapshot.md` 등 이름 오칭(22) · pane/sticky 미주입 · strict 거부 서비스 10초 재시작 루프 · strict 거부의 상태 파일 `lastError`는 512 B에서 잘림((29)) · 끝났지만 미전송인 레코드의 에이전트를 끄면 진짜 결과 대신 `agent_disabled`(P2-V-L3 — 끄기 전 drain) · doctor "no bridge config" / "invalid bridge config"는 모든 에이전트 켜짐을 가정((50)) · 실 CLI 실측은 ① 한 모양뿐(기본 정책 · 기억 · 규칙 꺼짐 — 규칙 · 기억 켜짐 ≈64 KiB 첫 턴은 가짜 CLI 바이트만).
 
 ### §0.36.0 — headless 워커 카드 시작 기억 스냅샷 + 펜스 주입 (업그레이드 4단계 2부a)
 

@@ -2,7 +2,7 @@
 
 **철학 (첫 문단):** 이 문서는 Loom **relay WebSocket 와이어(protocol v1)** 만 다룬다 — room·handoff·inbox·presence의 봉투와 라우팅. **herdr 로컬 소켓 RPC**(agent/pane/tab)는 이 파일의 범위가 아니며, as-built 정본은 [`docs/spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md)다. 이름을 섞어 쓰지 않는다.
 
-**As-built pin:** product / PLAN **v0.36.0** (2026-10-16) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.36.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0, v0.31.0, v0.32.0, v0.33.0, v0.34.0, v0.35.0 and v0.36.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged), [Skills and policy](#skills-and-policy-v0310--wire-unchanged), [Loom MCP pre-check](#loom-mcp-pre-check-v0320--wire-unchanged), [Bridge lifecycle](#bridge-lifecycle-v0330--wire-unchanged), [`loom service`](#loom-service-v0340--wire-unchanged), [Memory, rules and skills store](#memory-rules-and-skills-store-v0350--wire-unchanged) and [Memory snapshot injection](#memory-snapshot-injection-v0360--wire-unchanged)).
+**As-built pin:** product / PLAN **v0.37.0** (2026-10-17 — implemented · ship pending final review) — this file documents **relay WebSocket wire only**; wire remains **v1** (`PROTOCOL_VERSION` unchanged through 0.37.x — v0.29.0 adds optional fields only, see [Room event identity](#room-event-identity-v0290) and [Idempotent send](#idempotent-send-clienteventid-v0290); v0.30.0, v0.31.0, v0.32.0, v0.33.0, v0.34.0, v0.35.0, v0.36.0 and v0.37.0 change **no** wire field, see [Headless card workers](#headless-card-workers-v0300--wire-unchanged), [Skills and policy](#skills-and-policy-v0310--wire-unchanged), [Loom MCP pre-check](#loom-mcp-pre-check-v0320--wire-unchanged), [Bridge lifecycle](#bridge-lifecycle-v0330--wire-unchanged), [`loom service`](#loom-service-v0340--wire-unchanged), [Memory, rules and skills store](#memory-rules-and-skills-store-v0350--wire-unchanged), [Memory snapshot injection](#memory-snapshot-injection-v0360--wire-unchanged) and [Policy honesty](#policy-honesty-v0370--wire-unchanged)).
 
 Wire Version: **1** (`v: 1` on every envelope) — not product SemVer; historical origin: M1.1 + M-7 + Loom rename under PLAN 0.9.0
 
@@ -160,6 +160,14 @@ v0.36.0 lets a headless card worker read the v0.35.0 store once at card start an
 - **No new envelope, field, label, or version.** `PROTOCOL_VERSION`, `CARD_CONTRACT_VERSION`, `DISPATCHED_TASK_MARKER` and `ARGV_TEMPLATE_VERSION` are unchanged; `packages/protocol` has no diff (`wrapDispatchedPrompt` and the marker are imported, not changed). Card dispatch and result payloads gain **0 fields**; the snapshot never travels in a handoff, a card result, or a relay event.
 - **The fence is local prompt text, not wire.** `===== BEGIN/END LOOM MEMORY SNAPSHOT <32 hex> =====` sits below the dispatched-task marker on the agent's stdin (grok: `prompt.txt`), never on argv. Its bytes are kept in `<cardDir>/memory-snapshot.md` (0600) and their sha256 in the local card session record (`memorySnapshotHash`, a new optional key of a local file) and as the conditional 6th input of the local worker fingerprint.
 - **Off = 0.35.0 bytes.** With the flag absent or `false`, the first turn, argv, fingerprint and `session.json` key set are byte-identical to 0.35.0.
+
+## Policy honesty (v0.37.0) — wire unchanged
+
+v0.37.0 renders the per-CLI policy honesty table (`POLICY_ENFORCEMENT`) as bridge start warnings, an optional strict start refusal, a `loom doctor` Policy section and a per-agent policy notice inside the headless worker's existing first-turn fence; standing rules can join the same fence (opt-in `worker.rules.enabled`) — user-facing in [`USER_GUIDE.md`](./USER_GUIDE.md) §20.12. All of it is local to the bridge, the CLI and the agent process:
+
+- **No new envelope, field, label, or version.** `PROTOCOL_VERSION`, `CARD_CONTRACT_VERSION`, `DISPATCHED_TASK_MARKER` and `ARGV_TEMPLATE_VERSION` are unchanged; `packages/protocol` has no diff. The policy notice and rules are local prompt text inside the 0.36 fence (stdin / grok `prompt.txt`), never on argv and never on the relay.
+- **`agent_disabled` is a new value of the existing card result `reason` string**, like `cwd_not_allowed` (0.30.0): `worker.maxConcurrent.<agent>: 0` → `status: "failed"`, `reason: "agent_disabled"`, empty output, before any spawn. Result payloads gain **0 fields**; the tower still lands it as `blocked`.
+- **`policy.json` schema and `policyHash` unchanged.** The new switches are bridge config keys (`worker.strictEnforcement`, `worker.rules`), a local file. Loom MCP gates are unchanged.
 
 ## Handoff routing
 

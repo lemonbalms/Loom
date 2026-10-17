@@ -5,8 +5,46 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.36.0**) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.37.0** — implemented · ship은 최종 리뷰 대기) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.37.0 — 2026-10-17 (implemented · ship 대기 — release commit `TBD`)
+
+**정책이 정직해진다** (업그레이드 4단계 3부) — `policy.json`이 CLI마다 실제로 얼마나 강제되는지(정직 표 — §16.4)를 이제 **오너와 워커 모두가 본다.** bridge 기동 경고 · doctor Policy 절 · 워커 첫 턴의 **정책 안내문**이 한 원천(간극 목록)에서 같은 문장으로 나온다. codex의 기본 정책은 doctor에 `not-enforced`로 보이고, codex 워커의 첫 턴은 그 사실과 금지 명령 11개를 **그대로** 말한다 — 4단계 완료 기준 (c). **안내문은 기본 켜짐**(간극이 있는 에이전트에만) · 규칙 본문은 옵트인.
+
+### 가능해진 것
+
+- **정책 안내문(기본 켜짐)** — headless 워커 첫 턴의 0.36 펜스 **맨 앞**에 `## Loom policy notice` 섹션: 그 에이전트의 간극마다 한 줄(`- policy shell.deny (11 rules) is not-enforced for codex — nothing blocks it. Do not run commands that match: \`curl *\`, …`). 간극 없는 에이전트는 안 받는다. 기본 bridge 설정(`agentArgv`가 claude뿐)이면 간극 **1개**(claude `network` advisory) · 세 에이전트를 모두 dispatch 가능하게 두면 **6개**.
+- **규칙 본문(옵트인)** — `worker.rules: { "enabled": true }`면 `loom rules list`의 규칙(scope `all` 또는 그 에이전트 · disabled 제외 · 우선순위 순 · 16 KiB 상한)이 안내문 다음 `## Standing rules` 섹션으로 들어간다.
+- **bridge 기동 경고** — 간극마다 `warning: policy … — the worker is told in its prompt; nothing blocks it` 한 줄(기동은 그대로).
+- **`worker.strictEnforcement: true`** — 켜진 에이전트에 간극이 하나라도 있으면 bridge가 **기동을 거부**한다(거부 메시지 = 경고 줄들 + 고치는 법).
+- **에이전트 끄기 — `worker.maxConcurrent.<agent>: 0`** — 그 에이전트 카드는 spawn 없이 `agent_disabled` 실패 결과 · 간극 · 경고 · doctor · 안내문에서 빠진다. "켜짐" = `maxConcurrent ≠ 0` **그리고** 쓸 수 있는 `agentArgv` 항목.
+- **doctor Policy 절** — 정책 출처 · worker policy hash · bridge 설정(backend · 켜진 에이전트) · 에이전트별 수준 표 · 간극 warn · strict 값. 무효 `policy.json`만 `fail`(doctor exit 1 — 새 동작). Bridge · Memory 절 끝에 `worker.memory.enabled` / `worker.rules.enabled` 줄 · `loom memory list` 둘째 줄에 `memory: worker.memory.enabled = …`.
+- **읽을 수 없는 저장소가 보인다** — `memory_snapshot` stderr 줄에 `read_errors N` · `entries_oversize yes`(빈 text에서도).
+- **스킬 가림 라벨** — 내장 스킬을 가리는 사용자 스킬은 codex/grok 목록 줄 끝에 ` (user, shadows bundled)`.
+- 스모크 `bun run smoke:policy` — dist doctor + 가짜 claude · codex · grok 카드로 ⓪~⑦(안내문 · 규칙 · `agent_disabled` · 간극 없음 = 0.36 바이트 · `AGENT_HINT.txt` · D9 · 크기/시간 측정 — 블록 ≈63–64 KB · `load_ms` 중앙값 18–20 ms) 10/10 · **실 claude · codex · grok 1카드씩**(`--real-cli --owner-approved`, 오너 승인 1회) 안내문이 든 첫 턴에 세 CLI 모두 `"ok"`.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.36.0) | 지금 (0.37.0) |
+|---------------|---------------|
+| codex가 셸 금지를 안 지킨다는 사실은 USER_GUIDE 표에만 있었다 | bridge 기동 · doctor · 워커 첫 턴이 모두 말한다 — 기억을 꺼 둬도 간극 있는 에이전트의 **새 카드** 첫 턴에 펜스 블록(안내문)이 생긴다 |
+| `loom run`이 `~/.loom/AGENT_HINT.txt`를 썼다 | 안 쓴다(아무도 안 읽던 파일) · 남은 파일은 doctor info 한 줄 — Loom은 지우지 않는다 |
+| `worker.maxConcurrent.<agent>`는 1 이상만 | `0` = 그 에이전트 끔 |
+| doctor는 `policy.json`을 안 읽었다 | 무효 `policy.json`이면 doctor exit 1(bridge 기동 · MCP 호출도 이미 막고 있던 사실) |
+| `policy.json`을 고치면 간극이 사라질 줄 알았다 | codex · grok의 `shell.deny` 간극은 **정책으로 못 없앤다**(내장 deny는 항상 합집합) — strict를 켜려면 codex · grok을 끄고 claude는 `network: true`이거나 끈다 |
+| 0.36 바이너리로 내려도 설정이 그대로 | 0.36은 `worker.rules` · `worker.strictEnforcement`를 무시하고 저장 시 지운다 · `maxConcurrent` 0이면 0.36 bridge가 기동을 거부한다 |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · 표지 · `ARGV_TEMPLATE_VERSION` · hint · argv · 완료 권한 · `policy.json` 스키마 · `policyHash` · 기억 저장소 형식 · MCP 게이트 무변경 · `packages/protocol` · `agent-argv.ts` · `policy-compile.ts` · `policy.ts` diff 0 · pane backend · sticky host · relay 무변경. **원천 없음(기억 꺼짐 · 규칙 꺼짐 · 간극 없는 정책)이면 첫 턴은 0.36과 바이트 같다.**
+- **정직 고지(설계상 수용 손실):** 안내문은 **권고** — codex는 여전히 금지 명령을 실행할 **수 있다**(UK-2 — 실 응답 `"ok"` ×3은 관찰일 뿐 준수 증거가 아니다) · 위조된 안내문/규칙 섹션은 진짜와 구별되지 않는다 · strict 거부는 서비스에서 10초마다 재시작 루프 · 끝났지만 아직 결과를 안 보낸 카드의 에이전트를 끄면 진짜 결과 대신 `agent_disabled` — **끄기 전에 `loom bridge drain`** · 실 CLI 실측은 기본 정책 · 기억 · 규칙 꺼짐 한 모양뿐(≈64 KB 첫 턴은 가짜 CLI 바이트만) · pane/sticky 워커는 안내문을 받지 않는다.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §20.12 · PLAN 0.37.0 · R55 · `implementation-notes.md` §0.37.0 · [`spikes/POLICY-HONESTY-SMOKE-0370.md`](./spikes/POLICY-HONESTY-SMOKE-0370.md)
 
 ---
 
