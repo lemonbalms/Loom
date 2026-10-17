@@ -288,7 +288,13 @@ function scanPeerCards(loomDir: string, peerId: string): { cards: CardMatch[]; s
   return { cards, skipped };
 }
 
-/** R10: head lines → blank → system section → user section (→ codex resume positional, R3). */
+/** PLAN 0.42.0 D6 · class 59: a 0.41.0 record carries no sections. */
+const V1_SECTIONS_LINE = "sections: (not recorded — Loom 0.41.0 record)";
+
+/**
+ * R10: head lines → sections block (0.42.0 D6) → blank → system section → user section (→ codex
+ * resume positional, R3).
+ */
 function printRecord(
   deps: PromptCliDeps,
   cardId: string,
@@ -307,6 +313,20 @@ function printRecord(
   deps.stdout(
     `user: ${v(r.userChannel)} · ${utf8Bytes(r.user)} B · sha256 ${v(r.userSha256)} ${shaOk ? "ok" : "MISMATCH"}`,
   );
+  // PLAN 0.42.0 D6 · D9: the v2 sections block (every field through visibleText); v1 = one line.
+  if (r.sections === undefined) {
+    deps.stdout(V1_SECTIONS_LINE);
+  } else {
+    deps.stdout("sections:");
+    for (const s of r.sections) {
+      deps.stdout(
+        `  ${v(s.id)} · ${v(s.channel)} · ${v(s.version)} · ${s.bytes} B · sha256 ${v(s.sha256.slice(0, 12))}`,
+      );
+      if (s.parts !== undefined) {
+        deps.stdout(`    parts: ${s.parts.map((p) => `${v(p.id)} ${v(p.version)}`).join(", ")}`);
+      }
+    }
+  }
   deps.stdout("");
   deps.stdout(`--- system (${v(r.systemChannel)}) ---`);
   deps.stdout(v(r.system));
