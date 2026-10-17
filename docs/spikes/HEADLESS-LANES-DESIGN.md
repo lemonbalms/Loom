@@ -297,9 +297,9 @@ or `codex` + later `exec`/`e` → deny (even in a segment that also calls the wr
 `…scripts/lane.ts` = a lane call. Inside a lane (`LOOM_LANE` set) any `claude`, `codex` or lane call is denied.
 Quoted tokens never match; one level of `bash|sh|zsh … -c` is recursed. Accepted false-denies: unquoted
 mentions (`echo claude -p`), `codex exec --help`. Accepted residuals: `eval`, process substitution, aliases,
-functions, deeper nesting, quoted names (`"claude" -p`). Verify loop closed by architect ruling after round 5 —
+functions, deeper nesting, quoted names (`"claude" -p`). Verify loop closed by architect ruling after 4 real verify runs (last two Mediums fixed without a 5th run) —
 the hook is a speed bump; `lane.ts` evidence (`meta.json`) is the enforcement.
-Inject skip: `session-context.ts` / `norms-receipt.ts` emit nothing under `LOOM_LANE` (lint/check/raw unchanged);
+Inject skip: under `LOOM_LANE`, `session-context.ts` emits nothing for every format incl. `raw` (so `session:bootstrap` is empty inside a lane; `--lint` unchanged) and `norms-receipt.ts` skips its hook formats (`--check` and `raw` unchanged);
 emission tests strip `LOOM_LANE` so the suite passes inside a lane. FORCE env pair **not** added (owner, P2 scope).
 
 ### 5.3 (c) Agent hook — existing
@@ -398,6 +398,8 @@ P4 live-smoke assertions:
 4. **verify**: `read-only` run → exit 0; `resolvedModels` contains `gpt-6-astra`.
 5. Record `costUsd` / `durationMs` per lane vs M4 baseline ($0.44 / 5.2 s).
 6. Optional: `--agent loom-advisor` frontmatter check (Q3).
+7. **Hooks load inside a lane:** the impl spec asks the lane to run `claude --version` → expect the Bash gate to deny it (`permissionDenials` non-empty → exit 5), proving project hooks run in `-p` mode with `LOOM_LANE` set.
+8. **Orphans:** after the impl run, no process from the lane's session survives (descendants that `setsid` leave the group — check by pid list).
 
 Each step ships in its own commit(s), never interleaved with v0.37.0 P-steps. Final
 deliverable gets the advisor (Opus 5.5 high) review before "done".

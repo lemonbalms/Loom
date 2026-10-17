@@ -19,7 +19,7 @@
  * - Inside a lane (`LOOM_LANE` non-empty): deny a segment with claude-any, codex-any or
  *   lane (no nesting — the lane reports back to the architect instead).
  * - `bash|sh|zsh -c '<str>'`: the inner string's segments are classified too (one level).
- * Accepted false-deny: an UNQUOTED mention (`echo claude -p`) is denied; quote it.
+ * Accepted false-deny: an UNQUOTED mention (`echo claude -p`) is denied; quote the whole phrase.
  *
  * Deny = stderr + exit 2. Unparseable stdin / non-Bash tool / internal error = exit 0
  * (fail-open, same as check-bun-test-env.ts). Runs before rule-router-jit.ts
@@ -343,10 +343,10 @@ export function classifySegment(segment: string): SpawnKind[] {
 }
 
 export const DENY_IN_LANE = (lane: string) =>
-  `[lane-spawn] inside a lane (LOOM_LANE=${lane}): spawning claude/codex/lane.ts is not allowed — report back to the architect instead. If this only mentions the command, quote it ("claude -p").`;
+  `[lane-spawn] inside a lane (LOOM_LANE=${lane}): spawning claude/codex/lane.ts is not allowed — report back to the architect instead. If this only mentions the command, put the whole phrase in quotes.`;
 
 export const DENY_HEADLESS =
-  '[lane-spawn] run headless lanes through the wrapper: bun run scripts/lane.ts <impl|advise|verify> --spec <file> (CLAUDE.md rule 8 · HEADLESS-LANES-DESIGN §5.2). If this only mentions the command, quote it ("claude -p").';
+  '[lane-spawn] run headless lanes through the wrapper: bun run scripts/lane.ts <impl|advise|verify> --spec <file> (CLAUDE.md rule 8 · HEADLESS-LANES-DESIGN §5.2). If this only mentions the command, put the whole phrase in quotes.';
 
 export function decide(command: string, env: { LOOM_LANE?: string }): LaneSpawnDecision {
   const lane = env.LOOM_LANE;
