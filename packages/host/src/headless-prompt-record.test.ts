@@ -76,6 +76,7 @@ const KEYS = [
   "userChannel",
   "user",
   "userSha256",
+  "sections",
 ];
 /** Every key CardSessionRecord declares (0.40 schema — D4: the record adds none). */
 const SESSION_KEYS = [
@@ -411,7 +412,7 @@ describe("P2 first turn: prompt-1.json = what the CLI received (D2 · D7 · D8)"
       const rec = h.record(1);
       expect(Object.keys(rec)).toEqual(KEYS);
       expect(Object.keys(JSON.parse(raw))).toEqual(KEYS);
-      expect(rec.version).toBe(1);
+      expect(rec.version).toBe(2);
       expect(rec.agent).toBe(agent);
       expect(rec.turn).toBe("first");
       expect(rec.attempt).toBe(1);
