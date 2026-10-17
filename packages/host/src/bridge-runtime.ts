@@ -894,6 +894,20 @@ async function startLockedBridgeRuntime(
       throw new Error(renderStrictRefusal(policyGapsAtStart));
     }
     for (const g of policyGapsAtStart) log(renderGapWarning(g));
+    // PLAN 0.38.0 ② 강제 스킬 기동 검사 (D4 · R4): materialize records a policy denial as
+    // unavailable, so a cardWrites bridge whose skills.allow list drops the forced skill refuses
+    // here (first enabled agent) instead of silently proposing nothing.
+    if (cfg.worker?.memory?.cardWrites === true) {
+      const effective = effectiveWorkerPolicy(headlessConfig).effective;
+      for (const a of enabled) {
+        const allow = effective[a].skills.allow;
+        if (allow !== null && !allow.includes("loom-memory-candidates")) {
+          throw new Error(
+            `worker.memory.cardWrites: policy skills.allow does not include loom-memory-candidates for ${a} — add it to policy.json skills.allow or turn cardWrites off`,
+          );
+        }
+      }
+    }
   }
   let headlessCommands = headlessConfig ? headlessAgentCommands(cfg) : null;
   if (headlessCommands && opts?.headlessAgentCommandOverride) {

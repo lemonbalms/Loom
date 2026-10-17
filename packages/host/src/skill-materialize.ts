@@ -45,6 +45,9 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import loomCardReportSkill from "../skills/loom-card-report/SKILL.md" with { type: "text" };
+import loomMemoryCandidatesSkill from "../skills/loom-memory-candidates/SKILL.md" with {
+  type: "text",
+};
 import {
   type CardSessionKey,
   cardKeyHash,
@@ -117,7 +120,18 @@ export type BuiltinSkill = {
 /** UK-7: embedded as text so the single-file dist bundle carries it. */
 export const BUILTIN_SKILLS: readonly BuiltinSkill[] = Object.freeze([
   { name: "loom-card-report", files: Object.freeze({ "SKILL.md": loomCardReportSkill }) },
+  {
+    name: "loom-memory-candidates",
+    files: Object.freeze({ "SKILL.md": loomMemoryCandidatesSkill }),
+  },
 ]);
+
+/**
+ * PLAN 0.38.0 D4 · R56-L2: builtins accepted only via `MaterializeOptions.forced`. Selected by
+ * the room alone, such a name resolving to the builtin is `not installed` (0.37 bytes for an
+ * unknown name); a user skill of that name still materializes from the room selection.
+ */
+const FORCED_ONLY_BUILTINS: ReadonlySet<string> = new Set(["loom-memory-candidates"]);
 
 export type SkillManifestEntry = {
   name: string;
@@ -159,6 +173,11 @@ export type MaterializeOptions = CardSessionKey & {
   /** Bridge config worker.skills.enabled. false → nothing is read or written. */
   enabled: boolean;
   policy: SkillPolicy;
+  /**
+   * PLAN 0.38.0 D4 · R5: names merged with the room selection (deduped) before the unchanged
+   * pipeline (shadowing · policy · manifest). Omitted = 0.37 behaviour.
+   */
+  forced?: readonly string[];
 };
 
 export type MaterializeResult = {
@@ -887,7 +906,8 @@ export async function materializeCardSkills(opts: MaterializeOptions): Promise<M
     agent: opts.agent,
     cardId: opts.cardId,
   };
-  const selected = await readRoomSkillSelection(key.loomDir, key.roomId);
+  const forced = new Set(opts.forced ?? []);
+  const selected = new Set([...(await readRoomSkillSelection(key.loomDir, key.roomId)), ...forced]);
   let root = await realLoomDir(key.loomDir);
   if (root === null) {
     await mkdir(key.loomDir, { recursive: true, mode: 0o700 });
@@ -906,7 +926,10 @@ export async function materializeCardSkills(opts: MaterializeOptions): Promise<M
       continue;
     }
     const found = await resolveSkill(name, userRoot, rootState);
-    if (!found) {
+    if (
+      !found ||
+      (found.source === "builtin" && FORCED_ONLY_BUILTINS.has(name) && !forced.has(name))
+    ) {
       unavailable.push({ name, reason: "not installed" });
       continue;
     }

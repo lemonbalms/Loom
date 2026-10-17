@@ -95,8 +95,9 @@ export type BridgeWorkerConfig = {
   /**
    * PLAN 0.36.0 D5 · R1. `{enabled: boolean}` only; absent = off (0.35 bytes). Read once at
    * bridge start and handed to `HeadlessDeps.memory` — never part of WorkerConfig.
+   * 0.38.0 D3: `cardWrites` (absent ≡ false) needs `enabled` and `worker.skills.enabled`.
    */
-  memory?: { enabled: boolean };
+  memory?: { enabled: boolean; cardWrites?: boolean };
   /**
    * PLAN 0.37.0 D4(a). Absent = false. True → a headless bridge refuses to start while any
    * enabled agent has a policy gap. Never part of WorkerConfig or policy.json.
@@ -436,20 +437,47 @@ function parseSkills(raw: unknown): { enabled: boolean } | undefined {
   return { enabled: src.enabled };
 }
 
-/** 0.36.0 D5 · R1: `parseSkills`-shaped; fail closed on anything but `{enabled: boolean}`. */
-function parseMemory(raw: unknown): { enabled: boolean } | undefined {
+/**
+ * 0.36.0 D5 · R1: `parseSkills`-shaped; fail closed on anything but
+ * `{enabled: boolean, cardWrites?: boolean}` (0.38.0 D3 · R3 adds `cardWrites`).
+ */
+function parseMemory(raw: unknown): { enabled: boolean; cardWrites?: boolean } | undefined {
   if (raw === undefined) return undefined;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("worker.memory must be an object");
   }
   const src = raw as Record<string, unknown>;
   for (const key of Object.keys(src)) {
-    if (key !== "enabled") throw new Error(`worker.memory.${key} is not a known key`);
+    if (key !== "enabled" && key !== "cardWrites") {
+      throw new Error(`worker.memory.${key} is not a known key`);
+    }
   }
   if (typeof src.enabled !== "boolean") {
     throw new Error("worker.memory.enabled must be a boolean");
   }
-  return { enabled: src.enabled };
+  if (src.cardWrites === undefined) return { enabled: src.enabled };
+  if (typeof src.cardWrites !== "boolean") {
+    throw new Error("worker.memory.cardWrites must be a boolean");
+  }
+  return { enabled: src.enabled, cardWrites: src.cardWrites };
+}
+
+/**
+ * PLAN 0.38.0 D3 · R3: `cardWrites: true` needs memory and skills enabled. Both headless readers
+ * (workerSectionFromRaw · readBridgeWorkerFlags) call this at the same point, so the doctor and
+ * bridge start reject the same configs with the same wording.
+ */
+function checkCardWrites(
+  memory: { enabled: boolean; cardWrites?: boolean } | undefined,
+  skills: { enabled: boolean } | undefined,
+): void {
+  if (memory?.cardWrites !== true) return;
+  if (memory.enabled !== true) {
+    throw new Error("worker.memory.cardWrites requires worker.memory.enabled: true");
+  }
+  if (skills?.enabled !== true) {
+    throw new Error("worker.memory.cardWrites requires worker.skills.enabled: true");
+  }
 }
 
 /** 0.37.0 D4(a): omitted → undefined; anything but a boolean throws. */
@@ -555,6 +583,7 @@ function workerSectionFromRaw(raw: unknown): BridgeWorkerConfig | undefined {
   const memory = parseMemory(src.memory);
   const rules = parseRules(src.rules);
   const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);
+  checkCardWrites(memory, parsed.skills);
   return {
     backend: "headless",
     cwd: parsed.cwd,
@@ -583,7 +612,7 @@ export function readBridgeWorkerFlags(raw: unknown, rawAgentArgv?: unknown): Bri
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return paneWorkerFlags();
   const src = raw as Record<string, unknown>;
   if (src.backend !== "headless") return paneWorkerFlags();
-  parseSkills(src.skills);
+  const skills = parseSkills(src.skills);
   const permissions = parsePermissions(src.permissions);
   parseCwd(src.cwd);
   parseAllowedRoots(src.allowedRoots);
@@ -593,6 +622,7 @@ export function readBridgeWorkerFlags(raw: unknown, rawAgentArgv?: unknown): Bri
   const memory = parseMemory(src.memory);
   const rules = parseRules(src.rules);
   const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);
+  checkCardWrites(memory, skills);
   return {
     backend: "headless",
     enabled: enabledHeadlessAgents(maxConcurrent, agentArgvFromRaw(rawAgentArgv)),
