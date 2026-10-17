@@ -69,7 +69,7 @@ const CLAUDE_NETWORK_WARNING =
   "warning: policy network (false) is advisory for claude — the worker is told in its prompt; the CLI blocks only some forms";
 /** P4c STRICT_REFUSAL_TAIL — verbatim (only the first clause changed from P1). */
 const NEW_TAIL =
-  "Disable the agent (worker.maxConcurrent.<agent>: 0 or remove agentArgv.<agent>), fix network/mcp items in policy.json (shell.deny gaps cannot be removed there), or set worker.strictEnforcement to false.";
+  "Disable the agent (worker.maxConcurrent.<agent>: 0; for codex/grok, removing agentArgv.<agent> also works), fix network/mcp items in policy.json (shell.deny gaps cannot be removed there), or set worker.strictEnforcement to false.";
 const GAP_FREE_FOR_CLAUDE =
   '{"version":1,"shell":{"deny":[]},"network":true,"mcp":{"deny":[]},"skills":{"allowScripts":[]}}';
 const LEGACY = "legacy ~/.fable/policy.json present — bridge/MCP migrate it on first run";

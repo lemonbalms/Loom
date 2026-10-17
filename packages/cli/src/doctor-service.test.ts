@@ -442,13 +442,19 @@ function binDir(names: string[]): string {
   return dir;
 }
 
-function writeWorker(worker: Record<string, unknown>): void {
+function writeWorker(worker: Record<string, unknown>, agentArgv?: Record<string, unknown>): void {
   mkdirSync(bridgeDir(), { recursive: true });
   writeFileSync(
     join(bridgeDir(), `${PROFILE}.json`),
-    JSON.stringify({ authorizedDispatchers: ["p_tower"], worker }),
+    JSON.stringify({
+      authorizedDispatchers: ["p_tower"],
+      worker,
+      ...(agentArgv !== undefined ? { agentArgv } : {}),
+    }),
   );
 }
+
+const ALL_ARGV = { claude: ["claude"], codex: ["codex"], grok: ["grok"] };
 
 function installUnit(
   platform: "darwin" | "linux",
@@ -743,11 +749,44 @@ for (const platform of PLATFORMS) {
 
     test("PATH drift: agent binary not resolvable via the unit PATH → warn naming it", async () => {
       const path = installUnit(platform, { path: binDir(["claude"]) });
-      // headless, no agent named → every headless agent may be launched → all checked
-      writeWorker({ backend: "headless", cwd: home, allowedRoots: [home] });
+      writeWorker({ backend: "headless", cwd: home, allowedRoots: [home] }, ALL_ARGV);
       const f = fakeRunner();
       const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
       expect(text(s)).toMatch(/^warn agent binaries not resolvable via the unit PATH: codex, grok/m);
+    });
+
+    test("PATH drift (0.37.0 P4d): default headless config (agentArgv {claude} only) → only claude checked", async () => {
+      const path = installUnit(platform, { path: binDir([]) });
+      writeWorker({ backend: "headless", cwd: home, allowedRoots: [home] });
+      const f = fakeRunner();
+      const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
+      expect(text(s)).toMatch(/^warn agent binaries not resolvable via the unit PATH: claude — /m);
+      expect(text(s)).not.toMatch(/not resolvable.*(codex|grok)/);
+    });
+
+    test("PATH drift (0.37.0 P4d): all three argv + maxConcurrent {claude: 1} → all three checked", async () => {
+      const path = installUnit(platform, { path: binDir([]) });
+      writeWorker(
+        { backend: "headless", cwd: home, allowedRoots: [home], maxConcurrent: { claude: 1 } },
+        ALL_ARGV,
+      );
+      const f = fakeRunner();
+      const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
+      expect(text(s)).toMatch(
+        /^warn agent binaries not resolvable via the unit PATH: claude, codex, grok — /m,
+      );
+    });
+
+    test("PATH drift (0.37.0 P4d): codex argv present + maxConcurrent.codex = 0 → codex not checked", async () => {
+      const path = installUnit(platform, { path: binDir([]) });
+      writeWorker(
+        { backend: "headless", cwd: home, allowedRoots: [home], maxConcurrent: { codex: 0 } },
+        { claude: ["claude"], codex: ["codex"] },
+      );
+      const f = fakeRunner();
+      const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
+      expect(text(s)).toMatch(/^warn agent binaries not resolvable via the unit PATH: claude — /m);
+      expect(text(s)).not.toMatch(/not resolvable.*codex/);
     });
 
     test("PATH drift: pane backend / no bridge config → agent binaries not checked", async () => {
@@ -762,9 +801,10 @@ for (const platform of PLATFORMS) {
       expect(text(pane)).toContain("ok unit PATH matches the current PATH");
     });
 
-    test("PATH drift: headless checks only the agents the config names (agentBin · maxConcurrent)", async () => {
+    test("PATH drift: headless checks only enabled agents (an agentBin without agentArgv is not)", async () => {
       const path = installUnit(platform, { path: binDir([]) });
-      const codex = join(binDir(["codex"]), "codex");
+      // A missing absolute path: were codex checked, the warning would name it.
+      const codex = join(home, "nowhere", "codex");
       writeWorker({
         backend: "headless",
         cwd: home,
@@ -775,6 +815,7 @@ for (const platform of PLATFORMS) {
       const f = fakeRunner();
       const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
       expect(text(s)).toMatch(/^warn agent binaries not resolvable via the unit PATH: claude — /m);
+      expect(text(s)).not.toContain(codex);
       expect(text(s)).not.toMatch(/not resolvable.*grok/);
     });
 
@@ -794,12 +835,15 @@ for (const platform of PLATFORMS) {
 
     test("PATH drift (0.37.0 R55-L1): only {codex: 0} named → the enabled claude · grok are still checked", async () => {
       const path = installUnit(platform, { path: binDir([]) });
-      writeWorker({
-        backend: "headless",
-        cwd: home,
-        allowedRoots: [home],
-        maxConcurrent: { codex: 0 },
-      });
+      writeWorker(
+        {
+          backend: "headless",
+          cwd: home,
+          allowedRoots: [home],
+          maxConcurrent: { codex: 0 },
+        },
+        ALL_ARGV,
+      );
       const f = fakeRunner();
       const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
       expect(text(s)).toMatch(
@@ -823,18 +867,25 @@ for (const platform of PLATFORMS) {
 
     test("PATH drift: bridge config agentBin (absolute) is checked as configured", async () => {
       const path = installUnit(platform, { path: binDir(["claude", "codex"]) });
+      // ALL_ARGV enables grok, so its absolute agentBin is resolved (the unit PATH has no grok).
       const grok = join(binDir(["grok"]), "grok");
-      mkdirSync(bridgeDir(), { recursive: true });
-      writeFileSync(
-        join(bridgeDir(), `${PROFILE}.json`),
-        JSON.stringify({
-          authorizedDispatchers: ["p_tower"],
-          worker: { backend: "headless", cwd: home, allowedRoots: [home], agentBin: { grok } },
-        }),
+      writeWorker(
+        { backend: "headless", cwd: home, allowedRoots: [home], agentBin: { grok } },
+        ALL_ARGV,
       );
       const f = fakeRunner();
       const s = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
       expect(text(s)).toContain("ok unit PATH matches the current PATH");
+      expect(text(s)).not.toContain("agent binaries not resolvable");
+
+      const missing = join(home, "nowhere", "grok");
+      writeWorker(
+        { backend: "headless", cwd: home, allowedRoots: [home], agentBin: { grok: missing } },
+        ALL_ARGV,
+      );
+      const gone = await serviceDoctorSection(deps(platform, f.runner, { currentPath: path }));
+      expect(text(gone)).toMatch(/^warn agent binaries not resolvable via the unit PATH: /m);
+      expect(text(gone)).toContain(`: ${missing} — `);
     });
 
     test("PATH drift: unit PATH ≠ current PATH but binaries resolve → info", async () => {
