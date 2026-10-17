@@ -1011,6 +1011,7 @@ describe("loom skills list (② skills list · R15)", () => {
       out: [
         "skills: worker.skills.enabled = no bridge config (profile default)",
         `loom-card-report  builtin  available  ${BUILTIN_DESC}`,
+        "loom-memory-candidates  builtin  available  Propose memory candidates from a Loom card for the operator to review. Use it when you write your last message.",
       ],
       err: [],
     });
@@ -1035,6 +1036,7 @@ describe("loom skills list (② skills list · R15)", () => {
       "skills: worker.skills.enabled = no bridge config (profile default)",
       "extra  user  available  Extra skill.",
       "loom-card-report  user  available  user shadows builtin  Owner override.",
+      "loom-memory-candidates  builtin  available  Propose memory candidates from a Loom card for the operator to review. Use it when you write your last message.",
       "ignored: Bad_Name (invalid name)",
     ]);
   });
@@ -1085,6 +1087,15 @@ describe("loom skills list (② skills list · R15)", () => {
           status: "available",
           reason: null,
           description: BUILTIN_DESC,
+        },
+        {
+          name: "loom-memory-candidates",
+          source: "builtin",
+          shadowsBuiltin: false,
+          status: "available",
+          reason: null,
+          description:
+            "Propose memory candidates from a Loom card for the operator to review. Use it when you write your last message.",
         },
       ],
       ignored: [],

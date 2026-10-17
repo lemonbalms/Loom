@@ -81,6 +81,15 @@ describe("inventorySkills — sources and shadowing (R15)", () => {
           reason: null,
           description: BUILTIN_DESC,
         },
+        {
+          name: "loom-memory-candidates",
+          source: "builtin",
+          shadowsBuiltin: false,
+          status: "available",
+          reason: null,
+          description:
+            "Propose memory candidates from a Loom card for the operator to review. Use it when you write your last message.",
+        },
       ],
       ignored: [],
       userRoot: "absent",
@@ -90,7 +99,7 @@ describe("inventorySkills — sources and shadowing (R15)", () => {
   test("absent loomDir → builtin only, nothing created", async () => {
     const missing = join(L, "absent");
     const inv = await inventorySkills(missing, OPEN);
-    expect(inv.skills.map((s) => s.name)).toEqual(["loom-card-report"]);
+    expect(inv.skills.map((s) => s.name)).toEqual(["loom-card-report", "loom-memory-candidates"]);
     expect(readdirSync(L)).toEqual([]);
   });
 
@@ -102,6 +111,7 @@ describe("inventorySkills — sources and shadowing (R15)", () => {
     expect(inv.skills.map((s) => [s.name, s.source, s.shadowsBuiltin, s.status])).toEqual([
       ["a-helper", "user", false, "available"],
       ["loom-card-report", "builtin", false, "available"],
+      ["loom-memory-candidates", "builtin", false, "available"],
       ["zz-tool", "user", false, "available"],
     ]);
     expect(byName(inv, "a-helper")!.description).toBe("Helps.");
@@ -119,6 +129,15 @@ describe("inventorySkills — sources and shadowing (R15)", () => {
         reason: null,
         description: "My report format.",
       },
+      {
+        name: "loom-memory-candidates",
+        source: "builtin",
+        shadowsBuiltin: false,
+        status: "available",
+        reason: null,
+        description:
+          "Propose memory candidates from a Loom card for the operator to review. Use it when you write your last message.",
+      },
     ]);
   });
 
@@ -133,6 +152,15 @@ describe("inventorySkills — sources and shadowing (R15)", () => {
         status: "unavailable",
         reason: "invalid SKILL.md",
         description: null,
+      },
+      {
+        name: "loom-memory-candidates",
+        source: "builtin",
+        shadowsBuiltin: false,
+        status: "available",
+        reason: null,
+        description:
+          "Propose memory candidates from a Loom card for the operator to review. Use it when you write your last message.",
       },
     ]);
   });
@@ -170,6 +198,14 @@ describe("inventorySkills — sources and shadowing (R15)", () => {
         reason: "unsafe source",
         description: null,
       },
+      {
+        name: "loom-memory-candidates",
+        source: "user",
+        shadowsBuiltin: true,
+        status: "unavailable",
+        reason: "unsafe source",
+        description: null,
+      },
     ]);
   });
 
@@ -180,7 +216,7 @@ describe("inventorySkills — sources and shadowing (R15)", () => {
     writeFileSync(join(L, "skills", ".DS_Store"), "");
     const inv = await inventorySkills(L, OPEN);
     expect(inv.ignored).toEqual([".DS_Store", "Bad_Name", "has space"]);
-    expect(inv.skills.map((s) => s.name)).toEqual(["loom-card-report"]);
+    expect(inv.skills.map((s) => s.name)).toEqual(["loom-card-report", "loom-memory-candidates"]);
   });
 
   test("name mismatch in SKILL.md → invalid SKILL.md", async () => {
@@ -199,6 +235,7 @@ describe("inventorySkills — policy", () => {
       [
         ["extra", "user", false, "unknown", null],
         ["loom-card-report", "user", true, "unknown", null],
+        ["loom-memory-candidates", "builtin", false, "unknown", null],
       ],
     );
   });
@@ -209,6 +246,7 @@ describe("inventorySkills — policy", () => {
     expect(inv.skills.map((s) => [s.name, s.source, s.status, s.reason])).toEqual([
       ["extra", "user", "unavailable", "not allowed by policy"],
       ["loom-card-report", "builtin", "unavailable", "not allowed by policy"],
+      ["loom-memory-candidates", "builtin", "unavailable", "not allowed by policy"],
     ]);
   });
 
