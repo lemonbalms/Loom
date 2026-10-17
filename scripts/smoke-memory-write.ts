@@ -45,6 +45,10 @@
  * on, a prompt asking for exactly one candidate. Prints per card the stderr `memory_propose` line,
  * the proposed count and whether notes.md exists; exits non-zero when all three cards propose 0
  * or any card lacks notes.md.
+ * `--only <claude|codex|grok>` (P5c — with `--real-cli --owner-approved` only, else a usage FAIL):
+ * step ① for that one agent; pass = notes.md exists (the ≥1-proposed rule is the three-agent run's).
+ * Real-cli diagnostics per card: spawn argv + cwd (the inner wraps each bin in a logging `exec`
+ * shim under T), the skill copy file list, the transcript's tool / command events, stderr head.
  *
  * Usage (repo root, real shell):  bun run smoke:memory-write [--source]
  *   (--source runs packages/cli/src/index.ts instead of dist/loom.js for the CLI children)
@@ -181,6 +185,18 @@ if (REAL_CLI && !process.argv.includes("--owner-approved")) {
   );
   process.exit(2);
 }
+const ONLY_IX = process.argv.indexOf("--only");
+const ONLY = ONLY_IX === -1 ? null : (process.argv[ONLY_IX + 1] ?? "");
+if (
+  ONLY !== null &&
+  (!REAL_CLI || !process.argv.includes("--owner-approved") || !(AGENTS as readonly string[]).includes(ONLY))
+) {
+  console.error(
+    "FAIL usage: --only <claude|codex|grok> is accepted only together with --real-cli --owner-approved",
+  );
+  process.exit(2);
+}
+const REAL_AGENTS: readonly Agent[] = ONLY === null ? AGENTS : [ONLY as Agent];
 const DIST = SOURCE
   ? join(ROOT, "packages", "cli", "src", "index.ts")
   : join(ROOT, "dist", "loom.js");
@@ -316,6 +332,19 @@ type InnerCardOut = {
   resultOutput: string | null;
   /** `[headless] memory_propose|card_notes (<this card>)` lines. */
   lines: string[];
+  /** Real-cli diagnostics (P5c); null in default mode. */
+  diag: CardDiag | null;
+};
+type CardDiag = {
+  /** Spawn argv as the exec shim saw it (argv[0] = the real bin), null when the shim never ran. */
+  argv: string[] | null;
+  cwd: string | null;
+  skillsRoot: string;
+  skillFiles: string[];
+  /** grok prompt.txt head (claude / codex take the first turn on stdin — not captured). */
+  promptFile: string | null;
+  events: string[];
+  stderrHead: string;
 };
 type RecoverRound = { lines: string[]; memoryProposed: Record<string, string[] | null> };
 type InnerOut = {
@@ -328,7 +357,11 @@ type InnerOut = {
 
 function runInner(step: string, extra: Record<string, string> = {}): InnerOut {
   const outPath = join(T, `inner-${step}.json`);
-  const r = spawnChild([SELF, "--inner", step, outPath, MODE, REAL_HOME], extra, 900_000);
+  const r = spawnChild(
+    [SELF, "--inner", step, outPath, MODE, REAL_HOME, REAL_AGENTS.join(",")],
+    extra,
+    900_000,
+  );
   if (r.code !== 0 || !existsSync(outPath)) {
     throw new Error(`inner ${step} exit ${r.code} · stderr ${JSON.stringify(r.err.slice(-800))}`);
   }
@@ -480,7 +513,14 @@ function cardOf(out: InnerOut, id: string): InnerCardOut {
   return c;
 }
 
-const realRows: { agent: Agent; line: string; proposed: number | null; notes: boolean; reply: string }[] = [];
+const realRows: {
+  agent: Agent;
+  line: string;
+  proposed: number | null;
+  notes: boolean;
+  reply: string;
+  diag: CardDiag | null;
+}[] = [];
 
 if (!existsSync(DIST)) {
   console.error(`FAIL dist missing — ${DIST} (run bun run build:cli)`);
@@ -497,10 +537,14 @@ try {
   writeBridge({ cardWrites: true });
 
   if (MODE === "real-cli") {
-    step("① real CLIs — one card each · cardWrites on · memory_propose line · notes.md", () => {
+    const stepName =
+      ONLY === null
+        ? "① real CLIs — one card each · cardWrites on · memory_propose line · notes.md"
+        : `① real CLI — ${ONLY} only · cardWrites on · memory_propose line · notes.md`;
+    step(stepName, () => {
       const out = runInner("real");
       check(out.profile === PROFILE, `inner profile ${out.profile}`);
-      for (const agent of AGENTS) {
+      for (const agent of REAL_AGENTS) {
         const c = cardOf(out, cardId("r", agent));
         const line = proposeLines(c.lines)[0] ?? "";
         const m = / proposed (\d+) · dropped /.exec(line);
@@ -510,10 +554,16 @@ try {
           proposed: m ? Number(m[1]) : null,
           notes: c.notes !== null,
           reply: c.resultOutput ?? "",
+          diag: c.diag,
         });
       }
       const missing = realRows.filter((r) => !r.notes).map((r) => r.agent);
       check(missing.length === 0, `notes.md missing for ${JSON.stringify(missing)} (R56-M4)`);
+      // P5c: a single-agent run passes on notes.md alone; the proposed count is printed below.
+      if (ONLY !== null) {
+        const r = realRows[0]!;
+        return `${r.agent} proposed ${r.proposed ?? "?"} · notes.md yes (single-agent run — ≥1-proposed rule not applied)`;
+      }
       const empty = realRows.filter((r) => r.reply.trim() === "").map((r) => r.agent);
       check(empty.length === 0, `empty reply from ${JSON.stringify(empty)}`);
       check(
@@ -745,6 +795,19 @@ if (realRows.length > 0) {
     console.log(`card ${r.agent}: ${r.line || "(no memory_propose line)"}`);
     console.log(`  proposed ${r.proposed ?? "?"} · notes.md ${r.notes ? "exists" : "missing"}`);
     console.log(`  reply ${JSON.stringify(r.reply)}`);
+    const d = r.diag;
+    if (!d) {
+      console.log("  diagnostics: (none)");
+      continue;
+    }
+    console.log(`  spawn argv ${d.argv === null ? "(exec shim did not run)" : JSON.stringify(d.argv)}`);
+    console.log(`  spawn cwd ${d.cwd ?? "(unknown)"}`);
+    if (d.promptFile !== null) console.log(`  prompt.txt ${JSON.stringify(d.promptFile)}`);
+    console.log(`  skill copy ${d.skillsRoot} (${d.skillFiles.length} entries)`);
+    for (const f of d.skillFiles) console.log(`    ${f}`);
+    console.log(`  transcript-1.jsonl events (${d.events.length}):`);
+    for (const e of d.events) console.log(`    ${e}`);
+    console.log(`  transcript-1.stderr head ${JSON.stringify(d.stderrHead)}`);
   }
   console.log("");
 }
@@ -760,7 +823,10 @@ process.exit(failed.length === 0 ? 0 : 1);
 // =============================================================================================
 
 async function inner(): Promise<void> {
-  const [, , , stepName, outPath, modeArg] = process.argv;
+  const [, , , stepName, outPath, modeArg, , agentsArg] = process.argv;
+  const realAgents = (agentsArg ?? "")
+    .split(",")
+    .filter((a): a is Agent => (AGENTS as readonly string[]).includes(a));
   const mode: Mode = modeArg === "real-cli" ? "real-cli" : "default";
   const bad = guardError(process.env, mode);
   if (bad) {
@@ -820,6 +886,29 @@ async function inner(): Promise<void> {
     }
   }
   const commands = headlessAgentCommands(cfg);
+  if (mode === "real-cli") {
+    // P5c: wrap each bin in a shim under T that records argv + cwd per LOOM_CARD, then `exec`s
+    // the real bin with the same argv, stdin, env and cwd (the bridge config is unchanged).
+    const q = (s: string) => `'${s.split("'").join(`'\\''`)}'`;
+    for (const a of AGENTS) {
+      const bin = commands[a].bin;
+      const realBin = bin.includes("/") ? bin : (Bun.which(bin) ?? bin);
+      const shimDir = join(dump, "shim", a);
+      mkdirSync(shimDir, { recursive: true, mode: 0o700 });
+      const shim = join(shimDir, a);
+      writeFileSync(
+        shim,
+        `#!/bin/sh
+out=${q(dump)}
+pwd > "$out/cwd-$LOOM_CARD"
+printf '%s\\0' ${q(realBin)} "$@" > "$out/argv-$LOOM_CARD"
+exec ${q(realBin)} "$@"
+`,
+        { mode: 0o700 },
+      );
+      commands[a] = { bin: shim, args: commands[a].args };
+    }
+  }
   const memory =
     cfg.worker?.memory?.enabled === true
       ? {
@@ -917,7 +1006,7 @@ async function inner(): Promise<void> {
       });
     }
   } else if (stepName === "write") each(AGENTS, ROOM_W, "w");
-  else if (stepName === "real") each(AGENTS, ROOM_W, "r");
+  else if (stepName === "real") each(realAgents.length > 0 ? realAgents : AGENTS, ROOM_W, "r");
   else if (stepName === "cap") each(AGENTS, ROOM_C, "c");
   else if (stepName === "filter") each(AGENTS, ROOM_F, "f");
   else if (stepName === "next") each(["claude"], ROOM_W, "n");
@@ -962,10 +1051,151 @@ async function inner(): Promise<void> {
       resultReason: res?.reason ?? null,
       resultOutput: res?.output ?? null,
       lines: ours(stderrLines.slice(mark), p.cardId),
+      diag: mode === "real-cli" ? cardDiag(dir, dump, p.cardId) : null,
     });
   }
   await d.close();
   process.stderr.write = origWrite;
   const out: InnerOut = { profile, loomDir: home, memory: memory ?? null, cards, rounds };
   writeFileSync(outPath, JSON.stringify(out), { mode: 0o600 });
+}
+
+// =============================================================================================
+// real-cli diagnostics (P5c) — function declarations only: the inner calls them before the
+// outer's module-level constants are initialised. No env values are read or printed.
+// =============================================================================================
+
+function clip(v: unknown, n: number): string {
+  const s = typeof v === "string" ? v : (JSON.stringify(v) ?? String(v));
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+function cardDiag(dir: string, dump: string, id: string): CardDiag {
+  const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : null);
+  const argvRaw = read(join(dump, `argv-${id}`));
+  const argv =
+    argvRaw === null
+      ? null
+      : argvRaw
+          .split("\0")
+          .slice(0, -1)
+          .map((a) => clip(a, 2000));
+  const skillsRoot = join(dir, "skills");
+  const skillFiles: string[] = [];
+  const walk = (d: string, rel: string) => {
+    let names: string[];
+    try {
+      names = readdirSync(d).sort();
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      if (skillFiles.length >= 300) return;
+      const p = join(d, n);
+      const r = rel === "" ? n : `${rel}/${n}`;
+      try {
+        const st = lstatSync(p);
+        if (st.isDirectory()) {
+          skillFiles.push(`${r}/`);
+          walk(p, r);
+        } else skillFiles.push(`${r}  ${st.isSymbolicLink() ? "symlink" : `${st.size} B`}`);
+      } catch {
+        skillFiles.push(`${r}  (unreadable)`);
+      }
+    }
+  };
+  if (existsSync(skillsRoot)) walk(skillsRoot, "");
+  else skillFiles.push("(absent)");
+  const prompt = read(join(dir, "prompt.txt"));
+  return {
+    argv,
+    cwd: read(join(dump, `cwd-${id}`))?.trim() ?? null,
+    skillsRoot,
+    skillFiles,
+    promptFile: prompt === null ? null : clip(prompt, 2000),
+    events: transcriptEvents(read(join(dir, "transcript-1.jsonl")) ?? ""),
+    stderrHead: (read(join(dir, "transcript-1.stderr")) ?? "").slice(0, 1500),
+  };
+}
+
+/** Tool / command events in order; other events by `type` only (runs of the same type collapsed). */
+function transcriptEvents(raw: string): string[] {
+  const out: string[] = [];
+  let lastBare: string | null = null;
+  let bareCount = 0;
+  const flush = () => {
+    if (lastBare !== null) out.push(bareCount > 1 ? `${lastBare} ×${bareCount}` : lastBare);
+    lastBare = null;
+    bareCount = 0;
+  };
+  const bare = (t: string) => {
+    if (t === lastBare) bareCount += 1;
+    else {
+      flush();
+      lastBare = t;
+      bareCount = 1;
+    }
+  };
+  const push = (s: string) => {
+    flush();
+    out.push(s);
+  };
+  const obj = (v: unknown): Record<string, unknown> | null =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let e: Record<string, unknown> | null;
+    try {
+      e = obj(JSON.parse(line));
+    } catch {
+      push(`(non-JSON line) ${JSON.stringify(clip(line, 200))}`);
+      continue;
+    }
+    if (!e) {
+      bare("(non-object event)");
+      continue;
+    }
+    const type = typeof e.type === "string" ? e.type : "(no type)";
+    // codex exec --json: item.started / item.updated / item.completed carry `item`.
+    const item = obj(e.item);
+    if (item) {
+      const it = typeof item.type === "string" ? item.type : "(no item type)";
+      if (it === "command_execution") {
+        push(
+          `${type} command_execution status=${String(item.status)} exit_code=${String(item.exit_code)} command=${JSON.stringify(clip(item.command ?? "", 2000))} output=${JSON.stringify(clip(item.aggregated_output ?? "", 400))}`,
+        );
+      } else if (it === "agent_message" || it === "reasoning") {
+        push(`${type} ${it} ${JSON.stringify(clip(item.text ?? "", 400))}`);
+      } else {
+        push(`${type} ${it} ${clip(item, 400)}`);
+      }
+      continue;
+    }
+    // claude stream-json: assistant tool_use / user tool_result blocks inside message.content.
+    const content = obj(e.message)?.content;
+    if (Array.isArray(content) && (type === "assistant" || type === "user")) {
+      let any = false;
+      for (const b of content) {
+        const blk = obj(b);
+        if (blk?.type === "tool_use") {
+          push(`${type} tool_use ${String(blk.name)} ${clip(blk.input ?? null, 400)}`);
+          any = true;
+        } else if (blk?.type === "tool_result") {
+          push(`${type} tool_result is_error=${String(blk.is_error ?? false)} ${clip(blk.content ?? "", 400)}`);
+          any = true;
+        }
+      }
+      if (!any) bare(type);
+      continue;
+    }
+    if (type === "system" && typeof e.subtype === "string") {
+      bare(`system ${e.subtype}`);
+      continue;
+    }
+    // grok / other: tool- and error-shaped events in full (clipped), the rest by type.
+    if (/tool|command|exec|error|fail/i.test(type)) push(`${type} ${clip(e, 400)}`);
+    else bare(type);
+  }
+  flush();
+  return out;
 }
