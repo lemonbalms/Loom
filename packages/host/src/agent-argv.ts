@@ -27,7 +27,7 @@ export const RESUME_CONTINUATION_MESSAGE =
  */
 export const HEADLESS_WORKER_HINT = [
   "You are a Loom card worker.",
-  "Work only inside the current working directory. Do not touch paths outside it.",
+  "Work only inside the current working directory. Do not touch paths outside it, except that you may read the SKILL.md files listed above the dispatched-task marker.",
   "There is no conversation partner. Do not ask questions. If you are blocked, write the reason and exit.",
   "Your final message is the result. It is delivered verbatim to the dispatcher.",
   "Do not push, deploy, or publish.",
