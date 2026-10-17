@@ -42,6 +42,33 @@
 
 ## Gate log
 
+### 0.38.1 — codex/grok 첫 턴 스킬 목록 머리 문면 (`approved` — R57 approved-with-fixes)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.38.1 (`approved` — R57 approved-with-fixes, 반영 완료 · no R57b · author-close 불가) · PATCH · 근거 = 0.38.0 UK-8(실 CLI ① codex 스킬 경로 충돌) · 범위 = 락 D1~D9(아키텍트 2026-10-18) · `SKILL_LISTING_HEADER` 한 줄만(D2) · hint 변경은 0.38.1 밖(D8 — MINOR · 오너 선택) |
+| **Date** | 2026-10-18 |
+| **Review** | R57 **done 2026-10-18** — approved-with-fixes H0 · M1 · L4 (M1 D7 실패 결과표 ①~④ · D8 = ①만 · L1 P1 `containsMarker` · 제어/서식 문자 단언 · L2 USER_GUIDE §16.3 표 행 · L3 ⑤ 무번호 2행 · L4 기록 축자 — 실행 sha · grok `prompt.txt` 첫 줄 · codex 목록 경로 각각) — (프롬프트 신뢰 문면 변경: 워커에게 말하는 읽기 범위가 목록 경로까지 넓어진다) |
+| **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `1c78062`) · `skill-prompt.ts:7` · `:37` · `:39-43` · `:80-85` · `:97` · `:103` · `:112-126` · `agent-argv.ts:18` · `:28-36` · `:280-293` · `headless-worker.ts:226` · `:1688-1707` · `:1934-1940` · `:2098-2103` · `MEMORY-WRITE-SMOKE-0380.md:75-86` · `HEADLESS-SMOKE-0310.md:28-29` · 테스트 리터럴 `headless-skills-p4.test.ts:372` · `:406` · `headless-memory.test.ts:234` · `headless-policy-notice.test.ts:256` · `headless-memory-write.test.ts:238` · 상수 참조 `skill-label.test.ts:142` · `:182-202` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) 목록 문면은 `workerFingerprint` 입력이 아니다 — `manifestHash`만(`agent-argv.ts:280-293`). (2) 목록은 첫 턴에만 · 재개 턴은 `RESUME_CONTINUATION_MESSAGE` + wrapped(`headless-worker.ts:1938-1940` · `:2098-2103`). (3) claude는 Available 줄을 받지 않는다(`skill-prompt.ts:97` · `:112`). (4) 머리는 이미 4096 B 블록 상한에 포함된다(`:83-85` · `:112-120`). (5) 머리 리터럴을 단언하는 테스트는 다섯 줄 — `skill-label.test.ts`는 상수 참조라 무편집 통과(C1 · R1). |
+| Known unknowns | **UK-1~UK-4**(아래 표, 정본 = PLAN §0.38.1). 요지: 새 머리가 codex 거절을 푸는가 · 원인 분리(버전 vs 문구) · grok 반응 · 허락 문면의 과대 해석. |
+| Unknown knowns | D6 증거 목록 중 `headless-skills-p4.test.ts:418` · `:820`(부정 단언)과 `skill-label.test.ts:142` · `:182-194`(상수 참조)는 편집이 필요 없다(C1). D5 "바뀌는 고정 상한 테스트"는 0곳 — 상한 감소는 새 테스트가 고정한다(C2). `skill-prompt.ts:7` JSDoc이 옛 머리를 축자 인용한다(R3). 접두 `Available skills`를 바꾸면 claude 부정 단언이 공허해진다(R2). |
+| Unknown unknowns | codex가 머리 문면과 `developer_instructions` hint 중 어느 쪽에 더 무게를 두는지 · codex 다음 버전에서 같은 문면이 다르게 읽히는지. |
+
+**Unknowns 요약 (정본 = PLAN §0.38.1):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R57 판정 |
+|---|------|-------------|----------|
+| UK-1 | **새 머리가 codex 거절을 푸는가 — 실 CLI 0회** | ship 조건 = D7(오너 승인 `smoke:memory-write --real-cli --owner-approved` 1회 — PASS = codex 목록 SKILL.md 경로 읽기 ∧ codex `proposed ≥ 1` ∧ grok `proposed ≥ 1` ∧ 세 카드 `notes.md`) · 실패 → D7 결과표(R57-M1): ① codex가 목록 경로를 읽지 않음(거절) → **D8**(ship 안 함 · UK-8 open · 다음 = hint MINOR · 오너 선택) · ② codex가 읽음(R4) ∧ `proposed 0` → ship 안 함 · 기록 · 다음 = `loom-memory-candidates` 문면이나 프롬프트(오너 선택) · hint 아님 · ③ grok `proposed 0` 또는 `notes.md` 없음 → ship 안 함 · 회귀 의심(UK-3) · 기록 · ④ claude `proposed 0` → **관찰만**, 비차단(첫 턴 바이트 동일은 P1이 증명) · 단 `notes.md`는 필수 · 재실행은 매번 오너 명시 승인 | **ship 차단(R57-M1 결과표)** — 오너 승인 필요 · 승인 없으면 ship 대기 |
+| UK-2 | **원인 분리** — `codex-cli 0.163.0` 변경인지 프롬프트 문구인지(0310 h2 반증) | PASS는 "이 문면이면 읽는다"만 증명 · 기록에 CLI 버전 축자 | **비차단** — 기록에 CLI 버전 축자 · codex가 0.163.0이 아니면 교란 변수로 명기 |
+| UK-3 | **grok 반응** — 긴 머리가 grok 출력을 흔드는지 | D7이 grok `proposed ≥ 1` · `notes.md`로 관찰 · D7 결과 ③(grok `proposed 0` 또는 `notes.md` 없음) → ship 안 함 · 회귀 의심 · 기록(R57-M1) | **비차단(관찰) · 단 R57-M1 결과 ③은 ship 차단** |
+| UK-4 | **허락 문면의 과대 해석**(계급 32) — 목록 밖 cwd 밖 경로 읽기 | 실 CLI transcript 명령 문자열을 기록에서 본다(R57-L4) | **비차단** |
+
+**Current decision:** D1~D9 아키텍트 락(2026-10-18) · 작성자 정밀화 R1~R4 · 락↔코드 불일치 C1~C2 · 수용 손실 계급 31~34 + 무번호 · UK-1~UK-4. **R57 `approved-with-fixes` → M1·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-18, no R57b)** · R1~R4 수용(R3 = draft 선택 — `:7` 주석 갱신 · R4 + L4 기록 보강) · C1 · C2 수용 · **UK-1 ship 차단(R57-M1 결과표 ①~④)** · UK-2~UK-4 비차단(UK-3은 결과 ③만 차단). 0.38.0 UK-8은 0.38.1 D7 PASS에서만 closed(D9).
+
 ### 0.38.0 — 기억 쓰기 경로 · 카드 후보 → `proposed` · `notes.md` · `LOOM_CARD` CLI 거부 (`approved` — R56 approved-with-fixes · implemented (P1–P5) · shipped 2026-10-18)
 
 | Field | Value |
