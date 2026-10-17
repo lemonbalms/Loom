@@ -15,22 +15,25 @@
    문구는 직접 교정 필수 — R35 M-1이 문안 오류발 M이었음) → R{n} 게이트.
 2. **서브에이전트 model 명시 필수, 기본 = `opus`.** 미지정 = 본세션 모델(Fable) 조용한
    상속 = 결함. `fable`은 fable-advisor 자문뿐. (구현 레인은 종전대로 grok/codex CLI.)
-3. **병렬화 기본.** 독립 태스크는 단일 메시지 다중 스폰. 정형 다단계(게이트→구현→검증
-   팬아웃→스모크→docs)는 **Workflow 도구 사용 — 오너 상비 옵트인 성립(2026-07-19)**.
+3. **병렬화 기본.** 독립 태스크는 단일 메시지 다중 스폰. **Workflow 도구는 읽기 전용 팬아웃(조사·리뷰)에만 —
+   오너 상비 옵트인(2026-07-19)은 그 범위로 유지.** Workflow `agent()`에는 Agent 훅이 닿지 않으므로(2026-10-17 실측)
+   정형 다단계의 구현·검증·자문 단계는 아키텍트가 `scripts/lane.ts`로 이어 붙인다(규칙 8).
 4. **세션 시작 리추얼에 `tasks/lessons.md`(인덱스) 정독 + 작업 유형 매칭 카테고리는
    착수 전 로드 의무**(`tasks/lessons/<category>.md` — handoff만으로 부족, 기록 교훈
    재범 2회 실증). 위임 시작 전 `fable-advisor:orchestration` 스킬 로드.
 5. **Topology `full` 레인 배치 고정 (오너 지시 2026-07-20 — 구두 반복 4회발, 이제 규칙).**
-   **구현 = Opus 5.5 medium** · **검증 = GPT-6 Astra high (codex CLI)** · **자문 = Opus 5.5 high 자문 서브에이전트**(read-only) — 모델 고정은 규칙 8.
+   **구현 = Opus 5.5 medium** · **검증 = GPT-6 Astra high (`lane.ts verify`)** · **자문 = Opus 5.5 high 자문 서브에이전트**(read-only) — 모델 고정은 규칙 8.
    검증을 구현자와 같은 레인에 주지 않는다 — 발견자와 수정자를 분리해야 교차 검증이 성립한다.
-   **실작업 표면 = herdr pane 카드가 기본**이고 in-harness `Agent`는 pane 불가 시 폴백이다.
+   **구현·검증·자문 레인의 실작업 표면 = `scripts/lane.ts` 헤드리스 프로세스(규칙 8 — 검증은 그 안에서 codex로 돈다)**, herdr pane 카드는
+   제품 dogfood 표면이다. in-harness `Agent`는 lane.ts를 못 쓸 때의 폴백이다(사유 명시).
    조사·브리프 작성도 예외가 아니다(2026-07-20 오라우팅 실증). 디스패치 전
    **`docs/DOGFOOD_LOOP.md` §1.1 중복 점검**(`check_handoffs` + `list_tasks`로 겹치는
-   `doing` 카드 확인) 선행 의무 — 생략 시 3 구현자 중복 착수 위험. **claim 전이는
+   `doing` 카드 확인) 선행 의무 — 생략 시 3 구현자 중복 착수 위험(pane·lane.ts 공통). **pane 경로의 claim 전이는
    `dispatch_card`가 수행하며 사전 claim은 금지**(§1.1 "Do not pre-claim it under a peer
    profile" — 2026-07-26 정정: 종전 문구의 `board set doing` + `board assign`은 §1.1에
    존재하지 않았고 사전 claim 금지와 상충했다). 디스패처 신원은 로스터의 `claude-impl`(M-1
-   allowlist 등록분), `mac-node`로 쏘면 브릿지가 M-1 deny한다.
+   allowlist 등록분), `mac-node`로 쏘면 브릿지가 M-1 deny한다. **lane.ts 실행은 보드 카드를 claim하지 않는다** —
+   겹침 점검은 똑같이 선행하고, 작업 소유는 아키텍트 세션에 남는다.
 6. **워커 감시는 `scripts/watch-card.ts`를 쓴다 — 임시 셸 스크립트 금지.**
    손으로 짠 감시는 2026-07-20에 **3연속 서로 다른 구멍**을 냈다(마커만 봄 → pane 소멸 뺌 →
    bash 3.2 연관배열 미지원으로 즉사하며 "35분 경과" **거짓 성공** 보고). `watch-card`는
@@ -45,25 +48,29 @@
    result 전송 뒤 106ms/4ms 만의 정상 정리였다). `PaneDied for unknown pane`은 **herdr 내부
    경고**이지 브릿지가 통지를 버렸다는 증거가 아니다 — 이 오독으로 아키텍트가 오늘 잘못된
    진단을 오너에게 보고했다. 설계 정본 `docs/spikes/PANE-DEATH-DESIGN.md`.
-8. **구현·검증·자문 모델 고정 (오너 지시 2026-10-17).** **규칙 2 본문은 Phase 3.0 PREREG 봉인 fixture(`orch.model-explicit`
-   sha8 `de04b1fa`)라 수정 금지** — 규칙 2의 "`fable`은 fable-advisor 자문뿐"·"구현 레인 grok/codex"는
-   이 규칙 8이 대체하고, `loom-advisor`는 `model`을 넘기지 않는 예외다(훅이 강제). 구현 = **Opus 5.5(`claude-opus-5-5`) · effort
-   medium** — in-harness `Agent` `model: "opus"` · `effort: "medium"`(pane `claude-impl`이면
-   `--model claude-opus-5-5 --effort medium`); DOGFOOD §1.2의 grok→codex→하위 티어 체인 대체. 독립 검증 = **GPT-6 Astra · reasoning high**,
-   codex CLI `codex exec -m gpt-6-astra -c model_reasoning_effort=high … < /dev/null`(stdin을 닫지 않으면 입력 대기로
-   멈춤 — 2026-10-17 실증; 기본 `-s read-only`, 테스트를
-   돌려야 하면 `git archive` 검증 트리를 `-C`로 주고 `-s workspace-write`) — 종전 codex Sol·Opus xhigh 대체.
-   자문 = **Opus 5.5(`claude-opus-5-5`) · effort high** 프로젝트 에이전트 **`loom-advisor`**
-   (`.claude/agents/loom-advisor.md` — frontmatter가 model·effort를 고정, 도구 Read/Grep/Glob만).
-   호출 시 `model`·`effort`를 넘기지 않는다(호출 파라미터가 frontmatter를 덮어씀).
-   훅 `scripts/hooks/check-agent-model.ts`가 강제: `fable-advisor` 에이전트·`fable` 모델 차단,
-   `loom-advisor`에 `model` 또는 high 아닌 `effort`가 붙으면 차단, 그 밖의 타입은 `model` 필수.
-   `loom-advisor`가 로드되지 않은 세션(정의 파일보다 먼저 시작)이면 재시작하거나, `general-purpose`
-   `model: "opus"` · `effort: "high"`에 `loom-advisor.md` 본문을 지시로 붙여 대신한다 — 자문 생략 금지.
-   훅이 못 막는 틈: `fork`는 `model`을 무시하고 본세션 모델로 돈다(본세션이 Opus 5.5일 때만 안전).
-   **`fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제**(전역 CLAUDE.md의 fable-advisor
-   자문·최종 리뷰 지시도 이 자문 서브에이전트로 대체). R{n} 필수 자문·딜리버러블 최종 리뷰 모두 이 설정.
-   구현(Opus 5.5)과 검증(GPT-6 Astra)은 벤더가 다르다 — 교차 벤더 검증. 해제·변경은 오너만.
+8. **구현·검증·자문 모델 고정 (오너 지시 2026-10-17) — 실행은 `scripts/lane.ts`.** **규칙 2 본문은 Phase 3.0
+   PREREG 봉인 fixture(`orch.model-explicit` sha8 `de04b1fa`)라 수정 금지** — 규칙 2의 "`fable`은 fable-advisor
+   자문뿐"·"구현 레인 grok/codex"는 이 규칙이 대체한다. 설계 정본 `docs/spikes/HEADLESS-LANES-DESIGN.md`.
+   - 구현 = **Opus 5.5 · effort medium**: `bun run scripts/lane.ts impl --spec <file> [--cwd <git 작업 트리>]`.
+   - 검증 = **GPT-6 Astra · reasoning high**: `bun run scripts/lane.ts verify --spec <file>` (테스트를 돌려야 하면
+     `git archive` 트리를 `--cwd`로, `--sandbox workspace-write` — `--cwd`는 저장소 안이나 `realpath(tmpdir())` 아래만
+     받으니 샌드박스 TMPDIR에선 `/tmp` 트리가 거부된다). 구현과 벤더가 다르다 — 교차 벤더 검증.
+   - 자문 = **Opus 5.5 · effort high**: `bun run scripts/lane.ts advise --spec <file>`, 또는 in-harness 프로젝트
+     에이전트 **`loom-advisor`**(`.claude/agents/loom-advisor.md`가 model·effort 고정 — 호출 시 넘기지 않는다).
+     `loom-advisor` 미로드 세션이면 `general-purpose` `model: "opus"`·`effort: "high"` + loom-advisor.md 본문으로 대체 —
+     R{n} 필수 자문·딜리버러블 최종 리뷰를 생략하지 않는다.
+   - **레인 결과는 증거가 있어야 받는다:** `.loom-lanes/<seq>-<lane>/meta.json`이 exit 0 · `mainModel` = 고정값을 보이고,
+     impl·advise는 `permissionDenials`가 빈 배열 `[]`이어야 한다(verify는 codex가 기록하지 않아 `null`이 정상 — 대신
+     `effortResolved` = `high`와 판정 본문을 확인). 그 위에서 규칙 7대로 diff를 직접 보고 테스트를 다시 돌린다.
+   - 훅이 강제한다: `check-lane-spawn.ts`가 `claude -p`·`codex exec` 직접 실행을 막고(레인 안에선 claude·codex·lane.ts
+     전부), 그래서 이 저장소에선 `fable-advisor:sol-implementer`·`luna-implementer`도 막힌다. `codex:codex-rescue`는
+     내부 스크립트로 codex를 띄워 감지되지 않으니 쓰지 않는다. `check-agent-model.ts`가 `fable-advisor` 에이전트·`fable`
+     모델을 막고, `loom-advisor`에 `model`·high 아닌 `effort`가 붙으면 막고, 그 밖의 타입엔 `model`을 요구한다.
+   - 폴백: lane.ts를 못 쓰면 in-harness `Agent` `model: "opus"`·`effort: "medium"`(구현)으로 하되 사유를 보고한다.
+     **P4 실호출 스모크 전까지 impl·advise 레인은 실전 미검증**이라 이 폴백이 허용된다. fork는 본세션 모델로 돈다.
+     **검증엔 폴백이 없다:** lane.ts verify가 안 되면 같은 벤더(Claude) `Agent`로 대신하지 말고 막힘으로 보고한다.
+   - `fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제(전역 CLAUDE.md의 fable-advisor 자문·최종 리뷰
+     지시도 위 자문으로 대체). 해제·변경은 오너만.
 
 ## On session start
 

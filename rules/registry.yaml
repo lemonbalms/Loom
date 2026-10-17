@@ -11,16 +11,16 @@ policy_version: "2026-07-26.p1"
 
 sources:
   - file: "AGENTS.md"
-    sha8: "e960e02d"
+    sha8: "c17de366"
     triage:
-      for_sha8: "e960e02d"
-      note: "신규 유닛 없음 — 2026-10-17 오너 레인 모델 고정(CLAUDE.md 규칙 8) 반영: Review agent·Claude R{n}·Impl delegation 행 문구 갱신; 기존 유닛 agents.impl-delegation·agents.claude-rn 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 13건)"
+      for_sha8: "c17de366"
+      note: "신규 유닛 없음 — 2026-10-17 headless lanes P3: Impl delegation 행이 lane.ts impl/verify + meta.json 증거로 바뀜; agents.impl-delegation 다이제스트만 갱신; advisor fix-first 반영(rule-8 in-harness 경로 허용 · Codex note 7 superseded) (이전 receipt: 레인 모델 고정; Phase 1 최초 등록 2026-07-26 — 13건)"
       at: "2026-10-17"
   - file: "CLAUDE.md"
-    sha8: "4b28db3b"
+    sha8: "4b8a03b8"
     triage:
-      for_sha8: "4b28db3b"
-      note: "신규 유닛 없음(보류) — 2026-10-17 규칙 8(구현·검증·자문 모델 고정) 신설, 규칙 5 문구 갱신; 규칙 2(orch.model-explicit, PREREG 3.0 봉인 fixture)는 원문 유지 — 대체 내용은 규칙 8에. 규칙 8은 훅(check-agent-model.ts)이 강제하므로 라우팅 유닛 등록은 Phase 3 soft close 동안 보류 — 등록은 별도 판단. 기존 유닛 orch.lane-placement 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 7건)"
+      for_sha8: "4b8a03b8"
+      note: "신규 유닛 없음(보류) — 2026-10-17 headless lanes P3: 규칙 3(Workflow는 읽기 전용 팬아웃) · 규칙 5(Claude 레인 표면 = lane.ts) · 규칙 8(실행 = lane.ts, meta.json 증거, 훅 목록) 갱신. 규칙 2(orch.model-explicit, PREREG 3.0 봉인)는 원문 유지. 규칙 8 라우팅 유닛 등록은 Phase 3 soft close 동안 보류. advisor fix-first 반영(규칙 5 lane.ts claim 범위 · 규칙 8 verify 무폴백 · --cwd 범위). 기존 유닛 orch.parallel·orch.lane-placement 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 7건)"
       at: "2026-10-17"
   - file: "docs/SESSION-START.md"
     sha8: "5ef7c5f4"
@@ -55,14 +55,14 @@ units:
     pin: false
     cost_chars: 133
   - id: "orch.parallel"
-    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|병렬화 기본", sha8: "f85f0432" }
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|병렬화 기본", sha8: "bff617a4" }
     grade: "J"   # 독립성 판단은 의미 판단
     layer: ["L5"]
     surface: ["delegation"]
     triggers: ["병렬", "parallel", "Workflow", "다중 스폰"]
     pin: true
     pin_source: "grade-J"
-    cost_chars: 118
+    cost_chars: 226
   - id: "orch.session-ritual"
     source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|세션 시작 리추얼에", sha8: "e0bd1150" }
     grade: "G"   # B1 — 순서는 코드화 가능, 효과는 미확정 (ENFORCEABILITY §5.2)
@@ -72,13 +72,13 @@ units:
     pin: false
     cost_chars: 187
   - id: "orch.lane-placement"
-    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|Topology full 레인 배치 고정", sha8: "3b117299" }
+    source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|Topology full 레인 배치 고정", sha8: "68a06968" }
     grade: "G"   # B2/B3 — claim·pane 선행조건은 코드화 가능, 예외는 판단
     layer: ["L1", "L2"]
     surface: ["dispatch", "delegation"]
     triggers: ["디스패치", "dispatch", "grok", "codex", "pane", "claim", "레인"]
     pin: false
-    cost_chars: 786
+    cost_chars: 995
   - id: "orch.watch-card"
     source: { file: "CLAUDE.md", anchor: "bullet:## Orchestration standing rules (오너 지시 2026-07-19 — 세션 점검발)|워커 감시는", sha8: "b55b3df6" }
     grade: "A"   # C2 — 관측기는 후보 신호까지만, 사후 탐지
@@ -131,13 +131,13 @@ units:
     pin_source: "grade-J"
     cost_chars: 162
   - id: "agents.impl-delegation"
-    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Impl delegation", sha8: "1f4f8e7b" }
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Impl delegation", sha8: "e37c2dd7" }
     grade: "G"   # 라우팅 SSOT는 부분 중개
     layer: ["L1"]
     surface: ["delegation", "dispatch"]
     triggers: ["위임", "topology", "single", "full", "구현", "레인"]
     pin: false
-    cost_chars: 490
+    cost_chars: 704
   - id: "agents.plan-ssot"
     source: { file: "AGENTS.md", anchor: "row:## Standing rules|Plan SSOT", sha8: "b26caa62" }
     grade: "J"   # 정본 인식은 사람 판단

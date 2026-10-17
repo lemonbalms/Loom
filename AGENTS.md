@@ -139,7 +139,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
 | Claude R{n} | **Must** consult the **`loom-advisor`** subagent (Opus 5.5 high — CLAUDE.md rule 8) before writing R{n} |
-| **Impl delegation** | Execution routing SSOT = `docs/DOGFOOD_LOOP.md §0.5`. **`single`** = bounded current session implements + objective-command verifies + ships; lockedness alone does not force delegation. **`full`** = architect routes approved/locked product implementation to the pinned **Opus 5.5 · effort medium** implementer and independently verifies with **GPT-6 Astra high** (CLAUDE.md rule 8 · §1.2). New unresolved product/security/trust decisions promote `single` → `full`. |
+| **Impl delegation** | Execution routing SSOT = `docs/DOGFOOD_LOOP.md §0.5`. **`single`** = bounded current session implements + objective-command verifies + ships; lockedness alone does not force delegation. **`full`** = architect routes approved/locked product implementation through `bun run scripts/lane.ts impl` (**Opus 5.5 · effort medium**) and independently verifies through `lane.ts verify` (**GPT-6 Astra high**) plus its own rerun, accepting a lane only with `meta.json` evidence or a reported rule-8 in-harness path (`loom-advisor` advice · `Agent` impl fallback; verify has no fallback) (CLAUDE.md rule 8 · §1.2). New unresolved product/security/trust decisions promote `single` → `full`. |
 
 ### Pause only when (true blockers)
 
@@ -165,7 +165,9 @@ Full workflow: **`docs/WORKFLOW.md`**.
    - **`codex-impl`** = fallback implementer. Check inbox + board, claim an unclaimed locked task as `doing`, then code/test/docs/ship. Never author an R{n} verdict for its own work.
    - **`codex-rev`** = secondary/adversarial reviewer. Inspect security/races/fail-open/data-loss; do not take a task already claimed by an implementer.
 6. `codex-arch`, `codex-impl`, and `codex-rev` are separate Loom peers. Never assume the MCP identity from the terminal label alone; verify `LOOM_PROFILE` and use the matching `--profile` when launching.
-7. **Codex → Grok headless subagent invocation (canonical):** when `codex-arch` routes a
+7. **Superseded for implementation routing (owner lane pin 2026-10-17):** locked implementation goes through
+   `bun run scripts/lane.ts impl` (Impl delegation row). The Grok form below is kept only for an owner-chosen Grok line.
+   **Codex → Grok headless subagent invocation (reference):** when `codex-arch` routes a
    locked implementation to Grok outside the unavailable pane lane, put the complete
    five-part spec in a file and invoke exactly:
 

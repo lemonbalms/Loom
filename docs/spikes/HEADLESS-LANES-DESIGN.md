@@ -369,13 +369,13 @@ plain single commands in the exact §6.1 form.
 
 ---
 
-## 7. Rule-text changes implied (not applied now — P3)
+## 7. Rule-text changes (applied in P3, 2026-10-17)
 
 | Where | Change (one line) |
 |---|---|
 | `CLAUDE.md` rule 3 | Workflow tool = **read-only fan-out only**; impl/verify/advise steps run via `lane.ts`, chained by the architect |
 | `CLAUDE.md` rule 5 | Claude impl/advise lanes = headless `lane.ts`; herdr panes stay the surface for **product dogfood** |
-| `CLAUDE.md` rule 8 | pins are owned by `lane.ts`; in-harness `Agent` impl and `loom-advisor` spawn become fallback/read-only; acceptance requires the D6 evidence gate |
+| `CLAUDE.md` rule 8 | pins are owned by `lane.ts`; in-harness `Agent` impl becomes a reported fallback (verify has none) and `loom-advisor` is an equal read-only advise option; acceptance requires the D6 evidence gate |
 | `docs/DOGFOOD_LOOP.md` §1.2 | owner-pin box points to `bun run scripts/lane.ts impl` (and `verify`) instead of in-harness `Agent` / pane `claude-impl` |
 | `AGENTS.md` **Impl delegation** row | `full` routes implementation through `lane.ts impl` and verifies through `lane.ts verify` + architect rerun |
 

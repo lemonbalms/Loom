@@ -21,7 +21,7 @@
 | **`fable-advisor` plugin** | Orchestration tooling (DannyMac180, MIT) providing the grok/codex/fable lanes — **the dev tool, not the product**. Currently **v3.1.0**. |
 | **directory `fable-advisor/`** | Local checkout path only — the product is **Loom** (remote: `lemonbalms/Loom`). Dir name is historical, pending rename. |
 
-**Lane version pins:** implement = **Opus 5.5 · effort medium** (CLAUDE.md rule 8) · Grok 4.5 / GPT-5.6 Sol (historical, unpinned) · advisor = Opus 5.5 high advisor subagent (read-only) · independent verify = **GPT-6 Astra high** (`codex exec -m gpt-6-astra -c model_reasoning_effort=high`) (CLAUDE.md rule 8) · plugin **v3.1.0**.
+**Lane version pins:** implement = **Opus 5.5 · effort medium** (CLAUDE.md rule 8) · Grok 4.5 / GPT-5.6 Sol (historical, unpinned) · advisor = Opus 5.5 high advisor subagent (read-only) · independent verify = **GPT-6 Astra high** via `bun run scripts/lane.ts verify` (never `codex exec` directly — the Bash gate denies it) (CLAUDE.md rule 8) · plugin **v3.1.0**.
 When the `fable-advisor` plugin updates, bump these pins here so cache drift stays visible.
 
 ---
@@ -56,7 +56,7 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 
 | Choice | Orchestrator → implementation → verification/advice |
 |---|---|
-| **Current inherited default** | **Codex → Grok → Codex verification** |
+| Codex line | **Codex → Grok → Codex verification** (was the inherited default; HANDOFF Line is now the Claude line — owner pin 2026-10-17) |
 | Claude line | **Claude → Opus 5.5 medium → GPT-6 Astra high verification + `loom-advisor`** (owner pin 2026-10-17 · CLAUDE.md rule 8; was Claude → Grok → Claude Advisor) |
 | Grok line | **Grok → Grok → Claude + Codex verification**; 둘 다 불가하면 **Grok verification fallback** |
 | Other CLI | 설치·인증된 CLI를 선택할 수 있으나, 시작 전에 세 역할과 fallback을 명시 |
@@ -285,15 +285,16 @@ approved/locked spec** — implementation is delegated. Pick a lane by
 stale HANDOFF note):
 
 > **Owner pin 2026-10-17 (CLAUDE.md rule 8) supersedes the chain below:** implementation =
-> **Opus 5.5 (`claude-opus-5-5`) · effort medium** — in-harness `Agent` (`model: "opus"`,
-> `effort: "medium"`) or pane `claude-impl` with `--model claude-opus-5-5 --effort medium`.
-> Verification = GPT-6 Astra high (codex CLI), so implementer and verifier stay cross-vendor.
+> **Opus 5.5 (`claude-opus-5-5`) · effort medium** via `bun run scripts/lane.ts impl --spec <file>`
+> (headless `claude -p`; in-harness `Agent` `model: "opus"`/`effort: "medium"` only as a reported fallback).
+> Verification = GPT-6 Astra high via `bun run scripts/lane.ts verify`, so implementer and verifier stay
+> cross-vendor; a lane counts only with `.loom-lanes/<seq>-<lane>/meta.json` evidence (HEADLESS-LANES-DESIGN).
 > The grok → codex → lower-tier chain and the "Opus tier to implement ⇒ spec not locked"
 > corollary below are kept for history and apply only if the owner lifts the pin.
 
 1. **Default:** `grok-impl` (Grok) — verify auth (`grok` CLI logged in). If expired, don't stop here.
 2. **Cross-vendor fallback:** `codex-impl` (Codex / GPT-5.x) — verify `codex` CLI installed + authenticated. Use when grok is down or a second model family is wanted.
-3. **Last resort — neither external CLI lane available:** the architect **still does not hand-code**. Spawn a **lower-tier in-harness model** subagent (`Agent` / `Workflow`) to implement from the locked spec, given the full five-part spec. The session model then reviews the diff and verifies. **Effort tracks the task, not the model tier** — and applies only at this in-harness tier (cross-vendor lanes carry their own reasoning config; never set Anthropic `effort` on them). Defaults:
+3. **Last resort — neither external CLI lane available:** the architect **still does not hand-code**. Spawn a **lower-tier in-harness model** subagent (`Agent` / `Workflow` — historical; under the owner pin Workflow is read-only fan-out only, CLAUDE.md rule 3) to implement from the locked spec, given the full five-part spec. The session model then reviews the diff and verifies. **Effort tracks the task, not the model tier** — and applies only at this in-harness tier (cross-vendor lanes carry their own reasoning config; never set Anthropic `effort` on them). Defaults:
    - **Locked-spec implementation** → `model: sonnet`, `effort: xhigh` (a locked spec is coding/agentic work, for which `xhigh` is the documented default — Claude Code's own default).
    - **Trivial mechanical edit** → `model: haiku` — **pass no `effort` param** (Haiku 4.5 has no effort knob; setting `effort` is a hard API error).
 
