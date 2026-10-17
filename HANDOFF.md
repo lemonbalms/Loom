@@ -25,7 +25,7 @@
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:memory-write` · `smoke:memory-inject`
 2. P1–P5 done · each PATCH Astra-verified (findings fixed or accepted — `implementation-notes.md` §0.38.0) · fake smoke `smoke:memory-write` 10/10 · suite 3309/1 known fail · final advise (0051) = ship · VERSION 0.38.0 + dist committed locally · pinned tests byte-unedited except the 12 declared P2 edits (R56-M1) · every test/smoke child: HOME + `LOOM_TEST_HOME` temp (+ `LOOM_PROFILE=smoke`)
-3. **0.39 candidates (owner picks):** codex cannot read skills — `HEADLESS_WORKER_HINT` "work only inside cwd" vs skill copy under `~/.loom/cards` (pre-existing since 0.31, fingerprint-affecting fix) · snapshot mtime cache · lookalike-marker hardening (`MEMORY-WRITE-SMOKE-0380.md`)
+3. **0.39 candidates (owner picks):** codex skill use unreliable — 0.163.0 refused the skill copy outside cwd (hint "work only inside cwd"); 0.162.1 read it on 10-15 · cause unconfirmed · listing text is not a fingerprint input · snapshot mtime cache · lookalike-marker hardening (`MEMORY-WRITE-SMOKE-0380.md`)
 4. Carry: Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7 · `pane-cleanup.test.ts` ⑥ flaky under load
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
@@ -52,7 +52,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| 0.39 step pick | codex skills gap (all codex skill cards) vs 0.39 perf/hardening candidates | codex skills fix first | `MEMORY-WRITE-SMOKE-0380.md` |
+| 0.39 step pick | codex skill use unreliable vs 0.39 perf/hardening candidates | codex skills fix first | `MEMORY-WRITE-SMOKE-0380.md` |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 

@@ -89,12 +89,13 @@ turn.completed
 
 - transcript-1.stderr head: `""`
 
-### Finding — codex skill-path conflict (pre-existing since 0.31 · not a 0.38 change · 0.39 candidate)
+### Finding — codex skill-path conflict (not a 0.38 change · cause unconfirmed · 0.39 candidate)
 
 - codex's `developer_instructions` (`HEADLESS_WORKER_HINT`) say *"Work only inside the current working directory. Do not touch paths outside it."* The card's skill copy lives outside the cwd (`~/.loom/cards/…/skills`; here under the temp home). codex searched only the cwd (`rg --files -g SKILL.md` → nothing, exit 1) and answered "Blocked".
-- claude gets the skills as a plugin (`--plugin-dir`); grok read the absolute paths anyway. Only codex treats the hint as forbidding the skill paths.
-- **Consequence:** codex cards with skills enabled likely never use their skills (not only `loom-memory-candidates`).
-- **Not fixed in 0.38:** a fix changes the hint or the skill-prompt text → fingerprint change → out of 0.38 scope. Recorded as a **0.39 candidate** (owner pick) — PLAN §0.38.0 "다음 후보" · `UNKNOWNS.md` 0.38.0 UK-8. Owner ruling 2026-10-18: "원인 확인 후 결정" → codex-side pre-existing issue → record and ship.
+- claude gets the skills as a plugin (`--plugin-dir`); grok read the absolute paths anyway. In these runs only codex treated the hint as forbidding the skill paths.
+- **Counter-evidence (2026-10-15):** `HEADLESS-SMOKE-0310.md` case h2 (codex-cli 0.162.1, real `HeadlessDispatcher`, the same `HEADLESS_WORKER_HINT` incl. "Work only inside the current working directory") — codex's first item was `cat <abs card path>/skills/plugin/skills/loom-card-report/SKILL.md` (exit 0) and its output ended with `LOOM-REPORT-END` (`HEADLESS-SMOKE-0310.md:28-29`, `:77`). That card prompt said "finish per your report skill"; the 0380 prompt said "as your loom-memory-candidates skill describes…". Both 0380 runs here used codex-cli 0.163.0.
+- **Consequence:** the cause is **unconfirmed** — the codex version change (0.162.1 → 0.163.0) or the prompt wording. codex skill use (any skill, not only `loom-memory-candidates`) is **unreliable**; it is not proven broken since 0.31.
+- **Not fixed in 0.38:** a fix that changes `HEADLESS_WORKER_HINT` changes fingerprints (it is a `workerFingerprint` input — `agent-argv.ts:280-293`); a fix that changes only the first-turn skill listing text (`skill-prompt.ts`) does not (only `manifestHash` is an input). Either way it is out of 0.38 scope. Recorded as a **0.39 candidate** (owner pick) — PLAN §0.38.0 "다음 후보" · `UNKNOWNS.md` 0.38.0 UK-8. Owner ruling 2026-10-18: "원인 확인 후 결정" → codex-side pre-existing issue → record and ship.
 
 ## Commands used
 
@@ -108,6 +109,6 @@ The two real-CLI runs were each run once with the owner's explicit yes.
 
 ## Not covered
 
-- Real-use candidate quality and grammar adherence beyond the one-candidate smoke prompt (UK-2). codex's block writing is unobserved while it cannot read the skills (UK-8).
+- Real-use candidate quality and grammar adherence beyond the one-candidate smoke prompt (UK-2). codex's block writing is unobserved — it did not read the skills in these runs (UK-8).
 - Real-use `busy` frequency and approval load (UK-3 · UK-4). Lock contention with a human CLI is proved by P1 `memory-lock-contention.test.ts`, not by this smoke.
 - Windows (UK-6). Linux not run.

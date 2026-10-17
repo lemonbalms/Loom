@@ -38,7 +38,7 @@
 
 - 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · `ARGV_TEMPLATE_VERSION` · hint · argv · 완료 권한 · 펜스 · `loom-card-report` · `policy.json` 스키마 · `policyHash` · `entries.jsonl` v1 줄 스키마 · MCP 도구 표면 무변경 · `packages/protocol` diff 0 · pane backend · sticky host · relay 무변경. **전달 결과 텍스트는 변형하지 않는다**(후보 블록이 그대로 남는다).
 - **정직 고지(설계상 수용 손실):** **셸이 있는 워커는 여전히 승인을 건너뛸 수 있다** — `env -u LOOM_CARD loom memory add …`나 `entries.jsonl` 직접 쓰기로 사람 승인 없이 `active` 항목을 만든다(계급 23). `LOOM_CARD` 거부는 실수 방지 가드이지 경계가 아니다. 그 밖에: 디스패처가 기각할 작업의 후보도 올라간다(계급 24 — 사람 승인이 유일한 통제) · `notes.md`는 생성 요약이 아니라 사본(계급 25) · 상한 기아 · 락 `busy` 버림(계급 27 · 28) · 표지 필터 오탐 · Windows 미검증.
-- **codex 카드는 지금 스킬을 읽지 못한다(0.38 이전부터 있던 문제 — 0.39에서 고칠 예정).** codex 워커는 "현재 작업 디렉터리 밖은 건드리지 말라"는 지시를 받는데, 카드 스킬 사본은 작업 디렉터리 밖(`~/.loom/cards/…/skills`)에 있다. 그래서 실 codex는 스킬을 찾지 못하고 `Blocked`로 답했다 — **실측에서 codex 카드는 기억 후보를 0개 올렸고**(두 번 모두), skills를 켠 codex 카드는 0.31부터 스킬을 쓰지 못했을 가능성이 높다. claude(플러그인) · grok은 영향 없음.
+- **codex 카드의 스킬 사용은 지금 믿을 수 없다(0.38 변경 아님 — 0.39 후보).** codex 워커는 "현재 작업 디렉터리 밖은 건드리지 말라"는 지시를 받는데, 카드 스킬 사본은 작업 디렉터리 밖(`~/.loom/cards/…/skills`)에 있다. 실측(2026-10-18, codex 0.163.0)에서 codex는 작업 디렉터리만 찾고 `Blocked`로 답해 **기억 후보를 0개 올렸다**(두 번 모두 — 스킬 사본 자체는 정상). 반면 2026-10-15 스모크에서는 codex 0.162.1이 같은 지시를 받고도 카드 스킬을 절대 경로로 읽었다 — 원인(codex 버전 차이인지 카드 프롬프트 문구인지)은 미확인이다. 고칠 때까지 codex 카드의 스킬 사용(기억 후보 포함)은 안 될 수도 있다고 보라. claude(플러그인) · grok은 정상 동작했다.
 
 ### 정본
 
