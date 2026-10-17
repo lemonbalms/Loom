@@ -25,7 +25,7 @@
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:memory-write` · `smoke:memory-inject`
 2. P1–P5 done · each PATCH Astra-verified (findings fixed or accepted — `implementation-notes.md` §0.38.0) · fake smoke `smoke:memory-write` 10/10 · suite 3309/1 known fail · final advise (0051) = ship · VERSION 0.38.0 + dist committed locally · pinned tests byte-unedited except the 12 declared P2 edits (R56-M1) · every test/smoke child: HOME + `LOOM_TEST_HOME` temp (+ `LOOM_PROFILE=smoke`)
-3. **0.40 candidates (owner picks):** ~~codex skills~~ fixed in 0.39.0 ·  — 0.163.0 refused the skill copy outside cwd (hint "work only inside cwd"); 0.162.1 read it on 10-15 · cause unconfirmed · listing text is not a fingerprint input · snapshot mtime cache · lookalike-marker hardening (`MEMORY-WRITE-SMOKE-0380.md`)
+3. **0.40 candidates (owner picks):** snapshot mtime cache · lookalike-marker hardening · codex 0.162.1 vs 0.163.0 A/B (UK-2, owner-approved) — codex skills fixed in 0.39.0 (`MEMORY-WRITE-SMOKE-0390.md`)
 4. Carry: Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7 · `pane-cleanup.test.ts` ⑥ flaky under load
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
