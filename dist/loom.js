@@ -8557,6 +8557,28 @@ function withFileLock(filePath, fn) {
     releaseLock(lockDir);
   }
 }
+var LOCK_ASYNC_BUDGET_MAX_MS = 250;
+async function withFileLockAsync(filePath, budgetMs, fn) {
+  const lockDir = `${filePath}.lock`;
+  mkdirSync4(dirname2(filePath), { recursive: true });
+  const budget = Math.min(Math.max(Number.isFinite(budgetMs) ? budgetMs : LOCK_ASYNC_BUDGET_MAX_MS, 0), LOCK_ASYNC_BUDGET_MAX_MS);
+  const start = Date.now();
+  while (!tryAcquireLock(lockDir)) {
+    tryReclaimStaleLock(lockDir);
+    if (tryAcquireLock(lockDir))
+      break;
+    const elapsed = Date.now() - start;
+    if (elapsed > budget)
+      return { ok: false };
+    const wait = Math.max(1, Math.min(LOCK_POLL_MS, budget - elapsed));
+    await new Promise((resolve2) => setTimeout(resolve2, wait));
+  }
+  try {
+    return { ok: true, value: fn() };
+  } finally {
+    releaseLock(lockDir);
+  }
+}
 
 // packages/host/src/task-board.ts
 var TASK_BOARD_VERSION = 1;
@@ -11194,13 +11216,29 @@ function parseMemory(raw) {
   }
   const src = raw;
   for (const key of Object.keys(src)) {
-    if (key !== "enabled")
+    if (key !== "enabled" && key !== "cardWrites") {
       throw new Error(`worker.memory.${key} is not a known key`);
+    }
   }
   if (typeof src.enabled !== "boolean") {
     throw new Error("worker.memory.enabled must be a boolean");
   }
-  return { enabled: src.enabled };
+  if (src.cardWrites === undefined)
+    return { enabled: src.enabled };
+  if (typeof src.cardWrites !== "boolean") {
+    throw new Error("worker.memory.cardWrites must be a boolean");
+  }
+  return { enabled: src.enabled, cardWrites: src.cardWrites };
+}
+function checkCardWrites(memory, skills) {
+  if (memory?.cardWrites !== true)
+    return;
+  if (memory.enabled !== true) {
+    throw new Error("worker.memory.cardWrites requires worker.memory.enabled: true");
+  }
+  if (skills?.enabled !== true) {
+    throw new Error("worker.memory.cardWrites requires worker.skills.enabled: true");
+  }
 }
 function parseStrictEnforcement(raw) {
   if (raw === undefined)
@@ -11258,6 +11296,7 @@ function workerSectionFromRaw(raw) {
   const memory = parseMemory(src.memory);
   const rules = parseRules(src.rules);
   const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);
+  checkCardWrites(memory, parsed.skills);
   return {
     backend: "headless",
     cwd: parsed.cwd,
@@ -11278,7 +11317,7 @@ function readBridgeWorkerFlags(raw, rawAgentArgv) {
   const src = raw;
   if (src.backend !== "headless")
     return paneWorkerFlags();
-  parseSkills(src.skills);
+  const skills = parseSkills(src.skills);
   const permissions = parsePermissions(src.permissions);
   parseCwd(src.cwd);
   parseAllowedRoots(src.allowedRoots);
@@ -11288,6 +11327,7 @@ function readBridgeWorkerFlags(raw, rawAgentArgv) {
   const memory = parseMemory(src.memory);
   const rules = parseRules(src.rules);
   const strictEnforcement = parseStrictEnforcement(src.strictEnforcement);
+  checkCardWrites(memory, skills);
   return {
     backend: "headless",
     enabled: enabledHeadlessAgents(maxConcurrent, agentArgvFromRaw(rawAgentArgv)),
@@ -13180,6 +13220,8 @@ import { createHash as createHash8, randomUUID } from "crypto";
 import { readdirSync as readdirSync2 } from "fs";
 import { chmod as chmod2, copyFile, mkdir as mkdir2, readFile as readFile2, rename as rename2, rm, writeFile } from "fs/promises";
 import { dirname as dirname6, join as join15 } from "path";
+var MEMORY_PROPOSED_KEY_RE = /^[0-9a-f]{16}\.[12]$/;
+var MEMORY_PROPOSED_MAX = 16;
 var cardSessionDiagnostics = { invalidRecords: 0 };
 function validRecord(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
@@ -13214,6 +13256,11 @@ function validRecord(raw) {
   if (r.pendingResult !== undefined) {
     const f = r.pendingResult;
     if (!f || typeof f !== "object" || Array.isArray(f) || f.status !== "failed" || typeof f.reason !== "string" || typeof f.output !== "string" || typeof f.truncated !== "boolean" || typeof f.summary !== "string" || f.note !== undefined && typeof f.note !== "string" || f.timedOut !== undefined && typeof f.timedOut !== "boolean")
+      return false;
+  }
+  if (r.memoryProposed !== undefined) {
+    const m = r.memoryProposed;
+    if (!Array.isArray(m) || m.length > MEMORY_PROPOSED_MAX || m.some((k) => typeof k !== "string" || !MEMORY_PROPOSED_KEY_RE.test(k)))
       return false;
   }
   return true;
@@ -13425,6 +13472,31 @@ import { dirname as dirname8, join as join16, resolve as resolve4, sep as sep3 }
 // packages/host/skills/loom-card-report/SKILL.md
 var SKILL_default = "---\nname: loom-card-report\ndescription: Format the final report of a Loom card task. Use it when you write your last message.\n---\n\n# Loom card report\n\nYour final message is the card result. Write it in this shape:\n\n1. `Status:` one of `done`, `partial`, or `blocked`.\n2. `Summary:` two or three sentences on what you did.\n3. `Changes:` the files you changed, one per line, or `none`.\n4. `Checks:` the commands you ran to verify the work and their outcome, or `none`.\n5. `Open:` anything left undone or uncertain, or `none`.\n\nEnd the message with this line on its own:\n\nLOOM-REPORT-END\n\nWrite nothing after that line.\n";
 
+// packages/host/skills/loom-memory-candidates/SKILL.md
+var SKILL_default2 = `---
+name: loom-memory-candidates
+description: Propose memory candidates from a Loom card for the operator to review. Use it when you write your last message.
+---
+
+# Loom memory candidates
+
+A memory candidate is one sentence that later cards in this room should know: a fact about the project, a decision that was made, or a preference the operator stated. A person reviews every candidate. No card sees a candidate until a person approves it.
+
+When you write your last message, you may add this block:
+
+LOOM-MEMORY-CANDIDATES
+- fact: <one sentence>
+- decision: <one sentence>
+- preference: <one sentence>
+LOOM-MEMORY-END
+
+1. Start each line with \`- fact:\`, \`- decision:\`, or \`- preference:\`, then one sentence.
+2. Write at most 5 lines.
+3. Never put secrets, tokens, passwords, or text that starts with \`LOOM-\` inside a line.
+4. If you end your message with \`LOOM-REPORT-END\`, put the block before that line.
+5. If there is nothing worth keeping, do not write the block.
+`;
+
 // packages/host/src/skill-materialize.ts
 var SKILL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 var SKILL_MAX_BYTES = 1024 * 1024;
@@ -13460,8 +13532,13 @@ var YAML_RESERVED_KEYS = new Set(["true", "false", "yes", "no", "on", "off", "y"
 var TOP_KEY_LINE = /^([a-z][a-z0-9.-]*):(?: +(.*))?$/;
 var NESTED_KEY_LINE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):(?: +(.*))?$/;
 var BUILTIN_SKILLS = Object.freeze([
-  { name: "loom-card-report", files: Object.freeze({ "SKILL.md": SKILL_default }) }
+  { name: "loom-card-report", files: Object.freeze({ "SKILL.md": SKILL_default }) },
+  {
+    name: "loom-memory-candidates",
+    files: Object.freeze({ "SKILL.md": SKILL_default2 })
+  }
 ]);
+var FORCED_ONLY_BUILTINS = new Set(["loom-memory-candidates"]);
 function errCode2(err) {
   if (err && typeof err === "object" && "code" in err) {
     const code = err.code;
@@ -14065,7 +14142,8 @@ async function materializeCardSkills(opts) {
     agent: opts.agent,
     cardId: opts.cardId
   };
-  const selected = await readRoomSkillSelection(key.loomDir, key.roomId);
+  const forced = new Set(opts.forced ?? []);
+  const selected = new Set([...await readRoomSkillSelection(key.loomDir, key.roomId), ...forced]);
   let root = await realLoomDir(key.loomDir);
   if (root === null) {
     await mkdir3(key.loomDir, { recursive: true, mode: 448 });
@@ -14084,7 +14162,7 @@ async function materializeCardSkills(opts) {
       continue;
     }
     const found = await resolveSkill(name, userRoot, rootState);
-    if (!found) {
+    if (!found || found.source === "builtin" && FORCED_ONLY_BUILTINS.has(name) && !forced.has(name)) {
       unavailable.push({ name, reason: "not installed" });
       continue;
     }
@@ -14509,6 +14587,50 @@ ${parts.join(`
     included: entries.length,
     eligible: eligible.length
   };
+}
+
+// packages/host/src/memory-candidates.ts
+var MEMORY_CANDIDATES_BEGIN = "LOOM-MEMORY-CANDIDATES";
+var MEMORY_CANDIDATES_END = "LOOM-MEMORY-END";
+var MEMORY_CANDIDATES_PER_ATTEMPT = 5;
+var CANDIDATE_RE = /^- (fact|decision|preference): (\S.*)$/;
+function parseMemoryCandidates(text) {
+  let open3 = null;
+  let last = null;
+  for (const raw of text.split(`
+`)) {
+    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    const marker = line.trimEnd();
+    if (marker === MEMORY_CANDIDATES_BEGIN) {
+      open3 = [];
+    } else if (marker === MEMORY_CANDIDATES_END) {
+      if (open3)
+        last = open3;
+      open3 = null;
+    } else if (open3) {
+      open3.push(line);
+    }
+  }
+  if (!last)
+    return { block: false, candidates: [], invalid: 0, overflow: 0 };
+  const candidates = [];
+  let invalid = 0;
+  let overflow = 0;
+  for (const line of last) {
+    if (line.trim() === "")
+      continue;
+    const m = CANDIDATE_RE.exec(line);
+    if (!m) {
+      invalid += 1;
+      continue;
+    }
+    if (candidates.length >= MEMORY_CANDIDATES_PER_ATTEMPT) {
+      overflow += 1;
+      continue;
+    }
+    candidates.push({ type: m[1], body: m[2].trimEnd() });
+  }
+  return { block: true, candidates, invalid, overflow };
 }
 
 // packages/host/src/memory-snapshot.ts
@@ -15271,7 +15393,215 @@ function compactMemory(loomDir2, agentKey) {
     };
   });
 }
+var MEMORY_CARD_PROPOSED_CAP = 50;
+var MEMORY_CARD_ROOM_CAP = 10;
+var CARD_CANDIDATES_PER_ATTEMPT = 5;
+var CARD_LOCK_BUDGET_MS = 250;
 var ARCHIVE_SCAN_TAIL_BYTES = 4 * 1024 * 1024;
+var HEX16_RE = /^[0-9a-f]{16}$/;
+var FENCE_LOOKALIKE_RE = /={3,}\s*(BEGIN|END)\s+LOOM\b/i;
+var LOOM_BLOCK_MARKER_RE = /LOOM-(MEMORY|REPORT)-/;
+function cardMemorySource(x) {
+  for (const k of ["room", "card", "handoff"]) {
+    if (typeof x[k] !== "string" || !HEX16_RE.test(x[k])) {
+      throw new TypeError(`cardMemorySource: ${k} must be 16 lowercase hex`);
+    }
+  }
+  if (x.attempt !== 1 && x.attempt !== 2) {
+    throw new TypeError("cardMemorySource: attempt must be 1 or 2");
+  }
+  if (typeof x.by !== "string")
+    throw new TypeError("cardMemorySource: by must be a string");
+  return {
+    kind: "card",
+    room: x.room,
+    card: x.card,
+    handoff: x.handoff,
+    attempt: x.attempt,
+    by: sourceBy(x.by)
+  };
+}
+function looksLikeLoomMarker(body) {
+  return containsMarker(body) || FENCE_LOOKALIKE_RE.test(body.normalize("NFKC")) || LOOM_BLOCK_MARKER_RE.test(body);
+}
+function isCardKey(source, key) {
+  return source.kind === "card" && source.card === key.card && source.handoff === key.handoff && source.attempt === key.attempt;
+}
+function archiveHasCardKey(p, key) {
+  const st = fileState(p.archive);
+  if (st === "absent")
+    return false;
+  if (st !== "file")
+    throw new Error(st.message);
+  const fd = openSync6(p.archive, fsConstants4.O_RDONLY | fsConstants4.O_NOFOLLOW);
+  let text;
+  try {
+    const size = fstatSync3(fd).size;
+    const from = size > ARCHIVE_SCAN_TAIL_BYTES ? size - ARCHIVE_SCAN_TAIL_BYTES - 1 : 0;
+    const buf = Buffer.alloc(size - from);
+    let off = 0;
+    while (off < buf.length) {
+      const n = readSync3(fd, buf, off, buf.length - off, from + off);
+      if (n <= 0)
+        break;
+      off += n;
+    }
+    text = buf.subarray(0, off).toString("utf8");
+    if (from > 0) {
+      const nl = text.indexOf(`
+`);
+      text = nl < 0 ? "" : text.slice(nl + 1);
+    }
+  } finally {
+    closeSync6(fd);
+  }
+  for (const piece of text.split(`
+`)) {
+    if (!piece.includes(key.handoff))
+      continue;
+    const line = parseMemoryLine(piece.endsWith("\r") ? piece.slice(0, -1) : piece);
+    if (line && line.kind === "entry" && isCardKey(line.source, key))
+      return true;
+  }
+  return false;
+}
+async function appendMemoryEntriesAsync(loomDir2, agentKey, batch, deps) {
+  const p = memoryPaths(loomDir2, agentKey);
+  if (typeof batch.appliesTo !== "string" || !/^room:[0-9a-f]{16}$/.test(batch.appliesTo)) {
+    throw new TypeError("appendMemoryEntriesAsync: appliesTo must be room:<16 hex>");
+  }
+  assertSource(batch.source, "appendMemoryEntriesAsync");
+  if (batch.source.kind !== "card") {
+    throw new TypeError("appendMemoryEntriesAsync: source must be a card source");
+  }
+  if (!Array.isArray(batch.candidates)) {
+    throw new TypeError("appendMemoryEntriesAsync: candidates must be an array");
+  }
+  if (!deps || typeof deps.env !== "object" || deps.env === null) {
+    throw new TypeError("appendMemoryEntriesAsync: deps.env is required");
+  }
+  const dropped = { secret: 0, marker: 0, cap: 0, busy: 0, dup: 0, invalid: 0 };
+  const ids = [];
+  const result = () => ({ proposed: ids.length, ids, dropped });
+  dropped.cap += Math.max(0, batch.candidates.length - CARD_CANDIDATES_PER_ATTEMPT);
+  const ready = [];
+  for (const c of batch.candidates.slice(0, CARD_CANDIDATES_PER_ATTEMPT)) {
+    const body = sanitizePeerText(typeof c?.body === "string" ? c.body : "");
+    if (!ENTRY_TYPES.includes(c?.type) || body.trim() === "" || body.length > MEMORY_BODY_MAX) {
+      dropped.invalid += 1;
+    } else if (looksLikeLoomMarker(body)) {
+      dropped.marker += 1;
+    } else if (redactSecrets(body, deps.env) !== body) {
+      dropped.secret += 1;
+    } else {
+      ready.push({ type: c.type, body });
+    }
+  }
+  if (ready.length === 0)
+    return result();
+  const dirs = prepareStoreDirs(loomDir2, p, true);
+  if (dirs !== "ready" && dirs !== "absent")
+    throw new Error(dirs.message);
+  const pre = fileState(p.entries);
+  if (pre !== "absent" && pre !== "file")
+    throw new Error(pre.message);
+  const key = batch.source;
+  const locked = await withFileLockAsync(p.entries, deps.budgetMs ?? CARD_LOCK_BUDGET_MS, () => {
+    const st = lstatOrNull(p.entries);
+    if (st && (st.isSymbolicLink() || !st.isFile()))
+      throw new Error(unsafePath(p.entries).message);
+    if (st && st.size > MEMORY_ENTRIES_MAX_BYTES) {
+      dropped.cap += ready.length;
+      return result();
+    }
+    const read = readEntries(p);
+    if ("ok" in read)
+      throw new Error(read.message);
+    if (read.size > MEMORY_ENTRIES_MAX_BYTES) {
+      dropped.cap += ready.length;
+      return result();
+    }
+    const f = foldMemoryLines(read.raw);
+    let dup = false;
+    for (const e of f.entries.values()) {
+      if (isCardKey(e.source, key)) {
+        dup = true;
+        break;
+      }
+    }
+    if (dup || archiveHasCardKey(p, key)) {
+      dropped.dup += ready.length;
+      return { ...result(), skipped: "dup" };
+    }
+    let cardAll = 0;
+    let cardRoom = 0;
+    let proposedAll = 0;
+    for (const e of f.entries.values()) {
+      if (e.status !== "proposed")
+        continue;
+      proposedAll += 1;
+      if (e.source.kind !== "card")
+        continue;
+      cardAll += 1;
+      if (e.appliesTo === batch.appliesTo)
+        cardRoom += 1;
+    }
+    const gen = deps.randomId ?? defaultRandomId;
+    const taken = new Set(f.entries.keys());
+    const lines = [];
+    let seq = f.maxSeq;
+    for (let i = 0;i < ready.length; i++) {
+      const c = ready[i];
+      if (cardAll >= MEMORY_CARD_PROPOSED_CAP || cardRoom >= MEMORY_CARD_ROOM_CAP || proposedAll >= MEMORY_PROPOSED_CAP || !Number.isSafeInteger(seq + 1)) {
+        dropped.cap += ready.length - i;
+        break;
+      }
+      let id = null;
+      for (let d = 0;d < ID_DRAWS; d++) {
+        const cand = gen();
+        if (typeof cand !== "string" || !MEMORY_ID_RE.test(cand)) {
+          throw new TypeError("appendMemoryEntriesAsync: randomId must return mem_ + 16 hex");
+        }
+        if (!taken.has(cand)) {
+          id = cand;
+          break;
+        }
+      }
+      if (id === null) {
+        dropped.busy += 1;
+        continue;
+      }
+      seq += 1;
+      const line = {
+        v: 1,
+        kind: "entry",
+        id,
+        seq,
+        type: c.type,
+        appliesTo: batch.appliesTo,
+        body: c.body,
+        source: key,
+        status: "proposed",
+        supersedes: null,
+        at: nowIso2(deps)
+      };
+      lines.push(JSON.stringify(line));
+      taken.add(id);
+      ids.push(id);
+      cardAll += 1;
+      cardRoom += 1;
+      proposedAll += 1;
+    }
+    if (lines.length > 0)
+      appendLines(p.entries, lines);
+    return result();
+  });
+  if (!locked.ok) {
+    dropped.busy += ready.length;
+    return result();
+  }
+  return locked.value;
+}
 
 // packages/host/src/memory-snapshot.ts
 var SNAPSHOT_PERSONA_MAX_BYTES = 8192;
@@ -15838,6 +16168,8 @@ var MAX_ATTEMPTS = 2;
 var MAX_UNKNOWN_PROBES = 5;
 var MEMORY_SNAPSHOT_MAX_BYTES = 1024 * 1024;
 var MEMORY_SNAPSHOT_HASH_RE = /^[0-9a-f]{64}$/;
+var CARD_NOTES_FILE = "notes.md";
+var MEMORY_CANDIDATES_SKILL = "loom-memory-candidates";
 var NO_SKILLS = Object.freeze({ manifestHash: "", pluginDir: null, listing: "" });
 var AGENTS = ["claude", "codex", "grok"];
 
@@ -15896,6 +16228,12 @@ function summaryLine(text) {
       return trimmed.slice(0, SUMMARY_CAP);
   }
   return "";
+}
+function oneLine(text) {
+  return text.replace(/[\r\n]/g, " ");
+}
+function errorLine(err) {
+  return oneLine(err instanceof Error ? err.message : String(err)).slice(0, 200);
 }
 function sleep2(ms) {
   return new Promise((resolve5) => setTimeout(resolve5, ms));
@@ -16445,6 +16783,7 @@ class HeadlessDispatcher {
     await this.withCardLock(record, () => this.sendAndMarkLocked(record, fields, opts));
   }
   async sendAndMarkLocked(record, fields, opts = {}) {
+    const proposedKey = opts.memoryProposedKey;
     const persist = async (update) => {
       try {
         Object.assign(record, await this.updateRecordLocked(record, (current) => {
@@ -16472,7 +16811,13 @@ class HeadlessDispatcher {
           timedOut: fields.timedOut ?? false
         },
         resultSent: false,
-        sendAttempts: (sameHandoff ? current.sendAttempts : 0) + 1
+        sendAttempts: (sameHandoff ? current.sendAttempts : 0) + 1,
+        ...proposedKey ? {
+          memoryProposed: [
+            ...(current.memoryProposed ?? []).filter((k) => k !== proposedKey),
+            proposedKey
+          ].slice(-MEMORY_PROPOSED_MAX)
+        } : {}
       };
     });
     await this.deliver({ ...record, prompt: "" }, record.startedAt, structuredClone(record.pendingResult));
@@ -16798,6 +17143,8 @@ class HeadlessDispatcher {
       }));
     }
     const fullText = parsed.finalText.length > 0 ? parsed.finalText : raw;
+    if (this.deps.memory?.cardWrites === true)
+      await this.writeCardNotes(record, fullText);
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const truncated = truncationNote(capped.truncated, transcriptPath, fullText);
     const attemptsNote = `attempts ${record.attempts} exhausted; not resuming`;
@@ -16820,6 +17167,13 @@ class HeadlessDispatcher {
   async sendParsed(record, outcome) {
     await this.persistSessionId(record, outcome.raw);
     const fullText = outcome.timedOut ? outcome.raw : outcome.parsed.finalText;
+    let memoryProposedKey;
+    if (this.deps.memory?.cardWrites === true) {
+      await this.writeCardNotes(record, fullText);
+      if (!outcome.timedOut) {
+        memoryProposedKey = await this.proposeCardMemory(record, outcome.parsed.finalText);
+      }
+    }
     const summary = summaryLine(fullText);
     const capped = truncateTail(fullText, OUTPUT_CAP);
     const note = [
@@ -16834,7 +17188,71 @@ class HeadlessDispatcher {
       truncated: capped.truncated,
       summary,
       ...note ? { note } : {}
-    });
+    }, memoryProposedKey ? { memoryProposedKey } : {});
+  }
+  async writeCardNotes(record, fullText) {
+    if (fullText === "")
+      return;
+    const dir = this.cardDir(record);
+    const tmp = join20(dir, `.${CARD_NOTES_FILE}.tmp.${process.pid}.${randomUUID3()}`);
+    const target = join20(dir, CARD_NOTES_FILE);
+    try {
+      const text = truncateTail(redactSecrets(fullText, process.env), OUTPUT_CAP).text;
+      await writeFile3(tmp, text, { encoding: "utf8", mode: 384, flag: "wx" });
+      await rename4(tmp, target);
+      await chmod4(target, 384);
+    } catch (err) {
+      await rm3(tmp, { force: true }).catch(() => {});
+      process.stderr.write(`[headless] card_notes (${oneLine(record.cardId)}): failed \u2014 ${errorLine(err)}
+`);
+    }
+  }
+  async proposeCardMemory(record, finalText) {
+    const write = (body) => process.stderr.write(`[headless] memory_propose (${oneLine(record.cardId)}): ${body}
+`);
+    const profile = this.deps.profile;
+    if (!profile) {
+      write("skipped \u2014 no profile");
+      return;
+    }
+    try {
+      const handoff = createHash12("sha256").update(record.dispatchHandoffId).digest("hex").slice(0, 16);
+      const key = `${handoff}.${record.attempts}`;
+      const parsed = parseMemoryCandidates(finalText);
+      const dropped = { secret: 0, marker: 0, cap: 0, busy: 0, dup: 0, invalid: 0 };
+      let proposed = 0;
+      let result;
+      if ((record.memoryProposed ?? []).includes(key)) {
+        dropped.dup = parsed.candidates.length;
+        result = key;
+      } else if (parsed.block) {
+        dropped.invalid += parsed.invalid;
+        dropped.cap += parsed.overflow;
+        const room = roomKey(record.roomId);
+        const r = await appendMemoryEntriesAsync(this.deps.loomDir, agentKeyFor(profile, record.agent), {
+          source: cardMemorySource({
+            room,
+            card: cardKeyHash(record.roomId, record.agent, record.cardId),
+            handoff,
+            attempt: record.attempts,
+            by: record.fromPeerId
+          }),
+          appliesTo: `room:${room}`,
+          candidates: parsed.candidates
+        }, { env: process.env });
+        proposed = r.proposed;
+        for (const k of Object.keys(dropped))
+          dropped[k] += r.dropped[k];
+        if (r.dropped.busy === 0 && r.proposed + r.dropped.dup + r.dropped.cap > 0)
+          result = key;
+      }
+      const m = Object.values(dropped).reduce((a, b) => a + b, 0);
+      write(`proposed ${proposed} \xB7 dropped ${m} (secret ${dropped.secret} \xB7 marker ${dropped.marker} \xB7 cap ${dropped.cap} \xB7 busy ${dropped.busy} \xB7 dup ${dropped.dup} \xB7 invalid ${dropped.invalid})`);
+      return result;
+    } catch (err) {
+      write(`failed \u2014 ${errorLine(err)}`);
+      return;
+    }
   }
   skillsKey(card) {
     return {
@@ -16933,7 +17351,8 @@ class HeadlessDispatcher {
     const result = await materializeCardSkills({
       ...this.skillsKey(card),
       enabled: true,
-      policy: effectiveWorkerPolicy(this.deps.config).effective[card.agent].skills
+      policy: effectiveWorkerPolicy(this.deps.config).effective[card.agent].skills,
+      ...this.deps.memory?.cardWrites === true ? { forced: [MEMORY_CANDIDATES_SKILL] } : {}
     });
     return {
       manifestHash: result.manifestHash,
@@ -17157,6 +17576,7 @@ ${wrapped}` : firstTurn;
           procStartedAt: "",
           sendAttempts: 0,
           completedHandoffIds: [...current?.completedHandoffIds ?? plan.completedHandoffIds],
+          ...current?.memoryProposed ? { memoryProposed: [...current.memoryProposed] } : {},
           ...memorySnapshotHash !== "" ? { memorySnapshotHash } : {}
         }));
         if (owner.abandoned)
@@ -20407,6 +20827,16 @@ var ROOM_KEY_RE2 = /^[0-9a-f]{16}$/;
 var MEMORY_USAGE = "usage: loom memory add|propose|list|show|approve|retire|compact [--agent claude|codex|grok] [--room <roomId>] \u2026";
 var LIST_USAGE = "usage: loom memory list [--agent claude|codex|grok] [--room <roomId>] [--all] [--json]";
 var AGENT_ERROR = "--agent must be claude, codex or grok";
+var SOURCE_KIND_RE2 = /^[a-z][a-z0-9-]{0,31}$/;
+var SOURCE_ERROR = "--source must be a source kind (e.g. human, card)";
+var CARD_REFUSED_VERBS = new Set([
+  "add",
+  "propose",
+  "approve",
+  "retire",
+  "compact"
+]);
+var CARD_REFUSAL = "refused \u2014 LOOM_CARD is set (this shell belongs to a Loom card worker); memory writes go through card proposals. Unset LOOM_CARD to write deliberately.";
 var RULES_USAGE = "usage: loom rules list [--json]";
 var SKILLS_USAGE = "usage: loom skills list [--room <roomId>] [--json]";
 
@@ -20596,11 +21026,28 @@ function firstLine2(body) {
 `)[0] ?? "";
   return Array.from(line).slice(0, 80).join("");
 }
+function sourceText(v) {
+  return typeof v === "string" ? v : String(v);
+}
+function sourceBy2(e) {
+  return typeof e.source.by === "string" ? e.source.by : "";
+}
+function sourceSuffix(e) {
+  if (e.source.kind === "human")
+    return "";
+  const by = sourceBy2(e);
+  const n = Array.from(e.body).length - Array.from(firstLine2(e.body)).length;
+  return `  [${e.source.kind}${by ? ` by ${by}` : ""}${n > 0 ? ` \xB7 +${n} chars \u2014 loom memory show ${e.id}` : ""}]`;
+}
 async function runMemoryCommand(verb, args, flags, deps) {
   const fail = (reason) => {
     deps.stderr(`loom memory: ${reason}`);
     return 1;
   };
+  const card = deps.env.LOOM_CARD;
+  if (CARD_REFUSED_VERBS.has(verb) && typeof card === "string" && card.length > 0) {
+    return fail(CARD_REFUSAL);
+  }
   try {
     switch (verb) {
       case "add":
@@ -20671,7 +21118,16 @@ function memoryTransition(verb, args, flags, deps, fail) {
   if (args.positional.length !== 1)
     return fail(idUsage(verb));
   const id = args.positional[0];
-  const r = appendMemoryTransition(deps.loomDir, agentKeyFor(deps.profile, kind), {
+  const agentKey = agentKeyFor(deps.profile, kind);
+  let pre;
+  if (verb === "approve") {
+    try {
+      pre = readStore(deps.loomDir, agentKey, LIST_READ_MAX_BYTES).fold?.entries.get(id);
+    } catch {
+      pre = undefined;
+    }
+  }
+  const r = appendMemoryTransition(deps.loomDir, agentKey, {
     id,
     to: verb === "approve" ? "active" : "retired",
     source: humanMemorySource(deps.displayName)
@@ -20679,6 +21135,11 @@ function memoryTransition(verb, args, flags, deps, fail) {
   if (!r.ok)
     return refused(r, fail);
   deps.stdout(`${verb === "approve" ? "approved" : "retired"} ${r.id} (seq ${r.seq})`);
+  if (pre && pre.id === r.id && pre.source.kind !== "human") {
+    try {
+      deps.stdout(`activated: ${pre.type} ${pre.appliesTo} \u2014 ${pre.body} (source ${pre.source.kind} by ${sourceBy2(pre)})`);
+    } catch {}
+  }
   return 0;
 }
 function memoryCompact(args, flags, deps, fail) {
@@ -20717,9 +21178,16 @@ function entryJson(fold, e) {
 function memoryList(args, flags, deps) {
   let kind;
   let room;
+  let sourceKind = null;
   try {
     kind = agentFlag(flags, false);
     room = roomFlag(flags);
+    if (flags.source !== undefined) {
+      if (typeof flags.source !== "string" || !SOURCE_KIND_RE2.test(flags.source)) {
+        throw new UsageError(SOURCE_ERROR);
+      }
+      sourceKind = flags.source;
+    }
     if (args.positional.length > 0 || args.passthrough.length > 0)
       throw new UsageError(LIST_USAGE);
   } catch (err) {
@@ -20740,7 +21208,7 @@ function memoryList(args, flags, deps) {
     const store = readStore(loom, agentKey, LIST_READ_MAX_BYTES);
     const persona = humanFile(loom, ["memory", agentKey, "persona.md"], PERSONA_CAP);
     const fold = store.fold;
-    const rows = fold ? [...fold.entries.values()].filter((e) => all || e.status === "proposed" || e.status === "active" && !e.hidden).filter((e) => rk === null || e.appliesTo === "project" || e.appliesTo === `room:${rk}`).sort(bySeqId) : [];
+    const rows = fold ? [...fold.entries.values()].filter((e) => all || e.status === "proposed" || e.status === "active" && !e.hidden).filter((e) => rk === null || e.appliesTo === "project" || e.appliesTo === `room:${rk}`).filter((e) => sourceKind === null || e.source.kind === sourceKind).sort(bySeqId) : [];
     return { kind: k, agentKey, store, persona, fold, rows };
   });
   if (flags.json === true) {
@@ -20782,6 +21250,15 @@ function memoryList(args, flags, deps) {
     }
     deps.stdout(`memory: worker.memory.enabled = ${enabled} (profile ${deps.profile})`);
   }
+  let cardProposed = 0;
+  for (const a of agents) {
+    for (const e of a.fold?.entries.values() ?? []) {
+      if (e.status === "proposed" && e.source.kind === "card")
+        cardProposed += 1;
+    }
+  }
+  if (cardProposed > 0)
+    deps.stdout(`memory: ${cardProposed} card proposals awaiting review`);
   deps.stdout(humanFileText("knowledge/INDEX.md", index));
   for (const a of agents) {
     deps.stdout(`agent ${a.agentKey}  ${a.store.dir}`);
@@ -20799,7 +21276,7 @@ function memoryList(args, flags, deps) {
     if (guideline)
       deps.stdout(`  ${humanFileText("guideline.md", guideline)}`);
     for (const e of a.rows) {
-      deps.stdout(`  ${e.id}  ${e.status}  ${e.type}  ${e.appliesTo}  seq ${e.seq}  ${firstLine2(e.body)}`);
+      deps.stdout(`  ${e.id}  ${e.status}  ${e.type}  ${e.appliesTo}  seq ${e.seq}  ${firstLine2(e.body)}${sourceSuffix(e)}`);
     }
   }
   return 0;
@@ -20875,6 +21352,10 @@ function memoryShow(args, flags, deps, fail) {
   for (const l of e.body.split(`
 `))
     out.push(`    ${l}`);
+  if (e.source.kind !== "human") {
+    const s = e.source;
+    out.push(`  origin: ${s.kind} \xB7 by ${sourceBy2(e)} \xB7 room ${sourceText(s.room)} \xB7 card ${sourceText(s.card)} \xB7 attempt ${sourceText(s.attempt)}`);
+  }
   for (const l of out)
     deps.stdout(l);
   return 0;
@@ -21169,7 +21650,7 @@ function readMemoryDoctorInput(loom, platform = process.platform) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.37.0";
+var VERSION = "0.38.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
@@ -21270,7 +21751,7 @@ Usage:
   loom memory add|propose --agent claude|codex|grok [--room <roomId>]
               [--type fact|decision|preference] [--supersedes <id>] <body\u2026> | -- <body>
   loom memory approve|retire|show --agent <a> <id> \xB7 compact --agent <a>
-  loom memory list [--agent <a>] [--room <roomId>] [--all] [--json]
+  loom memory list [--agent <a>] [--room <roomId>] [--source <kind>] [--all] [--json]
                                     # per-agent memory store (0.35)
   loom rules list [--json]          # bundled + ~/.loom/rules (0.35)
   loom skills list [--room <roomId>] [--json]
