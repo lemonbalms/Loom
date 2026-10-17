@@ -5457,13 +5457,13 @@ import {
   rmSync as rmSync4
 } from "fs";
 import { join as join30, dirname as dirname13, basename as basename6, resolve as resolve5, sep as sep5 } from "path";
-import { createHash as createHash14 } from "crypto";
+import { createHash as createHash15 } from "crypto";
 import { homedir as homedir5 } from "os";
 function defaultRelayStateDir() {
   return join30(homedir5(), ".loom", "relay-state");
 }
 function roomStatePath(stateDir2, roomId) {
-  const h = createHash14("sha256").update(roomId).digest("hex").slice(0, 16);
+  const h = createHash15("sha256").update(roomId).digest("hex").slice(0, 16);
   return join30(stateDir2, `${h}.json`);
 }
 function isPidAlive4(pid) {
@@ -5776,9 +5776,9 @@ var ROOM_SNAPSHOT_VERSION = 1, LOCK_STALE_MS3 = 5000;
 var init_persist = () => {};
 
 // packages/relay/src/room.ts
-import { createHash as createHash15, randomUUID as randomUUID4 } from "crypto";
+import { createHash as createHash16, randomUUID as randomUUID4 } from "crypto";
 function clientEventBodyHash(material) {
-  return createHash15("sha256").update(material, "utf8").digest("hex");
+  return createHash16("sha256").update(material, "utf8").digest("hex");
 }
 function handoffClientEventMaterial(h) {
   const attachments = h.attachments == null || Array.isArray(h.attachments) && h.attachments.length === 0 ? null : h.attachments;
@@ -12879,7 +12879,7 @@ init_src();
 init_src();
 import { AsyncLocalStorage } from "async_hooks";
 import { execFile } from "child_process";
-import { createHash as createHash13, randomBytes as randomBytes3, randomUUID as randomUUID3 } from "crypto";
+import { createHash as createHash14, randomBytes as randomBytes3, randomUUID as randomUUID3 } from "crypto";
 import { constants as fsConstants8, realpathSync as realpathSync2, statSync as statSync5 } from "fs";
 import {
   chmod as chmod5,
@@ -16061,13 +16061,227 @@ function parseLstart(value) {
   return date.getTime();
 }
 
-// packages/host/src/prompt-record.ts
+// packages/host/src/prompt-assemble.ts
+init_src();
 import { createHash as createHash12 } from "crypto";
+
+// packages/host/src/prompt-manifest.ts
+var FENCE_PART_IDS = Object.freeze([
+  "policy-notice",
+  "standing-rules",
+  "memory-snapshot"
+]);
+function deepFreeze(entries) {
+  for (const e of entries) {
+    if (e.parts) {
+      for (const p of e.parts)
+        Object.freeze(p);
+      Object.freeze(e.parts);
+    }
+    Object.freeze(e);
+  }
+  return Object.freeze(entries);
+}
+var PROMPT_MANIFEST = deepFreeze([
+  {
+    id: "worker-hint",
+    channel: "system",
+    turns: "both",
+    required: true,
+    version: "0.39.0",
+    source: "agent-argv.ts HEADLESS_WORKER_HINT"
+  },
+  {
+    id: "resume-continuation",
+    channel: "user",
+    turns: "resume",
+    required: true,
+    version: "0.30.0",
+    source: "agent-argv.ts RESUME_CONTINUATION_MESSAGE"
+  },
+  {
+    id: "skill-listing",
+    channel: "user",
+    turns: "first",
+    required: false,
+    version: "0.39.0",
+    source: "skill-prompt.ts renderSkillListing"
+  },
+  {
+    id: "task-marker",
+    channel: "user",
+    turns: "both",
+    required: true,
+    version: "0.30.0",
+    source: "@loom/protocol DISPATCHED_TASK_MARKER"
+  },
+  {
+    id: "memory-fence",
+    channel: "user",
+    turns: "first",
+    required: false,
+    version: "0.40.0",
+    source: "memory-inject.ts renderMemoryBlock",
+    parts: [
+      { id: "policy-notice", version: "0.37.0", source: "policy-gaps.ts renderPolicyNotice" },
+      { id: "standing-rules", version: "0.37.0", source: "memory-inject.ts renderRulesSection" },
+      { id: "memory-snapshot", version: "0.36.0", source: "memory-snapshot.ts loadMemorySnapshot" }
+    ]
+  },
+  {
+    id: "card-body",
+    channel: "user",
+    turns: "both",
+    required: true,
+    version: "0.40.0",
+    source: "marker-fold.ts neutralizeCardPrompt"
+  }
+]);
+
+// packages/host/src/prompt-assemble.ts
+var SEP = `
+
+`;
+function memoryFenceParts(notice, rules, memoryText) {
+  const memory = memoryText.endsWith(`
+`) ? memoryText.slice(0, -1) : memoryText;
+  const parts = [];
+  if (notice !== "")
+    parts.push("policy-notice");
+  if (rules !== "")
+    parts.push("standing-rules");
+  if (memory !== "")
+    parts.push("memory-snapshot");
+  return parts;
+}
+function assertSectionsCover(pieces, text) {
+  const joined = pieces.join("");
+  const bytes2 = Buffer.concat(pieces.map((p) => Buffer.from(p, "utf8")));
+  if (joined !== text || !bytes2.equals(Buffer.from(text, "utf8"))) {
+    throw new Error("prompt assemble: section pieces do not cover the channel text");
+  }
+}
+function checkParts(memoryBlock, memoryParts) {
+  if (memoryParts.length > 0 !== (memoryBlock !== "")) {
+    throw new Error("prompt assemble: memory parts do not match the memory block");
+  }
+  let last = -1;
+  for (const id of memoryParts) {
+    const at = FENCE_PART_IDS.indexOf(id);
+    if (at < 0)
+      throw new Error("prompt assemble: unknown memory part");
+    if (at <= last)
+      throw new Error("prompt assemble: memory parts duplicated or out of order");
+    last = at;
+  }
+}
+function onTurn(entry, turn) {
+  return entry.turns === "both" || entry.turns === turn;
+}
+function pieceFor(id, input) {
+  switch (id) {
+    case "worker-hint":
+      return HEADLESS_WORKER_HINT;
+    case "resume-continuation":
+      return `${RESUME_CONTINUATION_MESSAGE}${SEP}`;
+    case "skill-listing":
+      return input.listing === "" ? null : `${input.listing}${SEP}`;
+    case "task-marker":
+      return `${DISPATCHED_TASK_MARKER}${SEP}`;
+    case "memory-fence":
+      return input.memoryBlock === "" ? null : `${input.memoryBlock}${SEP}`;
+    case "card-body":
+      return input.cardBody;
+  }
+}
+function trace(channel, text, input) {
+  const pieces = [];
+  const out = [];
+  let offset = 0;
+  for (const entry of PROMPT_MANIFEST) {
+    if (entry.channel !== channel || !onTurn(entry, input.turn))
+      continue;
+    const piece = pieceFor(entry.id, input);
+    if (piece === null)
+      continue;
+    const buf = Buffer.from(piece, "utf8");
+    const t = {
+      id: entry.id,
+      channel,
+      version: entry.version,
+      offset,
+      bytes: buf.length,
+      sha256: createHash12("sha256").update(buf).digest("hex")
+    };
+    if (entry.id === "memory-fence") {
+      const versions = new Map((entry.parts ?? []).map((p) => [p.id, p.version]));
+      t.parts = input.memoryParts.map((id) => {
+        const version = versions.get(id);
+        if (version === undefined)
+          throw new Error("prompt assemble: memory part not in manifest");
+        return { id, version };
+      });
+    }
+    pieces.push(piece);
+    out.push(t);
+    offset += buf.length;
+  }
+  assertSectionsCover(pieces, text);
+  return out;
+}
+function assembleHeadlessPrompt(input) {
+  if (input.turn !== "first" && input.turn !== "resume") {
+    throw new Error("prompt assemble: turn must be first or resume");
+  }
+  if (input.turn === "resume" && (input.listing !== "" || input.memoryBlock !== "")) {
+    throw new Error("prompt assemble: a resume carries no skill listing or memory block");
+  }
+  checkParts(input.memoryBlock, input.memoryParts);
+  const system = HEADLESS_WORKER_HINT;
+  const user = input.turn === "first" ? composeFirstTurnPrompt(input.listing, composeMemoryWrapped(input.cardBody, input.memoryBlock)) : `${RESUME_CONTINUATION_MESSAGE}
+
+${wrapDispatchedPrompt(input.cardBody)}`;
+  return {
+    system,
+    user,
+    sections: [...trace("system", system, input), ...trace("user", user, input)]
+  };
+}
+
+// packages/host/src/prompt-record.ts
+import { createHash as createHash13 } from "crypto";
 import { closeSync as closeSync8, constants as fsConstants6, fstatSync as fstatSync5, lstatSync as lstatSync4, openSync as openSync8, readSync as readSync5 } from "fs";
 import { chmod as chmod4, rename as rename4, rm as rm3, writeFile as writeFile3 } from "fs/promises";
 import { basename as basename4, join as join19 } from "path";
-var PROMPT_RECORD_VERSION = 1;
+var PROMPT_RECORD_VERSION = 2;
+var PROMPT_RECORD_V1 = 1;
 var PROMPT_RECORD_READ_MAX_BYTES = 8 * 1024 * 1024;
+function freezeRules(rows) {
+  for (const row of rows) {
+    if (row.parts)
+      Object.freeze(row.parts);
+    Object.freeze(row);
+  }
+  return Object.freeze(rows);
+}
+var PROMPT_RECORD_V2_SECTIONS = freezeRules([
+  { id: "worker-hint", channel: "system", turns: "both", required: true },
+  { id: "resume-continuation", channel: "user", turns: "resume", required: true },
+  { id: "skill-listing", channel: "user", turns: "first", required: false },
+  { id: "task-marker", channel: "user", turns: "both", required: true },
+  {
+    id: "memory-fence",
+    channel: "user",
+    turns: "first",
+    required: false,
+    parts: ["policy-notice", "standing-rules", "memory-snapshot"]
+  },
+  { id: "card-body", channel: "user", turns: "both", required: true }
+]);
+var SECTIONS_MAX = 8;
+var PARTS_MAX = 3;
+var SECTION_VERSION_RE = /^\d+\.\d+\.\d+$/;
+var SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 var CHANNELS = {
   claude: { system: "claude --append-system-prompt", user: "stdin" },
   codex: { system: "codex -c developer_instructions", user: "stdin" },
@@ -16086,14 +16300,29 @@ var REQUIRED_KEYS = [
   "user",
   "userSha256"
 ];
+var REQUIRED_KEYS_V2 = [...REQUIRED_KEYS, "sections"];
+var SECTION_KEYS = ["id", "channel", "version", "offset", "bytes", "sha256"];
 function promptRecordPath(dir, attempt) {
   return join19(dir, `prompt-${attempt}.json`);
+}
+function canonicalSection(s) {
+  const out = {
+    id: s.id,
+    channel: s.channel,
+    version: s.version,
+    offset: s.offset,
+    bytes: s.bytes,
+    sha256: s.sha256
+  };
+  if (s.parts !== undefined)
+    out.parts = s.parts.map((p) => ({ id: p.id, version: p.version }));
+  return out;
 }
 function buildPromptRecord(input) {
   const ch = CHANNELS[input.agent];
   const user = input.user.toWellFormed();
   const record = {
-    version: PROMPT_RECORD_VERSION,
+    version: input.sections === undefined ? PROMPT_RECORD_V1 : PROMPT_RECORD_VERSION,
     agent: input.agent,
     turn: input.turn,
     attempt: input.attempt,
@@ -16103,8 +16332,10 @@ function buildPromptRecord(input) {
     system: input.system,
     userChannel: ch.user,
     user,
-    userSha256: createHash12("sha256").update(Buffer.from(user, "utf8")).digest("hex")
+    userSha256: createHash13("sha256").update(Buffer.from(user, "utf8")).digest("hex")
   };
+  if (input.sections !== undefined)
+    record.sections = input.sections.map(canonicalSection);
   if (input.agent === "codex" && input.turn === "resume") {
     record.userArgv = RESUME_CONTINUATION_MESSAGE;
   }
@@ -16132,18 +16363,93 @@ async function writePromptRecord(dir, record) {
 function isPlainObject3(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+function exactKeys(value, keys) {
+  const own = Object.keys(value);
+  return own.length === keys.length && keys.every((k) => Object.hasOwn(value, k));
+}
+function isCount(v) {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+function sectionsOk(sections, turn, system, user) {
+  if (!Array.isArray(sections) || sections.length < 1 || sections.length > SECTIONS_MAX)
+    return false;
+  const texts = {
+    system: Buffer.from(system, "utf8"),
+    user: Buffer.from(user, "utf8")
+  };
+  const cursor = { system: 0, user: 0 };
+  const seen = new Set;
+  let last = -1;
+  for (const el of sections) {
+    if (!isPlainObject3(el))
+      return false;
+    const at = PROMPT_RECORD_V2_SECTIONS.findIndex((row2) => row2.id === el.id);
+    if (at < 0)
+      return false;
+    const row = PROMPT_RECORD_V2_SECTIONS[at];
+    if (!exactKeys(el, row.parts ? [...SECTION_KEYS, "parts"] : SECTION_KEYS))
+      return false;
+    if (el.channel !== row.channel)
+      return false;
+    if (row.turns !== "both" && row.turns !== turn)
+      return false;
+    if (at <= last)
+      return false;
+    last = at;
+    seen.add(row.id);
+    if (typeof el.version !== "string" || !SECTION_VERSION_RE.test(el.version))
+      return false;
+    if (!isCount(el.offset) || !isCount(el.bytes))
+      return false;
+    const text = texts[row.channel];
+    if (el.offset !== cursor[row.channel] || el.offset + el.bytes > text.length)
+      return false;
+    cursor[row.channel] = el.offset + el.bytes;
+    if (typeof el.sha256 !== "string" || !SHA256_HEX_RE.test(el.sha256))
+      return false;
+    const range = text.subarray(el.offset, el.offset + el.bytes);
+    if (createHash13("sha256").update(range).digest("hex") !== el.sha256)
+      return false;
+    if (row.parts && !partsOk(el.parts, row.parts))
+      return false;
+  }
+  for (const row of PROMPT_RECORD_V2_SECTIONS) {
+    const onTurn2 = row.turns === "both" || row.turns === turn;
+    if (row.required && onTurn2 && !seen.has(row.id))
+      return false;
+  }
+  return cursor.system === texts.system.length && cursor.user === texts.user.length;
+}
+function partsOk(parts, ids) {
+  if (!Array.isArray(parts) || parts.length < 1 || parts.length > PARTS_MAX)
+    return false;
+  let last = -1;
+  for (const p of parts) {
+    if (!isPlainObject3(p) || !exactKeys(p, ["id", "version"]))
+      return false;
+    const at = ids.indexOf(p.id);
+    if (at < 0 || at <= last)
+      return false;
+    last = at;
+    if (typeof p.version !== "string" || !SECTION_VERSION_RE.test(p.version))
+      return false;
+  }
+  return true;
+}
 function checkShape(value, attempt) {
   if (!isPlainObject3(value))
     return "not a JSON object";
+  const v2 = value.version === PROMPT_RECORD_VERSION;
+  const keys = v2 ? REQUIRED_KEYS_V2 : REQUIRED_KEYS;
   for (const key of Object.keys(value)) {
-    if (key !== "userArgv" && !REQUIRED_KEYS.includes(key))
+    if (key !== "userArgv" && !keys.includes(key))
       return "unknown key";
   }
-  for (const key of REQUIRED_KEYS) {
+  for (const key of keys) {
     if (!Object.hasOwn(value, key))
       return `missing ${key}`;
   }
-  if (value.version !== PROMPT_RECORD_VERSION)
+  if (value.version !== PROMPT_RECORD_V1 && !v2)
     return "unsupported version";
   const agent = value.agent;
   if (agent !== "claude" && agent !== "codex" && agent !== "grok")
@@ -16168,6 +16474,9 @@ function checkShape(value, attempt) {
       return "bad userArgv";
   } else if (codexResume) {
     return "missing userArgv";
+  }
+  if (v2 && !sectionsOk(value.sections, value.turn, value.system, value.user)) {
+    return "bad sections";
   }
   if (value.attempt !== attempt)
     return "attempt mismatch";
@@ -16236,6 +16545,8 @@ function canonicalRecord(r) {
   const out = {};
   for (const key of REQUIRED_KEYS)
     out[key] = r[key];
+  if (r.version === PROMPT_RECORD_VERSION)
+    out.sections = (r.sections ?? []).map(canonicalSection);
   if (r.userArgv !== undefined)
     out.userArgv = r.userArgv;
   return out;
@@ -17624,7 +17935,7 @@ class HeadlessDispatcher {
       return;
     }
     try {
-      const handoff = createHash13("sha256").update(record.dispatchHandoffId).digest("hex").slice(0, 16);
+      const handoff = createHash14("sha256").update(record.dispatchHandoffId).digest("hex").slice(0, 16);
       const key = `${handoff}.${record.attempts}`;
       const parsed = parseMemoryCandidates(finalText);
       const dropped = { secret: 0, marker: 0, cap: 0, busy: 0, dup: 0, invalid: 0 };
@@ -17739,7 +18050,7 @@ class HeadlessDispatcher {
     }
     if (bytes2.length > MEMORY_SNAPSHOT_MAX_BYTES)
       return "too large";
-    const actual = createHash13("sha256").update(bytes2).digest("hex");
+    const actual = createHash14("sha256").update(bytes2).digest("hex");
     return actual === expected ? null : "hash mismatch";
   }
   async fingerprintChangedLocked(record) {
@@ -17922,8 +18233,7 @@ class HeadlessDispatcher {
         process.stderr.write(`[headless] card_prompt (${card.cardId.replace(/[\r\n]/g, " ")}): neutralized ${body.neutralizedLines}
 `);
       }
-      const wrapped = wrapDispatchedPrompt(body.text);
-      let firstTurn = wrapped;
+      let assembled;
       let built;
       let manifestHash = "";
       let memorySnapshotHash = "";
@@ -17946,19 +18256,24 @@ class HeadlessDispatcher {
           rules: this.deps.rules?.enabled === true,
           gaps: (this.deps.policyGaps ?? []).filter((g) => g.agent === card.agent)
         };
-        const memoryBlock = !plan.resumeSessionId && (sources.memory || sources.rules || sources.gaps.length > 0) ? await this.memorySnapshotLocked(card, dir, sources) : { block: "", hash: "" };
+        const memoryBlock = !plan.resumeSessionId && (sources.memory || sources.rules || sources.gaps.length > 0) ? await this.memorySnapshotLocked(card, dir, sources) : { block: "", hash: "", parts: [] };
         memorySnapshotHash = plan.resumeSessionId ? plan.memorySnapshotHash === undefined ? "" : plan.memorySnapshotHash : memoryBlock.hash;
-        firstTurn = composeFirstTurnPrompt(skills.listing, composeMemoryWrapped(body.text, memoryBlock.block));
-        const promptBody = plan.resumeSessionId ? `${RESUME_CONTINUATION_MESSAGE}
-
-${wrapped}` : firstTurn;
-        const promptFile = await this.writeGrokPrompt(card.agent, dir, promptBody);
+        const prompt = assembleHeadlessPrompt({
+          agent: card.agent,
+          turn: plan.resumeSessionId ? "resume" : "first",
+          listing: skills.listing,
+          memoryBlock: memoryBlock.block,
+          memoryParts: memoryBlock.parts,
+          cardBody: body.text
+        });
+        assembled = prompt;
+        const promptFile = await this.writeGrokPrompt(card.agent, dir, prompt.user);
         built = buildAgentArgv({
           agent: card.agent,
           cwd,
           sessionId: plan.sessionId,
           resumeSessionId: plan.resumeSessionId,
-          hint: HEADLESS_WORKER_HINT,
+          hint: prompt.system,
           prompt: card.prompt,
           promptFile,
           permissions: this.deps.config.permissions,
@@ -18000,8 +18315,9 @@ ${wrapped}` : firstTurn;
             attempt: plan.attempts,
             dispatchHandoffId: card.dispatchHandoffId,
             fingerprint: promptFingerprint2,
-            system: HEADLESS_WORKER_HINT,
-            user: promptBody
+            system: prompt.system,
+            user: prompt.user,
+            sections: prompt.sections
           }));
         } catch (err) {
           const code = err?.code;
@@ -18107,9 +18423,7 @@ ${wrapped}` : firstTurn;
       const stdin = child.stdin;
       if (stdin) {
         stdin.on("error", () => {});
-        const payload = argv.promptTransport === "stdin" ? argv.continuationMessage ? `${argv.continuationMessage}
-
-${wrapped}` : firstTurn : "";
+        const payload = argv.promptTransport === "stdin" ? assembled.user : "";
         try {
           stdin.end(payload);
         } catch (err) {
@@ -18228,10 +18542,10 @@ ${wrapped}` : firstTurn : "";
       const errors2 = readErrors > 0 ? ` \xB7 read_errors ${readErrors}` : "";
       process.stderr.write(`[headless] memory_snapshot (${id}): empty \u2014 no block${errors2}${oversize} \xB7 load_ms ${ms2}
 `);
-      return { block: "", hash: "" };
+      return { block: "", hash: "", parts: [] };
     }
     await writePrivateFileAtomic(dir, target, block2);
-    const hash = createHash13("sha256").update(Buffer.from(block2, "utf8")).digest("hex");
+    const hash = createHash14("sha256").update(Buffer.from(block2, "utf8")).digest("hex");
     const ms = Math.round(performance.now() - started);
     const t = snap?.flags.truncated;
     const truncated = ["persona", "index", "guideline", "entries"].filter((k) => t?.[k]).join(",") || "none";
@@ -18239,7 +18553,7 @@ ${wrapped}` : firstTurn : "";
     const rulesField = rules ? ` \xB7 rules ${rules.included}/${rules.eligible}` : "";
     process.stderr.write(`[headless] memory_snapshot (${id}): block ${Buffer.byteLength(block2, "utf8")} B \xB7 text ${Buffer.byteLength(text, "utf8")} B${noticeField}${rulesField} \xB7 neutralized ${flags.neutralizedLines} \xB7 env_redacted ${flags.envRedacted ? "yes" : "no"} \xB7 read_errors ${readErrors}${oversize} \xB7 truncated ${truncated} \xB7 load_ms ${ms}
 `);
-    return { block: block2, hash };
+    return { block: block2, hash, parts: memoryFenceParts(notice, rules?.section ?? "", snap?.text ?? "") };
   }
   async writeGrokPrompt(agent, dir, wrapped) {
     if (agent !== "grok")
@@ -22079,7 +22393,7 @@ function readMemoryDoctorInput(loom, platform = process.platform) {
 }
 
 // packages/cli/src/prompt-cli.ts
-import { createHash as createHash16 } from "crypto";
+import { createHash as createHash17 } from "crypto";
 import { existsSync as existsSync22, lstatSync as lstatSync10, readdirSync as readdirSync7 } from "fs";
 import { join as join35 } from "path";
 var AGENT_KINDS4 = ["claude", "codex", "grok"];
@@ -22180,7 +22494,7 @@ async function runPromptCommand(verb, args, flags, deps) {
   return stale === null && shaOk ? 0 : 1;
 }
 function sha256Hex2(text) {
-  return createHash16("sha256").update(Buffer.from(text, "utf8")).digest("hex");
+  return createHash17("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
 function currentAttempts(dir, session, except) {
   const out = [];
@@ -22261,12 +22575,24 @@ function scanPeerCards(loomDir2, peerId) {
   }
   return { cards, skipped };
 }
+var V1_SECTIONS_LINE = "sections: (not recorded \u2014 Loom 0.41.0 record)";
 function printRecord(deps, cardId, r, stale, shaOk) {
   const v = visibleText;
   deps.stdout(`card ${v(cardId)} \xB7 agent ${r.agent} \xB7 turn ${r.turn} \xB7 attempt ${r.attempt}${stale !== null ? ` \xB7 STALE \u2014 earlier dispatch ${v(stale)}` : ""}`);
   deps.stdout(`fingerprint ${v(r.fingerprint)}`);
   deps.stdout(`system: ${v(r.systemChannel)} \xB7 ${utf8Bytes(r.system)} B`);
   deps.stdout(`user: ${v(r.userChannel)} \xB7 ${utf8Bytes(r.user)} B \xB7 sha256 ${v(r.userSha256)} ${shaOk ? "ok" : "MISMATCH"}`);
+  if (r.sections === undefined) {
+    deps.stdout(V1_SECTIONS_LINE);
+  } else {
+    deps.stdout("sections:");
+    for (const s of r.sections) {
+      deps.stdout(`  ${v(s.id)} \xB7 ${v(s.channel)} \xB7 ${v(s.version)} \xB7 ${s.bytes} B \xB7 sha256 ${v(s.sha256.slice(0, 12))}`);
+      if (s.parts !== undefined) {
+        deps.stdout(`    parts: ${s.parts.map((p) => `${v(p.id)} ${v(p.version)}`).join(", ")}`);
+      }
+    }
+  }
   deps.stdout("");
   deps.stdout(`--- system (${v(r.systemChannel)}) ---`);
   deps.stdout(v(r.system));
@@ -22307,7 +22633,7 @@ function realPromptCliDeps() {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.41.0";
+var VERSION = "0.42.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);

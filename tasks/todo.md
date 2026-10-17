@@ -23,7 +23,7 @@
    - [x] **3부 — v0.37.0 정책 정직성** (shipped 2026-10-17) — `addcd52`/`ae65e42` P1 → `1ba49c2`/`cd5130c`/`af47f4d` P2 → `b16b900`/`ddecf6d`/`29bbe62`/`2e82446` P3 → `db0cbfb`/`bf010c2` P4 → `a2abb7f`/`1ca58e6` P4b → `4fd633f`/`8140c97` P4c(P3 검증 교정) → `9c0ad0e`/`00af288` P4d(Astra 0020 교정) → `f4c7073` 스모크 → `9a402e4` VERSION 0.37.0 + dist → P5c 문서(USER_GUIDE §20.12 · PROTOCOL · implementation-notes §0.37.0 (1)~(65) · 스모크 `POLICY-HONESTY-SMOKE-0370.md`). Done when (a)~(j). 스모크 source/dist 10/10 · **real-cli ① 4/4 PASS(오너 승인 1회 — R55-M2 ship 조건 충족)**. 완료 기준 (c) 인도. ship 검사 green + 최종 리뷰(loom-advisor Opus 5.5 high) = ship → (k) 체크.
    - [x] **4부 — v0.38.0 기억 쓰기 경로** (shipped `2b75ae3`) → 후속 **v0.39.0** codex 스킬 읽기 hint 예외(shipped `11e909a`) → **v0.40.0** 표지 흉내 접기 강화 · R8 · 헤드리스 카드 본문 무력화 · 스킬 이름/조립 항목 판정(shipped 2026-10-18 · R59 · implementation-notes §0.40.0).
    4단계 완료.
-5. [ ] **5단계 — 프롬프트 조립** — 1부 v0.41.0 관측(기록 + `loom prompt show`) shipped 2026-10-18 · 다음 2부 v0.42.0 섹션 manifest(바이트 보존) · 3부 v0.43.0 의미 이동(실 CLI)
+5. [ ] **5단계 — 프롬프트 조립** — 1부 v0.41.0 관측(기록 + `loom prompt show`) shipped 2026-10-18 · 2부 v0.42.0 섹션 manifest(바이트 보존) + 기록 v2 shipped 2026-10-18 · 다음 3부 v0.43.0 의미 이동(오너 승인 실 CLI)
 6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.
    (확정 2026-10-16, 순서상 마지막 — 재질문 금지 · 미착수 · 설계 `docs/UPGRADE-PLAN.md`)

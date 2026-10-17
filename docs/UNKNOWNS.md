@@ -42,13 +42,14 @@
 
 ## Gate log
 
-### 0.42.0 — 헤드리스 워커 입력의 선언형 섹션 manifest + 단일 조립기 · 바이트 보존 · 프롬프트 기록 v2 (`approved` — R61 approved-with-fixes · no R61b)
+### 0.42.0 — 헤드리스 워커 입력의 선언형 섹션 manifest + 단일 조립기 · 바이트 보존 · 프롬프트 기록 v2 (`approved` — R61 approved-with-fixes · no R61b · implemented (P1–P4) · shipped 2026-10-18)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.42.0 (`approved` — R61 approved-with-fixes, 반영 완료 · no R61b · author-close 불가) · MINOR · 업그레이드 5단계 2부(구조화) · 근거 = §0.41.0 D1 · R60-L1 + 0.41.0 Next + 아키텍트 증거 팩(HEAD `cf44097` — §7 후보 B) · 범위 = 락 D1~D9(아키텍트 2026-10-18) |
 | **Date** | 2026-10-18 |
 | **Review** | R61 **done 2026-10-18** — approved-with-fixes H0 · M2 · L4 (M1 v2 검사 기준표 = `prompt-record.ts` 동결 상수 `PROMPT_RECORD_V2_SECTIONS` · `PROMPT_MANIFEST` 투영 테스트 · R9 구조 변경 = 새 레코드 버전 · R14 · UK-1 · UK-5 · M2 C3 편집 5곳 · 2파일 — `prompt-cli.test.ts:249` · `:250` · L1 R3 max 규칙 · `task-marker` 0.30.0 · P1 착수 전 이력 명령 · L2 `memory-snapshot` 판정 = `composeFenceText` 식 · 조립기 parts ⇔ 블록 일관성 throw · L3 골든 리터럴 기대값 · 빈 본문 칸 · grep `composeMemoryWrapped` · `assembled` 자리 · L4 v2 변조 `user` → `bad sections`) — (`WORKFLOW.md` §5.1 영속 형식 변경(기록 `version: 2`) · 운영자 CLI 출력 변경(`show` `sections:` 블록) · 시스템/데이터 경계를 만드는 조립 경로 교체) |
+| **Implemented** | 2026-10-18 — P1 `73e489c` → `4c19210` · verify 0107 PASS(1 L — R61-L1 이력 결론 → implementation-notes §0.42.0 (1): 0.36 뒤 `card-contract.ts` · `redact.ts` · `marker-fold.ts` 변경 = `ace1e08`/`d47f566`(0.40.0)뿐 · `redact.ts` 마지막 변경 `f6253c3`(0.35.0 · 출력 바이트 동일) → version 무변경) · P2 `55befda` → `3d7d1ab` · verify 0109 PASS · P3 `adcc7a2` → `d93dae0` · P3 verify 0111 FAIL 1 L(`${s.bytes}` visibleText 미경유 — 검증된 정수 · 수용 · implementation-notes (8)) · 최종 advise 0113 = SHIP · 스위트 3901 pass / 1 알려진 fail · 실 CLI 0회 |
 | **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `ec11d00`) · `headless-worker.ts:188-189` · `:1853` · `:1882-1888` · `:1919-1921` · `:1931-1944` · `:1957` · `:1985-2007` · `:2120-2125` · `:2235-2297` · `:2299-2309` · `agent-argv.ts:20-36` · `:286` · `:476-482` · `skill-prompt.ts:103` · `:130-132` · `memory-inject.ts:6` · `:11-12` · `:65-83` · `:96-99` · `memory-snapshot.ts:193` · `:310-312` · `memory-snapshot.test.ts:225` · `card-contract.ts:27` · `:123-128` · `marker-fold.ts:229-244` · `prompt-record.ts:18` · `:52-64` · `:82-114` · `:142-171` · `:237-272` · `prompt-cli.ts:184-193` · `:292-319` · `prompt-record.test.ts:92-104` · `:317-321` · `headless-prompt-record.test.ts:67-79` · `:412-414` · `:493-497` · `prompt-cli.test.ts:169-185` |
 
 | 분면 | 내용 |
@@ -63,14 +64,14 @@
 | # | 요지 | 출발 기본값 / 착수 영향 | R61 판정 |
 |---|------|-------------|----------|
 | UK-1 | **0.43 의미 이동과 manifest 형의 적합** — 시스템 채널 다중 섹션 · 구분자 · 리더 분할 · version과 fingerprint | R2 꼬리 귀속이 임의 구분자 흡수 · 안 맞으면 0.43이 레코드 v3과 함께 변경 | 비차단 수용(R61-M1로 위험 감소 — R9 구조 변경 = 새 레코드 버전 · v2 기준표 `PROMPT_RECORD_V2_SECTIONS`는 읽기 갈래로 남음 · 투영 테스트가 결정 강제) |
-| UK-2 | **조립기 + 섹션 sha 비용** — spawn마다 sha ≤ 5개 + 자체 검사 비교(최대 ~1.2 MiB) | P2에서 큰 펜스 · 상한 본문 1회 시간 기록(단언 아님) | 비차단 수용 |
+| UK-2 | **조립기 + 섹션 sha 비용** — spawn마다 sha ≤ 5개 + 자체 검사 비교(최대 ~1.2 MiB) | P2에서 큰 펜스 · 상한 본문 1회 시간 기록(단언 아님) | 비차단 수용. **표본 1회(P2 · 2026-10-18 · 이 머신):** 60k 본문 · 펜스 켬 · v2 기록 36–39 ms — 표본 하나이지 측정이 아니다 · open 유지 |
 | UK-3 | **펜스 원천별 구간 · persona/색인/지침/기억 구별의 필요** | parts = `{ id, version }` 셋(C1 · C2) · 0.43 persona 이동 때 재검토 | 비차단 수용(C1 · C2 draft 수용) |
 | UK-4 | **섹션 version 표류** — 바이트 변경에 version 미갱신 | 골든 red가 리뷰 강제 · 0.43에서 version이 fingerprint에 들어가면 차단 후보 | 비차단 수용(R3 max 규칙 — R61-L1 · 이력 명령 하나로 검산) |
 | UK-5 | **v1 읽기 갈래 수명** — 0.41 기록 잔존량 · 걷어낼 시점 | 정리 경로 없음(§0.41.0 계급 50) → 유지 | 비차단 수용(R61-M1로 위험 감소 — v2도 같은 형 · 동결 기준표 덕분에 0.43 manifest 변경이 v2 기록을 `invalid`로 만들지 않음) |
 
 **승계:** §0.41.0 UK-4(claude · grok 시스템 채널 수신 효과 — 0.43 착수 전 차단 후보) · UK-2(codex 재개 두 입력) — 0.42는 채널을 옮기지 않으므로 상태 변화 없음.
 
-**Current decision:** **`approved` (R61 approved-with-fixes → M1·M2·L1·L2·L3·L4 반영, no R61b, 2026-10-18).** D1~D9 아키텍트 락(2026-10-18 — D2 version 규칙 적용 문면은 R3 max 규칙, R61-L1) · 작성자 정밀화 R1~R14(R9 → 수정 R61-M1 — 기준표 `PROMPT_RECORD_V2_SECTIONS` · 나머지 수용 · R3 + L1 · R5 + L3(c)(d) · R6 + L2 · R7 + L3(a)(b) · R10 + L4 · R14 + M1 문면) · C1 · C2 draft 수용 · C3 → 수정(R61-M2 — 편집 5곳 · 2파일) · 수용 손실 계급 55~61(61에 parts ⇔ 블록 불일치 포함) + 무번호 · UK-1~UK-5(전부 비차단 수용 · UK-1 · UK-5는 M1로 위험 감소) · §0.41.0 UK-4 승계는 0.43 착수 전 차단 후보 유지. 구현 착수 = **P1**(착수 전 이력 명령 — R61-L1).
+**Current decision:** **`approved` (R61 approved-with-fixes → M1·M2·L1·L2·L3·L4 반영, no R61b, 2026-10-18).** D1~D9 아키텍트 락(2026-10-18 — D2 version 규칙 적용 문면은 R3 max 규칙, R61-L1) · 작성자 정밀화 R1~R14(R9 → 수정 R61-M1 — 기준표 `PROMPT_RECORD_V2_SECTIONS` · 나머지 수용 · R3 + L1 · R5 + L3(c)(d) · R6 + L2 · R7 + L3(a)(b) · R10 + L4 · R14 + M1 문면) · C1 · C2 draft 수용 · C3 → 수정(R61-M2 — 편집 5곳 · 2파일) · 수용 손실 계급 55~61(61에 parts ⇔ 블록 불일치 포함) + 무번호 · UK-1~UK-5(전부 비차단 수용 · UK-1 · UK-5는 M1로 위험 감소) · §0.41.0 UK-4 승계는 0.43 착수 전 차단 후보 유지. 구현 착수 = **P1**(착수 전 이력 명령 — R61-L1). **2026-10-18 — implemented (P1 `73e489c`/`4c19210` · P2 `55befda`/`3d7d1ab` · P3 `adcc7a2`/`d93dae0` · P4) · shipped:** verify P1 0107 PASS(1 L — 이력 결론 기록) · P2 0109 PASS · P3 verify 0111 FAIL 1 L(`${s.bytes}` visibleText 미경유 — 검증된 정수 · 수용 · implementation-notes (8)) · 최종 advise 0113 = SHIP · 실 CLI 0회(D8). UK-2 표본 1회(위 — 36–39 ms · 측정 아님) · UK-1 · UK-3 0.43 착수 때 재검토 · UK-4 미관찰 · UK-5 유지 · §0.41.0 UK-4 승계(0.43 착수 전 차단 후보 유지). **Next = 0.43.0 의미 이동 (5단계 3부 — 오너 승인 실 CLI 필요).**
 
 ### 0.41.0 — 헤드리스 워커가 받은 프롬프트 기록 + `loom prompt show` (`approved` — R60 approved-with-fixes · no R60b · implemented (P1–P4 + P1b) · shipped 2026-10-18)
 

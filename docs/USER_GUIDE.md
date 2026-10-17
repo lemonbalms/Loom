@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.41.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.42.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -840,7 +840,7 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
   session.json            # agent · cwd · sessionId · fingerprint · attempts · pid/pgid · state · resultSent …
   transcript-<N>.jsonl    # N번째 시도의 stdout 원문 (스트림 JSON)
   transcript-<N>.stderr   # 같은 시도의 stderr
-  prompt-<N>.json         # 0.41.0 · N번째 시도에 Loom이 보낸 시스템 · 사용자 채널 바이트 (§15.6)
+  prompt-<N>.json         # 0.41.0 · N번째 시도에 Loom이 보낸 시스템 · 사용자 채널 바이트 (§15.6 · 0.42.0부터 섹션 추적 포함)
 ```
 
 - 디렉터리 0700 · 파일 0600. **redaction 없는 평문** — 카드 프롬프트·도구 출력·코드가 그대로 남는다. 업로드 경로는 없다. 회전·GC도 아직 없다(직접 지운다). 0.41.0부터 `prompt-<N>.json`이 claude · codex 카드에서도 카드 본문을 축자로 남긴다(grok은 0.30부터 `prompt.txt`) — §15.6.
@@ -883,7 +883,7 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 - 와이어는 그대로다(`CardResultPayload` 필드 추가 없음) — 구 타워도 받는다.
 - 0.31.0도 bridge 기동에 **herdr가 필요하다**(헤드리스만 써도).
 
-### 15.6 워커가 받은 프롬프트 보기 — `loom prompt show` (v0.41.0)
+### 15.6 워커가 받은 프롬프트 보기 — `loom prompt show` (v0.41.0 · 섹션 블록 v0.42.0)
 
 **하고 싶은 일:** "이 헤드리스 워커가 **실제로** 무엇을 받았나"를 한 명령으로 본다. 0.40.0까지는 다시 볼 길이 없었다 — claude · codex의 stdin은 저장되지 않고, grok `prompt.txt`는 재개 때 덮어써지며, hint는 지금 바이너리의 상수로만 남았다.
 
@@ -891,12 +891,13 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 
 | 키 | 뜻 |
 |----|----|
-| `version` · `agent` · `turn` · `attempt` | `1` · `claude`/`codex`/`grok` · `first`/`resume` · 시도 번호 |
+| `version` · `agent` · `turn` · `attempt` | `2`(0.42.0부터 · 0.41.0 기록은 `1`) · `claude`/`codex`/`grok` · `first`/`resume` · 시도 번호 |
 | `dispatchHandoffId` | 이 기록이 어느 dispatch의 것인지(재개 · 입양도 원 dispatch) |
 | `fingerprint` | 이 spawn이 `session.json`에 미리 적은 값 그대로 |
 | `systemChannel` · `system` | claude `claude --append-system-prompt` · codex `codex -c developer_instructions` · grok `grok --rules` — 그 채널로 넘긴 hint 문자열 |
 | `userChannel` · `user` · `userSha256` | claude · codex `stdin` · grok `grok --prompt-file` — 사용자 채널 바이트 전체(첫 턴 = 스킬 목록 · 작업 표지 · 기억 펜스 · 카드 본문(0.40.0 무력화 뒤) / 재개 = 고정 재개 문구 + 표지 · 본문)와 그 sha256 |
-| `userArgv` | **codex 재개에만** — `codex exec resume`의 위치 인자(고정 재개 문구) |
+| `sections` | **0.42.0부터(version 2)** — `userSha256` 바로 뒤. 섹션마다 `id` · `channel` · `version` · `offset` · `bytes` · `sha256`(`memory-fence`만 `parts`) — `offset` · `bytes`는 그 채널 텍스트의 UTF-8 바이트 · 섹션들이 각 채널 텍스트를 틈 없이 덮는다(아래 "섹션 manifest") |
+| `userArgv` | **codex 재개에만** — `codex exec resume`의 위치 인자(고정 재개 문구) · version 2에서는 `sections` 뒤 맨 끝 |
 
 - **워커가 받는 바이트는 하나도 바뀌지 않는다** — argv · stdin · grok `prompt.txt` · hint · fingerprint · `session.json` 그대로. 그래서 0.41.0으로 올릴 때(및 0.40.0으로 되돌릴 때) **drain이 필요 없다**. 되돌리면 기록 파일은 남고 아무도 읽지 않는다.
 - **쓰기 전용이다.** 재개 · recovery · 입양 · fingerprint 어느 것도 이 파일을 다시 읽지 않는다 — 지우거나 고쳐도 워커 동작은 그대로다.
@@ -904,6 +905,8 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 - **기록 ≠ spawn 증거.** 기록은 write-ahead 직후 · 마지막 경로 검사(abandon · cwd 재검사 · 살아 있는 그룹 재검사) 앞에 쓰인다 → spawn하지 않은 시도(`cwd_not_allowed` 등)에도 남는다. 워커가 실제로 떴는지는 `transcript-<N>.jsonl`이 있는지로 본다.
 - **추가 redaction 없음.** 펜스는 원래대로 env redaction 뒤 바이트, 카드 본문은 제3자 텍스트 축자다. 카드 본문에 비밀을 넣었다면 그대로 디스크에 남는다. 정리 명령은 없다 — 카드 디렉터리를 직접 지운다.
 - pane backend · sticky host 경로의 카드는 기록이 없다(hint도 받지 않는다).
+
+**섹션 manifest (0.42.0).** 워커 입력은 이제 선언 하나(`PROMPT_MANIFEST` — 코드 안의 동결 상수, 파일이 아니다)와 조립기 하나가 만든다. 섹션은 여섯 — 시스템 채널 `worker-hint`(hint 7줄 · 0.39.0) · 사용자 채널 `resume-continuation`(재개만 · 고정 재개 문구 · 0.30.0) · `skill-listing`(첫 턴 · 선택 · 스킬 목록 · 0.39.0) · `task-marker`(필수 · 작업 표지 · 0.30.0) · `memory-fence`(첫 턴 · 선택 · 기억 펜스 · 0.40.0) · `card-body`(필수 · 무력화 뒤 카드 본문 · 0.40.0). 선언 순서가 곧 채널 안 바이트 순서이고, 섹션 사이 구분자 `"\n\n"`은 **앞 섹션의 꼬리**로 센다(그래서 `skill-listing` · `task-marker` 등의 sha256은 꼬리를 포함한다). 펜스 안의 정책 안내문 · 규칙 · 기억 리더 출력은 섹션이 아니라 `parts`(`policy-notice` 0.37.0 · `standing-rules` 0.37.0 · `memory-snapshot` 0.36.0) — 펜스 전체에 env redaction이 한 번 걸리므로 원천별 바이트 구간은 정의되지 않는다. 각 `version`은 "그 섹션이 헤드리스 워커 입력에 처음 들어간 릴리스"와 "그 바이트를 만드는 코드가 출력을 바꾼 마지막 릴리스" 중 늦은 쪽이다(선언된 메타데이터 — 실행 시 검사하지 않는다). **워커가 받는 바이트는 0.41.0과 하나도 다르지 않다**(골든 테스트 + 기존 가짜 CLI 테스트) — argv · stdin · grok `prompt.txt` · hint · fingerprint · `session.json` 그대로라 0.42.0으로 올릴 때도 **drain이 필요 없다**. 바뀐 것은 조립 코드의 자리 · 기록 형식(version 2) · `show`의 `sections:` 블록뿐이다.
 
 ```text
 loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent claude|codex|grok] [--json] [--profile <p>]
@@ -921,6 +924,9 @@ card <cardId> · agent <a> · turn <first|resume> · attempt <n>[ · STALE — e
 fingerprint <hex>
 system: <systemChannel> · <bytes> B
 user: <userChannel> · <bytes> B · sha256 <hex> ok|MISMATCH
+sections:                                            ← 0.42.0 · version 2 기록
+  <id> · <channel> · <version> · <bytes> B · sha256 <앞 12 hex>
+    parts: <id> <version>[, <id> <version>]…         ← memory-fence 다음 줄에만
 
 --- system (<systemChannel>) ---
 <hint>
@@ -930,7 +936,21 @@ user: <userChannel> · <bytes> B · sha256 <hex> ok|MISMATCH
 <위치 인자>
 ```
 
-- **텍스트 모드는 터미널을 지킨다** — 출력하는 모든 필드(본문 · 머리 줄 · 후보 목록의 `roomId` · `startedAt` · 경로 · 오류 사유)의 C0 제어(TAB · LF 제외) · DEL · C1 · bidi 제어를 `\u{1b}` 꼴 보이는 표기로 바꾼다. 그래서 **텍스트 출력 ≠ 축자 바이트**다. 바이트 수는 원본 기준.
+- **`sections:` 블록 (0.42.0)** — 머리 넷째 줄(`user: …`) 뒤 · 빈 줄 앞. 시스템 섹션 먼저, 그다음 사용자 섹션(manifest 순서 · 기록에 있는 섹션만). 예 — 스킬 목록과 기억 펜스(안내문 · 규칙 · 기억 셋 다)가 켜진 첫 턴(바이트 수 · sha는 자리표시):
+
+```text
+sections:
+  worker-hint · system · 0.39.0 · 497 B · sha256 <12 hex>
+  skill-listing · user · 0.39.0 · <bytes> B · sha256 <12 hex>
+  task-marker · user · 0.30.0 · <bytes> B · sha256 <12 hex>
+  memory-fence · user · 0.40.0 · <bytes> B · sha256 <12 hex>
+    parts: policy-notice 0.37.0, standing-rules 0.37.0, memory-snapshot 0.36.0
+  card-body · user · 0.40.0 · <bytes> B · sha256 <12 hex>
+```
+
+  재개 기록은 `worker-hint` · `resume-continuation` · `task-marker` · `card-body`. **0.41.0이 쓴 기록(version 1)** 은 블록 대신 한 줄 `sections: (not recorded — Loom 0.41.0 record)` — 소급 계산은 하지 않는다. 0.41에서 시작해 0.42에서 재개된 카드는 `prompt-1.json` = 한 줄 · `prompt-2.json` = 블록이다. `--json`은 블록을 내지 않는다(파일 바이트 그대로) · 새 플래그 없음.
+- **`bad sections` (0.42.0)** — version 2 기록은 읽을 때 섹션 검사를 거친다: 아는 id · 맞는 채널과 턴 · 필수 섹션 · 순서 · 중복 없음 · `version` 형식 · 채널마다 틈도 겹침도 없이 끝까지 덮기 · 구간마다 sha256 · `parts`는 `memory-fence`에만. 어긋나면 `invalid prompt record <path>: bad sections`로 exit 1, 본문은 보이지 않는다(사유에 어느 원소인지도 싣지 않는다 · `sections` 키가 아예 없으면 `missing sections`). 그래서 **version 2 기록의 `user`를 한 바이트 고치면 `MISMATCH`가 아니라 `bad sections`** 가 된다 — `MISMATCH`는 version 1 기록과, 섹션까지 일관되게 고친 version 2 기록에서만 나온다.
+- **텍스트 모드는 터미널을 지킨다** — 출력하는 모든 필드(본문 · 머리 줄 · 섹션 id · version · 후보 목록의 `roomId` · `startedAt` · 경로 · 오류 사유)의 C0 제어(TAB · LF 제외) · DEL · C1 · bidi 제어를 `\u{1b}` 꼴 보이는 표기로 바꾼다. 그래서 **텍스트 출력 ≠ 축자 바이트**다. 바이트 수는 원본 기준.
 - **`--json` = 검사를 통과한 파일 바이트 그대로**(다시 직렬화하지 않는다). 파일은 쓸 때 이미 DEL · C1 · bidi를 `\u00XX` / `\u20XX`로 이스케이프했으므로 터미널에 안전하다. STALE · MISMATCH면 바이트는 그대로 stdout에 내고 stderr에 한 줄(`loom prompt: attempt <n> of <cardId> is STALE — earlier dispatch <id>` / `…: sha256 MISMATCH`) 뒤 exit 1.
 - **카드 워커 안에서는 거부한다** — `LOOM_CARD`가 비어 있지 않으면 인자를 보기 전에, 아무것도 읽지 않고 exit 1. **가드이지 경계가 아니다**(워커가 카드 디렉터리를 직접 읽는 것은 막지 못한다 — hint "cwd 밖 금지" · CLI 샌드박스가 남는 방어).
 
@@ -942,9 +962,9 @@ user: <userChannel> · <bytes> B · sha256 <hex> ok|MISMATCH
 | 카드 0개 | `loom prompt: no headless card session for <cardId> under profile <p> (cards from an earlier peer id of this profile are not searched)` | 1 |
 | 모호 | `loom prompt: <cardId> matches <k> headless card sessions under profile <p>` · 후보마다 `  <roomId> · <agent> · attempts <n> · started <startedAt>` · 마지막 `pick one with --room <roomId> --agent <agent>` | 1 |
 | 기록 없음 | `loom prompt: attempt <n> of <cardId> has no prompt record (the write failed, or the attempt ran before Loom 0.41.0)` · 같은 dispatch의 다른 시도 기록이 있으면 `available attempts: <n>` | 1 |
-| 형식 오류 | `loom prompt: invalid prompt record <path>: <reason>`(예: `not a regular file` · `too large`(8 MiB 초과 — 읽지 않는다) · 깨진 JSON · 모르는 키 · `agent mismatch`(기록의 `agent` ≠ 세션의 에이전트) · `not canonical`(파일 바이트 ≠ Loom이 쓴 정규 직렬화 — 손으로 고친 흔적, `--json`도 내지 않는다)) — 사유에 파일 내용은 싣지 않는다 | 1 |
+| 형식 오류 | `loom prompt: invalid prompt record <path>: <reason>`(예: `not a regular file` · `too large`(8 MiB 초과 — 읽지 않는다) · 깨진 JSON · 모르는 키 · `agent mismatch`(기록의 `agent` ≠ 세션의 에이전트) · `not canonical`(파일 바이트 ≠ Loom이 쓴 정규 직렬화 — 손으로 고친 흔적, `--json`도 내지 않는다) · `bad sections`(0.42.0 — version 2 섹션 검사 실패) · `missing sections`) — 사유에 파일 내용은 싣지 않는다 | 1 |
 | **STALE** | 머리 줄 끝 ` · STALE — earlier dispatch <id>` 뒤 본문을 보인다 — 기록의 `dispatchHandoffId` ≠ `session.json`의 것(같은 카드의 이전 dispatch가 남긴 기록) · "최신"과 `available attempts`에서 빠진다 | 1 |
-| **MISMATCH** | 머리 줄 `sha256 <hex> MISMATCH` 뒤 본문을 보인다 — `user`를 다시 해시한 값이 `userSha256`과 다르다(손상 · 고친 흔적) | 1 |
+| **MISMATCH** | 머리 줄 `sha256 <hex> MISMATCH` 뒤 본문을 보인다 — `user`를 다시 해시한 값이 `userSha256`과 다르다(손상 · 고친 흔적) · version 2에서는 섹션 검사가 먼저 걸러 대개 `bad sections`(위) | 1 |
 | 사용법 | `loom prompt: usage: loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent claude|codex|grok] [--json] [--profile <p>]` · `--agent` 값 오류는 `loom prompt: --agent must be claude, codex or grok` | 1 |
 
 **한계 — 설계상 수용 (0.41.0 · PLAN 계급 47~54):**
@@ -957,10 +977,21 @@ user: <userChannel> · <bytes> B · sha256 <hex> ok|MISMATCH
 6. **기록 = Loom이 두 채널로 보낸 것이지 모델이 본 전부가 아니다**(계급 52) — CLI 기본 시스템 프롬프트 · codex가 스스로 읽는 `AGENTS.md` · grok 신뢰 폴더 규칙 · claude `--plugin-dir` 스킬 주입 · 정책 argv · 재개 때 CLI가 이전 대화를 다시 싣는 방식 · codex 재개의 위치 인자와 stdin을 codex가 어떻게 합치는지는 기록에 없거나 해석되지 않는다.
 7. **pane/conv 경로는 기록하지 않는다**(계급 53).
 8. **`LOOM_CARD` 거부는 가드다**(계급 54) — 워커가 파일을 직접 읽는 것 · `LOOM_CARD`를 지운 셸은 막지 못한다.
-9. **기록은 "무엇을 보냈나"를 보일 뿐 "같다"를 증명하지 않는다** — 기억 펜스 nonce가 일부러 무작위라, 펜스가 켜진 같은 카드의 두 dispatch는 바이트가 다르다("nonce를 빼면 같다" — 증명은 0.42.0 골든 테스트 몫).
+9. **기록은 "무엇을 보냈나"를 보일 뿐 "같다"를 증명하지 않는다** — 기억 펜스 nonce가 일부러 무작위라, 펜스가 켜진 같은 카드의 두 dispatch는 바이트가 다르다("nonce를 빼면 같다" — 0.42.0 골든 테스트가 "같은 입력 + 같은 nonce → 같은 바이트"를 증명한다).
 10. **JSON 이스케이프 팽창** — 제어 문자가 많은 펜스 · 본문은 기록이 원문보다 최대 6배 커진다(새 쓰기 상한 없음 · 읽기 상한 8 MiB). Windows 미검증.
 11. **동일 사용자의 탐색 중 교체** — `show`가 카드 디렉터리를 검사한 뒤 읽기 전에 같은 사용자 프로세스가 그것을 심링크로 바꾸면 다른 기록을 그 카드의 것으로 보일 수 있다(Node에 openat 없음 · 0.31과 같은 계급 · read-only라 쓰기는 없다). 위 "심링크는 따라가지 않는다"의 예외다(verify 0097 M1).
 12. **부분 이주가 남긴 `~/.loom`** — 이주 복사가 실패한 뒤 `~/.fable`을 캐시한 bridge 프로세스가 돌고 부분 `~/.loom`이 있으면, `show`는 `~/.loom`을 읽어 복사된 더 오래된 기록을 STALE 표시 없이 보일 수 있다(0.41 이전부터의 분할 상태 — 모든 CLI 명령이 같이 겪는다 · 프로세스 안의 일시 상태라 재시작한 bridge도 `~/.loom`을 고른다 · verify 0099 M).
+
+**한계 — 설계상 수용 (0.42.0 · PLAN 계급 55~61):**
+
+1. **섹션 `version`은 선언된 메타데이터다**(계급 55) — 바이트를 바꾸고 version을 올리지 않아도 실행은 막지 않는다(골든 테스트가 바이트 변경을 잡아 리뷰에서 갱신을 강제하는 것이 방어).
+2. **펜스 `parts`에는 바이트 구간이 없다**(계급 56) — 어느 원천의 텍스트가 펜스의 어디인지 기록은 말하지 않는다(펜스 전체의 offset · bytes · sha만).
+3. **`memory-snapshot` part는 persona · 지식 색인 · 방 지침 · 기억을 구별하지 않는다**(계급 57).
+4. **섹션 추적은 Loom의 조립 분해이지 모델이 보는 구조가 아니다**(계급 58) — codex 재개 `userArgv`에는 섹션이 없다 · 위 한계 6 그대로.
+5. **0.41.0 기록(version 1)에는 섹션이 없다**(계급 59) — 한 줄로 표시 · 소급 계산 없음.
+6. **0.41.0 바이너리로 되돌리면 그 `show`는 version 2 기록을 읽지 못한다**(계급 60 — `unsupported version` / `unknown key` · exit 1) — 워커 · 게이트는 기록을 읽지 않으므로 카드 동작은 무관하다.
+7. **조립기 자체 검사 실패 → spawn 없음**(계급 61) — 섹션 추적이 보낸 바이트를 설명하지 못하면(코드 결함에서만) 그 시도는 기록 · spawn 없이 `spawn_setup_failed`로 끝난다.
+8. **`sections`도 증거이지 권위가 아니다** — offset · bytes · sha를 `user`와 함께 일관되게 고쳐 쓴 기록은 읽기 검사를 지난다(한계 1과 같은 형).
 
 ## 16. 스킬과 정책 (v0.31.0)
 

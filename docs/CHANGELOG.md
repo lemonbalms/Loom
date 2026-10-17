@@ -5,8 +5,39 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.41.0** — shipped 2026-10-18) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.42.0** — shipped 2026-10-18) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.42.0 — 2026-10-18
+
+**워커가 받은 프롬프트가 어떤 조각으로 이루어졌는지 보인다** — 0.41.0은 헤드리스 워커가 받은 바이트를 남겼지만, 그 바이트의 어디까지가 스킬 목록이고 어디서 기억 펜스가 시작하는지는 `headless-worker.ts` 한가운데의 문자열 이어 붙이기를 읽어야만 알 수 있었다(펜스 안의 머리 줄은 데이터라 텍스트를 다시 파싱하면 위조될 수 있다). 0.42.0은 오늘의 섹션 여섯(hint · 재개 문구 · 스킬 목록 · 작업 표지 · 기억 펜스 · 카드 본문)을 동결된 선언 `PROMPT_MANIFEST`로 고정하고, 조립기 하나가 첫 턴과 재개 모두에서 그 선언대로 두 채널 텍스트와 섹션 추적을 만든다. 프롬프트 기록은 version 2가 되어 섹션마다 채널 안 위치 · 길이 · sha256을 담고, `loom prompt show`가 `sections:` 블록으로 보인다. 워커가 받는 바이트는 0.41.0과 하나도 다르지 않다. 업그레이드 5단계의 둘째 조각 — 구조화다.
+
+### 가능해진 것
+
+- **`loom prompt show`의 `sections:` 블록** — 머리 줄 뒤에 섹션마다 `<id> · <channel> · <version> · <bytes> B · sha256 <앞 12 hex>`, 기억 펜스 다음 줄에 `parts: policy-notice 0.37.0, standing-rules 0.37.0, memory-snapshot 0.36.0`처럼 펜스에 들어간 원천. 0.41.0 기록은 `sections: (not recorded — Loom 0.41.0 record)` 한 줄. 새 플래그 없음 · `--json`은 파일 바이트 그대로.
+- **기록 version 2** — `prompt-<N>.json`에 `sections`(`userSha256` 바로 뒤 · codex 재개 `userArgv` 앞). 섹션들이 각 채널 텍스트를 틈 없이 덮고(구분자 `"\n\n"`은 앞 섹션의 꼬리), 읽을 때 id · 채널 · 턴 · 필수 섹션 · 순서 · 덮기 · 구간 sha256을 검사해 어긋나면 `bad sections`로 거부한다. 0.41.0 기록(version 1)은 그대로 읽힌다.
+- **섹션 버전** — 각 섹션에 "그 바이트가 마지막으로 바뀐 릴리스"(헤드리스 워커 입력에 처음 들어간 릴리스와 생산 코드가 출력을 바꾼 마지막 릴리스 중 늦은 쪽): hint 0.39.0 · 재개 문구 0.30.0 · 스킬 목록 0.39.0 · 작업 표지 0.30.0 · 기억 펜스 0.40.0 · 카드 본문 0.40.0. 0.43.0이 섹션을 채널 사이로 옮길 때 diff가 "어느 섹션이 어디로 갔나"로 읽힌다.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.41.0) | 지금 (0.42.0) |
+|---------------|---------------|
+| 기록은 `version: 1` · 열한 키(+ codex 재개 `userArgv`) | 새 기록은 **`version: 2` + `sections`** — 기록 키를 정확히 단언하는 도구가 있으면 갱신한다 |
+| `show` 텍스트 = 머리 넷 줄 → 빈 줄 → 본문 | 머리 넷 줄과 빈 줄 사이에 **`sections:` 블록(또는 v1 한 줄)** — 줄 번호로 본문을 자르던 스크립트는 갱신한다 |
+| 기록의 `user`를 한 바이트 고치면 `MISMATCH`와 함께 본문이 보였다 | version 2 기록은 **`bad sections` · exit 1 · 본문 없음** — `MISMATCH`는 version 1과 섹션까지 일관되게 고친 version 2에서만 |
+| 0.41.0 바이너리로 되돌려도 기록은 읽혔다 | 0.41.0 `show`는 version 2 기록을 `unsupported version` / `unknown key`로 거부한다(워커 · 게이트 무관) |
+| 0.39.0 업그레이드는 drain 필수 | **0.42.0은 drain 필수 아님** — argv · stdin · hint · fingerprint 무변경 |
+
+### 불변
+
+- 워커가 받는 바이트(argv — 시스템 채널 포함 · stdin · grok `prompt.txt`) · `HEADLESS_WORKER_HINT` · `RESUME_CONTINUATION_MESSAGE` · `ARGV_TEMPLATE_VERSION "0.31.0-v1"` · fingerprint 입력과 값 · `session.json` · 와이어 · `PROTOCOL_VERSION` · 완료 권위 · pane/conv 경로 · sticky host · relay · 기록 파일 이름 · 쓰는 자리 · fail-open 줄 무변경. 증명 = 3 에이전트 × 두 턴 × 목록 × 펜스 × 본문 골든 행렬(같은 입력 + 같은 nonce → 0.41.0과 같은 바이트) + 기존 가짜 CLI 테스트 무편집 green. 실 CLI 실행 없음.
+- **정직 고지(설계상 수용 손실):** 섹션 version은 선언된 메타데이터(계급 55) · 펜스 parts에는 바이트 구간이 없다(계급 56) · `memory-snapshot` part는 persona · 지식 색인 · 방 지침 · 기억을 구별하지 않는다(계급 57) · 섹션 추적 ≠ 모델이 보는 구조(계급 58) · 0.41.0 기록은 섹션 없음(계급 59) · 0.41.0 바이너리는 v2를 못 읽는다(계급 60) · 조립기 자체 검사 실패 → spawn 없이 `spawn_setup_failed`(계급 61 — 코드 결함에서만) · `sections`도 증거이지 권위가 아니다.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §15.6 · PLAN 0.42.0 · R61 · `implementation-notes.md` §0.42.0
 
 ---
 
