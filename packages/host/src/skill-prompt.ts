@@ -24,7 +24,8 @@
  * description that is not one clean line of ≤ 160 code points, throws. So does a
  * name, path or description that folds to the dispatched-task marker head `loomdispatchedtask`
  * (marker-fold.ts — the same fold skill-materialize applies to descriptions, PLAN 0.40.0
- * D2) — so nothing interpolated can forge the system/data boundary. The caller does not
+ * D2), or a composed entry line that does (clean fields can join into the marker, R7) — so
+ * nothing interpolated can forge the system/data boundary. The caller does not
  * spawn (spawn_setup_failed).
  */
 import { isAbsolute } from "node:path";
@@ -75,6 +76,12 @@ function assertDescription(description: string): void {
   if (containsMarker(description)) throw new Error("skill listing: description contains the task marker");
 }
 
+/** PLAN 0.40.0 R7 (Astra 0077): clean fields can still join into a marker line. */
+function assertEntry(entry: string): string {
+  if (containsMarker(entry)) throw new Error("skill listing: skill entry contains the task marker");
+  return entry;
+}
+
 function capLine(omitted: number): string {
   return `- (+${omitted} more): unavailable: cap`;
 }
@@ -99,13 +106,13 @@ export function renderSkillListing(
       assertDescription(skill.description);
       assertSkillMdPath(skill.skillMdPath);
       const label = skill.shadowsBuiltin === true ? SKILL_SHADOW_SUFFIX : "";
-      entries.push(`- ${skill.name}: ${skill.description} — ${skill.skillMdPath}${label}`);
+      entries.push(assertEntry(`- ${skill.name}: ${skill.description} — ${skill.skillMdPath}${label}`));
     }
   }
   for (const skill of skills.unavailable) {
     assertName(skill.name);
     if (UNSAFE_TEXT.test(skill.reason)) throw new Error("skill listing: unsafe unavailable reason");
-    entries.push(`- ${skill.name}: unavailable: ${skill.reason}`);
+    entries.push(assertEntry(`- ${skill.name}: unavailable: ${skill.reason}`));
   }
   if (entries.length === 0) return "";
   const header = agent === "claude" ? SKILL_LISTING_CLAUDE_HEADER : SKILL_LISTING_HEADER;
