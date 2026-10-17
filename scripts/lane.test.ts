@@ -16,6 +16,8 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,6 +28,7 @@ import {
   classify,
   EXIT,
   type ExitReason,
+  gitSnapshot,
   IMPL_ALLOWED_TOOLS,
   IMPL_DISALLOWED_TOOLS,
   lanePreamble,
@@ -269,9 +272,8 @@ describe("EXIT / PINS", () => {
   });
   test("tool lists", () => {
     expect(IMPL_ALLOWED_TOOLS).toContain("Bash(rm:*)");
-    expect(IMPL_ALLOWED_TOOLS).toContain(
-      "Bash(env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL HOME=* LOOM_TEST_HOME=* bun test:*)",
-    );
+    expect(IMPL_ALLOWED_TOOLS).toContain("Bash(bun run test:lane *)");
+    expect(IMPL_ALLOWED_TOOLS.filter((t) => t.startsWith("Bash(env "))).toEqual([]);
     for (const t of ["Agent", "Task", "Workflow", "Bash(git commit:*)", "Bash(ssh:*)"]) {
       expect(IMPL_DISALLOWED_TOOLS).toContain(t);
     }
@@ -1221,7 +1223,8 @@ describe("R3 snapshot failures (git PATH shim)", () => {
     const repo = gitRepo();
     const r = runLane(["impl", "--spec", spec, "--cwd", repo], {
       mode: "write",
-      extraEnv: { PATH: makeShim("diff", 2) },
+      // each snapshot runs `diff` twice (worktree + --cached) → call 3 = first post-run diff
+      extraEnv: { PATH: makeShim("diff", 3) },
     });
     expect(r.code).toBe(1);
     expect(r.record).not.toBeNull();
@@ -1245,4 +1248,98 @@ describe("R3 snapshot failures (git PATH shim)", () => {
     expect(readMeta(r.dir!).diffEmpty).toBeNull();
     rmSync(repo, { recursive: true, force: true });
   });
+});
+
+// ─── gitSnapshot (P4 0015: edits to already-untracked files) ─────────────────
+
+describe("gitSnapshot", () => {
+  const snap = (repo: string): string => {
+    const s = gitSnapshot(repo);
+    if (!s.ok) throw new Error(`snapshot failed: ${s.cmd}`);
+    return s.text;
+  };
+
+  test("untracked file edited between snapshots → texts differ", () => {
+    const repo = gitRepo();
+    const before = snap(repo);
+    writeFileSync(join(repo, "a.txt"), "a\nmore\n");
+    expect(snap(repo)).not.toBe(before);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("staged content re-staged with new bytes → texts differ", () => {
+    const repo = gitRepo();
+    spawnSync("git", ["-C", repo, "add", "a.txt"]);
+    const before = snap(repo);
+    writeFileSync(join(repo, "a.txt"), "a\nstaged again\n");
+    spawnSync("git", ["-C", repo, "add", "a.txt"]);
+    expect(snap(repo)).not.toBe(before);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("nothing changed → texts equal", () => {
+    const repo = gitRepo();
+    expect(snap(repo)).toBe(snap(repo));
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("dangling symlink → ok, described as a link (never followed)", () => {
+    const repo = gitRepo();
+    symlinkSync(join(repo, "missing-target"), join(repo, "dangling"));
+    const s = gitSnapshot(repo);
+    expect(s.ok).toBe(true);
+    if (s.ok) expect(s.text).toContain(`dangling\tlink\t${join(repo, "missing-target")}`);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("chmod +x on an untracked file → texts differ", () => {
+    const repo = gitRepo();
+    chmodSync(join(repo, "a.txt"), 0o644);
+    const before = snap(repo);
+    chmodSync(join(repo, "a.txt"), 0o755);
+    expect(snap(repo)).not.toBe(before);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("dangling symlink retargeted to another missing target → texts differ", () => {
+    const repo = gitRepo();
+    const link = join(repo, "dangling");
+    symlinkSync(join(repo, "missing-1"), link);
+    const before = snap(repo);
+    unlinkSync(link);
+    symlinkSync(join(repo, "missing-2"), link);
+    expect(snap(repo)).not.toBe(before);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("symlink retargeted between two same-content files → texts differ", () => {
+    const repo = gitRepo();
+    writeFileSync(join(repo, "b.txt"), "a\n");
+    const link = join(repo, "ln");
+    symlinkSync("a.txt", link);
+    const before = snap(repo);
+    unlinkSync(link);
+    symlinkSync("b.txt", link);
+    expect(snap(repo)).not.toBe(before);
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("untracked FIFO + symlink to it → returns promptly, never opened", () => {
+    const repo = gitRepo();
+    const mk = spawnSync("mkfifo", [join(repo, "pipe")]);
+    if (mk.error || mk.status !== 0) {
+      rmSync(repo, { recursive: true, force: true });
+      return; // mkfifo unavailable — skip
+    }
+    symlinkSync("pipe", join(repo, "pipe-link"));
+    const s = gitSnapshot(repo);
+    expect(s.ok).toBe(true);
+    if (s.ok) {
+      expect(s.text).toContain("pipe-link\tlink\tpipe");
+      // git (2026-10-17, macOS) does not list a FIFO under `ls-files --others` at all; if a
+      // version ever does, it must be described from lstat, not read.
+      if (/(^|\n)pipe\t/.test(s.text)) expect(s.text).toContain("pipe\tfifo\t");
+    }
+    rmSync(repo, { recursive: true, force: true });
+  }, 5000);
 });

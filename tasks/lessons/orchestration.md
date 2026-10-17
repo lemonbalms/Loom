@@ -333,3 +333,16 @@ Agent 도구 `model`은 별칭만 받으므로 `opus` 전달 후 해상 모델�
 교훈: 규칙 문서를 고친 웨이브는 `handoff:check`에 더해 `bun run rules:check`와 rule-router 테스트를 돌린다.
 봉인된 유닛 본문은 고치지 않고, 바뀐 규칙은 새 위치에서 "대체"로 선언한다. 전체 스위트는 커밋 전에 돌린다(이번엔 커밋 뒤에 발견).
 
+
+## 2026-10-17 — 헤드리스 레인 P4 실호출이 가짜 바이너리 테스트가 못 본 결함 4건을 냈다
+
+경위: `scripts/lane.ts`는 fake `claude`/`codex` 77+건 테스트로 그린이었다. P4 실호출(`.loom-lanes/0006`–`0019`)에서:
+1. `--allowedTools "Bash(env -u … HOME=* … bun test:*)"`가 한 번도 매칭되지 않았다 — `env`는 벗겨지는 래퍼가 아니고,
+   allow 규칙은 known-safe 아닌 `VAR=` 대입을 넘어 매칭하지 않는다(code.claude.com/docs/en/permissions). → 패키지 스크립트
+   `bun run test:lane`(scripts/lane-test.ts가 격리 env를 직접 세팅)로 교체.
+2. 레인 모델이 습관적으로 `cmd; echo "EXIT=$?"`를 붙여 거부됨(2회) · 3. heredoc으로 파일을 쓰려다 거부됨 → 프리앰블 2줄.
+4. 이미 untracked인 파일을 고친 실작업이 `refused-empty`(exit 6) — 스냅샷이 status+diff만 봤다. → untracked는 lstat 기반
+   기술(링크=readlink, 일반 파일=mode+size+sha256, 그 외=종류만·안 엶). Astra가 FIFO 정지·chmod 미감지까지 잡아 2라운드.
+교훈: 외부 CLI 래퍼는 **권한·셸 습관·작업 트리 판정이 실물에서만 드러난다** — fake 테스트 그린을 완료로 보지 말고
+실호출 스모크를 게이트로 둔다. 레인 결과 보고는 두 번 "거부 없음"이라 했지만 `meta.json`은 1건을 보였다 — 보고가 아니라 증거가 판정한다.
+수리 레인 0011·0016은 exit 5(거부 1건 뒤 허용 형태로 재수행)였다 — 아키텍트 diff 검수·재실행·Astra로만 받았고 **선례가 아니다**(§8 기록).

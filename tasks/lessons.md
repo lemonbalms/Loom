@@ -90,6 +90,7 @@
 - [orchestration] 2026-07-26 (54) `single`에서 **검증 피어 스폰 금지**(§0.5.1) — 레인 분리는 세션 승계로 성립(REVIEW 헤더 "저자 = 직전 세션"). 자문(fable)은 line 안이라 무관. 안 띄운 레인의 부재는 블로커가 아니다.
 - [orchestration] 2026-10-17 오너 모델 고정: **구현 = Opus 5.5 medium · 검증 = GPT-6 Astra high(codex) · 자문 = `loom-advisor` Opus 5.5 high**, `fable-advisor` 에이전트 배제(CLAUDE.md 규칙 8).
 - [orchestration] 2026-10-17 규칙 문서(CLAUDE.md·AGENTS.md·traps·SESSION-START) 수정 후 **`bun run rules:check` 필수** — 규칙 2(`orch.model-explicit`)는 PREREG 3.0 봉인 fixture라 본문 수정 금지(덮어쓰기는 다른 규칙에서 "대체"로).
+- [orchestration] 2026-10-17 헤드리스 레인 P4 실호출: **가짜 바이너리 테스트 77건이 못 본 결함 4건**(env-prefix allow 규칙 불일치 · `; echo $?` 덧붙이기 · heredoc 쓰기 · untracked 수정 미감지). 레인 자기보고는 "거부 없음"이라 거짓 — **`meta.json`이 판정**.
 
 ## bridge-ops — 주입 레이스·card.done·pane 정리·TUI 제출 함정·still-running·스크레이프 상한
 

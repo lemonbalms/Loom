@@ -27,16 +27,19 @@
 
 import { dlopen, FFIType } from "bun:ffi";
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   closeSync,
   copyFileSync,
   existsSync,
   fstatSync,
   ftruncateSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   statSync,
   writeFileSync,
@@ -81,8 +84,7 @@ export const PINS = {
 
 /** Design §6.1 — exact forms. */
 export const IMPL_ALLOWED_TOOLS: readonly string[] = [
-  "Bash(env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL HOME=* LOOM_TEST_HOME=* bun test:*)",
-  "Bash(env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL HOME=* LOOM_TEST_HOME=* LOOM_PROFILE=smoke bun test:*)",
+  "Bash(bun run test:lane *)",
   "Bash(bun run typecheck:*)",
   "Bash(bunx biome:*)",
   "Bash(bun run handoff:check)",
@@ -152,6 +154,8 @@ const IMPL_PREAMBLE_TAIL = [
   "Do not commit, push, stash, reset, checkout or amend. Do not use the board, room, or Loom MCP.",
   "Do not spawn agents or other CLIs. Run only the verification commands the spec names, in the",
   "exact form given. If a command is denied, stop and report the denial; do not work around it.",
+  "Run each command alone: never append `; echo`, `&&`, `||`, pipes or `$?` — the tool result already shows the exit code.",
+  "Write files only with the Edit/Write tools — never with shell redirection, heredocs or `tee`.",
   "End with: files changed, commands run with exit codes, anything left undone.",
 ];
 
@@ -662,19 +666,71 @@ export function isGitWorkTree(cwd: string): boolean {
 
 export type Snapshot = { ok: true; text: string } | { ok: false; cmd: string };
 
-/** Working-tree change set: `status --porcelain=v1 -uall` + `diff`. Any command failure → ok:false. */
+/**
+ * Working-tree change set, four parts: `status --porcelain=v1 -uall` + `diff` + `diff --cached` +
+ * one line per untracked entry (`ls-files --others --exclude-standard -z`), described from
+ * `lstat` and never followed: symlink → `<path>\tlink\t<target>`; regular file →
+ * `<path>\tfile\t<mode>\t<size>\t<sha256>` (`big:<mtimeMs>` instead of a hash above
+ * MAX_HASH_BYTES); anything else → `<path>\t<kind>\t<mode>`, never opened (a FIFO would block
+ * forever, and the snapshot runs outside the child timeout); lstat/readlink failure →
+ * `<path>\t<unreadable>`. The descriptions exist because P4 0015 edited files that were already
+ * untracked — status/diff text stayed identical and real work read as refused-empty; mode and
+ * link target are included so chmod and retargets register too. Residual: a regular file
+ * swapped for a FIFO between lstat and read (TOCTOU) is accepted. Any git command failure →
+ * ok:false.
+ */
 export function gitSnapshot(cwd: string): Snapshot {
   const cmds = [
     ["-C", cwd, "status", "--porcelain=v1", "-uall"],
     ["-C", cwd, "diff"],
+    ["-C", cwd, "diff", "--cached"],
+    ["-C", cwd, "ls-files", "--others", "--exclude-standard", "-z"],
   ];
-  const parts: string[] = [];
+  const outs: string[] = [];
   for (const c of cmds) {
     const r = spawnSync("git", c, GIT_SPAWN);
     if (r.error || r.status !== 0) return { ok: false, cmd: `git ${c.join(" ")}` };
-    parts.push(r.stdout ?? "");
+    outs.push(r.stdout ?? "");
   }
-  return { ok: true, text: parts.join("\n--diff--\n") };
+  const untracked = (outs.pop() ?? "")
+    .split("\0")
+    .filter((p) => p !== "")
+    .map((p) => describeUntracked(cwd, p));
+  outs.push(untracked.join("\n"));
+  return { ok: true, text: outs.join("\n--diff--\n") };
+}
+
+/** Regular files above this size are described by mtime instead of being read and hashed. */
+const MAX_HASH_BYTES = 16 * 1024 * 1024;
+
+function describeUntracked(cwd: string, p: string): string {
+  const full = join(cwd, p);
+  try {
+    const st = lstatSync(full);
+    const mode = (st.mode & 0o7777).toString(8);
+    if (st.isSymbolicLink()) return `${p}\tlink\t${readlinkSync(full)}`;
+    if (st.isFile()) {
+      const hash =
+        st.size <= MAX_HASH_BYTES
+          ? createHash("sha256").update(readFileSync(full)).digest("hex")
+          : `big:${st.mtimeMs}`;
+      return `${p}\tfile\t${mode}\t${st.size}\t${hash}`;
+    }
+    const kind = st.isDirectory()
+      ? "dir"
+      : st.isFIFO()
+        ? "fifo"
+        : st.isSocket()
+          ? "socket"
+          : st.isCharacterDevice()
+            ? "char"
+            : st.isBlockDevice()
+              ? "block"
+              : "other";
+    return `${p}\t${kind}\t${mode}`;
+  } catch {
+    return `${p}\t<unreadable>`;
+  }
 }
 
 // ─── Child run ───────────────────────────────────────────────────────────────

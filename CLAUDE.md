@@ -67,7 +67,7 @@
      내부 스크립트로 codex를 띄워 감지되지 않으니 쓰지 않는다. `check-agent-model.ts`가 `fable-advisor` 에이전트·`fable`
      모델을 막고, `loom-advisor`에 `model`·high 아닌 `effort`가 붙으면 막고, 그 밖의 타입엔 `model`을 요구한다.
    - 폴백: lane.ts를 못 쓰면 in-harness `Agent` `model: "opus"`·`effort: "medium"`(구현)으로 하되 사유를 보고한다.
-     **P4 실호출 스모크 전까지 impl·advise 레인은 실전 미검증**이라 이 폴백이 허용된다. fork는 본세션 모델로 돈다.
+     impl·advise·verify 레인은 P4 실호출 스모크(2026-10-17)로 검증됐으니 폴백은 lane.ts가 실제로 안 될 때만 쓴다. fork는 본세션 모델로 돈다.
      **검증엔 폴백이 없다:** lane.ts verify가 안 되면 같은 벤더(Claude) `Agent`로 대신하지 말고 막힘으로 보고한다.
    - `fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제(전역 CLAUDE.md의 fable-advisor 자문·최종 리뷰
      지시도 위 자문으로 대체). 해제·변경은 오너만.

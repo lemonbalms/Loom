@@ -17,10 +17,10 @@ sources:
       note: "신규 유닛 없음 — 2026-10-17 headless lanes P3: Impl delegation 행이 lane.ts impl/verify + meta.json 증거로 바뀜; agents.impl-delegation 다이제스트만 갱신; advisor fix-first 반영(rule-8 in-harness 경로 허용 · Codex note 7 superseded) (이전 receipt: 레인 모델 고정; Phase 1 최초 등록 2026-07-26 — 13건)"
       at: "2026-10-17"
   - file: "CLAUDE.md"
-    sha8: "4b8a03b8"
+    sha8: "a6b34cdf"
     triage:
-      for_sha8: "4b8a03b8"
-      note: "신규 유닛 없음(보류) — 2026-10-17 headless lanes P3: 규칙 3(Workflow는 읽기 전용 팬아웃) · 규칙 5(Claude 레인 표면 = lane.ts) · 규칙 8(실행 = lane.ts, meta.json 증거, 훅 목록) 갱신. 규칙 2(orch.model-explicit, PREREG 3.0 봉인)는 원문 유지. 규칙 8 라우팅 유닛 등록은 Phase 3 soft close 동안 보류. advisor fix-first 반영(규칙 5 lane.ts claim 범위 · 규칙 8 verify 무폴백 · --cwd 범위). 기존 유닛 orch.parallel·orch.lane-placement 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 7건)"
+      for_sha8: "a6b34cdf"
+      note: "신규 유닛 없음(보류) — 2026-10-17 headless lanes P4: 규칙 8 폴백 문장만 갱신(레인 실전 검증 완료, 등록 유닛 무변경). 이전 P3: 규칙 3(Workflow는 읽기 전용 팬아웃) · 규칙 5(Claude 레인 표면 = lane.ts) · 규칙 8(실행 = lane.ts, meta.json 증거, 훅 목록) 갱신. 규칙 2(orch.model-explicit, PREREG 3.0 봉인)는 원문 유지. 규칙 8 라우팅 유닛 등록은 Phase 3 soft close 동안 보류. advisor fix-first 반영(규칙 5 lane.ts claim 범위 · 규칙 8 verify 무폴백 · --cwd 범위). 기존 유닛 orch.parallel·orch.lane-placement 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 7건)"
       at: "2026-10-17"
   - file: "docs/SESSION-START.md"
     sha8: "5ef7c5f4"

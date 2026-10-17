@@ -229,6 +229,8 @@ instruction, the session-start ritual, and Template R.
 Do not commit, push, stash, reset, checkout or amend. Do not use the board, room, or Loom MCP.
 Do not spawn agents or other CLIs. Run only the verification commands the spec names, in the
 exact form given. If a command is denied, stop and report the denial; do not work around it.
+Run each command alone: never append `; echo`, `&&`, `||`, pipes or `$?` — the tool result already shows the exit code.
+Write files only with the Edit/Write tools — never with shell redirection, heredocs or `tee`.
 End with: files changed, commands run with exit codes, anything left undone.
 ```
 
@@ -335,8 +337,7 @@ Add to `.claude/settings.json` `env`: `CLAUDE_CODE_SUBAGENT_MODEL=claude-opus-5-
 
 | Pattern | Note |
 |---|---|
-| `Bash(env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL HOME=* LOOM_TEST_HOME=* bun test:*)` | `check-bun-test-env.ts` requires both relay unsets; HANDOFF Must-not requires temp HOME + `LOOM_TEST_HOME` |
-| `Bash(env -u LOOM_RELAY_TOKEN -u LOOM_RELAY_URL HOME=* LOOM_TEST_HOME=* LOOM_PROFILE=smoke bun test:*)` | smoke-profile variant |
+| `Bash(bun run test:lane *)` | package script `scripts/lane-test.ts` sets temp HOME + LOOM_TEST_HOME + LOOM_PROFILE=smoke and drops relay env |
 | `Bash(bun run typecheck:*)` | |
 | `Bash(bunx biome:*)` | |
 | `Bash(bun run handoff:check)` | |
@@ -344,8 +345,10 @@ Add to `.claude/settings.json` `env`: `CLAUDE_CODE_SUBAGENT_MODEL=claude-opus-5-
 | `Bash(rm:*)` within `--cwd` | wrapper refuses a `--cwd` outside the repo / temp fixture |
 | `Read` · `Grep` · `Glob` · `Edit` · `Write` | `acceptEdits` covers edits |
 
-Exact pattern syntax for env-prefixed commands is **UNVERIFIED** — P1 fake-binary tests
-and the P4 tool-using run must show these forms are pre-approved, not denied.
+P4 measured (2026-10-17, run 0007): an env-prefixed allow rule never matched — `env` is not a stripped wrapper and allow rules do not match past non-safe `VAR=` assignments (code.claude.com/docs/en/permissions). Hence the package script.
+Residual: the lane can Edit `package.json`, `scripts/lane-test.ts` or a test file and then `bun run test:lane` runs arbitrary
+code outside `check-lane-spawn` — the same class as any lane-written test. Guard = architect diff review: flag any lane diff
+touching `package.json` or `scripts/lane-test.ts`. Bare `bun run test:lane` (no args) matching the rule is UNVERIFIED (0013 passed an arg).
 
 ### 6.2 impl `--disallowedTools`
 
@@ -398,8 +401,33 @@ P4 live-smoke assertions:
 4. **verify**: `read-only` run → exit 0; `resolvedModels` contains `gpt-6-astra`.
 5. Record `costUsd` / `durationMs` per lane vs M4 baseline ($0.44 / 5.2 s).
 6. Optional: `--agent loom-advisor` frontmatter check (Q3).
-7. **Hooks load inside a lane:** the impl spec asks the lane to run `claude --version` → expect the Bash gate to deny it (`permissionDenials` non-empty → exit 5), proving project hooks run in `-p` mode with `LOOM_LANE` set.
+7. **Hooks load inside a lane:** the impl spec asks the lane to run the allowlisted `git log --oneline -1 -- claude` → expect the Bash gate to deny it (allowlisted, so the denial can only come from the hook) (`permissionDenials` non-empty → exit 5), proving project hooks run in `-p` mode with `LOOM_LANE` set.
 8. **Orphans:** after the impl run, no process from the lane's session survives (descendants that `setsid` leave the group — check by pid list).
+
+**P4 result (2026-10-17, live — `.loom-lanes/0006`–`0019`):** all mandatory assertions pass after four fixes.
+
+| # | Run | Result |
+|---|---|---|
+| 1 impl tool-using | 0013 | **PASS** — exit 0 · `permissionDenials []` · `mainModel claude-opus-5-5` · `bun run test:lane` 1 pass · `git rm` shown in status · $0.31 / 17.5 s. Earlier 0007 FAIL (env-prefixed allow rule never matches) and 0012 FAIL (lane appended `; echo "EXIT=$?"`) |
+| 2 impl negative | 0009 | **PASS** — `git commit` denied → exit 5, HEAD unchanged |
+| 3 advise | 0010 | **PASS** — exit 0 · `claude-opus-5-5` · denials `[]` · repo unchanged · $0.34 / 28.2 s |
+| 4 verify | 0006 | **PASS** — exit 0 · `resolvedModels [gpt-6-astra]` · `effortResolved high` · 19 s (codex reports no cost) |
+| 5 cost | — | impl $0.31 / 17.5 s · advise $0.34 / 28.2 s · verify 19.2 s (all wrapper `meta.json` `durationMs`; cost = CLI `total_cost_usd`) vs M4 baseline $0.44 / 5.2 s |
+| 6 Q3 `--agent` | — | not run (optional) |
+| 7 hooks in lane | 0008 | **PASS** — `git log -- claude` (allowlisted) denied by `check-lane-spawn.ts` → exit 5 |
+| 8 orphans | all | **PASS** — architect `ps -axo pid,pgid,command` filtered on the fixture tree after every run showed none (session scratchpad output, not in `meta.json`) |
+
+Fixes found only by live use: (a) `test:lane` package script replaces the env-prefixed allow rule (§6.1);
+(b) preamble forbids appended `; echo`/`$?` and (c) shell-redirection file writes (both recurred); (d) `gitSnapshot`
+hashes untracked file contents (0015 edited already-untracked files and read as `refused-empty`). Lane self-reports
+twice claimed "no denials" while `meta.json` showed one — the D6 evidence gate, not the report, decides.
+**Accepted exceptions — not a precedent:** fix runs 0011 and 0016 ended exit 5 (one denied `; echo $?` / heredoc command; the lane then
+redid the step in an allowed form, contrary to the preamble's "stop and report", and 0016's report omitted the denial). Their output was
+accepted only through architect diff review + test rerun + Astra 0014/0017/0019. Under rule 8 exit-5 output is otherwise rejected.
+Astra 0019 PASS was a static review (it skipped the suites while another suite ran); the test rerun rests on the architect
+(lane suites 98/0 + full suite).
+Known false positive: an allowlisted command that merely names `claude` (`git log -- claude`) is denied inside a
+lane — quote it (hook message says so).
 
 Each step ships in its own commit(s), never interleaved with v0.37.0 P-steps. Final
 deliverable gets the advisor (Opus 5.5 high) review before "done".
