@@ -1556,8 +1556,9 @@ export class HeadlessDispatcher {
         );
         proposed = r.proposed;
         for (const k of Object.keys(dropped) as (keyof CardDropCounts)[]) dropped[k] += r.dropped[k];
-        // A busy drop leaves the key off so a later reprocess may retry (R9).
-        if (r.dropped.busy === 0) result = key;
+        // R9: the key only when the store finished its under-lock step (proposed · dup · cap are
+        // its only under-lock outcomes); a busy drop leaves it off so a later reprocess may retry.
+        if (r.dropped.busy === 0 && r.proposed + r.dropped.dup + r.dropped.cap > 0) result = key;
       }
       const m = Object.values(dropped).reduce((a, b) => a + b, 0);
       write(
@@ -1977,6 +1978,8 @@ export class HeadlessDispatcher {
           procStartedAt: "",
           sendAttempts: 0,
           completedHandoffIds: [...(current?.completedHandoffIds ?? plan.completedHandoffIds)],
+          // 0.38.0 R9: earlier handoffs' keys carry over (≤16 — sendAndMark trims on append).
+          ...(current?.memoryProposed ? { memoryProposed: [...current.memoryProposed] } : {}),
           // R9: "" is never written — an absent key is "" (off = 0.35 session.json bytes).
           ...(memorySnapshotHash !== "" ? { memorySnapshotHash } : {}),
         }));
