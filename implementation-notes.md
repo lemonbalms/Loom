@@ -9,7 +9,7 @@ When an edge case forces a choice that diverges from the written plan, pick the 
 |-------|--------|
 | **Maintained** | Yes — update on every non-trivial deviation |
 | **Related** | `docs/WORKFLOW.md` (§3.5 Unknowns), `docs/UNKNOWNS.md`, `docs/PLAN.md`, `docs/plan_review.md`, `HANDOFF.md` |
-| **Last updated** | 2026-10-17 (0.37.0 정책 정직성 — shipped 2026-10-17) |
+| **Last updated** | 2026-10-18 (0.38.0 기억 쓰기 경로 — implemented · ship pending real-CLI ①) |
 
 ---
 
@@ -39,6 +39,33 @@ This file is for **during-implementation** plan deviations only.
 |------|-------------------|-------------------------|------------------|-----------|
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
+
+### §0.38.0 — 기억 쓰기 경로 (업그레이드 4단계 4부 — implemented · ship pending real-CLI ①)
+
+PLAN §0.38.0 (R56 `approved-with-fixes` → `approved`) · 커밋(red/green 순) `c552b04`/`4ec5267`(P1 — 저장소 async append · 상한 · 필터 · dedupe · `withFileLockAsync`) → `7597d0b`/`8d27fa4`(P1b) → `4741f43`/`63b94b6`(P2 — `cardWrites` 설정 · 강제 스킬 · 기동 검사) → `c019a9c`(P2b) → `6b6e4e5`/`63ecbd4`(P3 — 결과 경로 파싱 → 제안 · `notes.md` · stderr) → `f67e985`/`8999fa6`(P3b — verify 0042) → `806a09d`/`23f9f10`(P4 — CLI) → `2119c85`/`69a42f3`(P4b — verify 0045) → `f79d1cf`(P5 스모크 `smoke:memory-write`) → `67a3745`(VERSION · `BRIDGE_VERSION` · MCP 0.38.0 + dist) → P5b 문서(이 절). 독립 검증 = GPT-6 Astra high(`lane.ts verify`) + 아키텍트 재실행. 전체 스위트(P4b 뒤) 3309 pass / 1 fail(알려진 `handoff-checkpoint` live checkpoint). **실 CLI 스모크 ①은 돌리지 않았다** — 오너 승인 대기(R56-M4 · UK-1 · ship 차단).
+
+**Deviations · 레인 해석 (계획 대비 — 한 줄씩):**
+
+| # | PATCH · ref | Deviation (what we did) | 판정 |
+|---|---|---|---|
+| (1) | P3 빠른 경로 | `record.memoryProposed`에 키가 있으면 저장소 호출 0 · stderr `dup` = 그 출력의 **후보 수**(파서가 센 수 — 저장소 dedupe와 같은 칸). | 수용 |
+| (2) | P3 R9 | 레코드 `memoryProposed` 키는 저장소 호출이 **락 안 단계를 끝낸 뒤에만**(제안 · `dup` · `cap` 등) 실린다 — `busy` · IO 오류 · 프로필 없음은 키를 남기지 않는다(recovery 재처리가 재시도 · 저장소 dedupe가 이중을 막음). P3b(verify 0042 M2 · L3)가 "새 첫 spawn 레코드도 이전 키를 이어 받는다"를 고정. | 수용 |
+| (3) | P3 D13 | 빈 문자열 `profile` = 프로필 없음 → `skipped — no profile`(쓰기 0). | 수용 |
+| (4) | P3 R9 | `memoryProposed` 키는 handoff를 넘어 이어진다(≤16 · 오래된 것부터 버림) — 키에 handoff16이 들어 있어 다른 handoff를 막지 않는다. | 수용 |
+| (5) | P4 `--source` | 잘못된 kind의 usage 문구 = `--source must be a source kind (e.g. human, card)`(② 미지정). | 수용 |
+| (6) | P4 머리 K | `memory: K card proposals awaiting review`의 K = 목록 대상 에이전트 **저장소 전체**의 카드 출처 proposed 합 — `--source` · `--room` · `--all` 필터를 무시한다. | 수용 |
+| (7) | P4 `show` | `origin:` 줄은 기존 출력(본문 포함) **뒤**에 온다. | 수용 |
+| (8) | P4b | `approve`는 전이 **전에** 대상을 읽는다 — 전이 뒤 읽기 경합 · 실패 · stdout throw가 성공한 approve의 exit code를 바꾸지 못한다(verify 0045 M). | 수용 |
+| (9) | 레인 0041 | impl 레인 0041이 exit 5로 끝남 — 원인은 작업 뒤 `git status` 권한 거부 하나뿐. 아키텍트 diff 검토 + 테스트 재실행 + `lane.ts verify` 뒤 수용. | 수용 |
+| (10) | 스위트 | 동시 verify 부하 아래 전체 스위트 1회에서 원인 미확인 flaky 실패 1건 관찰 — 재실행에서는 알려진 `handoff-checkpoint` 실패뿐. 이름을 특정하지 못함. | 기록(미해결 관찰) |
+
+**검증 판정:**
+
+- **verify 0042(P3) M1 — 수용:** `notes.md` async IO에는 마감 시간이 없다. 기존 전송 전 카드 레코드 persist와 같은 계급(로컬 파일 IO가 결과 전송 앞에 있음)이라 따로 예산을 두지 않는다. M2 · L3은 P3b로 고침.
+- **verify 0045(P4) M — P4b로 고침:** (8).
+- **verify 0048 Lows — 수용(Low backlog):** **(a)** `approve`의 전이 전 읽기는 id로 대상을 찾는다 — retire → compact → **같은 id로 다시 propose**된 뒤에만 낡은 본문을 찍을 수 있는데, 그러려면 무작위 id 충돌이 필요하다. **(b)** D16' 거부 테스트는 "저장소에 지속 변경 없음"(바이트 · mtime)을 증명할 뿐 "읽기 0"을 증명하지 않는다.
+
+**스모크(P5 — `f79d1cf` · 기록 [`docs/spikes/MEMORY-WRITE-SMOKE-0380.md`](docs/spikes/MEMORY-WRITE-SMOKE-0380.md)):** `bun run smoke:memory-write` 10/10 PASS(2026-10-18 — ①~⑧ + 임시 홈 삭제 + 실 홈 무접촉). `--real-cli --owner-approved` ①은 **미실행**(오너 승인 대기).
 
 ### §0.37.0 — 정책 정직성 (업그레이드 4단계 3부 — shipped 2026-10-17)
 

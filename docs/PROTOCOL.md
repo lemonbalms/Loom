@@ -169,6 +169,10 @@ v0.37.0 renders the per-CLI policy honesty table (`POLICY_ENFORCEMENT`) as bridg
 - **`agent_disabled` is a new value of the existing card result `reason` string**, like `cwd_not_allowed` (0.30.0): `worker.maxConcurrent.<agent>: 0` → `status: "failed"`, `reason: "agent_disabled"`, empty output, before any spawn. Result payloads gain **0 fields**; the tower still lands it as `blocked`.
 - **`policy.json` schema and `policyHash` unchanged.** The new switches are bridge config keys (`worker.strictEnforcement`, `worker.rules`), a local file. Loom MCP gates are unchanged.
 
+## Card memory candidates (v0.38.0) — wire unchanged
+
+v0.38.0 (opt-in `worker.memory.cardWrites`, user-facing in [`USER_GUIDE.md`](./USER_GUIDE.md) §20.13) parses memory candidates from the headless worker's final output on the bridge and writes them as local `proposed` store lines plus a local `<cardDir>/notes.md`; no envelope, field, label, version or MCP tool changes — `PROTOCOL_VERSION`, `CARD_CONTRACT_VERSION`, `ARGV_TEMPLATE_VERSION` are unchanged, `packages/protocol` has no diff, and the delivered card result text is unmodified.
+
 ## Handoff routing
 
 1. Sanitize body/attachments.

@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-10-17 |
+| **Last updated** | 2026-10-18 |
 
 ---
 
@@ -42,7 +42,7 @@
 
 ## Gate log
 
-### 0.38.0 — 기억 쓰기 경로 · 카드 후보 → `proposed` · `notes.md` · `LOOM_CARD` CLI 거부 (`approved` — R56 approved-with-fixes)
+### 0.38.0 — 기억 쓰기 경로 · 카드 후보 → `proposed` · `notes.md` · `LOOM_CARD` CLI 거부 (`approved` — R56 approved-with-fixes · implemented (P1–P5) · ship pending real-CLI ①)
 
 | Field | Value |
 |-------|-------|
@@ -62,7 +62,7 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R56 판정 |
 |---|------|-------------|----------|
-| UK-1 | **새 스킬 문면이 실 CLI에 닿음 — 실 CLI 0회**(D18) | 스모크 = 가짜 CLI · `smoke:memory-write --real-cli --owner-approved`는 오너 명시 승인 | **ship 차단(R56-M4로 강화) — 오너 승인 필요 · 승인 없으면 ship 대기, `unverified` ship 불가** · ship 조건 = `smoke:memory-write --real-cli --owner-approved` **① 한정**(codex · grok · claude 각 1카드 · cardWrites 켬 · 후보 하나 요청 · 안쪽 프로세스 실 HOME + `LOOM_TEST_HOME=T` R54-M3 형) 1회 PASS — 세 응답이 결과를 내고 거부 · 탈선 없음 · `memory_propose` 줄 기록 · **세 카드 모두 `notes.md` 존재 · 적어도 한 카드 `proposed ≥ 1` — 셋 모두 0이면 ship 차단(SKILL.md 문면 개정 → 오너 승인 재실행) · 에이전트별 0은 UK-2 관찰로 기록** · `MEMORY-WRITE-SMOKE-0380.md` |
+| UK-1 | **새 스킬 문면이 실 CLI에 닿음 — 실 CLI 0회**(D18) | 스모크 = 가짜 CLI · `smoke:memory-write --real-cli --owner-approved`는 오너 명시 승인 | **ship 차단(R56-M4로 강화) — 오너 승인 필요 · 승인 없으면 ship 대기, `unverified` ship 불가** · ship 조건 = `smoke:memory-write --real-cli --owner-approved` **① 한정**(codex · grok · claude 각 1카드 · cardWrites 켬 · 후보 하나 요청 · 안쪽 프로세스 실 HOME + `LOOM_TEST_HOME=T` R54-M3 형) 1회 PASS — 세 응답이 결과를 내고 거부 · 탈선 없음 · `memory_propose` 줄 기록 · **세 카드 모두 `notes.md` 존재 · 적어도 한 카드 `proposed ≥ 1` — 셋 모두 0이면 ship 차단(SKILL.md 문면 개정 → 오너 승인 재실행) · 에이전트별 0은 UK-2 관찰로 기록** · `MEMORY-WRITE-SMOKE-0380.md`. **2026-10-18: still open** — 구현 P1–P5 · 가짜 CLI 스모크 10/10 PASS(`f79d1cf`)까지 · **실 CLI ① 미실행(오너 승인 대기)** |
 | UK-2 | 문법 준수 · 후보 품질 · `LOOM-REPORT-END` 앞 배치 | 권고 경계 · `--real-cli`에서 관찰만 | **open, 비차단** — 에이전트별 `proposed 0`은 여기 관찰로 기록(R56-M4) |
 | UK-3 | `busy` 버림 빈도(계급 28) | stderr `busy` 칸 · 예산 250 ms(room-event-log 선례) | **open, 비차단** — 아카이브 끝 4 MiB 읽기로 영구 정지가 `busy`에 섞이지 않는다(R56-M2) · 락 쥔 채 크래시 → stale 5초 동안 recovery도 `busy`(계급 28 보강) |
 | UK-4 | 승인 부담 · 상한 50/10/5의 적정성(계급 24 · 27) | `memory list` 머리 K 줄 · 운용 뒤 조정 | **open, 비차단** — 승인자는 카드 본문 전체를 본다(R56-M3) |
@@ -70,7 +70,7 @@
 | UK-6 | Windows(0.37 UK-7 승계 — mkdir 락 · rename) | 테스트는 macOS/Linux | **unverified(Windows 환경 미사용), 비차단** |
 | UK-7 | 표지 필터 오탐률(R8 — 펜스 줄 흉내 · `LOOM-MEMORY-`/`LOOM-REPORT-`(대소문자 구분 — R56-L1) · task marker; 32 hex · 맨 `=====` · `loom-`는 아키텍트 판정으로 제외) | stderr `marker` 칸 · 0.39 ④ 정규화 통합 때 재검토 | **open, 비차단** |
 
-**Current decision:** D1~D19 + D16' 아키텍트 락(아키텍트 + loom-advisor 자문 2026-10-17) · 작성자 정밀화 R1~R22 · 락↔코드 불일치 C1~C6 · 수용 손실 계급 23~30 + 무번호 · UK-1~UK-7. **R56 `approved-with-fixes` → M1·M2·M3·M4·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-17, no R56b)** · R1~R22 수용(R8→L1 · R11→M2 · R16→M3 · R15 수용) · C1 → R2 · C2 수용(D4 선언 = 새 첫 spawn부터 · 진행 중 카드는 사본 유지) · C3 → R10 · C4 → M2(아카이브 끝 4 MiB) · C5 → M1(편집 선언 12곳) · C6 수용 · 계급 28 보강 · **UK-1 ship 차단(오너 승인 필요 — 실 CLI ① 한정 1회 PASS + 세 카드 `notes.md` · 적어도 한 카드 `proposed ≥ 1`, R56-M4)** · UK-2~UK-7 비차단. **Next = P1**(red = 새 `memory-store-async.test.ts` · `memory-lock-contention.test.ts` — 저장소 async append + 상한 + 필터 + dedupe).
+**Current decision:** D1~D19 + D16' 아키텍트 락(아키텍트 + loom-advisor 자문 2026-10-17) · 작성자 정밀화 R1~R22 · 락↔코드 불일치 C1~C6 · 수용 손실 계급 23~30 + 무번호 · UK-1~UK-7. **R56 `approved-with-fixes` → M1·M2·M3·M4·L1·L2·L3·L4 PLAN 반영 → PLAN `approved`(2026-10-17, no R56b)** · R1~R22 수용(R8→L1 · R11→M2 · R16→M3 · R15 수용) · C1 → R2 · C2 수용(D4 선언 = 새 첫 spawn부터 · 진행 중 카드는 사본 유지) · C3 → R10 · C4 → M2(아카이브 끝 4 MiB) · C5 → M1(편집 선언 12곳) · C6 수용 · 계급 28 보강 · **UK-1 ship 차단(오너 승인 필요 — 실 CLI ① 한정 1회 PASS + 세 카드 `notes.md` · 적어도 한 카드 `proposed ≥ 1`, R56-M4)** · UK-2~UK-7 비차단. **2026-10-18 — implemented (P1–P5):** UK-5는 P3 C2 재개 증명 테스트로 재개 경로가 고정됐으나 표의 판정은 PLAN대로 open/비차단 유지 · UK-2~UK-4 · UK-7은 실 운용 관찰 전이라 open · UK-6 unverified. **Next = 실 CLI ①**(`smoke:memory-write --real-cli --owner-approved` — 오너 명시 승인 뒤 1회).
 
 ### 0.37.0 — 정책 정직성 · 펜스 안 정책 안내문 + 규칙 본문 · strict · `agent_disabled` · AGENT_HINT 삭제 (`approved` — R55 approved-with-fixes · implemented · shipped 2026-10-17)
 

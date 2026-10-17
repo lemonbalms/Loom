@@ -1403,11 +1403,11 @@ bun run loom --profile <p> service start     # 새 코드로 기동
 
 **아직 실측하지 않은 것:** 실 launchd/systemd 등록 라이브 스모크는 오너 승인 대기라 돌리지 않았다(스모크는 가짜 서비스 관리자 — `bun run smoke:service`). launchd/systemd 정지 신호 순서 · ssh에서의 `bootstrap` 실제 코드 · Login Items 끈 뒤 `bootstrap` 문구 · Linux 전부(`StandardError=append:` · linger 조회 형식 · 심링크가 `enable`과 같은지)는 미실측이다. **로그인·재부팅 뒤 자동 기동(launchd `RunAtLoad` · systemd `default.target`)은 `--live` 스모크로도 측정되지 않는다** — 실제 `loom service install` 뒤 로그아웃·로그인(또는 재부팅)해야 확인된다(`docs/UNKNOWNS.md` 0.34.0).
 
-## 20. 기억 · 규칙 · 스킬 (v0.35.0 · 워커 주입 v0.36.0 · 정책 안내문 · 규칙 주입 v0.37.0)
+## 20. 기억 · 규칙 · 스킬 (v0.35.0 · 워커 주입 v0.36.0 · 정책 안내문 · 규칙 주입 v0.37.0 · 카드 기억 후보 v0.38.0)
 
 **하고 싶은 일:** 에이전트별 **장기 기록**(사실 · 결정 · 선호)과 **성격 메모**, 방마다의 **방 규칙**, 모두가 보는 **공통 지식 목차**, 되도록 지킬 **규칙**을 한곳에 두고, 사람이 쓰고 · 승인하고 · 정리하게 한다. `loom skills list`로 어떤 스킬이 어디서 왔는지(내장 · 사용자 · 가림)도 본다.
 
-**워커에 들어가는 것은 0.36.0부터, 켰을 때만이다.** 0.35.0은 **저장소 · 명령 · 읽기 함수까지**였다. 0.36.0부터 bridge 설정 `worker.memory.enabled = true`면 headless 카드 워커가 **새 카드를 시작할 때** persona · INDEX · 그 방의 guideline · 승인된 기록을 한 번 읽어 첫 턴에 **자료 블록(펜스)**으로 넣는다 — §20.11. 기본은 꺼짐이고, 꺼짐이면 워커 argv는 0.35.0과 같다. 첫 턴 · fingerprint까지 0.35.0과 바이트 같으려면 **기억 · 규칙이 꺼져 있고 그 에이전트의 정책 간극이 0**이어야 한다(간극이 있으면 아래 안내문 펜스와 스냅샷 hash가 생긴다). **0.37.0부터** 같은 펜스 맨 앞에 **정책 안내문**(기본 켜짐 — 그 에이전트에 정책 간극이 있을 때만)과, 켰을 때 **규칙(rules) 본문**(`worker.rules.enabled`)이 들어간다 — §20.12. 와이어 · 카드 계약은 그대로다. MCP 기억 도구도 없다 — 쓰는 길은 이 절의 사람 CLI 하나다.
+**워커에 들어가는 것은 0.36.0부터, 켰을 때만이다.** 0.35.0은 **저장소 · 명령 · 읽기 함수까지**였다. 0.36.0부터 bridge 설정 `worker.memory.enabled = true`면 headless 카드 워커가 **새 카드를 시작할 때** persona · INDEX · 그 방의 guideline · 승인된 기록을 한 번 읽어 첫 턴에 **자료 블록(펜스)**으로 넣는다 — §20.11. 기본은 꺼짐이고, 꺼짐이면 워커 argv는 0.35.0과 같다. 첫 턴 · fingerprint까지 0.35.0과 바이트 같으려면 **기억 · 규칙이 꺼져 있고 그 에이전트의 정책 간극이 0**이어야 한다(간극이 있으면 아래 안내문 펜스와 스냅샷 hash가 생긴다). **0.37.0부터** 같은 펜스 맨 앞에 **정책 안내문**(기본 켜짐 — 그 에이전트에 정책 간극이 있을 때만)과, 켰을 때 **규칙(rules) 본문**(`worker.rules.enabled`)이 들어간다 — §20.12. 와이어 · 카드 계약은 그대로다. MCP 기억 도구도 없다 — 쓰는 길은 이 절의 사람 CLI 하나다. **0.38.0부터** 옵트인 `worker.memory.cardWrites`를 켜면 headless 워커의 최종 출력에서 기억 **후보**를 `proposed`로 올린다 — 이후 카드에 들어가려면 여전히 사람이 `loom memory approve`해야 한다(§20.13).
 
 ### 20.1 파일 배치
 
@@ -1680,7 +1680,7 @@ The operator's Loom policy sets these limits, and this CLI does not fully enforc
 3. **실 claude · codex · grok이 ≈48 KiB 첫 턴을 손실 없이 받는지, 펜스를 지키는지는 실측 전이다** — 스모크는 가짜 CLI로 바이트만 쟀다(실 CLI 실행은 오너 승인 게이트). **그 실측(`bun run smoke:memory-inject --real-cli --owner-approved`)이 기록되기 전에는 운영 bridge에서 켜지 말고, 기본값도 바꾸지 않는다**(R54 최종 리뷰).
 4. **워커 출력은 걸러내지 않는다** — 워커가 블록 내용을 결과에 옮겨 적을 수 있다.
 5. **워커 안의 `loom` 명령은 bridge 프로필을 모른다** — 워커 env에서 `LOOM_*`가 지워져 displayName으로 풀린다(워커가 기억을 제안하는 길과 함께 0.37).
-6. 규칙(rules) 본문 · 스킬 출처 라벨 · doctor/`memory list`의 켜짐 표시는 **0.37.0**(§20.12). 카드 결과의 기억 후보 → `propose` · 카드 메모 · 동기 읽기(첫 spawn마다 ≈20 ms) 캐시는 **0.38 후보**.
+6. 규칙(rules) 본문 · 스킬 출처 라벨 · doctor/`memory list`의 켜짐 표시는 **0.37.0**(§20.12). 카드 결과의 기억 후보 → `propose` · 카드 메모는 **0.38.0**(§20.13 — 옵트인) · 동기 읽기(첫 spawn마다 ≈20 ms) 캐시는 **0.39 후보**.
 7. Windows — 원자 rename · 0600 · 심링크 판정 미검증.
 
 ### 20.12 정책 정직성 — 안내문 · 규칙 · strict · 에이전트 끄기 · doctor Policy 절 (v0.37.0)
@@ -1779,6 +1779,93 @@ Policy
 4. `memory-snapshot.md` · `LOOM MEMORY SNAPSHOT` · `memory_snapshot` 이름은 이제 안내문 · 규칙도 담지만 호환을 위해 그대로.
 5. 실 CLI 실측은 기본 정책 · 기억 · 규칙 꺼짐 한 모양뿐 — 규칙 · 기억을 모두 켠 ≈64 KB 첫 턴은 가짜 CLI 바이트만 쟀다(블록 63577–63978 B · `load_ms` 중앙값 18–20 ms — [`spikes/POLICY-HONESTY-SMOKE-0370.md`](./spikes/POLICY-HONESTY-SMOKE-0370.md)).
 6. Windows 미검증 · Linux: 실 실행 없음(단위 테스트만).
+
+### 20.13 카드 기억 후보 · 카드 메모 `notes.md` · 워커 셸 쓰기 거부 (v0.38.0)
+
+**하고 싶은 일:** 워커가 카드에서 알게 된 사실 · 결정 · 선호를 결과 텍스트 안에서 흘려보내지 않고, **사람이 검토할 후보**로 남긴다. 승인한 것만 이후 카드의 첫 턴에 들어간다(§20.11 경로). **headless 카드 워커(§15)만** — pane backend · sticky host 워커는 후보도 `notes.md`도 내지 않는다.
+
+> **현재 상태(2026-10-18):** 0.38.0은 구현 · 가짜 CLI 스모크까지 끝났고, **실 claude · codex · grok으로 새 스킬 문면을 돌리는 스모크는 아직 돌리지 않았다**(오너 승인 대기 — 출시 조건). 실 워커가 후보 블록을 실제로 쓰는지는 미확인이다.
+
+**켜기 — `worker.memory.cardWrites`(기본 꺼짐).**
+
+```json
+"worker": {
+  "backend": "headless",
+  "memory": { "enabled": true, "cardWrites": true },
+  "skills": { "enabled": true }
+}
+```
+
+- **`worker.memory.enabled: true`와 `worker.skills.enabled: true`가 함께 필요하다.** 아니면 headless bridge가 기동을 거부한다 — `worker.memory.cardWrites requires worker.memory.enabled: true` · `worker.memory.cardWrites requires worker.skills.enabled: true` · 불리언이 아니면 `worker.memory.cardWrites must be a boolean`. `cardWrites: false`는 키가 없는 것과 같다. pane backend는 이 키를 무시한다.
+- **`policy.json`에 `skills.allow` 목록이 있으면 `loom-memory-candidates`를 넣는다.** 켜진 에이전트의 유효 `skills.allow`가 목록인데 이 이름이 없으면 기동 거부: `worker.memory.cardWrites: policy skills.allow does not include loom-memory-candidates for <agent> — add it to policy.json skills.allow or turn cardWrites off`. `skills.allow`가 없으면(전부 허용) 따로 할 일은 없다.
+- **꺼짐이면 0.37과 같다** — 워커 · argv · 첫 턴 · fingerprint · 카드 디렉터리 파일 집합이 바이트 동일하고, bridge는 기억 저장소에 쓰지 않는다. `loom skills list`에 내장 `loom-memory-candidates` 행이 새로 보이지만, 꺼짐이면 방 `skills.json`이 골라도 `not installed`로 카드에 들어가지 않는다.
+
+**워커에게 문법을 알려 주는 것 — 내장 스킬 `loom-memory-candidates`.** cardWrites가 켜지면 방의 스킬 선택과 상관없이 **새 카드의 첫 spawn**에 이 스킬이 카드 스킬 사본에 들어간다(정책 allow · 같은 이름 사용자 스킬의 가림은 다른 스킬과 같다 — §16.3). 워커가 마지막 메시지에 쓰는 블록:
+
+```text
+LOOM-MEMORY-CANDIDATES
+- fact: <한 문장>
+- decision: <한 문장>
+- preference: <한 문장>
+LOOM-MEMORY-END
+```
+
+- 한 줄에 후보 하나 — `- fact:` · `- decision:` · `- preference:` 뒤에 본문. 표지 줄(`LOOM-MEMORY-CANDIDATES` · `LOOM-MEMORY-END`)은 줄 전체가 정확히 그 글자여야 한다(끝 공백 · `\r`은 허용). 블록 안의 빈 줄은 무시하고, 모양이 맞지 않는 줄은 `invalid`로 센다.
+- **마지막 완결 블록 하나만** 센다(`LOOM-MEMORY-CANDIDATES` 뒤에 `LOOM-MEMORY-END`가 온 것). 앞 5개만 후보 · 6번째부터는 `cap`.
+- `LOOM-REPORT-END`(`loom-card-report`)를 쓰는 카드면 블록은 그 줄 **앞**에 둔다고 스킬이 말한다. 뒤에 써도 파싱은 된다.
+- **전달 결과 텍스트는 바뀌지 않는다** — 블록은 디스패처가 받는 결과에 그대로 남는다.
+- 타임아웃 결과(raw transcript) · 포기 경로 · `agent_disabled` · `fingerprint_changed` · `spawn_setup_failed`에서는 후보를 읽지 않는다. 디스패처가 나중에 그 작업을 기각해도 후보는 이미 올라가 있다 — host는 판정을 모른다.
+
+**후보가 저장소에 들어가는 방식.**
+
+- **언제나 `proposed`, 언제나 그 방 범위**(`room:<roomKey>`) · `supersedes` 없음. 워커는 `project` 범위를 고를 수 없고, 후보는 승인돼도 기존 항목을 은퇴 · 대체하지 못한다. 넓히려면 사람이 `loom memory add`로 project 항목을 쓴다.
+- **사람이 `loom memory approve`하기 전에는 어떤 워커 프롬프트에도 들어가지 않는다**(스냅샷은 `active`만 렌더 — §20.11). 승인 뒤에는 그 방의 **새 카드** 첫 턴 펜스에 들어간다.
+- **버리는 후보(센다):** 본문이 비거나 2000자를 넘음 → `invalid` · redaction이 본문을 바꿈(env 비밀 값 · 비밀 모양) → `secret` · Loom 표지 · 펜스 `===== BEGIN/END LOOM …` 줄 흉내 · `LOOM-MEMORY-` / `LOOM-REPORT-`(대문자 그대로) → `marker` · 상한 → `cap` · 저장소 락을 250 ms 안에 못 잡음 → `busy` · 같은 카드 시도를 이미 올림 → `dup`.
+- **상한:** 카드 시도당 5 · 방당 카드 출처 proposed 10 · 에이전트 저장소당 카드 출처 proposed 50 · 기존 proposed 합계 200(사람 + 카드) · `entries.jsonl` 1 MiB. 차면 승인하거나 은퇴시켜야 다시 들어간다.
+- **같은 카드 시도는 두 번 올리지 않는다** — 재기동 recovery가 같은 출력을 다시 처리해도 `dup`. 다음 handoff는 새로 올린다.
+- **결과 전송은 기억을 기다리지 않는다** — 저장소 락은 사람 CLI와 같은 락이고 bridge는 ≤250 ms만 기다린다. 기억 쪽 실패는 결과 전송을 막지 않는다.
+- 카드마다 bridge stderr에 한 줄: `[headless] memory_propose (<card>): proposed <N> · dropped <M> (secret <a> · marker <b> · cap <c> · busy <d> · dup <e> · invalid <f>)` — 블록이 없어도 `proposed 0 · dropped 0 (…)`. 저장소 오류면 `failed — <사유>`.
+
+**검토하고 승인하기 — `loom memory`.**
+
+- **`list` 머리:** 카드 출처 proposed가 있으면 profile 줄 다음에 `memory: <K> card proposals awaiting review`.
+- **`list` 행 접미(카드 출처만):** `[card by <디스패처>]` · 본문이 행에 다 보이지 않으면(80자 초과 · 여러 줄) `[card by <디스패처> · +<n> chars — loom memory show <id>]`. 사람 출처 행은 0.37과 같다. `--source <kind>`(`card` · `human` 등)로 거른다(`--all` · `--room`과 함께). `--json`은 0.37과 같은 키(이미 `source` 전체를 낸다).
+- **`show`:** 카드 출처면 끝에 `  origin: card · by <디스패처> · room <roomKey> · card <cardRef> · attempt <n>`.
+- **`approve`:** 카드 출처면 성공 줄 다음에 `activated: <type> <appliesTo> — <본문 전체> (source card by <디스패처>)` — 무엇을 활성화했는지 본문을 자르지 않고 보인다.
+
+**카드 메모 — `<cardDir>/notes.md`.** cardWrites가 켜지면 카드 디렉터리(`~/.loom/cards/<sha16(로컬 peer id)>/<sha16(room × agent × cardId)>/` — §15.3)에 `notes.md`(0600 · 원자 쓰기)를 남긴다.
+
+- **요약이 아니라 최종 출력의 redaction된 사본이다**(타임아웃이면 raw transcript · 200,000자에서 자름). 원문은 이미 `transcript-N.jsonl`에 있다.
+- **Loom은 다시 읽지 않는다** — 어떤 프롬프트에도 들어가지 않고, 0.38엔 보는 CLI도 없다. 파일을 직접 연다.
+- 시도마다 덮어쓴다. 출력이 빈 시도는 쓰지 않고 이전 파일도 지우지 않는다 — **직전 시도의 사본일 수 있다.** 쓰기 실패는 stderr `[headless] card_notes (<card>): failed — <사유>` 한 줄(결과 전송은 그대로). 카드 디렉터리와 함께 지워진다.
+
+**워커 셸의 `loom memory` 쓰기 거부 — `LOOM_CARD`.** 환경 변수 `LOOM_CARD`가 비어 있지 않으면 `loom memory add|propose|approve|retire|compact`는 exit 1로 거부하고 저장소를 건드리지 않는다:
+
+```text
+loom memory: refused — LOOM_CARD is set (this shell belongs to a Loom card worker); memory writes go through card proposals. Unset LOOM_CARD to write deliberately.
+```
+
+- `list` · `show`는 거부하지 않는다. 두 backend 모두 워커에 `LOOM_CARD`를 넣는다.
+- **pane backend 워커 터미널에서 사람이 쳐도 거부된다** — 그 셸에도 `LOOM_CARD`가 있다. 일부러 쓰려면 `unset LOOM_CARD` 뒤에 친다.
+
+> ⚠️ **경고 — 승인 우회는 막히지 않았다(수용 계급 23).** 셸이 있는 워커는 `env -u LOOM_CARD loom memory add …`를 치거나 `entries.jsonl`에 직접 써서, 사람 승인 없이 **active** 항목을 만들 수 있다(워커 셸의 `loom`은 displayName 프로필로 풀린다 — 이름이 bridge 프로필과 같으면 bridge가 읽는 저장소다). `LOOM_CARD` 거부는 **실수 방지 가드이지 보안 경계가 아니다.** 셸 권한을 가진 워커를 신뢰할 수 없다면 기억 주입(`worker.memory.enabled`)을 켠 bridge에서 그 저장소의 active 항목을 주기적으로 `loom memory list`로 확인한다.
+
+**올리기 · 내리기.**
+
+- 업그레이드는 0.34.0 관행대로 `loom bridge drain` → 교체 → 기동. cardWrites를 켤 때 `policy.json` `skills.allow`가 목록이면 `loom-memory-candidates`를 더한다.
+- **cardWrites를 켜면 새 카드의 fingerprint가 한 번 바뀐다**(카드 스킬 사본에 새 스킬이 들어가 `manifestHash`가 달라짐 — 켠 뒤 **새 첫 spawn**부터). **진행 중 카드는 자기 사본으로 이어진다** — `needs_verification`은 없고, 새 스킬이 없으니 후보도 안 나올 가능성이 높다. 켰다 끈 뒤 이어지는 카드는 사본에 스킬이 남지만 host가 블록을 읽지 않는다.
+- **0.37 바이너리로 되돌리려면 먼저 `worker.memory.cardWrites` 키를 지운다.** 0.37은 이 키를 무시하지 않고 거부한다 — headless bridge 기동 거부 · 0.37 doctor · `loom skills list`는 `invalid bridge config`. 0.38이 쓴 카드 출처 `proposed` 줄은 0.37도 그대로 읽고 승인할 수 있다(출처 표시만 없음).
+
+**한계 — 설계상 수용 (0.38.0).**
+
+1. **워커 셸 우회**(계급 23 — 위 경고).
+2. **기각될 작업에서 나온 후보도 올라간다**(계급 24) — 사람 승인이 유일한 통제다. `show` · `approve`가 출처(디스패처 · 카드 · attempt)를 보인다.
+3. **`notes.md`는 요약이 아니라 사본**(계급 25).
+4. **상한 기아**(계급 27) — 시끄러운 방들이 에이전트당 50을 채우면 다른 방 후보는 승인 · 은퇴 전까지 `cap`.
+5. **락 `busy` 버림**(계급 28) — 사람 CLI · compact가 락을 쥐고 있으면 그 시도의 후보는 사라진다(재시도 없음 · recovery 재처리 때만 다시 기회). bridge가 락을 쥔 채 죽으면 재기동 뒤 5초 동안 recovery 재처리도 `busy`.
+6. **표지 필터 오탐** — 펜스 줄 모양 · `LOOM-MEMORY-` / `LOOM-REPORT-` 표지를 문자 그대로 담은 정당한 후보는 `marker`로 버려진다.
+7. **실 CLI 미검증** — 실 claude · codex · grok이 블록을 쓰는지 · 쓸모 있는 사실을 고르는지는 아직 관찰하지 않았다(오너 승인 대기). 가짜 CLI 스모크 결과는 [`spikes/MEMORY-WRITE-SMOKE-0380.md`](./spikes/MEMORY-WRITE-SMOKE-0380.md).
+8. Windows 미검증.
 
 ---
 

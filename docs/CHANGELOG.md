@@ -10,6 +10,43 @@
 
 ---
 
+## 0.38.0 — 구현 완료 · 출시 대기 (오너 승인 실 CLI 스모크 전)
+
+> **implemented — release pending the owner-approved real-CLI smoke.** 아래는 구현 · 가짜 CLI 스모크까지 끝난 내용이다. 실 claude · codex · grok으로 새 스킬 문면을 돌리는 스모크(`smoke:memory-write --real-cli --owner-approved` ①)를 오너 승인 아래 통과해야 출시된다 — 그 전까지 제품 버전 SSOT는 0.37.0이다.
+
+**워커가 기억 후보를 올린다** (업그레이드 4단계 4부) — 옵트인 `worker.memory.cardWrites`를 켠 headless bridge는 워커 최종 출력의 `LOOM-MEMORY-CANDIDATES` 블록을 읽어 **그 방 범위 `proposed` 후보**로 저장소에 올린다. **사람이 `loom memory approve`해야만** 이후 카드에 들어간다. 카드 디렉터리에는 최종 출력의 redaction된 사본 `notes.md`가 남는다. **기본은 꺼짐**이고, 꺼짐이면 0.37과 바이트 같다.
+
+### 가능해진 것
+
+- **`worker.memory: { "enabled": true, "cardWrites": true }`** — `worker.skills.enabled`도 필요하다(아니면 기동 거부). `policy.json` `skills.allow`가 목록이면 `loom-memory-candidates`를 넣는다(아니면 기동 거부).
+- **새 내장 스킬 `loom-memory-candidates`** — cardWrites가 켜지면 새 카드에 강제로 들어가 블록 문법(`- fact|decision|preference: <한 문장>` · 최대 5줄 · `LOOM-REPORT-END` 앞)을 알려 준다.
+- **카드 후보 → `proposed`** — 늘 그 방 범위 · `supersedes` 없음 · 출처 `{kind:"card", room, card, handoff, attempt, by}`. 비밀 · Loom 표지 흉내 · 상한(시도당 5 · 방 10 · 에이전트 50) · 같은 카드 시도 재처리는 버리고 센다 — bridge stderr `[headless] memory_propose (<card>): proposed N · dropped M (…)`. 사람 CLI와 같은 락을 ≤250 ms만 기다리고, 결과 전송은 기억 실패와 무관하다.
+- **검토 표시** — `loom memory list` 머리 `memory: K card proposals awaiting review` · 카드 행 접미 `[card by <디스패처> · +<n> chars — loom memory show <id>]` · `--source <kind>` 필터 · `show`의 `origin:` 줄 · `approve`의 `activated:` 줄(본문 전체).
+- **카드 메모 `notes.md`** — `<cardDir>/notes.md`(0600) = 최종 출력(타임아웃이면 raw)의 redaction된 사본. Loom은 다시 읽지 않는다.
+- **워커 셸의 `loom memory` 쓰기 거부** — `LOOM_CARD`가 설정된 셸에서 `add|propose|approve|retire|compact`는 exit 1.
+- 스모크 `bun run smoke:memory-write` — dist CLI + 가짜 claude · codex · grok 카드로 ①~⑧(제안 · 멱등 · 상한 · 필터 · `notes.md` · 승인 → 다음 카드 펜스 · `LOOM_CARD` 거부 · 꺼짐 = 0.37) 10/10 PASS. **실 CLI ①은 아직 돌리지 않았다.**
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.37.0) | 지금 (0.38.0) |
+|---------------|---------------|
+| bridge는 기억 저장소에 쓰지 않았다 | cardWrites를 켜면 `proposed` 줄을 쓴다(꺼짐이면 여전히 안 쓴다) · `active`로 가는 길은 사람 `approve` 하나 |
+| 워커 셸에서 `loom memory add`가 그냥 됐다 | `LOOM_CARD`가 있으면 쓰기 동사 다섯이 exit 1 — **pane 워커 터미널의 사람도** 거부된다(일부러 `unset LOOM_CARD`) |
+| `loom skills list` 내장은 `loom-card-report` 하나 | `loom-memory-candidates` 행이 모든 사용자에게 보인다 — 꺼짐이면 방이 골라도 `not installed` |
+| 0.37로 되돌릴 때 bridge 설정은 그대로 둬도 됐다 | 0.37 바이너리는 `worker.memory.cardWrites`를 무시하지 않고 **거부**한다(headless 기동 거부 · doctor `invalid bridge config`) — 되돌리기 전에 키를 지운다 |
+| 기억 설정을 바꿔도 fingerprint는 그대로 | cardWrites를 켜면 **새 카드**의 fingerprint가 한 번 바뀐다(스킬 사본) · 진행 중 카드는 자기 사본으로 이어진다 |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · `ARGV_TEMPLATE_VERSION` · hint · argv · 완료 권한 · 펜스 · `loom-card-report` · `policy.json` 스키마 · `policyHash` · `entries.jsonl` v1 줄 스키마 · MCP 도구 표면 무변경 · `packages/protocol` diff 0 · pane backend · sticky host · relay 무변경. **전달 결과 텍스트는 변형하지 않는다**(후보 블록이 그대로 남는다).
+- **정직 고지(설계상 수용 손실):** **셸이 있는 워커는 여전히 승인을 건너뛸 수 있다** — `env -u LOOM_CARD loom memory add …`나 `entries.jsonl` 직접 쓰기로 사람 승인 없이 `active` 항목을 만든다(계급 23). `LOOM_CARD` 거부는 실수 방지 가드이지 경계가 아니다. 그 밖에: 디스패처가 기각할 작업의 후보도 올라간다(계급 24 — 사람 승인이 유일한 통제) · `notes.md`는 생성 요약이 아니라 사본(계급 25) · 상한 기아 · 락 `busy` 버림(계급 27 · 28) · 표지 필터 오탐 · 실 CLI 미검증(UK-1 — 출시 조건) · Windows 미검증.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §20.13 · PLAN 0.38.0 · R56 · `implementation-notes.md` §0.38.0 · [`spikes/MEMORY-WRITE-SMOKE-0380.md`](./spikes/MEMORY-WRITE-SMOKE-0380.md)
+
+---
+
 ## 0.37.0 — 2026-10-17
 
 **정책이 정직해진다** (업그레이드 4단계 3부) — `policy.json`이 CLI마다 실제로 얼마나 강제되는지(정직 표 — §16.4)를 이제 **오너와 워커 모두가 본다.** bridge 기동 경고 · doctor Policy 절 · 워커 첫 턴의 **정책 안내문**이 한 원천(간극 목록)에서 같은 문장으로 나온다. codex의 기본 정책은 doctor에 `not-enforced`로 보이고, codex 워커의 첫 턴은 그 사실과 금지 명령 11개를 **그대로** 말한다 — 4단계 완료 기준 (c). **안내문은 기본 켜짐**(간극이 있는 에이전트에만) · 규칙 본문은 옵트인.
