@@ -9,7 +9,7 @@
  * exact key set and types, and an `invalid` reason never carries file content.
  */
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { chmod, rename, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { RESUME_CONTINUATION_MESSAGE, type AgentKind } from "./agent-argv";
@@ -169,28 +169,70 @@ function checkShape(value: unknown, attempt: number): PromptRecord | string {
   return value as unknown as PromptRecord;
 }
 
-/** R9 · R60-L3: missing / invalid / ok — never throws, never echoes file content. */
-export function readPromptRecord(dir: string, attempt: number): PromptRecordRead {
-  const path = promptRecordPath(dir, attempt);
-  let size: number;
+function unreadable(err: unknown): PromptRecordRead {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  return { kind: "invalid", reason: `unreadable ${typeof code === "string" ? code : "unknown"}` };
+}
+
+/**
+ * Astra 0088 · R60-L3: every check after the open is on the opened fd — `O_NOFOLLOW` (a swapped-in
+ * symlink → ELOOP), `O_NONBLOCK` (a FIFO never blocks the open), `fstat` (regular file, size), and at
+ * most cap + 1 bytes are read (a file grown past the cap is `too large`). The `lstat` pre-check keeps
+ * an oversized or non-regular path from being opened at all.
+ */
+function readBoundedRegularFile(path: string): Buffer | PromptRecordRead {
   try {
     const st = lstatSync(path);
     if (!st.isFile()) return { kind: "invalid", reason: "not a regular file" };
-    size = st.size;
+    if (st.size > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return { kind: "missing" };
+    return unreadable(err);
+  }
+  let fd: number;
+  try {
+    fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code;
     if (code === "ENOENT") return { kind: "missing" };
-    return { kind: "invalid", reason: `unreadable ${typeof code === "string" ? code : "unknown"}` };
+    if (code === "ELOOP" || code === "EMLINK") return { kind: "invalid", reason: "not a regular file" };
+    return unreadable(err);
   }
-  if (size > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
-  let bytes: Buffer;
   try {
-    bytes = readFileSync(path);
+    const st = fstatSync(fd);
+    if (!st.isFile()) return { kind: "invalid", reason: "not a regular file" };
+    if (st.size > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
+    // Sized to the fstat size + 1 so EOF is seen in one buffer; a file that grew is read on into a
+    // cap + 1 buffer.
+    let buf = Buffer.alloc(st.size + 1);
+    let total = 0;
+    for (;;) {
+      if (total === buf.length) {
+        if (buf.length > PROMPT_RECORD_READ_MAX_BYTES) break;
+        const grown = Buffer.alloc(PROMPT_RECORD_READ_MAX_BYTES + 1);
+        buf.copy(grown, 0, 0, total);
+        buf = grown;
+      }
+      const n = readSync(fd, buf, total, buf.length - total, null);
+      if (n === 0) break;
+      total += n;
+    }
+    if (total > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
+    return buf.subarray(0, total);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    return { kind: "invalid", reason: `unreadable ${typeof code === "string" ? code : "unknown"}` };
+    return unreadable(err);
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {}
   }
-  if (bytes.length > PROMPT_RECORD_READ_MAX_BYTES) return { kind: "invalid", reason: "too large" };
+}
+
+/** R9 · R60-L3: missing / invalid / ok — never throws, never echoes file content. */
+export function readPromptRecord(dir: string, attempt: number): PromptRecordRead {
+  const read = readBoundedRegularFile(promptRecordPath(dir, attempt));
+  if (!Buffer.isBuffer(read)) return read;
+  const bytes = read;
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
