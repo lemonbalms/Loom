@@ -40,7 +40,17 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
 
-### §0.38.1 — codex/grok 첫 턴 스킬 목록 머리 문면 (implemented P1 · real-CLI 결과 ① → D8 · not shipped 2026-10-18)
+### §0.39.0 — 헤드리스 워커 hint 둘째 줄 — 작업 표지 위에 나열된 SKILL.md 읽기 허용 (shipped 2026-10-18)
+
+PLAN §0.39.0 (R58 `approved-with-fixes` → `approved`) · 커밋 `278b5ab`(P1 red — 새 `headless-worker-hint.test.ts` · D2 축자 · 163 B · 497 B · 세 에이전트 같은 상수 · `ARGV_TEMPLATE_VERSION` 고정 · 선언 편집 일곱 줄(hex 다섯 + 출처 주석 둘)) → `d5a82db`(P1 green — `agent-argv.ts:30` 한 줄) → P2(VERSION · `BRIDGE_VERSION` · MCP 0.39.0 · dist · 문서 — 이 절). 독립 검증 = GPT-6 Astra high verify 0066 PASS + 아키텍트 재실행. 전체 스위트 3331 pass / 1 fail(알려진 `handoff-checkpoint` live checkpoint) · typecheck 0 · 가짜 CLI `smoke:memory-write` 10/10. **실 CLI D7(2026-10-18 · 오너 승인 1회 · `d5a82db`) = PASS**: codex가 목록 SKILL.md 두 경로를 `cat` 한 번으로 읽음(exit 0) · codex · grok · claude 각 `proposed 1` · 세 카드 `notes.md` · 실 홈 무접촉 · ¬⑤ → 0.38.0 UK-8 closed · shipped 2026-10-18 · 기록 `docs/spikes/MEMORY-WRITE-SMOKE-0390.md`. 0.38.1(따로 ship 안 됨)의 목록 머리는 이 릴리스에 실려 나갔다(D1 · R7).
+
+| # | PATCH · ref | Deviation (what we did) | 판정 |
+|---|---|---|---|
+| (1) | P2 · D7 | 실 CLI는 버전 올림 **전** 커밋 `d5a82db`에서 돌렸다 — 안쪽 `HeadlessDispatcher`는 소스를 import하므로(`smoke-memory-write.ts:856`) D2 hint가 그대로 실렸다. CLI 자식(`memory list` 등)은 아직 v0.38.0 dist였다 — D7 판정은 dist에 의존하지 않는다. 버전 세 줄 · dist는 그 뒤 P2에서. | 수용(0.38.1 선례 · D7은 hint · 첫 턴만 판정) |
+| (2) | P2 · D7 결과 ⑤ | ⑤ 판정은 스모크 출력의 transcript 요약(명령 · `read_file` 인자)으로 했다 — 세 transcript의 cwd 밖 경로는 각 카드 목록 SKILL.md 둘뿐(claude는 Skill 도구 하나 · 파일 읽기 0). 스모크 코드 변경 0. | 수용(R5 · 스모크 단언 추가 안 함) |
+| (3) | 0.38.1 P2 | 0.38.1의 미수행 P2(버전 · dist · 문서)는 수행하지 않고 0.39.0 P2로 흡수했다 — CHANGELOG에 0.38.1 절은 따로 두지 않고 0.39.0 항목이 그 머리 변경을 함께 적는다. | 수용(D1) |
+
+### §0.38.1 — codex/grok 첫 턴 스킬 목록 머리 문면 (implemented P1 · real-CLI 결과 ① → D8 · not shipped 2026-10-18 · superseded by 0.39.0 (shipped inside it))
 
 PLAN §0.38.1 (R57 `approved-with-fixes` → `approved`) · 커밋 `0603e7f`(P1 red — 새 머리 축자 · 184 B · 표지/제어 문자 0 · 상한 계산 · 선언 다섯 리터럴) → `7348d15`(P1 green — `skill-prompt.ts` 상수 + JSDoc) → `76be19b`(P1b — +1 B 경계를 정확히 4097 B로). 독립 검증 = GPT-6 Astra high verify 0059(FAIL 1 M — "+1 B" 케이스가 경로에 `/p`를 붙여 4098 B를 시험 · 4097 B 미시험) → impl 레인 0060이 테스트만 고침(`entryFor(HEADER_VERBATIM, 4097)` · 13 pass · production 0줄) = P1b. **실 CLI D7(2026-10-18 · 오너 승인 1회 · `76be19b`) = 결과 ①**: codex 목록 경로 읽기 0 · `proposed 0` · "Blocked … worker instructions prohibit accessing those paths." → **D8 — 0.38.1은 고침으로 ship하지 않는다**(버전 · dist · CHANGELOG · USER_GUIDE 무변경) · 0.38.0 UK-8 open · 다음 = hint MINOR(오너 선택) · 기록 `docs/spikes/MEMORY-WRITE-SMOKE-0381.md`.
 

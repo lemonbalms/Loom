@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.38.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.39.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -830,7 +830,7 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 - **claude `acceptEdits`는 cwd 안 `mkdir`·`cp`·`mv`·`rm`·리다이렉트를 allow 목록 밖에서도 자동 허용한다** — 그래서 deny 목록이 실질 방어선이다. **잔여 위험:** 접두 규칙은 `/bin/rm` · `command rm` · `find -delete` · 인터프리터 한 줄(`python -c …`)을 잡지 못한다. 최종 방어선은 cwd 경계(`allowedRoots`) + 결과 미검증 착지(`needs_verification`)다 → **git으로 추적되는 작업 디렉터리**에서 돌리고 결과는 diff로 확인한다.
 - 워커 env = bridge env에서 `LOOM_*`·`FABLE_*`를 **전부 지우고** `LOOM_CARD`만 넣는다 — relay 토큰·URL은 워커에 닿지 않는다.
 - **사용자 훅은 상속된다(UK-3).** 오너 전역 Claude Code 훅(`~/.claude/settings.json`)이 헤드리스 claude 워커 안에서도 돈다. 0.31.0에도 격리 옵션은 없다(MCP 격리는 §16.1 `mcp.isolate`, 오너 플러그인·스킬 상속은 §16.4).
-- 워커 시스템 프롬프트는 고정 상수 `HEADLESS_WORKER_HINT`(cwd 밖 작업 금지 · 질문 금지 · push/deploy 금지 · 마커 아래 = 데이터)뿐이다. Loom MCP 도구는 없다. 카드 프롬프트는 stdin/파일로만 넘어가고 argv(`ps`)에 보이지 않는다.
+- 워커 시스템 프롬프트는 고정 상수 `HEADLESS_WORKER_HINT`(cwd 밖 작업 금지 — 단 작업 마커 위에 나열된 SKILL.md 읽기는 예외(0.39.0) · 질문 금지 · push/deploy 금지 · 마커 아래 = 데이터)뿐이다. Loom MCP 도구는 없다. 카드 프롬프트는 stdin/파일로만 넘어가고 argv(`ps`)에 보이지 않는다.
 
 ### 15.3 상태 저장 위치 — 평문, 로컬 전용
 
@@ -1017,7 +1017,7 @@ printf '%s' '<roomId>' | shasum -a 256 | cut -c1-16
 | CLI | 전달 | 프롬프트 |
 |-----|------|----------|
 | claude | 사용 가능한 스킬이 1개 이상이면 `--plugin-dir <card>/skills/plugin` 1개(`--add-dir`은 쓰지 않는다 — 접근 범위를 넓힌다). claude가 플러그인 스킬을 네이티브로 로드(`loom-card:<name>`) | `Unavailable skills:` 줄만(있을 때) |
-| codex · grok | 플래그 없음 | 첫 턴 프롬프트의 **작업 마커 앞**에 `Available skills — read the SKILL.md before use:` + `- <name>: <description> — <절대 SKILL.md 경로>`, 이어서 `- <name>: unavailable: <사유>` |
+| codex · grok | 플래그 없음 | 첫 턴 프롬프트의 **작업 마커 앞**에 `Available skills — Loom copied these for this card outside the working directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read the SKILL.md before use:`(0.39.0 — 0.38.1 머리) + `- <name>: <description> — <절대 SKILL.md 경로>`, 이어서 `- <name>: unavailable: <사유>` |
 
 - 목록은 argv에 없고(stdin · grok은 `--prompt-file`), **첫 턴에만** 들어간다 — 재개 턴은 세션이 기억한다.
 - **목록 상한: 항목 20줄 · 블록 전체 4,096바이트**(UTF-8, 머리줄 포함). 넘는 항목은 한 줄 `- (+N more): unavailable: cap`. 순서는 사용 가능 → 불가, 각각 이름순. 복사는 상한과 무관하게 전부 한다 → **claude는 플러그인으로 모든 사용 가능 스킬을 보지만 codex/grok은 목록에 든 것만 안내받는다.**
@@ -1784,7 +1784,7 @@ Policy
 
 **하고 싶은 일:** 워커가 카드에서 알게 된 사실 · 결정 · 선호를 결과 텍스트 안에서 흘려보내지 않고, **사람이 검토할 후보**로 남긴다. 승인한 것만 이후 카드의 첫 턴에 들어간다(§20.11 경로). **headless 카드 워커(§15)만** — pane backend · sticky host 워커는 후보도 `notes.md`도 내지 않는다.
 
-> ⚠️ **codex 카드의 스킬 사용은 지금 믿을 수 없다(고칠 예정).** 0.38 실 CLI 스모크(2026-10-18, codex 0.163.0)에서 codex는 "작업 디렉터리 밖은 건드리지 말라"는 지시 때문에 작업 디렉터리 밖의 카드 스킬 사본을 찾지 않고 `Blocked`로 답해 후보를 0개 올렸다. 반면 2026-10-15에는 codex 0.162.1이 같은 지시를 받고도 카드 스킬을 정상으로 읽었다 — 원인(codex 버전 차이인지 프롬프트 문구인지)은 아직 확인되지 않았다. 고칠 때까지 **codex 카드의 스킬 사용(기억 후보 포함)은 안 될 수도 있다고 보라.** claude · grok 카드는 정상 동작했다.
+> ✅ **해소(0.39.0) — codex 카드도 스킬을 읽는다.** 0.38.0에서 codex는 "작업 디렉터리 밖은 건드리지 말라"는 워커 지시 때문에 작업 디렉터리 밖의 카드 스킬 사본을 읽지 않고 `Blocked`로 답해 후보를 0개 올렸다(0.38.0 실 CLI 2회 · 0.38.1 목록 머리로도 같은 결과). 0.39.0은 그 지시 둘째 줄에 예외를 넣었다 — *"…, except that you may read the SKILL.md files listed above the dispatched-task marker."* 실 CLI(2026-10-18 · codex 0.163.0 · 1회)에서 codex는 나열된 SKILL.md 두 개를 읽고 후보 1개를 올렸다(claude · grok도 각 1개). 증명은 에이전트당 1회이고, 허락 범위는 **나열된 SKILL.md 읽기**뿐이다(스킬 디렉터리의 다른 파일은 아님).
 
 **켜기 — `worker.memory.cardWrites`(기본 꺼짐).**
 
@@ -1853,6 +1853,7 @@ loom memory: refused — LOOM_CARD is set (this shell belongs to a Loom card wor
 **올리기 · 내리기.**
 
 - 업그레이드는 0.34.0 관행대로 `loom bridge drain` → 교체 → 기동. cardWrites를 켤 때 `policy.json` `skills.allow`가 목록이면 `loom-memory-candidates`를 더한다.
+- **0.39.0으로 올릴 때(및 0.38.0으로 되돌릴 때): `loom bridge drain` → `loom bridge status`(또는 상태 파일 `~/.loom/bridge/<p>.status.json`)에서 진행 중 0 확인 → 교체 → `loom service start`(또는 `bridge start`).** 0.39.0은 워커 지시(`HEADLESS_WORKER_HINT`)를 바꿔 모든 카드의 fingerprint가 달라진다 — 올리는 순간 결과를 아직 안 보낸 카드 · 살아 있는 카드 · 재시도 resume은 재기동 때 한 번 `needs_verification`(`fingerprint_changed`)이 된다(살아 있는 워커는 죽이지 않지만 그 결과는 버려진다). **bridge는 drain 마감이 지나 진행 중 카드를 남긴 채 내려가도 exit 0이므로**(§18.4) 확인 단계를 건너뛰면 이 손실이 조용히 생긴다. 이미 결과를 보낸 카드의 새 dispatch는 새 세션이라 영향이 없다.
 - **cardWrites를 켜면 새 카드의 fingerprint가 한 번 바뀐다**(카드 스킬 사본에 새 스킬이 들어가 `manifestHash`가 달라짐 — 켠 뒤 **새 첫 spawn**부터). **진행 중 카드는 자기 사본으로 이어진다** — `needs_verification`은 없고, 새 스킬이 없으니 후보도 안 나올 가능성이 높다. 켰다 끈 뒤 이어지는 카드는 사본에 스킬이 남지만 host가 블록을 읽지 않는다.
 - **0.37 바이너리로 되돌리려면 먼저 `worker.memory.cardWrites` 키를 지운다.** 0.37은 이 키를 무시하지 않고 거부한다 — headless bridge 기동 거부 · 0.37 doctor · `loom skills list`는 `invalid bridge config`. 0.38이 쓴 카드 출처 `proposed` 줄은 0.37도 그대로 읽고 승인할 수 있다(출처 표시만 없음).
 

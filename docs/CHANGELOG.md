@@ -5,8 +5,37 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.38.0** — shipped 2026-10-18) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.39.0** — shipped 2026-10-18) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.39.0 — 2026-10-18
+
+**codex 카드가 Loom 스킬을 읽는다** — 0.38.0에서 codex 워커는 "작업 디렉터리 밖은 건드리지 말라"는 지시 때문에 작업 디렉터리 밖에 있는 카드 스킬 사본을 읽지 않았고, 그래서 기억 후보를 0개 올렸다. 0.39.0은 그 지시에 좁은 예외를 하나 넣는다: **작업 표지(dispatched-task marker) 위에 나열된 SKILL.md는 읽어도 된다.** 실 CLI 실측(2026-10-18 · codex 0.163.0 · 오너 승인 1회)에서 codex가 나열된 두 SKILL.md를 읽고 후보를 1개 올렸다. claude · grok도 각각 1개.
+
+### 가능해진 것
+
+- **codex 카드의 스킬 사용(기억 후보 포함)** — `loom-card-report` · `loom-memory-candidates` · 방이 고른 스킬을 codex 워커가 읽는다(실측 = 내장 두 개 · 2026-10-18). 0.38.0 §20.13의 codex 경고가 풀렸다.
+- **스킬 목록 머리가 무엇을 허락하는지 말한다**(따로 나가지 않은 0.38.1을 함께 싣는다) — codex · grok 첫 턴의 목록 첫 줄이 `Available skills — Loom copied these for this card outside the working directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read the SKILL.md before use:`가 된다. 머리가 길어진 만큼(+134 B) 4096 B 목록 블록 안에 항목이 들어갈 자리가 줄어든다.
+- **워커 지시 둘째 줄** — `Work only inside the current working directory. Do not touch paths outside it, except that you may read the SKILL.md files listed above the dispatched-task marker.` 세 에이전트(claude · codex · grok)가 같은 지시를 받는다.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.38.0) | 지금 (0.39.0) |
+|---------------|---------------|
+| codex 카드는 cwd 밖 스킬 사본을 읽지 않고 `Blocked`로 답할 수 있었다 | 나열된 SKILL.md는 읽는다(n = 1 실측) |
+| 0.37 → 0.38 갱신은 진행 중 카드의 fingerprint를 바꾸지 않았다(cardWrites 꺼짐) | **워커 지시가 바뀌어 fingerprint가 바뀐다** — 올릴 때 결과를 아직 안 보낸 카드 · 살아 있는 카드 · 재시도 resume은 한 번 `needs_verification`(`fingerprint_changed`)이 된다 |
+| 업그레이드 = `bridge drain` → 교체 → 기동 | **`bridge drain` → `loom bridge status`에서 진행 중 0 확인 → 교체 → `service start`(또는 기동).** bridge는 drain 마감이 지나 진행 중 카드를 남긴 채 내려가도 exit 0이라 확인 없이 바꾸면 위 `needs_verification`이 조용히 생긴다 |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · `CARD_CONTRACT_VERSION` · `ARGV_TEMPLATE_VERSION "0.31.0-v1"` · argv 모양 · fingerprint 입력 집합 · 매니페스트 · 펜스 · 정책 · 샌드박스 · pane backend · sticky host · relay 무변경.
+- **정직 고지(설계상 수용 손실):** **drain 없이 올리면 진행 중 카드의 결과가 버려진다** — 결과를 아직 안 보낸 레코드 · 살아 있는 레코드는 재기동 때 `fingerprint_changed` → `needs_verification`으로 선점된다(살아 있는 워커는 계속 돌지만 그 결과는 쓰이지 않는다 · 레코드마다 한 번). 이미 결과를 보낸 카드에 새 dispatch가 오면 새 세션으로 시작하므로 영향이 없다. 0.38.0으로 되돌릴 때도 같은 일이 한 번 일어난다 — 되돌리기 전에도 drain. 그 밖에: 허락은 지시 문면이지 강제가 아니다(cwd 밖 읽기를 막는 것은 원래도 문면뿐이었다) · 스킬 디렉터리의 형제 파일(스크립트 · 참고 파일)은 허락 밖 · skills를 끈 카드 · claude 카드도 같은 지시를 받는다(가리킬 목록이 없으면 무해) · 실 CLI 증명은 에이전트당 1회(codex 0.163.0)다.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §20.13 · §16.3 · §15 · PLAN 0.39.0 · R58 · `implementation-notes.md` §0.39.0 · [`spikes/MEMORY-WRITE-SMOKE-0390.md`](./spikes/MEMORY-WRITE-SMOKE-0390.md)
 
 ---
 

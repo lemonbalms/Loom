@@ -10569,7 +10569,7 @@ var ARGV_TEMPLATE_VERSION = "0.31.0-v1";
 var RESUME_CONTINUATION_MESSAGE = "Interrupted. Inspect the working tree before continuing; do not redo completed steps.";
 var HEADLESS_WORKER_HINT = [
   "You are a Loom card worker.",
-  "Work only inside the current working directory. Do not touch paths outside it.",
+  "Work only inside the current working directory. Do not touch paths outside it, except that you may read the SKILL.md files listed above the dispatched-task marker.",
   "There is no conversation partner. Do not ask questions. If you are blocked, write the reason and exit.",
   "Your final message is the result. It is delivered verbatim to the dispatcher.",
   "Do not push, deploy, or publish.",
@@ -14427,7 +14427,7 @@ async function verifyCardSkillsCopy(key) {
 }
 
 // packages/host/src/skill-prompt.ts
-var SKILL_LISTING_HEADER = "Available skills \u2014 read the SKILL.md before use:";
+var SKILL_LISTING_HEADER = "Available skills \u2014 Loom copied these for this card outside the working directory. Reading the SKILL.md files listed here is allowed; do not modify them. Read the SKILL.md before use:";
 var SKILL_LISTING_CLAUDE_HEADER = "Unavailable skills:";
 var SKILL_LISTING_MAX_ENTRIES = 20;
 var SKILL_LISTING_MAX_BYTES = 4096;
@@ -21650,7 +21650,7 @@ function readMemoryDoctorInput(loom, platform = process.platform) {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.38.0";
+var VERSION = "0.39.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
