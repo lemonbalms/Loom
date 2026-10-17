@@ -38,7 +38,7 @@
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
-| Headless lanes | **P1 done** `85e4318` · next P2 | dev-process, own commits | `HEADLESS-LANES-DESIGN.md` |
+| Headless lanes | **P1+P2 done** · next P3 rule text | dev-process, own commits | `HEADLESS-LANES-DESIGN.md` |
 | Known fail | `handoff-checkpoint` live Evidence · pre-existing (`9ffc100`) | not a regression | suite 3016/1 |
 | v0.37.0 | **approved** (R55) | P1–P4c committed · next P4 verify · ship needs real-CLI ① | `docs/PLAN.md` |
 | v0.36.0 | **shipped** `acd53a0` | 4단계 2부a · smoke 7/7 PASS (fake CLIs) · real CLI not run | `docs/PLAN.md` |

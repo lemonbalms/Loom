@@ -509,7 +509,7 @@ describe("tasks/traps.md injection (활성 함정 · 하지 말 것)", () => {
     try {
       const proc = Bun.spawn(
         ["bun", "run", "scripts/session-context.ts", "--part", "state"],
-        { cwd: root, stdout: "pipe", stderr: "pipe" },
+        { cwd: root, stdout: "pipe", stderr: "pipe", env: laneEnv() },
       );
       const [code, stdout] = await Promise.all([
         proc.exited,
@@ -598,6 +598,7 @@ describe("CLI behaviours", () => {
       ["bun", "run", "scripts/session-context.ts", "--lint"],
       {
         cwd: joinRoot(),
+        env: laneEnv(), // fix 1: never inherit an outer LOOM_LANE
         stdout: "pipe",
         stderr: "pipe",
       },
@@ -618,6 +619,7 @@ describe("CLI behaviours", () => {
   test("fail-open: missing --part → exit 0, no stdout", async () => {
     const proc = Bun.spawn(["bun", "run", "scripts/session-context.ts"], {
       cwd: joinRoot(),
+        env: laneEnv(), // fix 1: never inherit an outer LOOM_LANE
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -634,6 +636,7 @@ describe("CLI behaviours", () => {
       ["bun", "run", "scripts/session-context.ts", "--part", "nope"],
       {
         cwd: joinRoot(),
+        env: laneEnv(), // fix 1: never inherit an outer LOOM_LANE
         stdout: "pipe",
         stderr: "pipe",
       },
@@ -651,6 +654,7 @@ describe("CLI behaviours", () => {
       ["bun", "run", "scripts/session-context.ts", "--part", "all"],
       {
         cwd: joinRoot(),
+        env: laneEnv(), // fix 1: never inherit an outer LOOM_LANE
         stdout: "pipe",
         stderr: "pipe",
       },
@@ -675,6 +679,7 @@ describe("CLI behaviours", () => {
         ["bun", "run", "scripts/session-context.ts", "--part", part],
         {
           cwd: joinRoot(),
+        env: laneEnv(), // fix 1: never inherit an outer LOOM_LANE
           stdout: "pipe",
           stderr: "pipe",
         },
@@ -708,6 +713,7 @@ describe("CLI behaviours", () => {
       ],
       {
         cwd: joinRoot(),
+        env: laneEnv(), // fix 1: never inherit an outer LOOM_LANE
         stdout: "pipe",
         stderr: "pipe",
       },
@@ -736,6 +742,7 @@ describe("CLI behaviours", () => {
       ],
       {
         cwd: joinRoot(),
+        env: laneEnv(), // fix 1: never inherit an outer LOOM_LANE
         stdout: "pipe",
         stderr: "pipe",
       },
@@ -772,3 +779,77 @@ describe("formatSessionOutput adapters", () => {
 function joinRoot(): string {
   return new URL("..", import.meta.url).pathname;
 }
+
+// HEADLESS-LANES-DESIGN D4 — lane sessions get no SessionStart inject.
+import { isLaneSession } from "./session-context.ts";
+
+function laneEnv(lane?: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && k !== "LOOM_LANE") env[k] = v;
+  }
+  if (lane !== undefined) env.LOOM_LANE = lane;
+  return env;
+}
+
+async function runSessionContext(args: string[], lane?: string) {
+  const proc = Bun.spawn(["bun", "run", "scripts/session-context.ts", ...args], {
+    cwd: joinRoot(),
+    stdout: "pipe",
+    stderr: "pipe",
+    env: laneEnv(lane),
+  });
+  const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+  return { code, stdout };
+}
+
+describe("D4 lane inject skip (LOOM_LANE)", () => {
+  test("isLaneSession: non-empty LOOM_LANE only", () => {
+    expect(isLaneSession({ LOOM_LANE: "impl" })).toBe(true);
+    expect(isLaneSession({ LOOM_LANE: "" })).toBe(false);
+    expect(isLaneSession({})).toBe(false);
+  });
+
+  test("--part all (claude format) with LOOM_LANE=impl → empty stdout, exit 0", async () => {
+    const r = await runSessionContext(["--part", "all"], "impl");
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  test("--part all --format codex-plain with LOOM_LANE=verify → empty stdout, exit 0", async () => {
+    const r = await runSessionContext(["--part", "all", "--format", "codex-plain"], "verify");
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  test("without LOOM_LANE → non-empty (both formats)", async () => {
+    const a = await runSessionContext(["--part", "all"]);
+    const b = await runSessionContext(["--part", "all", "--format", "codex-plain"]);
+    expect(a.code).toBe(0);
+    expect(a.stdout.length).toBeGreaterThan(0);
+    expect(b.code).toBe(0);
+    expect(b.stdout.length).toBeGreaterThan(0);
+  });
+
+  test("--lint with LOOM_LANE still runs (same exit as without)", async () => {
+    const withLane = Bun.spawn(["bun", "run", "scripts/session-context.ts", "--lint"], {
+      cwd: joinRoot(),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: laneEnv("impl"),
+    });
+    const without = Bun.spawn(["bun", "run", "scripts/session-context.ts", "--lint"], {
+      cwd: joinRoot(),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: laneEnv(),
+    });
+    const [c1, e1, c2] = await Promise.all([
+      withLane.exited,
+      new Response(withLane.stderr).text(),
+      without.exited,
+    ]);
+    expect(c1).toBe(c2);
+    expect(e1).toContain("state target");
+  });
+});

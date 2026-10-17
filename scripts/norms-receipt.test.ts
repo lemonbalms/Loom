@@ -199,3 +199,54 @@ describe("NORMS envelope, digest, and host gates", () => {
     expect(result.report).toContain("Codex: disabled-token-unmeasured");
   });
 });
+
+// HEADLESS-LANES-DESIGN D4 — lane sessions get no SessionStart NORMS inject.
+import { isLaneSession } from "./norms-receipt.ts";
+
+function normsEnv(lane?: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && k !== "LOOM_LANE") env[k] = v;
+  }
+  if (lane !== undefined) env.LOOM_LANE = lane;
+  return env;
+}
+
+async function runNorms(args: string[], lane?: string) {
+  const proc = Bun.spawn(["bun", "run", "scripts/norms-receipt.ts", ...args], {
+    cwd: ROOT,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: normsEnv(lane),
+  });
+  const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+  return { code, stdout };
+}
+
+describe("D4 lane inject skip (LOOM_LANE)", () => {
+  test("isLaneSession: non-empty LOOM_LANE only", () => {
+    expect(isLaneSession({ LOOM_LANE: "advise" })).toBe(true);
+    expect(isLaneSession({ LOOM_LANE: "" })).toBe(false);
+    expect(isLaneSession({})).toBe(false);
+  });
+
+  test("--format claude-json with LOOM_LANE → empty stdout, exit 0; without → non-empty", async () => {
+    const lane = await runNorms(["--format", "claude-json"], "impl");
+    expect(lane.code).toBe(0);
+    expect(lane.stdout).toBe("");
+    const plain = await runNorms(["--format", "codex-plain"], "verify");
+    expect(plain.code).toBe(0);
+    expect(plain.stdout).toBe("");
+    const normal = await runNorms(["--format", "claude-json"]);
+    expect(normal.code).toBe(0);
+    expect(normal.stdout.length).toBeGreaterThan(0);
+  });
+
+  test("--check with LOOM_LANE → same result as without", async () => {
+    const lane = await runNorms(["--check"], "impl");
+    const normal = await runNorms(["--check"]);
+    expect(lane.code).toBe(normal.code);
+    expect(lane.stdout).toBe(normal.stdout);
+    expect(lane.stdout.length).toBeGreaterThan(0);
+  });
+});

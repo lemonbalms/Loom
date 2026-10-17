@@ -347,18 +347,29 @@ function claudeResultText(stdout: string): string {
 
 const CODEX_HEADER_DELIM = "--------";
 
+/** The only line real codex (0.163) prints before its banner. */
+const CODEX_STDIN_NOTICE = "Reading additional input from stdin...";
+
 /**
- * Codex model evidence — child **stderr only**, header block only: the lines
- * between the first two lines that are exactly `--------` at the start of
- * stderr (optionally preceded by the `OpenAI Codex vX` banner line). Lines
- * outside the block and all of stdout are ignored; no block → nulls.
+ * Codex model evidence — child **stderr only**, header block only. Only known
+ * preamble shapes are accepted: the `OpenAI Codex` banner is stderr line 0, or
+ * line 1 when line 0 is exactly `Reading additional input from stdin...`. The
+ * line immediately after the banner must be exactly `--------`, and the header
+ * block is the lines up to the next `--------`. Lines outside the block and all
+ * of stdout are ignored; any other shape → nulls.
  */
 export function parseCodexHeader(stderr: string): { model: string | null; effort: string | null } {
   const lines = stderr.split("\n").map((l) => l.replace(/\r$/, ""));
-  const open = lines.indexOf(CODEX_HEADER_DELIM);
   const none = { model: null, effort: null };
-  if (open < 0 || open > 1) return none;
-  if (open === 1 && !lines[0]!.startsWith("OpenAI Codex")) return none;
+  const isBanner = (l: string | undefined) => l?.startsWith("OpenAI Codex") === true;
+  const banner = isBanner(lines[0])
+    ? 0
+    : lines[0] === CODEX_STDIN_NOTICE && isBanner(lines[1])
+      ? 1
+      : -1;
+  if (banner < 0) return none;
+  const open = banner + 1;
+  if (lines[open] !== CODEX_HEADER_DELIM) return none;
   const close = lines.findIndex((l, i) => i > open && l === CODEX_HEADER_DELIM);
   if (close < 0) return none;
   const block = lines.slice(open + 1, close).join("\n");

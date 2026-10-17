@@ -648,6 +648,14 @@ function runLint(): never {
   process.exit(0);
 }
 
+/**
+ * HEADLESS-LANES-DESIGN D4: a headless lane (`LOOM_LANE` set by scripts/lane.ts) gets no
+ * SessionStart inject — it must not run the architect ritual. `--lint` is unaffected.
+ */
+export function isLaneSession(env: Record<string, string | undefined> = process.env): boolean {
+  return typeof env.LOOM_LANE === "string" && env.LOOM_LANE !== "";
+}
+
 if (import.meta.main) {
   if (process.argv.includes("--lint")) {
     try {
@@ -657,6 +665,11 @@ if (import.meta.main) {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
+  }
+
+  if (isLaneSession()) {
+    // D4 lane skip: emit nothing.
+    process.exit(0);
   }
 
   try {

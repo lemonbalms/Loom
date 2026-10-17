@@ -288,6 +288,20 @@ check-bun-test-env.ts  →  check-lane-spawn.ts (new)  →  rule-router-jit.ts
 
 Both deny hooks precede JIT (HANDOFF invariant "Bash deny **before** JIT; JIT never exit 2").
 
+
+**P2 as built (2026-10-17, `scripts/hooks/check-lane-spawn.ts`).** After three verify rounds of
+position-based bypasses (`&`, leading/attached redirections, `--`, `bash -o … -c`), detection is by
+**token presence per segment**, not command position: segments split on unquoted `;` `&` `|` and newlines
+(outside heredoc bodies; redirection operators kept intact); among unquoted tokens, `claude` + `-p`/`--print`
+or `codex` + later `exec`/`e` → deny (even in a segment that also calls the wrapper); `bun` + later
+`…scripts/lane.ts` = a lane call. Inside a lane (`LOOM_LANE` set) any `claude`, `codex` or lane call is denied.
+Quoted tokens never match; one level of `bash|sh|zsh … -c` is recursed. Accepted false-denies: unquoted
+mentions (`echo claude -p`), `codex exec --help`. Accepted residuals: `eval`, process substitution, aliases,
+functions, deeper nesting, quoted names (`"claude" -p`). Verify loop closed by architect ruling after round 5 —
+the hook is a speed bump; `lane.ts` evidence (`meta.json`) is the enforcement.
+Inject skip: `session-context.ts` / `norms-receipt.ts` emit nothing under `LOOM_LANE` (lint/check/raw unchanged);
+emission tests strip `LOOM_LANE` so the suite passes inside a lane. FORCE env pair **not** added (owner, P2 scope).
+
 ### 5.3 (c) Agent hook — existing
 
 `scripts/hooks/check-agent-model.ts` unchanged: blocks `fable-advisor` / `fable`, pins

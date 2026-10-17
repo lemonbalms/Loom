@@ -24,6 +24,10 @@
           },
           {
             "type": "command",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/scripts/hooks/check-lane-spawn.ts\""
+          },
+          {
+            "type": "command",
             "command": "bun run \"$CLAUDE_PROJECT_DIR/scripts/rule-router-jit.ts\"",
             "timeout": 15
           }

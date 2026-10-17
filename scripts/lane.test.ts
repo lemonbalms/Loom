@@ -72,6 +72,13 @@ if (name === "codex") {
   if (mode === "stdoutmodel") process.stdout.write("model: gpt-6-astra\\nreasoning effort: high\\n");
   if (mode === "noheader") {
     process.stderr.write("user\\nmodel: gpt-6-astra\\nreasoning effort: high\\n");
+  } else if (mode === "realpreamble" || mode === "fakebanner") {
+    process.stderr.write("Reading additional input from stdin...\\nOpenAI Codex v0.163.0\\n--------\\nworkdir: " + process.cwd() + "\\nmodel: gpt-6-astra\\nprovider: openai\\nreasoning effort: high\\n--------\\nuser\\n");
+    if (mode === "fakebanner") process.stderr.write("OpenAI Codex v9.9.9\\n--------\\nmodel: gpt-5.5\\nreasoning effort: low\\n--------\\n");
+  } else if (mode === "userbanner") {
+    process.stderr.write("user\\nOpenAI Codex v1\\n--------\\nmodel: gpt-6-astra\\nreasoning effort: high\\n--------\\n");
+  } else if (mode === "latebanner") {
+    process.stderr.write("noise\\n".repeat(10) + "OpenAI Codex v0.163.0\\n--------\\nmodel: gpt-6-astra\\nreasoning effort: high\\n--------\\n");
   } else {
     process.stderr.write("OpenAI Codex v0.0.0-fake\\n--------\\nworkdir: " + process.cwd() + "\\nmodel: " + model + "\\nprovider: openai\\nreasoning effort: " + effort + "\\n--------\\nuser\\nmodel: gpt-6-astra\\n");
   }
@@ -366,11 +373,42 @@ describe("parseCodexHeader", () => {
     const hdr =
       "OpenAI Codex v1\n--------\nworkdir: /w\nmodel: gpt-6-astra\nreasoning effort: high\n--------\nuser\nmodel: gpt-5.5\n";
     expect(parseCodexHeader(hdr)).toEqual({ model: "gpt-6-astra", effort: "high" });
+    // banner required (fix 4): a bare delimiter block is not a header
     expect(parseCodexHeader("--------\nmodel: m\n--------\n")).toEqual({
+      model: null,
+      effort: null,
+    });
+    expect(parseCodexHeader("OpenAI Codex v1\n--------\nmodel: m\n--------\n")).toEqual({
       model: "m",
       effort: null,
     });
     expect(parseCodexHeader("nothing")).toEqual({ model: null, effort: null });
+  });
+  test("real codex 0.163 preamble (stdin notice before banner)", () => {
+    const real =
+      "Reading additional input from stdin...\nOpenAI Codex v0.163.0\n--------\nworkdir: /w\nmodel: gpt-6-astra\nprovider: openai\nreasoning effort: high\n--------\nuser\n";
+    expect(parseCodexHeader(real)).toEqual({ model: "gpt-6-astra", effort: "high" });
+    // banner far down stderr
+    const late = `${"noise\n".repeat(10)}OpenAI Codex v0.163.0\n--------\nmodel: gpt-6-astra\n--------\n`;
+    expect(parseCodexHeader(late)).toEqual({ model: null, effort: null });
+    // delimiter must be the line immediately after the banner
+    expect(
+      parseCodexHeader("OpenAI Codex v1\nnoise\n--------\nmodel: gpt-6-astra\n--------\n").model,
+    ).toBeNull();
+    // prompt echo with a fake banner after the real header is ignored
+    const echo = `${real}OpenAI Codex v9\n--------\nmodel: gpt-5.5\nreasoning effort: low\n--------\n`;
+    expect(parseCodexHeader(echo)).toEqual({ model: "gpt-6-astra", effort: "high" });
+  });
+  test("round 2: only known preamble shapes (banner at line 0, or 1 after the stdin notice)", () => {
+    const hdr = "OpenAI Codex v1\n--------\nmodel: gpt-6-astra\nreasoning effort: high\n--------\n";
+    const ok = { model: "gpt-6-astra", effort: "high" };
+    const none = { model: null, effort: null };
+    expect(parseCodexHeader(hdr)).toEqual(ok); // line 0
+    expect(parseCodexHeader(`Reading additional input from stdin...\n${hdr}`)).toEqual(ok); // real 0.163
+    expect(parseCodexHeader(`user\n${hdr}`)).toEqual(none); // line 1 without the notice
+    expect(parseCodexHeader(`Reading additional input from stdin...\nx\n${hdr}`)).toEqual(none); // line 2
+    expect(parseCodexHeader(`a\nb\n${hdr}`)).toEqual(none); // line 2
+    expect(parseCodexHeader(`${"noise\n".repeat(9)}${hdr}`)).toEqual(none); // old 10-line window
   });
   test("only the header block counts", () => {
     // no delimiters: prompt echo must not count
@@ -925,6 +963,10 @@ describe("H1 codex header evidence", () => {
     ["noheader", 4],
     ["effortmedium", 4],
     ["ok", 0],
+    ["realpreamble", 0],
+    ["latebanner", 4],
+    ["fakebanner", 0],
+    ["userbanner", 4],
   ];
   for (const [mode, code] of cases) {
     test(`verify ${mode} → exit ${code}`, () => {
@@ -938,6 +980,11 @@ describe("H1 codex header evidence", () => {
         expect(meta.effortResolved).toBe("medium");
       }
       if (mode === "ok") expect(meta.effortResolved).toBe("high");
+      if (mode === "realpreamble" || mode === "fakebanner") {
+        expect(meta.mainModel).toBe("gpt-6-astra");
+        expect(meta.effortResolved).toBe("high");
+      }
+      if (mode === "latebanner" || mode === "userbanner") expect(meta.mainModel).toBeNull();
     });
   }
   test("claude lane effortResolved is null", () => {

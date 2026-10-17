@@ -286,6 +286,15 @@ function parseFormat(argv: string[]): NormsFormat {
   throw new Error(`unknown norms format: ${value ?? "(missing)"}`);
 }
 
+/**
+ * HEADLESS-LANES-DESIGN D4: a headless lane (`LOOM_LANE` set by scripts/lane.ts) gets no
+ * SessionStart NORMS inject. Applies to the hook-injected formats only (claude-json,
+ * codex-plain); `--check` and on-demand `raw` (norms:raw) are unaffected.
+ */
+export function isLaneSession(env: Record<string, string | undefined> = process.env): boolean {
+  return typeof env.LOOM_LANE === "string" && env.LOOM_LANE !== "";
+}
+
 function main(): void {
   try {
     if (process.argv.includes("--check")) {
@@ -297,9 +306,11 @@ function main(): void {
       }
       return;
     }
+    const format = parseFormat(process.argv.slice(2));
+    if (format !== "raw" && isLaneSession()) return;
     const packs = extractNormPacks(readLiveNormSources());
     const envelope = buildNormsEnvelope(packs);
-    process.stdout.write(formatNormsOutput(envelope, parseFormat(process.argv.slice(2))));
+    process.stdout.write(formatNormsOutput(envelope, format));
   } catch (error) {
     process.stderr.write(
       `norms-receipt FAIL — ${error instanceof Error ? error.message : String(error)}\n`,
