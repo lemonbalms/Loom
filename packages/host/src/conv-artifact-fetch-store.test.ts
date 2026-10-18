@@ -16,7 +16,7 @@ import {
   symlinkSync,
   readlinkSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { generateConvId, convArtifactsRootLiteral, type ArtifactRefEntry } from "@loom/protocol";
@@ -288,6 +288,39 @@ describe("ingest failure is best-effort (D3 · R10 · R16)", () => {
     expect(lstatSync(indexPath()).isSymbolicLink()).toBe(true);
     expect(readlinkSync(indexPath())).toBe(target);
     expect(readFileSync(target, "utf8")).toBe("");
+
+    expect(storeLines()).toEqual([
+      `[loom] artifact store: skipped — symlink (convId ${convId} · seq ${SEQ} · index ${INDEX})`,
+    ]);
+  });
+
+  test("P2b (Astra 0172 M): landed name is a symlink to another regular file in the conv dir → result unchanged · no blob · no row · one `symlink` line", async () => {
+    const convId = generateConvId();
+    const name = "landed-link.txt";
+    const body = "store-landed-symlink-body";
+    seed(convId, name, body);
+    const seen = { argv: [] as string[] };
+    const runScp: ConvFetchRunScp = async (argv) => {
+      seen.argv = argv;
+      const dest = argv[argv.length - 1]!;
+      const target = join(dirname(dest), "real-target.txt");
+      writeFileSync(target, body);
+      symlinkSync(target, dest);
+      return { exitCode: 0, stderr: "" };
+    };
+
+    const r = await convFetch({ convId, seq: SEQ, index: INDEX, runScp });
+
+    const convDir = realpathSync(convFetchLocalDir(convId));
+    const target = join(convDir, "real-target.txt");
+    // R40 containment passes (the target is inside the conv dir); the result keeps its 0.44 shape.
+    expect(r).toEqual(expectedResult(seen.argv, target, body));
+    expect(stdoutBytes).toBe(0);
+    expect(lstatSync(join(convDir, name)).isSymbolicLink()).toBe(true);
+    expect(readFileSync(target, "utf8")).toBe(body);
+    expect(lstatSync(target).nlink).toBe(1);
+    expect(existsSync(blobPathOf(shaOf(body)))).toBe(false);
+    expect(existsSync(indexPath())).toBe(false);
 
     expect(storeLines()).toEqual([
       `[loom] artifact store: skipped — symlink (convId ${convId} · seq ${SEQ} · index ${INDEX})`,

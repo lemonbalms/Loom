@@ -420,14 +420,33 @@ describe("PLAN 0.45.0 P1 ingest table — skipped branches (R1 · R3~R10)", () =
 
   /**
    * P1c (Astra 0168): ingest never unlinks — the wrongly linked inode stays under the sha name, no row is
-   * appended, one `inode changed` line is logged; once a row lists that sha, `verify` reports `sha mismatch`.
-   * The decoy has the same length and different bytes, so the size check passes and the sha check fails.
+   * appended, one `inode changed` line is logged; on that real resulting store (no index), `verify`'s orphan
+   * walk reports the sha as `sha mismatch` (P2b — Astra 0172 L). The decoy has the same length and different
+   * bytes, so only the sha check can catch it.
    */
   async function expectWrongBlobLeft(root: string, l: Landed, decoyIno: number): Promise<void> {
     const blob = blobPath(root, l.sha256);
     expect(lstatSync(blob).ino).toBe(decoyIno);
     expect(readFileSync(blob, "utf8")).toBe("the decoy bytes!!");
     expect(existsSync(indexPath(root))).toBe(false);
+    const m = await loadStore();
+    expect(m.verifyArtifactStore(root, MAX_WORKER_ARTIFACT_BYTES)).toEqual({
+      ok: true,
+      checked: 0,
+      problems: [{ sha256: l.sha256, reason: "sha mismatch" }],
+      orphans: [],
+      torn: 0,
+    });
+  }
+
+  test("P1c: the wrong blob with a separately supplied index row → verify `sha mismatch` via the indexed path", async () => {
+    const root = tempRoot("inode-indexed");
+    const l = land(root, "the fetched bytes");
+    const decoy = join(root, "decoy.txt");
+    writeFileSync(decoy, "the decoy bytes!!", { mode: 0o600 });
+    await expectSkipped(input(l), "inode changed", {
+      link: (_from, to) => linkSync(decoy, to),
+    });
     writeFileSync(indexPath(root), `${JSON.stringify(expectedRow(l))}\n`, { mode: 0o600 });
     const m = await loadStore();
     expect(m.verifyArtifactStore(root, MAX_WORKER_ARTIFACT_BYTES)).toEqual({
@@ -437,7 +456,7 @@ describe("PLAN 0.45.0 P1 ingest table — skipped branches (R1 · R3~R10)", () =
       orphans: [],
       torn: 0,
     });
-  }
+  });
 
   test("R7 · P1c: conv name swapped before the link (hook prelink) → `inode changed` · the decoy blob left · no row · verify `sha mismatch`", async () => {
     const root = tempRoot("inode");
@@ -864,17 +883,42 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
     writeFileSync(join(prefixDir(root, orphan.sha), `${orphan.sha}.tmp`), "t", { mode: 0o600 });
     writeFileSync(join(prefixDir(root, orphan.sha), "short"), "s", { mode: 0o600 });
     writeFileSync(join(shaDir(root), "stray.txt"), "s", { mode: 0o600 });
-    // A non-regular entry under a valid name is not an orphan either.
+    // P2b: a non-regular entry under a valid name is not an orphan — it is a problem.
     const dirSha = sha256Of("a dir");
     mkdirSync(blobPath(root, dirSha), { recursive: true, mode: 0o700 });
     const r = await verify(root);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.checked).toBe(1);
-    expect(r.problems).toEqual([]);
+    expect(r.problems).toEqual([{ sha256: dirSha, reason: "not a regular file" }]);
     expect(r.torn).toBe(0);
     expect(r.orphans.length).toBe(1);
     expect(r.orphans[0]?.name.endsWith(orphan.sha)).toBe(true);
+  });
+
+  test("P2b: unindexed blobs are re-hashed — name/bytes mismatch · symlink · exec bit are problems, a match stays info", async () => {
+    const root = tempRoot("v-orphan-problems");
+    const good = putBlob(root, "good orphan");
+    const wrong = putBlob(root, "wrong orphan");
+    writeFileSync(blobPath(root, wrong.sha), "other bytes!", { mode: 0o600 });
+    const exec = putBlob(root, "exec orphan", 0o700);
+    const linkSha = sha256Of("linked orphan");
+    const target = join(root, "target.bin");
+    writeFileSync(target, "linked orphan", { mode: 0o600 });
+    mkdirSync(prefixDir(root, linkSha), { recursive: true, mode: 0o700 });
+    symlinkSync(target, blobPath(root, linkSha));
+    const r = await verify(root);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.checked).toBe(0);
+    const want = [
+      { sha256: wrong.sha, reason: "sha mismatch" },
+      { sha256: exec.sha, reason: "exec bit" },
+      { sha256: linkSha, reason: "symlink" },
+    ].sort((a, b) => (a.sha256 < b.sha256 ? -1 : 1));
+    expect(r.problems).toEqual(want);
+    expect(r.orphans.length).toBe(1);
+    expect(r.orphans[0]?.name.endsWith(good.sha)).toBe(true);
   });
 
   test("problems and orphans are sorted by sha ascending · checked = distinct shas · torn counted", async () => {
