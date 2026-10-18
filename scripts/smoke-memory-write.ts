@@ -40,10 +40,13 @@
  *   ⑧ cardWrites off (memory + skills on — the 0.37 config) → card directory file set = 0.37 (no
  *      notes.md) · no memory_propose line · no record key · store bytes unchanged · copy without
  *      the forced skill
+ *   ⑨ (0.43.0 C3 ⑩ · R62-H1) every dispatched card: `prompt-1.json` is v3 · its `system` sha256 =
+ *      HEADLESS_WORKER_HINT's · 0 new entries in WORK (sorted listing before / after the card)
  * `--real-cli --owner-approved` (never by default — D18 · R56-M4 ship condition): step ① only with
  * the real claude / codex / grok binaries (inner HOME = real home, LOOM_TEST_HOME = T), cardWrites
  * on, a prompt asking for exactly one candidate. Prints per card the stderr `memory_propose` line,
- * the proposed count and whether notes.md exists; exits non-zero when all three cards propose 0
+ * the proposed count, whether notes.md exists, the `prompt-1.json` version / system sha check and
+ * the new WORK entries (printed for the outcome table, not asserted); exits non-zero when all three cards propose 0
  * or any card lacks notes.md.
  * `--only <claude|codex|grok>` (P5c — with `--real-cli --owner-approved` only, else a usage FAIL):
  * step ① for that one agent; pass = notes.md exists (the ≥1-proposed rule is the three-agent run's).
@@ -334,6 +337,10 @@ type InnerCardOut = {
   lines: string[];
   /** Real-cli diagnostics (P5c); null in default mode. */
   diag: CardDiag | null;
+  /** PLAN 0.43.0 C3 ⑩: `prompt-1.json` version + its `system` sha256 next to HEADLESS_WORKER_HINT's. */
+  record: { version: number | null; systemSha256: string | null; hintSha256: string };
+  /** R62-H1: sorted WORK listing (relative paths, recursive) before / after this card. */
+  workFiles: { before: string[]; after: string[] };
 };
 type CardDiag = {
   /** Spawn argv as the exec shim saw it (argv[0] = the real bin), null when the shim never ran. */
@@ -355,6 +362,9 @@ type InnerOut = {
   rounds: RecoverRound[];
 };
 
+/** Every dispatched card of every inner run (PLAN 0.43.0 C3 ⑩ record check). */
+const allCards: InnerCardOut[] = [];
+
 function runInner(step: string, extra: Record<string, string> = {}): InnerOut {
   const outPath = join(T, `inner-${step}.json`);
   const r = spawnChild(
@@ -365,8 +375,13 @@ function runInner(step: string, extra: Record<string, string> = {}): InnerOut {
   if (r.code !== 0 || !existsSync(outPath)) {
     throw new Error(`inner ${step} exit ${r.code} · stderr ${JSON.stringify(r.err.slice(-800))}`);
   }
-  return JSON.parse(readFileSync(outPath, "utf8")) as InnerOut;
+  const out = JSON.parse(readFileSync(outPath, "utf8")) as InnerOut;
+  allCards.push(...out.cards);
+  return out;
 }
+
+/** WORK entries present after the card but not before (R62-H1). */
+const newWorkFiles = (c: InnerCardOut) => c.workFiles.after.filter((f) => !c.workFiles.before.includes(f));
 
 // ---------------------------------------------------------------------------------------------
 // temp-home fixtures (all under T)
@@ -520,6 +535,8 @@ const realRows: {
   notes: boolean;
   reply: string;
   diag: CardDiag | null;
+  record: InnerCardOut["record"];
+  newWork: string[];
 }[] = [];
 
 if (!existsSync(DIST)) {
@@ -555,6 +572,8 @@ try {
           notes: c.notes !== null,
           reply: c.resultOutput ?? "",
           diag: c.diag,
+          record: c.record,
+          newWork: newWorkFiles(c),
         });
       }
       const missing = realRows.filter((r) => !r.notes).map((r) => r.agent);
@@ -755,6 +774,20 @@ try {
       }
       return `card dir = ${JSON.stringify(baseCardFiles("claude"))} (+ prompt.txt for grok) · no notes.md · no stderr · store unchanged`;
     });
+
+    step("⑨ every card — prompt-1.json v3 · system sha = HEADLESS_WORKER_HINT · WORK new entries 0 (C3 ⑩ · R62-H1)", () => {
+      check(allCards.length > 0, "no dispatched cards");
+      for (const c of allCards) {
+        check(c.record.version === 3, `${c.cardId}: prompt-1.json version ${c.record.version} (want 3)`);
+        check(
+          c.record.systemSha256 === c.record.hintSha256,
+          `${c.cardId}: system sha256 ${c.record.systemSha256} ≠ HEADLESS_WORKER_HINT ${c.record.hintSha256}`,
+        );
+        const added = newWorkFiles(c);
+        check(added.length === 0, `${c.cardId}: new WORK entries ${JSON.stringify(added)}`);
+      }
+      return `${allCards.length} cards · v3 · system sha ${allCards[0]!.record.hintSha256.slice(0, 12)} · WORK new entries 0`;
+    });
   }
 } finally {
   cleanup();
@@ -795,6 +828,10 @@ if (realRows.length > 0) {
     console.log(`card ${r.agent}: ${r.line || "(no memory_propose line)"}`);
     console.log(`  proposed ${r.proposed ?? "?"} · notes.md ${r.notes ? "exists" : "missing"}`);
     console.log(`  reply ${JSON.stringify(r.reply)}`);
+    console.log(
+      `  prompt-1.json v${r.record.version ?? "?"} · system sha256 ${r.record.systemSha256 === r.record.hintSha256 ? "= HEADLESS_WORKER_HINT" : `${r.record.systemSha256 ?? "(none)"} ≠ HEADLESS_WORKER_HINT ${r.record.hintSha256}`}`,
+    );
+    console.log(`  WORK new entries ${r.newWork.length} ${JSON.stringify(r.newWork)}`);
     const d = r.diag;
     if (!d) {
       console.log("  diagnostics: (none)");
@@ -851,7 +888,8 @@ async function inner(): Promise<void> {
     loadBridgeConfig,
     workerConfigFromBridge,
   } = await import("../packages/host/src/bridge-config");
-  const { effectiveWorkerPolicy } = await import("../packages/host/src/agent-argv");
+  const { effectiveWorkerPolicy, HEADLESS_WORKER_HINT } = await import("../packages/host/src/agent-argv");
+  const hintSha256 = createHash("sha256").update(Buffer.from(HEADLESS_WORKER_HINT, "utf8")).digest("hex");
   const { policyGaps } = await import("../packages/host/src/policy-gaps");
   const { HeadlessDispatcher } = await import("../packages/host/src/headless-worker");
   const { cardSessionPath } = await import("../packages/host/src/card-session-store");
@@ -862,6 +900,7 @@ async function inner(): Promise<void> {
     process.exit(1);
   }
   const dump = join(realpathSync(T0), "dump");
+  const work = join(realpathSync(T0), "work");
 
   const profile = resolveBridgeProfile();
   const cfgPath = bridgeConfigPath(profile);
@@ -1025,7 +1064,9 @@ exec ${q(realBin)} "$@"
       dispatchHandoffId: `ho_${p.cardId}`,
     };
     const mark = stderrLines.length;
+    const workBefore = listTree(work);
     await d.dispatch(card);
+    const workAfter = listTree(work);
     const sessionPath = cardSessionPath(keyOf(p));
     const dir = join(sessionPath, "..");
     const raw = readRecord(p);
@@ -1035,6 +1076,18 @@ exec ${q(realBin)} "$@"
     const notesPath = join(dir, NOTES);
     const skillsDir = join(dir, "skills", "plugin", "skills");
     const res = results.find((r) => r.cardId === p.cardId);
+    let recordVersion: number | null = null;
+    let systemSha256: string | null = null;
+    try {
+      const rec = JSON.parse(readFileSync(join(dir, "prompt-1.json"), "utf8")) as Record<string, unknown>;
+      recordVersion = typeof rec.version === "number" ? rec.version : null;
+      systemSha256 =
+        typeof rec.system === "string"
+          ? createHash("sha256").update(Buffer.from(rec.system, "utf8")).digest("hex")
+          : null;
+    } catch {
+      // absent or unreadable: version / sha stay null
+    }
     cards.push({
       cardId: p.cardId,
       agent: p.agent,
@@ -1052,6 +1105,8 @@ exec ${q(realBin)} "$@"
       resultOutput: res?.output ?? null,
       lines: ours(stderrLines.slice(mark), p.cardId),
       diag: mode === "real-cli" ? cardDiag(dir, dump, p.cardId) : null,
+      record: { version: recordVersion, systemSha256, hintSha256 },
+      workFiles: { before: workBefore, after: workAfter },
     });
   }
   await d.close();
@@ -1064,6 +1119,30 @@ exec ${q(realBin)} "$@"
 // real-cli diagnostics (P5c) — function declarations only: the inner calls them before the
 // outer's module-level constants are initialised. No env values are read or printed.
 // =============================================================================================
+
+/** PLAN 0.43.0 R62-H1: sorted relative paths under `root` (recursive, symlinks not followed). */
+function listTree(root: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string, rel: string) => {
+    let names: string[];
+    try {
+      names = readdirSync(d);
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      const r = rel === "" ? n : `${rel}/${n}`;
+      out.push(r);
+      try {
+        if (lstatSync(join(d, n)).isDirectory()) walk(join(d, n), r);
+      } catch {
+        // vanished between readdir and lstat: listed by name only
+      }
+    }
+  };
+  walk(root, "");
+  return out.sort();
+}
 
 function clip(v: unknown, n: number): string {
   const s = typeof v === "string" ? v : (JSON.stringify(v) ?? String(v));
