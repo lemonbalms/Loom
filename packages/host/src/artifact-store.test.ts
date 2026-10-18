@@ -50,7 +50,7 @@ type ArtifactStoreDeps = {
   now?: () => Date;
   /** @internal P1b seam — the index row write. */
   write?: (fd: number, buf: Buffer) => number;
-  /** @internal P1b seam — `"lstat"` before the conv open · `"prelink"` before the pre-link lstat. */
+  /** @internal P1b seam — `"lstat"` before the conv open · `"prelink"` before the link. */
   hook?: (point: "lstat" | "prelink") => void;
 };
 type SeamDeps = Pick<ArtifactStoreDeps, "link" | "write" | "hook">;
@@ -418,25 +418,58 @@ describe("PLAN 0.45.0 P1 ingest table — skipped branches (R1 · R3~R10)", () =
     expectNoBlobNoRow(root, l.sha256);
   });
 
-  // P1b: the swap now happens where a real one would (the conv name replaced after the read, before the
-  // link) — the link links the decoy, which this call then owns and removes (Astra 0156 #4 ownership rule).
-  test("R7 · R64-M1: conv name swapped after the read → `inode changed` · the linked decoy unlinked · no row", async () => {
+  /**
+   * P1c (Astra 0168): ingest never unlinks — the wrongly linked inode stays under the sha name, no row is
+   * appended, one `inode changed` line is logged; once a row lists that sha, `verify` reports `sha mismatch`.
+   * The decoy has the same length and different bytes, so the size check passes and the sha check fails.
+   */
+  async function expectWrongBlobLeft(root: string, l: Landed, decoyIno: number): Promise<void> {
+    const blob = blobPath(root, l.sha256);
+    expect(lstatSync(blob).ino).toBe(decoyIno);
+    expect(readFileSync(blob, "utf8")).toBe("the decoy bytes!!");
+    expect(existsSync(indexPath(root))).toBe(false);
+    writeFileSync(indexPath(root), `${JSON.stringify(expectedRow(l))}\n`, { mode: 0o600 });
+    const m = await loadStore();
+    expect(m.verifyArtifactStore(root, MAX_WORKER_ARTIFACT_BYTES)).toEqual({
+      ok: true,
+      checked: 1,
+      problems: [{ sha256: l.sha256, reason: "sha mismatch" }],
+      orphans: [],
+      torn: 0,
+    });
+  }
+
+  test("R7 · P1c: conv name swapped before the link (hook prelink) → `inode changed` · the decoy blob left · no row · verify `sha mismatch`", async () => {
     const root = tempRoot("inode");
     const l = land(root, "the fetched bytes");
     const decoy = join(root, "decoy.txt");
     const aside = join(root, "aside.txt");
-    writeFileSync(decoy, "the fetched bytes", { mode: 0o600 });
-    await expectSkipped(input(l), "inode changed", {
+    writeFileSync(decoy, "the decoy bytes!!", { mode: 0o600 });
+    const decoyIno = lstatSync(decoy).ino;
+    const logs = await runIngest(input(l), {
       hook: (point) => {
         if (point !== "prelink") return;
         renameSync(l.destPath, aside);
         renameSync(decoy, l.destPath);
       },
     });
-    expectNoBlobNoRow(root, l.sha256);
-    expect(lstatSync(l.destPath).nlink).toBe(1);
-    expect(readFileSync(l.destPath, "utf8")).toBe("the fetched bytes");
+    expect(logs).toEqual([skipLine("inode changed")]);
+    expect(readFileSync(aside, "utf8")).toBe("the fetched bytes");
     expect(lstatSync(aside).nlink).toBe(1);
+    await expectWrongBlobLeft(root, l, decoyIno);
+  });
+
+  test("R7 · P1c: the link links a decoy → `inode changed` · the decoy blob left · no row · verify `sha mismatch`", async () => {
+    const root = tempRoot("inode-link");
+    const l = land(root, "the fetched bytes");
+    const decoy = join(root, "decoy.txt");
+    writeFileSync(decoy, "the decoy bytes!!", { mode: 0o600 });
+    const decoyIno = lstatSync(decoy).ino;
+    await expectSkipped(input(l), "inode changed", {
+      link: (_from, to) => linkSync(decoy, to),
+    });
+    expect(lstatSync(l.destPath).nlink).toBe(1);
+    await expectWrongBlobLeft(root, l, decoyIno);
   });
 
   test("P1b #4: blob name replaced by another inode after the link → `inode changed` · that inode not unlinked · no row", async () => {
