@@ -1095,3 +1095,16 @@ describe("PLAN 0.44.0 P1b — bounded memory · metadata redaction (Astra 0137)"
     expect(s).toBe(`…${"a".repeat(80)}NEEDLE${"b".repeat(80)}…`);
   }, 20000);
 });
+
+describe("PLAN 0.44.0 P1c — incomplete path redaction (Astra 0139 M1)", () => {
+  test("M1: a room dir name equal to an env secret → incomplete file is redacted", async () => {
+    const root = tempRoot("incompleteenv");
+    writeMonth(root, ROOM_A, "2026-10", [ln({ roomId: ROOM_A, seq: 1, eventId: "ev_a", ts: TS })]);
+    writeFileSync(join(root, "rooms", "0123456789abcdef"), "x");
+    const r = await scan(root, "needle", { env: { LOOM_TOKEN: "0123456789abcdef" } });
+    expect(r.incomplete.length).toBe(1);
+    expect(r.incomplete[0]?.file).toContain("[REDACTED]");
+    expect(r.incomplete[0]?.file).not.toContain("0123456789abcdef");
+    expect(r.incomplete[0]?.reason).toBe("not a directory");
+  });
+});
