@@ -16,8 +16,8 @@ import {
   cardSessionPath,
   type FencePartId,
   type PromptRecord,
+  type PromptRecordSection,
   promptRecordPath,
-  type SectionTrace,
   serializePromptRecord,
   writePromptRecord,
 } from "@loom/host";
@@ -160,7 +160,7 @@ function v1(agent: Agent, attempt: number, o: RecOpts = {}): PromptRecord {
 
 const bytes = (s: string) => Buffer.byteLength(s, "utf8");
 
-function sectionLines(sections: readonly SectionTrace[]): string[] {
+function sectionLines(sections: readonly PromptRecordSection[]): string[] {
   const lines = ["sections:"];
   for (const s of sections) {
     lines.push(`  ${s.id} · ${s.channel} · ${s.version} · ${s.bytes} B · sha256 ${s.sha256.slice(0, 12)}`);
@@ -442,9 +442,9 @@ describe("loom prompt show — v2 `bad sections`", () => {
 
   test("D9: a section id with ESC / a version with U+009B or U+202E is rejected by the read check", async () => {
     for (const mutate of [
-      (s: SectionTrace) => ({ ...s, id: `${s.id}\u001b[2J` }) as unknown as SectionTrace,
-      (s: SectionTrace) => ({ ...s, version: `${s.version}\u009b` }),
-      (s: SectionTrace) => ({ ...s, version: `‮${s.version}` }),
+      (s: PromptRecordSection) => ({ ...s, id: `${s.id}\u001b[2J` }) as unknown as PromptRecordSection,
+      (s: PromptRecordSection) => ({ ...s, version: `${s.version}\u009b` }),
+      (s: PromptRecordSection) => ({ ...s, version: `‮${s.version}` }),
     ]) {
       const dir = seedSession();
       const good = v2("claude", 1);

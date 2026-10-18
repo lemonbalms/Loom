@@ -38,9 +38,8 @@ import {
 import { loadMemorySnapshot } from "./memory-snapshot";
 import { agentKeyFor, appendMemoryEntry, humanMemorySource } from "./memory-store";
 import { type Gap, renderPolicyNotice } from "./policy-gaps";
-import type { SectionTrace } from "./prompt-assemble";
 import { type FencePartId, PROMPT_MANIFEST } from "./prompt-manifest";
-import { type PromptRecord, readPromptRecord } from "./prompt-record";
+import { type PromptRecord, type PromptRecordSection, readPromptRecord } from "./prompt-record";
 import { redactSecrets } from "./redact";
 import { roomKey } from "./room-event-log";
 import { loadRules } from "./rules-store";
@@ -357,7 +356,7 @@ async function quiet(fn: () => Promise<void>): Promise<void> {
 }
 
 const sha256 = (b: Buffer): string => createHash("sha256").update(b).digest("hex");
-const VERSION_OF = new Map(PROMPT_MANIFEST.map((e) => [e.id, e.version]));
+const VERSION_OF = new Map<string, string>(PROMPT_MANIFEST.map((e) => [e.id, e.version]));
 const PART_VERSION = new Map((PROMPT_MANIFEST.find((e) => e.id === "memory-fence")!.parts ?? []).map((p) => [p.id, p.version]));
 
 afterEach(async () => {
@@ -365,7 +364,7 @@ afterEach(async () => {
 });
 
 /** Slice one channel's bytes by its sections; each slice's sha and version checked; returns slices. */
-function slices(sections: readonly SectionTrace[], channel: "system" | "user", received: Buffer): Map<string, Buffer> {
+function slices(sections: readonly PromptRecordSection[], channel: "system" | "user", received: Buffer): Map<string, Buffer> {
   const own = sections.filter((s) => s.channel === channel);
   const out = new Map<string, Buffer>();
   let at = 0;
