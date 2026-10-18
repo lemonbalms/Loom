@@ -40,6 +40,21 @@ export * from "./conv-node-hosts";
 export * from "./conv-artifact-present";
 export * from "./conv-artifact-pack";
 export * from "./conv-artifact-fetch";
+// PLAN 0.45.0 P1: content-addressed artifact store — fetch-hook ingest + read-only list/verify (②).
+export {
+  ARTIFACT_INDEX_READ_MAX_BYTES,
+  ARTIFACT_INDEX_ROW_MAX_BYTES,
+  ARTIFACT_LIST_LIMIT_DEFAULT,
+  ARTIFACT_LIST_LIMIT_MAX,
+  type ArtifactIndexRow,
+  type ArtifactListResult,
+  type ArtifactProblemReason,
+  type ArtifactStoreDeps,
+  type ArtifactVerifyResult,
+  ingestFetchedArtifact,
+  listArtifactRows,
+  verifyArtifactStore,
+} from "./artifact-store";
 // PLAN 0.32.0 D10: policy.json loader / merge / hash for the Loom MCP pre-check.
 export {
   builtinPolicyDefaults,
