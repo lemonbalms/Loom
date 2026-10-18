@@ -539,7 +539,8 @@ type OrphanWalk =
  * `<code> at <path relative to root>` — an incomplete scan is never reported clean. P3c (Astra 0178 M): the
  * same holds for `artifacts/` and `artifacts/sha256/` themselves — only an absent one (no store yet) is clean;
  * any other `lstat` error, or a symlink / non-directory there (checked by `checkReadDirs` just before, so a
- * swap in between), fails the walk.
+ * swap in between), fails the walk. 0.45.1 D1: a `<2 hex>` prefix that is a symlink or not a directory fails
+ * the walk the same way (`symlink at …` / `not a directory at …`); names outside `PREFIX_RE` stay ignored.
  */
 function findOrphans(root: string, listed: Set<string>, maxBytes: number, lstat: typeof lstatSync): OrphanWalk {
   const shaDir = shaDirOf(root);
@@ -571,7 +572,8 @@ function findOrphans(root: string, listed: Set<string>, maxBytes: number, lstat:
     let names: string[];
     try {
       const st = lstat(prefixDir);
-      if (st.isSymbolicLink() || !st.isDirectory()) continue;
+      if (st.isSymbolicLink()) return { ok: false, reason: `symlink at artifacts/sha256/${prefix}` };
+      if (!st.isDirectory()) return { ok: false, reason: `not a directory at artifacts/sha256/${prefix}` };
       names = readdirSync(prefixDir).sort();
     } catch (err) {
       if (errCode(err) === "ENOENT") continue;
