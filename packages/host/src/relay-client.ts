@@ -13,6 +13,22 @@ import type { RoomEventStore } from "./room-event-log";
 
 export const RECEIVE_QUEUE_WARN_DEPTH = 256;
 
+/** v0.44.1 D1: auto-reconnect never gives up unless a caller passes a finite cap. */
+export const DEFAULT_MAX_RECONNECT_ATTEMPTS = Infinity;
+
+/** v0.44.1 D5: reconnect join refusals that retrying cannot fix. */
+const RECONNECT_STOP_CODES = new Set(["peer_auth_failed", "room_not_found"]);
+
+/**
+ * v0.44.1 D2: equal jitter on the 15 s curve.
+ * base = min(1000·2^attempt, 15000) · delay ∈ [base/2, base).
+ * 2 ** attempt → Infinity for attempt ≥ 1024, min keeps it finite (R4).
+ */
+export function reconnectDelayMs(attempt: number, rand: () => number): number {
+  const base = Math.min(1000 * 2 ** attempt, 15000);
+  return base / 2 + rand() * (base / 2);
+}
+
 /**
  * PLAN 0.27.0 D2: test-only handoff.ack injection result.
  * Production path is unchanged when no injector is registered.
@@ -65,7 +81,10 @@ export type RelayClientOptions = {
   autoReconnect?: boolean;
   /** Used when autoReconnect re-joins */
   reconnectJoin?: JoinCredentials;
+  /** Default {@link DEFAULT_MAX_RECONNECT_ATTEMPTS} (never give up). */
   maxReconnectAttempts?: number;
+  /** v0.44.1 D2: jitter source for reconnect delays (default Math.random). */
+  reconnectRandom?: () => number;
   /**
    * v0.29.0 PATCH 4: opt-in receive store. Absent keeps onmessage synchronous.
    * When set, RPC replies (handoff.ack, room.state, inbox.state,
@@ -90,6 +109,13 @@ export class RelayClient {
   private intentionalClose = false;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * v0.44.1 R1: true from timer fire until reconnectNow settles. While a timer
+   * is pending or an attempt is in flight, scheduleReconnect is a no-op.
+   */
+  private reconnectInFlight = false;
+  /** One "gave up" line per exhausted chain (onclose and catch may both ask). */
+  private reconnectGaveUp = false;
   /**
    * L-4: waiters for in-flight requestOnce.
    * Prefer wire `requestId` correlation; FIFO type-match remains fallback
@@ -162,7 +188,9 @@ export class RelayClient {
       let settled = false;
       ws.onopen = () => {
         settled = true;
-        this.reconnectAttempt = 0;
+        this.reconnectGaveUp = false;
+        // v0.44.1 D4/R2: with reconnectJoin the counter resets on join ack.
+        if (!this.opts.reconnectJoin) this.reconnectAttempt = 0;
         resolve();
       };
       ws.onerror = () => {
@@ -284,17 +312,25 @@ export class RelayClient {
   }
 
   private scheduleReconnect(): void {
-    const max = this.opts.maxReconnectAttempts ?? 20;
+    // v0.44.1 D3/R1: one failed attempt schedules at most one retry.
+    if (this.reconnectTimer !== null || this.reconnectInFlight) return;
+    const max = this.opts.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
     if (this.reconnectAttempt >= max) {
+      if (this.reconnectGaveUp) return;
+      this.reconnectGaveUp = true;
       this.opts.onError?.(
         new Error(`Reconnect gave up after ${max} attempts`),
       );
       return;
     }
-    const delay = Math.min(1000 * 2 ** this.reconnectAttempt, 15000);
+    const delay = reconnectDelayMs(
+      this.reconnectAttempt,
+      this.opts.reconnectRandom ?? Math.random,
+    );
     this.reconnectAttempt += 1;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.reconnectInFlight = true;
       void this.reconnectNow();
     }, delay);
   }
@@ -302,6 +338,7 @@ export class RelayClient {
   private async reconnectNow(): Promise<void> {
     try {
       await this.connect();
+      const ws = this.ws;
       const creds = this.opts.reconnectJoin;
       if (creds) {
         const env = await this.joinRoom({
@@ -309,8 +346,20 @@ export class RelayClient {
           peerId: creds.peerId ?? this.peerId ?? undefined,
           color: creds.color ?? this.color ?? undefined,
         });
+        this.reconnectInFlight = false;
         if (env.type === "error") {
-          this.opts.onError?.(new Error(env.message));
+          // v0.44.1 D5/R3: close this attempt's socket; onclose reports
+          // onClose once and schedules only while autoReconnect stays on.
+          if (RECONNECT_STOP_CODES.has(env.code)) {
+            this.opts.autoReconnect = false;
+            this.closeAttemptSocket(ws);
+            this.opts.onError?.(
+              new Error(`Reconnect stopped: ${env.code} — ${env.message}`),
+            );
+          } else {
+            this.closeAttemptSocket(ws);
+            this.opts.onError?.(new Error(env.message));
+          }
         } else {
           this.opts.onEnvelope?.({
             v: PROTOCOL_VERSION,
@@ -320,9 +369,14 @@ export class RelayClient {
             from: "system",
             text: `reconnected (attempt ${this.reconnectAttempt})`,
           });
+          // v0.44.1 D4: reset after the chat reads the real count.
+          this.reconnectAttempt = 0;
         }
+      } else {
+        this.reconnectInFlight = false;
       }
     } catch (e) {
+      this.reconnectInFlight = false;
       this.opts.onError?.(
         e instanceof Error ? e : new Error(String(e)),
       );
@@ -330,6 +384,22 @@ export class RelayClient {
         this.scheduleReconnect();
       }
     }
+  }
+
+  /** R65-L1: close only the socket this attempt joined on. */
+  private closeAttemptSocket(ws: WebSocket | null): void {
+    if (!ws || this.ws !== ws) return;
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private clearReconnectState(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.reconnectInFlight = false;
   }
 
   private applyEnvelope(env: Envelope): void {
@@ -552,7 +622,7 @@ export class RelayClient {
   async leave(): Promise<void> {
     this.intentionalClose = true;
     this.opts.autoReconnect = false;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.clearReconnectState();
     this.rejectAllPending(new Error("Client leaving"));
     if (!this.ws) return;
     try {
@@ -566,7 +636,7 @@ export class RelayClient {
   close(): void {
     this.intentionalClose = true;
     this.opts.autoReconnect = false;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.clearReconnectState();
     this.rejectAllPending(new Error("Client closed"));
     if (this.ws) {
       try {
