@@ -10,10 +10,19 @@
  * The fence's policy notice · standing rules · reader output are `parts` metadata of
  * `memory-fence`, not sections (C1 · C2): env redaction runs once over their composition, so
  * per-source byte ranges are undefined by construction.
+ *
+ * PLAN 0.43.0 D5 · R4 · C4: the one system entry `worker-hint` is replaced by the six Loom-authored
+ * sections of `HEADLESS_SYSTEM_SECTIONS` (all `0.43.0`); the user entries keep their 0.42 values.
+ * `worker-hint` lives on only in the v2 record table (`prompt-record.ts`).
  */
 
 export type PromptSectionId =
-  | "worker-hint"
+  | "boundary"
+  | "identity"
+  | "ops-rules"
+  | "tools"
+  | "response-style"
+  | "closing-boundary"
   | "resume-continuation"
   | "skill-listing"
   | "task-marker"
@@ -59,15 +68,24 @@ function deepFreeze(entries: PromptManifestEntry[]): readonly PromptManifestEntr
   return Object.freeze(entries);
 }
 
-export const PROMPT_MANIFEST: readonly PromptManifestEntry[] = deepFreeze([
-  {
-    id: "worker-hint",
+function systemEntry(id: PromptSectionId): PromptManifestEntry {
+  return {
+    id,
     channel: "system",
     turns: "both",
     required: true,
-    version: "0.39.0",
-    source: "agent-argv.ts HEADLESS_WORKER_HINT",
-  },
+    version: "0.43.0",
+    source: `agent-argv.ts HEADLESS_SYSTEM_SECTIONS ${id}`,
+  };
+}
+
+export const PROMPT_MANIFEST: readonly PromptManifestEntry[] = deepFreeze([
+  systemEntry("boundary"),
+  systemEntry("identity"),
+  systemEntry("ops-rules"),
+  systemEntry("tools"),
+  systemEntry("response-style"),
+  systemEntry("closing-boundary"),
   {
     id: "resume-continuation",
     channel: "user",

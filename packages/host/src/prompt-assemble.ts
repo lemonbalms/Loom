@@ -9,10 +9,20 @@
  * previous section's tail (R2); the pieces must join to the user text or the assembler throws
  * (class 61 — the caller does not spawn). Boundaries are never searched for in the text: a
  * body or fence line can imitate the marker or a separator (R4 (a) · C1).
+ *
+ * PLAN 0.43.0 R3: the system channel (`HEADLESS_WORKER_HINT`) is traced the same way — six sections
+ * from `HEADLESS_SYSTEM_SECTIONS`, each but the last carrying the "\n\n" tail, checked against the
+ * system text by the same self-check.
  */
 import { createHash } from "node:crypto";
 import { DISPATCHED_TASK_MARKER, wrapDispatchedPrompt } from "@loom/protocol";
-import { type AgentKind, HEADLESS_WORKER_HINT, RESUME_CONTINUATION_MESSAGE } from "./agent-argv";
+import {
+  type AgentKind,
+  HEADLESS_SYSTEM_SECTIONS,
+  HEADLESS_WORKER_HINT,
+  RESUME_CONTINUATION_MESSAGE,
+  type SystemSectionId,
+} from "./agent-argv";
 import { composeMemoryWrapped } from "./memory-inject";
 import {
   FENCE_PART_IDS,
@@ -98,11 +108,26 @@ function onTurn(entry: PromptManifestEntry, turn: "first" | "resume"): boolean {
   return entry.turns === "both" || entry.turns === turn;
 }
 
+/**
+ * 0.43.0 R3: a system section's piece = its text + the "\n\n" tail, except `closing-boundary`
+ * (the end of the system channel) — the same tail rule as the user channel (R2).
+ */
+function systemPiece(id: SystemSectionId): string {
+  const section = HEADLESS_SYSTEM_SECTIONS.find((s) => s.id === id);
+  if (!section) throw new Error("prompt assemble: system section not declared");
+  return id === "closing-boundary" ? section.text : `${section.text}${SEP}`;
+}
+
 /** The piece a section contributes on this turn; null = an optional section left out. */
 function pieceFor(id: PromptSectionId, input: AssembleInput): string | null {
   switch (id) {
-    case "worker-hint":
-      return HEADLESS_WORKER_HINT;
+    case "boundary":
+    case "identity":
+    case "ops-rules":
+    case "tools":
+    case "response-style":
+    case "closing-boundary":
+      return systemPiece(id);
     case "resume-continuation":
       return `${RESUME_CONTINUATION_MESSAGE}${SEP}`;
     case "skill-listing":
