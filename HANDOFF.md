@@ -71,11 +71,12 @@ Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/
 
 ## Evidence
 
-- Session ritual: `docs/SESSION-START.md` · topology `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`  
-- Close: `docs/spikes/RULE-ROUTER-PHASE3-SOFT-CLOSE.md`  
-- 0.37.0 smoke: `docs/spikes/POLICY-HONESTY-SMOKE-0370.md`  
-- 0.45.0 / 0.45.1 deviations: `implementation-notes.md` §0.45.0 · §0.45.1  
-- 3.4b/3.4/3.3 RESULT · `scripts/rule-router-jit.ts`  
+- Ritual: `docs/SESSION-START.md` · topology `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`
+- Close: `docs/spikes/RULE-ROUTER-PHASE3-SOFT-CLOSE.md`
+- 0.37.0 smoke: `docs/spikes/POLICY-HONESTY-SMOKE-0370.md`
+- 0.45.x deviations: `implementation-notes.md` §0.45.0 · §0.45.1
+- 3.3–3.4b RESULT: `scripts/rule-router-jit.ts`
+- MBP relay (unrun): `docs/spikes/MBP-RELAY-RUNBOOK.md`
 
 ## Don't redo
 
