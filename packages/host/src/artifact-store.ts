@@ -4,13 +4,13 @@
  *   `artifacts/sha256/<2 hex>/<64 hex>` (no copy · no symlink · no rename — R7) and appends one index row.
  *   Best effort: it never throws and logs at most one stderr line (R1 · R10).
  * - `listArtifactRows` · `verifyArtifactStore` are read-only (zero writes) over the same tree (R11 · R15).
- * All synchronous; every read goes through the bounded no-follow reader (`readBoundedRegularFile`).
+ * All synchronous; every read is bounded and no-follow (`readBoundedRegularFile`, or for the conv file a
+ * single opened fd so the hashed bytes are the linked inode's — P1b).
  */
 import { createHash } from "node:crypto";
 import {
   chmodSync,
   closeSync,
-  appendFileSync,
   constants as fsConstants,
   fchmodSync,
   fstatSync,
@@ -19,7 +19,9 @@ import {
   mkdirSync,
   openSync,
   readdirSync,
+  readSync,
   unlinkSync,
+  writeSync,
 } from "node:fs";
 import { basename, join } from "node:path";
 import { isValidConvId } from "@loom/protocol";
@@ -51,6 +53,13 @@ export type ArtifactStoreDeps = {
   log?: (line: string) => void;
   link?: (from: string, to: string) => void;
   now?: () => Date;
+  /** @internal P1b test seam — the index row write (default `fs.writeSync`); returns bytes written. */
+  write?: (fd: number, buf: Buffer) => number;
+  /**
+   * @internal P1b test seam — called at `"lstat"` (after the conv file's pre-open `lstat`, before its open)
+   * and at `"prelink"` (before the conv path's pre-link `lstat`); default no-op.
+   */
+  hook?: (point: "lstat" | "prelink") => void;
 };
 
 export type ArtifactProblemReason =
@@ -92,7 +101,8 @@ const indexPathOf = (root: string): string => join(root, "artifacts", "index.jso
 /**
  * R6: one component at a time — `lstat`; absent → non-recursive `mkdir` 0700 (a recursive mkdir would
  * follow an intermediate symlink) and the created mode is re-checked; an `EEXIST` race re-`lstat`s.
- * Existing directory modes are left alone.
+ * Existing directory modes are left alone (no chmod of a user dir) — but one with group/other bits stops
+ * the ingest (P1b).
  */
 function ensureStoreDir(path: string): string | null {
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -115,9 +125,28 @@ function ensureStoreDir(path: string): string | null {
     }
     if (st.isSymbolicLink()) return "symlink";
     if (!st.isDirectory()) return "not a directory";
+    if (st.mode & 0o077) return `dir mode ${(st.mode & 0o777).toString(8)}`;
     return null;
   }
   return "unreadable EEXIST";
+}
+
+/**
+ * P1b (Astra 0156 #5): list · verify read under `artifacts/` and `artifacts/sha256/` only through real
+ * directories — each component is `lstat`ed (never followed); absent is fine (an empty store).
+ */
+function checkReadDirs(root: string): { ok: true } | { ok: false; reason: string } {
+  for (const dir of [join(root, "artifacts"), shaDirOf(root)]) {
+    try {
+      const st = lstatSync(dir);
+      if (st.isSymbolicLink()) return { ok: false, reason: "symlink" };
+      if (!st.isDirectory()) return { ok: false, reason: "not a directory" };
+    } catch (err) {
+      if (errCode(err) === "ENOENT") return { ok: true };
+      return { ok: false, reason: `unreadable ${errCode(err)}` };
+    }
+  }
+  return { ok: true };
 }
 
 /** R8: the blob is already there — it must be a regular file whose bytes hash to its address. */
@@ -134,13 +163,17 @@ function checkExistingBlob(blobPath: string, sha: string, maxBytes: number): str
 }
 
 /**
- * R9: `appendFileSync` on a path follows a symlinked index — open no-follow first, check the fd is a
- * regular file, then append the one line through the fd. A file this call creates gets 0600.
+ * R9 · P1b (Astra 0156 #1 · #2 · #6): open no-follow and non-blocking (a FIFO index never blocks — no
+ * reader → ENXIO), the fd must be a regular file with nlink 1 (a hard link to a blob is never written),
+ * then exactly one `writeSync` of the line; fewer bytes than the line is `index short write`. A file this
+ * call creates gets 0600.
  */
-function appendIndexRow(indexPath: string, line: string): string | null {
+function appendIndexRow(indexPath: string, line: string, write: (fd: number, buf: Buffer) => number): string | null {
   let created = false;
   try {
-    lstatSync(indexPath);
+    const pre = lstatSync(indexPath);
+    if (pre.isSymbolicLink()) return "symlink";
+    if (!pre.isFile()) return "index not a regular file";
   } catch (err) {
     if (errCode(err) !== "ENOENT") return `index ${errCode(err)}`;
     created = true;
@@ -149,7 +182,11 @@ function appendIndexRow(indexPath: string, line: string): string | null {
   try {
     fd = openSync(
       indexPath,
-      fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW,
+      fsConstants.O_WRONLY |
+        fsConstants.O_APPEND |
+        fsConstants.O_CREAT |
+        fsConstants.O_NOFOLLOW |
+        fsConstants.O_NONBLOCK,
       0o600,
     );
   } catch (err) {
@@ -158,9 +195,12 @@ function appendIndexRow(indexPath: string, line: string): string | null {
   }
   try {
     const st = fstatSync(fd);
-    if (!st.isFile()) return "not a regular file";
+    if (!st.isFile()) return "index not a regular file";
+    if (st.nlink !== 1) return `index nlink ${st.nlink}`;
     if (created && (st.mode & 0o777) !== 0o600) fchmodSync(fd, 0o600);
-    appendFileSync(fd, line);
+    const buf = Buffer.from(line, "utf8");
+    const n = write(fd, buf);
+    if (n < buf.length) return "index short write";
     return null;
   } catch (err) {
     return `index ${errCode(err)}`;
@@ -182,27 +222,100 @@ type IngestInput = {
   maxBytes: number;
 };
 
-/** The ingest steps; returns the first failure reason (② vocabulary) or null on success. */
-function ingestSteps(input: IngestInput, link: (from: string, to: string) => void, now: () => Date): string | null {
-  // R1 · R64-L2: the convId check comes first.
-  if (!isValidConvId(input.convId)) return "convId";
+type ConvStat = { isFile(): boolean; size: number; mode: number; nlink: number };
 
-  // R3 · R4 · R64-L1: the landed name itself (never followed), captured before the read.
-  let st: ReturnType<typeof lstatSync>;
-  try {
-    st = lstatSync(input.destPath);
-  } catch (err) {
-    return `unreadable ${errCode(err)}`;
-  }
-  if (st.isSymbolicLink()) return "symlink";
+/** R3 · R4 · R64-L1: the conv file checks, shared by the pre-open `lstat` and the fd's `fstat`. */
+function convStatProblem(st: ConvStat, maxBytes: number): string | null {
   if (!st.isFile()) return "not a regular file";
-  if (st.size > input.maxBytes) return "too large";
+  if (st.size > maxBytes) return "too large";
   const mode = st.mode & 0o777;
   if (mode !== 0o600) return `mode ${mode.toString(8)}`;
   if (st.nlink !== 1) return `nlink ${st.nlink}`;
+  return null;
+}
 
-  const read = readBoundedRegularFile(input.destPath, input.maxBytes);
-  if (!Buffer.isBuffer(read)) return read.kind === "missing" ? "unreadable ENOENT" : read.reason;
+/** Reads at most `maxBytes + 1` bytes from an open fd (sized to the fstat size + 1 so EOF is seen at once). */
+function readFdBounded(fd: number, size: number, maxBytes: number): Buffer | null {
+  let buf = Buffer.alloc(size + 1);
+  let total = 0;
+  for (;;) {
+    if (total === buf.length) {
+      if (buf.length > maxBytes) break;
+      const grown = Buffer.alloc(maxBytes + 1);
+      buf.copy(grown, 0, 0, total);
+      buf = grown;
+    }
+    const n = readSync(fd, buf, total, buf.length - total, null);
+    if (n === 0) break;
+    total += n;
+  }
+  return total > maxBytes ? null : buf.subarray(0, total);
+}
+
+type Ident = { dev: number; ino: number };
+const sameIdent = (a: Ident, b: Ident): boolean => a.dev === b.dev && a.ino === b.ino;
+
+/**
+ * P1b (Astra 0156 #3): the conv file is opened once (no-follow · non-blocking), checked on the fd, and its
+ * bytes are read from that fd — so the hashed bytes belong to the fd's dev/ino, which must also be the
+ * pre-open `lstat`'s.
+ */
+function readConvFile(
+  destPath: string,
+  maxBytes: number,
+  hook: (point: "lstat" | "prelink") => void,
+): { bytes: Buffer; ident: Ident } | string {
+  let pre: ReturnType<typeof lstatSync>;
+  try {
+    pre = lstatSync(destPath);
+  } catch (err) {
+    return `unreadable ${errCode(err)}`;
+  }
+  if (pre.isSymbolicLink()) return "symlink";
+  const preBad = convStatProblem(pre, maxBytes);
+  if (preBad) return preBad;
+  hook("lstat");
+  let fd: number;
+  try {
+    fd = openSync(destPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
+  } catch (err) {
+    if (errCode(err) === "ELOOP") return "symlink";
+    return `unreadable ${errCode(err)}`;
+  }
+  try {
+    const st = fstatSync(fd);
+    const bad = convStatProblem(st, maxBytes);
+    if (bad) return bad;
+    const ident = { dev: st.dev, ino: st.ino };
+    if (!sameIdent(pre, ident)) return "inode changed";
+    const bytes = readFdBounded(fd, st.size, maxBytes);
+    if (!bytes) return "too large";
+    return { bytes, ident };
+  } catch (err) {
+    return `unreadable ${errCode(err)}`;
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {}
+  }
+}
+
+type IngestDeps = {
+  link: (from: string, to: string) => void;
+  now: () => Date;
+  write: (fd: number, buf: Buffer) => number;
+  hook: (point: "lstat" | "prelink") => void;
+};
+
+/** The ingest steps; returns the first failure reason (② vocabulary) or null on success. */
+function ingestSteps(input: IngestInput, deps: IngestDeps): string | null {
+  // R1 · R64-L2: the convId check comes first.
+  if (!isValidConvId(input.convId)) return "convId";
+
+  // R3 · R4 · R64-L1 · P1b: the landed name itself (never followed); bytes bound to the opened inode.
+  const conv = readConvFile(input.destPath, input.maxBytes, deps.hook);
+  if (typeof conv === "string") return conv;
+  const read = conv.bytes;
 
   // R5: the address is the re-read bytes' sha; it must equal the D6-checked sha and size.
   const sha = sha256Hex(read);
@@ -216,11 +329,16 @@ function ingestSteps(input: IngestInput, link: (from: string, to: string) => voi
     if (bad) return bad;
   }
 
-  // R7 (R64-M1): direct no-replace link to the final name, then the blob's dev/ino must be the conv file's.
+  // R7 (R64-M1): direct no-replace link to the final name, then the blob's dev/ino must be the read fd's.
   const blobPath = join(prefixDir, sha);
+  deps.hook("prelink");
+  let preLink: Ident | null = null;
+  try {
+    preLink = lstatSync(input.destPath);
+  } catch {}
   let linked = false;
   try {
-    link(input.destPath, blobPath);
+    deps.link(input.destPath, blobPath);
     linked = true;
   } catch (err) {
     const code = errCode(err);
@@ -228,15 +346,18 @@ function ingestSteps(input: IngestInput, link: (from: string, to: string) => voi
     if (code !== "EEXIST") return `unreadable ${code}`;
   }
   if (linked) {
-    let same = false;
+    let blob: Ident | null = null;
     try {
-      const bst = lstatSync(blobPath);
-      same = bst.dev === st.dev && bst.ino === st.ino;
+      blob = lstatSync(blobPath);
     } catch {}
-    if (!same) {
-      try {
-        unlinkSync(blobPath);
-      } catch {}
+    if (!blob || !sameIdent(blob, conv.ident)) {
+      // P1b (Astra 0156 #4): remove the name only when it holds the inode this call linked (the conv
+      // path's pre-link inode); any other inode there is someone else's and is left alone.
+      if (blob && preLink && sameIdent(blob, preLink)) {
+        try {
+          unlinkSync(blobPath);
+        } catch {}
+      }
       return "inode changed";
     }
   } else {
@@ -256,11 +377,11 @@ function ingestSteps(input: IngestInput, link: (from: string, to: string) => voi
     index: input.index,
     transport: "scp",
     status: "present",
-    at: now().toISOString(),
+    at: deps.now().toISOString(),
   };
   const line = `${JSON.stringify(row)}\n`;
   if (Buffer.byteLength(line, "utf8") > ARTIFACT_INDEX_ROW_MAX_BYTES) return "row too large";
-  return appendIndexRow(indexPathOf(input.root), line);
+  return appendIndexRow(indexPathOf(input.root), line, deps.write);
 }
 
 /**
@@ -270,7 +391,12 @@ function ingestSteps(input: IngestInput, link: (from: string, to: string) => voi
 export function ingestFetchedArtifact(input: IngestInput, deps: ArtifactStoreDeps = {}): void {
   let reason: string | null;
   try {
-    reason = ingestSteps(input, deps.link ?? linkSync, deps.now ?? (() => new Date()));
+    reason = ingestSteps(input, {
+      link: deps.link ?? linkSync,
+      now: deps.now ?? (() => new Date()),
+      write: deps.write ?? ((fd, buf) => writeSync(fd, buf)),
+      hook: deps.hook ?? (() => {}),
+    });
   } catch (err) {
     reason = `unreadable ${errCode(err)}`;
   }
@@ -315,6 +441,8 @@ function parseRow(lineBytes: Buffer, decoder: TextDecoder): ArtifactIndexRow | n
 
 /** R11: bounded read of the index → valid rows in file order + the whole-file torn count. */
 function readIndexRows(root: string): { ok: true; rows: ArtifactIndexRow[]; torn: number } | { ok: false; reason: string } {
+  const dirs = checkReadDirs(root);
+  if (!dirs.ok) return dirs;
   const read = readBoundedRegularFile(indexPathOf(root), ARTIFACT_INDEX_READ_MAX_BYTES);
   if (!Buffer.isBuffer(read)) {
     if (read.kind === "missing") return { ok: true, rows: [], torn: 0 };
