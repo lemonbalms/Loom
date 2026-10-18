@@ -2,7 +2,7 @@
  * PLAN 0.45.1 P2 (D2 · R6~R10) — packageWorkerFileArtifact hashes the worker
  * file over its raw bytes, so the wire sha equals what the tower's conv_fetch
  * D6 check computes over the received bytes. Each test runs under its own temp
- * HOME (`LOOM_TEST_HOME`); scp is injected (no live network). The existing
+ * HOME (`HOME` + `LOOM_TEST_HOME`, restored afterwards); scp is injected (no live network). The existing
  * `conv-artifact-pack.test.ts` / `conv-artifact-fetch-store.test.ts` stay untouched.
  */
 import { describe, expect, test, afterAll, beforeEach, afterEach } from "bun:test";
@@ -34,11 +34,19 @@ const MULTIBYTE_UTF8 = Buffer.from("한글 ✓ 😀\n", "utf8");
 
 let stderrLines: string[] = [];
 let origConsoleError: typeof console.error;
+const prevHome = process.env.HOME;
+const prevLoomTestHome = process.env.LOOM_TEST_HOME;
+
+function restoreEnv(key: "HOME" | "LOOM_TEST_HOME", prev: string | undefined): void {
+  if (prev === undefined) delete process.env[key];
+  else process.env[key] = prev;
+}
 
 beforeEach(() => {
   caseNo += 1;
   const home = join(base, `case-${caseNo}`);
   mkdirSync(home, { recursive: true });
+  process.env.HOME = home;
   process.env.LOOM_TEST_HOME = home;
   resetStateHomeDirCache();
   saveConvNodeHosts({});
@@ -55,7 +63,8 @@ afterEach(() => {
 });
 
 afterAll(() => {
-  delete process.env.LOOM_TEST_HOME;
+  restoreEnv("HOME", prevHome);
+  restoreEnv("LOOM_TEST_HOME", prevLoomTestHome);
   resetStateHomeDirCache();
   try {
     rmSync(base, { recursive: true, force: true });
@@ -77,6 +86,11 @@ function packWorkerFile(convId: string, filename: string, bytes: Buffer): Artifa
   expect(r.ok).toBe(true);
   if (!r.ok) throw new Error(r.reason);
   return r.ref;
+}
+
+/** Old `chars` meaning, computed independently: utf8-decoded read of the same file. */
+function oldChars(convId: string, filename: string): number {
+  return readFileSync(join(convArtifactsDir(convId), filename), "utf8").length;
 }
 
 function towerState(convId: string, entries: ArtifactRefEntry[]): ConvState {
@@ -106,16 +120,17 @@ function fakeScp(content: Buffer): ConvFetchRunScp {
 }
 
 // ---------------------------------------------------------------------------
-// ① Unit — wire sha = raw-byte sha · chars = toString("utf8").length (R10 ① · R7 · R8)
+// ① Unit — wire sha = raw-byte sha · chars = readFileSync(path, "utf8").length (R10 ① · R7 · R8)
 // ---------------------------------------------------------------------------
 describe("packageWorkerFileArtifact hashes raw bytes (D2 · R10 ①)", () => {
   test("invalid UTF-8 bytes → ref.sha256 = sha256(raw bytes) · chars = decoded UTF-16 length", () => {
     const convId = generateConvId();
     const ref = packWorkerFile(convId, "invalid.bin", INVALID_UTF8);
     expect(ref.sha256).toBe(shaOf(INVALID_UTF8));
-    expect(ref.chars).toBe(INVALID_UTF8.toString("utf8").length);
+    const chars = oldChars(convId, "invalid.bin");
+    expect(ref.chars).toBe(chars);
     expect(ref.gist).toBe(
-      `worker file ${INVALID_UTF8.toString("utf8").length} chars (sha256 ${shaOf(INVALID_UTF8).slice(0, 12)}…) — invalid.bin`,
+      `worker file ${chars} chars (sha256 ${shaOf(INVALID_UTF8).slice(0, 12)}…) — invalid.bin`,
     );
     // Worker file bytes untouched (emission-contract reuse — no rewrite).
     expect(readFileSync(join(convArtifactsDir(convId), "invalid.bin")).equals(INVALID_UTF8)).toBe(true);
@@ -125,14 +140,14 @@ describe("packageWorkerFileArtifact hashes raw bytes (D2 · R10 ①)", () => {
     const convId = generateConvId();
     const ref = packWorkerFile(convId, "bom.txt", BOM_UTF8);
     expect(ref.sha256).toBe(shaOf(BOM_UTF8));
-    expect(ref.chars).toBe(BOM_UTF8.toString("utf8").length);
+    expect(ref.chars).toBe(oldChars(convId, "bom.txt"));
   });
 
   test("valid multibyte UTF-8 (regression guard — green on old code too) → ref.sha256 = sha256(raw bytes) · chars = toString length", () => {
     const convId = generateConvId();
     const ref = packWorkerFile(convId, "multibyte.txt", MULTIBYTE_UTF8);
     expect(ref.sha256).toBe(shaOf(MULTIBYTE_UTF8));
-    expect(ref.chars).toBe(MULTIBYTE_UTF8.toString("utf8").length);
+    expect(ref.chars).toBe(oldChars(convId, "multibyte.txt"));
   });
 });
 
