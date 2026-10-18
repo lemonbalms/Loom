@@ -20,7 +20,6 @@ import {
   openSync,
   readdirSync,
   readSync,
-  unlinkSync,
   writeSync,
 } from "node:fs";
 import { basename, join } from "node:path";
@@ -57,7 +56,7 @@ export type ArtifactStoreDeps = {
   write?: (fd: number, buf: Buffer) => number;
   /**
    * @internal P1b test seam — called at `"lstat"` (after the conv file's pre-open `lstat`, before its open)
-   * and at `"prelink"` (before the conv path's pre-link `lstat`); default no-op.
+   * and at `"prelink"` (before the link); default no-op.
    */
   hook?: (point: "lstat" | "prelink") => void;
 };
@@ -332,10 +331,6 @@ function ingestSteps(input: IngestInput, deps: IngestDeps): string | null {
   // R7 (R64-M1): direct no-replace link to the final name, then the blob's dev/ino must be the read fd's.
   const blobPath = join(prefixDir, sha);
   deps.hook("prelink");
-  let preLink: Ident | null = null;
-  try {
-    preLink = lstatSync(input.destPath);
-  } catch {}
   let linked = false;
   try {
     deps.link(input.destPath, blobPath);
@@ -350,16 +345,9 @@ function ingestSteps(input: IngestInput, deps: IngestDeps): string | null {
     try {
       blob = lstatSync(blobPath);
     } catch {}
-    if (!blob || !sameIdent(blob, conv.ident)) {
-      // P1b (Astra 0156 #4): remove the name only when it holds the inode this call linked (the conv
-      // path's pre-link inode); any other inode there is someone else's and is left alone.
-      if (blob && preLink && sameIdent(blob, preLink)) {
-        try {
-          unlinkSync(blobPath);
-        } catch {}
-      }
-      return "inode changed";
-    }
+    // P1c (Astra 0168): a path-based unlink cannot prove which inode it removes, so ingest never unlinks —
+    // a wrong blob is left in place (no row) and `verify` reports it as `sha mismatch`.
+    if (!blob || !sameIdent(blob, conv.ident)) return "inode changed";
   } else {
     // R8: EEXIST — the blob is already there; a match gets a row, anything else leaves it untouched.
     const bad = checkExistingBlob(blobPath, sha, input.maxBytes);
