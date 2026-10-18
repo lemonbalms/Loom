@@ -48,11 +48,12 @@
  * the real claude / codex / grok binaries (inner HOME = real home, LOOM_TEST_HOME = T), cardWrites
  * on, a prompt asking for exactly one candidate. Prints per card the stderr `memory_propose` line,
  * the proposed count, whether notes.md exists, the `prompt-1.json` read outcome / version / system
- * sha check / section ids, any incomplete WORK scan and the new WORK entries (printed for the
- * outcome table, not asserted); exits non-zero when all three cards propose 0
- * or any card lacks notes.md.
+ * sha check / section ids, any incomplete WORK scan and the new WORK entries (the outcome table);
+ * then one ⑨ step per card runs the fake-mode per-card check (PLAN R12). Exits non-zero when all
+ * three cards propose 0, any card lacks notes.md, or any card fails that check.
  * `--only <claude|codex|grok>` (P5c — with `--real-cli --owner-approved` only, else a usage FAIL):
- * step ① for that one agent; pass = notes.md exists (the ≥1-proposed rule is the three-agent run's).
+ * step ① for that one agent; pass = notes.md exists + the per-card ⑨ check (the ≥1-proposed rule is
+ * the three-agent run's).
  * Real-cli diagnostics per card: spawn argv + cwd (the inner wraps each bin in a logging `exec`
  * shim under T), the skill copy file list, the transcript's tool / command events, stderr head.
  *
@@ -630,7 +631,7 @@ try {
       }
       const missing = realRows.filter((r) => !r.notes).map((r) => r.agent);
       check(missing.length === 0, `notes.md missing for ${JSON.stringify(missing)} (R56-M4)`);
-      // P5c: a single-agent run passes on notes.md alone; the proposed count is printed below.
+      // P5c: a single-agent run is not held to ≥1 proposed (printed below); the ⑨ card check still runs.
       if (ONLY !== null) {
         const r = realRows[0]!;
         return `${r.agent} proposed ${r.proposed ?? "?"} · notes.md yes (single-agent run — ≥1-proposed rule not applied)`;
