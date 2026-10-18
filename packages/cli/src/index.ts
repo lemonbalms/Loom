@@ -3325,14 +3325,27 @@ async function main() {
   const firstWords = [scoped.positional[0], plain.positional[0]];
   const card = process.env.LOOM_CARD;
   const underCard = typeof card === "string" && card.length > 0;
+  // Astra 0145 M: the refusal follows the command the dispatch below would run; only when that
+  // word is neither protected command does either parse's protected first word decide (0143).
+  const dispatchWord = MEMORY_COMMANDS.has(scoped.positional[0] ?? "")
+    ? scoped.positional[0]
+    : plain.positional[0];
+  const refused =
+    dispatchWord === "prompt" || dispatchWord === "history"
+      ? dispatchWord
+      : firstWords.includes("prompt")
+        ? "prompt"
+        : firstWords.includes("history")
+          ? "history"
+          : undefined;
   // PLAN 0.41.0 R11 · Astra 0094: `prompt` under a card worker is refused before any flag is
   // applied and before help (the pure word scan above only locates the command word).
-  if (underCard && firstWords.includes("prompt")) {
+  if (underCard && refused === "prompt") {
     process.exitCode = await runPromptCommand("", { positional: [] }, {}, realPromptCliDeps());
     return;
   }
   // PLAN 0.44.0 D3 · R11 ①: `history` likewise — refused before profile flags and help.
-  if (underCard && firstWords.includes("history")) {
+  if (underCard && refused === "history") {
     process.exitCode = await runHistoryCommand(
       "",
       { positional: [], passthrough: [] },
