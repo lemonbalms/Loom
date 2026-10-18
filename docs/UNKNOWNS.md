@@ -42,36 +42,36 @@
 
 ## Gate log
 
-### 0.45.0 — 산출물 내용 주소 저장소 첫 조각 — `conv_fetch` 성공 뒤 해시 저장 · `loom artifacts list` · `verify` (`approved` — R64 approved-with-fixes · no R64b)
+### 0.45.0 — 산출물 내용 주소 저장소 첫 조각 — `conv_fetch` 성공 뒤 해시 저장 · `loom artifacts list` · `verify` (`approved` — R64 approved-with-fixes · no R64b · implemented (P1–P4) 2026-10-18)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.45.0 (`approved` — R64 approved-with-fixes, 반영 완료 · no R64b · author-close 불가) · MINOR · 업그레이드 6단계 2부 · 근거 = 오너 "6단계 2부 진행해"(2026-10-18) · `UPGRADE-PLAN.md:112-115` · `:263-275` · `:373` · 범위 = 락 D1~D10(아키텍트 2026-10-18) |
 | **Date** | 2026-10-18 |
-| **Review** | R64 **done 2026-10-18** — approved-with-fixes M1 · L4 (M1 R7 판정 반영 — 직접 `link` · 링크 뒤 blob `ino` 대조 · 불일치 unlink · 계급 85 삭제 · `orphans: { name: string }[]` · UK-2 · L1 R4 `nlink === 1` · L2 R1 `isValidConvId` · L3 R11 `MAX_WORKER_ARTIFACT_BYTES` · L4 R1 락 안 담기 시간) · 아키텍트 판정(R7 대안 · R8 draft · R11 수용) — (`WORKFLOW.md` §5.1 신규 제품 표면(CLI 동사 `loom artifacts list` · `verify`) · 영속성(blob 트리 · `index.jsonl` `v: 1`) · 신뢰 경계(원격 바이트가 상태 루트의 내용 주소 이름을 얻음 · `LOOM_CARD` 거부)) |
-| **Implemented** | — (다음 = P1 저장소 red → green) |
+| **Review** | R64 **done 2026-10-18** — approved-with-fixes M1 · L4 (M1 R7 판정 반영 — 직접 `link` · 링크 뒤 blob `ino` 대조 · 불일치 unlink · 옛 계급 85 삭제 · `orphans: { name: string }[]` · UK-2 · L1 R4 `nlink === 1` · L2 R1 `isValidConvId` · L3 R11 `MAX_WORKER_ARTIFACT_BYTES` · L4 R1 락 안 담기 시간) · 아키텍트 판정(R7 대안 · R8 draft · R11 수용) — (`WORKFLOW.md` §5.1 신규 제품 표면(CLI 동사 `loom artifacts list` · `verify`) · 영속성(blob 트리 · `index.jsonl` `v: 1`) · 신뢰 경계(원격 바이트가 상태 루트의 내용 주소 이름을 얻음 · `LOOM_CARD` 거부)) |
+| **Implemented** | 2026-10-18 (P1–P4 · ship 전 — 다음 = 최종 advise → ship) — 게이트 `d6b72b8` · P1 `d33389e` · `11a257e`(red 형만) → `54a6a20` · P1b(Astra 0156 — FIFO/하드링크 목록 · fd 묶은 해시 · 상위 디렉터리 · 짧은 쓰기 · 기존 디렉터리 모드) `e729eaa` → `50db887` · P1c(0168 — 담기는 unlink하지 않는다 · R7 / R64-M1에서 벗어남) `6a49129` → `6e1da4b` · P2 `e775ad6` · `aed94cf`(red 형만) → `802efc7` · P2b(0172 — 훅은 `destPath` · verify가 고아를 다시 해시) `a68a456` → `7a47432` · P3 `2662167` → `0af580f` · P3b(0176 — 고아 걷기 오류 fail closed · `history-cli` 이스케이프 내보내기 재사용) `f0685cc` → `7233d64` · P3c(0178 — ENOENT 아닌 걷기 오류 전부 fail closed) `cb6b83f` → `bd2f927` · P4 = `artifacts-cli-dist.test.ts`(테스트 안 임시 번들 · 네 경우 · 처음부터 green — 선언) · 버전 0.45.0 세 줄 · 문서 · 계급 재번호 82~89(0.44.1이 78~81을 먼저 씀). UK 상태 변화 없음(UK-1~UK-5 비차단 유지) — 정본 `implementation-notes.md` §0.45.0 |
 | **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `c65a20b`) · `conv-artifact-fetch.ts:184-186` · `:197-200` · `:296-336` · `:378-451` · `conv-artifact-pack.ts:43` · `:85-94` · `:221-227` · `prompt-record.ts:260` · `:414-417` · `:426-472` · `session-store.ts:152-172` · `:178-235` · `prompt-cli.ts:79-81` · `:347-353` · `history-cli.ts:57-85` · `cli/src/index.ts:176` · `:287-288` · `:3318-3356` · `:3492-3500` · `mcp-server/src/tools.ts:463-474` · `mcp-server/src/stdio.ts:106` · `:114` · `:129` · `bridge-runtime.ts:148` · `UPGRADE-PLAN.md:35` · `:263-275` · `:373` |
 
 | 분면 | 내용 |
 |------|------|
 | Known knowns | (1) `conv_fetch`는 받은 파일의 **원시 바이트** sha256을 와이어 sha와 비교하고(D6) 10 MiB 상한 · 0600 `chmod`(최선 노력) 뒤 메타데이터만 돌려준다(L-1). (2) 받는 자리는 `loomDir()/artifacts/<convId>/<basename>` 하나 · 덮어쓰기 거부. (3) fetch 쪽엔 로그 줄이 없고 MCP stdout은 JSON-RPC다 → 진단은 stderr만. (4) `readBoundedRegularFile`(`lstat` + `O_NOFOLLOW\|O_NONBLOCK` + `fstat` + 상한 + 1) · `readOnlyStateHome` · `oneLine`/`safeJson`(0.44)이 이미 있다. (5) 0.44 `LOOM_CARD` 두 파싱 거부 규칙(0143 · 0145). |
 | Known unknowns | **UK-1~UK-5**(아래 표, 정본 = PLAN §0.45.0). 요지: 실제 볼륨 배치 · `EXDEV` 빈도 · Bun `linkSync`의 `EEXIST` · `ino` 가시성 · macOS 원본 심볼릭 링크 추종 · 동시 덧붙임 · pack UTF-8 해시 결함 빈도 · 큰 저장소의 `verify`. |
-| Unknown knowns | POSIX `rename`은 `EEXIST`를 내지 않고 기존 blob을 원자적으로 갈아 끼운다 → R7 판정 = 임시 이름 · `rename` 없이 직접 `link`(원자적 no-replace · `EEXIST` = blob 있음 → R8 · R64-M1). 저장소 밖 하드링크가 걸린 conv 파일은 D7 전제를 깬다(R64-L1 → `nlink === 1`). `appendFileSync`는 목록 파일 심볼릭 링크를 따라간다(R9 → `O_APPEND\|O_NOFOLLOW`). fetch의 `chmod 0600`이 최선 노력이라 blob 모드가 0600이라는 보장은 담기 시점 검사로만 선다(R4). 포함 검사(`:378-395`)는 루트 안을 가리키는 심볼릭 링크를 통과시킨다(R3 `lstat`). `conv-artifact-pack.ts:221` · `:226`의 utf8 디코드 → 재인코드 해시는 잘못된 UTF-8 파일을 받기부터 실패하게 한다(R17 · 계급 86). `UPGRADE-PLAN.md:268` 목록 필드가 D4 줄과 다르다(R18). |
+| Unknown knowns | POSIX `rename`은 `EEXIST`를 내지 않고 기존 blob을 원자적으로 갈아 끼운다 → R7 판정 = 임시 이름 · `rename` 없이 직접 `link`(원자적 no-replace · `EEXIST` = blob 있음 → R8 · R64-M1). 저장소 밖 하드링크가 걸린 conv 파일은 D7 전제를 깬다(R64-L1 → `nlink === 1`). `appendFileSync`는 목록 파일 심볼릭 링크를 따라간다(R9 → `O_APPEND\|O_NOFOLLOW`). fetch의 `chmod 0600`이 최선 노력이라 blob 모드가 0600이라는 보장은 담기 시점 검사로만 선다(R4). 포함 검사(`:378-395`)는 루트 안을 가리키는 심볼릭 링크를 통과시킨다(R3 `lstat`). `conv-artifact-pack.ts:221` · `:226`의 utf8 디코드 → 재인코드 해시는 잘못된 UTF-8 파일을 받기부터 실패하게 한다(R17 · 계급 89). `UPGRADE-PLAN.md:268` 목록 필드가 D4 줄과 다르다(R18). |
 | Unknown unknowns | 오너가 실제로 받는 산출물 모양(크기 분포 · 같은 내용 반복 빈도) · 여러 프로필 · 여러 MCP 서버가 같은 상태 루트에 쓰는 실제 빈도 · 백업 · 동기화 도구(Time Machine · rsync)가 하드링크를 어떻게 다루는지. |
 
 **Unknowns 요약 (정본 = PLAN §0.45.0):**
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R64 판정 | 결과 |
 |---|------|-------------|----------|------|
-| UK-1 | **실제 볼륨 배치 · `EXDEV` 빈도** — `artifacts/<convId>/`와 `artifacts/sha256/`가 다른 볼륨인 환경이 있는지 | `EXDEV` = `exdev` 한 줄 · 받기 성공 · 복사 대체 없음(계급 78) · 측정은 오너 환경이라 자동 실행 안 함 | — | — |
+| UK-1 | **실제 볼륨 배치 · `EXDEV` 빈도** — `artifacts/<convId>/`와 `artifacts/sha256/`가 다른 볼륨인 환경이 있는지 | `EXDEV` = `exdev` 한 줄 · 받기 성공 · 복사 대체 없음(계급 82) · 측정은 오너 환경이라 자동 실행 안 함 | — | — |
 | UK-2 | **Bun `linkSync`의 `EEXIST` · 링크 직후 `lstat` `ino` 가시성 · macOS 원본 심볼릭 링크 추종** | P1 macOS · Linux 사례로 확인 · 추종은 R7 링크 뒤 blob `ino` 대조가 막는다 | 비차단 수용(R64-M1 문면) | — |
-| UK-3 | **동시 덧붙임** — 같은 상태 루트의 MCP 서버 여럿이 ≤ 4 KiB O_APPEND 줄을 끼워 쓰는지 | 읽는 쪽 깨진 줄 셈(R11 · 계급 81) · 관찰되면 목록 락 = 다음 조각 | — | — |
-| UK-4 | **pack UTF-8 해시 결함의 실제 빈도** — 워커가 잘못된 UTF-8 파일을 `[ARTIFACT]`로 내는 일(R17 · 계급 86) | 이 버전 밖(D1) · 다음 후보 PATCH(브리지 바이트 → 원시 바이트 해시) · 그 PATCH 전에 판정 · implementation-notes §0.45.0에 기록 | — | — |
+| UK-3 | **동시 덧붙임** — 같은 상태 루트의 MCP 서버 여럿이 ≤ 4 KiB O_APPEND 줄을 끼워 쓰는지 | 읽는 쪽 깨진 줄 셈(R11 · 계급 85) · 관찰되면 목록 락 = 다음 조각 | — | — |
+| UK-4 | **pack UTF-8 해시 결함의 실제 빈도** — 워커가 잘못된 UTF-8 파일을 `[ARTIFACT]`로 내는 일(R17 · 계급 89) | 이 버전 밖(D1) · 다음 후보 PATCH(브리지 바이트 → 원시 바이트 해시) · 그 PATCH 전에 판정 · implementation-notes §0.45.0에 기록 | — | — |
 | UK-5 | **큰 저장소의 `verify`** — 서로 다른 sha마다 최대 10 MiB 읽기 · 해시를 돌려야 하는지 | 상한 · 진행 표시 · 표본 검사 없음 · 느리면 `--quick`(크기 · 모드만) 또는 gc와 함께 판정 | — | — |
 
 **승계:** 없음(0.44.0 UK-1 · UK-2 · UK-3 · UK-5는 방 기록 검색 축 — 그대로 유지).
 
-**Current decision:** **`pending-review` (R64 대기, 2026-10-18).** D1~D10 아키텍트 락(2026-10-18) · 작성자 정밀화 R1~R18(CONFLICT 없음 — R7 대안 · R8 해석 · R11 목록 읽기 상한은 R64 판정 요청) · 수용 손실 계급 78~86 + 무번호 · UK-1~UK-5 비차단 제안. `UPGRADE-PLAN.md:35 · :268 · :373` 정렬 = 이 PLAN과 함께(R18). 구현 착수 = R64 뒤 **P1**(저장소 red → green). ship = 스위트 + 단위 + 가짜 scp 통합 + dist CLI · 실 CLI 없음(D9).
+**Current decision:** **`approved` → implemented (P1–P4) 2026-10-18 · ship 전(최종 advise 대기).** D1~D10 아키텍트 락(2026-10-18) · 작성자 정밀화 R1~R18(R64 판정 — R7 대안 · R8 draft · R11 수용) · 수용 손실 계급 82~89 + 무번호(재번호 — 0.44.1이 78~81을 먼저 씀 · 옛 85는 R64가 삭제) · UK-1~UK-5 비차단. `UPGRADE-PLAN.md:35 · :268 · :373` 정렬 = 이 PLAN과 함께(R18). P1~P4 완료(Implemented 행) · 다음 = 최종 advise → ship. ship = 스위트 + 단위 + 가짜 scp 통합 + dist CLI · 실 CLI 없음(D9).
 
 ### 0.44.0 — `loom history search` — 방 이벤트 기록 읽기 전용 선형 검색 (`approved` — R63 approved-with-fixes · no R63b · implemented (P1–P3) · shipped 2026-10-18)
 

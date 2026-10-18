@@ -5,8 +5,42 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.44.1** — shipped 2026-10-18 · 실 CLI 불필요 D7) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.0** — implemented 2026-10-18 · ship 전 · 실 CLI 불필요 D9 · 직전 shipped = 0.44.1) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.45.0 — 2026-10-18
+
+> **상태:** implemented 2026-10-18 · **아직 ship 안 됨**(최종 리뷰 대기). **실 CLI 실행 불필요(D9)** — 와이어 · 워커 · argv · 프롬프트 · fingerprint · 스킬 · relay 변경 없음.
+
+**받은 산출물을 내용 해시로 찾고 확인할 수 있다** — 0.25.0부터 `conv_fetch`는 원격 노드의 scp 산출물을 `~/.loom/artifacts/<convId>/<이름>`으로 받아 sha256을 확인했지만, 받은 파일을 내용으로 다시 찾거나 손상 여부를 볼 표면은 없었다. 0.45.0은 **받기가 성공한 바로 뒤** 그 파일을 `~/.loom/artifacts/sha256/<앞 2 hex>/<64 hex>`에 **하드링크로**(복사 · 심볼릭 링크 없이) 담고 `~/.loom/artifacts/index.jsonl`에 한 줄을 덧붙인다. 읽기 전용 명령 둘 — **`loom artifacts list`** · **`loom artifacts verify`** — 을 더한다. 업그레이드 6단계의 둘째 조각이다.
+
+### 가능해진 것
+
+- **`loom artifacts list [--conv <convId>] [--limit <n>] [--json]`** — 최신 먼저 한 줄씩 `<at> · <sha256> · <bytes> B · conv <convId> · seq <n> · index <n> · <name>` · 끝에 `<rows> rows · <torn> torn lines`. 기본 50 · 최대 500 · `--conv`는 정확 일치. `--json`은 줄마다 목록 행 그대로 + `{summary:{rows, torn}}`(값 보존 이스케이프). exit 0 = 행 있음 · 1 = 없음 · 2 = 사용법 · `LOOM_CARD` 거부 · 목록 못 읽음.
+- **`loom artifacts verify [--json]`** — 목록의 서로 다른 sha마다 blob이 있는지 · 일반 파일인지 · 심볼릭 링크가 아닌지 · 크기 · 해시 · 실행 비트를 보고 문제마다 `problem: <sha256> — <reason>` · 목록에 없는 blob은 `info: orphan sha256/<2>/<64>`(그 blob도 다시 해시한다 — 해시가 이름과 다르면 문제) · 꼬리 `<checked> blobs checked · <problems> problems · <orphans> orphans · <torn> torn lines`. exit 0 = 문제 없음(고아만이면 0) · 1 = 문제 · 2 = 사용법 · 거부 · 목록 못 읽음 · 저장소 디렉터리를 끝까지 걷지 못함.
+- **같은 내용은 blob 하나** — 같은 바이트를 여러 conv에서 받으면 blob은 하나 · 목록 줄은 받을 때마다 하나.
+- **읽기 전용 · 하드닝** — `list` · `verify`는 상태 루트에 아무것도 쓰지 않는다(마이그레이션 · 락 · 고치기 · 지우기 0) · 경로 성분마다 `lstat` · 심볼릭 링크 불추종 · 유계 읽기(목록 64 MiB · blob 10 MiB) · 사람 출력의 제어 · bidi · TAB · LF는 `\u{…}`로(받은 `name` · `convId`로 가짜 줄을 꾸밀 수 없다).
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.44.x) | 지금 (0.45.0) |
+|---------------|---------------|
+| 받은 파일을 찾으려면 `artifacts/<convId>/`를 직접 뒤졌다 | `loom artifacts list` · `--conv` |
+| 받은 뒤 바뀌었는지 확인할 길이 없었다 | `loom artifacts verify`가 해시 · 크기 · 실행 비트를 다시 본다 |
+| conv 파일의 링크 수 = 1 | 담긴 conv 파일은 링크 수 2(blob과 같은 inode) |
+
+### 불변
+
+- `conv_fetch`의 결과 · 검증 · 목적지 · 덮어쓰기 거부 · 상한 · 락(R40) 무변경. 담기는 **최선 노력** — 실패해도 받기 결과 · conv 파일 바이트 · 모드는 그대로이고, MCP 서버 stderr에 `[loom] artifact store: skipped — <reason> (convId … · seq … · index …)` 한 줄만 남는다(stdout은 JSON-RPC라 절대 쓰지 않는다). 실패한 받기는 저장소를 건드리지 않는다.
+- 와이어 · `packages/protocol` · 워커 · 프롬프트 · fingerprint · 스킬 · relay 무변경.
+- **정직 고지(설계상 수용 손실):** 다른 볼륨이면 담지 않는다(`exdev` — 복사 대체 없음 · 계급 82) · `.fable` → `.loom` 복사 마이그레이션은 하드링크를 끊는다(바이트 두 벌 · 여전히 검증 가능 — 계급 83) · conv 파일과 blob은 같은 inode라 한쪽 이름으로 쓰면 둘 다 바뀐다(Loom은 쓰지 않는다 · `verify`가 잡는다 — 계급 84) · 여러 프로세스의 목록 덧붙임 끼어듦은 깨진 줄로 센다(계급 85) · 같은 사용자 경합(계급 86) · 크래시 · 줄 쓰기 실패 → 고아 blob(계급 87) · gc 없음 — 디스크가 자란다(계급 88) · 잘못된 UTF-8 워커 파일은 받기부터 실패한다(pack 해시 결함 — 계급 89 · 별도 PATCH). 담기는 이름을 지우지 않는다 — 링크 뒤 다른 inode가 blob 자리에 있으면 그대로 두고 `verify`가 보고한다. 이미 받은 파일은 되채우지 않고, 실패한 담기는 다시 시도하지 않는다.
+- 증명 = 임시 HOME 단위 테스트(담기 · list · verify 판정 표) · 가짜 scp `conv_fetch` 통합 테스트 · CLI 테스트 · 임시 번들 dist CLI 테스트. 실 CLI 실행 없음.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) "`loom artifacts list` · `verify`" · PLAN 0.45.0 · R64 · `implementation-notes.md` §0.45.0
 
 ---
 

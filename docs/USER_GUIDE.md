@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.44.1** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.45.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -108,6 +108,7 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 19 | `loom service` (0.34.0) — 로그인 시 bridge 자동 기동 | `loom service install\|start\|status` · doctor Service 절 |
 | 20 | 기억 · 규칙 · 스킬 (0.35.0) — 에이전트별 장기 기록 · 방 규칙 · 공통 지식 · 되도록-규칙 · 스킬 출처 · **0.36.0: 카드 시작 스냅샷을 headless 워커 첫 턴에 넣기(옵트인)** | `loom memory` · `loom rules list` · `loom skills list` · doctor Memory 절 · `worker.memory.enabled` (§20.11) |
 | 20A | 방 기록 검색 (0.44.0) — 지난 방 이벤트를 읽기 전용으로 찾기 | `loom history search` · 비밀 가리기 · exit 0/1/2 |
+| 20B | 받은 산출물 저장소 (0.45.0) — `conv_fetch`로 받은 파일을 내용 해시로 찾고 확인하기 | `loom artifacts list` · `verify` · 하드링크 · exit 0/1/2 |
 | — | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
@@ -2110,6 +2111,96 @@ JSON 값은 보존된다(DEL · C1 · bidi · U+2028/2029는 `\u00XX`/`\u20XX` �
 
 ---
 
+## 20B. 받은 산출물 저장소 — `loom artifacts list` · `verify` (v0.45.0)
+
+`conv_fetch`(Loom MCP 도구 — 0.25.0)는 원격 노드의 scp 산출물을 `~/.loom/artifacts/<convId>/<이름>`으로 받아 sha256을 확인한다. 0.45.0부터는 **받기가 성공한 바로 뒤** 그 파일을 내용 해시 이름으로도 담고 한 줄을 기록한다. `loom artifacts`는 그 저장소를 **읽기만** 하는 운영자 명령이다 — "그 conv에서 무엇을 받았지?", "받은 뒤 바뀐 것은 없나?"를 디렉터리를 뒤지지 않고 확인한다.
+
+```text
+loom artifacts list [--conv <convId>] [--limit <n>] [--json]
+loom artifacts verify [--json]
+```
+
+| 플래그 | 뜻 |
+|--------|-----|
+| `--conv <convId>` | `list`만 · 그 convId의 줄만(정확 일치) |
+| `--limit <n>` | `list`만 · 보여 줄 줄 수 · 기본 50 · 1~500 |
+| `--json` | 줄마다 JSON 객체 하나 |
+
+`verify`에 `--conv` · `--limit`를 주거나, 동사 없음 · 모르는 동사 · 남는 위치 인자 · 범위 밖 `--limit`는 사용법 오류(`loom artifacts: usage: …` · exit 2). 모르는 플래그는 무시되고 반복 플래그는 마지막 값이 이긴다. `--profile`은 범위를 바꾸지 않는다 — 저장소는 상태 루트에 하나다.
+
+**무엇이 언제 담기나.** `conv_fetch`가 **성공한 경우에만**(sha 확인 · 크기 상한 · 0600 `chmod`까지 마친 뒤) 그 받은 파일 하나를 담는다. 실패한 받기 · 0.45.0 이전에 받은 파일 · 브리지 노드 쪽 `turn-*` 파일 · git 참조는 담지 않는다(되채우기 없음). 담기는 **최선 노력**이다 — 담기가 실패해도 `conv_fetch`의 결과 · 받은 파일의 바이트 · 모드는 그대로이고, MCP 서버의 **stderr**에 한 줄만 남는다(stdout은 MCP 채널이라 쓰지 않는다):
+
+```text
+[loom] artifact store: skipped — <reason> (convId <convId> · seq <n> · index <n>)
+```
+
+`<reason>` = `convId`(형식이 틀린 convId) · `exdev`(다른 볼륨) · `symlink` · `not a directory` · `not a regular file` · `too large` · `mode <octal>`(받은 파일이 0600이 아님) · `nlink <n>`(받은 파일에 다른 하드링크가 이미 있음) · `dir mode <octal>`(저장소 디렉터리에 group/other 비트) · `sha changed`(받은 뒤 바뀜) · `blob mismatch`(같은 이름의 blob 내용이 다름 — 건드리지 않는다) · `inode changed` · `row too large` · `index …`(목록 파일 문제) · `unreadable <code>`. 줄에는 파일 내용 · 절대 경로가 없다. 실패한 담기는 다시 시도하지 않는다(그 conv 파일은 덮어쓰기 거부라 다시 받을 수도 없다).
+
+**배치.**
+
+```text
+~/.loom/artifacts/
+  <convId>/<이름>                 ← conv_fetch가 받는 자리 (0.25.0 · 무변경)
+  sha256/<앞 2 hex>/<64 hex>      ← blob — 받은 파일과 같은 inode (하드링크 · 0600 · 실행 비트 없음)
+  index.jsonl                     ← 목록 — 받을 때마다 한 줄 (0600)
+```
+
+디렉터리는 0700. 목록 줄 = `{"v":1,"sha256":…,"bytes":…,"name":…,"convId":…,"seq":…,"index":…,"transport":"scp","status":"present","at":…}`(한 줄 ≤ 4 KiB · `name` = 받은 basename일 뿐 원격 경로가 아니다). 같은 내용을 여러 번 받으면 blob은 하나 · 줄은 여럿이다(두 번째 conv 파일은 링크하지 않고 따로 남는다).
+
+**공유 inode — 숨기지 않는다.** 담긴 conv 파일과 blob은 **같은 inode**다. 어느 이름으로 쓰든 둘 다 바뀐다. Loom은 받은 뒤 그 자리에 쓰지 않는다 — 손으로 고치면 `verify`가 `sha mismatch` · `size mismatch`로 보고한다. 담긴 conv 파일의 링크 수는 2다.
+
+**지우지 않는다.** `list` · `verify`는 상태 루트(`~/.loom`, 없고 `~/.fable`만 있으면 그것)에 아무것도 쓰지 않는다 — 고치기 · 지우기 · 마이그레이션 · 락 0. 담기도 이름을 지우지 않는다(링크 뒤 다른 inode가 blob 자리에 있으면 그대로 두고 `verify`가 보고한다). 정리(`gc`)는 아직 없다.
+
+**출력 예 — `list`:**
+
+```text
+$ loom artifacts list
+2026-10-18T00:00:02.000Z · 8b1a…(64 hex) · 5 B · conv conv_0123456789abcdef · seq 2 · index 1 · b.txt
+2026-10-18T00:00:01.000Z · 3f2c…(64 hex) · 15 B · conv conv_0123456789abcdef · seq 1 · index 0 · a.txt
+2 rows · 0 torn lines
+```
+
+최신 먼저(파일 순서를 뒤집음). `torn` = 목록 파일 전체의 깨진 줄 수(문제가 아니라 셈). `--json`은 줄마다 목록 행 그대로 + 마지막 `{"summary":{"rows":…,"torn":…}}`.
+
+**출력 예 — `verify`:**
+
+```text
+$ loom artifacts verify
+problem: 5d41…(64 hex) — missing
+info: orphan sha256/9e/9e10…(64 hex)
+2 blobs checked · 1 problems · 1 orphans · 0 torn lines
+```
+
+목록의 서로 다른 sha마다 **첫 문제 하나**: `missing`(blob 없음) · `symlink` · `not a regular file` · `size mismatch` · `exec bit` · `sha mismatch` · `bytes disagree`(같은 sha에 다른 크기 줄) · `too large` · `unreadable <code>`. **고아** = 목록에 없는 blob(담기와 목록 줄 사이 크래시 등) — `info:` 줄이고 문제가 아니다. 단 고아도 다시 해시해서 이름과 다르면 문제로 보고한다. 문제 · 고아는 sha 오름차순. `--json` = 문제마다 `{"problem":{"sha256":…,"reason":…}}` · 고아마다 `{"info":{"name":…}}` · 마지막 `{"summary":{"checked":…,"problems":…,"orphans":…,"torn":…}}`.
+
+사람 출력의 모든 문자열 필드(`name` · `convId` 포함 — 원격 · 호출자가 정한 값)는 제어 · bidi · TAB · LF를 `\u{…}`로 보여 한 줄이 늘 한 줄이다. JSON 값은 보존된다(DEL · C1 · bidi · U+2028/2029는 `\u00XX`/`\u20XX` — `JSON.parse`로 원 값).
+
+**exit code:**
+
+| code | `list` | `verify` |
+|------|--------|----------|
+| 0 | 줄 ≥ 1 | 문제 없음(고아만 있어도 0) |
+| 1 | 줄 0(저장소가 아예 없어도) | 문제 ≥ 1 |
+| 2 | 사용법 · `LOOM_CARD` 거부 · 목록을 못 읽음 | 사용법 · 거부 · 목록을 못 읽음 · 저장소 디렉터리를 끝까지 걷지 못함 |
+
+목록을 못 읽으면 stderr `loom artifacts: index unreadable — <reason>`(예: 목록이 심볼릭 링크 · 64 MiB 초과 · 저장소 디렉터리가 심볼릭 링크). 걷기가 중간에 막히면 "깨끗함"으로 보고하지 않고 exit 2다.
+
+**워커 셸에서는 거부.** `LOOM_CARD`가 설정된 셸(카드 워커)에서는 인자 · `--help` · 상태 루트 해석보다 먼저 `loom artifacts: refused — LOOM_CARD is set (this shell belongs to a Loom card worker); the artifact store is for the operator.` · exit 2. 가드이지 경계가 아니다(같은 사용자 셸은 파일을 직접 읽을 수 있다).
+
+**한계 — 설계상 수용 (0.45.0).**
+
+1. **다른 볼륨이면 담지 않는다**(계급 82) — `artifacts/<convId>/`와 `artifacts/sha256/`가 다른 파일 시스템이면 `exdev` 한 줄 · 받기는 성공 · 복사 대체 없음.
+2. **`.fable` → `.loom` 복사 마이그레이션은 하드링크를 끊는다**(계급 83) — 바이트가 두 벌이 되지만 둘 다 그대로 `verify` 가능.
+3. **공유 inode**(계급 84) — 위 "공유 inode" 참고.
+4. **여러 프로세스의 목록 덧붙임 끼어듦**(계급 85) — MCP 서버 여럿이 같은 상태 루트에 쓰면 줄이 섞일 수 있다 · 읽는 쪽은 깨진 줄로 센다.
+5. **같은 사용자 경합**(계급 86) — 경로 확인과 링크 · 열기 사이 디렉터리 → 심볼릭 링크 교체는 막지 못한다(같은 사용자 한계).
+6. **고아 blob**(계급 87) — 링크와 목록 줄 사이 크래시 · 줄 쓰기 실패 → blob만 남는다 · `verify` `info: orphan` · 같은 내용을 다시 받으면 줄이 생긴다.
+7. **gc 없음 — 디스크가 자란다**(계급 88) — conv 파일을 지워도 blob 이름이 남아 바이트가 남는다 · 전체 용량 상한 없음 · 파일당 상한 = `conv_fetch`의 10 MiB.
+8. **잘못된 UTF-8 워커 파일은 받기부터 실패한다**(계급 89) — 브리지 쪽 해시 결함(별도 PATCH) · 그런 파일은 저장소에 들어올 수 없다.
+9. **`verify`는 큰 저장소에서 느리다** — 서로 다른 sha마다 blob을 최대 10 MiB 읽어 해시한다 · 진행 표시 없음.
+
+---
+
 ## 21. 명령 치트시트
 
 ```text
@@ -2125,6 +2216,7 @@ bun run loom --profile <p> memory add|propose|approve|retire|compact|list|show -
 bun run loom --profile <p> rules list | skills list [--room <roomId>]
 bun run loom --profile <p> prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent <a>] [--json]
 bun run loom history search <query> [--room <roomId>] [--month YYYY-MM] [--limit <n>] [--json]
+bun run loom artifacts list [--conv <convId>] [--limit <n>] [--json] | artifacts verify [--json]
 bun run loom --profile <p> pack show|set|add|note|…
 bun run loom --profile <p> board | board add|set|assign|export|import|…
 bun run loom --profile <p> run [claude|codex|grok|shell]
