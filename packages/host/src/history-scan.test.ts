@@ -985,3 +985,113 @@ describe("PLAN 0.44.0 P1 no side effects (D2 · D8(1))", () => {
     expect(src.match(writeApi)?.[0] ?? null).toBeNull();
   });
 });
+
+describe("PLAN 0.44.0 P1b — bounded memory · metadata redaction (Astra 0137)", () => {
+  type SeamCandidate = {
+    tsValid: boolean;
+    tsNum: number;
+    roomId: string;
+    seq: number;
+    line: number;
+    ts: string;
+    type: string;
+    eventId: string;
+    window: { text: string; base: number; total: number; start: number; end: number };
+  };
+  type SeamModule = {
+    keepTop: (buf: SeamCandidate[], cand: SeamCandidate, cap: number) => void;
+  };
+
+  const r8 = (p: SeamCandidate, q: SeamCandidate): number => {
+    if (p.tsValid !== q.tsValid) return p.tsValid ? -1 : 1;
+    if (p.tsValid && p.tsNum !== q.tsNum) return q.tsNum - p.tsNum;
+    if (p.roomId !== q.roomId) return p.roomId < q.roomId ? -1 : 1;
+    if (p.seq !== q.seq) return q.seq - p.seq;
+    return q.line - p.line;
+  };
+
+  test("R63-M2 seam: keepTop with cap 3 never holds more than 3 and ends at the top 3 of a full sort", async () => {
+    const { keepTop } = (await loadScan()) as unknown as SeamModule;
+    let x = 777;
+    const next = (): number => {
+      x = (x * 1103515245 + 12345) % 2147483648;
+      return x;
+    };
+    const all: SeamCandidate[] = [];
+    const buf: SeamCandidate[] = [];
+    for (let i = 1; i <= 1000; i++) {
+      const tsValid = next() % 7 !== 0;
+      const cand: SeamCandidate = {
+        tsValid,
+        tsNum: tsValid ? next() % 50 : 0,
+        roomId: next() % 2 === 0 ? ROOM_A : ROOM_B,
+        seq: next() % 5,
+        line: i,
+        ts: "",
+        type: "chat",
+        eventId: `ev_${i}`,
+        window: { text: "", base: 0, total: 0, start: 0, end: 0 },
+      };
+      all.push(cand);
+      keepTop(buf, cand, 3);
+      expect(buf.length).toBeLessThanOrEqual(3);
+    }
+    const expected = [...all].sort(r8).slice(0, 3).map((c) => c.eventId);
+    expect(buf.map((c) => c.eventId)).toEqual(expected);
+  });
+
+  test("M2: secret-shaped eventId and type are redacted in the hit", async () => {
+    const root = tempRoot("metasecret");
+    writeMonth(root, ROOM_A, "2026-10", [
+      ln({
+        roomId: ROOM_A,
+        seq: 1,
+        eventId: "sk-ant-abcdefghijk12345",
+        ts: TS,
+        type: "sk-ant-zyxwvutsrq98765",
+        envelope: { text: "find the needle here" },
+      }),
+    ]);
+    const r = await scan(root, "needle");
+    expect(r.hits.length).toBe(1);
+    const hit = r.hits[0];
+    expect(hit?.eventId).toContain("[REDACTED]");
+    expect(hit?.eventId).not.toContain("abcdefghijk12345");
+    expect(hit?.type).toContain("[REDACTED]");
+    expect(hit?.type).not.toContain("zyxwvutsrq98765");
+    expect(hit?.roomId).toBe(ROOM_A);
+    expect(hit?.ts).toBe(TS);
+  });
+
+  test("M2: env-value secret inside eventId is redacted with the filtered env", async () => {
+    const root = tempRoot("metaenv");
+    writeMonth(root, ROOM_A, "2026-10", [
+      ln({ roomId: ROOM_A, seq: 1, eventId: "ev_supersecretvalue1", ts: TS }),
+    ]);
+    const r = await scan(root, "needle", { env: { LOOM_TOKEN: "supersecretvalue1" } });
+    expect(r.hits.length).toBe(1);
+    expect(r.hits[0]?.eventId).not.toContain("supersecretvalue1");
+    expect(r.hits[0]?.eventId).toContain("[REDACTED]");
+  });
+
+  test("M1: a 4 MiB non-matching ASCII record next to a small matching one → exactly 1 hit", async () => {
+    const root = tempRoot("bignomatch");
+    writeMonth(root, ROOM_A, "2026-10", [
+      ln({ roomId: ROOM_A, seq: 1, eventId: "ev_big", ts: TS, envelope: { text: "q".repeat(4 * 1024 * 1024) } }),
+      ln({ roomId: ROOM_A, seq: 2, eventId: "ev_small", ts: TS, envelope: { text: "a needle" } }),
+    ]);
+    const r = await scan(root, "needle");
+    expect(ids(r)).toEqual(["ev_small"]);
+    expect(r.torn).toBe(0);
+  }, 20000);
+
+  test("M1: a 1 MiB matching record → snippet bounded by the window (same ±80 shape)", async () => {
+    const half = 512 * 1024;
+    const root = textRoot(`${"a".repeat(half)}NEEDLE${"b".repeat(half)}`);
+    const r = await scan(root, "needle");
+    const s = r.hits[0]?.snippet ?? "";
+    const m = await loadScan();
+    expect(s.length).toBeLessThanOrEqual(2 * m.HISTORY_SNIPPET_RADIUS + 2 + "NEEDLE".length);
+    expect(s).toBe(`…${"a".repeat(80)}NEEDLE${"b".repeat(80)}…`);
+  }, 20000);
+});
