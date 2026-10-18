@@ -29,6 +29,8 @@ function startReconnectRelay(opts: {
   rejectUpgrades?: number;
   rejectAllAfterFirst?: boolean;
   joinReplies?: JoinReply[];
+  /** Delay each join reply (ms) so a test can act while the join is pending. */
+  joinDelayMs?: number;
 } = {}): {
   url: string;
   upgrades(): number;
@@ -103,6 +105,10 @@ function startReconnectRelay(opts: {
         if (typeof msg.requestId === "string") {
           envelope.requestId = msg.requestId;
         }
+        if (opts.joinDelayMs) {
+          setTimeout(() => ws.send(JSON.stringify(envelope)), opts.joinDelayMs);
+          return;
+        }
         ws.send(JSON.stringify(envelope));
       },
     },
@@ -134,19 +140,29 @@ type Harness = {
 
 function openReconnectClient(
   url: string,
-  extra: { maxReconnectAttempts?: number } = {},
+  extra: {
+    maxReconnectAttempts?: number;
+    /** R65-L2: omit reconnectJoin entirely. */
+    noReconnectJoin?: boolean;
+    /** P1b: onError records, then throws. */
+    throwOnError?: boolean;
+  } = {},
 ): Harness {
   const errors: string[] = [];
   const chats: string[] = [];
   let closes = 0;
+  const { noReconnectJoin, throwOnError, ...rest } = extra;
   const client = new RelayClient({
     url,
     autoReconnect: true,
-    reconnectJoin: { inviteCode: "LOOM-ABCD", displayName: "bridge" },
+    ...(noReconnectJoin
+      ? {}
+      : { reconnectJoin: { inviteCode: "LOOM-ABCD", displayName: "bridge" } }),
     reconnectRandom: () => 0,
-    ...extra,
+    ...rest,
     onError(err) {
       errors.push(err.message);
+      if (throwOnError) throw new Error(`onError threw on: ${err.message}`);
     },
     onClose() {
       closes += 1;
@@ -373,6 +389,9 @@ describe("v0.44.1 P1 stop on unretryable join errors (D5 · R3)", () => {
           expect(relay.upgrades()).toBe(2);
           expect(relay.joins()).toBe(1);
           expect(h.chats).toEqual([]);
+          // P1b (R3): initial drop + exactly one onClose for the stop branch
+          // (a handler-clearing this.close() would report none).
+          expect(h.closes()).toBe(2);
         } finally {
           h.client.close();
           relay.stop();
@@ -406,6 +425,128 @@ describe("v0.44.1 P1 stop on unretryable join errors (D5 · R3)", () => {
         expect(relay.upgrades()).toBe(3);
         expect(h.chats).toHaveLength(1);
         expect(h.client.wsOpen).toBe(true);
+      } finally {
+        h.client.close();
+        relay.stop();
+      }
+    },
+    20000,
+  );
+});
+
+describe("v0.44.1 P1b regression coverage (Astra 0164 M · L)", () => {
+  test(
+    "R65-L2: client without reconnectJoin resets the counter on connect",
+    async () => {
+      const relay = startReconnectRelay({ rejectUpgrades: 1 });
+      const h = openReconnectClient(relay.url, { noReconnectJoin: true });
+      try {
+        await h.client.connect();
+        relay.dropAll();
+        // initial + rejected + accepted
+        await waitFor(() => relay.upgrades() >= 3 && h.client.wsOpen, 8000);
+        await Bun.sleep(100);
+        expect(
+          (h.client as unknown as { reconnectAttempt: number }).reconnectAttempt,
+        ).toBe(0);
+        expect(relay.joins()).toBe(0);
+        expect(h.chats).toEqual([]);
+      } finally {
+        h.client.close();
+        relay.stop();
+      }
+    },
+    15000,
+  );
+
+  test(
+    "R65-L1: stop branch does not close a socket that replaced the attempt's socket",
+    async () => {
+      const relay = startReconnectRelay({
+        joinReplies: [
+          { kind: "error", code: "peer_auth_failed", message: "bad secret" },
+        ],
+        joinDelayMs: 400,
+      });
+      const h = openReconnectClient(relay.url);
+      let replacement: WebSocket | null = null;
+      try {
+        await h.client.connect();
+        relay.dropAll();
+        replacement = new WebSocket(relay.url);
+        const opened = replacement;
+        await new Promise<void>((resolve, reject) => {
+          opened.onopen = () => resolve();
+          opened.onerror = () => reject(new Error("replacement failed"));
+        });
+        await waitFor(() => relay.joins() >= 1, 5000);
+        // Swap the client's socket while the reconnect join is pending.
+        (h.client as unknown as { ws: WebSocket | null }).ws = opened;
+        await waitFor(
+          () => h.errors.some((m) => m.startsWith("Reconnect stopped: ")),
+          3000,
+        );
+        await Bun.sleep(300);
+        expect(opened.readyState).toBe(WebSocket.OPEN);
+        // Only the initial drop closed a server socket: neither the replacement
+        // nor the (no longer current) attempt socket was closed by the client.
+        expect(relay.socketCloses()).toBe(1);
+      } finally {
+        h.client.close();
+        replacement?.close();
+        relay.stop();
+      }
+    },
+    15000,
+  );
+
+  test(
+    "stop branch → onClose exactly once for the stop and no further connect",
+    async () => {
+      const relay = startReconnectRelay({
+        joinReplies: [
+          { kind: "error", code: "room_not_found", message: "gone" },
+        ],
+      });
+      const h = openReconnectClient(relay.url);
+      try {
+        await h.client.connect();
+        relay.dropAll();
+        await waitFor(() => h.closes() >= 1, 2000);
+        const closesBeforeStop = h.closes();
+        await waitFor(
+          () => h.errors.some((m) => m.startsWith("Reconnect stopped: ")),
+          5000,
+        );
+        await Bun.sleep(1500);
+        expect(h.closes() - closesBeforeStop).toBe(1);
+        expect(relay.upgrades()).toBe(2);
+        expect(h.client.wsOpen).toBe(false);
+      } finally {
+        h.client.close();
+        relay.stop();
+      }
+    },
+    15000,
+  );
+
+  test(
+    "throwing onError during a failed reconnect → reconnect still continues",
+    async () => {
+      const relay = startReconnectRelay({ rejectUpgrades: 1 });
+      const h = openReconnectClient(relay.url, { throwOnError: true });
+      try {
+        await h.client.connect();
+        relay.dropAll();
+        await waitFor(() => h.chats.length >= 1, 12000);
+        expect(h.errors.length).toBeGreaterThanOrEqual(1);
+        expect(h.chats).toEqual(["reconnected (attempt 2)"]);
+        // initial + rejected + accepted
+        expect(relay.upgrades()).toBe(3);
+        expect(
+          (h.client as unknown as { reconnectInFlight: boolean })
+            .reconnectInFlight,
+        ).toBe(false);
       } finally {
         h.client.close();
         relay.stop();
