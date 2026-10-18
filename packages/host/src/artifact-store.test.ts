@@ -439,7 +439,7 @@ describe("PLAN 0.45.0 P1 ingest table — skipped branches (R1 · R3~R10)", () =
   // Seam gap (reported): `name` = basename(destPath) and `convId` must pass isValidConvId, so with ② seams
   // only (log · link · now) a real filesystem cannot produce a > 4096 B row — NAME_MAX is 255 bytes and
   // JSON escaping at most sextuples a name (≤ ~1.6 KiB row). The case needs a seam ② does not define.
-  test.todo("R9: a 4097 B row (long `name`) → `row too large` · no row (needs a seam ② lacks)");
+  test.todo("R9: a 4097 B row (long `name`) → `row too large` · no row (needs a seam ② lacks)", () => {});
 });
 
 describe("PLAN 0.45.0 P1 list table (R11 · R15)", () => {
@@ -597,7 +597,7 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
   }
 
   const problem = (sha: string, reason: string) => ({
-    ok: true,
+    ok: true as const,
     checked: 1,
     problems: [{ sha256: sha, reason }],
     orphans: [],
