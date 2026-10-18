@@ -40,13 +40,16 @@
  *   ⑧ cardWrites off (memory + skills on — the 0.37 config) → card directory file set = 0.37 (no
  *      notes.md) · no memory_propose line · no record key · store bytes unchanged · copy without
  *      the forced skill
- *   ⑨ (0.43.0 C3 ⑩ · R62-H1) every dispatched card: `prompt-1.json` is v3 · its `system` sha256 =
- *      HEADLESS_WORKER_HINT's · 0 new entries in WORK (sorted listing before / after the card)
+ *   ⑨ (0.43.0 C3 ⑩ · R62-H1) every dispatched card: `prompt-1.json` reads `ok` through
+ *      `readPromptRecord` and is v3 · its `system` sha256 = HEADLESS_WORKER_HINT's · its six system
+ *      section ids in manifest order · WORK scans complete · 0 new entries in WORK (sorted listing
+ *      before / after the card)
  * `--real-cli --owner-approved` (never by default — D18 · R56-M4 ship condition): step ① only with
  * the real claude / codex / grok binaries (inner HOME = real home, LOOM_TEST_HOME = T), cardWrites
  * on, a prompt asking for exactly one candidate. Prints per card the stderr `memory_propose` line,
- * the proposed count, whether notes.md exists, the `prompt-1.json` version / system sha check and
- * the new WORK entries (printed for the outcome table, not asserted); exits non-zero when all three cards propose 0
+ * the proposed count, whether notes.md exists, the `prompt-1.json` read outcome / version / system
+ * sha check / section ids, any incomplete WORK scan and the new WORK entries (printed for the
+ * outcome table, not asserted); exits non-zero when all three cards propose 0
  * or any card lacks notes.md.
  * `--only <claude|codex|grok>` (P5c — with `--real-cli --owner-approved` only, else a usage FAIL):
  * step ① for that one agent; pass = notes.md exists (the ≥1-proposed rule is the three-agent run's).
@@ -338,9 +341,26 @@ type InnerCardOut = {
   /** Real-cli diagnostics (P5c); null in default mode. */
   diag: CardDiag | null;
   /** PLAN 0.43.0 C3 ⑩: `prompt-1.json` version + its `system` sha256 next to HEADLESS_WORKER_HINT's. */
-  record: { version: number | null; systemSha256: string | null; hintSha256: string };
-  /** R62-H1: sorted WORK listing (relative paths, recursive) before / after this card. */
-  workFiles: { before: string[]; after: string[] };
+  record: {
+    /** `readPromptRecord` outcome (R12 validator); `reason` is set when `invalid`. */
+    read: "ok" | "missing" | "invalid";
+    reason: string | null;
+    version: number | null;
+    systemSha256: string | null;
+    hintSha256: string;
+    /** The record's section ids in record order (system then user) — `channel:id`. */
+    sectionIds: string[];
+    /** The record's system-channel section ids in order. */
+    systemIds: string[];
+    /** PROMPT_RECORD_V3_SECTIONS system ids (the manifest projection) in order. */
+    wantSystemIds: string[];
+  };
+  /**
+   * R62-H1: sorted WORK listing (relative paths, recursive) before / after this card; `incomplete`
+   * is the first scan failure (WORK root not a real directory · a directory read error), null when
+   * both scans completed.
+   */
+  workFiles: { before: string[]; after: string[]; incomplete: string | null };
 };
 type CardDiag = {
   /** Spawn argv as the exec shim saw it (argv[0] = the real bin), null when the shim never ran. */
@@ -537,6 +557,7 @@ const realRows: {
   diag: CardDiag | null;
   record: InnerCardOut["record"];
   newWork: string[];
+  workIncomplete: string | null;
 }[] = [];
 
 if (!existsSync(DIST)) {
@@ -574,6 +595,7 @@ try {
           diag: c.diag,
           record: c.record,
           newWork: newWorkFiles(c),
+          workIncomplete: c.workFiles.incomplete,
         });
       }
       const missing = realRows.filter((r) => !r.notes).map((r) => r.agent);
@@ -778,11 +800,20 @@ try {
     step("⑨ every card — prompt-1.json v3 · system sha = HEADLESS_WORKER_HINT · WORK new entries 0 (C3 ⑩ · R62-H1)", () => {
       check(allCards.length > 0, "no dispatched cards");
       for (const c of allCards) {
+        check(
+          c.record.read === "ok",
+          `${c.cardId}: prompt-1.json ${c.record.read}${c.record.reason === null ? "" : ` — ${c.record.reason}`}`,
+        );
         check(c.record.version === 3, `${c.cardId}: prompt-1.json version ${c.record.version} (want 3)`);
         check(
           c.record.systemSha256 === c.record.hintSha256,
           `${c.cardId}: system sha256 ${c.record.systemSha256} ≠ HEADLESS_WORKER_HINT ${c.record.hintSha256}`,
         );
+        check(
+          c.record.wantSystemIds.length === 6 && same(c.record.systemIds, c.record.wantSystemIds),
+          listDiff(`${c.cardId}: system section ids`, c.record.wantSystemIds, c.record.systemIds),
+        );
+        check(c.workFiles.incomplete === null, `${c.cardId}: WORK scan incomplete: ${c.workFiles.incomplete}`);
         const added = newWorkFiles(c);
         check(added.length === 0, `${c.cardId}: new WORK entries ${JSON.stringify(added)}`);
       }
@@ -829,8 +860,12 @@ if (realRows.length > 0) {
     console.log(`  proposed ${r.proposed ?? "?"} · notes.md ${r.notes ? "exists" : "missing"}`);
     console.log(`  reply ${JSON.stringify(r.reply)}`);
     console.log(
-      `  prompt-1.json v${r.record.version ?? "?"} · system sha256 ${r.record.systemSha256 === r.record.hintSha256 ? "= HEADLESS_WORKER_HINT" : `${r.record.systemSha256 ?? "(none)"} ≠ HEADLESS_WORKER_HINT ${r.record.hintSha256}`}`,
+      `  prompt-1.json ${r.record.read}${r.record.reason === null ? "" : ` (${r.record.reason})`} · v${r.record.version ?? "?"} · system sha256 ${r.record.systemSha256 === r.record.hintSha256 ? "= HEADLESS_WORKER_HINT" : `${r.record.systemSha256 ?? "(none)"} ≠ HEADLESS_WORKER_HINT ${r.record.hintSha256}`}`,
     );
+    console.log(`  prompt-1.json sections ${JSON.stringify(r.record.sectionIds)}`);
+    if (r.workIncomplete !== null) {
+      console.log(`  WORK scan incomplete: ${r.workIncomplete} (outcome ⑥ cannot be judged — no ship)`);
+    }
     console.log(`  WORK new entries ${r.newWork.length} ${JSON.stringify(r.newWork)}`);
     const d = r.diag;
     if (!d) {
@@ -890,6 +925,8 @@ async function inner(): Promise<void> {
   } = await import("../packages/host/src/bridge-config");
   const { effectiveWorkerPolicy, HEADLESS_WORKER_HINT } = await import("../packages/host/src/agent-argv");
   const hintSha256 = createHash("sha256").update(Buffer.from(HEADLESS_WORKER_HINT, "utf8")).digest("hex");
+  const { readPromptRecord, PROMPT_RECORD_V3_SECTIONS } = await import("../packages/host/src/prompt-record");
+  const wantSystemIds = PROMPT_RECORD_V3_SECTIONS.filter((s) => s.channel === "system").map((s) => s.id as string);
   const { policyGaps } = await import("../packages/host/src/policy-gaps");
   const { HeadlessDispatcher } = await import("../packages/host/src/headless-worker");
   const { cardSessionPath } = await import("../packages/host/src/card-session-store");
@@ -1076,18 +1113,21 @@ exec ${q(realBin)} "$@"
     const notesPath = join(dir, NOTES);
     const skillsDir = join(dir, "skills", "plugin", "skills");
     const res = results.find((r) => r.cardId === p.cardId);
-    let recordVersion: number | null = null;
-    let systemSha256: string | null = null;
-    try {
-      const rec = JSON.parse(readFileSync(join(dir, "prompt-1.json"), "utf8")) as Record<string, unknown>;
-      recordVersion = typeof rec.version === "number" ? rec.version : null;
-      systemSha256 =
-        typeof rec.system === "string"
-          ? createHash("sha256").update(Buffer.from(rec.system, "utf8")).digest("hex")
-          : null;
-    } catch {
-      // absent or unreadable: version / sha stay null
-    }
+    // R12: the hardened validator (bounded regular-file read · shape · canonical bytes)
+    const rr = readPromptRecord(dir, 1);
+    const recSections = rr.kind === "ok" ? (rr.record.sections ?? []) : [];
+    const record: InnerCardOut["record"] = {
+      read: rr.kind,
+      reason: rr.kind === "invalid" ? rr.reason : null,
+      version: rr.kind === "ok" ? rr.record.version : null,
+      systemSha256:
+        rr.kind === "ok" ? createHash("sha256").update(Buffer.from(rr.record.system, "utf8")).digest("hex") : null,
+      hintSha256,
+      sectionIds: recSections.map((s) => `${s.channel}:${s.id}`),
+      systemIds: recSections.filter((s) => s.channel === "system").map((s) => s.id as string),
+      wantSystemIds,
+    };
+    const incomplete = workBefore.incomplete ?? workAfter.incomplete;
     cards.push({
       cardId: p.cardId,
       agent: p.agent,
@@ -1105,8 +1145,8 @@ exec ${q(realBin)} "$@"
       resultOutput: res?.output ?? null,
       lines: ours(stderrLines.slice(mark), p.cardId),
       diag: mode === "real-cli" ? cardDiag(dir, dump, p.cardId) : null,
-      record: { version: recordVersion, systemSha256, hintSha256 },
-      workFiles: { before: workBefore, after: workAfter },
+      record,
+      workFiles: { before: workBefore.files, after: workAfter.files, incomplete },
     });
   }
   await d.close();
@@ -1120,28 +1160,49 @@ exec ${q(realBin)} "$@"
 // outer's module-level constants are initialised. No env values are read or printed.
 // =============================================================================================
 
-/** PLAN 0.43.0 R62-H1: sorted relative paths under `root` (recursive, symlinks not followed). */
-function listTree(root: string): string[] {
+/**
+ * PLAN 0.43.0 R62-H1: sorted relative paths under `root` (recursive, symlinks never followed at any
+ * depth). The root is `lstat`ed first — not a real directory (symlink · file · missing) → no
+ * traversal and `incomplete` is set; any directory-read or entry-`lstat` error (other than an entry
+ * vanishing) also sets `incomplete`. Only `incomplete === null` means the listing is complete, so an
+ * empty `files` is "complete and empty" only then.
+ */
+function listTree(root: string): { files: string[]; incomplete: string | null } {
+  const errCode = (e: unknown) => (e as NodeJS.ErrnoException)?.code ?? String(e);
+  try {
+    const st = lstatSync(root);
+    if (!st.isDirectory()) {
+      return { files: [], incomplete: st.isSymbolicLink() ? "WORK root is a symlink" : "WORK root is not a directory" };
+    }
+  } catch (e) {
+    return { files: [], incomplete: `WORK root ${errCode(e)}` };
+  }
   const out: string[] = [];
+  let incomplete: string | null = null;
   const walk = (d: string, rel: string) => {
     let names: string[];
     try {
       names = readdirSync(d);
-    } catch {
+    } catch (e) {
+      incomplete ??= `${errCode(e)}${rel === "" ? "" : ` at ${rel}`}`;
       return;
     }
     for (const n of names) {
       const r = rel === "" ? n : `${rel}/${n}`;
       out.push(r);
+      let st: ReturnType<typeof lstatSync>;
       try {
-        if (lstatSync(join(d, n)).isDirectory()) walk(join(d, n), r);
-      } catch {
-        // vanished between readdir and lstat: listed by name only
+        st = lstatSync(join(d, n));
+      } catch (e) {
+        // vanished between readdir and lstat: listed by name only; any other error → incomplete
+        if (errCode(e) !== "ENOENT") incomplete ??= `${errCode(e)} at ${r}`;
+        continue;
       }
+      if (st.isDirectory()) walk(join(d, n), r);
     }
   };
   walk(root, "");
-  return out.sort();
+  return { files: out.sort(), incomplete };
 }
 
 function clip(v: unknown, n: number): string {
