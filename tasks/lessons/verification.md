@@ -813,3 +813,14 @@ cross-ref: `packages/cli/src/prompt-cli.ts` · `packages/host/src/prompt-record.
 상태가 없어 ①을 판정할 수 없었다 — 오너의 1회 승인을 낭비한다.
 
 cross-ref: `scripts/smoke-memory-write.ts` `cardProblem` · `implementation-notes.md` §0.43.0 (10).
+
+## 2026-10-18 · red 확인 stash와 스위트를 겹치지 않는다 · Astra는 테스트를 못 돌린다 (0.44)
+
+**트리거:** 수정 PATCH에서 "새 테스트가 옛 production에서 실패하는지"를 `git stash push <production 파일>`로 확인할 때.
+
+**규칙:** 그 확인은 전체 스위트가 끝난 뒤나 시작 전에만 한다. 겹치면 스위트가 production이 빠진 작업 트리를 읽어 가짜 fail이 난다
+(0.44: 4134 중 4 fail — 전부 P1b·P1c 새 테스트, 재실행 0 fail). 그리고 `lane.ts verify`(codex 샌드박스)는 `scripts/lane-test.ts`의 임시
+HOME 생성에서 EPERM이라 테스트를 실행하지 못한다 — verify 판정은 정적 검토이고 테스트 증거는 아키텍트 재실행뿐이다. ship 직전
+`build:cli` 뒤 스위트를 한 번 더 돌린다(advise 0149).
+
+cross-ref: `implementation-notes.md` §0.44.0 (8).
