@@ -61,6 +61,14 @@ export type ArtifactStoreDeps = {
   hook?: (point: "lstat" | "prelink") => void;
 };
 
+export type ArtifactVerifyDeps = {
+  /**
+   * @internal P3c test seam — the orphan walk's directory `lstat`s (`artifacts/` · `artifacts/sha256/` · each
+   * `<2 hex>/`); default `fs.lstatSync`.
+   */
+  lstat?: typeof lstatSync;
+};
+
 export type ArtifactProblemReason =
   | "missing"
   | "symlink"
@@ -528,16 +536,24 @@ type OrphanWalk =
  * R15: `<2 hex>/<64 hex>` entries under a real `sha256/` whose sha the index does not list. A matching
  * regular file is an orphan (info); anything else under such a name is a problem (P2b). P3b (Astra 0176 M):
  * a directory that cannot be read (other than one that vanished after listing) fails the walk with
- * `<code> at <path relative to root>` — an incomplete scan is never reported clean.
+ * `<code> at <path relative to root>` — an incomplete scan is never reported clean. P3c (Astra 0178 M): the
+ * same holds for `artifacts/` and `artifacts/sha256/` themselves — only an absent one (no store yet) is clean;
+ * any other `lstat` error, or a symlink / non-directory there (checked by `checkReadDirs` just before, so a
+ * swap in between), fails the walk.
  */
-function findOrphans(root: string, listed: Set<string>, maxBytes: number): OrphanWalk {
+function findOrphans(root: string, listed: Set<string>, maxBytes: number, lstat: typeof lstatSync): OrphanWalk {
   const shaDir = shaDirOf(root);
-  for (const dir of [join(root, "artifacts"), shaDir]) {
+  for (const [dir, rel] of [
+    [join(root, "artifacts"), "artifacts"],
+    [shaDir, "artifacts/sha256"],
+  ] as const) {
     try {
-      const st = lstatSync(dir);
-      if (st.isSymbolicLink() || !st.isDirectory()) return { ok: true, orphans: [], problems: [] };
-    } catch {
-      return { ok: true, orphans: [], problems: [] };
+      const st = lstat(dir);
+      if (st.isSymbolicLink()) return { ok: false, reason: `symlink at ${rel}` };
+      if (!st.isDirectory()) return { ok: false, reason: `not a directory at ${rel}` };
+    } catch (err) {
+      if (errCode(err) === "ENOENT") return { ok: true, orphans: [], problems: [] };
+      return { ok: false, reason: `${errCode(err)} at ${rel}` };
     }
   }
   const out: { sha: string; name: string }[] = [];
@@ -554,7 +570,7 @@ function findOrphans(root: string, listed: Set<string>, maxBytes: number): Orpha
     const prefixDir = join(shaDir, prefix);
     let names: string[];
     try {
-      const st = lstatSync(prefixDir);
+      const st = lstat(prefixDir);
       if (st.isSymbolicLink() || !st.isDirectory()) continue;
       names = readdirSync(prefixDir).sort();
     } catch (err) {
@@ -578,7 +594,11 @@ function findOrphans(root: string, listed: Set<string>, maxBytes: number): Orpha
  * blob that fails its checks is a problem too — P2b). Problems and orphans in sha order; torn lines are
  * counted, never a problem. Zero writes.
  */
-export function verifyArtifactStore(root: string, maxBytes: number): ArtifactVerifyResult {
+export function verifyArtifactStore(
+  root: string,
+  maxBytes: number,
+  deps: ArtifactVerifyDeps = {},
+): ArtifactVerifyResult {
   const read = readIndexRows(root);
   if (!read.ok) return read;
   const bytesBySha = new Map<string, Set<number>>();
@@ -595,7 +615,7 @@ export function verifyArtifactStore(root: string, maxBytes: number): ArtifactVer
     else reason = checkBlob(root, sha, [...set][0] ?? 0, maxBytes);
     if (reason) problems.push({ sha256: sha, reason });
   }
-  const walk = findOrphans(root, new Set(bytesBySha.keys()), maxBytes);
+  const walk = findOrphans(root, new Set(bytesBySha.keys()), maxBytes, deps.lstat ?? lstatSync);
   if (!walk.ok) return walk;
   problems.push(...walk.problems);
   problems.sort((a, b) => (a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0));
