@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.45.1 PATCH **shipped** 2026-10-18 · **next = MBP relay (owner yes per step) / owner pick**
+> v0.45.1 shipped · MBP relay **live** 2026-10-18 · **next = owner pick**
 
 ## Current loop
 
@@ -18,18 +18,18 @@
 
 ## Current action
 
-### v0.45.1 shipped · next = MBP relay (owner yes per step) / owner pick
+### v0.45.1 shipped · MBP relay live · next = owner pick
 
 **Goal:** v0.45.1 PATCH shipped — `verify` fails closed on a symlinked/non-dir `<2 hex>/` prefix (D1) · pack hashes worker files as raw bytes (D2 — class 89 closed).
 Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/0192/0196 PASS · advise 0195 ship · no real-CLI.
 
-**Next:** MBP 2015 relay (Owner pending — owner yes per live step) or owner picks the next product step.
+**Next:** owner picks the next product step. MBP relay migrated 2026-10-18 (runbook steps 0–8; 9b pending — Owner pending).
 
 **Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** owner picks the next step (MBP relay or product).
+**Done when (this handoff):** owner picks the next step.
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -50,7 +50,7 @@ Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| MBP 2015 always-on relay (`mbp2015-bot`, **Linux** — not macOS) | order matters: (a) read-only check (done — facts at end) → stop the Windows relay → copy `~/.loom/relay-state` once over Tailscale scp (plaintext peer secrets: 0600 · skip the lock/pid file · clean the lg99 original after) → only then start the relay as a systemd **system** unit (dedicated user · `Restart=always` · `LOOM_RELAY_STATE_DIR` · `systemctl enable --now` — owner yes, live systemd rule) · logind `HandleLidSwitch=ignore` + mask sleep/suspend/hibernate targets (power-loss auto-boot = firmware, unverified) → switch clients' `LOOM_RELAY_URL` and restart them (a client that joins a stateless relay first stops for good on `room_not_found`) · check logs for 0 `Reconnect stopped` · measured 2026-10-18 20:02 KST: Debian 13 trixie x86_64 · systemd 257 · bun **not installed** (install = owner-yes step) · passwordless sudo · logind lid switch default = suspend · ssh `zerocode@100.119.218.93` with `-o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_mbp2015` | Windows relay stays | 0.44.1 ship |
+| MBP relay — **live since 2026-10-18** (`ws://100.119.218.93:7842/ws`, systemd `loom-relay` enabled; lg99 Task Disabled, originals kept) | pending: 9b delete lg99 originals (owner yes) · mac.json room 'demo' not on any relay (owner: leave / re-join loom-dev) | lg99 rollback = Task Enable+Start, `systemctl disable --now loom-relay`, restore `mac.json.pre-mbp` | runbook |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
@@ -76,7 +76,7 @@ Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/
 - 0.37.0 smoke: `docs/spikes/POLICY-HONESTY-SMOKE-0370.md`
 - 0.45.x deviations: `implementation-notes.md` §0.45.0 · §0.45.1
 - 3.3–3.4b RESULT: `scripts/rule-router-jit.ts`
-- MBP relay (unrun): `docs/spikes/MBP-RELAY-RUNBOOK.md`
+- MBP relay (live 2026-10-18 · run log at end): `docs/spikes/MBP-RELAY-RUNBOOK.md`
 
 ## Don't redo
 

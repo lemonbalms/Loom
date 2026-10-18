@@ -1,8 +1,8 @@
 # MBP relay 이전 런북 — Windows lg99 → MBP 2015 (Linux · systemd)
 
-> **상태:** 문서 전용. 아무것도 실행되지 않았다(2026-10-18 작성). 라이브 단계(1–8, 9b)는 각 절 끝의
-> **Owner yes required** 를 받아야만 실행한다. 0단계와 9a단계는 read-only다.
-> 제품 코드는 바꾸지 않는다(D3).
+> **상태:** 2026-10-18 실행 완료 — 0–8단계(5단계는 기존 설정으로 생략, 7-0 사전 기동 시험 추가). **9b 미실행**(별도 owner yes).
+> 결과는 맨 끝 "실행 기록 (2026-10-18)". 라이브 단계(1–8, 9b)는 각 절 끝의 **Owner yes required** 를 받아야만 실행한다.
+> 0단계와 9a단계는 read-only다. 제품 코드는 바꾸지 않는다(D3).
 
 ## 대상
 
@@ -137,11 +137,15 @@ ls는 전부 `No such file or directory` · lid = `s "suspend"` · 7842 LISTEN �
 
 | 항목 | 값 |
 |------|----|
-| lg99 relay 실행 방식 (작업 스케줄러 / 서비스 / 콘솔 창 / …) | |
-| lg99 relay 포트 (클라이언트 세션 `relayUrl`에서) | 7842? |
-| lg99 state dir (`LOOM_RELAY_STATE_DIR` 또는 `%USERPROFILE%\.loom\relay-state`) | |
-| lg99 방 파일 수 (`<16hex>.json`) | |
-| 클라이언트 목록: 호스트 · bridge 프로파일 · 세션 파일(`LOOM_SESSION`) · 실행 방식(launchd / systemd --user / 수동) | |
+| lg99 relay 실행 방식 (작업 스케줄러 / 서비스 / 콘솔 창 / …) | 작업 스케줄러 `LoomRelayTeam` → `start-relay.ps1` → `bun.exe …\dist\loom.js relay --host 0.0.0.0 --port 7842 --token …` |
+| lg99 relay 포트 (클라이언트 세션 `relayUrl`에서) | 7842 |
+| lg99 state dir (`LOOM_RELAY_STATE_DIR` 또는 `%USERPROFILE%\.loom\relay-state`) | lg99 durable state (원본 보존 — 9b 전까지) |
+| lg99 방 파일 수 (`<16hex>.json`) | 2 (`8d66842a136bcac7.json` winprobe-room · `ef0245c2a460a8b4.json` loom-dev) |
+| 클라이언트 목록: 호스트 · bridge 프로파일 · 세션 파일(`LOOM_SESSION`) · 실행 방식(launchd / systemd --user / 수동) | lg99 URL을 쓰는 클라이언트는 Mac `~/.loom/profiles/mac.json` 하나(이를 쓰는 실행 중 세션 없음). lg99-로컬 프로파일 step0-host / win-demo / step0-wsl은 대상 아님(오너) |
+
+MBP 0단계 실측(2026-10-18): Debian 13.7 x86_64 · systemd 257.13 · tailscale `100.119.218.93` active/enabled · 7842 비어 있음 ·
+**logind drop-in `/etc/systemd/logind.conf.d/10-lid.conf`(2026-10-12)가 이미 HandleLidSwitch / ExternalPower / Docked = ignore +
+IdleAction=ignore, sleep/suspend/hibernate/hybrid-sleep target 이미 masked → 5단계 생략** · unzip 없음(1단계에서 설치).
 
 클라이언트마다 (macOS 예):
 
@@ -210,7 +214,7 @@ rm /tmp/loom.js
 
 | 파일 | 버전 | sha256 | 날짜 |
 |------|------|--------|------|
-| `/opt/loom/loom.js` | | | |
+| `/opt/loom/loom.js` | 0.45.1 | `cf27ce350137f3358ddccf44322ff3e09abda2bcbb1a670b672e0349ae93964c` (= 개발 Mac `dist/loom.js`) | 2026-10-18 |
 
 확인 (read-only):
 
@@ -359,6 +363,7 @@ sudoedit /etc/systemd/system/loom-relay.service
 Description=Loom team relay (hand-written; loom service is bridge-only — D3)
 After=network-online.target tailscaled.service
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -383,6 +388,8 @@ WantedBy=multi-user.target
 - 토큰은 `EnvironmentFile`로만 — `ExecStart`에 `--token`을 두지 않는다(cmdline 노출).
 - 부팅 직후 Tailscale IP가 아직 없으면 bind가 실패하고 exit 1 → `Restart=always`/`RestartSec=5`로 IP가 생길 때까지 재시도.
   systemd 기본 start-limit(10초 안 5회)에 걸리지 않도록 RestartSec=5를 유지한다.
+- `StartLimitIntervalSec=0`([Unit]) — 오너 조건(2026-10-18): tailscaled보다 먼저 뜬 부팅 시 bind 실패가 길어져도 기본
+  start-limit에 걸려 유닛이 `failed`로 멈추지 않게 재시도 제한을 끈다.
 - `MemoryDenyWriteExecute`는 넣지 않는다(bun JIT 필요).
 - `ProtectSystem=strict`라 `/var/lib/loom-relay` 자체는 읽기 전용이다. 7단계 기동 시 journal에 `/var/lib/loom-relay/.loom`
   관련 `EROFS`/`read-only file system`이 보이면(CLI가 시작 시 홈 아래를 만드는 경우 — 코드상 미확인) `ReadWritePaths=`를
@@ -419,6 +426,33 @@ sudo systemctl daemon-reload
 ## 7단계 — 컷오버 창 (lg99 정지 → state 1회 복사 → MBP 기동)
 
 이 창 동안 팀 relay가 없다. 클라이언트는 기존 URL로 재시도만 한다(정지 코드 아님 — 무해). **이 단계 시작 시점부터 롤백 = D2.**
+
+### 7-0 사전 기동 시험 (빈 state, lg99 정지 전)
+
+컷오버 창을 열기 전에 유닛이 실제로 뜨는지 빈 state로 확인한다. 클라이언트는 아직 lg99를 보므로 영향 없음.
+
+MBP 셸:
+
+```bash
+sudo find /var/lib/loom-relay/relay-state -mindepth 1
+sudo systemctl start loom-relay
+sudo ss -ltnp 'sport = :7842'
+sudo journalctl -u loom-relay -b --no-pager -n 30
+```
+
+다른 기기(Mac)에서: `curl -s http://100.119.218.93:7842/health`
+
+기대: find 출력 없음(빈 state) · LISTEN은 `100.119.218.93:7842`에만 · health `{"ok":true,"rooms":0,"auth":true,…}` · journal에
+`Refusing to bind`·`EROFS` 등 오류 없음. 그 다음:
+
+```bash
+sudo systemctl stop loom-relay
+sudo find /var/lib/loom-relay/relay-state -mindepth 1
+```
+
+기대: `inactive` · state dir 다시 비어 있음(락 디렉터리 정상 해제). 비어 있지 않으면 7d 전에 비운다. **enable은 하지 않는다.**
+
+되돌리기: `sudo systemctl stop loom-relay`
 
 ### 7a — lg99 relay 정지
 
@@ -619,3 +653,29 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.loom\relay-state"
 - `dist/loom.js`가 외부 의존 없이 단독 실행되는지 — 2단계 `version`으로 확인.
 - `ProtectSystem=strict` 하에서 CLI가 홈(`/var/lib/loom-relay/.loom`)에 쓰는지 — 7d journal로 확인, 필요 시 6단계 메모의 대안.
 - 향후: `loom service install --relay` (D3 후보).
+
+---
+
+## 실행 기록 (2026-10-18)
+
+단계마다 오너 yes, 비서실장 세션 themeflow-38 경유. 토큰 값은 어디에도 기록하지 않았다.
+
+| 단계 | 결과 |
+|------|------|
+| 0 | Debian 13.7 x86_64 · systemd 257.13 · tailscale `100.119.218.93` active/enabled · 7842 비어 있음 · logind drop-in `10-lid.conf`(2026-10-12)로 lid 3종 ignore + IdleAction=ignore, sleep 계열 target 이미 masked · unzip 없음 |
+| 1 | `apt-get install unzip` · bun 1.3.11 → `/opt/bun` (설치기를 `SHELL=/bin/sh`로 실행해 rc 수정 없음 — root `.bashrc`/`.profile` 해시 불변; `nobody`로 실행 확인) |
+| 2 | `/opt/loom/loom.js` 0.45.1 sha256 `cf27ce35…3964c` = 개발 Mac `dist/loom.js` |
+| 3 | `loom-relay` uid 996 gid 987 nologin · `/var/lib/loom-relay` + `relay-state` 700 |
+| 4 | `/etc/loom-relay.env` 600 root:root · 토큰은 ssh stdin으로만 전달 · 길이 48 · sha256 `460787b5…dc44` = lg99 `relay-token.txt` = Mac `mac.json` relayToken |
+| 5 | **생략** — 0단계에서 이미 적용돼 있음 |
+| 6 | 런북 유닛 + `StartLimitIntervalSec=0`(오너 조건) · `systemd-analyze verify` 깨끗 |
+| 7-0 | 빈 state 기동 → LISTEN `100.119.218.93:7842`만 · Mac에서 health `{"ok":true,"rooms":0,"auth":true}` · journal 깨끗 → stop → state dir 비어 있음 |
+| 7 | 비서실장 세션이 lg99 relay 정지 · 작업 `LoomRelayTeam` **Disabled**(이중 relay 방지) · lg99 원본 방 파일 보존(롤백용). 방 파일 2개(`8d66842a136bcac7.json` winprobe-room 802 B sha `46440996…ce4e` · `ef0245c2a460a8b4.json` loom-dev 2678 B sha `e761448a…dfce`) lg99 → Mac → MBP, 각 홉 해시 일치 · 600 loom-relay로 설치 · `enable --now` · health `rooms:2` · MBP·Mac staging 사본 삭제 |
+| 8 | lg99 URL 클라이언트 = Mac `mac.json` 하나(실행 중 세션 없음) · relayUrl → `ws://100.119.218.93:7842/ws` · 백업 `mac.json.pre-mbp`(600). lg99-로컬 프로파일 step0-host / win-demo / step0-wsl 미변경(오너) |
+| 9b | **미실행** — lg99 원본 삭제는 별도 owner yes |
+
+발견(기존 문제 — 이전 작업의 회귀 아님): `loom peers --profile mac` → "No room for code LOOM-4HXU". `mac.json`의 방 "demo"
+(`room_b8ea4daa12aef875`, 2026-07-18)는 lg99 durable state에도 없었다 — 오너 결정 대기(그대로 둠 / loom-dev 재가입).
+
+롤백(9b 전까지 유효): lg99 작업 `LoomRelayTeam` Enable + Start · MBP `sudo systemctl disable --now loom-relay` · Mac
+`mac.json.pre-mbp` 복원.
