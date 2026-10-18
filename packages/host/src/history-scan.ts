@@ -68,7 +68,8 @@ type ValidRecord = {
 
 type MonthFile = { month: string; dirName: string; abs: string; rel: string };
 
-type Candidate = {
+/** @internal test seam (0.44 P1b) */
+export type Candidate = {
   tsValid: boolean;
   tsNum: number;
   roomId: string;
@@ -77,10 +78,14 @@ type Candidate = {
   ts: string;
   type: string;
   eventId: string;
-  text: string;
-  start: number;
-  end: number;
+  window: SnippetWindow;
 };
+
+/**
+ * P1b: the slice of the redacted text a snippet needs — match ± radius plus one unit each side for the
+ * surrogate checks. `base` / `start` / `end` / `total` are offsets in the full text.
+ */
+type SnippetWindow = { text: string; base: number; total: number; start: number; end: number };
 
 type ReadOutcome = { kind: "ok"; buf: Buffer } | { kind: "missing" } | { kind: "invalid"; reason: IncompleteReason };
 
@@ -194,30 +199,40 @@ function collectLeaves(value: unknown, depth: number, out: string[]): void {
 
 /**
  * R7: find the first match in the lowercased text, mapped back to offsets of the original text
- * (`toLowerCase` may grow a code point — e.g. U+0130 → 2 units).
+ * (`toLowerCase` may grow a code point — e.g. U+0130 → 2 units). P1b: no match → no offset work; on a
+ * match the per-code-point walk stops at the last matched lowered unit.
  */
 function findMatch(text: string, needleLower: string): { start: number; end: number } | null {
-  let lowered = text.toLowerCase();
-  const startOf: number[] = [];
-  const endOf: number[] = [];
-  let perPoint = "";
+  const at = text.toLowerCase().indexOf(needleLower);
+  if (at < 0) return null;
+  const last = at + needleLower.length - 1;
+  let start = text.length;
+  let end = text.length;
+  let startSet = false;
+  let pos = 0;
   for (let i = 0; i < text.length; ) {
     const cp = text.codePointAt(i) ?? 0;
     const width = cp > 0xffff ? 2 : 1;
-    const lower = text.slice(i, i + width).toLowerCase();
-    perPoint += lower;
-    for (let k = 0; k < lower.length; k++) {
-      startOf.push(i);
-      endOf.push(i + width);
+    pos += text.slice(i, i + width).toLowerCase().length;
+    if (!startSet && pos > at) {
+      start = i;
+      startSet = true;
+    }
+    if (last < at) break;
+    if (pos > last) {
+      end = i + width;
+      break;
     }
     i += width;
   }
-  if (lowered.length !== perPoint.length) lowered = perPoint;
-  const at = lowered.indexOf(needleLower);
-  if (at < 0) return null;
-  const start = startOf[at] ?? text.length;
-  const end = endOf[at + needleLower.length - 1] ?? text.length;
   return { start, end };
+}
+
+/** P1b: copy only the units `buildSnippet` reads — never the whole text. */
+function snippetWindow(text: string, start: number, end: number): SnippetWindow {
+  const base = Math.max(0, start - HISTORY_SNIPPET_RADIUS - 1);
+  const stop = Math.min(text.length, end + HISTORY_SNIPPET_RADIUS + 1);
+  return { text: text.slice(base, stop), base, total: text.length, start, end };
 }
 
 function isHigh(code: number): boolean {
@@ -229,13 +244,14 @@ function isLow(code: number): boolean {
 }
 
 /** R7: ±radius units around the match · surrogate-safe cut · CR/LF → space · `…` on cut ends. */
-function buildSnippet(text: string, start: number, end: number): string {
-  let from = Math.max(0, start - HISTORY_SNIPPET_RADIUS);
-  let to = Math.min(text.length, end + HISTORY_SNIPPET_RADIUS);
-  if (from > 0 && isLow(text.charCodeAt(from)) && isHigh(text.charCodeAt(from - 1))) from += 1;
-  if (to < text.length && isHigh(text.charCodeAt(to - 1)) && isLow(text.charCodeAt(to))) to -= 1;
-  const body = text.slice(from, to).replace(/\r\n|\r|\n/g, " ");
-  return `${from > 0 ? "…" : ""}${body}${to < text.length ? "…" : ""}`;
+function buildSnippet(w: SnippetWindow): string {
+  const unit = (abs: number): number => w.text.charCodeAt(abs - w.base);
+  let from = Math.max(0, w.start - HISTORY_SNIPPET_RADIUS);
+  let to = Math.min(w.total, w.end + HISTORY_SNIPPET_RADIUS);
+  if (from > 0 && isLow(unit(from)) && isHigh(unit(from - 1))) from += 1;
+  if (to < w.total && isHigh(unit(to - 1)) && isLow(unit(to))) to -= 1;
+  const body = w.text.slice(from - w.base, to - w.base).replace(/\r\n|\r|\n/g, " ");
+  return `${from > 0 ? "…" : ""}${body}${to < w.total ? "…" : ""}`;
 }
 
 /** R8 order: valid ts numeric desc (invalid after) → roomId asc → seq desc → line desc. */
@@ -247,8 +263,11 @@ function compareCandidates(p: Candidate, q: Candidate): number {
   return q.line - p.line;
 }
 
-/** R63-M2: keep only the top `cap` candidates (sorted) — bounded by the limit. */
-function keepTop(buf: Candidate[], cand: Candidate, cap: number): void {
+/**
+ * R63-M2: keep only the top `cap` candidates (sorted) — bounded by the limit.
+ * @internal test seam (0.44 P1b)
+ */
+export function keepTop(buf: Candidate[], cand: Candidate, cap: number): void {
   if (cap <= 0) return;
   const last = buf[buf.length - 1];
   if (buf.length >= cap && last !== undefined && compareCandidates(cand, last) >= 0) return;
@@ -343,6 +362,7 @@ function scanMonthFile(
   let torn = 0;
   let line = 0;
   let from = 0;
+  // Peak memory = month file bytes + its decoded text + one record's working copies (leaves join, redacted, lowercased) + cap × window.
   while (from <= buf.length) {
     let nl = buf.indexOf(0x0a, from);
     if (nl < 0) nl = buf.length;
@@ -382,9 +402,7 @@ function scanMonthFile(
         ts: value.ts,
         type: value.type,
         eventId: value.eventId,
-        text,
-        start: match.start,
-        end: match.end,
+        window: snippetWindow(text, match.start, match.end),
       },
       cap,
     );
@@ -426,13 +444,14 @@ export function searchRoomHistory(
       torn += scanMonthFile(read.buf, file, query, needleLower, redactEnv, decoder, top, cap);
     }
     for (const c of top) {
+      // P1b: string metadata goes out through the same once-filtered redaction as the snippet text.
       hits.push({
-        ts: c.ts,
-        roomId: c.roomId,
+        ts: redactSecrets(c.ts, redactEnv),
+        roomId: redactSecrets(c.roomId, redactEnv),
         seq: c.seq,
-        type: c.type,
-        eventId: c.eventId,
-        snippet: buildSnippet(c.text, c.start, c.end),
+        type: redactSecrets(c.type, redactEnv),
+        eventId: redactSecrets(c.eventId, redactEnv),
+        snippet: buildSnippet(c.window),
       });
     }
   }
