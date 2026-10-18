@@ -51,7 +51,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| MBP 2015 always-on relay | order matters: stop the Windows relay → copy `~/.loom/relay-state` to the MBP → only then start the MBP relay as a LaunchDaemon (owner yes — live launchd rule) · `pmset` no-sleep/autorestart → switch clients' `LOOM_RELAY_URL` and restart them · check logs for 0 `Reconnect stopped`; first check `bun --version` on the MBP (Intel, macOS ≤ 12) | Windows relay stays | 0.44.1 ship |
+| MBP 2015 always-on relay (`mbp2015-bot`, **Linux** — not macOS) | order matters: (a) read-only check `uname -a` · `/etc/os-release` · `bun --version` (ssh user unknown — owner) → stop the Windows relay → copy `~/.loom/relay-state` once over Tailscale scp (plaintext peer secrets: 0600 · skip the lock/pid file · clean the lg99 original after) → only then start the relay as a systemd **system** unit (dedicated user · `Restart=always` · `LOOM_RELAY_STATE_DIR` · `systemctl enable --now` — owner yes, live systemd rule) · logind `HandleLidSwitch=ignore` + mask sleep/suspend/hibernate targets (power-loss auto-boot = firmware, unverified) → switch clients' `LOOM_RELAY_URL` and restart them (a client that joins a stateless relay first stops for good on `room_not_found`) · check logs for 0 `Reconnect stopped` | Windows relay stays | 0.44.1 ship |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
