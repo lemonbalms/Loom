@@ -5,31 +5,31 @@
 
 ## One-line resume
 
-> v0.45.0 **shipped** · artifact CAS store first slice · **next = owner pick** (6단계 2부 next slice / MBP relay)
+> v0.45.1 PATCH **approved** (R66) · **next = P1** verify prefix fail-closed red → green
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.45.0 shipped** 2026-10-18 · 0.44.1 shipped | `docs/PLAN.md` |
+| Product | **v0.45.1 approved** (R66) · 0.45.0 shipped 2026-10-18 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.45.0 shipped · next = owner pick (6단계 2부 next slice / MBP relay)
+### v0.45.1 approved (R66) · next = P1 verify prefix fail-closed red → green
 
-**Goal:** owner picks the next step — 6단계 2부 next slice (MCP tools · gc · card evidence link — own PLAN) or the MBP relay steps (Owner pending).
-0.45.0 shipped 2026-10-18 at `e640227`: suite 4277/0 · Astra 0180 + 0183 PASS · advise 0182 = ship · no real-CLI (D9).
+**Goal:** ship v0.45.1 PATCH — `verify` fails closed on a symlinked/non-dir `<2 hex>/` prefix (D1) · pack hashes worker files as raw bytes (D2 — class 89 closed).
+R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b) — L1 BOM sha · L2 must-red list · L3 §20B line.
 
-**Next:** wait for owner pick → PLAN + review before any code.
+**Next:** P1 red (`artifact-store.test.ts` + declared `:806-817` edit) → architect reruns red → green (`artifact-store.ts` only) → verify · then P2 · P3.
 
-**Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky · pack UTF-8 hash defect (0.45 R17 · class 89 → own PATCH) · `artifact-store.ts:574` symlinked/non-dir prefix silently skipped by orphan walk (advise 0182 Low → PATCH)
+**Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** owner names the next step and its PLAN is drafted.
+**Done when (this handoff):** §0.45.1 Done (a)–(f) checked · v0.45.1 shipped.
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -39,10 +39,9 @@
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
 | Suite | **0 fail** (4277/0 at 0.45 ship) | `pane-cleanup` ⑥ flaky under load | 0.45 ship |
+| v0.45.1 | **approved** (R66) · P1 next | PATCH: verify prefix fail closed + pack raw-byte sha | `docs/PLAN.md` §0.45.1 |
 | v0.45.0 | **shipped** 2026-10-18 · no real-CLI (D9) | artifact CAS store first slice | `docs/PLAN.md` §0.45.0 |
-| v0.44.1 | **shipped** 2026-10-18 · no real-CLI (D7) | relay reconnect never gives up | `docs/PLAN.md` §0.44.1 |
-| v0.44.0 | **shipped** 2026-10-18 · no real-CLI (D9) | read-only history search | `docs/PLAN.md` §0.44.0 |
-| v0.32–0.43 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
+| v0.32–0.44.1 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
 | P3 soft close | **closed** · 3.0–3.2 opt-in · 3.3–3.4b false | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | `smoke:uc` · B-4 pin | **OK** | prior | check:mem-header |
 | B-7 upstream | deferred optional | ecosystem | PRIORITIES P2c |
@@ -51,7 +50,7 @@
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
-| MBP 2015 always-on relay (`mbp2015-bot`, **Linux** — not macOS) | order matters: (a) read-only check `uname -a` · `/etc/os-release` · `bun --version` (ssh user unknown — owner) → stop the Windows relay → copy `~/.loom/relay-state` once over Tailscale scp (plaintext peer secrets: 0600 · skip the lock/pid file · clean the lg99 original after) → only then start the relay as a systemd **system** unit (dedicated user · `Restart=always` · `LOOM_RELAY_STATE_DIR` · `systemctl enable --now` — owner yes, live systemd rule) · logind `HandleLidSwitch=ignore` + mask sleep/suspend/hibernate targets (power-loss auto-boot = firmware, unverified) → switch clients' `LOOM_RELAY_URL` and restart them (a client that joins a stateless relay first stops for good on `room_not_found`) · check logs for 0 `Reconnect stopped` | Windows relay stays | 0.44.1 ship |
+| MBP 2015 always-on relay (`mbp2015-bot`, **Linux** — not macOS) | order matters: (a) read-only check (done — facts at end) → stop the Windows relay → copy `~/.loom/relay-state` once over Tailscale scp (plaintext peer secrets: 0600 · skip the lock/pid file · clean the lg99 original after) → only then start the relay as a systemd **system** unit (dedicated user · `Restart=always` · `LOOM_RELAY_STATE_DIR` · `systemctl enable --now` — owner yes, live systemd rule) · logind `HandleLidSwitch=ignore` + mask sleep/suspend/hibernate targets (power-loss auto-boot = firmware, unverified) → switch clients' `LOOM_RELAY_URL` and restart them (a client that joins a stateless relay first stops for good on `room_not_found`) · check logs for 0 `Reconnect stopped` · measured 2026-10-18 20:02 KST: Debian 13 trixie x86_64 · systemd 257 · bun **not installed** (install = owner-yes step) · passwordless sudo · logind lid switch default = suspend · ssh `zerocode@100.119.218.93` with `-o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_mbp2015` | Windows relay stays | 0.44.1 ship |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
