@@ -5,27 +5,27 @@
 
 ## One-line resume
 
-> v0.42.0 **shipped** (R61) · section manifest + assembler · **next = 0.43.0 PLAN** (semantic move)
+> v0.43.0 **approved** (R62) · system channel in six Loom sections · **next = P1** · 0.42.0 shipped
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.42.0 shipped** (R61) · next 0.43 PLAN | `docs/PLAN.md` |
+| Product | **v0.43.0 `approved`** (R62) · next P1 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.42.0 shipped · next = 0.43.0 semantic move PLAN (stage 5 part 3)
+### v0.43.0 approved (R62) · next = P1 record v3 red → green
 
-**Goal:** 업그레이드 5단계 3부 — 0.43.0 semantic move: persona · rules · response style · closing boundary into the system channel (manifest-driven), fingerprint change → drain, record v3 if the section structure changes (R61-M1 projection test forces it). **Ship needs an owner-approved real-CLI run ×3** (stage-5 done criterion "all three CLIs really receive it" · 0.41 UK-4 claude/grok system-channel authority). Plan + implement first; stop for owner yes before the real-CLI. First candidate fix: `memorySnapshotLocked` cap uses `Buffer.byteLength` (lone surrogate 2 B vs 3 B written — implementation-notes §0.42.0 (9)). 0.42.0 shipped 2026-10-18.
+**Goal:** 업그레이드 5단계 3부 — 0.43.0 semantic move: persona · rules · response style · closing boundary into the system channel (manifest-driven), fingerprint change → drain, record v3 if the section structure changes (R61-M1 projection test forces it). **Ship needs an owner-approved real-CLI run ×3** (stage-5 done criterion "all three CLIs really receive it" · 0.41 UK-4 claude/grok system-channel authority). Authority `docs/PLAN.md` §0.43.0 · R62 (H1/M1/L2 wording verbatim · M2 pin `:63`). Plan + implement first; stop for owner yes before the real-CLI. First candidate fix: `memorySnapshotLocked` cap uses `Buffer.byteLength` (lone surrogate 2 B vs 3 B written — implementation-notes §0.42.0 (9)). 0.42.0 shipped 2026-10-18.
 
 **Playbook (next session):**
 1. `bun run status` · `handoff:check` · `smoke:memory-write` · `smoke:memory-inject`
 2. 0.42.0 evidence: verify 0107 PASS (1 L docs) · 0109 PASS · 0111 (1 L accepted) · final advise 0113 = SHIP · suite 3901/1 known fail · byte-pin tests unedited
-3. 0.43 first step: evidence pack — claude `--append-system-prompt` vs grok `--rules` vs codex `developer_instructions` authority + resume semantics (0.41 UK-4) · drain/needs_verification path
+3. 0.43.0 P1 → P4 per PLAN §0.43.0 ⑦ · evidence pack `scratchpad v043/evidence.md` (lane 0114)
 4. Later candidates: snapshot mtime cache · U+2E40/U+A78A fence lookalikes (UK-6) · class 46 (UK-7) · watch `card_prompt … neutralized` counts in the first dogfood wave (advise 0082)
 5. Carry: Linux/Windows live unverified · service log rotation · codex MCP approval · 0.37 UK-2/UK-3/UK-7 · `pane-cleanup.test.ts` ⑥ flaky under load
 

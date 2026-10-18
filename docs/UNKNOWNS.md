@@ -42,6 +42,36 @@
 
 ## Gate log
 
+### 0.43.0 — 헤드리스 워커 시스템 채널을 Loom이 쓴 고정 섹션 여섯으로 · 프롬프트 기록 v3 · fingerprint 변경 · drain (`approved` — R62 approved-with-fixes · no R62b)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.43.0 (`approved` — R62 approved-with-fixes, 반영 완료 · no R62b · author-close 불가) · MINOR · 업그레이드 5단계 3부(의미 이동 슬라이스 A) · 근거 = §0.41.0 D1 · §0.42.0 Next · §0.42.0 UK-1 · R9 + 아키텍트 증거 팩(HEAD `f7912e8` — §7 후보 A 권함) · 범위 = 락 D1~D9(아키텍트 2026-10-18) |
+| **Date** | 2026-10-18 |
+| **Review** | R62 **done 2026-10-18** — approved-with-fixes H1 · M2 · L4 (H1 `ops-rules` 새 줄 1 교체 `Back each claim with something the dispatcher can check (a changed file, or a command you ran and its result); do not create files just to hold evidence.` · R13 ⑥ `WORK` 새 항목 → ship 안 함 · 스모크 `InnerCardOut.workFiles` · M1 `response-style` 새 줄 1 교체 `Keep the final message short, but keep any report format or block that a listed skill asks for.` · M2 C3 ② `headless-worker-hint.test.ts:63` `split("\n")[1]` → `[4]` · L1 `PromptRecordSection` 지역 형 · `toV2` 반환형 · P1 · P2 `bun run typecheck` · L2 `response-style` 새 줄 2 교체 `Never put secrets, tokens, or credentials in your final message.` · L3 `UPGRADE-PLAN.md:206` 정정 문면 · L4 R10 claude 끝 = 추정 · 시스템 텍스트 1,024 → 1,093 B) — (`WORKFLOW.md` §5.1 fingerprint를 바꾸는 워커 지시 변경 · 시스템 수준 지시 문면 확장 · 영속 형식 변경(기록 `version: 3`) · 실 CLI ship 게이트) |
+| **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `f7912e8`) · `agent-argv.ts:3` · `:18` · `:28-36` · `:286` · `:333-335` · `:371-387` · `:406` · `:422` · `:446-448` · `prompt-assemble.ts:148` · `:161` · `prompt-manifest.ts:62-116` · `prompt-record.ts:25` · `:37-71` · `:74` · `:92` · `:154-179` · `:232-267` · `:282-317` · `prompt-cli.ts:316-327` · `headless-worker.ts:1077-1081` · `:1218` · `:1234` · `:1455-1467` · `:1931-1946` · `:1994-2002` · `memory-inject.ts:26` · `policy-compile.ts:54` · `:110` · `smoke-memory-write.ts:50-51` · `:263-270` · `:317-337` · `PROTOCOL.md:161` · `UPGRADE-PLAN.md:180-190` · `:206` · 고정 테스트 좌표 = PLAN §0.43.0 C3 |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) 오늘 시스템 채널 = `HEADLESS_WORKER_HINT` 7줄 · 497 B 한 섹션 · 세 CLI 같은 상수 · 첫 턴과 재개 모두. (2) 시스템으로 옮길 수 있는 신뢰 수준의 텍스트 = Loom 고정 문면뿐 — persona · INDEX · guideline = 오너 사람 파일(Loom 안 쓰기 경로 없음) · 기억 항목 = 피어 제안 → 오너 승인 · 카드 본문 = 디스패처 피어 · 시스템으로 옮기면 codex/grok argv 노출 · 권위 상승(증거 팩 §6). (3) hint가 바뀌면 모든 카드 fingerprint가 바뀌고 재개 · recovery · 입양 게이트 레코드가 한 번 `needs_verification` — 0.39 선례(drain → 진행 중 0 확인 → 교체 → start). (4) 새 시스템 텍스트 1,093 B(수기 계수 · 오늘 일곱 줄 축자 + 새 줄 여섯 — R62-H1 · M1 · L2 교체 뒤 · R62가 원 1,024 B 계수를 손으로 다시 셈) · `"` · `\` 없음 → codex 맨 형식 유지. (5) `prompt-cli.ts` 블록 출력은 섹션을 일반적으로 출력 → v3 시스템 줄에 코드 변경 불필요. (6) 스모크는 끝에 임시 홈을 지운다 → 기록 판정에 스모크 편집 필요(C2). |
+| Known unknowns | **UK-1~UK-5**(아래 표, 정본 = PLAN §0.43.0). 요지: 새 문면의 행동 효과(2번 줄 예외 희석 포함) · codex 맨 값의 빈 줄 · "no Loom tools"의 진실성 · 재개 때 시스템 텍스트 교체/중복 · 슬라이스 B/C의 필요. |
+| Unknown knowns | `UPGRADE-PLAN.md:206`은 persona · 방 규칙 · 지식을 "다른 참가자가 인계로 써 넣을 수 있다"고 적었지만 코드엔 그 경로가 없다(D1 정정). D2 예시 "Loom judges completion from the final message and evidence"는 코드의 결과 갈래(`headless-worker.ts:1455-1467`)와 맞지 않는다 → 지시로 씀(C1). 0.42 v2 시험 두 파일은 **현재 조립기**로 v2 기록을 만들어, 시스템 섹션이 바뀌면 v2 시험이 통째로 v3가 된다 → 테스트 안 `toV2` 도우미(C3). 0.42 v2 시험의 "version 3 → unsupported version"은 v3 도입으로 `missing sections`가 된다 → version 4로(C3 ①). `worker-hint`가 manifest에서 빠지면 v2 동결 표의 타입이 사라진다 → 기록 지역 id 타입(C4) · 빌더 입력과 `toV2` 반환형까지 지역 형 `PromptRecordSection`(R62-L1 — `tsconfig.json:7`이 테스트를 포함해 typecheck red). **(R62)** 워커 cwd는 카드 디렉터리가 아니라 오너 작업 트리다(`headless-worker.ts:899-906`) → "증거를 작업 디렉터리에" 줄은 읽기 전용 · 리뷰 카드에서 파일 생성 지시가 된다(H1). 최종 메시지 형식은 이미 Loom 스킬(`loom-card-report` · `loom-memory-candidates`)이 정한다 → 시스템 권위의 세 필드 형식은 그것과 경쟁한다(M1). `headless-worker-hint.test.ts:63` `split("\n")[1]`은 새 배치에서 `""`(M2). |
+| Unknown unknowns | 시스템 텍스트가 길어진 뒤 CLI별 기본 시스템 프롬프트와의 상호작용(claude는 append — Loom 텍스트가 기본 프롬프트 뒤) · 새 운영 줄이 모델의 거절 성향을 바꾸는 방향 · 슬라이스 B에서 persona를 옮길 때 카드별 fingerprint 입력과 재개 재현 파일의 형(증거 팩 §3). |
+
+**Unknowns 요약 (정본 = PLAN §0.43.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R62 판정 |
+|---|------|-------------|----------|
+| UK-1 | **새 시스템 문면의 행동 효과** — 운영 · 응답 · 끝 경계 줄이 최종 메시지 · 거절 · 범위 행동을 바꾸는지 · 2번 줄 예외가 새 운영 줄 사이에서 약해지는지(§0.41.0 UK-4 앞부분 승계) | D7 ③ · ④가 0.39 결과 회귀를 판정 · 효과는 관찰만(R14 · lessons (57) — 카나리아 없음 · 문자열 포함 준수 판정 없음) · 오너 트리 쓰기 부작용은 D7 ⑥(R62-H1)이 판정 | 비차단 수용(새 줄 셋은 R62-H1 · M1 · L2 문면으로 교체 — 모든 카드 종류에서 참 · 안전 · Loom 스킬 형식과 비경쟁) |
+| UK-2 | **codex 맨 `developer_instructions` 값의 빈 줄** — 원문 문자열로 쓰이는지(지금까지 7줄 LF만 실측) | D7 ①이 잡는다 · 실패 시 basic string 감싸기 = argv 모양 변경 → 오너 선택 | 비차단 수용 |
+| UK-3 | **`You have no Loom tools.`의 진실성** — codex · grok 사용자 전역 MCP에 Loom 등록(격리 불가 — 계급 64) | 문면 축자 유지(D6) · D7 transcript 관찰 | 비차단 수용 |
+| UK-4 | **재개 때 다시 넘긴 시스템 텍스트(1,093 B)의 교체/중복** — claude · grok(§0.41.0 UK-4 뒷부분 승계 · 계급 68) | 같은 Loom 문면이라 내용 충돌 없음 · D7은 한 턴이라 관찰 불가 · 별도 프로브 후보(오너 승인) | 비차단 수용(바이트 1,093 B — R62 ② 새 합계) |
+| UK-5 | **슬라이스 B · C의 필요** — persona · 규칙 · 안내문 시스템 이동의 실증 | 0.43 관찰 + 운영 뒤 오너 판단 · B/C 착수 전 §0.41.0 UK-4 차단 유지 | 비차단 수용 |
+
+**승계:** §0.41.0 UK-4(claude · grok 시스템 채널 수신 효과 · 재개 교체/중복) — 슬라이스 A에서는 **비차단으로 강등**(옮기는 것이 Loom 고정 문면뿐 · 0.30부터 같은 채널 · 따르지 않아도 7번 줄 데이터 규칙은 오늘처럼 남음 · D7 ③ · ④ · ⑥이 회귀 판정 — R62 질문 6 수용) → UK-1 · UK-4로 관찰 · **B/C 착수 전 차단 유지**. §0.41.0 UK-2(codex 재개 두 입력) 그대로. §0.42.0 UK-1(manifest 형 적합) → 이 버전으로 해소 후보(꼬리 귀속이 시스템 구분자를 흡수 · R9 규칙대로 v3 · v2 표는 읽기 갈래). §0.42.0 UK-3(펜스 원천 구별) 그대로(persona 무이동).
+
+**Current decision:** **`approved` (R62 approved-with-fixes → H1·M1·M2·L1·L2·L3·L4 반영, no R62b, 2026-10-18).** D1~D9 아키텍트 락(2026-10-18 — D2 새 줄 셋은 R62-H1 · M1 · L2 축자 문면 · 시스템 텍스트 1,093 B) · 작성자 정밀화 R1~R14 전부 수용(R5 새 합계 · R6 + L1 · R10 + L4 · R11 문면 H1 · M1 · L2 · R12 + H1 `workFiles` · R13 + ⑥) · C1 · C2 · C5 draft 수용 · C3 → 수정(M2 · L1) · C4 → 수정(L1) · 수용 손실 계급 62~68 + 무번호 · UK-1~UK-5(전부 비차단 수용) · §0.41.0 UK-4 슬라이스 A 비차단 강등 수용(B/C 차단 유지). 구현 착수 = **P1**(기록 v3 먼저). ship = 오너 승인 실 CLI 1회(D7 — 오너 명시 yes 필요).
+
 ### 0.42.0 — 헤드리스 워커 입력의 선언형 섹션 manifest + 단일 조립기 · 바이트 보존 · 프롬프트 기록 v2 (`approved` — R61 approved-with-fixes · no R61b · implemented (P1–P4) · shipped 2026-10-18)
 
 | Field | Value |
