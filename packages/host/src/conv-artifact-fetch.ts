@@ -50,6 +50,7 @@ import {
   validateConvNodeHost,
 } from "./conv-node-hosts";
 import { MAX_WORKER_ARTIFACT_BYTES } from "./conv-artifact-pack";
+import { ingestFetchedArtifact } from "./artifact-store";
 
 /** D7① default scp process timeout. */
 export const CONV_FETCH_TIMEOUT_MS = 60_000;
@@ -439,6 +440,18 @@ async function convFetchUnlocked(opts: ConvFetchOpts): Promise<ConvFetchResult> 
   } catch {
     /* best effort */
   }
+
+  // PLAN 0.45.0 ② (D3 · R1 · R16) — best-effort store ingest; never throws, logs to stderr only.
+  ingestFetchedArtifact({
+    root: loomDir(),
+    convId,
+    seq,
+    index,
+    destPath: destReal,
+    sha256: actualSha,
+    bytes,
+    maxBytes,
+  });
 
   const result: ConvFetchOk = {
     ok: true,
