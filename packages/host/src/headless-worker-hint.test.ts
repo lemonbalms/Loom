@@ -31,8 +31,8 @@ const UNCHANGED = [
 
 /** 0.31.0–0.38 promptFingerprint for default permissions, no policy, manifest "". */
 const OLD_ABSENT_FP = "d2ed90a8d01095c6a055eb844caeabbabeae419ad4face221dfc89181c0cd9cb";
-/** 0.39.0 value — same literal as policy-fingerprint.test.ts PINNED.absent.promptFingerprint. */
-const NEW_ABSENT_FP = "ef589e5754bf8811bd9380a661eed8ddf2416eddd1c715c5512b8f1ac1397460";
+/** 0.43.0 value (system sections — PLAN 0.43.0 D3; the 0.39.0 value was ef589e57…) — same literal as policy-fingerprint.test.ts PINNED.absent.promptFingerprint. */
+const NEW_ABSENT_FP = "ec1c4a8aaebb5581f8b8613638156a977716eacf21e1978d5e497b34906dfe03";
 
 const CWD = "/tmp/loom-work";
 const SESSION = "11111111-1111-4111-8111-111111111111";
@@ -52,16 +52,14 @@ function developerInstructions(argv: string[]): string | undefined {
 }
 
 describe("0.39.0 P1: HEADLESS_WORKER_HINT line 2", () => {
-  test("seven lines; line 2 is the D2 text; the other six are unchanged", () => {
+  test("every 0.39 hint line is kept verbatim as a whole line (0.43.0 D2)", () => {
     const lines = HEADLESS_WORKER_HINT.split("\n");
-    expect(lines).toHaveLength(7);
-    expect(lines[1]).toBe(LINE_2);
-    expect([lines[0], ...lines.slice(2)]).toEqual(UNCHANGED);
+    for (const l of [LINE_2, ...UNCHANGED]) expect(lines).toContain(l);
   });
 
-  test("byte lengths: line 2 = 163 B, hint = 497 B (R6)", () => {
-    expect(Buffer.byteLength(HEADLESS_WORKER_HINT.split("\n")[1] ?? "", "utf8")).toBe(163);
-    expect(Buffer.byteLength(HEADLESS_WORKER_HINT, "utf8")).toBe(497);
+  test("byte lengths: line 2 = 163 B, system text = 1093 B (0.43.0 ②)", () => {
+    expect(Buffer.byteLength(HEADLESS_WORKER_HINT.split("\n")[4] ?? "", "utf8")).toBe(163);
+    expect(Buffer.byteLength(HEADLESS_WORKER_HINT, "utf8")).toBe(1093);
   });
 
   test("no CR, double quote, backslash, or control/format char other than LF (R2)", () => {

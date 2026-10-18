@@ -384,12 +384,12 @@ function slices(sections: readonly PromptRecordSection[], channel: "system" | "u
 
 /** v2 record ↔ what the fake CLI received for spawn n: sections tile argv hint and stdin / prompt.txt. */
 function expectSectionsTileSpawn(h: Harness, rec: PromptRecord, n: number): Map<string, Buffer> {
-  expect(rec.version).toBe(2);
+  expect(rec.version).toBe(3);
   expect(rec.system).toBe(h.systemFromArgv(n));
   const sections = rec.sections!;
   expect(Array.isArray(sections)).toBe(true);
   const sys = slices(sections, "system", Buffer.from(h.systemFromArgv(n), "utf8"));
-  expect([...sys.keys()]).toEqual(["worker-hint"]);
+  expect([...sys.keys()]).toEqual(["boundary", "identity", "ops-rules", "tools", "response-style", "closing-boundary"]);
   const sent = h.sentBytes(n);
   expect(Buffer.from(rec.user, "utf8").equals(sent)).toBe(true);
   expect(rec.userSha256).toBe(sha256(sent));

@@ -111,7 +111,7 @@ function checkTraces(
     ...sys.map(() => "system"),
     ...usr.map(() => "user"),
   ]);
-  expect(sys.map((t) => t.id)).toEqual(["worker-hint"]);
+  expect(sys.map((t) => t.id)).toEqual(["boundary", "identity", "ops-rules", "tools", "response-style", "closing-boundary"]);
   expect(usr.map((t) => t.id)).toEqual(expectedUser.map((e) => e.id));
   for (const [channel, list, text] of [
     ["system", sys, system],

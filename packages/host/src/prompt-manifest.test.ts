@@ -8,15 +8,55 @@ import { describe, expect, test } from "bun:test";
 import { FENCE_PART_IDS, PROMPT_MANIFEST } from "./prompt-manifest";
 
 describe("PROMPT_MANIFEST (0.42.0 D2)", () => {
-  test("six entries, verbatim, in declared order", () => {
+  test("eleven entries, verbatim, in declared order", () => {
     expect(PROMPT_MANIFEST).toEqual([
       {
-        id: "worker-hint",
+        id: "boundary",
         channel: "system",
         turns: "both",
         required: true,
-        version: "0.39.0",
-        source: "agent-argv.ts HEADLESS_WORKER_HINT",
+        version: "0.43.0",
+        source: "agent-argv.ts HEADLESS_SYSTEM_SECTIONS boundary",
+      },
+      {
+        id: "identity",
+        channel: "system",
+        turns: "both",
+        required: true,
+        version: "0.43.0",
+        source: "agent-argv.ts HEADLESS_SYSTEM_SECTIONS identity",
+      },
+      {
+        id: "ops-rules",
+        channel: "system",
+        turns: "both",
+        required: true,
+        version: "0.43.0",
+        source: "agent-argv.ts HEADLESS_SYSTEM_SECTIONS ops-rules",
+      },
+      {
+        id: "tools",
+        channel: "system",
+        turns: "both",
+        required: true,
+        version: "0.43.0",
+        source: "agent-argv.ts HEADLESS_SYSTEM_SECTIONS tools",
+      },
+      {
+        id: "response-style",
+        channel: "system",
+        turns: "both",
+        required: true,
+        version: "0.43.0",
+        source: "agent-argv.ts HEADLESS_SYSTEM_SECTIONS response-style",
+      },
+      {
+        id: "closing-boundary",
+        channel: "system",
+        turns: "both",
+        required: true,
+        version: "0.43.0",
+        source: "agent-argv.ts HEADLESS_SYSTEM_SECTIONS closing-boundary",
       },
       {
         id: "resume-continuation",
@@ -66,10 +106,15 @@ describe("PROMPT_MANIFEST (0.42.0 D2)", () => {
     ]);
   });
 
-  test("ids in order, unique, at most 8 entries (D9)", () => {
+  test("ids in order, unique, at most 12 entries (D9)", () => {
     const ids = PROMPT_MANIFEST.map((e) => e.id);
     expect(ids).toEqual([
-      "worker-hint",
+      "boundary",
+      "identity",
+      "ops-rules",
+      "tools",
+      "response-style",
+      "closing-boundary",
       "resume-continuation",
       "skill-listing",
       "task-marker",
@@ -77,7 +122,7 @@ describe("PROMPT_MANIFEST (0.42.0 D2)", () => {
       "card-body",
     ]);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(PROMPT_MANIFEST.length).toBeLessThanOrEqual(8);
+    expect(PROMPT_MANIFEST.length).toBeLessThanOrEqual(12);
   });
 
   test("parts only on memory-fence (R6) · FENCE_PART_IDS = its part ids in order (C2)", () => {
@@ -113,6 +158,6 @@ describe("PROMPT_MANIFEST (0.42.0 D2)", () => {
     expect(() => {
       (PROMPT_MANIFEST[0] as unknown as { version: string }).version = "9.9.9";
     }).toThrow();
-    expect(PROMPT_MANIFEST[0]?.version).toBe("0.39.0");
+    expect(PROMPT_MANIFEST[0]?.version).toBe("0.43.0");
   });
 });
