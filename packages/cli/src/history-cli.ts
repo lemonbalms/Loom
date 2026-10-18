@@ -55,12 +55,12 @@ const JSON_UNSAFE_RE = new RegExp(
 );
 
 /** R12 · R63-M1: `visibleText` plus TAB · LF, so one field stays on one line. */
-function oneLine(s: string): string {
+export function oneLine(s: string): string {
   return visibleText(s).replace(/\t/g, "\\u{9}").replace(/\n/g, "\\u{a}");
 }
 
 /** R12: value-preserving — `JSON.parse` returns the original strings. */
-function safeJson(value: unknown): string {
+export function safeJson(value: unknown): string {
   return JSON.stringify(value).replace(
     JSON_UNSAFE_RE,
     (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,

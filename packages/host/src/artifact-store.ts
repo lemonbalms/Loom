@@ -520,20 +520,24 @@ function checkOrphanBlob(blobPath: string, sha: string, maxBytes: number): Artif
   return sha256Hex(read) === sha ? null : "sha mismatch";
 }
 
-type OrphanWalk = { orphans: { name: string }[]; problems: { sha256: string; reason: ArtifactProblemReason }[] };
+type OrphanWalk =
+  | { ok: true; orphans: { name: string }[]; problems: { sha256: string; reason: ArtifactProblemReason }[] }
+  | { ok: false; reason: string };
 
 /**
  * R15: `<2 hex>/<64 hex>` entries under a real `sha256/` whose sha the index does not list. A matching
- * regular file is an orphan (info); anything else under such a name is a problem (P2b).
+ * regular file is an orphan (info); anything else under such a name is a problem (P2b). P3b (Astra 0176 M):
+ * a directory that cannot be read (other than one that vanished after listing) fails the walk with
+ * `<code> at <path relative to root>` — an incomplete scan is never reported clean.
  */
 function findOrphans(root: string, listed: Set<string>, maxBytes: number): OrphanWalk {
   const shaDir = shaDirOf(root);
   for (const dir of [join(root, "artifacts"), shaDir]) {
     try {
       const st = lstatSync(dir);
-      if (st.isSymbolicLink() || !st.isDirectory()) return { orphans: [], problems: [] };
+      if (st.isSymbolicLink() || !st.isDirectory()) return { ok: true, orphans: [], problems: [] };
     } catch {
-      return { orphans: [], problems: [] };
+      return { ok: true, orphans: [], problems: [] };
     }
   }
   const out: { sha: string; name: string }[] = [];
@@ -541,8 +545,9 @@ function findOrphans(root: string, listed: Set<string>, maxBytes: number): Orpha
   let prefixes: string[];
   try {
     prefixes = readdirSync(shaDir).sort();
-  } catch {
-    return { orphans: [], problems: [] };
+  } catch (err) {
+    if (errCode(err) === "ENOENT") return { ok: true, orphans: [], problems: [] };
+    return { ok: false, reason: `${errCode(err)} at artifacts/sha256` };
   }
   for (const prefix of prefixes) {
     if (!PREFIX_RE.test(prefix)) continue;
@@ -552,8 +557,9 @@ function findOrphans(root: string, listed: Set<string>, maxBytes: number): Orpha
       const st = lstatSync(prefixDir);
       if (st.isSymbolicLink() || !st.isDirectory()) continue;
       names = readdirSync(prefixDir).sort();
-    } catch {
-      continue;
+    } catch (err) {
+      if (errCode(err) === "ENOENT") continue;
+      return { ok: false, reason: `${errCode(err)} at artifacts/sha256/${prefix}` };
     }
     for (const name of names) {
       if (!SHA_RE.test(name) || !name.startsWith(prefix) || listed.has(name)) continue;
@@ -564,7 +570,7 @@ function findOrphans(root: string, listed: Set<string>, maxBytes: number): Orpha
     }
   }
   out.sort((a, b) => (a.sha < b.sha ? -1 : a.sha > b.sha ? 1 : 0));
-  return { orphans: out.map((o) => ({ name: o.name })), problems };
+  return { ok: true, orphans: out.map((o) => ({ name: o.name })), problems };
 }
 
 /**
@@ -590,6 +596,7 @@ export function verifyArtifactStore(root: string, maxBytes: number): ArtifactVer
     if (reason) problems.push({ sha256: sha, reason });
   }
   const walk = findOrphans(root, new Set(bytesBySha.keys()), maxBytes);
+  if (!walk.ok) return walk;
   problems.push(...walk.problems);
   problems.sort((a, b) => (a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0));
   return {

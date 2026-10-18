@@ -17,7 +17,8 @@ import {
   MAX_WORKER_ARTIFACT_BYTES,
   verifyArtifactStore,
 } from "@loom/host";
-import { readOnlyStateHome, visibleText } from "./prompt-cli";
+import { oneLine, safeJson } from "./history-cli";
+import { readOnlyStateHome } from "./prompt-cli";
 
 export type ArtifactsCliDeps = {
   /** Injected env (R12 — `""` = not set). */
@@ -40,37 +41,6 @@ const CARD_REFUSAL =
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 const LIMIT_RE = /^[1-9][0-9]*$/;
-
-/**
- * After `JSON.stringify` (C0 already escaped): DEL, C1, bidi embedding/override/isolate, U+2028/2029.
- * Built from code points so the source carries no raw separator / bidi characters (history-cli mirror).
- */
-const JSON_UNSAFE_RE = new RegExp(
-  `[${(
-    [
-      [0x7f, 0x9f],
-      [0x202a, 0x202e],
-      [0x2066, 0x2069],
-      [0x2028, 0x2029],
-    ] as const
-  )
-    .map(([a, b]) => `${String.fromCharCode(a)}-${String.fromCharCode(b)}`)
-    .join("")}]`,
-  "g",
-);
-
-/** R14: `visibleText` plus TAB · LF, so one field stays on one line. */
-function oneLine(s: string): string {
-  return visibleText(s).replace(/\t/g, "\\u{9}").replace(/\n/g, "\\u{a}");
-}
-
-/** R14: value-preserving — `JSON.parse` returns the original strings. */
-function safeJson(value: unknown): string {
-  return JSON.stringify(value).replace(
-    JSON_UNSAFE_RE,
-    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
-}
 
 export async function runArtifactsCommand(
   verb: string,
