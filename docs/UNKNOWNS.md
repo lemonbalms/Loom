@@ -42,7 +42,7 @@
 
 ## Gate log
 
-### 0.45.0 — 산출물 내용 주소 저장소 첫 조각 — `conv_fetch` 성공 뒤 해시 저장 · `loom artifacts list` · `verify` (`approved` — R64 approved-with-fixes · no R64b · implemented (P1–P4) 2026-10-18)
+### 0.45.0 — 산출물 내용 주소 저장소 첫 조각 — `conv_fetch` 성공 뒤 해시 저장 · `loom artifacts list` · `verify` (`approved` — R64 approved-with-fixes · no R64b · implemented (P1–P4) · shipped 2026-10-18)
 
 | Field | Value |
 |-------|-------|
@@ -71,7 +71,7 @@
 
 **승계:** 없음(0.44.0 UK-1 · UK-2 · UK-3 · UK-5는 방 기록 검색 축 — 그대로 유지).
 
-**Current decision:** **`approved` → implemented (P1–P4) 2026-10-18 · ship 전(최종 advise 대기).** D1~D10 아키텍트 락(2026-10-18) · 작성자 정밀화 R1~R18(R64 판정 — R7 대안 · R8 draft · R11 수용) · 수용 손실 계급 82~89 + 무번호(재번호 — 0.44.1이 78~81을 먼저 씀 · 옛 85는 R64가 삭제) · UK-1~UK-5 비차단. `UPGRADE-PLAN.md:35 · :268 · :373` 정렬 = 이 PLAN과 함께(R18). P1~P4 완료(Implemented 행) · 다음 = 최종 advise → ship. ship = 스위트 + 단위 + 가짜 scp 통합 + dist CLI · 실 CLI 없음(D9).
+**Current decision:** **`approved` → implemented (P1–P4) · Shipped 2026-10-18**(스위트 4277 / 0 · 최종 advise 0182 = ship · Low 1 이월 — `artifact-store.ts:574` 접두 심볼릭 링크 건너뜀 · 실 CLI 없음 D9). D1~D10 아키텍트 락(2026-10-18) · 작성자 정밀화 R1~R18(R64 판정 — R7 대안 · R8 draft · R11 수용) · 수용 손실 계급 82~89 + 무번호(재번호 — 0.44.1이 78~81을 먼저 씀 · 옛 85는 R64가 삭제) · UK-1~UK-5 비차단. `UPGRADE-PLAN.md:35 · :268 · :373` 정렬 = 이 PLAN과 함께(R18). P1~P4 완료(Implemented 행) · shipped. ship = 스위트 + 단위 + 가짜 scp 통합 + dist CLI · 실 CLI 없음(D9).
 
 ### 0.44.0 — `loom history search` — 방 이벤트 기록 읽기 전용 선형 검색 (`approved` — R63 approved-with-fixes · no R63b · implemented (P1–P3) · shipped 2026-10-18)
 
