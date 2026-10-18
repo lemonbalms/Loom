@@ -172,6 +172,7 @@ import {
 } from "./memory-cli";
 import { realPromptCliDeps, runPromptCommand } from "./prompt-cli";
 import { realHistoryCliDeps, runHistoryCommand } from "./history-cli";
+import { realArtifactsCliDeps, runArtifactsCommand } from "./artifacts-cli";
 
 const VERSION = "0.44.1";
 
@@ -283,8 +284,16 @@ const BOOLEAN_FLAGS = new Set([
  * other command keeps the old parse (`--profile all` · `--profile json` stay values).
  * PLAN 0.41.0 R60-L3(b): `prompt` too (`prompt show --json <cardId>`).
  * PLAN 0.44.0 P2: `history` too (`history search --json <query>`).
+ * PLAN 0.45.0 P3: `artifacts` too (`artifacts --json list`).
  */
-const MEMORY_COMMANDS: ReadonlySet<string> = new Set(["memory", "rules", "skills", "prompt", "history"]);
+const MEMORY_COMMANDS: ReadonlySet<string> = new Set([
+  "memory",
+  "rules",
+  "skills",
+  "prompt",
+  "history",
+  "artifacts",
+]);
 const MEMORY_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["all", "json"]);
 
 function usage(): string {
@@ -320,6 +329,8 @@ Usage:
                                     # what a headless card worker was sent (0.41)
   loom history search <query> [--room <roomId>] [--month YYYY-MM] [--limit <n>] [--json]
                                     # search local room history (0.44)
+  loom artifacts list [--conv <convId>] [--limit <n>] [--json] | artifacts verify [--json]
+                                    # local fetched-artifact store (0.45)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -3331,13 +3342,15 @@ async function main() {
     ? scoped.positional[0]
     : plain.positional[0];
   const refused =
-    dispatchWord === "prompt" || dispatchWord === "history"
+    dispatchWord === "prompt" || dispatchWord === "history" || dispatchWord === "artifacts"
       ? dispatchWord
       : firstWords.includes("prompt")
         ? "prompt"
         : firstWords.includes("history")
           ? "history"
-          : undefined;
+          : firstWords.includes("artifacts")
+            ? "artifacts"
+            : undefined;
   // PLAN 0.41.0 R11 · Astra 0094: `prompt` under a card worker is refused before any flag is
   // applied and before help (the pure word scan above only locates the command word).
   if (underCard && refused === "prompt") {
@@ -3351,6 +3364,16 @@ async function main() {
       { positional: [], passthrough: [] },
       {},
       realHistoryCliDeps(),
+    );
+    return;
+  }
+  // PLAN 0.45.0 D5 · R12: `artifacts` likewise — refused before profile flags and help.
+  if (underCard && refused === "artifacts") {
+    process.exitCode = await runArtifactsCommand(
+      "",
+      { positional: [], passthrough: [] },
+      {},
+      realArtifactsCliDeps(),
     );
     return;
   }
@@ -3496,6 +3519,16 @@ async function main() {
       { positional: rest, passthrough },
       flags,
       realHistoryCliDeps(),
+    );
+    return;
+  }
+  if (cmd === "artifacts") {
+    // PLAN 0.45.0 P3 (D5): list 0 rows · 1 none; verify 0 clean · 1 problems; 2 usage/refused/unreadable.
+    process.exitCode = await runArtifactsCommand(
+      sub ?? "",
+      { positional: rest, passthrough },
+      flags,
+      realArtifactsCliDeps(),
     );
     return;
   }
