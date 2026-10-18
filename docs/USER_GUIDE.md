@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.43.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.44.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -107,6 +107,7 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 18 | bridge 생명주기 (0.33.0) — 프로필당 하나 · 우아한 정지 · drain · 꺼진 뒤 진단 | 프로필 락 · 상태 파일 · `loom bridge drain` · doctor Bridge 절 |
 | 19 | `loom service` (0.34.0) — 로그인 시 bridge 자동 기동 | `loom service install\|start\|status` · doctor Service 절 |
 | 20 | 기억 · 규칙 · 스킬 (0.35.0) — 에이전트별 장기 기록 · 방 규칙 · 공통 지식 · 되도록-규칙 · 스킬 출처 · **0.36.0: 카드 시작 스냅샷을 headless 워커 첫 턴에 넣기(옵트인)** | `loom memory` · `loom rules list` · `loom skills list` · doctor Memory 절 · `worker.memory.enabled` (§20.11) |
+| 20A | 방 기록 검색 (0.44.0) — 지난 방 이벤트를 읽기 전용으로 찾기 | `loom history search` · 비밀 가리기 · exit 0/1/2 |
 | — | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
@@ -2020,6 +2021,79 @@ loom memory: refused — LOOM_CARD is set (this shell belongs to a Loom card wor
 
 ---
 
+## 20A. 방 기록 검색 — `loom history search` (v0.44.0)
+
+0.29.0부터 bridge는 받은 모든 방 이벤트를 `~/.loom/rooms/<roomKey>/events/YYYY-MM.jsonl`(`roomKey` = roomId의 sha256 앞 16 hex · UTC 달 · 파일 0600)에 한 줄씩 원본 그대로 쌓는다. `loom history search`는 그 기록을 **읽기만** 하는 운영자 명령이다 — "지난달 다른 카드가 무엇을 보고했지?"를 JSONL을 직접 열지 않고 찾는다.
+
+```text
+loom history search <query> [--room <roomId>] [--month YYYY-MM] [--limit <n>] [--json]
+loom history search -- -x          # '-'로 시작하는 검색어
+```
+
+| 플래그 | 뜻 |
+|--------|-----|
+| `<query>` | 위치 인자 정확히 하나 · 양끝 공백을 뺀 뒤 1~256 UTF-16 단위 · 대소문자 무시 부분 문자열(정규식 · 정규화 · 퍼지 없음) |
+| `--room <roomId>` | 그 방 하나만(정확한 roomId) |
+| `--month YYYY-MM` | 그 달 파일 하나만 |
+| `--limit <n>` | 보여 줄 히트 수 · 기본 20 · 1~200 |
+| `--json` | 줄마다 JSON 객체 하나 |
+
+**찾는 것:** 상태 루트 아래 **모든 로컬 방**(또는 `--room` 한 방)의 달 파일 · 레코드마다 `envelope` 안의 문자열(메시지 본문 · 카드 결과 첨부의 output/summary 포함). **최신 먼저** — 달 내림차순, 한 달 안에서는 방을 가로질러 레코드 `ts` 내림차순(동률 roomId → seq → 줄 순). limit에 닿으면 그 달까지 마치고 멈춘다. **찾지 않는 것:** 숫자 · 불리언 잎(`seq` 등) · 카드 디렉터리 transcript · CLI 자체 대화 기록 · 색인(SQLite) · MCP 도구 — 이 버전은 선형 스캔 하나다.
+
+**출력 예 — 사람:**
+
+```text
+$ loom history search deploy
+2026-10-03T00:00:00.000Z · room room-a · seq 2 · card.result · e-a2
+  …"summary":"Deploy beta done"…
+2026-10-01T00:00:00.000Z · room room-a · seq 1 · chat · e-a1
+  deploy alpha
+2 hits · 1 files scanned · 0 torn lines
+```
+
+히트마다 두 줄(머리 · 첫 일치 주변 ±80 글자 스니펫 — 줄바꿈은 공백 · 잘린 쪽에 `…`), 그다음 꼬리 한 줄. 건너뛴 파일이 있으면 꼬리 뒤에 `incomplete: <상태 루트 기준 경로> — <reason>` 줄들(reason = `symlink` · `not a directory` · `not a regular file` · `too large` · `unreadable <code>`). 제어 글자 · bidi 글자 · TAB · LF는 `\u{…}`로 보여 한 히트가 늘 두 줄이다.
+
+**출력 예 — `--json`:**
+
+```text
+$ loom history search --json deploy --limit 1
+{"ts":"2026-10-03T00:00:00.000Z","roomId":"room-a","seq":2,"type":"card.result","eventId":"e-a2","snippet":"…\"summary\":\"Deploy beta done\"…"}
+{"summary":{"hits":1,"files":1,"torn":0,"incomplete":[]}}
+```
+
+JSON 값은 보존된다(DEL · C1 · bidi · U+2028/2029는 `\u00XX`/`\u20XX` 이스케이프 — `JSON.parse`로 원 값). `hits` = 보여 준 히트 수(전체 일치 수 아님) · `files` = 실제로 연 달 파일 수 · `torn` = 그 파일들의 깨진 줄 수.
+
+**exit code:**
+
+| code | 뜻 |
+|------|-----|
+| 0 | 히트 ≥ 1 · 스캔 완전 |
+| 1 | 히트 0 · 스캔 완전(기록이 아예 없어도) |
+| 2 | 사용법 오류 · `LOOM_CARD` 거부 · **건너뛴 파일이 하나라도 있음**(히트는 그래도 출력 — 답이 부분일 수 있다) |
+
+**읽기 전용.** 상태 루트(`~/.loom`, 없고 `~/.fable`만 있으면 그것)에 아무것도 만들지 않는다 — 파일 · 디렉터리 · 락 · 백업 · 마이그레이션 0. 경로 성분마다 `lstat` · 심볼릭 링크는 따라가지 않는다 · 달 파일당 64 MiB 상한(넘으면 `too large`). 이름 규칙(16 hex 방 디렉터리 · `YYYY-MM.jsonl`)에 맞지 않는 파일은 조용히 무시한다.
+
+**비밀 가리기.** 맞추기 **전에** 레코드 텍스트를 가린다(`[REDACTED]`) — 알려진 토큰 모양 · URL userinfo · Bearer/Basic · `name=value` 대입 · 그리고 **지금 검색하는 셸의 env**에 있는 민감한 이름의 값. 그래서 검색어로 비밀의 존재를 떠볼 수 없다. 원본 기록 파일은 원본 그대로다(가리기는 보여 줄 때).
+
+**워커 셸에서는 거부.** `LOOM_CARD`가 설정된 셸(카드 워커)에서는 인자 · `--help` · 상태 루트 해석보다 먼저 `loom history: refused — LOOM_CARD is set (this shell belongs to a Loom card worker); room history is for the operator.` · exit 2. 이것은 가드이지 경계가 아니다(같은 사용자 셸은 파일을 직접 읽을 수 있다).
+
+**누가 무엇을 보나.** 이 CLI는 0600 기록 파일의 주인인 로컬 운영자의 것이라 **모든 로컬 방**을 본다. "지금 그 방의 멤버만" 규칙은 앞으로의 MCP 검색 도구를 묶는다.
+
+**한계 — 설계상 수용 (0.44.0).**
+
+1. **가리기 거짓 음성**(계급 69) — 알려지지 않은 비밀 모양은 스니펫에 그대로 보인다. 특히 카드 결과 첨부 JSON 텍스트 안의 따옴표 대입(`\"token\":\"…\"`)은 토큰 모양이 아니면 가려지지 않는다.
+2. **가려진 구간 안의 글자는 찾을 수 없다**(계급 70) · 거꾸로 검색어 `REDACTED`는 가린 자리마다 맞는다.
+3. **스캔 중 자라는 달 파일**(계급 71) — 연 순간의 크기까지만 읽는다 · 쓰기 도중의 마지막 줄은 깨진 줄로 셀 수 있다. 다시 실행하면 보인다.
+4. **env 가리기는 검색하는 셸 기준**(계급 72) — 기록 당시엔 있었지만 지금 셸에 없는 비밀 값은 env 갈래로 가려지지 않는다(모양 갈래는 그대로).
+5. **디렉터리 교체 경합**(계급 73) — 성분 `lstat`과 다음 열기 사이 심볼릭 링크 교체는 막지 못한다(같은 사용자 한계 · 달 파일 자체는 `O_NOFOLLOW` + `fstat`).
+6. **카드 결과 output/summary는 JSON 이스케이프 형으로 검색 · 표시된다**(계급 74) — 줄바꿈 · 따옴표가 든 검색어는 그 부분과 맞지 않는다.
+7. **큰 방은 느리다 · 기록에 없는 것은 없다**(계급 75) — 색인이 없다 · bridge가 돌지 않은 방 · 0.29.0 이전 이벤트 · 기록 쓰기 실패로 빠진 이벤트는 답에 없다.
+8. **방 사이 순서는 보낸 쪽 시계만큼만 맞다**(계급 76) — `ts`는 봉투 값 또는 기록 시각이고 시계 차이는 보정하지 않는다.
+9. **미래 `ts`의 달 파일이 맨 앞에 온다**(계급 77) — 예: `2099-12.jsonl`이 늘 먼저 처리되어 limit를 차지한다. `--month`로 우회한다.
+10. 반복 `--room` · `--month` · `--limit`는 마지막 값이 이긴다 · 검색어는 두 문자열 잎의 경계(`\n`)를 가로질러 맞을 수 있다 · 깊이 32를 넘는 부분 트리는 조용히 빠진다 · 피크 메모리 ≈ 64 MiB + 레코드 하나 + limit × 히트.
+
+---
+
 ## 21. 명령 치트시트
 
 ```text
@@ -2034,6 +2108,7 @@ bun run loom --profile <p> service install|uninstall|start|status [--force]
 bun run loom --profile <p> memory add|propose|approve|retire|compact|list|show --agent claude|codex|grok …
 bun run loom --profile <p> rules list | skills list [--room <roomId>]
 bun run loom --profile <p> prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent <a>] [--json]
+bun run loom history search <query> [--room <roomId>] [--month YYYY-MM] [--limit <n>] [--json]
 bun run loom --profile <p> pack show|set|add|note|…
 bun run loom --profile <p> board | board add|set|assign|export|import|…
 bun run loom --profile <p> run [claude|codex|grok|shell]

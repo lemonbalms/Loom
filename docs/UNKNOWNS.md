@@ -42,13 +42,14 @@
 
 ## Gate log
 
-### 0.44.0 — `loom history search` — 방 이벤트 기록 읽기 전용 선형 검색 (`approved` — R63 approved-with-fixes · no R63b)
+### 0.44.0 — `loom history search` — 방 이벤트 기록 읽기 전용 선형 검색 (`approved` — R63 approved-with-fixes · no R63b · implemented (P1–P3) 2026-10-18)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.44.0 (`approved` — R63 approved-with-fixes, 반영 완료 · no R63b · author-close 불가) · MINOR · 업그레이드 6단계 1부 · 근거 = 오너 "진행해"((a) → (c) 6단계 · (a) 위생 강등 `d67f758`) · `UPGRADE-PLAN.md:111-115` · `:246-260` · 범위 = 락 D1~D10(아키텍트 2026-10-18) |
 | **Date** | 2026-10-18 |
 | **Review** | R63 **done 2026-10-18** — approved-with-fixes M4 · L6 (M1 사람 출력 `visibleText` 뒤 TAB · LF 이스케이프 · M2 상위 `limit`개 유계 버퍼 · 피크 메모리 · M3 달 안 `ts` 정규식 + `Date.parse` 숫자 내림차순 · M4 판정 반영 · 계급 76 · UK-4 · `UPGRADE-PLAN.md:157 · :250 · :251` · L1 `Number.isFinite(rec.seq)` · L2 `truncateSync` 희소 파일 · L3 env 한 번 거르기 · L4 계급 69 첨부 JSON 따옴표 대입 · L5 계급 77 미래 `ts` · L6 `incomplete` 범위) · 아키텍트 판정(R8 대안 `ts` · R12 draft · R17 확대 · R1 · R4 · R9 수용) — (`WORKFLOW.md` §5.1 신규 제품 표면(CLI 동사) · 신뢰 경계(운영자가 모든 로컬 방의 원본 기록을 읽음 · `LOOM_CARD` 거부 · 보여 주기 전 redaction)) |
+| **Implemented** | 2026-10-18 (P1–P3 · ship 전) — 게이트 `6aa0759` · P1 `02fa48f` → `3ef1c99` · P1b(Astra 0137 M1 메모리 — no-hit 빠른 길 · 스니펫 창 · M2 히트 메타데이터 redaction) `346e3a2` → `64d3acb` · P1c(0139 M1 `incomplete` 경로 redaction) (red) → `2bb31ed` · 0139 L 수용(메모리 모양은 테스트로 관찰 불가 — `keepTop` 시임은 버퍼 상한만) · P2 `3b93aa2` → `972905c` · P2b(0143 M 파서 불일치 `LOOM_CARD` 우회 — 0.41 `prompt` 거부도) `61c42a4` → `89a8209` · P2c(0145 M 거부가 dispatch 명령을 따름) `0367271` → `f6d0dbf` · P3 = `history-cli-dist.test.ts`(테스트 안 임시 번들 · R15 네 경우 · green으로 시작 — 선언) · 버전 0.44.0 세 줄 · 문서. UK 상태 변화 없음(UK-1 · UK-2 · UK-3 · UK-5 비차단 유지 · UK-4 closed) — 정본 `implementation-notes.md` §0.44.0 |
 | **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `d67f758`) · `room-event-log.ts:41-49` · `:125-150` · `:157-175` · `:256-268` · `:541` · `:550` · `:617-648` · `:737` · `:766` · `:823-851` · `bridge-runtime.ts:1089-1092` · `prompt-cli.ts:53-57` · `:74-81` · `:101-105` · `:347-353` · `prompt-record.ts:414-417` · `:426-469` · `redact.ts:15-25` · `:64-98` · `session-store.ts:79-83` · `:254-260` · `cli/src/index.ts:175` · `:285-286` · `:386-420` · `:3317-3332` · `:3456-3461` · `card-contract.ts:36-72` · `envelope.ts:40-44` · `package.json:14` · `tasks/lessons/verification.md:789-801` · `UPGRADE-PLAN.md:157` · `:250-260` · `:346` |
 
 | 분면 | 내용 |

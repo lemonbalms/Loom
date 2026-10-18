@@ -173,7 +173,7 @@ import {
 import { realPromptCliDeps, runPromptCommand } from "./prompt-cli";
 import { realHistoryCliDeps, runHistoryCommand } from "./history-cli";
 
-const VERSION = "0.43.0";
+const VERSION = "0.44.0";
 
 /**
  * PLAN 0.33.0 D5 readers (P4): status file + pid liveness + read-only lock view for one
