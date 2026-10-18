@@ -24,14 +24,14 @@ Full team dry-run (Windows/WSL, remote relay, smoke): [`docs/DRY_RUN_RUNBOOK.md`
 |--|--|
 | **CLI** | `loom` only (`bun run loom`) |
 | **Packages** | `@loom/*` (Bun monorepo) |
-| **Product pin** | **v0.42.0** — PLAN SSOT [`docs/PLAN.md`](docs/PLAN.md) · user notes [`docs/CHANGELOG.md`](docs/CHANGELOG.md) |
+| **Product pin** | **v0.43.0** — PLAN SSOT [`docs/PLAN.md`](docs/PLAN.md) · user notes [`docs/CHANGELOG.md`](docs/CHANGELOG.md) |
 | **Plan** | [`docs/PLAN.md`](docs/PLAN.md) — product plan SSOT (versioned) |
-| **Changelog** | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — **what shipped** (user language, 0.22–0.42.0) |
+| **Changelog** | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — **what shipped** (user language, 0.22–0.43.0) |
 | **Priorities** | [`docs/PRIORITIES.md`](docs/PRIORITIES.md) — **지금 무엇을 할지** |
 | **Upgrade plan** | [`docs/UPGRADE-PLAN.md`](docs/UPGRADE-PLAN.md) — 고도화 단계 1~7 전체 계획 |
 | **Docs index** | [`index.md`](index.md) — 문서 지도와 권장 읽기 순서 |
 | **Glossary** | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — Loom 약어·내부 용어 설명 (non-normative) |
-| **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어, v0.42.0) |
+| **User guide** | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — **사용 사례 중심** (한국어, v0.43.0) |
 | **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — packages · bridge · completion authority |
 | **Test plan** | [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md) — **사례별 테스트 체크리스트** |
 | **Workflow** | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — Plan → Review → Implement → Ship |
@@ -301,7 +301,7 @@ Planning docs live under `docs/`. Implementation follows `docs/PLAN.md` version 
 
 ## License / status
 
-Private/experimental monorepo under active development (0.x; current pin **v0.42.0** — see [`docs/PLAN.md`](docs/PLAN.md)).  
+Private/experimental monorepo under active development (0.x; current pin **v0.43.0** — see [`docs/PLAN.md`](docs/PLAN.md)).  
 Issues and collaboration: use this GitHub repository.
 
 **Maintainer remote:** https://github.com/lemonbalms/Loom
