@@ -456,5 +456,10 @@ export function searchRoomHistory(
     }
   }
   incomplete.sort((p, q) => (p.file < q.file ? -1 : p.file > q.file ? 1 : 0));
-  return { hits, files, torn, incomplete };
+  return {
+    hits,
+    files,
+    torn,
+    incomplete: incomplete.map((i) => ({ file: redactSecrets(i.file, redactEnv), reason: i.reason })),
+  };
 }
