@@ -154,7 +154,7 @@ function storeLines(): string[] {
 /** What convFetch returned before the hook (0.44 shape — keys and values). */
 function expectedResult(argv: string[], destPath: string, body: string) {
   return {
-    ok: true,
+    ok: true as const,
     argv,
     destPath,
     sha256: shaOf(body),
