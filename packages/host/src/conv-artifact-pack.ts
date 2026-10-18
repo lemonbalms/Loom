@@ -216,15 +216,21 @@ export function packageWorkerFileArtifact(opts: {
     return { ok: false, reason: "file_too_large" };
   }
 
-  let content: string;
+  // PLAN 0.45.1 D2: raw bytes, so the wire sha equals the tower's conv_fetch
+  // D6 hash of the received file (invalid UTF-8 no longer round-trips via U+FFFD).
+  let buf: Buffer;
   try {
-    content = readFileSync(realFile, "utf8");
+    buf = readFileSync(realFile);
   } catch {
     return { ok: false, reason: "file_not_found" };
   }
+  // Re-check after the read: closes the stat → read growth race.
+  if (buf.length > MAX_WORKER_ARTIFACT_BYTES) {
+    return { ok: false, reason: "file_too_large" };
+  }
 
-  const sha256 = createHash("sha256").update(content, "utf8").digest("hex");
-  const chars = content.length;
+  const sha256 = createHash("sha256").update(buf).digest("hex");
+  const chars = buf.toString("utf8").length;
   // ref filename = marker filename verbatim (R28 M-1)
   const wirePath = `${convArtifactsRootLiteral(opts.convId)}/${opts.filename}`;
   const gist =
