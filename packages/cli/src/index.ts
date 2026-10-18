@@ -3319,31 +3319,31 @@ async function main() {
   // The bare-word lookahead never consults the extra booleans, so a value such as
   // `--profile all` / `--room all` parses the same either way.
   const scoped = parseArgs(process.argv, MEMORY_BOOLEAN_FLAGS);
+  const plain = parseArgs(process.argv);
+  // Astra 0143 M: the two parses can disagree on the first word (`--all ignored history …` →
+  // scoped `ignored`, plain `history`), so the card-worker refusal checks both.
+  const firstWords = [scoped.positional[0], plain.positional[0]];
+  const card = process.env.LOOM_CARD;
+  const underCard = typeof card === "string" && card.length > 0;
   // PLAN 0.41.0 R11 · Astra 0094: `prompt` under a card worker is refused before any flag is
   // applied and before help (the pure word scan above only locates the command word).
-  if (scoped.positional[0] === "prompt") {
-    const card = process.env.LOOM_CARD;
-    if (typeof card === "string" && card.length > 0) {
-      process.exitCode = await runPromptCommand("", { positional: [] }, {}, realPromptCliDeps());
-      return;
-    }
+  if (underCard && firstWords.includes("prompt")) {
+    process.exitCode = await runPromptCommand("", { positional: [] }, {}, realPromptCliDeps());
+    return;
   }
   // PLAN 0.44.0 D3 · R11 ①: `history` likewise — refused before profile flags and help.
-  if (scoped.positional[0] === "history") {
-    const card = process.env.LOOM_CARD;
-    if (typeof card === "string" && card.length > 0) {
-      process.exitCode = await runHistoryCommand(
-        "",
-        { positional: [], passthrough: [] },
-        {},
-        realHistoryCliDeps(),
-      );
-      return;
-    }
+  if (underCard && firstWords.includes("history")) {
+    process.exitCode = await runHistoryCommand(
+      "",
+      { positional: [], passthrough: [] },
+      {},
+      realHistoryCliDeps(),
+    );
+    return;
   }
   const { flags, positional, passthrough } = MEMORY_COMMANDS.has(scoped.positional[0] ?? "")
     ? scoped
-    : parseArgs(process.argv);
+    : plain;
   applyProfileFlags(flags);
 
   if (flags.help || positional[0] === "help" || positional.length === 0) {
