@@ -268,13 +268,10 @@ describe("live checkpoint (current gate)", () => {
     expect(extractSection(liveHandoff, "Evidence")).toMatch(
       /SINGLE-TOPOLOGY-EXECUTION-DESIGN|SESSION-START/,
     );
-    expect(extractSection(liveHandoff, "Don't redo")).toMatch(/Phase D|Dashboard|warm-base/i);
-    expect(extractSection(liveHandoff, "Current loop")).toMatch(
-      /Dashboard|v0\.29\.0|v0\.28\.1|Harness/i,
-    );
-    expect(extractSection(liveHandoff, "Current action")).toMatch(
-      /SINGLE topology|current-session|NORMS/i,
-    );
+    // Structure, not a past gate's wording (the 2026-07 regexes pinned Phase D / SINGLE-topology text).
+    expect(extractSection(liveHandoff, "Don't redo")).toMatch(/^- \S/m);
+    expect(extractSection(liveHandoff, "Current loop")).toMatch(/\| Product \|.*\| Harness \|/s);
+    expect(extractSection(liveHandoff, "Current action")).toMatch(/\*\*Line:\*\* topology \*\*`(full|single)`\*\*/);
     expect(extractSection(liveHandoff, "Blockers")).toMatch(/\(none\)/);
   });
 

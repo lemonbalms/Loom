@@ -74,6 +74,7 @@
 
 ## Evidence
 
+- Session ritual: `docs/SESSION-START.md` · topology `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`  
 - Close: `docs/spikes/RULE-ROUTER-PHASE3-SOFT-CLOSE.md`  
 - 0.37.0 smoke: `docs/spikes/POLICY-HONESTY-SMOKE-0370.md`  
 - 3.4b/3.4/3.3 RESULT · `scripts/rule-router-jit.ts`  
