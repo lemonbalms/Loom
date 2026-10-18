@@ -8,6 +8,7 @@
  */
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -17,11 +18,13 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   truncateSync,
   unlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -45,7 +48,12 @@ type ArtifactStoreDeps = {
   log?: (line: string) => void;
   link?: (from: string, to: string) => void;
   now?: () => Date;
+  /** @internal P1b seam — the index row write. */
+  write?: (fd: number, buf: Buffer) => number;
+  /** @internal P1b seam — `"lstat"` before the conv open · `"prelink"` before the pre-link lstat. */
+  hook?: (point: "lstat" | "prelink") => void;
 };
+type SeamDeps = Pick<ArtifactStoreDeps, "link" | "write" | "hook">;
 type IngestInput = {
   root: string;
   destPath: string;
@@ -156,10 +164,7 @@ function input(l: Landed, over: Partial<IngestInput> = {}): IngestInput {
 }
 
 /** Runs one ingest with an injected clock and a capturing log; returns the log lines. */
-async function runIngest(
-  inp: IngestInput,
-  deps: Pick<ArtifactStoreDeps, "link"> = {},
-): Promise<string[]> {
+async function runIngest(inp: IngestInput, deps: SeamDeps = {}): Promise<string[]> {
   const m = await loadStore();
   const logs: string[] = [];
   m.ingestFetchedArtifact(inp, { log: (line) => logs.push(line), now: () => AT, ...deps });
@@ -176,7 +181,7 @@ const skipLine = (reason: string, convId = CONV_A, seq = SEQ, index = INDEX): st
 async function expectSkipped(
   inp: IngestInput,
   reason: string,
-  deps: Pick<ArtifactStoreDeps, "link"> = {},
+  deps: SeamDeps = {},
 ): Promise<void> {
   const beforeMode = lstatSync(inp.destPath).mode;
   const beforeBytes = readFileSync(inp.destPath);
@@ -413,17 +418,123 @@ describe("PLAN 0.45.0 P1 ingest table — skipped branches (R1 · R3~R10)", () =
     expectNoBlobNoRow(root, l.sha256);
   });
 
-  test("R7 · R64-M1: link injection links a different file (name swap) → `inode changed` · blob unlinked · no row", async () => {
+  // P1b: the swap now happens where a real one would (the conv name replaced after the read, before the
+  // link) — the link links the decoy, which this call then owns and removes (Astra 0156 #4 ownership rule).
+  test("R7 · R64-M1: conv name swapped after the read → `inode changed` · the linked decoy unlinked · no row", async () => {
     const root = tempRoot("inode");
     const l = land(root, "the fetched bytes");
     const decoy = join(root, "decoy.txt");
+    const aside = join(root, "aside.txt");
     writeFileSync(decoy, "the fetched bytes", { mode: 0o600 });
     await expectSkipped(input(l), "inode changed", {
-      link: (_from, to) => linkSync(decoy, to),
+      hook: (point) => {
+        if (point !== "prelink") return;
+        renameSync(l.destPath, aside);
+        renameSync(decoy, l.destPath);
+      },
     });
     expectNoBlobNoRow(root, l.sha256);
-    expect(lstatSync(decoy).nlink).toBe(1);
-    expect(readFileSync(decoy, "utf8")).toBe("the fetched bytes");
+    expect(lstatSync(l.destPath).nlink).toBe(1);
+    expect(readFileSync(l.destPath, "utf8")).toBe("the fetched bytes");
+    expect(lstatSync(aside).nlink).toBe(1);
+  });
+
+  test("P1b #4: blob name replaced by another inode after the link → `inode changed` · that inode not unlinked · no row", async () => {
+    const root = tempRoot("cleanup-owner");
+    const l = land(root, "ours");
+    const theirs = join(root, "theirs.bin");
+    writeFileSync(theirs, "ours", { mode: 0o600 });
+    const theirsIno = lstatSync(theirs).ino;
+    await expectSkipped(input(l), "inode changed", {
+      link: (from, to) => {
+        linkSync(from, to);
+        renameSync(theirs, to);
+      },
+    });
+    const blob = blobPath(root, l.sha256);
+    expect(lstatSync(blob).ino).toBe(theirsIno);
+    expect(readFileSync(blob, "utf8")).toBe("ours");
+    expect(lstatSync(l.destPath).nlink).toBe(1);
+    expect(existsSync(indexPath(root))).toBe(false);
+  });
+
+  test("P1b #3: conv name swapped between the lstat and the open (restored before the link) → `inode changed` · nothing linked · no row", async () => {
+    const root = tempRoot("read-swap");
+    const l = land(root, "the bytes on the linked inode");
+    const swapped = Buffer.from("the bytes that were hashed", "utf8");
+    const bPath = join(root, "b.txt");
+    const aside = join(root, "aside.txt");
+    writeFileSync(bPath, swapped, { mode: 0o600 });
+    chmodSync(bPath, 0o600);
+    const logs = await runIngest(input(l, { sha256: sha256Of(swapped), bytes: swapped.length }), {
+      hook: (point) => {
+        if (point !== "lstat") return;
+        renameSync(l.destPath, aside);
+        renameSync(bPath, l.destPath);
+      },
+      link: (from, to) => {
+        renameSync(from, bPath);
+        renameSync(aside, from);
+        linkSync(from, to);
+      },
+    });
+    expect(logs).toEqual([skipLine("inode changed")]);
+    expect(existsSync(blobPath(root, sha256Of(swapped)))).toBe(false);
+    expect(existsSync(blobPath(root, l.sha256))).toBe(false);
+    expect(existsSync(indexPath(root))).toBe(false);
+  });
+
+  test("P1b #1: `index.jsonl` is a FIFO → returns promptly · `index not a regular file` · no row", async () => {
+    const root = tempRoot("index-fifo");
+    const l = land(root, "c");
+    const made = spawnSync("mkfifo", [indexPath(root)]);
+    expect(made.status).toBe(0);
+    await expectSkipped(input(l), "index not a regular file");
+    expect(lstatSync(indexPath(root)).isFIFO()).toBe(true);
+  }, 5000);
+
+  test("P1b #2: `index.jsonl` hard-linked to a blob → `index nlink 2` · blob bytes unchanged", async () => {
+    const root = tempRoot("index-hardlink");
+    const l = land(root, "new artifact");
+    const other = "an existing blob";
+    const otherSha = sha256Of(other);
+    mkdirSync(prefixDir(root, otherSha), { recursive: true, mode: 0o700 });
+    writeFileSync(blobPath(root, otherSha), other, { mode: 0o600 });
+    linkSync(blobPath(root, otherSha), indexPath(root));
+    await expectSkipped(input(l), "index nlink 2");
+    expect(readFileSync(blobPath(root, otherSha), "utf8")).toBe(other);
+    expect(lstatSync(indexPath(root)).ino).toBe(lstatSync(blobPath(root, otherSha)).ino);
+  });
+
+  test("P1b #6: short index write → `index short write`", async () => {
+    const root = tempRoot("short-write");
+    const l = land(root, "c");
+    await expectSkipped(input(l), "index short write", {
+      write: (fd, buf) => writeSync(fd, buf.subarray(0, buf.length - 1)),
+    });
+    expect(readFileSync(indexPath(root), "utf8")).toBe(rowLine(expectedRow(l)).slice(0, -1));
+  });
+
+  test("P1b #5: `artifacts/` is a symlink → `symlink` · nothing lands behind it", async () => {
+    const root = tempRoot("artifacts-symlink");
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere, { mode: 0o700 });
+    symlinkSync(elsewhere, artifactsDir(root));
+    const l = land(root, "c");
+    await expectSkipped(input(l), "symlink");
+    expect(readdirSync(elsewhere)).toEqual([CONV_A]);
+    expect(lstatSync(l.destPath).nlink).toBe(1);
+  });
+
+  test("P1b #5: pre-existing `sha256/` with group/other bits → `dir mode 755` · mode left alone · no row", async () => {
+    const root = tempRoot("dir-mode");
+    const l = land(root, "c");
+    mkdirSync(shaDir(root), { mode: 0o700 });
+    chmodSync(shaDir(root), 0o755);
+    await expectSkipped(input(l), "dir mode 755");
+    expect(modeOf(shaDir(root))).toBe(0o755);
+    expect(readdirSync(shaDir(root))).toEqual([]);
+    expect(existsSync(indexPath(root))).toBe(false);
   });
 
   test("R9: `index.jsonl` is a symlink → `symlink` · the target is not created", async () => {
@@ -547,6 +658,15 @@ describe("PLAN 0.45.0 P1 list table (R11 · R15)", () => {
     mkdirSync(artifactsDir(root), { mode: 0o700 });
     symlinkSync(real, indexPath(root));
     expect(await list(root, { limit: 50 })).toEqual({ ok: false, reason: "not a regular file" });
+  });
+
+  test("P1b #5: `artifacts/` is a symlink to a dir with an index → ok: false `symlink`", async () => {
+    const root = tempRoot("list-artifacts-symlink");
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere, { mode: 0o700 });
+    writeFileSync(join(elsewhere, "index.jsonl"), `${JSON.stringify(mkRow(1))}\n`, { mode: 0o600 });
+    symlinkSync(elsewhere, artifactsDir(root));
+    expect(await list(root, { limit: 50 })).toEqual({ ok: false, reason: "symlink" });
   });
 
   test("R11: 64 MiB + 1 sparse index → ok: false `too large`", async () => {
@@ -783,6 +903,24 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
     writeFileSync(real, `${JSON.stringify(row(b.sha, b.bytes))}\n`, { mode: 0o600 });
     symlinkSync(real, indexPath(root));
     expect(await verify(root)).toEqual({ ok: false, reason: "not a regular file" });
+  });
+
+  test("P1b #5: `artifacts/` is a symlink to a dir with an empty index → ok: false `symlink` (not a clean pass)", async () => {
+    const root = tempRoot("v-artifacts-symlink");
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere, { mode: 0o700 });
+    writeFileSync(join(elsewhere, "index.jsonl"), "", { mode: 0o600 });
+    symlinkSync(elsewhere, artifactsDir(root));
+    expect(await verify(root)).toEqual({ ok: false, reason: "symlink" });
+  });
+
+  test("P1b #5: `artifacts/sha256/` is a symlink → ok: false `symlink`", async () => {
+    const root = tempRoot("v-shadir-symlink");
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere, { mode: 0o700 });
+    mkdirSync(artifactsDir(root), { mode: 0o700 });
+    symlinkSync(elsewhere, shaDir(root));
+    expect(await verify(root)).toEqual({ ok: false, reason: "symlink" });
   });
 });
 
