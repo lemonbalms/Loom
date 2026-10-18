@@ -183,6 +183,7 @@
 ## verification — 차집합 판정·dist 재빌드 순서·독립검증·provenance·힌트 교차검증
 
 - [verification] 2026-10-18 새 읽기 전용 CLI 표면(0.41 `prompt show`)은 스펙에 하드닝 체크리스트를 처음부터 넣는다 — 공유 헬퍼의 숨은 쓰기(.corrupt 백업·마이그레이션) · 심링크/FIFO · 경로 재해석 TOCTOU · 브리지와 같은 상태 루트 · 모든 출력 필드 이스케이프. 빠뜨리면 Astra가 3라운드(6→2→1건)로 나눠 찾는다.
+- [verification] 2026-10-18 오너 승인 1회짜리 실 CLI 하네스는 가짜 모드와 **같은 단언**을 하고 판정 근거(결과 상태)를 출력해야 한다 — 출력만 하면 그 1회를 결과표로 확정 못 해 재승인이 든다(0.43 advise 0128).
 
 - [verification] 2026-07-28 listen leave vs sticky: sticky owns presence → listen must not leave; host status≠roster (UC-3 peer_unknown).
 

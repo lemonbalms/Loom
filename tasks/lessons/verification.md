@@ -799,3 +799,17 @@ cross-ref: `packages/cli/src/index.ts` shutdownListen · `scripts/smoke-uc.ts` �
 남는 디렉터리 교체 경합은 같은 사용자 한계로 선언한다.
 
 cross-ref: `packages/cli/src/prompt-cli.ts` · `packages/host/src/prompt-record.ts` · `implementation-notes.md` §0.41.0 (8)–(11).
+
+## 2026-10-18 · 실 CLI 하네스 = 가짜 모드와 같은 단언 (0.43 advise 0128)
+
+**트리거:** 오너 승인이 실행마다 필요한 실 CLI 스모크 하네스를 고칠 때.
+
+**규칙:** 가짜 모드에서 단언하는 카드별 검사(기록 버전 · sha · 섹션 id · WORK 새 항목)를 한 함수로 빼서 실 모드에서도 돌리고,
+실패하면 exit ≠ 0. 판정에 필요한 값(결과 status/reason)은 전부 출력한다. 하네스 PASS ≠ 게이트 PASS(사람이 결과표를 판정)라는
+문장을 기록 틀에 둔다.
+
+**경위:** 0.43 P3 하네스는 실 모드에서 v3 · sha · WORK를 출력만 했다(PLAN R12 "같은 검사" 위반). Astra 0124 · 0127은 하네스 내부
+결함만 봤고, 최종 advise 0128이 실 CLI 직전에 잡았다(FIX-FIRST → P3c `d57297e`). 놓쳤다면 ②·⑥이 깨져도 `PASS`로 끝나고 결과
+상태가 없어 ①을 판정할 수 없었다 — 오너의 1회 승인을 낭비한다.
+
+cross-ref: `scripts/smoke-memory-write.ts` `cardProblem` · `implementation-notes.md` §0.43.0 (10).
