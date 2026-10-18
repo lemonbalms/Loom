@@ -403,6 +403,27 @@ function runInner(step: string, extra: Record<string, string> = {}): InnerOut {
 /** WORK entries present after the card but not before (R62-H1). */
 const newWorkFiles = (c: InnerCardOut) => c.workFiles.after.filter((f) => !c.workFiles.before.includes(f));
 
+/**
+ * The per-card record + WORK check (C3 ⑩ · R62-H1) — step ⑨ in fake mode, every real row in
+ * real-CLI mode (PLAN R12: fake ① and real-CLI ① run the same check). The first failure, null when clean.
+ */
+function cardProblem(c: InnerCardOut): string | null {
+  if (c.record.read !== "ok") {
+    return `${c.cardId}: prompt-1.json ${c.record.read}${c.record.reason === null ? "" : ` — ${c.record.reason}`}`;
+  }
+  if (c.record.version !== 3) return `${c.cardId}: prompt-1.json version ${c.record.version} (want 3)`;
+  if (c.record.systemSha256 !== c.record.hintSha256) {
+    return `${c.cardId}: system sha256 ${c.record.systemSha256} ≠ HEADLESS_WORKER_HINT ${c.record.hintSha256}`;
+  }
+  if (!(c.record.wantSystemIds.length === 6 && same(c.record.systemIds, c.record.wantSystemIds))) {
+    return listDiff(`${c.cardId}: system section ids`, c.record.wantSystemIds, c.record.systemIds);
+  }
+  if (c.workFiles.incomplete !== null) return `${c.cardId}: WORK scan incomplete: ${c.workFiles.incomplete}`;
+  const added = newWorkFiles(c);
+  if (added.length !== 0) return `${c.cardId}: new WORK entries ${JSON.stringify(added)}`;
+  return null;
+}
+
 // ---------------------------------------------------------------------------------------------
 // temp-home fixtures (all under T)
 // ---------------------------------------------------------------------------------------------
@@ -550,14 +571,19 @@ function cardOf(out: InnerOut, id: string): InnerCardOut {
 
 const realRows: {
   agent: Agent;
+  cardId: string;
   line: string;
   proposed: number | null;
   notes: boolean;
   reply: string;
+  resultStatus: string | null;
+  resultReason: string | null;
   diag: CardDiag | null;
   record: InnerCardOut["record"];
   newWork: string[];
   workIncomplete: string | null;
+  /** cardProblem() — the step ⑨ per-card check; null when clean. */
+  problem: string | null;
 }[] = [];
 
 if (!existsSync(DIST)) {
@@ -588,14 +614,18 @@ try {
         const m = / proposed (\d+) · dropped /.exec(line);
         realRows.push({
           agent,
+          cardId: c.cardId,
           line,
           proposed: m ? Number(m[1]) : null,
           notes: c.notes !== null,
           reply: c.resultOutput ?? "",
+          resultStatus: c.resultStatus,
+          resultReason: c.resultReason,
           diag: c.diag,
           record: c.record,
           newWork: newWorkFiles(c),
           workIncomplete: c.workFiles.incomplete,
+          problem: cardProblem(c),
         });
       }
       const missing = realRows.filter((r) => !r.notes).map((r) => r.agent);
@@ -800,22 +830,8 @@ try {
     step("⑨ every card — prompt-1.json v3 · system sha = HEADLESS_WORKER_HINT · WORK new entries 0 (C3 ⑩ · R62-H1)", () => {
       check(allCards.length > 0, "no dispatched cards");
       for (const c of allCards) {
-        check(
-          c.record.read === "ok",
-          `${c.cardId}: prompt-1.json ${c.record.read}${c.record.reason === null ? "" : ` — ${c.record.reason}`}`,
-        );
-        check(c.record.version === 3, `${c.cardId}: prompt-1.json version ${c.record.version} (want 3)`);
-        check(
-          c.record.systemSha256 === c.record.hintSha256,
-          `${c.cardId}: system sha256 ${c.record.systemSha256} ≠ HEADLESS_WORKER_HINT ${c.record.hintSha256}`,
-        );
-        check(
-          c.record.wantSystemIds.length === 6 && same(c.record.systemIds, c.record.wantSystemIds),
-          listDiff(`${c.cardId}: system section ids`, c.record.wantSystemIds, c.record.systemIds),
-        );
-        check(c.workFiles.incomplete === null, `${c.cardId}: WORK scan incomplete: ${c.workFiles.incomplete}`);
-        const added = newWorkFiles(c);
-        check(added.length === 0, `${c.cardId}: new WORK entries ${JSON.stringify(added)}`);
+        const problem = cardProblem(c);
+        check(problem === null, problem ?? "");
       }
       return `${allCards.length} cards · v3 · system sha ${allCards[0]!.record.hintSha256.slice(0, 12)} · WORK new entries 0`;
     });
@@ -854,10 +870,13 @@ step("real home untouched", () => {
 });
 
 if (realRows.length > 0) {
-  console.log("\nReal CLI cards (UK-2 observation — record in MEMORY-WRITE-SMOKE-0380.md):");
+  console.log("\nReal CLI cards (UK-2 observation — record in MEMORY-WRITE-SMOKE-0430.md):");
   for (const r of realRows) {
     console.log(`card ${r.agent}: ${r.line || "(no memory_propose line)"}`);
     console.log(`  proposed ${r.proposed ?? "?"} · notes.md ${r.notes ? "exists" : "missing"}`);
+    console.log(
+      `  result ${r.resultStatus ?? "(none)"}${r.resultReason === null ? "" : ` ${JSON.stringify(r.resultReason)}`}`,
+    );
     console.log(`  reply ${JSON.stringify(r.reply)}`);
     console.log(
       `  prompt-1.json ${r.record.read}${r.record.reason === null ? "" : ` (${r.record.reason})`} · v${r.record.version ?? "?"} · system sha256 ${r.record.systemSha256 === r.record.hintSha256 ? "= HEADLESS_WORKER_HINT" : `${r.record.systemSha256 ?? "(none)"} ≠ HEADLESS_WORKER_HINT ${r.record.hintSha256}`}`,
@@ -882,6 +901,13 @@ if (realRows.length > 0) {
     console.log(`  transcript-1.stderr head ${JSON.stringify(d.stderrHead)}`);
   }
   console.log("");
+  // PLAN R12: the step ⑨ per-card check on every real row, after the full blocks above.
+  for (const r of realRows) {
+    step(`⑨ real card ${r.cardId} (${r.agent}) — prompt-1.json v3 · system sha = HEADLESS_WORKER_HINT · WORK new entries 0`, () => {
+      check(r.problem === null, r.problem ?? "");
+      return `v3 · system sha ${r.record.hintSha256.slice(0, 12)} · WORK new entries 0`;
+    });
+  }
 }
 
 const failed = results.filter((r) => !r.ok);
