@@ -803,7 +803,7 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
     expect(await verify(root)).toEqual(problem(sha, "symlink"));
   });
 
-  test("`<2 hex>` dir is a symlink (to a dir holding a good blob) → `symlink`", async () => {
+  test("`<2 hex>` dir is a symlink (to a dir holding a good blob) → ok: false `symlink at artifacts/sha256/<p>` (0.45.1 D1)", async () => {
     const root = tempRoot("v-prefix-symlink");
     const content = "behind a link";
     const sha = sha256Of(content);
@@ -813,7 +813,7 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
     mkdirSync(shaDir(root), { recursive: true, mode: 0o700 });
     symlinkSync(elsewhere, prefixDir(root, sha));
     writeIndex(root, [row(sha, Buffer.byteLength(content))]);
-    expect(await verify(root)).toEqual(problem(sha, "symlink"));
+    expect(await verify(root)).toEqual({ ok: false, reason: `symlink at artifacts/sha256/${sha.slice(0, 2)}` });
   });
 
   test("blob is a directory → `not a regular file`", async () => {
@@ -1047,6 +1047,38 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
       orphans: [],
       torn: 0,
     });
+  });
+
+  test("0.45.1 D1: an unindexed `<2 hex>` prefix that is a symlink (to a dir holding a good blob) → ok: false `symlink at artifacts/sha256/<p>`", async () => {
+    const root = tempRoot("v-prefix-symlink-unlisted");
+    const content = "hidden behind a prefix link";
+    const sha = sha256Of(content);
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere, { mode: 0o700 });
+    writeFileSync(join(elsewhere, sha), content, { mode: 0o600 });
+    mkdirSync(shaDir(root), { recursive: true, mode: 0o700 });
+    symlinkSync(elsewhere, prefixDir(root, sha));
+    expect(await verify(root)).toEqual({ ok: false, reason: `symlink at artifacts/sha256/${sha.slice(0, 2)}` });
+  });
+
+  test("0.45.1 D1: a regular file named like a `<2 hex>` prefix → ok: false `not a directory at artifacts/sha256/<p>`", async () => {
+    const root = tempRoot("v-prefix-file");
+    mkdirSync(shaDir(root), { recursive: true, mode: 0o700 });
+    writeFileSync(join(shaDir(root), "ab"), "not a dir", { mode: 0o600 });
+    expect(await verify(root)).toEqual({ ok: false, reason: "not a directory at artifacts/sha256/ab" });
+  });
+
+  test("0.45.1 D1 regression guard: names outside `PREFIX_RE` (`AB` symlink · `tmp` file) stay ignored → clean result", async () => {
+    const root = tempRoot("v-prefix-outside-rule");
+    const b = putBlob(root, "listed and fine");
+    // `AB` must not alias the blob's own prefix on a case-insensitive filesystem.
+    expect(b.sha.slice(0, 2)).not.toBe("ab");
+    writeIndex(root, [row(b.sha, b.bytes)]);
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere, { mode: 0o700 });
+    symlinkSync(elsewhere, join(shaDir(root), "AB"));
+    writeFileSync(join(shaDir(root), "tmp"), "t", { mode: 0o600 });
+    expect(await verify(root)).toEqual({ ok: true, checked: 1, problems: [], orphans: [], torn: 0 });
   });
 });
 
