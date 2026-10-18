@@ -19239,8 +19239,10 @@ function findOrphans(root, listed, maxBytes, lstat3) {
     let names;
     try {
       const st = lstat3(prefixDir);
-      if (st.isSymbolicLink() || !st.isDirectory())
-        continue;
+      if (st.isSymbolicLink())
+        return { ok: false, reason: `symlink at artifacts/sha256/${prefix}` };
+      if (!st.isDirectory())
+        return { ok: false, reason: `not a directory at artifacts/sha256/${prefix}` };
       names = readdirSync5(prefixDir).sort();
     } catch (err) {
       if (errCode5(err) === "ENOENT")
@@ -23602,7 +23604,7 @@ function realArtifactsCliDeps() {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.45.0";
+var VERSION = "0.45.1";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
