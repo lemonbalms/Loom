@@ -5,14 +5,14 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.43.0** — shipped 2026-10-18 · 오너 승인 실 CLI D7 PASS) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.44.0** — shipped 2026-10-18 · 실 CLI 불필요 D9) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
 
 ---
 
 ## 0.44.0 — 2026-10-18
 
-> **상태:** implemented (P1–P3) — ship 미완(아키텍트 최종 자문 뒤). **실 CLI 실행 불필요(D9)** — 워커 · 프롬프트 · argv · fingerprint · 와이어 변경 없음.
+> **상태:** shipped 2026-10-18. **실 CLI 실행 불필요(D9)** — 워커 · 프롬프트 · argv · fingerprint · 와이어 변경 없음.
 
 **지난 방 대화를 검색할 수 있다** — 0.29.0부터 bridge는 받은 모든 방 이벤트를 `~/.loom/rooms/<roomKey>/events/YYYY-MM.jsonl`에 원본 그대로 쌓아 왔지만, 그것을 다시 찾는 표면은 없었다 — 지난달 다른 카드가 무엇을 보고했는지 보려면 JSONL을 직접 열어야 했다. 0.44.0은 읽기 전용 명령 하나 **`loom history search <query>`** 를 더한다: 모든 로컬 방(또는 `--room` 한 방)의 달 파일을 하드닝된 유계 리더로 선형 스캔하고, 레코드마다 문자열을 모아 **비밀을 가린 뒤** 대소문자 무시 부분 문자열로 맞추며, 최신 것부터 보여 준다. 건너뛴 파일이 하나라도 있으면 exit 2로 "답이 부분일 수 있다"를 알린다. 업그레이드 6단계의 첫 조각이다.
 
@@ -33,7 +33,7 @@
 
 ### 불변
 
-- 방 이벤트 기록의 쓰기 경로 · 형식 · 경로(`RoomEventStore` · `readRoomEventLog`) · 와이어 · `PROTOCOL_VERSION` · 워커 입력 · argv · fingerprint · `session.json` · relay · bridge 동작 · `loom prompt show` 동작 무변경. 0.29.0 이후 쌓인 기록이 그대로 검색된다 · 0.43.0으로 되돌려도 기록은 그대로(`history` 동사만 없다). 증명 = 스캐너 단위 표 · CLI 주입 표 · 소스 진입점 하위 프로세스 · **테스트 안에서 임시로 번들한 dist CLI 네 경우**(히트 · 없음 · `incomplete` · `LOOM_CARD` 거부) — 모두 임시 HOME + `LOOM_TEST_HOME`. 실 CLI 실행 없음.
+- 방 이벤트 기록의 쓰기 경로 · 형식 · 경로(`RoomEventStore` · `readRoomEventLog`) · 와이어 · `PROTOCOL_VERSION` · 워커 입력 · argv · fingerprint · `session.json` · relay · bridge 동작 무변경. `loom prompt show`도 한 곳만 빼고 그대로다 — 0.41의 `prompt` `LOOM_CARD` 조기 거부가 memory-boolean 파싱뿐 아니라 이제 plain 파싱의 첫 단어도 본다(두 파싱이 첫 단어를 다르게 고르는 argv의 우회 차단 — P2b · P2c). 그래서 `LOOM_CARD=x loom --all ignored prompt show c --help` 같은 기이한 argv는 usage를 출력하는 대신 prompt 거부로 끝난다(과잉 거부 · 실사용 경로 아님). 0.29.0 이후 쌓인 기록이 그대로 검색된다 · 0.43.0으로 되돌려도 기록은 그대로(`history` 동사만 없다). 증명 = 스캐너 단위 표 · CLI 주입 표 · 소스 진입점 하위 프로세스 · **테스트 안에서 임시로 번들한 dist CLI 네 경우**(히트 · 없음 · `incomplete` · `LOOM_CARD` 거부) — 모두 임시 HOME + `LOOM_TEST_HOME`. 실 CLI 실행 없음.
 - **정직 고지(설계상 수용 손실):** 가리기 거짓 음성 — 특히 첨부 JSON 안 따옴표 대입(계급 69) · 가린 구간 안은 못 찾고 `REDACTED`는 맞는다(계급 70) · 스캔 중 자라는 파일은 연 크기까지(계급 71) · env 가리기는 검색하는 셸 기준(계급 72) · 디렉터리 교체 경합은 같은 사용자 한계(계급 73) · 카드 결과 output은 JSON 이스케이프 형으로 검색 · 표시(계급 74) · 색인 없음 · 기록에 없는 이벤트는 없다(계급 75) · 방 사이 순서는 보낸 쪽 시계만큼(계급 76) · 미래 `ts` 달이 맨 앞(계급 77 — `--month`로 우회) · 반복 플래그는 마지막 값 · `LOOM_CARD` 거부는 가드이지 경계가 아니다.
 
 ### 정본

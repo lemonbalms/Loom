@@ -24,7 +24,7 @@
    - [x] **4부 — v0.38.0 기억 쓰기 경로** (shipped `2b75ae3`) → 후속 **v0.39.0** codex 스킬 읽기 hint 예외(shipped `11e909a`) → **v0.40.0** 표지 흉내 접기 강화 · R8 · 헤드리스 카드 본문 무력화 · 스킬 이름/조립 항목 판정(shipped 2026-10-18 · R59 · implementation-notes §0.40.0).
    4단계 완료.
 5. [ ] **5단계 — 프롬프트 조립** — 1부 v0.41.0 관측(기록 + `loom prompt show`) shipped 2026-10-18 · 2부 v0.42.0 섹션 manifest(바이트 보존) + 기록 v2 shipped 2026-10-18 · 3부 v0.43.0 의미 이동 슬라이스 A(시스템 섹션 여섯 · 기록 v3 · drain) shipped 2026-10-18(오너 승인 실 CLI D7 PASS — `MEMORY-WRITE-SMOKE-0430.md`) · 다음 = 오너 선택(슬라이스 B/C는 0.43 관찰 뒤 별도 PLAN)
-6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** (미착수 — redaction은 이 단계의 검색 인덱스 책임)
+6. [ ] **6단계 — 히스토리 FTS + 아티팩트 CAS** — 1부 v0.44.0 `loom history search`(방 이벤트 기록 읽기 전용 선형 검색 · 보여 주기 전 가리기 · 실 CLI 불필요 D9) shipped 2026-10-18(verify 0148 PASS-with-lows · advise 0149 FIX-FIRST 문서 → ship 커밋 · 스위트 4134/0) · 다음 = 오너 선택(2부 artifact CAS + `index.jsonl` → MCP `search_history`/`list_artifacts` → SQLite FTS)
 7. [ ] **7단계: 총괄 에이전트 (orchestrator agent)** — 계획·배분·결과 판정·사람 확인 지점; 제안 모드 → 승인 지점 모드 → 자율 모드.
    (확정 2026-10-16, 순서상 마지막 — 재질문 금지 · 미착수 · 설계 `docs/UPGRADE-PLAN.md`)
 
