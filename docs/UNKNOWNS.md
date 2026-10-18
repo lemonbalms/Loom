@@ -42,6 +42,36 @@
 
 ## Gate log
 
+### 0.44.0 — `loom history search` — 방 이벤트 기록 읽기 전용 선형 검색 (`approved` — R63 approved-with-fixes · no R63b)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.44.0 (`approved` — R63 approved-with-fixes, 반영 완료 · no R63b · author-close 불가) · MINOR · 업그레이드 6단계 1부 · 근거 = 오너 "진행해"((a) → (c) 6단계 · (a) 위생 강등 `d67f758`) · `UPGRADE-PLAN.md:111-115` · `:246-260` · 범위 = 락 D1~D10(아키텍트 2026-10-18) |
+| **Date** | 2026-10-18 |
+| **Review** | R63 **done 2026-10-18** — approved-with-fixes M4 · L6 (M1 사람 출력 `visibleText` 뒤 TAB · LF 이스케이프 · M2 상위 `limit`개 유계 버퍼 · 피크 메모리 · M3 달 안 `ts` 정규식 + `Date.parse` 숫자 내림차순 · M4 판정 반영 · 계급 76 · UK-4 · `UPGRADE-PLAN.md:157 · :250 · :251` · L1 `Number.isFinite(rec.seq)` · L2 `truncateSync` 희소 파일 · L3 env 한 번 거르기 · L4 계급 69 첨부 JSON 따옴표 대입 · L5 계급 77 미래 `ts` · L6 `incomplete` 범위) · 아키텍트 판정(R8 대안 `ts` · R12 draft · R17 확대 · R1 · R4 · R9 수용) — (`WORKFLOW.md` §5.1 신규 제품 표면(CLI 동사) · 신뢰 경계(운영자가 모든 로컬 방의 원본 기록을 읽음 · `LOOM_CARD` 거부 · 보여 주기 전 redaction)) |
+| **Evidence** | 코드 실측 작업 트리 2026-10-18(HEAD `d67f758`) · `room-event-log.ts:41-49` · `:125-150` · `:157-175` · `:256-268` · `:541` · `:550` · `:617-648` · `:737` · `:766` · `:823-851` · `bridge-runtime.ts:1089-1092` · `prompt-cli.ts:53-57` · `:74-81` · `:101-105` · `:347-353` · `prompt-record.ts:414-417` · `:426-469` · `redact.ts:15-25` · `:64-98` · `session-store.ts:79-83` · `:254-260` · `cli/src/index.ts:175` · `:285-286` · `:386-420` · `:3317-3332` · `:3456-3461` · `card-contract.ts:36-72` · `envelope.ts:40-44` · `package.json:14` · `tasks/lessons/verification.md:789-801` · `UPGRADE-PLAN.md:157` · `:250-260` · `:346` |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) 기록은 0.29.0부터 브리지가 `rooms/<roomKey>/events/<UTC YYYY-MM>.jsonl`에 원본 봉투 그대로 0600으로 쌓는다(레코드 `{v, roomId, seq, eventId, ts, type, envelope}`). (2) 기존 `readRoomEventLog`는 상한 없는 `readFile` · 성분 `lstat` 없음 → 운영자 표면에 못 쓴다. (3) `prompt show`의 read-only 상태 루트 거울(`.loom` → `.fable` → `.loom`)과 `visibleText`가 이미 있다. (4) `redactSecrets(text, env?)`는 순수 · env 주입 가능. (5) 0.41.0 verify 세 라운드가 남긴 읽기 전용 하드닝 체크리스트 다섯(D8). |
+| Known unknowns | **UK-1~UK-5**(아래 표, 정본 = PLAN §0.44.0). 요지: 실제 기록 크기 · 큰 스캔에서 redaction 비용 · Bun `O_NONBLOCK` 일반 파일 동작 · 방 사이 순서의 쓸모 · 미래 MCP 도구의 방 멤버 판정. |
+| Unknown knowns | `seq`는 방마다 매기는 순번이라 여러 방에서 "seq 내림차순"은 시간 순서가 아니다(R8 → 판정 = 달 안 `ts` 숫자 내림차순 · R63-M3). 카드 결과 output/summary는 첨부 `content` 안 JSON 텍스트라 이스케이프 형으로 검색된다(R6 · 계급 74). `readBoundedRegularFile`은 `fstat` 뒤 자란 파일을 상한까지 더 읽는다 — 락 계급 "fstat 크기까지"와 계약이 달라 재사용하지 않는다(R2). `visibleText`를 JSON 값에 쓰면 값이 바뀐다(R12 → 판정 = draft) · `visibleText`는 TAB · LF를 통과시켜 원격 피어 값으로 가짜 줄을 꾸밀 수 있다(R63-M1). `UPGRADE-PLAN.md:250` 경로(`<roomId>`)와 `:157`(쓰기 전 걸러냄)도 코드와 달랐다 — 정정(R17 판정 확대). |
+| Unknown unknowns | 오래 쌓인 기록에 섞인 예전 봉투 모양(0.29~0.43 사이 와이어 확장)이 잎 수집에서 어떻게 보일지 · 운영자가 실제로 찾는 질의의 모양(짧은 낱말 · 카드 id · 사람 이름) · 다른 프로필 브리지가 같은 상태 루트에 남긴 기록의 섞임. |
+
+**Unknowns 요약 (정본 = PLAN §0.44.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R63 판정 | 결과 |
+|---|------|-------------|----------|------|
+| UK-1 | **실제 기록 크기** — 달 파일 바이트 · 레코드 수 · 가장 큰 방(64 MiB 상한 · 선형 스캔의 쓸모) | 상한 초과 = `incomplete: too large` · exit 2 · 측정은 오너 기록이라 자동 실행 안 함 · SQLite 시점의 근거 | — | — |
+| UK-2 | **`redactSecrets` 비용** — 레코드마다 다섯 갈래 + env 값 반복 · 큰 달 파일 전체 스캔 시간 | P1 합성 큰 파일 시간 관찰 한 건(판정 아님 · 상한 단언 없음) · 느리면 색인의 근거 | — | — |
+| UK-3 | **Bun `O_NONBLOCK` 일반 파일 동작** — `readSync`가 `EAGAIN` 없이 끝까지 · FIFO `open` 비차단 | P1 FIFO · 큰 파일 사례 · `EAGAIN`이면 `unreadable EAGAIN`(fail-visible) | — | — |
+| UK-4 | **방 사이 순서의 쓸모** — R8 draft(seq)가 "최신 먼저"로 읽히는지 | R8 대안(`ts`) 선택 가능 · 계급 76 | **closed** — 아키텍트 판정 R8 대안 `ts` 채택(R63-M3 숫자 비교) · 남는 손실 = 계급 76(시계 차이) · 77(미래 `ts`) | closed 2026-10-18 |
+| UK-5 | **미래 MCP 도구의 방 멤버 판정** — "지금 그 방의 멤버"를 로컬 기록 위에서 어떻게 | 이 버전은 CLI만(D3) · MCP PLAN 착수 전 판정 | — | — |
+
+**승계:** 없음(0.43.0 UK-1~UK-5는 워커 시스템 문면 축 — 그대로 유지).
+
+**Current decision:** **`approved` (R63 approved-with-fixes → M1·M2·M3·M4·L1·L2·L3·L4·L5·L6 반영, no R63b, 2026-10-18).** D1~D10 아키텍트 락(2026-10-18 · D5 · D6 문면은 R8 · R12 판정으로 수정) · 작성자 정밀화 R1~R17(판정 반영 — CONFLICT 없음) · 수용 손실 계급 69~77 + 무번호 · UK-1~UK-3 · UK-5 비차단 수용 · UK-4 closed. `UPGRADE-PLAN.md:157 · :250 · :251` 정정 = 이 PLAN과 함께(D1 · R17). 구현 착수 = **P1**(스캐너 red → green). ship = 스위트 + 단위 + dist CLI · 실 CLI 없음(D9).
+
 ### 0.43.0 — 헤드리스 워커 시스템 채널을 Loom이 쓴 고정 섹션 여섯으로 · 프롬프트 기록 v3 · fingerprint 변경 · drain (`approved` — R62 approved-with-fixes · no R62b · implemented (P1–P4) · shipped 2026-10-18 · 실 CLI D7 PASS)
 
 | Field | Value |
