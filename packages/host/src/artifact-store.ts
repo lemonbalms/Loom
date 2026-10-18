@@ -346,7 +346,7 @@ function ingestSteps(input: IngestInput, deps: IngestDeps): string | null {
       blob = lstatSync(blobPath);
     } catch {}
     // P1c (Astra 0168): a path-based unlink cannot prove which inode it removes, so ingest never unlinks —
-    // a wrong blob is left in place (no row) and `verify` reports it as `sha mismatch`.
+    // a wrong blob is left in place (no row) and `verify`'s orphan walk reports it as `sha mismatch`.
     if (!blob || !sameIdent(blob, conv.ident)) return "inode changed";
   } else {
     // R8: EEXIST — the blob is already there; a match gets a row, anything else leaves it untouched.
@@ -497,23 +497,52 @@ function checkBlob(root: string, sha: string, bytes: number, maxBytes: number): 
   return sha256Hex(read) === sha ? null : "sha mismatch";
 }
 
-/** R15: `<2 hex>/<64 hex>` regular files under a real `sha256/` whose sha the index does not list. */
-function findOrphans(root: string, listed: Set<string>): { name: string }[] {
+/**
+ * P2b (Astra 0172 L): an unindexed blob gets the same bounded no-follow checks as an indexed one, minus the
+ * size the index would supply — its bytes must hash to its name.
+ */
+function checkOrphanBlob(blobPath: string, sha: string, maxBytes: number): ArtifactProblemReason | null {
+  let st: ReturnType<typeof lstatSync>;
+  try {
+    st = lstatSync(blobPath);
+  } catch (err) {
+    if (errCode(err) === "ENOENT") return "missing";
+    return `unreadable ${errCode(err)}`;
+  }
+  if (st.isSymbolicLink()) return "symlink";
+  if (!st.isFile()) return "not a regular file";
+  if (st.mode & 0o111) return "exec bit";
+  const read = readBoundedRegularFile(blobPath, maxBytes);
+  if (!Buffer.isBuffer(read)) {
+    if (read.kind === "missing") return "missing";
+    return read.reason as ArtifactProblemReason;
+  }
+  return sha256Hex(read) === sha ? null : "sha mismatch";
+}
+
+type OrphanWalk = { orphans: { name: string }[]; problems: { sha256: string; reason: ArtifactProblemReason }[] };
+
+/**
+ * R15: `<2 hex>/<64 hex>` entries under a real `sha256/` whose sha the index does not list. A matching
+ * regular file is an orphan (info); anything else under such a name is a problem (P2b).
+ */
+function findOrphans(root: string, listed: Set<string>, maxBytes: number): OrphanWalk {
   const shaDir = shaDirOf(root);
   for (const dir of [join(root, "artifacts"), shaDir]) {
     try {
       const st = lstatSync(dir);
-      if (st.isSymbolicLink() || !st.isDirectory()) return [];
+      if (st.isSymbolicLink() || !st.isDirectory()) return { orphans: [], problems: [] };
     } catch {
-      return [];
+      return { orphans: [], problems: [] };
     }
   }
   const out: { sha: string; name: string }[] = [];
+  const problems: { sha256: string; reason: ArtifactProblemReason }[] = [];
   let prefixes: string[];
   try {
     prefixes = readdirSync(shaDir).sort();
   } catch {
-    return [];
+    return { orphans: [], problems: [] };
   }
   for (const prefix of prefixes) {
     if (!PREFIX_RE.test(prefix)) continue;
@@ -528,21 +557,20 @@ function findOrphans(root: string, listed: Set<string>): { name: string }[] {
     }
     for (const name of names) {
       if (!SHA_RE.test(name) || !name.startsWith(prefix) || listed.has(name)) continue;
-      try {
-        if (!lstatSync(join(prefixDir, name)).isFile()) continue;
-      } catch {
-        continue;
-      }
-      out.push({ sha: name, name: `sha256/${prefix}/${name}` });
+      const reason = checkOrphanBlob(join(prefixDir, name), name, maxBytes);
+      if (reason === "missing") continue;
+      if (reason) problems.push({ sha256: name, reason });
+      else out.push({ sha: name, name: `sha256/${prefix}/${name}` });
     }
   }
   out.sort((a, b) => (a.sha < b.sha ? -1 : a.sha > b.sha ? 1 : 0));
-  return out.map((o) => ({ name: o.name }));
+  return { orphans: out.map((o) => ({ name: o.name })), problems };
 }
 
 /**
- * ② verify (R15 · D7): per distinct indexed sha the first problem only, then the orphan walk. Problems and
- * orphans in sha order; torn lines are counted, never a problem. Zero writes.
+ * ② verify (R15 · D7): per distinct indexed sha the first problem only, then the orphan walk (an unindexed
+ * blob that fails its checks is a problem too — P2b). Problems and orphans in sha order; torn lines are
+ * counted, never a problem. Zero writes.
  */
 export function verifyArtifactStore(root: string, maxBytes: number): ArtifactVerifyResult {
   const read = readIndexRows(root);
@@ -561,11 +589,14 @@ export function verifyArtifactStore(root: string, maxBytes: number): ArtifactVer
     else reason = checkBlob(root, sha, [...set][0] ?? 0, maxBytes);
     if (reason) problems.push({ sha256: sha, reason });
   }
+  const walk = findOrphans(root, new Set(bytesBySha.keys()), maxBytes);
+  problems.push(...walk.problems);
+  problems.sort((a, b) => (a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0));
   return {
     ok: true,
     checked: bytesBySha.size,
     problems,
-    orphans: findOrphans(root, new Set(bytesBySha.keys())),
+    orphans: walk.orphans,
     torn: read.torn,
   };
 }

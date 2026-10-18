@@ -442,12 +442,13 @@ async function convFetchUnlocked(opts: ConvFetchOpts): Promise<ConvFetchResult> 
   }
 
   // PLAN 0.45.0 ② (D3 · R1 · R16) — best-effort store ingest; never throws, logs to stderr only.
+  // The landed name itself (R1 · R3 — not `destReal`), so a symlinked name is seen and skipped as `symlink`.
   ingestFetchedArtifact({
     root: loomDir(),
     convId,
     seq,
     index,
-    destPath: destReal,
+    destPath,
     sha256: actualSha,
     bytes,
     maxBytes,
