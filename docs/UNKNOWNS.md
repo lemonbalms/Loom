@@ -42,14 +42,15 @@
 
 ## Gate log
 
-### 0.45.1 — 이월 결함 둘 — `verify` 접두 fail closed · pack 원시 바이트 해시 (`approved` — R66 approved-with-fixes · no R66b · implemented (P1–P3) · ship 전)
+### 0.45.1 — 이월 결함 둘 — `verify` 접두 fail closed · pack 원시 바이트 해시 (`approved` — R66 approved-with-fixes · no R66b · implemented (P1–P3) · shipped 2026-10-18)
 
 | Field | Value |
 |-------|-------|
 | **PLAN** | v0.45.1 (`approved` — R66 approved-with-fixes, L1~L3 반영 · no R66b) · PATCH · 근거 = 0.45.0 최종 advise Low 이월(`artifact-store.ts:574`) + 0.45.0 R17 · 계급 89 · 범위 = 락 D1~D5(아키텍트 2026-10-18) |
 | **Date** | 2026-10-18 |
 | **Review** | R66 **done 2026-10-18**(loom-advisor via `lane.ts advise` 0187) — approved-with-fixes H0 · M0 · L3(L1 R7 · UK-1 Bun BOM 보존 프로브 · P2 BOM 사례 원시 바이트 sha · L2 회귀 방지 표기 · 꼭 red 목록 · 아키텍트 red 재실행 · L3 USER_GUIDE §20B 걷기 실패 문장) · R2 `CONFLICT` → D1 유지(아키텍트 판정 — `:806-817` 편집 선언) |
-| **Implemented** | 2026-10-18 (P1–P3 · ship 전 — 다음 = 최종 advise → ship) — 게이트 `0005173` · P1 `eeca264` → `50954a2` · P2 `806acec` → `56c5f53` · P3 = 버전 0.45.1 세 줄 · README · USER_GUIDE §20B · CHANGELOG · implementation-notes §0.45.1 · PLAN. 정본 `implementation-notes.md` §0.45.1 |
+| **Implemented** | 2026-10-18 (P1–P3 · P2b) — 게이트 `0005173` · P1 `eeca264` → `50954a2` · P2 `806acec` → `56c5f53` · P2b `ed193f5`(Astra 0192 Low 둘 · 테스트만) · P3 = 버전 0.45.1 세 줄 · README · USER_GUIDE §20B · CHANGELOG · implementation-notes §0.45.1 · PLAN. 정본 `implementation-notes.md` §0.45.1 |
+| **Shipped** | 2026-10-18 — HEAD `f26f107` · 스위트 4284 / 0 · Astra 0190 · 0192(Low 둘 → P2b) · 0196 PASS · 최종 advise 0195 = ship · dist `f26f107` · 실 CLI 0회(D3) |
 
 | 분면 | 내용 |
 |------|------|
@@ -67,7 +68,7 @@
 
 **승계:** 0.45.0 **UK-4** → **closed by 0.45.1**(D2 — 결함이 사라져 빈도 판정 불요) · 0.45.0 UK-1 · UK-2 · UK-3 · UK-5 그대로.
 
-**Current decision:** **`approved` → implemented (P1–P3)** · ship 전(다음 = 최종 advise → ship). 실 CLI 없음(D3).
+**Current decision:** **`approved` → implemented (P1–P3) · shipped 2026-10-18.** 실 CLI 없음(D3).
 
 ### 0.45.0 — 산출물 내용 주소 저장소 첫 조각 — `conv_fetch` 성공 뒤 해시 저장 · `loom artifacts list` · `verify` (`approved` — R64 approved-with-fixes · no R64b · implemented (P1–P4) · shipped 2026-10-18)
 

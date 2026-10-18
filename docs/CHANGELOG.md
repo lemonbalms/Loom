@@ -5,14 +5,14 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.1** — implemented 2026-10-18 · ship 전 · 실 CLI 불필요 D3) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.1** — shipped 2026-10-18 · 실 CLI 불필요 D3) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
 
 ---
 
 ## 0.45.1 — 2026-10-18
 
-> **상태:** implemented 2026-10-18 · ship 전. **실 CLI 실행 불필요(D3)** — 와이어 · `packages/protocol` · tower `conv_fetch` · 워커 · 프롬프트 · fingerprint 변경 없음.
+> **상태:** shipped 2026-10-18. **실 CLI 실행 불필요(D3)** — 와이어 · `packages/protocol` · tower `conv_fetch` · 워커 · 프롬프트 · fingerprint 변경 없음.
 
 **`verify`가 마지막 조용한 건너뜀을 없애고, 잘못된 UTF-8 워커 파일도 받아진다** — 0.45.0 `loom artifacts verify`는 `artifacts/sha256/` 아래 `<2 hex>/` 이름이 심볼릭 링크이거나 디렉터리가 아니면 그 아래를 조용히 건너뛰어 "깨끗함"으로 보고할 수 있었다. 또 브리지는 워커 파일을 UTF-8로 디코딩한 문자열로 해시해, 잘못된 UTF-8 바이트가 든 파일은 tower `conv_fetch`의 원시 바이트 sha 대조에서 **늘** 격리됐다. 0.45.1은 둘 다 고친다.
 

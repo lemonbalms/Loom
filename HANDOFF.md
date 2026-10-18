@@ -5,31 +5,31 @@
 
 ## One-line resume
 
-> v0.45.1 PATCH **implemented** (P1–P3) · **next = final advise → ship**
+> v0.45.1 PATCH **shipped** 2026-10-18 · **next = MBP relay (owner yes per step) / owner pick**
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.45.1 implemented** (P1–P3 · R66) · 0.45.0 shipped 2026-10-18 | `docs/PLAN.md` |
+| Product | **v0.45.1 shipped** 2026-10-18 (R66 · no real-CLI) | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.45.1 implemented · next = final advise → ship
+### v0.45.1 shipped · next = MBP relay (owner yes per step) / owner pick
 
-**Goal:** ship v0.45.1 PATCH — `verify` fails closed on a symlinked/non-dir `<2 hex>/` prefix (D1) · pack hashes worker files as raw bytes (D2 — class 89 closed).
-R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b). P1 `eeca264`/`50954a2` · P2 `806acec`/`56c5f53` · P3 docs + version 0.45.1.
+**Goal:** v0.45.1 PATCH shipped — `verify` fails closed on a symlinked/non-dir `<2 hex>/` prefix (D1) · pack hashes worker files as raw bytes (D2 — class 89 closed).
+Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/0192/0196 PASS · advise 0195 ship · no real-CLI.
 
-**Next:** loom-advisor final advise → ship checks (§0.45.1 Done (c)(d) — suite · typecheck · biome · handoff:check · `build:cli` dist) → ship commit.
+**Next:** MBP 2015 relay (Owner pending — owner yes per live step) or owner picks the next product step.
 
 **Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** §0.45.1 Done (a)–(f) checked · v0.45.1 shipped.
+**Done when (this handoff):** owner picks the next step (MBP relay or product).
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -38,8 +38,8 @@ R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b). P1 `eeca264`/`5095
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
-| Suite | **0 fail** (4277/0 at 0.45 ship) | `pane-cleanup` ⑥ flaky under load | 0.45 ship |
-| v0.45.1 | **implemented** (P1–P3) · final advise next | PATCH: verify prefix fail closed + pack raw-byte sha | `docs/PLAN.md` §0.45.1 |
+| Suite | **0 fail** (4284/0 at 0.45.1 ship) | `pane-cleanup` ⑥ flaky under load | 0.45.1 ship |
+| v0.45.1 | **shipped** 2026-10-18 · no real-CLI (D3) | PATCH: verify prefix fail closed + pack raw-byte sha | `docs/PLAN.md` §0.45.1 |
 | v0.45.0 | **shipped** 2026-10-18 · no real-CLI (D9) | artifact CAS store first slice | `docs/PLAN.md` §0.45.0 |
 | v0.32–0.44.1 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
 | P3 soft close | **closed** · 3.0–3.2 opt-in · 3.3–3.4b false | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
@@ -85,4 +85,4 @@ R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b). P1 `eeca264`/`5095
 - 0.37.0 real-CLI ① (PASS 2026-10-17) · 0.38.0 real-CLI ① (PASS 2026-10-18) · 0.39.0 real-CLI (PASS 2026-10-18) · 0.43.0 real-CLI (PASS 2026-10-18).  
 - 0.36.0 real-CLI smoke (PASS 2026-10-17).  
 - 0.34.0 live launchd smoke (PASS 2026-10-17, macOS).
-- 0.45.0 shipped (no real-CLI, D9).
+- 0.45.0 shipped (no real-CLI, D9) · 0.45.1 shipped (no real-CLI).
