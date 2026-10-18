@@ -5,8 +5,41 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.44.0** — shipped 2026-10-18 · 실 CLI 불필요 D9) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.44.1** — shipped 2026-10-18 · 실 CLI 불필요 D7) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.44.1 — 2026-10-18
+
+> **상태:** shipped 2026-10-18. **실 CLI 실행 불필요(D7)** — 와이어 · relay 서버 · 워커 · 프롬프트 · fingerprint 변경 없음 · 클라이언트 재연결 내부 동작만.
+
+**relay가 오래 내려가도 다시 붙는다** — bridge · sticky host · `loom listen` · `loom run`의 relay 클라이언트는 끊기면 재연결했지만 기본 20회에서 *"Reconnect gave up after 20 attempts"* 한 줄을 남기고 영영 멈췄다 — relay가 몇 분 내려가면 bridge는 살아 있되 방에서 떨어졌다. 0.44.1은 기본 상한을 없애고, 재연결 join이 재시도로 풀리지 않는 이유로 거절되면 조용히 반쯤 열린 채 있지 않고 한 줄로 알리고 멈춘다.
+
+### 가능해진 것
+
+- **포기하지 않는 재연결** — 네트워크 끊김 · relay 재시작 · 업그레이드 거부 모두 무한 재시도(유한 상한은 호출자가 명시할 때만). 간격 = 기존 곡선 `min(1000·2^attempt, 15000)` ms 위 equal jitter(절반 + 무작위 절반) → 0.5–15초.
+- **실패 한 번 = 증가 한 번** — 실패한 시도가 재연결을 두 번 예약해 곡선을 두 칸씩 건너뛰던 결함 수정 · join 대기 중 다시 끊겨도 재연결 체인은 하나.
+- **`reconnected (attempt N)`의 N이 실제 값** — 카운터는 소켓이 열릴 때가 아니라 방 join이 성공할 때 되돌아간다(예전엔 늘 0).
+- **정지 두 가지는 한 줄로** — 재연결 join이 `peer_auth_failed` · `room_not_found`로 거절되면 `Reconnect stopped: <code> — <message>`를 남기고 재시도를 멈춘다. 그 밖의 join 오류(`persist_failed` 등)는 소켓을 닫고 다시 시도한다(예전엔 열린 채 무음).
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.44.0) | 지금 (0.44.1) |
+|---------------|---------------|
+| relay가 오래 꺼지면 bridge를 재시작해야 방에 돌아왔다 | relay가 돌아오면 저절로 돌아온다 |
+| 낡은 peerSecret · 사라진 방 → 소켓은 열린 채 오류 한 줄 · 이후 무음 | `Reconnect stopped: …` 한 줄 · 재시도 정지 · 프로세스는 산다 → 다시 join 후 재시작 |
+| 첫 재시도 1초 고정 | 0.5–1초 · 상한 근처 평균 11.25초(예전 15초) |
+
+### 불변
+
+- 와이어 · `PROTOCOL_VERSION` · relay 서버 · 초기 join 실패 처리(`listen` · `run`은 여전히 exit 1) · 워커 · 프롬프트 · fingerprint · bridge 로그 형식 무변경. 새 exit 없음 — 정지 뒤에도 프로세스는 살아 있다(서비스 크래시 루프 방지).
+- **정직 고지(설계상 수용 손실):** 토큰이 틀린 업그레이드 거부(401)는 네트워크 실패와 구분되지 않아 영원히 재시도한다(계급 78) · relay가 오래 꺼져 있으면 실패마다 두 줄 · ≤ 15초마다 → 하루 ≈15k 줄/프로세스(로그 회전 미룸) · 정지 뒤 방에서 떨어졌다는 신호는 로그 줄뿐(doctor · 상태 파일 표시 없음 — 계급 79) · 비영속 relay 재시작은 `room_not_found` 정지(계급 80 — 영속 relay는 방을 지킨다).
+- 증명 = 로컬 가짜 relay 위 재연결 테스트(곡선 · 기본 무한 · 증가 하나 · 리셋 · 정지 · 재시도 · 콜백이 던져도 계속) · 기존 relay-client 테스트 무편집 통과. 실 CLI 실행 없음.
+
+### 정본
+
+- [`USER_GUIDE.md`](./USER_GUIDE.md) §10 "재연결" · PLAN 0.44.1 · R65 · `implementation-notes.md` §0.44.1
 
 ---
 

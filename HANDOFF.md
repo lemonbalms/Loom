@@ -5,43 +5,43 @@
 
 ## One-line resume
 
-> v0.44.1 **approved** (R65) · relay reconnect never gives up · **next = P1 reconnect red → green**
+> v0.44.1 **shipped** · relay reconnect never gives up · **next = MBP 2015 relay setup (owner) + 0.45.0 rebase**
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.44.1 approved** (R65) 2026-10-18 · next = P1 | `docs/PLAN.md` §0.44.1 |
+| Product | **v0.44.1 shipped** 2026-10-18 · next = MBP relay + 0.45.0 | `docs/PLAN.md` §0.44.1 |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.44.1 approved (R65) · next = P1 reconnect red → green
+### v0.44.1 shipped · next = MBP 2015 relay setup (owner) + 0.45.0 rebase/continue
 
-**Goal:** relay clients never give up on retryable failures — prerequisite for the MBP 2015 always-on relay replacing the Windows relay.
-0.44.1 PATCH on worktree `patch-0.44.1` (from origin/main `c65a20b`) · 0.45.0 artifact store is in progress on local main and lands after 0.44.1.
-R65 approved-with-fixes → M1 (R1 = pending-timer **or** `reconnectInFlight` guard) · M2 (default-infinite proof) · L1–L3 folded, no R65b.
+**Goal:** move the always-on relay from the Windows box to the MBP 2015 — 0.44.1 clients survive relay restarts and long outages; a URL change still needs each client restarted.
+0.44.1 shipped from worktree `patch-0.44.1` (origin/main `c65a20b` base) · 0.45.0 artifact store is in progress on local main.
 
 **Steps:**
-1. P1 red = new `relay-client.reconnect.test.ts` only (production 0 lines) → green = `relay-client.ts` only (tests 0 lines) · `lane.ts verify` + architect rerun
-2. P2 = versions ×3 → 0.44.1 · `build:cli` · USER_GUIDE reconnect paragraph (R9) · CHANGELOG · implementation-notes §0.44.1 · PLAN:2513 note
-3. loom-advisor final review → ship; then 0.45.0 rebases onto it
+1. Owner-run checks on the MBP: `bun --version` works on its macOS (Intel, ≤12) · Tailscale up
+2. **Order matters** (a client that reaches a stateless MBP relay stops for good on `room_not_found`): stop the Windows relay → copy `~/.loom/relay-state` to the MBP → only then start the MBP relay as a LaunchDaemon (owner yes — live launchd rule) · `pmset` no-sleep/autorestart
+3. Switch clients' `LOOM_RELAY_URL` to the MBP and restart them · check each log has 0 `Reconnect stopped`
+4. Local main 0.45.0 rebases on 0.44.1, then continues its gate
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** PLAN §0.44.1 Done (a)–(d) checked · suite 0 fail · shipped.
+**Done when (this handoff):** relay runs on the MBP with durable state moved · clients reconnect via the new URL · 0.45.0 rebased.
 
-**Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start code beyond approved 0.44.1 P1–P2 · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
-| Suite | **0 fail** (4134/0) | `pane-cleanup` ⑥ flaky under load | 0.44 ship |
-| v0.44.1 | **approved** (R65) · P1 next · no real-CLI (D7) | relay reconnect | `docs/PLAN.md` §0.44.1 |
+| Suite | **0 fail** | `pane-cleanup` ⑥ flaky under load | 0.44.1 ship |
+| v0.44.1 | **shipped** 2026-10-18 · no real-CLI (D7) | relay reconnect | `docs/PLAN.md` §0.44.1 |
 | v0.44.0 | **shipped** 2026-10-18 · no real-CLI (D9) | read-only history search | `docs/PLAN.md` §0.44.0 |
 | v0.32–0.43 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
 | P3 soft close | **closed** · 3.0–3.2 opt-in · 3.3–3.4b false | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
@@ -52,6 +52,7 @@ R65 approved-with-fixes → M1 (R1 = pending-timer **or** `reconnectInFlight` gu
 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
+| MBP relay LaunchDaemon | live launchd rule | wait for owner yes | HANDOFF Steps 2 |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
@@ -74,7 +75,7 @@ R65 approved-with-fixes → M1 (R1 = pending-timer **or** `reconnectInFlight` gu
 
 - Session ritual: `docs/SESSION-START.md` · topology `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`  
 - Close: `docs/spikes/RULE-ROUTER-PHASE3-SOFT-CLOSE.md`  
-- 0.44.1 review: `docs/plan_review.md` §Review R65  
+- 0.44.1 review: `docs/plan_review.md` §Review R65 · record `implementation-notes.md` §0.44.1  
 - 3.4b/3.4/3.3 RESULT · `scripts/rule-router-jit.ts`  
 
 ## Don't redo

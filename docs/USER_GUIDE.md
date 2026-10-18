@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.44.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.44.1** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -514,6 +514,22 @@ bun run loom --profile bob \
 
 - 기본 Share 줄에는 토큰을 **숨김** (`--show-token` 으로만 포함)  
 - 토큰을 채팅에 평문 유포하지 말 것
+
+### 재연결 — relay가 내려갔다 돌아올 때 (v0.44.1)
+
+bridge · sticky host · `loom listen` · `loom run`은 relay와의 연결이 끊기면 **포기하지 않고** 다시 붙는다(0.44.0까지는 20회 뒤 *"Reconnect gave up after 20 attempts"* 한 줄을 남기고 멈췄다). 네트워크 끊김 · relay 재시작 · 업그레이드 거부 모두 같은 재시도다. 간격은 0.5–15초 사이에서 무작위로 흔들린다(첫 시도 0.5–1초 · 몇 번 실패하면 7.5–15초) — 여러 피어가 같은 순간에 몰리지 않게. 다시 방에 들어가면 방 채팅에 `reconnected (attempt N)`이 한 번 보인다(N = 그때까지 실제 시도 횟수).
+
+재시도로 풀리지 않는 거절 두 가지에서만 **멈추고 한 줄을 남긴다**(bridge 로그 · stderr):
+
+| 로그 줄 | 뜻 | 할 일 |
+|---------|-----|-------|
+| `Reconnect stopped: peer_auth_failed — …` | relay가 이 피어의 비밀을 거절했다(낡은 peerSecret — 다른 곳에서 같은 이름으로 다시 join했거나 relay 상태가 바뀜) | 프로필 상태를 확인하고 `room join`을 다시 한 뒤 프로세스(bridge · `loom service start` 등)를 재시작 |
+| `Reconnect stopped: room_not_found — …` | 돌아온 relay에 그 방이 없다(비영속 relay 재시작 · 방 삭제) | 방을 다시 만들거나 join한 뒤 프로세스 재시작 |
+
+멈춘 뒤에도 프로세스는 살아 있다(exit 없음 — 서비스 크래시 루프 방지). 방에서 떨어졌다는 신호는 이 로그 줄뿐이다. 그 밖의 join 오류(`persist_failed` 등)는 소켓을 닫고 계속 재시도한다.
+
+- **로그 양:** relay가 오래 내려가 있으면 실패할 때마다 두 줄씩 · 최대 15초마다 쌓인다 — 하루 종일 꺼져 있으면 프로세스당 약 15k 줄. 토큰이 틀린 업그레이드 거부(401)도 클라이언트에서는 네트워크 실패와 구분되지 않아 같은 빈도로 영원히 재시도한다 — 로그 줄로 원인을 본다.
+- **영속 relay는 방을 지킨다:** 영속 상태(`LOOM_RELAY_STATE_DIR` · 기본 `~/.loom/relay-state`)로 다시 뜬 relay에서는 방과 피어가 그대로라 위 두 정지가 나지 않는다. `LOOM_RELAY_EPHEMERAL=1` relay를 재시작하면 `room_not_found`로 멈춘다.
 
 ### 한계
 

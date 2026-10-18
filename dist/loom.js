@@ -7031,6 +7031,17 @@ init_session_store();
 // packages/host/src/relay-client.ts
 init_src();
 var RECEIVE_QUEUE_WARN_DEPTH = 256;
+var DEFAULT_MAX_RECONNECT_ATTEMPTS = Infinity;
+var RECONNECT_STOP_CODES = new Set(["peer_auth_failed", "room_not_found"]);
+function reconnectDelayMs(attempt, rand) {
+  const base = Math.min(1000 * 2 ** attempt, 15000);
+  return base / 2 + rand() * (base / 2);
+}
+function safeCall(fn) {
+  try {
+    fn();
+  } catch {}
+}
 var __ackInjector = null;
 class RelayClient {
   ws = null;
@@ -7039,6 +7050,8 @@ class RelayClient {
   intentionalClose = false;
   reconnectAttempt = 0;
   reconnectTimer = null;
+  reconnectInFlight = false;
+  reconnectGaveUp = false;
   pendingRequests = [];
   receiveQueue = Promise.resolve();
   receiveQueueDepth = 0;
@@ -7091,21 +7104,23 @@ class RelayClient {
       let settled = false;
       ws.onopen = () => {
         settled = true;
-        this.reconnectAttempt = 0;
+        this.reconnectGaveUp = false;
+        if (!this.opts.reconnectJoin)
+          this.reconnectAttempt = 0;
         resolve();
       };
       ws.onerror = () => {
         const err = new Error(`WebSocket error connecting to ${connectUrl}`);
-        this.opts.onError?.(err);
         if (!settled) {
           settled = true;
           reject(err);
         }
+        safeCall(() => this.opts.onError?.(err));
       };
       ws.onclose = () => {
         this.openPromise = null;
         this.ws = null;
-        this.opts.onClose?.();
+        safeCall(() => this.opts.onClose?.());
         if (!this.intentionalClose && this.opts.autoReconnect) {
           this.scheduleReconnect();
         }
@@ -7190,22 +7205,28 @@ class RelayClient {
     pending.resolve(env2);
   }
   scheduleReconnect() {
-    const max = this.opts.maxReconnectAttempts ?? 20;
+    if (this.reconnectTimer !== null || this.reconnectInFlight)
+      return;
+    const max = this.opts.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
     if (this.reconnectAttempt >= max) {
-      this.opts.onError?.(new Error(`Reconnect gave up after ${max} attempts`));
+      if (this.reconnectGaveUp)
+        return;
+      this.reconnectGaveUp = true;
+      safeCall(() => this.opts.onError?.(new Error(`Reconnect gave up after ${max} attempts`)));
       return;
     }
-    const delay = Math.min(1000 * 2 ** this.reconnectAttempt, 15000);
+    const delay = reconnectDelayMs(this.reconnectAttempt, this.opts.reconnectRandom ?? Math.random);
     this.reconnectAttempt += 1;
-    if (this.reconnectTimer)
-      clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.reconnectInFlight = true;
       this.reconnectNow();
     }, delay);
   }
   async reconnectNow() {
     try {
       await this.connect();
+      const ws = this.ws;
       const creds = this.opts.reconnectJoin;
       if (creds) {
         const env2 = await this.joinRoom({
@@ -7213,25 +7234,53 @@ class RelayClient {
           peerId: creds.peerId ?? this.peerId ?? undefined,
           color: creds.color ?? this.color ?? undefined
         });
+        this.reconnectInFlight = false;
         if (env2.type === "error") {
-          this.opts.onError?.(new Error(env2.message));
+          if (RECONNECT_STOP_CODES.has(env2.code)) {
+            this.opts.autoReconnect = false;
+            this.closeAttemptSocket(ws);
+            safeCall(() => this.opts.onError?.(new Error(`Reconnect stopped: ${env2.code} \u2014 ${env2.message}`)));
+          } else {
+            this.closeAttemptSocket(ws);
+            safeCall(() => this.opts.onError?.(new Error(env2.message)));
+          }
         } else {
-          this.opts.onEnvelope?.({
+          const text = `reconnected (attempt ${this.reconnectAttempt})`;
+          safeCall(() => this.opts.onEnvelope?.({
             v: PROTOCOL_VERSION,
             type: "chat",
             roomId: this.roomId ?? "none",
             ts: new Date().toISOString(),
             from: "system",
-            text: `reconnected (attempt ${this.reconnectAttempt})`
-          });
+            text
+          }));
+          this.reconnectAttempt = 0;
         }
+      } else {
+        this.reconnectInFlight = false;
       }
     } catch (e) {
-      this.opts.onError?.(e instanceof Error ? e : new Error(String(e)));
+      this.reconnectInFlight = false;
+      safeCall(() => this.opts.onError?.(e instanceof Error ? e : new Error(String(e))));
       if (!this.intentionalClose && this.opts.autoReconnect) {
         this.scheduleReconnect();
       }
+    } finally {
+      this.reconnectInFlight = false;
     }
+  }
+  closeAttemptSocket(ws) {
+    if (!ws || this.ws !== ws)
+      return;
+    try {
+      ws.close();
+    } catch {}
+  }
+  clearReconnectState() {
+    if (this.reconnectTimer)
+      clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.reconnectInFlight = false;
   }
   applyEnvelope(env2) {
     switch (env2.type) {
@@ -7400,8 +7449,7 @@ class RelayClient {
   async leave() {
     this.intentionalClose = true;
     this.opts.autoReconnect = false;
-    if (this.reconnectTimer)
-      clearTimeout(this.reconnectTimer);
+    this.clearReconnectState();
     this.rejectAllPending(new Error("Client leaving"));
     if (!this.ws)
       return;
@@ -7413,8 +7461,7 @@ class RelayClient {
   close() {
     this.intentionalClose = true;
     this.opts.autoReconnect = false;
-    if (this.reconnectTimer)
-      clearTimeout(this.reconnectTimer);
+    this.clearReconnectState();
     this.rejectAllPending(new Error("Client closed"));
     if (this.ws) {
       try {
@@ -23173,7 +23220,7 @@ function realHistoryCliDeps() {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.44.0";
+var VERSION = "0.44.1";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
