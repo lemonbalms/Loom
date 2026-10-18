@@ -19,6 +19,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -661,6 +662,14 @@ describe("escaping — --json (R14: value-preserving, round-trips through JSON.p
     expect(JSON.parse(r.lines[0]!)).toEqual({ problem: { sha256: "c".repeat(64), reason } });
     expect(JSON.parse(r.lines[1]!)).toEqual({ info: { name } });
     expect(JSON.parse(r.lines[2]!)).toEqual({ summary: { checked: 1, problems: 1, orphans: 1, torn: 2 } });
+  });
+
+  test("P3b (Astra 0176 L): artifacts-cli imports oneLine · safeJson from ./history-cli and defines no local copy", () => {
+    const src = readFileSync(join(import.meta.dir, "artifacts-cli.ts"), "utf8");
+    expect(src).toMatch(/import\s*\{[^}]*\boneLine\b[^}]*\}\s*from\s*"\.\/history-cli"/);
+    expect(src).toMatch(/import\s*\{[^}]*\bsafeJson\b[^}]*\}\s*from\s*"\.\/history-cli"/);
+    expect(src).not.toMatch(/function\s+(oneLine|safeJson)\b/);
+    expect(src).not.toMatch(/\b(const|let)\s+(oneLine|safeJson|JSON_UNSAFE_RE)\b/);
   });
 });
 

@@ -999,6 +999,24 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
     symlinkSync(elsewhere, shaDir(root));
     expect(await verify(root)).toEqual({ ok: false, reason: "symlink" });
   });
+
+  test.skipIf(process.getuid?.() === 0)(
+    "P3b (Astra 0176 M): an unreadable prefix dir → ok: false `<code> at <relative path>` (never a clean partial scan)",
+    async () => {
+      const root = tempRoot("v-prefix-unreadable");
+      const o = putBlob(root, "hidden orphan");
+      const dir = prefixDir(root, o.sha);
+      chmodSync(dir, 0o000);
+      try {
+        expect(await verify(root)).toEqual({
+          ok: false,
+          reason: `EACCES at artifacts/sha256/${o.sha.slice(0, 2)}`,
+        });
+      } finally {
+        chmodSync(dir, 0o700);
+      }
+    },
+  );
 });
 
 describe("PLAN 0.45.0 P1 — list and verify are side-effect free", () => {
