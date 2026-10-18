@@ -647,6 +647,33 @@ describe("spawn: bun packages/cli/src/index.ts history (HOME = LOOM_TEST_HOME = 
   );
 
   test(
+    "LOOM_CARD=x (Astra 0143 M): `--all ignored history …` / `--all ignored prompt …` — the scoped and plain parses disagree on the first word → still the refusal, exit 2, no usage, no state root",
+    () => {
+      const PROMPT_REFUSAL =
+        "loom prompt: refused — LOOM_CARD is set (this shell belongs to a Loom card worker); prompt records are for the operator.";
+      const T = mkdtempSync(join(tmpdir(), "loom-historycli-spawn4-"));
+      try {
+        // Each refusal keeps its own command's exit code (history → 2 · prompt → 1, 0.41 R11).
+        for (const [args, refusal, status] of [
+          [["--all", "ignored", "history", "search", "q", "--profile", "p", "--help"], REFUSAL, 2],
+          [["--all", "ignored", "prompt", "show", "c", "--help"], PROMPT_REFUSAL, 1],
+        ] as const) {
+          const before = snapshotHome(T);
+          const r = spawnHistory(T, [...args], { LOOM_CARD: "x" });
+          expect(r.stdout).toBe("");
+          expect(r.stderr).toBe(`${refusal}\n`);
+          expect(r.status).toBe(status);
+          expect(snapshotHome(T)).toEqual(before);
+          expect(readdirSync(T).filter((n) => n === ".loom" || n === ".fable")).toEqual([]);
+        }
+      } finally {
+        rmSync(T, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  test(
     "without LOOM_CARD: `history search --json q` — --json does not swallow the query; empty home → summary, exit 1, nothing created",
     () => {
       const T = mkdtempSync(join(tmpdir(), "loom-historycli-spawn2-"));
