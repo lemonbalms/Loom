@@ -30,6 +30,18 @@ export function reconnectDelayMs(attempt: number, rand: () => number): number {
 }
 
 /**
+ * v0.44.1 P1b (Astra 0164 M): caller callbacks on the connect/reconnect path
+ * must not unwind reconnect state. Swallow — no rethrow, no recursion into onError.
+ */
+function safeCall(fn: () => void): void {
+  try {
+    fn();
+  } catch {
+    /* swallowed */
+  }
+}
+
+/**
  * PLAN 0.27.0 D2: test-only handoff.ack injection result.
  * Production path is unchanged when no injector is registered.
  * Shape mirrors fields read in RelayClient.handoff() injection block.
@@ -195,16 +207,17 @@ export class RelayClient {
       };
       ws.onerror = () => {
         const err = new Error(`WebSocket error connecting to ${connectUrl}`);
-        this.opts.onError?.(err);
+        // P1b: settle before the callback so a throwing onError cannot skip it.
         if (!settled) {
           settled = true;
           reject(err);
         }
+        safeCall(() => this.opts.onError?.(err));
       };
       ws.onclose = () => {
         this.openPromise = null;
         this.ws = null;
-        this.opts.onClose?.();
+        safeCall(() => this.opts.onClose?.());
         if (!this.intentionalClose && this.opts.autoReconnect) {
           this.scheduleReconnect();
         }
@@ -318,8 +331,10 @@ export class RelayClient {
     if (this.reconnectAttempt >= max) {
       if (this.reconnectGaveUp) return;
       this.reconnectGaveUp = true;
-      this.opts.onError?.(
-        new Error(`Reconnect gave up after ${max} attempts`),
+      safeCall(() =>
+        this.opts.onError?.(
+          new Error(`Reconnect gave up after ${max} attempts`),
+        ),
       );
       return;
     }
@@ -353,22 +368,27 @@ export class RelayClient {
           if (RECONNECT_STOP_CODES.has(env.code)) {
             this.opts.autoReconnect = false;
             this.closeAttemptSocket(ws);
-            this.opts.onError?.(
-              new Error(`Reconnect stopped: ${env.code} — ${env.message}`),
+            safeCall(() =>
+              this.opts.onError?.(
+                new Error(`Reconnect stopped: ${env.code} — ${env.message}`),
+              ),
             );
           } else {
             this.closeAttemptSocket(ws);
-            this.opts.onError?.(new Error(env.message));
+            safeCall(() => this.opts.onError?.(new Error(env.message)));
           }
         } else {
-          this.opts.onEnvelope?.({
-            v: PROTOCOL_VERSION,
-            type: "chat",
-            roomId: this.roomId ?? "none",
-            ts: new Date().toISOString(),
-            from: "system",
-            text: `reconnected (attempt ${this.reconnectAttempt})`,
-          });
+          const text = `reconnected (attempt ${this.reconnectAttempt})`;
+          safeCall(() =>
+            this.opts.onEnvelope?.({
+              v: PROTOCOL_VERSION,
+              type: "chat",
+              roomId: this.roomId ?? "none",
+              ts: new Date().toISOString(),
+              from: "system",
+              text,
+            }),
+          );
           // v0.44.1 D4: reset after the chat reads the real count.
           this.reconnectAttempt = 0;
         }
@@ -377,12 +397,15 @@ export class RelayClient {
       }
     } catch (e) {
       this.reconnectInFlight = false;
-      this.opts.onError?.(
-        e instanceof Error ? e : new Error(String(e)),
+      safeCall(() =>
+        this.opts.onError?.(e instanceof Error ? e : new Error(String(e))),
       );
       if (!this.intentionalClose && this.opts.autoReconnect) {
         this.scheduleReconnect();
       }
+    } finally {
+      // P1b (Astra 0164 M): no exit path may leave the guard latched.
+      this.reconnectInFlight = false;
     }
   }
 
