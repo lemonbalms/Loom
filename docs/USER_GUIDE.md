@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.45.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.45.1** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -108,7 +108,7 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 19 | `loom service` (0.34.0) — 로그인 시 bridge 자동 기동 | `loom service install\|start\|status` · doctor Service 절 |
 | 20 | 기억 · 규칙 · 스킬 (0.35.0) — 에이전트별 장기 기록 · 방 규칙 · 공통 지식 · 되도록-규칙 · 스킬 출처 · **0.36.0: 카드 시작 스냅샷을 headless 워커 첫 턴에 넣기(옵트인)** | `loom memory` · `loom rules list` · `loom skills list` · doctor Memory 절 · `worker.memory.enabled` (§20.11) |
 | 20A | 방 기록 검색 (0.44.0) — 지난 방 이벤트를 읽기 전용으로 찾기 | `loom history search` · 비밀 가리기 · exit 0/1/2 |
-| 20B | 받은 산출물 저장소 (0.45.0) — `conv_fetch`로 받은 파일을 내용 해시로 찾고 확인하기 | `loom artifacts list` · `verify` · 하드링크 · exit 0/1/2 |
+| 20B | 받은 산출물 저장소 (0.45.0 · 0.45.1) — `conv_fetch`로 받은 파일을 내용 해시로 찾고 확인하기 | `loom artifacts list` · `verify` · 하드링크 · exit 0/1/2 |
 | — | (참고) 세션 연속성 — 개발자용 HANDOFF/status | `bun run status` · `HANDOFF.md` (제품 room handoff와 별개) |
 
 릴리즈 요약: [`CHANGELOG.md`](./CHANGELOG.md).
@@ -2111,7 +2111,7 @@ JSON 값은 보존된다(DEL · C1 · bidi · U+2028/2029는 `\u00XX`/`\u20XX` �
 
 ---
 
-## 20B. 받은 산출물 저장소 — `loom artifacts list` · `verify` (v0.45.0)
+## 20B. 받은 산출물 저장소 — `loom artifacts list` · `verify` (v0.45.0 · v0.45.1)
 
 `conv_fetch`(Loom MCP 도구 — 0.25.0)는 원격 노드의 scp 산출물을 `~/.loom/artifacts/<convId>/<이름>`으로 받아 sha256을 확인한다. 0.45.0부터는 **받기가 성공한 바로 뒤** 그 파일을 내용 해시 이름으로도 담고 한 줄을 기록한다. `loom artifacts`는 그 저장소를 **읽기만** 하는 운영자 명령이다 — "그 conv에서 무엇을 받았지?", "받은 뒤 바뀐 것은 없나?"를 디렉터리를 뒤지지 않고 확인한다.
 
@@ -2185,9 +2185,11 @@ info: orphan sha256/9e/9e10…(64 hex)
 
 목록을 못 읽으면 stderr `loom artifacts: index unreadable — <reason>`(예: 목록이 심볼릭 링크 · 64 MiB 초과 · 저장소 디렉터리가 심볼릭 링크). 걷기가 중간에 막히면 "깨끗함"으로 보고하지 않고 exit 2다.
 
+0.45.1부터 `artifacts/sha256/` 아래 `<2 hex>/` 접두 이름이 심볼릭 링크이거나 디렉터리가 아니면(일반 파일 등) 그 아래를 건너뛰지 않고 상위 디렉터리와 같은 모양으로 걷기를 멈춘다 — `loom artifacts: index unreadable — symlink at artifacts/sha256/<p>` · `… — not a directory at artifacts/sha256/<p>` · exit 2(0.45.0은 조용히 건너뛰고 "깨끗함"으로 보고할 수 있었다). `<2 hex>` 모양이 아닌 이름은 종전대로 무시한다. `index unreadable — <cause> at artifacts/…`는 목록 파일뿐 아니라 저장소 걷기 실패도 포함한다 · `--json`에서도 stdout이 비고 exit 2다.
+
 **워커 셸에서는 거부.** `LOOM_CARD`가 설정된 셸(카드 워커)에서는 인자 · `--help` · 상태 루트 해석보다 먼저 `loom artifacts: refused — LOOM_CARD is set (this shell belongs to a Loom card worker); the artifact store is for the operator.` · exit 2. 가드이지 경계가 아니다(같은 사용자 셸은 파일을 직접 읽을 수 있다).
 
-**한계 — 설계상 수용 (0.45.0).**
+**한계 — 설계상 수용 (0.45.0 · 0.45.1 갱신).**
 
 1. **다른 볼륨이면 담지 않는다**(계급 82) — `artifacts/<convId>/`와 `artifacts/sha256/`가 다른 파일 시스템이면 `exdev` 한 줄 · 받기는 성공 · 복사 대체 없음.
 2. **`.fable` → `.loom` 복사 마이그레이션은 하드링크를 끊는다**(계급 83) — 바이트가 두 벌이 되지만 둘 다 그대로 `verify` 가능.
@@ -2196,7 +2198,7 @@ info: orphan sha256/9e/9e10…(64 hex)
 5. **같은 사용자 경합**(계급 86) — 경로 확인과 링크 · 열기 사이 디렉터리 → 심볼릭 링크 교체는 막지 못한다(같은 사용자 한계).
 6. **고아 blob**(계급 87) — 링크와 목록 줄 사이 크래시 · 줄 쓰기 실패 → blob만 남는다 · `verify` `info: orphan` · 같은 내용을 다시 받으면 줄이 생긴다.
 7. **gc 없음 — 디스크가 자란다**(계급 88) — conv 파일을 지워도 blob 이름이 남아 바이트가 남는다 · 전체 용량 상한 없음 · 파일당 상한 = `conv_fetch`의 10 MiB.
-8. **잘못된 UTF-8 워커 파일은 받기부터 실패한다**(계급 89) — 브리지 쪽 해시 결함(별도 PATCH) · 그런 파일은 저장소에 들어올 수 없다.
+8. ~~잘못된 UTF-8 워커 파일은 받기부터 실패한다~~(계급 89 — **closed by 0.45.1**) — 0.45.1 브리지는 워커 파일을 원시 바이트로 해시하므로 잘못된 UTF-8 파일도 `conv_fetch` sha 대조를 통과해 담긴다(유효한 UTF-8 파일의 sha는 이전과 같다). 단 0.45.0 이하 브리지가 낸 ref는 0.45.1 tower에서도 계속 격리된다(계급 92 — sha는 보내는 쪽이 계산 · 브리지 업그레이드로 풀린다).
 9. **`verify`는 큰 저장소에서 느리다** — 서로 다른 sha마다 blob을 최대 10 MiB 읽어 해시한다 · 진행 표시 없음.
 
 ---

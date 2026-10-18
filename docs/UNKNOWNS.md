@@ -42,6 +42,33 @@
 
 ## Gate log
 
+### 0.45.1 — 이월 결함 둘 — `verify` 접두 fail closed · pack 원시 바이트 해시 (`approved` — R66 approved-with-fixes · no R66b · implemented (P1–P3) · ship 전)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.45.1 (`approved` — R66 approved-with-fixes, L1~L3 반영 · no R66b) · PATCH · 근거 = 0.45.0 최종 advise Low 이월(`artifact-store.ts:574`) + 0.45.0 R17 · 계급 89 · 범위 = 락 D1~D5(아키텍트 2026-10-18) |
+| **Date** | 2026-10-18 |
+| **Review** | R66 **done 2026-10-18**(loom-advisor via `lane.ts advise` 0187) — approved-with-fixes H0 · M0 · L3(L1 R7 · UK-1 Bun BOM 보존 프로브 · P2 BOM 사례 원시 바이트 sha · L2 회귀 방지 표기 · 꼭 red 목록 · 아키텍트 red 재실행 · L3 USER_GUIDE §20B 걷기 실패 문장) · R2 `CONFLICT` → D1 유지(아키텍트 판정 — `:806-817` 편집 선언) |
+| **Implemented** | 2026-10-18 (P1–P3 · ship 전 — 다음 = 최종 advise → ship) — 게이트 `0005173` · P1 `eeca264` → `50954a2` · P2 `806acec` → `56c5f53` · P3 = 버전 0.45.1 세 줄 · README · USER_GUIDE §20B · CHANGELOG · implementation-notes §0.45.1 · PLAN. 정본 `implementation-notes.md` §0.45.1 |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) `findOrphans`는 상위 디렉터리 검사(`artifact-store.ts:552-553`)에서 `symlink at …` / `not a directory at …`로 fail closed한다 — 접두 갈래만 건너뛰었다. (2) tower `conv_fetch`는 받은 파일을 원시 바이트로 해시해 대조한다(`conv-artifact-fetch.ts:420-421`). (3) pack은 utf8 디코드 → 재인코드로 해시했다(`conv-artifact-pack.ts:221` · `:226`). |
+| Known unknowns | **UK-1 · UK-2**(아래 표, 정본 = PLAN §0.45.1). |
+| Unknown knowns | Bun `readFileSync(…, "utf8")`는 BOM을 남긴다(아키텍트 프로브 — R66-L1) → 유효한 UTF-8 BOM 파일 sha 무변경. |
+| Unknown unknowns | 오너 함대에 0.45.0 이하 브리지가 얼마나 남는지 · 워커가 실제로 잘못된 UTF-8 파일을 내는 빈도. |
+
+**Unknowns 요약 (정본 = PLAN §0.45.1):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R66 판정 | 결과 |
+|---|------|-------------|----------|------|
+| UK-1 | **Bun `readFileSync(…, "utf8")` ↔ `Buffer#toString("utf8")` 동일성**(BOM · 잘못된 바이트 치환) | 비차단 — 다르면 `chars`만 달라지고 sha 무관 · P2 BOM · 다바이트 사례가 확인 | 비차단 수용 · L1 프로브 = BOM 보존 | P2 green(BOM · 다바이트 회귀 방지 사례 통과) |
+| UK-2 | **오너 함대의 브리지 버전 분포** — 0.45.0 이하 브리지가 남으면 잘못된 UTF-8 파일은 계속 격리(계급 92) | 비차단 — 업그레이드 = 운영자 · 측정 자동 실행 안 함 | 비차단 수용 | — |
+
+**승계:** 0.45.0 **UK-4** → **closed by 0.45.1**(D2 — 결함이 사라져 빈도 판정 불요) · 0.45.0 UK-1 · UK-2 · UK-3 · UK-5 그대로.
+
+**Current decision:** **`approved` → implemented (P1–P3)** · ship 전(다음 = 최종 advise → ship). 실 CLI 없음(D3).
+
 ### 0.45.0 — 산출물 내용 주소 저장소 첫 조각 — `conv_fetch` 성공 뒤 해시 저장 · `loom artifacts list` · `verify` (`approved` — R64 approved-with-fixes · no R64b · implemented (P1–P4) · shipped 2026-10-18)
 
 | Field | Value |
@@ -66,7 +93,7 @@
 | UK-1 | **실제 볼륨 배치 · `EXDEV` 빈도** — `artifacts/<convId>/`와 `artifacts/sha256/`가 다른 볼륨인 환경이 있는지 | `EXDEV` = `exdev` 한 줄 · 받기 성공 · 복사 대체 없음(계급 82) · 측정은 오너 환경이라 자동 실행 안 함 | — | — |
 | UK-2 | **Bun `linkSync`의 `EEXIST` · 링크 직후 `lstat` `ino` 가시성 · macOS 원본 심볼릭 링크 추종** | P1 macOS · Linux 사례로 확인 · 추종은 R7 링크 뒤 blob `ino` 대조가 막는다 | 비차단 수용(R64-M1 문면) | — |
 | UK-3 | **동시 덧붙임** — 같은 상태 루트의 MCP 서버 여럿이 ≤ 4 KiB O_APPEND 줄을 끼워 쓰는지 | 읽는 쪽 깨진 줄 셈(R11 · 계급 85) · 관찰되면 목록 락 = 다음 조각 | — | — |
-| UK-4 | **pack UTF-8 해시 결함의 실제 빈도** — 워커가 잘못된 UTF-8 파일을 `[ARTIFACT]`로 내는 일(R17 · 계급 89) | 이 버전 밖(D1) · 다음 후보 PATCH(브리지 바이트 → 원시 바이트 해시) · 그 PATCH 전에 판정 · implementation-notes §0.45.0에 기록 | — | — |
+| UK-4 | **pack UTF-8 해시 결함의 실제 빈도** — 워커가 잘못된 UTF-8 파일을 `[ARTIFACT]`로 내는 일(R17 · 계급 89) | 이 버전 밖(D1) · 다음 후보 PATCH(브리지 바이트 → 원시 바이트 해시) · 그 PATCH 전에 판정 · implementation-notes §0.45.0에 기록 | — | **closed by 0.45.1**(D2 — pack이 원시 바이트로 해시 · 계급 89 closed · 빈도 판정 불요) |
 | UK-5 | **큰 저장소의 `verify`** — 서로 다른 sha마다 최대 10 MiB 읽기 · 해시를 돌려야 하는지 | 상한 · 진행 표시 · 표본 검사 없음 · 느리면 `--quick`(크기 · 모드만) 또는 gc와 함께 판정 | — | — |
 
 **승계:** 없음(0.44.0 UK-1 · UK-2 · UK-3 · UK-5는 방 기록 검색 축 — 그대로 유지).

@@ -5,8 +5,34 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.0** — shipped 2026-10-18 · 실 CLI 불필요 D9) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.1** — implemented 2026-10-18 · ship 전 · 실 CLI 불필요 D3) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.45.1 — 2026-10-18
+
+> **상태:** implemented 2026-10-18 · ship 전. **실 CLI 실행 불필요(D3)** — 와이어 · `packages/protocol` · tower `conv_fetch` · 워커 · 프롬프트 · fingerprint 변경 없음.
+
+**`verify`가 마지막 조용한 건너뜀을 없애고, 잘못된 UTF-8 워커 파일도 받아진다** — 0.45.0 `loom artifacts verify`는 `artifacts/sha256/` 아래 `<2 hex>/` 이름이 심볼릭 링크이거나 디렉터리가 아니면 그 아래를 조용히 건너뛰어 "깨끗함"으로 보고할 수 있었다. 또 브리지는 워커 파일을 UTF-8로 디코딩한 문자열로 해시해, 잘못된 UTF-8 바이트가 든 파일은 tower `conv_fetch`의 원시 바이트 sha 대조에서 **늘** 격리됐다. 0.45.1은 둘 다 고친다.
+
+### 가능해진 것
+
+- **접두 디렉터리 fail closed** — `<2 hex>/` 접두가 심볼릭 링크면 `loom artifacts: index unreadable — symlink at artifacts/sha256/<p>`, 디렉터리가 아니면 `… — not a directory at artifacts/sha256/<p>` · exit 2(상위 디렉터리 검사와 같은 문면 · 같은 모양). `index unreadable — <cause> at artifacts/…`는 저장소 걷기 실패도 포함하며, `--json`에서도 stdout은 비고 exit 2. `<2 hex>` 모양이 아닌 이름은 종전대로 무시.
+- **워커 파일 원시 바이트 해시** — 브리지(`packageWorkerFileArtifact`)가 파일을 `Buffer`로 읽어 바이트 그대로 해시한다(읽은 뒤 크기 상한을 다시 확인). 잘못된 UTF-8 파일도 tower `conv_fetch` sha 대조를 통과해 받아지고 0.45.0 저장소에 담긴다(수용 손실 계급 89 closed). 유효한 UTF-8 파일(BOM 포함)의 sha는 바이트 단위로 이전과 같다.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.45.0) | 지금 (0.45.1) |
+|---------------|---------------|
+| 심볼릭 링크 · 일반 파일인 `<2 hex>` 접두 → 조용히 건너뜀 · "깨끗함" 가능 | `index unreadable — symlink / not a directory at artifacts/sha256/<p>` · exit 2 |
+| 잘못된 UTF-8 워커 파일 → `conv_fetch` 늘 격리 | 받아지고 저장소에 담긴다 |
+
+### 불변
+
+- 와이어 · `packages/protocol` · `conv-artifact-fetch.ts` · `artifacts-cli.ts` 무변경. 담기의 접두 검사도 그대로(그런 접두에 쓰지 않는다). `chars`는 디코딩된 길이 의미를 유지한다.
+- **정직 고지(설계상 수용 손실):** `artifacts/sha256/` 아래 `<2 hex>` 모양의 잡동사니 하나가 `verify` 전체를 exit 2로 막는다(계급 90 — 오류 문면이 경로를 보인다 · 치우는 것은 운영자) · pack 읽기는 무제한이고 크기 상한은 읽은 뒤 확인한다(계급 91) · 0.45.0 이하 브리지가 낸 잘못된 UTF-8 파일 ref는 0.45.1 tower에서도 계속 격리된다(sha는 보내는 쪽이 계산 — 계급 92 · 브리지 업그레이드로 풀린다).
+- 증명 = 임시 HOME 단위 테스트(`artifact-store.test.ts` 접두 사례) · `conv-artifact-pack-bytes.test.ts`(원시 바이트 sha · 가짜 scp `conv_fetch` 왕복 · BOM · 다바이트 회귀 방지). 실 CLI 실행 없음.
 
 ---
 

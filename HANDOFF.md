@@ -5,25 +5,25 @@
 
 ## One-line resume
 
-> v0.45.1 PATCH **approved** (R66) · **next = P1** verify prefix fail-closed red → green
+> v0.45.1 PATCH **implemented** (P1–P3) · **next = final advise → ship**
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.45.1 approved** (R66) · 0.45.0 shipped 2026-10-18 | `docs/PLAN.md` |
+| Product | **v0.45.1 implemented** (P1–P3 · R66) · 0.45.0 shipped 2026-10-18 | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.45.1 approved (R66) · next = P1 verify prefix fail-closed red → green
+### v0.45.1 implemented · next = final advise → ship
 
 **Goal:** ship v0.45.1 PATCH — `verify` fails closed on a symlinked/non-dir `<2 hex>/` prefix (D1) · pack hashes worker files as raw bytes (D2 — class 89 closed).
-R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b) — L1 BOM sha · L2 must-red list · L3 §20B line.
+R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b). P1 `eeca264`/`50954a2` · P2 `806acec`/`56c5f53` · P3 docs + version 0.45.1.
 
-**Next:** P1 red (`artifact-store.test.ts` + declared `:806-817` edit) → architect reruns red → green (`artifact-store.ts` only) → verify · then P2 · P3.
+**Next:** loom-advisor final advise → ship checks (§0.45.1 Done (c)(d) — suite · typecheck · biome · handoff:check · `build:cli` dist) → ship commit.
 
 **Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
@@ -39,7 +39,7 @@ R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b) — L1 BOM sha · L
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
 | Suite | **0 fail** (4277/0 at 0.45 ship) | `pane-cleanup` ⑥ flaky under load | 0.45 ship |
-| v0.45.1 | **approved** (R66) · P1 next | PATCH: verify prefix fail closed + pack raw-byte sha | `docs/PLAN.md` §0.45.1 |
+| v0.45.1 | **implemented** (P1–P3) · final advise next | PATCH: verify prefix fail closed + pack raw-byte sha | `docs/PLAN.md` §0.45.1 |
 | v0.45.0 | **shipped** 2026-10-18 · no real-CLI (D9) | artifact CAS store first slice | `docs/PLAN.md` §0.45.0 |
 | v0.32–0.44.1 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
 | P3 soft close | **closed** · 3.0–3.2 opt-in · 3.3–3.4b false | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
@@ -74,7 +74,7 @@ R66 approved-with-fixes (H0 M0 L3 · advise 0187 · no R66b) — L1 BOM sha · L
 - Session ritual: `docs/SESSION-START.md` · topology `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`  
 - Close: `docs/spikes/RULE-ROUTER-PHASE3-SOFT-CLOSE.md`  
 - 0.37.0 smoke: `docs/spikes/POLICY-HONESTY-SMOKE-0370.md`  
-- 0.45.0 deviations: `implementation-notes.md` §0.45.0  
+- 0.45.0 / 0.45.1 deviations: `implementation-notes.md` §0.45.0 · §0.45.1  
 - 3.4b/3.4/3.3 RESULT · `scripts/rule-router-jit.ts`  
 
 ## Don't redo
