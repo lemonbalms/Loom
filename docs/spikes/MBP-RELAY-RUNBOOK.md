@@ -644,6 +644,9 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.loom\relay-state"
 
 **Owner yes required**
 
+**보류 — 2026-10-25 재검토(MBP 1주 안정 운영 후 재상신) · 그때까지 lg99 `LoomRelayTeam` Disabled 유지** (오너 결정
+2026-10-18).
+
 ---
 
 ## 미결·미검증
@@ -672,10 +675,16 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.loom\relay-state"
 | 7-0 | 빈 state 기동 → LISTEN `100.119.218.93:7842`만 · Mac에서 health `{"ok":true,"rooms":0,"auth":true}` · journal 깨끗 → stop → state dir 비어 있음 |
 | 7 | 비서실장 세션이 lg99 relay 정지 · 작업 `LoomRelayTeam` **Disabled**(이중 relay 방지) · lg99 원본 방 파일 보존(롤백용). 방 파일 2개(`8d66842a136bcac7.json` winprobe-room 802 B sha `46440996…ce4e` · `ef0245c2a460a8b4.json` loom-dev 2678 B sha `e761448a…dfce`) lg99 → Mac → MBP, 각 홉 해시 일치 · 600 loom-relay로 설치 · `enable --now` · health `rooms:2` · MBP·Mac staging 사본 삭제 |
 | 8 | lg99 URL 클라이언트 = Mac `mac.json` 하나(실행 중 세션 없음) · relayUrl → `ws://100.119.218.93:7842/ws` · 백업 `mac.json.pre-mbp`(600). lg99-로컬 프로파일 step0-host / win-demo / step0-wsl 미변경(오너) |
-| 9b | **미실행** — lg99 원본 삭제는 별도 owner yes |
+| 9b | **미실행 · 보류** — 2026-10-25 재검토(MBP 1주 안정 운영 후 재상신) · 그때까지 lg99 `LoomRelayTeam` Disabled 유지 |
 
 발견(기존 문제 — 이전 작업의 회귀 아님): `loom peers --profile mac` → "No room for code LOOM-4HXU". `mac.json`의 방 "demo"
-(`room_b8ea4daa12aef875`, 2026-07-18)는 lg99 durable state에도 없었다 — 오너 결정 대기(그대로 둠 / loom-dev 재가입).
+(`room_b8ea4daa12aef875`, 2026-07-18)는 lg99 durable state에도 없었다.
+
+오너 결정 (2026-10-18, 비서실장 세션 themeflow-38 경유 · 권고안대로 승인):
+
+1. Mac `mac` 프로파일은 **그대로 둔다** — 방 "demo"(LOOM-4HXU)는 계속 도달 불가로 남고, loom-dev에 재가입하지 않는다.
+2. 9b(lg99 원본 relay-state 삭제)는 **보류** — MBP 1주 안정 운영 후 재상신, **재검토일 2026-10-25**. 그때까지 lg99
+   작업 스케줄러 `LoomRelayTeam`은 **Disabled** 유지.
 
 롤백(9b 전까지 유효): lg99 작업 `LoomRelayTeam` Enable + Start · MBP `sudo systemctl disable --now loom-relay` · Mac
 `mac.json.pre-mbp` 복원.
