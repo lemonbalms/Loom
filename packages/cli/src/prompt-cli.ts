@@ -344,7 +344,7 @@ function printRecord(
  * (where the bridge stays while live legacy pids block the migration), else `.loom`. It never
  * migrates, prints or caches (Astra 0094); `existsSync` exactly as the bridge tests both roots.
  */
-function readOnlyStateHome(): string {
+export function readOnlyStateHome(): string {
   const root = stateRootHome();
   const loom = join(root, ".loom");
   if (existsSync(loom)) return loom;

@@ -171,6 +171,7 @@ import {
   runSkillsCommand,
 } from "./memory-cli";
 import { realPromptCliDeps, runPromptCommand } from "./prompt-cli";
+import { realHistoryCliDeps, runHistoryCommand } from "./history-cli";
 
 const VERSION = "0.43.0";
 
@@ -281,8 +282,9 @@ const BOOLEAN_FLAGS = new Set([
  * PLAN 0.35.0 P4 (verify L1): `--all` / `--json` are boolean only for these commands — every
  * other command keeps the old parse (`--profile all` · `--profile json` stay values).
  * PLAN 0.41.0 R60-L3(b): `prompt` too (`prompt show --json <cardId>`).
+ * PLAN 0.44.0 P2: `history` too (`history search --json <query>`).
  */
-const MEMORY_COMMANDS: ReadonlySet<string> = new Set(["memory", "rules", "skills", "prompt"]);
+const MEMORY_COMMANDS: ReadonlySet<string> = new Set(["memory", "rules", "skills", "prompt", "history"]);
 const MEMORY_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["all", "json"]);
 
 function usage(): string {
@@ -316,6 +318,8 @@ Usage:
                                     # skill sources + shadowing (0.35)
   loom prompt show <cardId> [--attempt <n>] [--room <roomId>] [--agent <a>] [--json]
                                     # what a headless card worker was sent (0.41)
+  loom history search <query> [--room <roomId>] [--month YYYY-MM] [--limit <n>] [--json]
+                                    # search local room history (0.44)
   loom conv-hosts set <peerId> <host> | list | rm <peerId>
                                     # local scp host map for conv artifacts (0.23.8)
   loom relay use <name> [--as <current>] [--force]
@@ -3324,6 +3328,19 @@ async function main() {
       return;
     }
   }
+  // PLAN 0.44.0 D3 · R11 ①: `history` likewise — refused before profile flags and help.
+  if (scoped.positional[0] === "history") {
+    const card = process.env.LOOM_CARD;
+    if (typeof card === "string" && card.length > 0) {
+      process.exitCode = await runHistoryCommand(
+        "",
+        { positional: [], passthrough: [] },
+        {},
+        realHistoryCliDeps(),
+      );
+      return;
+    }
+  }
   const { flags, positional, passthrough } = MEMORY_COMMANDS.has(scoped.positional[0] ?? "")
     ? scoped
     : parseArgs(process.argv);
@@ -3457,6 +3474,16 @@ async function main() {
     // PLAN 0.41.0 P3: exit 0 · 1 refused/none/ambiguous/invalid/STALE/MISMATCH/usage. exitCode
     // (not exit) so a large `--json` write to a pipe is flushed before the process ends.
     process.exitCode = await runPromptCommand(sub ?? "", { positional: rest }, flags, realPromptCliDeps());
+    return;
+  }
+  if (cmd === "history") {
+    // PLAN 0.44.0 P2 (D7): exit 0 hit · 1 no hit · 2 usage/refused/incomplete. exitCode so stdout flushes.
+    process.exitCode = await runHistoryCommand(
+      sub ?? "",
+      { positional: rest, passthrough },
+      flags,
+      realHistoryCliDeps(),
+    );
     return;
   }
   if (cmd === "conv-hosts") {
