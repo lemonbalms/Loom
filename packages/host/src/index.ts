@@ -87,6 +87,20 @@ export * from "./memory-store";
 export * from "./memory-candidates";
 export * from "./rules-store";
 export { roomKey } from "./room-event-log";
+// PLAN 0.44.0 P1: read-only room history scanner for `loom history search` (②).
+export {
+  HISTORY_LEAF_DEPTH_MAX,
+  HISTORY_LIMIT_DEFAULT,
+  HISTORY_LIMIT_MAX,
+  HISTORY_MONTH_FILE_MAX_BYTES,
+  HISTORY_QUERY_MAX_UNITS,
+  HISTORY_SNIPPET_RADIUS,
+  type HistoryHit,
+  type HistoryQuery,
+  type HistoryResult,
+  type IncompleteReason,
+  searchRoomHistory,
+} from "./history-scan";
 export {
   inventorySkills,
   readRoomSkillSelection,
