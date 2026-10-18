@@ -1,6 +1,6 @@
 /**
  * PLAN 0.45.0 P1 (tests-first) — content-addressed artifact store (D2 · D3 · D4 · D6 · D7 · R3~R11 · R15).
- * - `ingestFetchedArtifact(input, deps)` · `listArtifactRows(root, query)` · `verifyArtifactStore(root, maxBytes)` (② table).
+ * - `ingestFetchedArtifact(input, deps)` · `listArtifactRows(root, query)` · `verifyArtifactStore(root, maxBytes, deps?)` (② table · P3c `@internal` lstat seam).
  * - Conv files are hand-written 0600 under `artifacts/<convId>/`; the store is driven only through the ② seams
  *   (`log` · `link` · `now`). Every root is a fresh mkdtemp dir under tmpdir() (never the real home).
  * The specifier stays a value so this tests-only commit typechecks before the module exists;
@@ -79,7 +79,7 @@ type ArtifactVerifyResult =
 type ArtifactStoreModule = {
   ingestFetchedArtifact: (input: IngestInput, deps?: ArtifactStoreDeps) => void;
   listArtifactRows: (root: string, query: { convId?: string; limit: number }) => ArtifactListResult;
-  verifyArtifactStore: (root: string, maxBytes: number) => ArtifactVerifyResult;
+  verifyArtifactStore: (root: string, maxBytes: number, deps?: { lstat?: typeof lstatSync }) => ArtifactVerifyResult;
   ARTIFACT_INDEX_ROW_MAX_BYTES: number;
   ARTIFACT_INDEX_READ_MAX_BYTES: number;
   ARTIFACT_LIST_LIMIT_DEFAULT: number;
@@ -1017,6 +1017,37 @@ describe("PLAN 0.45.0 P1 verify table (R15 · D7)", () => {
       }
     },
   );
+
+  test("P3c (Astra 0178 M): `lstat` EIO on `artifacts/sha256` in the orphan walk → ok: false `EIO at artifacts/sha256` (never a clean pass)", async () => {
+    const root = tempRoot("v-shadir-eio");
+    putBlob(root, "hidden orphan");
+    const m = await loadStore();
+    const eioOnShaDir = ((path: string) => {
+      if (path === shaDir(root)) throw Object.assign(new Error("EIO"), { code: "EIO" });
+      return lstatSync(path);
+    }) as typeof lstatSync;
+    expect(m.verifyArtifactStore(root, MAX_WORKER_ARTIFACT_BYTES, { lstat: eioOnShaDir })).toEqual({
+      ok: false,
+      reason: "EIO at artifacts/sha256",
+    });
+  });
+
+  test("P3c: `lstat` ENOENT on `artifacts/sha256` in the orphan walk (no store yet) → still a clean empty walk", async () => {
+    const root = tempRoot("v-shadir-enoent");
+    const m = await loadStore();
+    const enoentOnShaDir = ((path: string) => {
+      if (path === shaDir(root)) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      return lstatSync(path);
+    }) as typeof lstatSync;
+    mkdirSync(artifactsDir(root), { mode: 0o700 });
+    expect(m.verifyArtifactStore(root, MAX_WORKER_ARTIFACT_BYTES, { lstat: enoentOnShaDir })).toEqual({
+      ok: true,
+      checked: 0,
+      problems: [],
+      orphans: [],
+      torn: 0,
+    });
+  });
 });
 
 describe("PLAN 0.45.0 P1 — list and verify are side-effect free", () => {
