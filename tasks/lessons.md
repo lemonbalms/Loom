@@ -185,6 +185,8 @@
 - [verification] 2026-10-18 새 읽기 전용 CLI 표면(0.41 `prompt show`)은 스펙에 하드닝 체크리스트를 처음부터 넣는다 — 공유 헬퍼의 숨은 쓰기(.corrupt 백업·마이그레이션) · 심링크/FIFO · 경로 재해석 TOCTOU · 브리지와 같은 상태 루트 · 모든 출력 필드 이스케이프. 빠뜨리면 Astra가 3라운드(6→2→1건)로 나눠 찾는다.
 - [verification] 2026-10-18 오너 승인 1회짜리 실 CLI 하네스는 가짜 모드와 **같은 단언**을 하고 판정 근거(결과 상태)를 출력해야 한다 — 출력만 하면 그 1회를 결과표로 확정 못 해 재승인이 든다(0.43 advise 0128).
 - [verification] 2026-10-18 red 확인용 `git stash`(production 파일 잠시 빼기)는 전체 스위트가 도는 동안 하지 않는다 — 스위트가 빠진 파일을 읽어 가짜 fail 4건(0.44 P1b·P1c). 또 Astra verify 샌드박스는 임시 HOME에서 EPERM이라 테스트를 못 돌린다 → 테스트 증거는 아키텍트 재실행이 유일 출처.
+- [verification] 2026-10-23 OS·커널 동작을 휴리스틱으로 재유도하다 계속 케이스를 놓치면 **실제 시스템에 물어라** — 0.45.2 bind 에러 분류기가 커널 규칙 흉내로 Astra 3연속 FAIL(0203·0205·0207), port-0 프로브 bind + 휴리스틱 AND 조건으로 해결. 자문은 4번째가 아니라 **두 번째 FAIL**에.
+- [verification] 2026-10-23 stash-vs-suite 재범: `bun test` 도중 파일을 고치는 impl 레인을 띄워 스위트 결과 폐기·재실행(11분, 0.45.2 P1b). 스위트 중엔 레인을 큐에 둔다. 전체 스위트 = 11분 wall · CPU ~80초(대기 위주) → Mac 유지.
 
 - [verification] 2026-07-28 listen leave vs sticky: sticky owns presence → listen must not leave; host status≠roster (UC-3 peer_unknown).
 
