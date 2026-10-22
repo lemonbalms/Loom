@@ -25,7 +25,7 @@ Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/
 
 **Next:** owner picks the next product step. MBP relay migrated 2026-10-18 (runbook steps 0–8; 9b pending — Owner pending).
 
-**Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
+**Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky · relay bind error says 'Is port 7842 in use?' even when the address is not yet assigned (EADDRNOTAVAIL at boot, MBP 2026-10-23) → message PATCH candidate
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 

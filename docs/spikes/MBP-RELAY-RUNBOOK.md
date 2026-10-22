@@ -688,3 +688,5 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.loom\relay-state"
 
 롤백(9b 전까지 유효): lg99 작업 `LoomRelayTeam` Enable + Start · MBP `sudo systemctl disable --now loom-relay` · Mac
 `mac.json.pre-mbp` 복원.
+
+- 2026-10-23 00:01 재부팅: bind 2회 실패 후 00:02:41 기동(조건 동작 확인) · 연결 클라이언트 0 · health rooms 2
