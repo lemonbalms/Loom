@@ -29,7 +29,7 @@
 ### 불변
 
 - 진짜 포트 충돌 · `localhost` 같은 이름 host · 와일드카드(`0.0.0.0` · `::`) bind 실패는 종전 문면 그대로. `assertBindAllowed`(토큰 없는 비루프백 거부) · 인증 · 영속 · 와이어 무변경.
-- 증명 = `packages/relay/src/server.bind-error.test.ts`(주입 인터페이스 목록 · 실제 점유 포트 4건). 실 CLI 실행 없음.
+- 증명 = `packages/relay/src/server.bind-error.test.ts` 14건 — `start()` 6건(TEST-NET-1 `192.0.2.1` + 예약 포트 → 새 문면 · 진짜 포트 충돌 · 미할당 주소를 목록에 있다고 넣은 경우(원문) · 와일드카드 충돌 · 인터페이스 조회가 던지면 원래 오류 · 루프백은 조회 안 함) + 분류기 단위 8건(IPv6 동치 형태 · 펼친 와일드카드/루프백 · 이름 host · IPv4 있음/없음 · IPv4-mapped IPv6 `::ffff:…`). 실 CLI 실행 없음.
 
 ---
 

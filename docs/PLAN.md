@@ -60,12 +60,12 @@
 - **D3** 두 CLI(`packages/cli/src/index.ts:3636-3642` · `packages/relay/src/cli.ts:60-66`)는 이미 `e.message`를 찍고 exit 1 — CLI 무변경(확인함).
 - **D4** Low · 메시지 전용 → §5.1 author-close · 실 CLI 없음 · 버전 0.45.1 → 0.45.2(CLI `VERSION` · `BRIDGE_VERSION` · MCP `serverInfo` · README).
 
-**② 테스트 (`packages/relay/src/server.bind-error.test.ts` — 새 파일):** (a) host `10.255.255.1` + 그 주소가 없는 주입 인터페이스 → D1 문면 · `cause.code === "EADDRINUSE"` (b) `127.0.0.1` 진짜 포트 충돌 → Bun 원문 유지 (c) 주입 목록에 있는 host · 포트 점유 → 원문 (d) 와일드카드 `0.0.0.0` 포트 충돌 → 원문. 포트 = `port: 0` 점유 서버 · `finally`에서 정지 · 상태 루트 쓰기 없음(기본 `RoomRegistry`). **옛 production에서 red = (a)만**(실측 2026-10-23).
+**② 테스트 (`packages/relay/src/server.bind-error.test.ts` — 새 파일 · 14건):** `RelayServer.start` 6건 — (a) host TEST-NET-1 `192.0.2.1`(RFC 5737) + 방금 OS가 내준 예약 포트 + 그 주소가 없는 주입 인터페이스 → D1 문면 · `cause.code === "EADDRINUSE"` (b) `127.0.0.1` 진짜 포트 충돌 → Bun 원문 유지 (c) 미할당 주소 `192.0.2.1`을 주입 목록에 **있다고** 넣음 · 실제 bind는 실패 → 원문 (d) 와일드카드 `0.0.0.0` 포트 충돌 → 원문 (e) `interfaces()`가 던짐 → 원래 EADDRINUSE 오류를 그대로 다시 던짐(1회 호출) (f) 루프백 host는 `interfaces()`를 부르지 않음. `isUnassignedLiteralIp` 분류기 단위 8건 — IPv6 동치 형태(`2001:0db8::1` · `[…]` · `%zone`) · 펼친 와일드카드/루프백(`0:0:0:0:0:0:0:0` · `0:0:0:0:0:0:0:1`) 제외 · 이름 host 미분류 · IPv4 있음/없음 · IPv4-mapped IPv6(`::ffff:127.0.0.1` 루프백 제외 · `::ffff:192.0.2.1` + 목록 `192.0.2.1` → 있음 · 빈 목록 → 미할당 · `::ffff:0.0.0.0` 와일드카드 제외). 포트 점유 서버는 `finally`에서 정지 · 상태 루트 쓰기 없음(기본 `RoomRegistry`). **옛 production에서 red = (a)만**(실측 2026-10-23) · P1b·P1c red는 `implementation-notes.md` §0.45.2.
 
 **③ 파일:** production = `packages/relay/src/server.ts`만 + 버전 세 줄(`packages/cli/src/index.ts` · `packages/host/src/bridge-runtime.ts` · `packages/mcp-server/src/stdio.ts`). 무변경 = `packages/protocol` · 두 CLI 진입부 · 브리지 · 워커.
 
 **Done:**
-- [x] D1 · D2 production · 새 테스트 4건 green · relay 패키지 스위트 green · typecheck · biome lint
+- [x] D1 · D2 production · 새 테스트 14건 green · relay 패키지 스위트 green · typecheck · biome lint
 - [x] 문서: CHANGELOG `## 0.45.2` · USER_GUIDE relay 문제 해결 줄 · `implementation-notes.md` §0.45.2 · HANDOFF · `tasks/todo.md`
 - [ ] verify → ship (dist 재빌드 포함)
 

@@ -47,6 +47,8 @@ This file is for **during-implementation** plan deviations only.
 | (1) | D1 · 아키텍트 프로브 | **Bun 1.3.11 `Bun.serve`는 미할당 hostname(`10.255.255.1`)에도 `code: "EADDRINUSE"` · "Failed to start server. Is port N in use?"를 던진다**(OS 수준 EADDRNOTAVAIL이 가려짐) → 오류 코드로는 진짜 포트 충돌과 구분 불가. 판정을 `os.networkInterfaces()` 대조로 했다: 와일드카드 아닌 리터럴 IP가 어느 인터페이스에도 없을 때만 새 문면, 그 밖은 원래 오류를 그대로 다시 던진다(`cause` 유지). | 수용(실측 · 보수적 — 이름 host · 와일드카드 · 할당된 주소는 오늘 문면 그대로) |
 | (2) | D1 문면 | 메시지 = `Cannot listen on <host>:<port> — <host> is not assigned to any network interface on this machine (yet). If it is a Tailscale/VPN address, the interface may still be coming up; a service manager restart will retry. (not a port conflict)` — 부팅 경합(tailscaled 이전 기동)을 원인 후보로 명시하고 systemd `Restart=` 재시도가 정상 회복 경로임을 알린다. 루프백(`127.0.0.1` · `::1`)은 인터페이스 목록과 무관하게 할당됨으로 본다. | 수용(아키텍트 락 문면) |
 | (3) | D2 이음새 | 생성자 옵션 `interfaces`(`@internal`)는 테스트 전용 — 두 CLI는 넘기지 않는다. | 수용 |
+| (4) | P1b · Astra 0203 M×2 · `57a384f` → `dd61d07` | host를 **먼저 분류**하고 와일드카드·루프백·이름이 아닐 때만 인터페이스를 읽는다. 인터페이스 조회나 정규화가 던지면 **원래 bind 오류를 그대로 다시 던진다**. IPv6는 WHATWG URL 파서의 정규형으로 비교(`2001:0db8::1` = `2001:db8::1` · 펼친 `0:…:0` · `0:…:1`도 와일드카드·루프백으로 제외). 테스트 host = TEST-NET-1 `192.0.2.1` + 예약 포트. 분류기는 단위 테스트용 `@internal isUnassignedLiteralIp`로 export. | 수용 |
+| (5) | P1c · Astra 0205 M | **IPv4-mapped IPv6:** WHATWG 정규형이 `::ffff:XXXX:YYYY`(hex 두 그룹)이면 그것이 담은 dotted IPv4로 바꾼 뒤(`::ffff:7f00:1` → `127.0.0.1`) 와일드카드·루프백 판정과 인터페이스 대조를 한다(인터페이스 항목에도 같은 변환). 분류기 단위 4건 추가 — `dd61d07` 위 red = 루프백 제외 · 목록에 있는 `::ffff:192.0.2.1` · `::ffff:0.0.0.0` 와일드카드 3건(빈 목록 → 미할당 1건은 옛 코드에서도 green). | 수용 |
 
 ### §0.45.1 — 이월 결함 둘 — `verify` 접두 fail closed · pack 원시 바이트 해시 (implemented 2026-10-18 · ship 전)
 
