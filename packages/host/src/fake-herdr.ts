@@ -292,6 +292,22 @@ export type FakeHerdr = {
   setLayoutMode: (mode: "normal" | "non_chain" | "ambiguous_x") => void;
   /** PLAN 0.23.12: set successive right-split ratios for a tab (length N-1). */
   setTabSplitRatios: (tabId: string, ratios: number[]) => void;
+  /**
+   * PLAN 0.45.4 R15 ⓑ: change a pane's stored agent status without broadcasting
+   * (= the status event lost on an event-socket replacement). agent.get sees it.
+   */
+  setAgentStatus: (paneId: string, status: string) => void;
+  /** PLAN 0.45.4 R15 ⓐ: while on, agent.get for this pane (or "*") replies with an error. */
+  failAgentGet: (paneId: string, on: boolean) => void;
+  /**
+   * PLAN 0.45.4 R15 ⓓ (R68-M2): while on, agent.get for this pane builds its reply
+   * from the request-time status and holds it (stale response) until releaseAgentGet.
+   */
+  holdAgentGet: (paneId: string, on: boolean) => void;
+  /** PLAN 0.45.4 R15 ⓓ: send every held agent.get reply for this pane. */
+  releaseAgentGet: (paneId: string) => void;
+  /** PLAN 0.45.4 R15 ⓓ: max concurrent unanswered agent.get seen for this pane. */
+  agentGetMaxInFlight: (paneId: string) => number;
 };
 
 export async function startFakeHerdr(
@@ -354,6 +370,13 @@ export async function startFakeHerdr(
     { ordered: string[]; ratios: number[] }
   >();
   const TOTAL_WIDTH = 100;
+  /** PLAN 0.45.4 R15: agent.get error injection (paneId | "*"). */
+  const agentGetFail = new Set<string>();
+  /** PLAN 0.45.4 R15 ⓓ: panes whose agent.get replies are held. */
+  const agentGetHold = new Set<string>();
+  const agentGetHeld: { paneId: string; send: () => void }[] = [];
+  const agentGetInFlight = new Map<string, number>();
+  const agentGetMax = new Map<string, number>();
 
   function ensureChain(tabId: string): { ordered: string[]; ratios: number[] } {
     let c = tabChains.get(tabId);
@@ -955,6 +978,53 @@ export async function startFakeHerdr(
           sock.end();
           continue;
         }
+        if (method === "agent.get") {
+          // PLAN 0.45.4 R15 ⓐ: status from the stored pane state.
+          const found = findPaneByTarget(String(params.target ?? ""));
+          if (!found) {
+            err("agent.get: target not found");
+            sock.end();
+            continue;
+          }
+          const [paneId, p] = found;
+          if (agentGetFail.has(paneId) || agentGetFail.has("*")) {
+            err("agent.get failed (test inject)");
+            sock.end();
+            continue;
+          }
+          const inFlight = (agentGetInFlight.get(paneId) ?? 0) + 1;
+          agentGetInFlight.set(paneId, inFlight);
+          agentGetMax.set(paneId, Math.max(agentGetMax.get(paneId) ?? 0, inFlight));
+          // Built at request time — a held reply is a stale snapshot (R68-M2).
+          const line = `${JSON.stringify({
+            id,
+            result: {
+              type: "agent_info",
+              agent: {
+                pane_id: paneId,
+                terminal_id: p.terminal_id,
+                name: p.agentName,
+                agent_status: p.status,
+                interactive_ready: true,
+              },
+            },
+          })}\n`;
+          const send = () => {
+            agentGetInFlight.set(paneId, Math.max(0, (agentGetInFlight.get(paneId) ?? 1) - 1));
+            try {
+              sock.write(line);
+              sock.end();
+            } catch {
+              /* */
+            }
+          };
+          if (agentGetHold.has(paneId)) {
+            agentGetHeld.push({ paneId, send });
+            continue;
+          }
+          send();
+          continue;
+        }
         err(`unknown method ${method}`);
         sock.end();
       }
@@ -1056,7 +1126,35 @@ export async function startFakeHerdr(
       const c = ensureChain(tabId);
       c.ratios = [...ratios];
     },
+    setAgentStatus(paneId: string, status: string) {
+      const p = panes.get(paneId);
+      if (p) p.status = status;
+    },
+    failAgentGet(paneId: string, on: boolean) {
+      if (on) agentGetFail.add(paneId);
+      else agentGetFail.delete(paneId);
+    },
+    holdAgentGet(paneId: string, on: boolean) {
+      if (on) agentGetHold.add(paneId);
+      else agentGetHold.delete(paneId);
+    },
+    releaseAgentGet(paneId: string) {
+      for (let i = 0; i < agentGetHeld.length; ) {
+        const h = agentGetHeld[i]!;
+        if (h.paneId === paneId) {
+          agentGetHeld.splice(i, 1);
+          h.send();
+        } else {
+          i += 1;
+        }
+      }
+    },
+    agentGetMaxInFlight(paneId: string) {
+      return agentGetMax.get(paneId) ?? 0;
+    },
     async close() {
+      // PLAN 0.45.4 R15 ⓓ: held agent.get replies are dropped.
+      agentGetHeld.length = 0;
       for (const s of sockets) {
         try {
           s.destroy();
