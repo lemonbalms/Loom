@@ -83,19 +83,42 @@ describe("dogfood active profile contract", () => {
   test("herdr upgrades fail before a false-positive bridge start", () => {
     const source = read("scripts/dogfood-herdr-check.sh");
     const up = read("scripts/dogfood-up.sh");
-    expect(source).toContain('REQUIRED_VERSION="0.7.5"');
-    expect(source).toContain('REQUIRED_PROTOCOL="17"');
-    expect(source).toContain("LOOM_PROTOCOL");
+    // PLAN 0.45.3 R7: exact version:protocol pair table (class 97) + Loom's
+    // supported set read from HERDR_PROTOCOLS_SUPPORTED (no sed of a constant).
+    expect(source).toContain('SUPPORTED_HERDR="0.7.5:17 0.9.5:22"');
+    expect(source).not.toContain("REQUIRED_VERSION");
+    expect(source).not.toContain("REQUIRED_PROTOCOL");
+    expect(source).toContain("HERDR_PROTOCOLS_SUPPORTED");
+    expect(source).toMatch(/import \{ HERDR_PROTOCOLS_SUPPORTED \} from/);
+    expect(source).not.toContain("HERDR_PROTOCOL_EXPECTED");
     expect(source).toContain("first card will fail");
+    expect(source).toContain("Loom supports herdr protocols");
+    expect(source).toContain("docs/spikes/HERDR-0.9.5-COMPAT.md");
+    expect(source).toContain("herdr compatibility: ok ($SERVER_VERSION / protocol $SERVER_PROTOCOL)");
     expect(up.indexOf("dogfood-herdr-check.sh")).toBeLessThan(up.indexOf("dogfood-room-up.sh"));
   });
 
+  test("herdr 0.9.5 status JSON keeps top-level version/protocol keys", () => {
+    // PLAN 0.45.3 R6 (R67-M1): dogfood-herdr-check reads `version` and
+    // `protocol` from `herdr status server --json`; the 0.9.5 capture pins
+    // that both keys stay top-level (no per-version keys, no fallback chain).
+    const status = JSON.parse(read("docs/spikes/fixtures/herdr-v0.9.5/status.json")) as Record<
+      string,
+      unknown
+    >;
+    expect(status.protocol).toBe(22);
+    expect(status.version).toBe("0.9.5");
+    const check = read("scripts/dogfood-herdr-check.sh");
+    expect(check).toContain('json_field "$STATUS_JSON" version');
+    expect(check).toContain('json_field "$STATUS_JSON" protocol');
+  });
+
   test("dogfood bridge syncs mac-node herdrProtocol before ready early-exit", () => {
-    // Stale ~/.loom/bridge/mac-node.json can pin herdrProtocol:16 while
-    // live herdr + HERDR_PROTOCOL_EXPECTED are 17. dogfood-bridge-up must
-    // migrate that stored cutover after the live check and before any
-    // "already online" ready exit — otherwise fail-fast is herdr protocol
-    // 17 != expected 16 even though dogfood:herdr is green.
+    // PLAN 0.45.3 R8: a persisted herdrProtocol in ~/.loom/bridge/mac-node.json
+    // is an exact pin, so any value breaks one of the supported herdr servers
+    // (17 pin vs 0.9.5/22, 22 pin vs 0.7.5/17). dogfood-bridge-up removes the
+    // pin after the live check and before any "already online" ready exit, so
+    // the bridge accepts HERDR_PROTOCOLS_SUPPORTED.
     const source = read("scripts/dogfood-bridge-up.sh");
     const herdrCheckAt = source.indexOf("bash scripts/dogfood-herdr-check.sh");
     const bridgeStatusAt = source.indexOf("BRIDGE_STATUS=");
@@ -108,7 +131,11 @@ describe("dogfood active profile contract", () => {
     const migrateWindow = source.slice(herdrCheckAt, bridgeStatusAt);
     expect(migrateWindow).toContain("loadBridgeConfig");
     expect(migrateWindow).toContain("saveBridgeConfig");
-    expect(migrateWindow).toContain("HERDR_PROTOCOL_EXPECTED");
+    expect(migrateWindow).toContain("delete cfg.herdrProtocol");
+    expect(migrateWindow).toContain("cfg.herdrProtocol === undefined");
+    expect(migrateWindow).toContain("HERDR_PROTOCOLS_SUPPORTED");
+    expect(migrateWindow).toContain("removed mac-node herdrProtocol pin");
+    expect(source).not.toContain("HERDR_PROTOCOL_EXPECTED");
     expect(migrateWindow).toContain("herdrProtocol");
     // Must record whether the persisted value actually changed so the
     // already-online early-exit can be suppressed on cutover.
@@ -123,8 +150,10 @@ describe("dogfood active profile contract", () => {
       /bridge: online[\s\S]*PROTOCOL_CHANGED|PROTOCOL_CHANGED[\s\S]*bridge: online|protocolChanged|protocol_changed/,
     );
 
-    // No second independent protocol literal in bridge-up — cutover value
-    // comes from HERDR_PROTOCOL_EXPECTED / helpers only.
-    expect(source).not.toMatch(/herdrProtocol\s*[:=]\s*1[67]\b|HERDR_PROTOCOL\s*=\s*["']?1[67]/);
+    // No protocol literal in bridge-up — the sync never writes a pin; the
+    // supported set comes from HERDR_PROTOCOLS_SUPPORTED only.
+    expect(source).not.toMatch(
+      /herdrProtocol\s*[:=]\s*(1[67]|22)\b|HERDR_PROTOCOL\s*=\s*["']?(1[67]|22)/,
+    );
   });
 });
