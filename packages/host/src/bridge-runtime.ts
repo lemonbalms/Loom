@@ -74,6 +74,7 @@ import {
   stripAnsi,
   HERDR_PROTOCOLS_SUPPORTED,
   type HerdrAgentStarted,
+  type HerdrAgentStatus,
 } from "./herdr-client";
 import { ResultIssuerRegistry } from "./result-issuer";
 import { QuarantineStore, type QuarantineKey } from "./result-quarantine";
@@ -192,6 +193,8 @@ export const CONV_UNAVAILABLE_HEADLESS = "conv_unavailable_headless";
 type HerdrPort = Pick<
   HerdrClient,
   | "setOnEvent"
+  | "setOnSubscribeAck"
+  | "agentGet"
   | "connect"
   | "ping"
   | "eventsSubscribe"
@@ -225,6 +228,7 @@ function skippedHerdr(): HerdrPort {
   };
   return {
     setOnEvent() {},
+    setOnSubscribeAck() {},
     close() {},
     eventsPrune() {},
     eventConnected: false,
@@ -234,6 +238,7 @@ function skippedHerdr(): HerdrPort {
     ping: unavailable,
     eventsSubscribe: unavailable,
     request: unavailable,
+    agentGet: unavailable,
     agentStart: unavailable,
     agentPrompt: unavailable,
     agentSendKeys: unavailable,
@@ -279,6 +284,11 @@ export type StartBridgeRuntimeOptions = {
    */
   stillRunningMaxMs?: number;
   /**
+   * PLAN 0.45.4 R12 status-loss watchdog grace (ms).
+   * Test injection — production default 5_000. Real timers only.
+   */
+  statusLostGraceMs?: number;
+  /**
    * Test injection. Replaces the config-file agent path for the argv the
    * worker execs. Not read from the config file. Still passes the
    * agent-argv dangerous-flag scan.
@@ -314,6 +324,11 @@ const SETTLE_MS = 250;
  */
 const STILL_RUNNING_POLL_MS = 10_000;
 const STILL_RUNNING_MAX_MS = 5 * 60_000;
+/**
+ * PLAN 0.45.4 R12: status-loss watchdog grace — time for an in-transit real event to
+ * win. Not a correctness bound (trigger R1 + target R3 + R4 predicate are).
+ */
+const STATUS_LOST_GRACE_MS = 5_000;
 /**
  * PLAN 0.23.7: conservative still-running indicator patterns (tail match only).
  * Real TUI status line observed live: "1 command still running" / "N commands…".
@@ -615,6 +630,16 @@ type Flight = {
   resultPhase?: ResultSendPhase;
   /** PLAN 0.27.0 lock 9: set when strict ACK accepted (not tower apply). */
   relayAcceptedAt?: string;
+  /**
+   * PLAN 0.45.4 R5 / R10: status-loss watchdog state (none = undefined). One handle at a
+   * time: the `armed` 0ms schedule or the `grace` timer. Cleared in clearStillRunningState.
+   */
+  statusLostCheck?: "armed" | "get" | "grace";
+  statusLostTimer?: ReturnType<typeof setTimeout>;
+  /** R11 / R68-M2: an ACK landed during `get` / `grace` — re-ask once unless firing. */
+  statusLostRecheck?: boolean;
+  /** R68-M1: non-working status the agent.get reply saw (fire reason · note). */
+  statusLostSeen?: "idle" | "done" | "blocked";
 };
 
 /**
@@ -921,6 +946,7 @@ async function startLockedBridgeRuntime(
   const settleMs = opts?.settleMs ?? SETTLE_MS;
   const stillRunningPollMs = opts?.stillRunningPollMs ?? STILL_RUNNING_POLL_MS;
   const stillRunningMaxMs = opts?.stillRunningMaxMs ?? STILL_RUNNING_MAX_MS;
+  const statusLostGraceMs = opts?.statusLostGraceMs ?? STATUS_LOST_GRACE_MS;
 
   const flights = new Map<string, Flight>(); // paneId → flight
   // PLAN 0.33.0 D2: stop state is declared before any await so an early RPC stop / signal
@@ -1034,6 +1060,9 @@ async function startLockedBridgeRuntime(
   } else {
     // Fail-fast: herdr ping before room join (§2.2) — pane backend unchanged.
     herdr.setOnEvent((event, data) => onHerdrEvent(event, data));
+    // PLAN 0.45.4 R1: every events.subscribe ACK arms the status-loss watchdog. The first
+    // (startup global pane.closed) finds no flights — no separate "first" flag.
+    herdr.setOnSubscribeAck(() => onEventsSubscribeAck());
     try {
       await herdr.connect();
       const pong = await herdr.ping();
@@ -2825,6 +2854,165 @@ async function startLockedBridgeRuntime(
     flight.stillRunningStartedAt = undefined;
     // Sync with flight disposal: listener must not outlive the flight (M-1).
     closeHookListener(flight);
+    // PLAN 0.45.4 R5 ⓖ / R10: watchdog teardown (clearStillRunningTimers stays untouched).
+    clearStatusLostState(flight);
+  }
+
+  function clearStatusLostState(flight: Flight): void {
+    if (flight.statusLostTimer != null) {
+      clearTimeout(flight.statusLostTimer);
+      flight.statusLostTimer = undefined;
+    }
+    flight.statusLostCheck = undefined;
+    flight.statusLostRecheck = false;
+    flight.statusLostSeen = undefined;
+  }
+
+  /**
+   * PLAN 0.45.4 R4: the flight has not observed a completion-class / blocked status —
+   * still mapped, not owned, no terminal latch, no still-running deferral.
+   */
+  function statusLostNotObserved(paneId: string, flight: Flight): boolean {
+    return guardFlightCompletion(paneId, flight) && !flight.stillRunningDeferral;
+  }
+
+  /** R5: `armed` + one 0ms schedule of the agent.get start (ⓑ). */
+  function armStatusLostCheck(paneId: string, flight: Flight): void {
+    flight.statusLostCheck = "armed";
+    flight.statusLostRecheck = false;
+    flight.statusLostSeen = undefined;
+    flight.statusLostTimer = setTimeout(() => startStatusLostGet(paneId, flight), 0);
+  }
+
+  /** R5 ⓐ: subscribe ACK (R1). Schedules only — never queries synchronously. */
+  function onEventsSubscribeAck(): void {
+    if (stopPromise) return;
+    for (const [paneId, flight] of flights) {
+      if (flight.statusLostCheck === undefined) {
+        armStatusLostCheck(paneId, flight);
+      } else if (flight.statusLostCheck === "get" || flight.statusLostCheck === "grace") {
+        flight.statusLostRecheck = true;
+      }
+      // "armed": unchanged — the scheduled query reads post-ACK state.
+    }
+  }
+
+  /** R5 ⓑ: query start. Only from `armed` → flight-level agent.get ≤ 1 in flight. */
+  function startStatusLostGet(paneId: string, flight: Flight): void {
+    flight.statusLostTimer = undefined;
+    if (stopPromise || flights.get(paneId) !== flight || flight.statusLostCheck !== "armed") {
+      return;
+    }
+    if (!(flight.sawWorking === true && statusLostNotObserved(paneId, flight))) {
+      flight.statusLostCheck = undefined;
+      flight.statusLostRecheck = false;
+      return;
+    }
+    flight.statusLostCheck = "get";
+    herdr.agentGet(paneId).then(
+      (status) => onStatusLostGetReply(paneId, flight, status),
+      (e: unknown) => onStatusLostGetReply(paneId, flight, null, e),
+    );
+  }
+
+  /** R5 ⓒ: agent.get reply (possibly stale) or error. */
+  function onStatusLostGetReply(
+    paneId: string,
+    flight: Flight,
+    status: HerdrAgentStatus | null,
+    err?: unknown,
+  ): void {
+    if (stopPromise || flights.get(paneId) !== flight || flight.statusLostCheck !== "get") {
+      return;
+    }
+    if (status === null) {
+      log(
+        `card ${flight.cardId}: status-loss watchdog agent.get failed (${err instanceof Error ? err.message : String(err)}) — no action`,
+      );
+    } else if (status === "unknown") {
+      log(`card ${flight.cardId}: status-loss watchdog agent.get status=unknown — no action`);
+    }
+    if (
+      (status === "idle" || status === "done" || status === "blocked") &&
+      statusLostNotObserved(paneId, flight)
+    ) {
+      flight.statusLostCheck = "grace";
+      flight.statusLostSeen = status;
+      flight.statusLostRecheck = false;
+      flight.statusLostTimer = setTimeout(
+        () => onStatusLostGraceEnd(paneId, flight),
+        statusLostGraceMs,
+      );
+      return;
+    }
+    if (flight.statusLostRecheck) {
+      armStatusLostCheck(paneId, flight);
+    } else {
+      flight.statusLostCheck = undefined;
+    }
+    flight.statusLostRecheck = false;
+  }
+
+  /** R5 ⓓ (R68-M1): a `working` event during the grace re-asks instead of withdrawing. */
+  function onStatusLostWorking(paneId: string, flight: Flight): void {
+    if (flight.statusLostCheck !== "grace") return;
+    if (flight.statusLostTimer != null) {
+      clearTimeout(flight.statusLostTimer);
+      flight.statusLostTimer = undefined;
+    }
+    armStatusLostCheck(paneId, flight);
+  }
+
+  /** R5 ⓔ: grace end — re-check R4 only (no second agent.get), then fire or step back. */
+  function onStatusLostGraceEnd(paneId: string, flight: Flight): void {
+    flight.statusLostTimer = undefined;
+    if (stopPromise || flight.statusLostCheck !== "grace") return;
+    const seen = flight.statusLostSeen;
+    if (seen !== undefined && statusLostNotObserved(paneId, flight)) {
+      flight.statusLostCheck = undefined;
+      flight.statusLostRecheck = false;
+      fireStatusLost(paneId, flight, seen);
+      return;
+    }
+    if (flight.statusLostRecheck) {
+      armStatusLostCheck(paneId, flight);
+    } else {
+      flight.statusLostCheck = undefined;
+      flight.statusLostSeen = undefined;
+    }
+    flight.statusLostRecheck = false;
+  }
+
+  /**
+   * R5 ⓕ / R6 / R8 / R68-L1: loud failure through the existing failure family. Never
+   * beginCardCompletion, never status "done", never re-inject, never pane.close (U1 · U3).
+   */
+  function fireStatusLost(paneId: string, flight: Flight, seen: "idle" | "done" | "blocked"): void {
+    if (!tryAcquireFlightSideEffect(flight)) return;
+    disposeCardFlight(paneId, flight);
+    herdr.eventsPrune(paneId);
+    if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+      // R8: the M-2 ③ correction's reason wins; R68-L2 source tag.
+      appendHookTelemetry({ type: "agent_blocked_correction", reason: "watchdog" });
+      const note = `herdr agent.get status=${seen} after event socket re-subscribe; live permission_prompt hook hint — reported by the status-loss watchdog`;
+      scheduleOwnedCardResult(paneId, flight, () =>
+        finishCardFailure(flight, "agent_blocked", { note }),
+      );
+      return;
+    }
+    if (seen === "blocked") {
+      const note =
+        "herdr agent.get status=blocked after event socket re-subscribe; blocked event lost — reported by the status-loss watchdog";
+      scheduleOwnedCardResult(paneId, flight, () =>
+        finishCardFailure(flight, "agent_blocked", { note }),
+      );
+      return;
+    }
+    const note = `herdr agent.get status=${seen} after event socket re-subscribe; status event lost (no ${seen} observed by the bridge) — judge from output`;
+    log(`card ${flight.cardId}: status-loss watchdog → failed reason=status_lost (status=${seen})`);
+    scheduleOwnedCardResult(paneId, flight, () =>
+      finishCardFailure(flight, "status_lost", { note }),
+    );
   }
 
   /**
@@ -3157,6 +3345,8 @@ async function startLockedBridgeRuntime(
       // would otherwise poison a later normal done).
       flight.hookHint = clearHookHintOnWorking();
       flight.sawWorking = true;
+      // PLAN 0.45.4 R5 ⓓ: grace → re-ask once (replay vs live working is indistinguishable).
+      onStatusLostWorking(paneId, flight);
       return;
     }
 

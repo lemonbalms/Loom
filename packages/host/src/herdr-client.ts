@@ -197,6 +197,8 @@ export class HerdrClient {
    * superseded generations adopt the newest generation's settle result.
    */
   private eventConnectDeferred: EventConnectDeferred | null = null;
+  /** PLAN 0.45.4 R1: subscribe-ACK listener (see setOnSubscribeAck). */
+  private onSubscribeAck: (() => void) | null = null;
 
   constructor(opts: HerdrClientOptions) {
     this.opts = opts;
@@ -205,6 +207,15 @@ export class HerdrClient {
   /** Allow runtime to attach event handler after construction (tests/inject). */
   setOnEvent(fn: (event: string, data: unknown) => void): void {
     this.opts.onEvent = fn;
+  }
+
+  /**
+   * PLAN 0.45.4 R1: called after every successful events.subscribe ACK on the
+   * current generation (caller's own subscribe and backoff reconnects alike).
+   * Listener exceptions are swallowed inside the client.
+   */
+  setOnSubscribeAck(fn: () => void): void {
+    this.onSubscribeAck = fn;
   }
 
   get socketPath(): string {
@@ -411,6 +422,29 @@ export class HerdrClient {
     // process is interactive_ready. agent.wait is NOT a readiness barrier;
     // poll agent.get{target:pane_id} until ready within the client timeout budget.
     return this.awaitAgentLaunchReady(agent, opts.name);
+  }
+
+  /**
+   * PLAN 0.45.4 R2: one `agent.get` for `target` (pane id), normalized to the
+   * schema enum. Reads only `agent.agent_status` (present in protocol 17 and 22);
+   * seq/revision fields are ignored (D3). Lower-cased; missing or out-of-set →
+   * `"unknown"`. RPC errors propagate.
+   */
+  async agentGet(target: string): Promise<HerdrAgentStatus> {
+    const result = (await this.request("agent.get", { target })) as {
+      agent?: { agent_status?: unknown };
+    };
+    const raw = result?.agent?.agent_status;
+    const s = typeof raw === "string" ? raw.toLowerCase() : "";
+    switch (s) {
+      case "idle":
+      case "working":
+      case "blocked":
+      case "done":
+        return s;
+      default:
+        return "unknown";
+    }
   }
 
   /**
@@ -778,6 +812,12 @@ export class HerdrClient {
         this._lastSubscribeAck = new Date().toISOString();
         this.eventReconnectDelay = EVENT_RECONNECT_BASE_MS;
         this.finishEventConnect();
+        // PLAN 0.45.4 R1: every successful ACK (own subscribe or reconnect).
+        try {
+          this.onSubscribeAck?.();
+        } catch {
+          /* listener errors stay inside the client */
+        }
       }
     };
 
