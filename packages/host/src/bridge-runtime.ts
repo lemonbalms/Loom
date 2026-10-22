@@ -72,7 +72,7 @@ import {
   HerdrClient,
   HerdrRpcError,
   stripAnsi,
-  HERDR_PROTOCOL_EXPECTED,
+  HERDR_PROTOCOLS_SUPPORTED,
   type HerdrAgentStarted,
 } from "./herdr-client";
 import { ResultIssuerRegistry } from "./result-issuer";
@@ -84,6 +84,7 @@ import {
 } from "./card-result-core";
 import {
   enabledHeadlessAgents,
+  bridgeConfigPath,
   loadBridgeConfig,
   isAuthorizedDispatcher,
   resolveAgentArgv,
@@ -1036,13 +1037,30 @@ async function startLockedBridgeRuntime(
     try {
       await herdr.connect();
       const pong = await herdr.ping();
-      const expected = cfg.herdrProtocol ?? HERDR_PROTOCOL_EXPECTED;
-      if (pong.protocol !== expected) {
-        throw new Error(`herdr protocol ${pong.protocol} != expected ${expected}`);
+      // PLAN 0.45.3 D1 · R3 · R4: no pin = any supported protocol; a pin is exact and must
+      // itself be supported (a pin outside the set never opens an unsupported protocol).
+      const pin = cfg.herdrProtocol;
+      const supported = HERDR_PROTOCOLS_SUPPORTED.join(", ");
+      if (pin === undefined) {
+        if (!HERDR_PROTOCOLS_SUPPORTED.includes(pong.protocol)) {
+          throw new Error(
+            `herdr protocol ${pong.protocol} is not supported (supported: ${supported})`,
+          );
+        }
+      } else if (!HERDR_PROTOCOLS_SUPPORTED.includes(pin)) {
+        throw new Error(
+          `herdr protocol pin ${pin} is not supported (bridge config herdrProtocol in ${bridgeConfigPath(profile)}; supported: ${supported})`,
+        );
+      } else if (pong.protocol !== pin) {
+        throw new Error(
+          `herdr protocol ${pong.protocol} != pinned ${pin} (bridge config herdrProtocol; supported: ${supported} — remove herdrProtocol from ${bridgeConfigPath(profile)} to accept any supported protocol)`,
+        );
       }
       herdrOk = true;
       life.status.update({ herdr: "ok" });
-      log(`herdr ok v${pong.version} protocol ${pong.protocol}`);
+      log(
+        `herdr ok v${pong.version} protocol ${pong.protocol}${pin === undefined ? ` (supported: ${supported})` : " (pinned)"}`,
+      );
     } catch (e) {
       herdr.close();
       throw new Error(

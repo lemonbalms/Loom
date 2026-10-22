@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, chmodSync, writeFileSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { loomDir, ensureFableDir } from "./session-store";
-import { DEFAULT_HERDR_SOCKET, HERDR_PROTOCOL_EXPECTED } from "./herdr-client";
+import { DEFAULT_HERDR_SOCKET } from "./herdr-client";
 import type { DispatchAgentKind } from "@loom/protocol";
 import {
   defaultWorkerPermissions,
@@ -28,9 +28,10 @@ export type BridgeConfig = {
   /** Local argv map — wire never carries argv. shell permanently excluded. */
   agentArgv: Partial<Record<DispatchAgentKind, string[]>>;
   /**
-   * Expected herdr protocol. Default is `HERDR_PROTOCOL_EXPECTED` (17).
-   * Config-only bump without the protocol-17 spawn/inject adapter is not a
-   * supported cutover (COMPAT §5-2).
+   * PLAN 0.45.3 D1 · R1: absent = accept any protocol in `HERDR_PROTOCOLS_SUPPORTED`;
+   * present = exact operator pin (must itself be in the supported set — R4). No default
+   * is written. Config-only bump without a supporting adapter is not a supported
+   * cutover (COMPAT §5-2).
    */
   herdrProtocol?: number;
   /**
@@ -153,7 +154,6 @@ export function defaultBridgeConfig(): BridgeConfig {
     authorizedDispatchers: [],
     herdrSocketPath: process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
-    herdrProtocol: HERDR_PROTOCOL_EXPECTED,
     paneCleanup: "auto",
     panePlacement: "pool",
     hookSensor: false,
@@ -668,7 +668,7 @@ export function loadBridgeConfig(profile: string): BridgeConfig {
         ? raw.herdrSocketPath
         : base.herdrSocketPath,
     agentArgv: agentArgvFromRaw(raw.agentArgv),
-    herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol,
+    herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : undefined,
     paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
     panePlacement: sanitizePanePlacement(raw.panePlacement),
     paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),

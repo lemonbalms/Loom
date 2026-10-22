@@ -1,12 +1,12 @@
 /**
- * Herdr NDJSON Unix-socket client (v0.7.5 / protocol 17 fixtures).
+ * Herdr NDJSON Unix-socket client (v0.7.5 / protocol 17 · v0.9.5 / protocol 22 fixtures).
  * AGPL boundary: socket RPC only — no herdr source vendoring.
  * PLAN 0.22.0 / HERDR_DESIGN §2.3
  * PLAN 0.23.4 — subscription lifecycle (prune, pre-ACK reject, ACK timeout, M-1 rollback).
  * PLAN 0.28.1 — protocol-17 adapter: named start on existing pane, atomic
  * `agent.prompt`, env/cwd on `tab.create`/`pane.split` (PATCH 2).
  *
- * Transport note (measured against real herdr; still true on 0.7.5): the
+ * Transport note (measured against real herdr; still true on 0.7.5 — 0.9.5 unmeasured): the
  * socket is one-RPC-per-connection — any request gets a response then the
  * server sends FIN and the connection closes. The lone exception is
  * `events.subscribe`, whose connection stays open to carry `{event,data}`
@@ -14,8 +14,9 @@
  * fresh connection per call; `eventsSubscribe()` keeps one dedicated
  * long-lived connection for pushes, reconnecting with backoff if it drops.
  *
- * Wire truth: `docs/spikes/fixtures/herdr-v0.7.5/schema.json` (+ schema-focus).
- * Do not invent fields or logical key-token names beyond that fixture.
+ * Wire truth: `docs/spikes/fixtures/herdr-v0.7.5/schema.json` (+ schema-focus) and
+ * `docs/spikes/fixtures/herdr-v0.9.5/schema.json`. Do not invent fields or logical
+ * key-token names beyond those fixtures.
  */
 
 import { randomBytes } from "node:crypto";
@@ -23,7 +24,11 @@ import { createConnection, type Socket } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const HERDR_PROTOCOL_EXPECTED = 17;
+/**
+ * PLAN 0.45.3 D1: herdr protocols the bridge accepts (0.7.5 = 17 · 0.9.5 = 22). No
+ * protocol-dependent behavior (D2) — the wire Loom uses is identical across the set.
+ */
+export const HERDR_PROTOCOLS_SUPPORTED: readonly number[] = Object.freeze([17, 22]);
 export const DEFAULT_HERDR_SOCKET = join(homedir(), ".config", "herdr", "herdr.sock");
 
 const EVENT_RECONNECT_BASE_MS = 500;
