@@ -57,33 +57,62 @@ export function isLoopbackHost(host: string): boolean {
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
 
-/** Lower-case, strip brackets and `%zone` so IPv6 forms compare equal. */
-function normalizeAddress(addr: string): string {
-  return addr
+/**
+ * Canonical literal IP, or null for a hostname. Strips brackets and `%zone`;
+ * IPv6 goes through the WHATWG URL parser so equivalent forms compare equal
+ * (`2001:0db8::1` → `2001:db8::1`, `0:0:0:0:0:0:0:0` → `::`). May throw.
+ */
+function canonicalLiteralIp(addr: string): string | null {
+  const h = addr
     .toLowerCase()
     .replace(/^\[|\]$/g, "")
     .replace(/%.*$/, "");
+  const family = isIP(h);
+  if (family === 4) return h;
+  if (family === 6) return new URL(`http://[${h}]/`).hostname.slice(1, -1);
+  return null;
 }
 
 /**
- * v0.45.2: Bun reports EADDRINUSE ("Is port N in use?") both for a real port
- * conflict and for a hostname not assigned to any local interface. True when
- * `host` is a non-wildcard literal IP absent from `ifaces`.
+ * Canonical `host` when it is a literal IP that is neither wildcard nor
+ * loopback — the only hosts whose bind failure warrants an interface check.
  */
-function isUnassignedLiteralIp(
+function bindCheckCandidate(host: string): string | null {
+  const h = canonicalLiteralIp(host);
+  if (h === null) return null;
+  if (h === "0.0.0.0" || h === "::") return null;
+  if (h === "127.0.0.1" || h === "::1") return null;
+  return h;
+}
+
+function hasAddress(
+  ifaces: ReturnType<typeof networkInterfaces>,
+  canonical: string,
+): boolean {
+  for (const list of Object.values(ifaces)) {
+    for (const info of list ?? []) {
+      if (canonicalLiteralIp(info.address) === canonical) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * @internal v0.45.2: Bun reports EADDRINUSE ("Is port N in use?") both for a
+ * real port conflict and for a hostname not assigned to any local interface.
+ * True when `host` is a non-wildcard, non-loopback literal IP absent from
+ * `ifaces`. Anything not classifiable (canonicalisation throws) → false.
+ */
+export function isUnassignedLiteralIp(
   host: string,
   ifaces: ReturnType<typeof networkInterfaces>,
 ): boolean {
-  const h = normalizeAddress(host);
-  if (isIP(h) === 0) return false;
-  if (h === "0.0.0.0" || h === "::") return false;
-  if (h === "127.0.0.1" || h === "::1") return false;
-  for (const list of Object.values(ifaces)) {
-    for (const info of list ?? []) {
-      if (normalizeAddress(info.address) === h) return false;
-    }
+  try {
+    const h = bindCheckCandidate(host);
+    return h !== null && !hasAddress(ifaces, h);
+  } catch {
+    return false;
   }
-  return true;
 }
 
 export class RelayServer {
@@ -145,7 +174,16 @@ export class RelayServer {
     try {
       this.server = this.serve();
     } catch (e) {
-      if (isUnassignedLiteralIp(this.host, this.interfaces())) {
+      // Classify the host before touching interfaces; a failing classifier
+      // must never replace the original bind error.
+      let unassigned = false;
+      try {
+        const h = bindCheckCandidate(this.host);
+        unassigned = h !== null && !hasAddress(this.interfaces(), h);
+      } catch {
+        throw e;
+      }
+      if (unassigned) {
         throw new Error(
           `Cannot listen on ${this.host}:${this.port} — ${this.host} is not assigned to any network interface on this machine (yet). If it is a Tailscale/VPN address, the interface may still be coming up; a service manager restart will retry. (not a port conflict)`,
           { cause: e },
