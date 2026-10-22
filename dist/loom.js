@@ -6570,24 +6570,33 @@ function isLoopbackHost(host) {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
-function normalizeAddress(addr) {
-  return addr.toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+function canonicalLiteralIp(addr) {
+  const h = addr.toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  const family = isIP(h);
+  if (family === 4)
+    return h;
+  if (family === 6)
+    return new URL(`http://[${h}]/`).hostname.slice(1, -1);
+  return null;
 }
-function isUnassignedLiteralIp(host, ifaces) {
-  const h = normalizeAddress(host);
-  if (isIP(h) === 0)
-    return false;
+function bindCheckCandidate(host) {
+  const h = canonicalLiteralIp(host);
+  if (h === null)
+    return null;
   if (h === "0.0.0.0" || h === "::")
-    return false;
+    return null;
   if (h === "127.0.0.1" || h === "::1")
-    return false;
+    return null;
+  return h;
+}
+function hasAddress(ifaces, canonical) {
   for (const list of Object.values(ifaces)) {
     for (const info of list ?? []) {
-      if (normalizeAddress(info.address) === h)
-        return false;
+      if (canonicalLiteralIp(info.address) === canonical)
+        return true;
     }
   }
-  return true;
+  return false;
 }
 
 class RelayServer {
@@ -6633,7 +6642,14 @@ class RelayServer {
     try {
       this.server = this.serve();
     } catch (e) {
-      if (isUnassignedLiteralIp(this.host, this.interfaces())) {
+      let unassigned = false;
+      try {
+        const h = bindCheckCandidate(this.host);
+        unassigned = h !== null && !hasAddress(this.interfaces(), h);
+      } catch {
+        throw e;
+      }
+      if (unassigned) {
         throw new Error(`Cannot listen on ${this.host}:${this.port} \u2014 ${this.host} is not assigned to any network interface on this machine (yet). If it is a Tailscale/VPN address, the interface may still be coming up; a service manager restart will retry. (not a port conflict)`, { cause: e });
       }
       throw e;
