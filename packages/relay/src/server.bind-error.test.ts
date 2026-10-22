@@ -134,7 +134,7 @@ describe("RelayServer.start bind error (v0.45.2)", () => {
     expect(err.message).not.toContain("interfaces boom");
   });
 
-  test("(f) loopback / wildcard hosts never consult interfaces()", () => {
+  test("(f) loopback port conflict: probe binds, interfaces() never consulted", () => {
     const blocker = occupy("127.0.0.1");
     try {
       let calls = 0;
@@ -155,6 +155,159 @@ describe("RelayServer.start bind error (v0.45.2)", () => {
   });
 });
 
+describe("RelayServer.start probe + interface check (v0.45.2 P1d)", () => {
+  /** Probe seam that records its calls and answers `result`. */
+  function probe(result: boolean | Error): {
+    calls: string[];
+    fn: (host: string) => boolean;
+  } {
+    const calls: string[] = [];
+    return {
+      calls,
+      fn: (host) => {
+        calls.push(host);
+        if (result instanceof Error) throw result;
+        return result;
+      },
+    };
+  }
+
+  test("probe fails + absent from list → new message", () => {
+    const p = probe(false);
+    const server = new RelayServer({
+      host: TEST_NET,
+      port: reservedPort(),
+      authToken: "t",
+      interfaces: fakeInterfaces("127.0.0.1"),
+      probeBind: p.fn,
+    });
+    const err = startError(server);
+    expect(p.calls).toEqual([TEST_NET]);
+    expect(err.message).toContain("is not assigned to any network interface");
+  });
+
+  test("probe binds + absent from list → original (127.0.0.2 / AnyIP class)", () => {
+    const p = probe(true);
+    let ifaceCalls = 0;
+    const server = new RelayServer({
+      host: TEST_NET,
+      port: reservedPort(),
+      authToken: "t",
+      interfaces: () => {
+        ifaceCalls++;
+        return fakeList("127.0.0.1");
+      },
+      probeBind: p.fn,
+    });
+    const err = startError(server);
+    expect(p.calls).toEqual([TEST_NET]);
+    expect(ifaceCalls).toBe(0);
+    expect(err.message).toMatch(BUN_IN_USE);
+    expect(err.message).not.toContain("not assigned");
+  });
+
+  test("probe fails + present in list → original", () => {
+    const p = probe(false);
+    const server = new RelayServer({
+      host: TEST_NET,
+      port: reservedPort(),
+      authToken: "t",
+      interfaces: fakeInterfaces(TEST_NET),
+      probeBind: p.fn,
+    });
+    const err = startError(server);
+    expect(p.calls).toEqual([TEST_NET]);
+    expect(err.message).toMatch(BUN_IN_USE);
+    expect(err.message).not.toContain("not assigned");
+  });
+
+  test("hostname → probe not called, original", () => {
+    // RFC 6761 `.invalid` never resolves, so the real bind always fails.
+    const p = probe(false);
+    const server = new RelayServer({
+      host: "loom-p1d.invalid",
+      port: reservedPort(),
+      authToken: "t",
+      interfaces: fakeInterfaces(),
+      probeBind: p.fn,
+    });
+    const err = startError(server);
+    expect(p.calls).toEqual([]);
+    expect(err.message).not.toContain("not assigned");
+  });
+
+  test("wildcard → probe not called, original", () => {
+    const blocker = occupy("0.0.0.0");
+    try {
+      const p = probe(false);
+      const server = new RelayServer({
+        host: "0.0.0.0",
+        port: Number(blocker.port),
+        authToken: "t",
+        interfaces: fakeInterfaces(),
+        probeBind: p.fn,
+      });
+      const err = startError(server);
+      expect(p.calls).toEqual([]);
+      expect(err.message).toMatch(BUN_IN_USE);
+      expect(err.message).not.toContain("not assigned");
+    } finally {
+      blocker.stop(true);
+    }
+  });
+
+  test("probe throws → original EADDRINUSE error rethrown", () => {
+    const p = probe(new Error("probe boom"));
+    const server = new RelayServer({
+      host: TEST_NET,
+      port: reservedPort(),
+      authToken: "t",
+      interfaces: fakeInterfaces(),
+      probeBind: p.fn,
+    });
+    const err = startError(server);
+    expect(p.calls).toEqual([TEST_NET]);
+    expect((err as { code?: string }).code).toBe("EADDRINUSE");
+    expect(err.message).toMatch(BUN_IN_USE);
+    expect(err.message).not.toContain("probe boom");
+  });
+
+  test("real probe: 127.0.0.1 port conflict, absent from list → original", () => {
+    const blocker = occupy("127.0.0.1");
+    try {
+      const server = new RelayServer({
+        host: "127.0.0.1",
+        port: Number(blocker.port),
+        interfaces: fakeInterfaces(),
+      });
+      const err = startError(server);
+      expect(err.message).toMatch(BUN_IN_USE);
+      expect(err.message).not.toContain("not assigned");
+    } finally {
+      blocker.stop(true);
+    }
+  });
+
+  test.skipIf(process.platform !== "linux")(
+    "real probe (Linux): 127.0.0.2 port conflict → original",
+    () => {
+      const blocker = occupy("127.0.0.2");
+      try {
+        const server = new RelayServer({
+          host: "127.0.0.2",
+          port: Number(blocker.port),
+          authToken: "t",
+        });
+        const err = startError(server);
+        expect(err.message).toMatch(BUN_IN_USE);
+        expect(err.message).not.toContain("not assigned");
+      } finally {
+        blocker.stop(true);
+      }
+    },
+  );
+});
+
 describe("isUnassignedLiteralIp (v0.45.2)", () => {
   test("IPv6 equivalent forms compare equal", () => {
     const ifaces = fakeList("2001:DB8:0:0:0:0:0:1");
@@ -164,13 +317,18 @@ describe("isUnassignedLiteralIp (v0.45.2)", () => {
     expect(isUnassignedLiteralIp("2001:db8::2", ifaces)).toBe(true);
   });
 
-  test("expanded wildcard / loopback IPv6 forms are excluded", () => {
+  test("expanded wildcard forms are excluded", () => {
     const empty = fakeList();
     expect(isUnassignedLiteralIp("0:0:0:0:0:0:0:0", empty)).toBe(false);
-    expect(isUnassignedLiteralIp("0:0:0:0:0:0:0:1", empty)).toBe(false);
-    expect(isUnassignedLiteralIp("[::1]", empty)).toBe(false);
     expect(isUnassignedLiteralIp("0.0.0.0", empty)).toBe(false);
-    expect(isUnassignedLiteralIp("127.0.0.1", empty)).toBe(false);
+  });
+
+  test("loopback is classified like any literal (P1d: the probe decides)", () => {
+    const lo = fakeList("127.0.0.1", "::1");
+    expect(isUnassignedLiteralIp("0:0:0:0:0:0:0:1", lo)).toBe(false);
+    expect(isUnassignedLiteralIp("[::1]", lo)).toBe(false);
+    expect(isUnassignedLiteralIp("127.0.0.1", lo)).toBe(false);
+    expect(isUnassignedLiteralIp("127.0.0.1", fakeList())).toBe(true);
   });
 
   test("hostnames are not classified", () => {
@@ -184,8 +342,10 @@ describe("isUnassignedLiteralIp (v0.45.2)", () => {
     expect(isUnassignedLiteralIp(TEST_NET, fakeList("127.0.0.1"))).toBe(true);
   });
 
-  test("IPv4-mapped IPv6 loopback is excluded", () => {
-    expect(isUnassignedLiteralIp("::ffff:127.0.0.1", fakeList())).toBe(false);
+  test("IPv4-mapped IPv6 loopback matches the IPv4 loopback entry", () => {
+    expect(
+      isUnassignedLiteralIp("::ffff:127.0.0.1", fakeList("127.0.0.1")),
+    ).toBe(false);
   });
 
   test("IPv4-mapped IPv6 present in an IPv4 interface list", () => {
