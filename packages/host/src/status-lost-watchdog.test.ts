@@ -872,46 +872,60 @@ describe("PLAN 0.45.4 status-loss watchdog (relay + fake herdr)", () => {
     async () => {
       const rig = await startRig();
       try {
-        const a = newCardId();
-        const paneA = await startCard(rig, a);
-        rig.fake.setPaneReadText(paneA, "A-SCRAPE-19");
-        // Lever: fake-herdr pane.read hold. fireStatusLost takes the CAS, then
-        // finishCardFailure scrapes (settlePaneRead) before composeAndSend — a held
-        // pane.read parks the send in result_sending with the flight still mapped.
-        rig.fake.holdPaneRead(paneA, true);
-        rig.fake.setAgentStatus(paneA, "idle"); // idle event lost
-        await startCard(rig, newCardId()); // B: socket replacement → get → grace → fire
-        expect(
-          await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, GRACE_MS + 4_000),
-        ).toBe(true);
-        const missBase = flightMapMiss();
-        rig.fake.pushEvent("pane_agent_status_changed", {
-          pane_id: paneA,
-          agent_status: "idle",
+        await withStderr(async (lines) => {
+          const a = newCardId();
+          const paneA = await startCard(rig, a);
+          const paneReadsA = () =>
+            rig.fake.calls.filter((c) => c.method === "pane.read" && c.params.pane_id === paneA)
+              .length;
+          rig.fake.setPaneReadText(paneA, "A-SCRAPE-19");
+          // Lever: fake-herdr pane.read hold. fireStatusLost takes the CAS, then
+          // finishCardFailure scrapes (settlePaneRead) before composeAndSend — a held
+          // pane.read parks the send in result_sending with the flight still mapped.
+          rig.fake.holdPaneRead(paneA, true);
+          rig.fake.setAgentStatus(paneA, "idle"); // idle event lost
+          await startCard(rig, newCardId()); // B: socket replacement → get → grace → fire
+          expect(
+            await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, GRACE_MS + 4_000),
+          ).toBe(true);
+          const missBase = flightMapMiss();
+          const readsBase = paneReadsA();
+          rig.fake.pushEvent("pane_agent_status_changed", {
+            pane_id: paneA,
+            agent_status: "idle",
+          });
+          rig.fake.pushEvent("pane_agent_status_changed", {
+            pane_id: paneA,
+            agent_status: "blocked",
+          });
+          rig.fake.pushEvent("pane.closed", { pane_id: paneA });
+          await Bun.sleep(300);
+          // Send still parked; the events reached the still-mapped flight (not map misses).
+          expect(await results(a)).toHaveLength(0);
+          expect(flightMapMiss()).toBe(missBase);
+          // CAS ownership: without it the late idle reaches beginCardCompletion →
+          // settlePaneRead (extra pane.read) and the late blocked re-runs
+          // finishCardFailure (extra scrape + issuer denied).
+          expect(paneReadsA()).toBe(readsBase);
+          expect(rig.fake.paneReadHeldCount(paneA)).toBe(1);
+          expect(
+            lines.filter((l) => l.includes(`card ${a}:`) && l.includes("issuer.acquire(initial) denied")),
+          ).toHaveLength(0);
+          rig.fake.holdPaneRead(paneA, false);
+          rig.fake.releasePaneRead(paneA);
+          await waitResults(a, 4_000);
+          await Bun.sleep(GRACE_MS * 2 + 300);
+          const rs = await results(a);
+          expect(rs).toHaveLength(1);
+          expect(rs[0]!.status).toBe("failed");
+          expect(rs[0]!.reason).toBe("status_lost");
+          expect(rs[0]!.note).toBe(statusLostNote("idle"));
+          expect(rs[0]!.output).toContain("A-SCRAPE-19");
+          expect(rs.filter((r) => r.status === "done")).toHaveLength(0);
+          expect(
+            rig.fake.calls.filter((c) => c.method === "pane.close" && c.params.pane_id === paneA),
+          ).toHaveLength(0);
         });
-        rig.fake.pushEvent("pane_agent_status_changed", {
-          pane_id: paneA,
-          agent_status: "blocked",
-        });
-        rig.fake.pushEvent("pane.closed", { pane_id: paneA });
-        await Bun.sleep(300);
-        // Send still parked; the events reached the still-mapped flight (not map misses).
-        expect(await results(a)).toHaveLength(0);
-        expect(flightMapMiss()).toBe(missBase);
-        rig.fake.holdPaneRead(paneA, false);
-        rig.fake.releasePaneRead(paneA);
-        await waitResults(a, 4_000);
-        await Bun.sleep(GRACE_MS * 2 + 300);
-        const rs = await results(a);
-        expect(rs).toHaveLength(1);
-        expect(rs[0]!.status).toBe("failed");
-        expect(rs[0]!.reason).toBe("status_lost");
-        expect(rs[0]!.note).toBe(statusLostNote("idle"));
-        expect(rs[0]!.output).toContain("A-SCRAPE-19");
-        expect(rs.filter((r) => r.status === "done")).toHaveLength(0);
-        expect(
-          rig.fake.calls.filter((c) => c.method === "pane.close" && c.params.pane_id === paneA),
-        ).toHaveLength(0);
       } finally {
         await rig.close();
       }
