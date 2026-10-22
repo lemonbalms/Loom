@@ -6575,9 +6575,15 @@ function canonicalLiteralIp(addr) {
   const family = isIP(h);
   if (family === 4)
     return h;
-  if (family === 6)
-    return new URL(`http://[${h}]/`).hostname.slice(1, -1);
-  return null;
+  if (family !== 6)
+    return null;
+  const v6 = new URL(`http://[${h}]/`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(v6);
+  if (mapped === null)
+    return v6;
+  const hi = Number.parseInt(mapped[1], 16);
+  const lo = Number.parseInt(mapped[2], 16);
+  return [hi >> 8, hi & 255, lo >> 8, lo & 255].join(".");
 }
 function bindCheckCandidate(host) {
   const h = canonicalLiteralIp(host);
