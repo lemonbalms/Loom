@@ -6564,9 +6564,30 @@ var init_room = __esm(() => {
 });
 
 // packages/relay/src/server.ts
+import { isIP } from "net";
+import { networkInterfaces } from "os";
 function isLoopbackHost(host) {
   const h = host.toLowerCase().replace(/^\[|\]$/g, "");
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
+}
+function normalizeAddress(addr) {
+  return addr.toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+}
+function isUnassignedLiteralIp(host, ifaces) {
+  const h = normalizeAddress(host);
+  if (isIP(h) === 0)
+    return false;
+  if (h === "0.0.0.0" || h === "::")
+    return false;
+  if (h === "127.0.0.1" || h === "::1")
+    return false;
+  for (const list of Object.values(ifaces)) {
+    for (const info of list ?? []) {
+      if (normalizeAddress(info.address) === h)
+        return false;
+    }
+  }
+  return true;
 }
 
 class RelayServer {
@@ -6578,7 +6599,9 @@ class RelayServer {
   server = null;
   clients = new WeakMap;
   clientEventBodyMismatches = 0;
+  interfaces;
   constructor(opts = {}) {
+    this.interfaces = opts.interfaces ?? networkInterfaces;
     this.host = opts.host ?? DEFAULT_RELAY_HOST;
     this.port = opts.port ?? DEFAULT_RELAY_PORT;
     this.registry = opts.registry ?? new RoomRegistry;
@@ -6607,8 +6630,18 @@ class RelayServer {
     if (this.server)
       return;
     this.assertBindAllowed();
+    try {
+      this.server = this.serve();
+    } catch (e) {
+      if (isUnassignedLiteralIp(this.host, this.interfaces())) {
+        throw new Error(`Cannot listen on ${this.host}:${this.port} \u2014 ${this.host} is not assigned to any network interface on this machine (yet). If it is a Tailscale/VPN address, the interface may still be coming up; a service manager restart will retry. (not a port conflict)`, { cause: e });
+      }
+      throw e;
+    }
+  }
+  serve() {
     const self = this;
-    this.server = Bun.serve({
+    return Bun.serve({
       hostname: this.host,
       port: this.port,
       fetch(req, server) {
@@ -23604,7 +23637,7 @@ function realArtifactsCliDeps() {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.45.1";
+var VERSION = "0.45.2";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
