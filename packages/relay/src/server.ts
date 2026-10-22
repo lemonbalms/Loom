@@ -18,6 +18,8 @@ import {
   clientEventBodyHash,
   handoffClientEventMaterial,
 } from "./room";
+import { isIP } from "node:net";
+import { networkInterfaces } from "node:os";
 
 // L-14: re-export shared constant-time compare (impl lives in @loom/protocol)
 export { timingSafeTokenEqual };
@@ -36,6 +38,11 @@ export type RelayServerOptions = {
    * Prefer setting a token; this is for intentional open-LAN demos only.
    */
   allowInsecureOpen?: boolean;
+  /**
+   * @internal v0.45.2 test seam — interface list consulted when bind fails.
+   * Production uses `os.networkInterfaces`.
+   */
+  interfaces?: () => ReturnType<typeof networkInterfaces>;
 };
 
 type ClientState = {
@@ -50,6 +57,35 @@ export function isLoopbackHost(host: string): boolean {
   return h === "127.0.0.1" || h === "localhost" || h === "::1";
 }
 
+/** Lower-case, strip brackets and `%zone` so IPv6 forms compare equal. */
+function normalizeAddress(addr: string): string {
+  return addr
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/%.*$/, "");
+}
+
+/**
+ * v0.45.2: Bun reports EADDRINUSE ("Is port N in use?") both for a real port
+ * conflict and for a hostname not assigned to any local interface. True when
+ * `host` is a non-wildcard literal IP absent from `ifaces`.
+ */
+function isUnassignedLiteralIp(
+  host: string,
+  ifaces: ReturnType<typeof networkInterfaces>,
+): boolean {
+  const h = normalizeAddress(host);
+  if (isIP(h) === 0) return false;
+  if (h === "0.0.0.0" || h === "::") return false;
+  if (h === "127.0.0.1" || h === "::1") return false;
+  for (const list of Object.values(ifaces)) {
+    for (const info of list ?? []) {
+      if (normalizeAddress(info.address) === h) return false;
+    }
+  }
+  return true;
+}
+
 export class RelayServer {
   readonly registry: RoomRegistry;
   readonly host: string;
@@ -60,8 +96,10 @@ export class RelayServer {
   private clients = new WeakMap<object, ClientState>();
   /** v0.29.0: same clientEventId, different body. Fail-visible, no wire code. */
   private clientEventBodyMismatches = 0;
+  private readonly interfaces: () => ReturnType<typeof networkInterfaces>;
 
   constructor(opts: RelayServerOptions = {}) {
+    this.interfaces = opts.interfaces ?? networkInterfaces;
     this.host = opts.host ?? DEFAULT_RELAY_HOST;
     this.port = opts.port ?? DEFAULT_RELAY_PORT;
     this.registry = opts.registry ?? new RoomRegistry();
@@ -104,8 +142,22 @@ export class RelayServer {
     if (this.server) return;
     this.assertBindAllowed();
 
+    try {
+      this.server = this.serve();
+    } catch (e) {
+      if (isUnassignedLiteralIp(this.host, this.interfaces())) {
+        throw new Error(
+          `Cannot listen on ${this.host}:${this.port} — ${this.host} is not assigned to any network interface on this machine (yet). If it is a Tailscale/VPN address, the interface may still be coming up; a service manager restart will retry. (not a port conflict)`,
+          { cause: e },
+        );
+      }
+      throw e;
+    }
+  }
+
+  private serve(): ReturnType<typeof Bun.serve> {
     const self = this;
-    this.server = Bun.serve({
+    return Bun.serve({
       hostname: this.host,
       port: this.port,
       fetch(req, server) {
