@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.45.1** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.45.2** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -2244,6 +2244,7 @@ bun test
 | FABLE_* 만 설정 | 0.10+ 미독출 | `LOOM_*` 로 변경 |
 | 보드가 머신마다 다름 | 로컬 파일 | export/import 또는 `--with-board` |
 | 비루프백 relay 거부 | 토큰 없음 | `LOOM_RELAY_TOKEN` 필수 |
+| `Cannot listen on <host>:<port> — <host> is not assigned to any network interface on this machine (yet). …` (v0.45.2) | `--host` 주소가 아직 이 기계에 없다 — 부팅 직후 Tailscale/VPN 인터페이스가 올라오기 전 기동 · 오타 · 다른 기계 IP. 포트 충돌 아님 | 인터페이스가 붙으면 다시 기동 — systemd `Restart=`가 자동 재시도한다. 계속되면 `ip addr` / `ifconfig`로 주소 확인. 진짜 포트 충돌은 종전대로 `Failed to start server. Is port N in use?` |
 | CLI 바꿨는데 카드가 안 돔 | bridge 다운 또는 allowlist | §12.2 진단 · bridge start · 전체 peer id |
 | “relay 재기동” 했는데 health는 이미 ok | 실제로는 bridge 재기동이 필요했음 | health와 `bridge-main` pid를 분리 확인 |
 | bridge 재기동 후 codex가 승인 대기 | argv 원복/미설정 | `agentArgv.codex` + bridge restart (§12.4) |

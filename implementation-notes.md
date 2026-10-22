@@ -40,6 +40,14 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
 
+### §0.45.2 — relay bind 실패 메시지가 미할당 주소를 지목 (implemented 2026-10-23 · ship 전)
+
+| # | PATCH · ref | Deviation (what we did) | 판정 |
+|---|---|---|---|
+| (1) | D1 · 아키텍트 프로브 | **Bun 1.3.11 `Bun.serve`는 미할당 hostname(`10.255.255.1`)에도 `code: "EADDRINUSE"` · "Failed to start server. Is port N in use?"를 던진다**(OS 수준 EADDRNOTAVAIL이 가려짐) → 오류 코드로는 진짜 포트 충돌과 구분 불가. 판정을 `os.networkInterfaces()` 대조로 했다: 와일드카드 아닌 리터럴 IP가 어느 인터페이스에도 없을 때만 새 문면, 그 밖은 원래 오류를 그대로 다시 던진다(`cause` 유지). | 수용(실측 · 보수적 — 이름 host · 와일드카드 · 할당된 주소는 오늘 문면 그대로) |
+| (2) | D1 문면 | 메시지 = `Cannot listen on <host>:<port> — <host> is not assigned to any network interface on this machine (yet). If it is a Tailscale/VPN address, the interface may still be coming up; a service manager restart will retry. (not a port conflict)` — 부팅 경합(tailscaled 이전 기동)을 원인 후보로 명시하고 systemd `Restart=` 재시도가 정상 회복 경로임을 알린다. 루프백(`127.0.0.1` · `::1`)은 인터페이스 목록과 무관하게 할당됨으로 본다. | 수용(아키텍트 락 문면) |
+| (3) | D2 이음새 | 생성자 옵션 `interfaces`(`@internal`)는 테스트 전용 — 두 CLI는 넘기지 않는다. | 수용 |
+
 ### §0.45.1 — 이월 결함 둘 — `verify` 접두 fail closed · pack 원시 바이트 해시 (implemented 2026-10-18 · ship 전)
 
 커밋: 게이트 `0005173` · P1 red `eeca264` → green `50954a2` · P2 red `806acec` → green `56c5f53` · P3 = 문서 · 버전 0.45.1(이 절).

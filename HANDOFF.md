@@ -1,35 +1,35 @@
 # HANDOFF — Loom
 
-**Updated:** 2026-10-18
+**Updated:** 2026-10-23
 **Workspace:** `/Users/kyoungsiklee/projects/loom`
 
 ## One-line resume
 
-> v0.45.1 shipped · MBP relay **live** 2026-10-18 · **next = owner pick**
+> v0.45.2 implemented (relay bind message PATCH) · MBP relay **live** · **next = verify → ship**
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.45.1 shipped** 2026-10-18 (R66 · no real-CLI) | `docs/PLAN.md` |
+| Product | **v0.45.2 implemented** 2026-10-23 (author-close Low · no real-CLI) | `docs/PLAN.md` |
 | Dogfood | unblocked (p17 · 3-kind) | `HERDR-0.7.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.45.1 shipped · MBP relay live · next = owner pick
+### v0.45.2 implemented · next = verify → ship
 
-**Goal:** v0.45.1 PATCH shipped — `verify` fails closed on a symlinked/non-dir `<2 hex>/` prefix (D1) · pack hashes worker files as raw bytes (D2 — class 89 closed).
-Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/0192/0196 PASS · advise 0195 ship · no real-CLI.
+**Goal:** v0.45.2 PATCH — relay bind failure on a literal IP not assigned to any local interface now says so instead of Bun's "Is port … in use?" (D1 · `cause` kept); real port conflicts keep the original text (author-close Low · `docs/PLAN.md` §0.45.2).
+Evidence: `server.bind-error.test.ts` 4/0 (old code red = (a) only) · relay suite green · typecheck · biome.
 
-**Next:** owner picks the next product step. MBP relay migrated 2026-10-18 (runbook steps 0–8; 9b pending — Owner pending).
+**Next:** `lane.ts verify` → full suite → dist rebuild → ship. Then owner picks the next product step.
 
-**Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky · relay bind error says 'Is port 7842 in use?' even when the address is not yet assigned (EADDRNOTAVAIL at boot, MBP 2026-10-23) → message PATCH candidate
+**Carry:** `memorySnapshotLocked` byteLength hygiene · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** owner picks the next step.
+**Done when (this handoff):** v0.45.2 verified + shipped, then owner picks the next step.
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -39,6 +39,7 @@ Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
 | Suite | **0 fail** (4284/0 at 0.45.1 ship) | `pane-cleanup` ⑥ flaky under load | 0.45.1 ship |
+| v0.45.2 | **implemented** 2026-10-23 · no real-CLI (D4) | PATCH: relay bind message names an unassigned address | `docs/PLAN.md` §0.45.2 |
 | v0.45.1 | **shipped** 2026-10-18 · no real-CLI (D3) | PATCH: verify prefix fail closed + pack raw-byte sha | `docs/PLAN.md` §0.45.1 |
 | v0.45.0 | **shipped** 2026-10-18 · no real-CLI (D9) | artifact CAS store first slice | `docs/PLAN.md` §0.45.0 |
 | v0.32–0.44.1 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
@@ -74,7 +75,7 @@ Evidence at `f26f107`: suite 4284/0 · typecheck · biome · dist · Astra 0190/
 - Ritual: `docs/SESSION-START.md` · topology `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`
 - Close: `docs/spikes/RULE-ROUTER-PHASE3-SOFT-CLOSE.md`
 - 0.37.0 smoke: `docs/spikes/POLICY-HONESTY-SMOKE-0370.md`
-- 0.45.x deviations: `implementation-notes.md` §0.45.0 · §0.45.1
+- 0.45.x deviations: `implementation-notes.md` §0.45.0 · §0.45.1 · §0.45.2
 - 3.3–3.4b RESULT: `scripts/rule-router-jit.ts`
 - MBP relay (live 2026-10-18 · run log at end): `docs/spikes/MBP-RELAY-RUNBOOK.md`
 

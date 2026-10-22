@@ -5,8 +5,31 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.1** — shipped 2026-10-18 · 실 CLI 불필요 D3) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.2** — implemented 2026-10-23 · ship 전 · 실 CLI 불필요 D4) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.45.2 — 2026-10-23
+
+> **상태:** implemented 2026-10-23 · ship 전. **실 CLI 실행 불필요(D4)** — 메시지 전용 · 와이어 · 인증 · 영속 · CLI 변경 없음.
+
+**relay가 "포트 사용 중"이라고 거짓말하지 않는다** — `loom relay --host <IP>`가 그 IP가 아직 이 기계에 붙지 않은 상태(예: 부팅 직후 tailscaled보다 먼저 기동)에서 뜨면, Bun은 진짜 포트 충돌과 똑같이 `Failed to start server. Is port 7842 in use?`를 냈다. 0.45.2는 bind가 실패하면 인터페이스 목록을 보고, 와일드카드가 아닌 리터럴 IP가 어디에도 없으면 그 사실을 말한다.
+
+### 가능해진 것
+
+- **미할당 주소 문면** — `Cannot listen on <host>:<port> — <host> is not assigned to any network interface on this machine (yet). If it is a Tailscale/VPN address, the interface may still be coming up; a service manager restart will retry. (not a port conflict)` · exit 1(종전과 같음). 원래 Bun 오류는 `cause`로 남는다.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.45.1) | 지금 (0.45.2) |
+|---------------|---------------|
+| 미할당 `--host` IP → `Is port N in use?` (포트 충돌로 오인) | `… is not assigned to any network interface … (not a port conflict)` |
+
+### 불변
+
+- 진짜 포트 충돌 · `localhost` 같은 이름 host · 와일드카드(`0.0.0.0` · `::`) bind 실패는 종전 문면 그대로. `assertBindAllowed`(토큰 없는 비루프백 거부) · 인증 · 영속 · 와이어 무변경.
+- 증명 = `packages/relay/src/server.bind-error.test.ts`(주입 인터페이스 목록 · 실제 점유 포트 4건). 실 CLI 실행 없음.
 
 ---
 
