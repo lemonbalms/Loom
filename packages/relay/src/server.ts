@@ -60,7 +60,9 @@ export function isLoopbackHost(host: string): boolean {
 /**
  * Canonical literal IP, or null for a hostname. Strips brackets and `%zone`;
  * IPv6 goes through the WHATWG URL parser so equivalent forms compare equal
- * (`2001:0db8::1` → `2001:db8::1`, `0:0:0:0:0:0:0:0` → `::`). May throw.
+ * (`2001:0db8::1` → `2001:db8::1`, `0:0:0:0:0:0:0:0` → `::`). IPv4-mapped
+ * IPv6 becomes the dotted IPv4 it encodes (`::ffff:7f00:1` → `127.0.0.1`).
+ * May throw.
  */
 function canonicalLiteralIp(addr: string): string | null {
   const h = addr
@@ -69,8 +71,13 @@ function canonicalLiteralIp(addr: string): string | null {
     .replace(/%.*$/, "");
   const family = isIP(h);
   if (family === 4) return h;
-  if (family === 6) return new URL(`http://[${h}]/`).hostname.slice(1, -1);
-  return null;
+  if (family !== 6) return null;
+  const v6 = new URL(`http://[${h}]/`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(v6);
+  if (mapped === null) return v6;
+  const hi = Number.parseInt(mapped[1] as string, 16);
+  const lo = Number.parseInt(mapped[2] as string, 16);
+  return [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join(".");
 }
 
 /**
