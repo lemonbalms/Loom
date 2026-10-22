@@ -849,3 +849,18 @@ cross-ref: `implementation-notes.md` §0.45.2 P1d · 2026-07-21 (31) 연속 reje
 CPU ~80초(대기 위주) → 전역 Compute placement 규칙상 Mac에 남는다.
 
 cross-ref: 2026-10-18 · red 확인 stash와 스위트를 겹치지 않는다.
+
+## 2026-10-23 · 레인이 보고한 테스트 반증 가능성은 주장이다 — 변이 프로브로 확인 (0.45.4 P1c)
+
+**트리거:** 레인(또는 리뷰)이 "이 테스트가 X 가드를 고정한다"고 보고할 때 · 같은 성질(정확히 한 번 등)을 여러 층이 함께 강제할 때.
+
+**규칙:** 아키텍트가 가드를 지운 변이 프로브를 직접 돌려 테스트가 죽는지 본다. 살아남으면 더 깊은 층이 같은 성질을 강제하고 있는
+것이다 — 그 층이 아니라 **가드된 층이 소유한 부수 효과**를 단언하도록 테스트를 고치고 다시 프로브한다. if/return만 지운 변이가
+동치 변이일 수 있음도 기록한다.
+
+**경위:** 0.45.4 ⑲는 watchdog 발화와 실패 송신이 겹칠 때 `status_lost`가 정확히 한 번임을 고정한다고 보고됐다. 아키텍트가
+`fireStatusLost`의 `tryAcquireFlightSideEffect`(CAS acquire)를 지웠는데 ⑲가 살아남았다 — issuer lease가 아래에서 정확히 한 번을 또
+강제했기 때문이다. loom-advisor 최종 리뷰 fix-first(⑲ 소유 단언) → P1c `663883f`: 보류된 송신 동안 paneA `pane.read` 횟수 불변 ·
+held 1 · issuer-denied 줄 없음을 단언 → 같은 변이에서 0/1 · 복원 21/0.
+
+cross-ref: `implementation-notes.md` §0.45.4 · 2026-07-21 (44) 정의부 존재 ≠ 호출의 증거.

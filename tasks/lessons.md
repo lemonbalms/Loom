@@ -187,6 +187,7 @@
 - [verification] 2026-10-18 red 확인용 `git stash`(production 파일 잠시 빼기)는 전체 스위트가 도는 동안 하지 않는다 — 스위트가 빠진 파일을 읽어 가짜 fail 4건(0.44 P1b·P1c). 또 Astra verify 샌드박스는 임시 HOME에서 EPERM이라 테스트를 못 돌린다 → 테스트 증거는 아키텍트 재실행이 유일 출처.
 - [verification] 2026-10-23 OS·커널 동작을 휴리스틱으로 재유도하다 계속 케이스를 놓치면 **실제 시스템에 물어라** — 0.45.2 bind 에러 분류기가 커널 규칙 흉내로 Astra 3연속 FAIL(0203·0205·0207), port-0 프로브 bind + 휴리스틱 AND 조건으로 해결. 자문은 4번째가 아니라 **두 번째 FAIL**에.
 - [verification] 2026-10-23 stash-vs-suite 재범: `bun test` 도중 파일을 고치는 impl 레인을 띄워 스위트 결과 폐기·재실행(11분, 0.45.2 P1b). 스위트 중엔 레인을 큐에 둔다. 전체 스위트 = 11분 wall · CPU ~80초(대기 위주) → Mac 유지.
+- [verification] 2026-10-23 레인이 보고한 테스트 반증 가능성은 **주장**이다 — 아키텍트가 변이 프로브(CAS acquire 삭제)를 돌리자 0.45.4 ⑲가 살아남았다(아래 층 issuer lease도 정확히 한 번을 강제). **가드된 층이 소유한 부수 효과**(여기선 추가 `pane.read` 없음)를 단언하고 다시 프로브(P1c 0/1 → 21/0).
 
 - [verification] 2026-07-28 listen leave vs sticky: sticky owns presence → listen must not leave; host status≠roster (UC-3 peer_unknown).
 

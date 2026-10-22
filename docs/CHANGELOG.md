@@ -5,14 +5,14 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.4** — implemented 2026-10-23 · ship 검사 · 최종 리뷰 pending · 직전 shipped 0.45.3) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.4** — shipped 2026-10-23) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [HERDR-0.9.5-COMPAT](./spikes/HERDR-0.9.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
 
 ---
 
 ## 0.45.4 — 2026-10-23
 
-> **상태:** implemented 2026-10-23 (P0–P2) · **ship 전** — ship 검사(`build:cli` 포함)와 최종 리뷰가 남았다. **실 CLI 실행 불필요(D9)** — fake-herdr가 덮는다. 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
+> **상태:** shipped 2026-10-23 (P0–P2 · P1b · P1c). **실 CLI 실행 불필요(D9)** — fake-herdr가 덮는다. 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
 
 **pane 카드가 상태 이벤트를 잃어도 영구 정체하지 않는다** — 0.45.3 pane bridge는 다른 카드의 per-pane 구독이나 재연결로 herdr 이벤트 소켓이 갈아 끼워지는 순간 그 소켓에 실려 있던 상태 이벤트(`idle` · `done` · `blocked`)를 잃을 수 있었고, 잃으면 카드는 실패 보고 없이 영원히 결과를 내지 않았다. 0.45.4는 첫 구독 뒤의 모든 events.subscribe ACK에서 작업을 시작한 것으로 관측된 in-flight pane 카드마다 herdr `agent.get`을 한 번 묻고, bridge가 보지 못한 `idle` / `done`이 보이면 유예(5초) 뒤 다시 확인해 **`failed` / `reason: "status_lost"`** 로 시끄럽게 끝낸다. 완료(`done`)를 만들지 않고 · 재주입하지 않고 · pane을 닫지 않는다. 유예 안에 진짜 이벤트가 오면 종전 경로가 이긴다.
 
