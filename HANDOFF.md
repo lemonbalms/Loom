@@ -5,31 +5,31 @@
 
 ## One-line resume
 
-> v0.45.3 implemented (P1–P4 · herdr 0.9.5/p22 compat) · **next = verify → P5 real-card smoke (owner yes)**
+> v0.45.3 shipped (herdr 0.9.5/p22 · D5 smoke PASS) · **next = status-loss watchdog PATCH: PLAN + R{n}**
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.45.3 implemented** (P1–P4) 2026-10-23 · smoke pending (R67) | `docs/PLAN.md` |
-| Dogfood | `dogfood:herdr` ok (0.9.5 / p22, read-only) · card smoke pending | `HERDR-0.9.5-COMPAT.md` |
+| Product | **v0.45.3 shipped** 2026-10-23 (P1–P5 · R67) | `docs/PLAN.md` |
+| Dogfood | `dogfood:herdr` ok (0.9.5 / p22) · D5 real-card smoke PASS (ⓓ) | `HERDR-0.9.5-COMPAT.md` §6 |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.45.3 implemented · next = verify → P5 real-card smoke (owner yes)
+### Per-card status-loss watchdog PATCH — PLAN draft + R{n}
 
-**Goal:** herdr 0.9.5 / p22 compat — supported `[17, 22]`; no `herdrProtocol` = any supported, present = exact pin (`docs/PLAN.md` §0.45.3).
-Evidence: P1 `e5eea8e` · P2 `ae8910d` · P3 `a4c7d89` · P1b + P4 (Astra 0231) · live `dogfood-herdr-check.sh` ok (0.9.5 / 22).
+**Goal:** per-card status-loss watchdog (owner order: after compat — 0.45.3 shipped). Acceptance oracle = TLA spike `docs/spikes/BRIDGE-STARTUP-TLA.md`. `status_lost` fails loud and never calls `beginCardCompletion`.
+Prior: v0.45.3 shipped — herdr `[17, 22]` · D5 smoke ⓓ PASS (`HERDR-0.9.5-COMPAT.md` §6).
 
-**Next:** `lane.ts verify` on P1b+P4 · ship checks Done (d) incl. `build:cli` · P5 = D5 smoke (owner yes, R12 steps ①–⑨) · then loom-advisor final review → ship.
+**Next:** PLAN draft (new PATCH section) → R{n} via loom-advisor → owner pick → tests-first impl.
 
-**Carry:** TLA+ follow-ups: per-card status-loss watchdog PATCH (owner: after compat) · F1'–F3' MINOR (`BRIDGE-STARTUP-TLA.md`) · `memorySnapshotLocked` byteLength · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
+**Carry:** TLA+ follow-ups: F1'–F3' MINOR (`BRIDGE-STARTUP-TLA.md`) · `memorySnapshotLocked` byteLength · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** §0.45.3 Done (a)–(f) — incl. D5 real-card smoke PASS (owner yes) and loom-advisor final review.
+**Done when (this handoff):** watchdog PATCH PLAN section drafted and R{n} verdict recorded in `docs/plan_review.md`.
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -38,8 +38,8 @@ Evidence: P1 `e5eea8e` · P2 `ae8910d` · P3 `a4c7d89` · P1b + P4 (Astra 0231) 
 | Check | Status | Impact | Evidence |
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
-| Suite | **0 fail** (4306/0 at 0.45.2 ship) | `pane-cleanup` ⑥ flaky under load | 0.45.2 ship |
-| v0.45.3 | **implemented** (P1–P4) · smoke pending | herdr p22 compat | PLAN §0.45.3 |
+| Suite | **0 fail** (4323 ran / 0 fail at 0.45.3 ship) | `pane-cleanup` ⑥ flaky under load | 0.45.3 ship |
+| v0.45.3 | **shipped** 2026-10-23 · D5 smoke PASS | herdr p22 compat | PLAN §0.45.3 |
 | v0.45.2 | **shipped** 2026-10-23 · no real-CLI (D4) | PATCH: relay bind message names an unassigned address | `docs/PLAN.md` §0.45.2 |
 | v0.32–0.45.1 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
 | P3 soft close | **closed** · 3.0–3.2 opt-in · 3.3–3.4b false | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
@@ -51,8 +51,6 @@ Evidence: P1 `e5eea8e` · P2 `ae8910d` · P3 `a4c7d89` · P1b + P4 (Astra 0231) 
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
 | MBP relay — **live since 2026-10-18** (`ws://100.119.218.93:7842/ws`, systemd `loom-relay` enabled; lg99 Task Disabled, originals kept) | 9b deferred → **review 2026-10-25** (re-propose after 1 week stable; lg99 `LoomRelayTeam` stays Disabled) · mac profile left as is (owner 2026-10-18) | lg99 rollback = Task Enable+Start, `systemctl disable --now loom-relay`, restore `mac.json.pre-mbp` | runbook |
-| local `~/.loom/bridge/mac.json` pins herdrProtocol 16 — remove the key (owner) | fails on 0.45.3 (classes 93 · 96) | leave until owner edits | PLAN §0.45.3 UK-3 |
-| D5 real-card smoke on herdr 0.9.5 (owner yes) | ship gate Done (f) | no run without yes | PLAN §0.45.3 R12 |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
@@ -89,3 +87,4 @@ Evidence: P1 `e5eea8e` · P2 `ae8910d` · P3 `a4c7d89` · P1b + P4 (Astra 0231) 
 - 0.36.0 real-CLI smoke (PASS 2026-10-17).  
 - 0.34.0 live launchd smoke (PASS 2026-10-17, macOS).
 - 0.45.0 shipped (no real-CLI, D9) · 0.45.1 shipped (no real-CLI) · 0.45.2 shipped (no real-CLI).
+- 0.45.3 D5 real-card smoke (PASS 2026-10-23).

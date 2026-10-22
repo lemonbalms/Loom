@@ -40,7 +40,7 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
 
-### §0.45.3 — herdr 0.9.5 / protocol 22 호환 — 지원 집합 {17, 22} (implemented 2026-10-23 · P5 실 카드 스모크 pending · ship 전)
+### §0.45.3 — herdr 0.9.5 / protocol 22 호환 — 지원 집합 {17, 22} (implemented 2026-10-23 · shipped 2026-10-23)
 
 | # | PATCH · ref | Deviation (what we did) | 판정 |
 |---|---|---|---|
@@ -51,6 +51,9 @@ This file is for **during-implementation** plan deviations only.
 | (5) | 검증 Astra 0231 · Medium | Astra 0231의 Medium은 **검증 시점에 진행 중이던 P3 작업**(dogfood 게이트 — P3 범위)을 가리켰다 → P3 red/green `38bce6c` → `a4c7d89`로 해소. 별도 수정 없음. | 수용(P3로 해소) |
 | (6) | P1b · Astra 0231 · Low | `herdr-protocol-support.test.ts`의 teardown이 `LOOM_TEST_HOME` · `LOOM_SESSION` · `LOOM_NO_AUTO_HOST`를 이전 값과 무관하게 지웠다 → 파일이 건드리는 env 넷(`HOME` 포함)의 이전 값을 저장하고 teardown에서 각각 복원(이전에 없던 키만 삭제). 테스트 전용 · production 0줄. | 수용 |
 | (7) | P4 · `build:cli` | 이 레인은 dist(`build:cli`)를 다시 빌드하지 않았다 — 지정 검증 명령 밖. ship 검사(Done (d))에서 아키텍트가 돌린다. | 이월 |
+| (8) | P5 · D5 · R12 ⑧ 문면 정정 | **R12 ⑧ 문면 두 곳은 PLAN 작성 오류였다(제품 결함 아님 · 제품 무변경 · R12 행 문면은 그대로 둔다):** ① "결과 status `done`이 정상" — 0.28.0 U1 이후 pane 카드는 설계상 `done`을 내지 않는다. 스모크의 성공 후보 = `failed` + `needs_verification`(`proposeCardVerification` · `packages/host/src/bridge-runtime.ts` ~:3275) · 판정은 디스패처 몫 → 보드 `blocked`. ② "pane 정리(`paneCleanup: "auto"`)" — 카드 pane은 설계상 보존된다(0.28.0 U3 · 카드 자동 `pane.close` 없음 · `auto` = conv 전용) → 스모크는 ⑨에서 워커 pane을 손으로 닫았다. 결과표는 이 정정을 적용해 ⓓ PASS로 판정. 기록 `HERDR-0.9.5-COMPAT.md` §6. | 수용(보수적 — 제품 무변경 · 문면 정정만 기록) |
+
+ship 2026-10-23: P5 D5 실 카드 스모크 ⓓ PASS(04:22–04:30 KST · HEAD `5c0f0ce` · herdr 0.9.5 / protocol 22 · claude 카드 1장 · `Reconnect stopped` 0 · quarantine 0 — `HERDR-0.9.5-COMPAT.md` §6) · Astra 0231 FAIL → P1b · 0234 PASS-with-lows → `5c0f0ce` · 스위트 · 검사 수치 = ship 커밋.
 
 ### §0.45.2 — relay bind 실패 메시지가 미할당 주소를 지목 (implemented 2026-10-23 · shipped 2026-10-23)
 

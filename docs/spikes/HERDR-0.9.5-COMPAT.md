@@ -6,7 +6,7 @@
 | **Basis** | 스키마 대조만 — `docs/spikes/fixtures/herdr-v0.7.5/schema.json`(protocol 17) vs `docs/spikes/fixtures/herdr-v0.9.5/schema.json`(protocol 22, `herdr api schema --json`). **herdr 호출·라이브 프로브 없음.** 릴리스 노트 미대조 |
 | **Local herdr** | `0.9.5` · `ping` → protocol **22** · capabilities `live_handoff`, `detached_server_daemon`, `endpoint_protocol_generation: 1`, `surface_interest`, `health_check`, `ssh_agent_registration` (아키텍트 확인) |
 | **Loom adapter** | `HERDR_PROTOCOL_EXPECTED = 17` (`packages/host/src/herdr-client.ts:26`) · 로컬 브리지 설정 `mac.json` `herdrProtocol: 16`, `mac-node.json` `17` |
-| **Verdict** | **implemented · smoke pending** (Loom v0.45.3 P1–P4, 2026-10-23 — 지원 집합 `HERDR_PROTOCOLS_SUPPORTED = [17, 22]` · 고정 없음 = 집합 · 고정 = 정확 비교 · 계약 테스트 `herdr-protocol22-contract.test.ts` · 읽기 전용 라이브 `dogfood-herdr-check.sh` → `ok (0.9.5 / protocol 22)`. 실 카드 스모크(PLAN 0.45.3 D5 · R12 · §6 기록 예정)는 오너 yes 대기 — PASS 뒤 shipped). 종전 study verdict: 스키마상 Loom이 쓰는 와이어 표면은 **사실상 불변**(아래 §1). 현재 차단 원인은 브리지의 protocol 동등 비교 하나(`bridge-runtime.ts:1039-1041`) |
+| **Verdict** | **shipped 2026-10-23** (Loom v0.45.3 P1–P5 — 지원 집합 `HERDR_PROTOCOLS_SUPPORTED = [17, 22]` · 고정 없음 = 집합 · 고정 = 정확 비교 · 계약 테스트 `herdr-protocol22-contract.test.ts` · 읽기 전용 라이브 `dogfood-herdr-check.sh` → `ok (0.9.5 / protocol 22)` · **실 카드 스모크 PASS(PLAN 0.45.3 D5 · R12 결과표 ⓓ — §6)**). 종전 study verdict: 스키마상 Loom이 쓰는 와이어 표면은 **사실상 불변**(아래 §1). 현재 차단 원인은 브리지의 protocol 동등 비교 하나(`bridge-runtime.ts:1039-1041`) |
 
 **권한:** 이 파일은 0.9.5 호환 판단의 스키마 근거다. PLAN·PANE-DEATH 잠금이나 `HERDR-0.7.5-COMPAT.md`(0.7.5 shipped 기록)는 수정하지 않는다.
 
@@ -267,3 +267,30 @@ TLA 문서 반영 후보(이 문서는 수정하지 않음): §1.2의 "단조 �
 | `packages/host/src/bridge-runtime.ts:1039-1041` | 현재 차단 지점 |
 | `docs/spikes/BRIDGE-STARTUP-TLA.md` §0.1-5 · §1.2 | (a)–(e) 가정 |
 | `docs/spikes/HERDR-STATUS-PROBES.md` | 라이브 프로브 설계(§4 변경 목록 대상) |
+
+---
+
+## 6. D5 실 카드 스모크 (2026-10-23)
+
+PLAN §0.45.3 D5 · R12 하네스 1회(오너 yes). 2026-10-23 04:22–04:30 KST. 트리 HEAD `5c0f0ce` · `dist/loom.js` sha256 접두
+`5062ba672ce39010` · `loom v0.45.3`.
+
+| 단계 | 기록 |
+|---|---|
+| ① 선행 | `herdr --version` = `herdr 0.9.5` · `herdr status server --json` → `"version":"0.9.5"` · `"protocol":22` · `"socket":"/Users/kyoungsiklee/.config/herdr/herdr.sock"` |
+| ②–⑤ 임시 홈 · relay · 방 · 설정 | `T` = `realpath(mktemp -d)` · `HOME=T LOOM_TEST_HOME=T` · `LOOM_RELAY_TOKEN` · `LOOM_RELAY_URL` · `LOOM_PROFILE` · `LOOM_SESSION` 제거 · `loom relay local start` → 127.0.0.1:7842 · 방 `herdr095-smoke`(smoke-disp 생성 · smoke-node 참가 · `LOOM_NO_AUTO_HOST=1`) · `T/.loom/bridge/smoke-node.json` = `{"herdrSocketPath": …}`만 |
+| ⑥ [실 herdr] 브리지 기동 | `bridge start --allow p_8adf46e729c69794` → status online · `herdrOk:true` · `eventConnected:true` · 브리지 로그 축자 `[loom-bridge] herdr ok v0.9.5 protocol 22 (supported: 17, 22)` · `--allow` 저장 뒤 설정 키 = `authorizedDispatchers, herdrSocketPath, agentArgv, paneCleanup, panePlacement, hookSensor` — **`herdrProtocol` 키 없음**(R1 ⓒ 라이브) |
+| ⑦ [실 CLI] 디스패치 | 디스패처 MCP stdio(`packages/mcp-server/src/stdio.ts` · `LOOM_PROFILE=smoke-disp`) · 일회성 NDJSON 드라이버 · `add_task` → `task_ee35cde2794baa28` · `dispatch_card {node:"smoke-node", agentKind:"claude", prompt:"Reply with the single word ok."}` → `delivered` · 디스패치 handoff `ho_dbce7f8937a12f5b` · 워커 pane `w47:p2`(새 탭 `w47:t2` · panePlacement pool) · Claude Code v2.1.308 · 회신 `ok` · startedAt `19:23:20.438Z` → finishedAt `19:23:32.363Z`(12 s) |
+| ⑧ 관측 | 결과 handoff `ho_fefb94de52320c23`(`intent: card.done` · 첨부 `loom-card-result`) · `status:"failed"` · `reason:"needs_verification"` · `summary` = "Crunched for 5s" 줄 · `loom-card-result` 첨부의 `output`에 워커 회신 줄 `⏺ ok` 포함(완료 판정은 결과 `output`으로 — implementation-notes (27) 선례 · loom-advisor 최종 리뷰 조건) · `claim_handoff` ok → `apply_card_result` → 보드 `blocked` · notes `… failed reason=needs_verification last_seq=1` · `Reconnect stopped` = 0 · `quarantineUnresolved` = 0 · `T/.loom` 아래 quarantine 파일 없음 · 브리지 로그 `flight_map_miss` 1건(flight 제거 뒤 `w47:p2`의 `pane.agent_status_changed` · count 1 — 무해 텔레메트리) · `lastSubscribeAck` 19:22:35Z → 19:23:25Z · `eventSubscriptions` 1(pane별 구독) |
+| ⑨ 정리 | bridge status `preservedCardPanes: 1`(`paneCleanup: auto` = conv 전용 · 카드 pane 보존) · `loom bridge stop` → stopped · `herdr pane close w47:p2` → ok(워커 확인: 제목 "Loom 디스패치 작업" · agent_session ≠ 아키텍트) · `loom relay local stop` → stopped · `rm -rf T` · 오너 `~/.loom/bridge/*` · `~/.loom/profiles/*` mtime 무변경(22파일 · diff 빈) |
+
+**결과표: ⓓ PASS.**
+
+**R12 문면 정정 2건 (PLAN 작성 오류 · 제품 결함 아님 — R12 행 문면은 수정하지 않는다):**
+1. R12 ⑧ "결과 status `done`이 정상" — 0.28.0 U1 이후 설계상 pane 카드는 `done`을 내지 않는다. 성공 후보 = `failed` +
+   `needs_verification`(`proposeCardVerification` · `packages/host/src/bridge-runtime.ts` ~:3275) · 판정은 디스패처 몫.
+2. R12 ⑧ "pane 정리(`paneCleanup: "auto"`)" — 카드 pane은 설계상 보존된다(0.28.0 U3 · 카드 자동 `pane.close` 없음). 스모크는
+   ⑨에서 손으로 닫았다.
+
+**Unknowns:** UK-2 유지 — L4 · L6–L8은 정상 카드 1장으로 닿지 않는다. UK-4 관측 — 워커 pane이 아키텍트 자신의 herdr
+workspace(w47)에 새 탭으로 열렸고, 다른 pane 간섭은 관측되지 않았다.

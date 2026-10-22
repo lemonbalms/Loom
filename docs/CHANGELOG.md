@@ -5,14 +5,14 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.3** — implemented 2026-10-23 · 실 카드 스모크 pending(오너 yes) · 직전 shipped 0.45.2) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.3** — shipped 2026-10-23) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [HERDR-0.9.5-COMPAT](./spikes/HERDR-0.9.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
 
 ---
 
 ## 0.45.3 — 2026-10-23
 
-> **상태:** implemented 2026-10-23 (P1–P4) · **실 카드 스모크 pending** — 로컬 herdr 0.9.5에서 실 CLI 카드 1장(PLAN 0.45.3 D5 · R12 — 실행 시점 오너 yes). 스모크 PASS 전에는 ship 아님. 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
+> **상태:** shipped 2026-10-23 (P1–P5). **D5 실 카드 스모크 PASS** — 로컬 herdr 0.9.5 / protocol 22에서 pane bridge로 실 CLI(claude) 카드 1장(PLAN 0.45.3 D5 · R12 결과표 ⓓ · 오너 yes 1회 · 기록 [HERDR-0.9.5-COMPAT](./spikes/HERDR-0.9.5-COMPAT.md) §6). 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
 
 **herdr 0.9.5(protocol 22)에서 pane bridge가 다시 뜬다** — 0.45.2 bridge는 herdr `ping`의 protocol이 정확히 17(또는 설정값)이 아니면 기동을 거부해, 로컬 herdr가 0.9.5로 올라간 뒤 `herdr unreachable (<sock>): herdr protocol 22 != expected 17`로 죽었다. 0.45.3은 지원 집합 `HERDR_PROTOCOLS_SUPPORTED = [17, 22]`를 두고, bridge 설정에 `herdrProtocol`이 없으면 그 집합 안 아무 값이나 받는다. 두 protocol 사이 동작 분기는 없다(Loom이 쓰는 15 메서드 · 4 이벤트 와이어가 같다 — 계약 테스트로 고정).
 
@@ -37,7 +37,7 @@
 
 - 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint · 상태 파일 · doctor 출력 무변경. protocol 거부도 종전처럼 `herdr unreachable (<sock>): …`로 감싸져 exit 1.
 - 미래 protocol(23+)은 와이어가 같아도 기동에서 거부(fail closed). protocol 17 쪽은 라이브로 다시 증명되지 않았다(로컬에 0.7.5 herdr 없음 — 증거 = 스키마 동일성 + fake 17 스위트).
-- 증명 = `herdr-protocol-support.test.ts`(기동 검사 ①~⑥ · 로더 ⑦ · 저장 왕복 ⑧) · `herdr-protocol22-contract.test.ts`(0.9.5 스키마 고정 + 0.7.5와 교차 동일 · 예외 `right_click` 하나) · `dogfood-profiles.test.ts`(쌍 표 · 고정 제거 · 0.9.5 `status.json` 키) · 읽기 전용 라이브 `dogfood-herdr-check.sh` → `herdr compatibility: ok (0.9.5 / protocol 22)`. 실 카드 스모크는 pending.
+- 증명 = `herdr-protocol-support.test.ts`(기동 검사 ①~⑥ · 로더 ⑦ · 저장 왕복 ⑧) · `herdr-protocol22-contract.test.ts`(0.9.5 스키마 고정 + 0.7.5와 교차 동일 · 예외 `right_click` 하나) · `dogfood-profiles.test.ts`(쌍 표 · 고정 제거 · 0.9.5 `status.json` 키) · 읽기 전용 라이브 `dogfood-herdr-check.sh` → `herdr compatibility: ok (0.9.5 / protocol 22)` · 실 카드 스모크 PASS(브리지 `herdr ok v0.9.5 protocol 22 (supported: 17, 22)` · `Reconnect stopped` 0 · quarantine 0).
 
 ---
 

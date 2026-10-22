@@ -42,7 +42,7 @@
 
 ## Gate log
 
-### 0.45.3 — herdr 0.9.5 / protocol 22 호환 — 지원 집합 {17, 22} · 기동 protocol 검사 · dogfood 게이트 (`approved` — R67 approved-with-fixes · no R67b · implemented (P1–P4) · P5 실 카드 스모크 pending)
+### 0.45.3 — herdr 0.9.5 / protocol 22 호환 — 지원 집합 {17, 22} · 기동 protocol 검사 · dogfood 게이트 (`approved` — R67 approved-with-fixes · no R67b · implemented (P1–P5) · shipped 2026-10-23)
 
 | Field | Value |
 |-------|-------|
@@ -50,7 +50,7 @@
 | **Date** | 2026-10-23 |
 | **Review** | R67 **done 2026-10-23**(loom-advisor via `lane.ts advise` 0228) — approved-with-fixes H0 · M2 · L2 · R1 `CONFLICT` → draft 채택 · R6 `CONFLICT` 해소(M1 — `status.json` 캡처) · R4 수용(계급 96) |
 | **Implemented** | 2026-10-23 (P1–P4 · P1b) — 게이트 `8223163` · P1 `1e4c141` → `e5eea8e` · P2 `ae8910d`(옛 코드 green 선언) · P3 `38bce6c` → `a4c7d89` · P1b(Astra 0231 Low — 테스트 env 복원) · P4 = 버전 0.45.3 세 줄 · README · USER_GUIDE · CHANGELOG · implementation-notes §0.45.3 · `HERDR-0.9.5-COMPAT.md` verdict · PLAN · HANDOFF. 정본 `implementation-notes.md` §0.45.3 |
-| **Shipped** | — (P5 실 카드 스모크 · 오너 yes 대기) |
+| **Shipped** | 2026-10-23 — P5 D5 실 카드 스모크 ⓓ PASS(herdr 0.9.5 / protocol 22 · claude 카드 1장 · `HERDR-0.9.5-COMPAT.md` §6) |
 
 | 분면 | 내용 |
 |------|------|
@@ -64,12 +64,12 @@
 | # | 요지 | 출발 기본값 / 착수 영향 | R67 판정 | 결과 |
 |---|------|-------------|----------|------|
 | UK-1 | **0.9.5 `herdr status server --json` 키 이름**(R6) | 캡처 선행 | M1 — 캡처 | **closed** — 최상위 `protocol` 22 · `version` `"0.9.5"` · 키 로직 무변경 · P3 green |
-| UK-2 | **스키마 밖 전송 · 타이밍**(스터디 §2.2 L1–L9) | 비차단 — D5 PASS가 L1 · L2 · L3 · L5 관측 | 비차단 수용 | P5 스모크 pending |
-| UK-3 | **오너 로컬 `~/.loom/bridge/mac.json`(`herdrProtocol: 16`)** | 비차단 — R3 · R4 문면으로 실패(계급 93 · 96) · 오너 항목 | 비차단 수용 | 오너 대기(필드 삭제 권고) |
-| UK-4 | **공유 herdr 서버에서의 스모크 간섭** | 비차단 — 카드 1장 · 새 탭 · 정리 기록 | 비차단 수용 | P5 스모크 pending |
+| UK-2 | **스키마 밖 전송 · 타이밍**(스터디 §2.2 L1–L9) | 비차단 — D5 PASS가 L1 · L2 · L3 · L5 관측 | 비차단 수용 | 유지 — L4 · L6–L8은 정상 카드 1장으로 닿지 않는다(P5 PASS 뒤에도 미도달) |
+| UK-3 | **오너 로컬 `~/.loom/bridge/mac.json`(`herdrProtocol: 16`)** | 비차단 — R3 · R4 문면으로 실패(계급 93 · 96) · 오너 항목 | 비차단 수용 | **closed (오너 지시 2026-10-23)** — 키 삭제(백업 `mac.json.pre-0453` · 남은 키 `authorizedDispatchers, herdrSocketPath, agentArgv` · 라이브 브리지 기동 미실행) |
+| UK-4 | **공유 herdr 서버에서의 스모크 간섭** | 비차단 — 카드 1장 · 새 탭 · 정리 기록 | 비차단 수용 | 관측(P5 2026-10-23) — 워커 pane이 아키텍트 자신의 herdr workspace(w47)에 새 탭(`w47:t2`)으로 열렸고 다른 pane 간섭은 관측되지 않았다 · 카드 pane은 보존(0.28.0 U3)이라 ⑨에서 손으로 닫음 |
 | UK-5 | **`right_click` 기본 `"herdr"`의 실제 효과** | 비차단 — Loom 마우스 입력 없음 | 비차단 수용 | — |
 
-**Current decision:** **`approved` → implemented (P1–P4) · P5 실 카드 스모크 pending(오너 yes).** ship 전.
+**Current decision:** **`approved` → implemented (P1–P5) · shipped 2026-10-23**(D5 실 카드 스모크 ⓓ PASS).
 
 ### 0.45.1 — 이월 결함 둘 — `verify` 접두 fail closed · pack 원시 바이트 해시 (`approved` — R66 approved-with-fixes · no R66b · implemented (P1–P3) · shipped 2026-10-18)
 
