@@ -492,6 +492,8 @@ exit는 머리말 규약(0 = No error · 12 = 불변식 위반 · 13 = 활성 �
 
 **도달 확인(공허한 통과 배제):** `wdFired`(watchdog 발화) · `wq = "get"`(조회 진행 중) · `wregen`(재조회 표지) · `wregen ∧ wq = "get"`(조회 중 재조회 표지 — R68-M2) 모두 도달함을 확인했다. 따라서 `_Gap` · `_Drop` · `_GapReplay`의 No error는 발화 · 조회 · 재조회 경로를 실제로 지난 결과다.
 
+**사후 한계 (Astra 0251 H2 · loom-advisor, 2026-10-23 — author-close, Low):** `WatchdogSound == wdFired => agentDidWork`의 `agentDidWork`는 재주입(`VerifyTimeout` — `_GapRun`/`_DropRun`이 도달)으로도 초기화되지 않는 "한 번이라도" ghost다(`BridgeStartupWatchdog.tla:256` · `:368`). 증명된 것은 "`status_lost`는 프롬프트 뒤 **어느 실행이든** 일이 끝난 뒤에만"이고 "**현재 실행**이 끝난 뒤"는 검사되지 않았다. 오발화는 거짓 완료가 아니라 시끄럽고 회복 가능한 실패라 피해는 유계 · 코드 무변경. 또 모델의 watchdog 대상 술어 `cpc = "none"`(`:299`)은 코드보다 엄격하다(코드는 취소된 scrape가 남아 있어도 watchdog을 허용 — Astra 0251 H1).
+
 **판정:** 일곱 판정 전부 PLAN P0 기대와 일치 → P0 done · P1 착수 가능(PLAN §0.45.4 Done (a)).
 
 ## 부록 A. Round-1 TLC 기록 (대체됨)

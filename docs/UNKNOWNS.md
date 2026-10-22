@@ -54,7 +54,7 @@
 
 | 분면 | 내용 |
 |------|------|
-| Known knowns | (1) 모든 `eventsSubscribe`는 옛 이벤트 소켓을 먼저 파괴한다 — 다른 카드의 per-pane 구독 · 재연결이 실려 있던 상태 이벤트를 잃게 한다(TLA C5 · C8). (2) `agent.get`의 `agent_status`는 0.7.5 · 0.9.5 스키마 모두에 있다(테스트 ⑫). (3) watchdog을 켠 모델은 `_Gap` · `_Drop` · `_GapReplay`에서 ER · NoEarly · NoFalse · `WatchdogSound`를 지킨다(`BRIDGE-STARTUP-TLA.md` §8). |
+| Known knowns | (1) 모든 `eventsSubscribe`는 옛 이벤트 소켓을 먼저 파괴한다 — 다른 카드의 per-pane 구독 · 재연결이 실려 있던 상태 이벤트를 잃게 한다(TLA C5 · C8). (2) `agent.get`의 `agent_status`는 0.7.5 · 0.9.5 스키마 모두에 있다(테스트 ⑫). (3) watchdog을 켠 모델은 `_Gap` · `_Drop` · `_GapReplay`에서 ER · NoEarly · NoFalse · `WatchdogSound`를 지킨다(`BRIDGE-STARTUP-TLA.md` §8) — 단 `WatchdogSound`는 "어느 실행이든 한 번" ghost 기준이며 현재 실행 귀속은 미검사(Astra 0251 H2 · 사후 한계 · author-close Low). |
 | Known unknowns | **UK-1 ~ UK-6**(아래 표, 정본 = PLAN §0.45.4). |
 | Unknown knowns | ⑲의 exactly-once는 CAS(`tryAcquireFlightSideEffect`)와 카드 결과 발행자 lease가 겹쳐 지킨다 — 아키텍트 mutation probe: CAS를 지워도 ⑲ green(implementation-notes §0.45.4 (8)). |
 | Unknown unknowns | 실 herdr 0.9.5에서 재구독 · 재연결 빈도와 `agent.get` 지연(fake-herdr만으로 검증 · 실 CLI 0회 — D9). |

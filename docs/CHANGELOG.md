@@ -16,6 +16,8 @@
 
 **pane 카드가 상태 이벤트를 잃어도 영구 정체하지 않는다** — 0.45.3 pane bridge는 다른 카드의 per-pane 구독이나 재연결로 herdr 이벤트 소켓이 갈아 끼워지는 순간 그 소켓에 실려 있던 상태 이벤트(`idle` · `done` · `blocked`)를 잃을 수 있었고, 잃으면 카드는 실패 보고 없이 영원히 결과를 내지 않았다. 0.45.4는 첫 구독 뒤의 모든 events.subscribe ACK에서 작업을 시작한 것으로 관측된 in-flight pane 카드마다 herdr `agent.get`을 한 번 묻고, bridge가 보지 못한 `idle` / `done`이 보이면 유예(5초) 뒤 다시 확인해 **`failed` / `reason: "status_lost"`** 로 시끄럽게 끝낸다. 완료(`done`)를 만들지 않고 · 재주입하지 않고 · pane을 닫지 않는다. 유예 안에 진짜 이벤트가 오면 종전 경로가 이긴다.
 
+**사후 정정 (2026-10-23 · author-close, Low backlog — Astra 0251 H2):** TLA 오라클의 `WatchdogSound`는 "프롬프트 뒤 어느 실행이든 일이 끝난 뒤에만 `status_lost`"를 보였을 뿐 현재 실행 귀속은 검사하지 않았다(재주입에도 초기화되지 않는 ghost). 오발화는 회복 가능한 실패라 코드는 그대로 두고 PLAN §0.45.4 · `BRIDGE-STARTUP-TLA.md` §8 · UNKNOWNS에 한계를 적었다.
+
 ### 가능해진 것
 
 - **새 실패 reason `status_lost`** — `output` = pane 정착 스크레이프 · note `herdr agent.get status=<idle|done> after event socket re-subscribe; status event lost (no <s> observed by the bridge) — judge from output`. 디스패처는 출력으로 판단한다(USER_GUIDE §13 표).
