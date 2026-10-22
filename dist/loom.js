@@ -10008,7 +10008,7 @@ function clampWatchIntervalMs(raw) {
 // packages/host/src/herdr-client.ts
 import { homedir as homedir2 } from "os";
 import { join as join9 } from "path";
-var HERDR_PROTOCOL_EXPECTED = 17;
+var HERDR_PROTOCOLS_SUPPORTED = Object.freeze([17, 22]);
 var DEFAULT_HERDR_SOCKET = join9(homedir2(), ".config", "herdr", "herdr.sock");
 // packages/host/src/bridge-config.ts
 init_session_store();
@@ -11122,7 +11122,6 @@ function defaultBridgeConfig() {
     authorizedDispatchers: [],
     herdrSocketPath: process.env.LOOM_HERDR_SOCKET?.trim() || DEFAULT_HERDR_SOCKET,
     agentArgv: { ...DEFAULT_AGENT_ARGV },
-    herdrProtocol: HERDR_PROTOCOL_EXPECTED,
     paneCleanup: "auto",
     panePlacement: "pool",
     hookSensor: false
@@ -11509,7 +11508,7 @@ function loadBridgeConfig(profile) {
     authorizedDispatchers: dispatchers,
     herdrSocketPath: typeof raw.herdrSocketPath === "string" && raw.herdrSocketPath ? raw.herdrSocketPath : base.herdrSocketPath,
     agentArgv: agentArgvFromRaw(raw.agentArgv),
-    herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : base.herdrProtocol,
+    herdrProtocol: typeof raw.herdrProtocol === "number" ? raw.herdrProtocol : undefined,
     paneCleanup: sanitizePaneCleanup(raw.paneCleanup),
     panePlacement: sanitizePanePlacement(raw.panePlacement),
     paneWorkspaceId: sanitizePaneWorkspaceId(raw.paneWorkspaceId),
@@ -23675,7 +23674,7 @@ function realArtifactsCliDeps() {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.45.2";
+var VERSION = "0.45.3";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
