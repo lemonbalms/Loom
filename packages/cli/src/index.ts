@@ -174,7 +174,7 @@ import { realPromptCliDeps, runPromptCommand } from "./prompt-cli";
 import { realHistoryCliDeps, runHistoryCommand } from "./history-cli";
 import { realArtifactsCliDeps, runArtifactsCommand } from "./artifacts-cli";
 
-const VERSION = "0.45.2";
+const VERSION = "0.45.3";
 
 /**
  * PLAN 0.33.0 D5 readers (P4): status file + pid liveness + read-only lock view for one

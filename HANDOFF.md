@@ -5,25 +5,25 @@
 
 ## One-line resume
 
-> v0.45.3 approved (R67 · herdr 0.9.5/p22 compat) · **next = P1 red → green**
+> v0.45.3 implemented (P1–P4 · herdr 0.9.5/p22 compat) · **next = verify → P5 real-card smoke (owner yes)**
 
 ## Current loop
 
 | Axis | Current position | Authority |
 |---|---|---|
-| Product | **v0.45.3 approved** 2026-10-23 (R67 approved-with-fixes · no R67b) | `docs/PLAN.md` |
-| Dogfood | blocked on herdr 0.9.5 / p22 until 0.45.3 | `HERDR-0.9.5-COMPAT.md` |
+| Product | **v0.45.3 implemented** (P1–P4) 2026-10-23 · smoke pending (R67) | `docs/PLAN.md` |
+| Dogfood | `dogfood:herdr` ok (0.9.5 / p22, read-only) · card smoke pending | `HERDR-0.9.5-COMPAT.md` |
 | Harness | **P3 soft close** · JIT 3.0–3.2 only | `PHASE3-SOFT-CLOSE.md` |
 | Dev env | claude-mem 13.12.4 B-4 + autoUpdate off | `check:mem-header` |
 
 ## Current action
 
-### v0.45.3 approved (R67) · next = P1 red → green
+### v0.45.3 implemented · next = verify → P5 real-card smoke (owner yes)
 
-**Goal:** v0.45.3 PATCH — herdr 0.9.5 / protocol 22 compat: `HERDR_PROTOCOLS_SUPPORTED = [17, 22]`; no `herdrProtocol` in config = any supported, present = exact pin (failure text names `bridgeConfigPath(profile)`); dogfood gate takes 0.7.5/17 or 0.9.5/22 (`docs/PLAN.md` §0.45.3).
-Evidence: R67 `lane.ts advise` 0228 approved-with-fixes (M1·M2·L1·L2 folded) · `status.json` fixture `protocol` 22.
+**Goal:** herdr 0.9.5 / p22 compat — supported `[17, 22]`; no `herdrProtocol` = any supported, present = exact pin (`docs/PLAN.md` §0.45.3).
+Evidence: P1 `e5eea8e` · P2 `ae8910d` · P3 `a4c7d89` · P1b + P4 (Astra 0231) · live `dogfood-herdr-check.sh` ok (0.9.5 / 22).
 
-**Next:** P1 red (`herdr-protocol-support.test.ts` R11 ①–⑧) → green via `lane.ts impl` · then P2–P4 · P5 = D5 smoke (owner yes, R12 steps ①–⑨).
+**Next:** `lane.ts verify` on P1b+P4 · ship checks Done (d) incl. `build:cli` · P5 = D5 smoke (owner yes, R12 steps ①–⑨) · then loom-advisor final review → ship.
 
 **Carry:** TLA+ follow-ups: per-card status-loss watchdog PATCH (owner: after compat) · F1'–F3' MINOR (`BRIDGE-STARTUP-TLA.md`) · `memorySnapshotLocked` byteLength · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
@@ -39,7 +39,7 @@ Evidence: R67 `lane.ts advise` 0228 approved-with-fixes (M1·M2·L1·L2 folded) 
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
 | Suite | **0 fail** (4306/0 at 0.45.2 ship) | `pane-cleanup` ⑥ flaky under load | 0.45.2 ship |
-| v0.45.3 | **approved** (R67) 2026-10-23 · P1 next | herdr 0.9.5 / protocol 22 compat, accept {17, 22} | `docs/PLAN.md` §0.45.3 |
+| v0.45.3 | **implemented** (P1–P4) · smoke pending | herdr p22 compat | PLAN §0.45.3 |
 | v0.45.2 | **shipped** 2026-10-23 · no real-CLI (D4) | PATCH: relay bind message names an unassigned address | `docs/PLAN.md` §0.45.2 |
 | v0.32–0.45.1 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
 | P3 soft close | **closed** · 3.0–3.2 opt-in · 3.3–3.4b false | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
@@ -76,7 +76,7 @@ Evidence: R67 `lane.ts advise` 0228 approved-with-fixes (M1·M2·L1·L2 folded) 
 - Ritual: `docs/SESSION-START.md` · topology `docs/spikes/SINGLE-TOPOLOGY-EXECUTION-DESIGN.md`
 - Close: `docs/spikes/RULE-ROUTER-PHASE3-SOFT-CLOSE.md`
 - 0.37.0 smoke: `docs/spikes/POLICY-HONESTY-SMOKE-0370.md`
-- 0.45.x deviations: `implementation-notes.md` §0.45.0 · §0.45.1 · §0.45.2
+- 0.45.x deviations: `implementation-notes.md` §0.45.0–§0.45.3
 - 3.3–3.4b RESULT: `scripts/rule-router-jit.ts`
 - MBP relay (live 2026-10-18 · run log at end): `docs/spikes/MBP-RELAY-RUNBOOK.md`
 

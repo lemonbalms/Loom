@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.45.2** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.45.3** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -52,7 +52,7 @@ loom doctor
 | **Relay** | 메시지 중계 서버. 로컬 자동 또는 LAN/원격 수동 |
 | **Bridge** | 노드에서 카드(dispatch)를 받아 워커 pane(claude/codex/grok)을 돌리는 장수 프로세스 |
 | **Card** | handoff attachment로 실리는 작업 계약 — 노드 bridge가 claim·실행·결과 회신 |
-| **Herdr** | 워커 pane을 띄우는 외부 멀티플렉서. Loom 0.28.1 기준 **0.7.5 / protocol 17** |
+| **Herdr** | 워커 pane을 띄우는 외부 멀티플렉서. Loom 0.45.3 기준 지원 protocol **17 · 22**(herdr **0.7.5 / 17** · **0.9.5 / 22**) — §14 |
 | **완료 권한** | board를 `done`으로 확정할 수 있는 권한. **`card.done`·pane 종료·원격 result만으로는 없음** (0.28.0) |
 | **`blocked` (원격 result)** | 원격이 `done`을 주장해도 tower board는 **검증 대기 격리**로만 옮김 |
 
@@ -100,7 +100,7 @@ bun run loom doctor      # 설치/home/session/relay/host 읽기전용 진단
 | 11 | 헤드리스 회귀 확인 | smoke:desktop, bun test |
 | 12 | 오케스트레이터 CLI 전환·bridge 복구 (Claude 먹통 → Grok 이어하기) | relay vs bridge vs 세션, card 디스패치 |
 | 13 | 완료 권한 — `card.done` 이후 board를 어떻게 닫나 (0.28.0) | blocked · 로컬 검증 · 명시 mutation |
-| 14 | herdr 0.7.5 dogfood 준비 (0.28.1) | `dogfood:herdr` · named agent · config migrate |
+| 14 | herdr dogfood 준비 (0.28.1 · 0.45.3) | `dogfood:herdr` · named agent · 지원 protocol 17 · 22 · `herdrProtocol` 고정 지우기 |
 | 15 | 헤드리스 카드 워커 (0.30.0, opt-in) — pane 대신 비대화형 CLI | bridge `worker` 설정 · 카드별 세션 · 재개/입양 |
 | 16 | 스킬과 정책 (0.31.0) — 헤드리스 워커의 권한을 한 파일로, 룸이 고른 스킬을 카드에 | `policy.json` · `worker.skills` · 룸 `skills.json` · 정직 표 |
 | 17 | Loom MCP 사전 점검 (0.32.0) — 대화형 에이전트의 Loom 도구 호출을 정책으로 검사 | `loomTools` · `mcp.deny` `loom__<tool>` · 감사 파일 · 정직 표 |
@@ -653,7 +653,7 @@ bun run status
 | “relay를 다시 띄웠다” | 로그상 **bridge** 재기동인 경우가 많음 (`Bridge started (pid …)`) |
 | “Grok CLI = 구현 레인” | Grok CLI는 **아키텍트 터미널**. 워커는 **herdr pane + card** |
 | `loom run grok/codex` 화면이 깨짐 | live relay callback과 full-screen TUI가 **같은 PTY**에 출력. 아키텍트는 직접 실행하고 워커는 `dispatch_card`로 pane 생성 |
-| herdr 0.7.5 / protocol 17 (Loom **0.28.1** adapter shipped) | **필수:** `bun run dogfood:herdr`로 live 0.7.5/17 + Loom expected-17 호환을 확인한 뒤 dispatch. 구 bridge config의 `herdrProtocol:16`은 dogfood:up 경로에서 **auto-migrate**된다 — **config만 17로 올리는 bypass는 금지**. prompt/`send_keys`는 **exact named agent target**(pane id 아님). herdr 다운그레이드·0.7.4 병존 세션 금지. 사용자당 1회 **plugin reinstall/relink** 후 protocol 17 확인. 정본: [`HERDR-0.7.5-COMPAT`](./spikes/HERDR-0.7.5-COMPAT.md) · 표·절차 §14. |
+| herdr 0.7.5 / protocol 17 또는 0.9.5 / protocol 22 (Loom **0.45.3**) | **필수:** `bun run dogfood:herdr`로 live 쌍(0.7.5/17 또는 0.9.5/22 — 버전 정확 일치) + Loom `HERDR_PROTOCOLS_SUPPORTED` 포함을 확인한 뒤 dispatch. dogfood:up은 `mac-node`의 `herdrProtocol` **고정을 지운다**(0.45.3 — 지원 집합을 받게 됨) — **config만 고쳐 지원 안 하는 protocol을 위장하는 bypass는 금지**. prompt/`send_keys`는 **exact named agent target**(pane id 아님). herdr 다운그레이드·0.7.4 병존 세션 금지. 사용자당 1회 **plugin reinstall/relink** 후 protocol 17 확인. 정본: [`HERDR-0.7.5-COMPAT`](./spikes/HERDR-0.7.5-COMPAT.md) · 표·절차 §14. |
 | PID 숫자 (예: 10814 → 78818) | OS **프로세스 ID**. 재기동마다 바뀜. meta 파일의 `"pid"`와 대조 |
 
 ### 12.4 사용 사례 B — codex 무인 검증 때문에 bridge를 재기동할 때
@@ -776,15 +776,33 @@ PY
 
 ---
 
-## 14. herdr 0.7.5 dogfood 준비 (0.28.1)
+## 14. herdr dogfood 준비 (0.28.1 · 0.45.3 — 0.7.5/17 · 0.9.5/22)
 
 **하고 싶은 일:** 카드 워커를 띄우기 전 호스트 herdr와 Loom 어댑터가 맞는지 확인한다.
 
 ```bash
-bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
-# 실패 시: herdr 업그레이드 · plugin reinstall/relink · Loom 0.28.1+ 사용
-# 금지: herdrProtocol만 17로 수동 위장, 0.7.4 다운그레이드·병존 세션
+bun run dogfood:herdr    # live 0.7.5/17 또는 0.9.5/22 + Loom HERDR_PROTOCOLS_SUPPORTED
+# 성공: herdr compatibility: ok (0.9.5 / protocol 22)
+# 실패 시: herdr 업그레이드 · plugin reinstall/relink · Loom 0.45.3+ 사용
+# 금지: herdrProtocol만 고쳐 지원 안 하는 protocol을 수동 위장, 0.7.4 다운그레이드·병존 세션
 ```
+
+**지원 protocol (v0.45.3).** Loom bridge는 herdr protocol **17**(herdr 0.7.5)과 **22**(herdr 0.9.5)를 받는다(`HERDR_PROTOCOLS_SUPPORTED`). 두 protocol 사이에 동작 분기는 없다 — Loom이 쓰는 메서드 · 이벤트 와이어가 같다(차이는 Loom이 보내지 않는 `pane.split` `right_click` 하나). `dogfood:herdr`는 증명된 **버전 정확 쌍**만 받는다(0.9.6/22는 제품 bridge는 받지만 dogfood 게이트는 거부).
+
+**`herdrProtocol` 고정의 의미 (v0.45.3).** `~/.loom/bridge/<profile>.json`에
+
+- `herdrProtocol` **키가 없으면**(기본) — 지원 집합 안 아무 protocol이나 받는다. 기동 로그: `[loom-bridge] herdr ok v0.9.5 protocol 22 (supported: 17, 22)`
+- **있으면** — 정확한 운영자 고정이다. 서버 값과 같아야 하고 그 값이 지원 집합 안이어야 한다. 기동 로그: `[loom-bridge] herdr ok v0.9.5 protocol 22 (pinned)`
+
+0.45.3부터 기본 설정은 이 키를 쓰지 않고 `loom bridge start --allow` 저장도 키를 새로 쓰지 않는다. 단 **0.45.2 이하가 이미 파일에 쓴 값**(`--allow`가 저장한 `17` 포함)은 고정으로 다룬다. 실패 문면(모두 `herdr unreachable (<sock>): …`로 감싸져 exit 1):
+
+| 상황 | 문면 꼬리 |
+|------|-----------|
+| 고정 없음 + 집합 밖 서버 | `herdr protocol 16 is not supported (supported: 17, 22)` |
+| 고정 ≠ 서버 | `herdr protocol 22 != pinned 17 (bridge config herdrProtocol; supported: 17, 22 — remove herdrProtocol from <path> to accept any supported protocol)` |
+| 고정이 집합 밖 | `herdr protocol pin 16 is not supported (bridge config herdrProtocol in <path>; supported: 17, 22)` |
+
+`<path>`는 그 프로필의 설정 파일 절대 경로다. **남은 고정 지우기:** 그 파일에서 `"herdrProtocol": …` 키 한 줄을 지우고(JSON 쉼표 주의) bridge를 다시 띄운다. dogfood `mac-node`는 `dogfood:up`이 자동으로 지운다(`dogfood bridge: removed mac-node herdrProtocol pin …`) — 다른 프로필은 손으로 지운다.
 
 | 규칙 | 이유 |
 |------|------|
@@ -793,7 +811,7 @@ bun run dogfood:herdr    # live 0.7.5/17 + Loom expected-17
 | launch 후 `interactive_ready` 대기 | `agent.wait` idle ≠ 기동 완료 |
 | allowlist = **전체 peer id** | `loom peers` 표 절단값 금지 |
 
-정본: [`spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md) · 절차: [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md).
+정본: [`spikes/HERDR-0.7.5-COMPAT.md`](./spikes/HERDR-0.7.5-COMPAT.md) · [`spikes/HERDR-0.9.5-COMPAT.md`](./spikes/HERDR-0.9.5-COMPAT.md) · 절차: [`DOGFOOD_LOOP.md`](./DOGFOOD_LOOP.md).
 
 ---
 
@@ -2251,6 +2269,8 @@ bun test
 | 핫픽스 반영이 안 됨 | 구 bridge PID가 옛 코드 유지 | bridge restart로 소스 재로드 (§12.5) |
 | `card.done` 보고 board를 done으로 | 완료 권한 오해 (0.28) | §12.8 · §13 — 로컬 검증 후 명시 mutation |
 | herdr 0.7.5인데 카드 스폰 실패 | p16 어댑터/설정 또는 config-only 17 | §14 · `dogfood:herdr` · Loom 0.28.1+ |
+| `herdr unreachable (<sock>): herdr protocol <p> != pinned <pin> (bridge config herdrProtocol; …remove herdrProtocol from <path>…)` (v0.45.3) | bridge 설정에 `herdrProtocol` 고정이 남아 있다 — 0.45.2 이하 `bridge start --allow`가 기본값 17을 파일에 써 둔 경우 포함. herdr 0.9.5(protocol 22)로 올리면 이 문면으로 기동 실패 | 문면의 `<path>`(`~/.loom/bridge/<profile>.json`)에서 `herdrProtocol` 키를 지우고 bridge 재기동 — 지원 집합 17 · 22를 받는다. §14 |
+| `herdr protocol pin <pin> is not supported (bridge config herdrProtocol in <path>; supported: 17, 22)` (v0.45.3) | 고정값이 지원 집합 밖(예: 옛 `16`) — 서버 값과 같아도 거부 | `<path>`에서 `herdrProtocol`을 지운다(또는 17 · 22 중 하나로 정확히 고정). §14 |
 | prompt가 다른 pane으로 감 | pane id 타깃 | exact agent **name** |
 | 0.31.0 업그레이드 후 헤드리스 bridge 기동 경고 `deprecated deny list … identical to built-in defaults accepted …; remove the list` | 0.30.0 기본 목록을 bridge 설정에 그대로 복사해 둠(`Bash(git push*)` 등). 기동은 된다 | 목록 삭제(내장 기본이 같음). 더 막을 것은 `policy.json` `shell.deny`에 `p *` 형 (§16.2) |
 | 0.31.0 업그레이드 후 헤드리스 bridge 기동 거부 `deprecated deny entry "Bash(rm*)"` | 내장 기본과 글자 그대로 같지 않은 공백 없는 `p*` deny | `policy.json` `shell.deny`에 `p *` 형 + 막으려던 비슷한 이름을 따로 적고 목록에서 지움 (§16.2) |

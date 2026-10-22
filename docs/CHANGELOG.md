@@ -5,8 +5,39 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.2** — shipped 2026-10-23 · 실 CLI 불필요 D4) |
-| **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.3** — implemented 2026-10-23 · 실 카드 스모크 pending(오너 yes) · 직전 shipped 0.45.2) |
+| **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [HERDR-0.9.5-COMPAT](./spikes/HERDR-0.9.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.45.3 — 2026-10-23
+
+> **상태:** implemented 2026-10-23 (P1–P4) · **실 카드 스모크 pending** — 로컬 herdr 0.9.5에서 실 CLI 카드 1장(PLAN 0.45.3 D5 · R12 — 실행 시점 오너 yes). 스모크 PASS 전에는 ship 아님. 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
+
+**herdr 0.9.5(protocol 22)에서 pane bridge가 다시 뜬다** — 0.45.2 bridge는 herdr `ping`의 protocol이 정확히 17(또는 설정값)이 아니면 기동을 거부해, 로컬 herdr가 0.9.5로 올라간 뒤 `herdr unreachable (<sock>): herdr protocol 22 != expected 17`로 죽었다. 0.45.3은 지원 집합 `HERDR_PROTOCOLS_SUPPORTED = [17, 22]`를 두고, bridge 설정에 `herdrProtocol`이 없으면 그 집합 안 아무 값이나 받는다. 두 protocol 사이 동작 분기는 없다(Loom이 쓰는 15 메서드 · 4 이벤트 와이어가 같다 — 계약 테스트로 고정).
+
+### 가능해진 것
+
+- **herdr 0.9.5 / protocol 22** 서버에 pane bridge 기동 · herdr 0.7.5 / protocol 17은 계속 받는다.
+- **기동 로그에 협상 결과** — `herdr ok v0.9.5 protocol 22 (supported: 17, 22)`(고정 없음) · `… (pinned)`(고정). 접두 `herdr ok v<version> protocol <p>`는 종전 그대로.
+- **실패 문면이 고칠 파일을 말한다** — 고정 불일치는 `herdr protocol 22 != pinned 17 (bridge config herdrProtocol; supported: 17, 22 — remove herdrProtocol from <path> to accept any supported protocol)` · `<path>` = 그 프로필의 `~/.loom/bridge/<profile>.json` 절대 경로.
+- **`dogfood:herdr`** 가 0.7.5/17 또는 0.9.5/22 쌍(버전 정확 일치)을 받는다 · **`dogfood:up`** 은 `mac-node`의 `herdrProtocol` 고정을 지운다.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.45.2) | 지금 (0.45.3) |
+|---------------|---------------|
+| 기본 설정에 `herdrProtocol: 17`이 늘 채워짐 · `bridge start --allow`가 그 값을 파일에 저장 | 기본값 없음 — 키가 없으면 지원 집합(17 · 22) · `--allow` 저장도 키를 쓰지 않음 |
+| 파일의 `herdrProtocol` = 사실상 기본값 | 파일의 `herdrProtocol` = **정확한 운영자 고정** — 0.45.2 이하가 써 둔 17도 고정이라 0.9.5에서 기동 실패 → 문면의 `<path>`에서 키를 지운다 |
+| `herdrProtocol: 16` + protocol 16 서버 → 기동 통과 뒤 첫 카드에서 깨짐 | 집합 밖 고정은 서버 값과 같아도 기동 거부 — `herdr protocol pin 16 is not supported (bridge config herdrProtocol in <path>; supported: 17, 22)` |
+| `dogfood:up`이 `mac-node` `herdrProtocol`을 17로 덮어씀 | 고정을 지움 — `dogfood bridge: removed mac-node herdrProtocol pin (bridge accepts herdr protocols 17, 22)` |
+| `HERDR_PROTOCOL_EXPECTED`(17) | 삭제 → `HERDR_PROTOCOLS_SUPPORTED`(`[17, 22]`) |
+
+### 불변
+
+- 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint · 상태 파일 · doctor 출력 무변경. protocol 거부도 종전처럼 `herdr unreachable (<sock>): …`로 감싸져 exit 1.
+- 미래 protocol(23+)은 와이어가 같아도 기동에서 거부(fail closed). protocol 17 쪽은 라이브로 다시 증명되지 않았다(로컬에 0.7.5 herdr 없음 — 증거 = 스키마 동일성 + fake 17 스위트).
+- 증명 = `herdr-protocol-support.test.ts`(기동 검사 ①~⑥ · 로더 ⑦ · 저장 왕복 ⑧) · `herdr-protocol22-contract.test.ts`(0.9.5 스키마 고정 + 0.7.5와 교차 동일 · 예외 `right_click` 하나) · `dogfood-profiles.test.ts`(쌍 표 · 고정 제거 · 0.9.5 `status.json` 키) · 읽기 전용 라이브 `dogfood-herdr-check.sh` → `herdr compatibility: ok (0.9.5 / protocol 22)`. 실 카드 스모크는 pending.
 
 ---
 

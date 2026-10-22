@@ -40,6 +40,18 @@ This file is for **during-implementation** plan deviations only.
 | 2026-07-28 | PHASE3.1-SPEC §4 · shared `LOOM_RULE_ROUTER_JIT=1` | live=`1`이어도 **ship 레인은 `PHASE3_1_SHIP_LIVE_AUTHORIZED` 게이트**를 통과해야 inject. 3.0 delegation과 플래그 공유·surface 분리. | 3.0 통과만으로 ship이 열리지 않게 한다. | **3.1b T1(a) PASS 후 true** (2026-07-28). unset=off·default-on 금지 유지. |
 | 2026-07-28 | SPEC-REV Path B · RULE-ENFORCEABILITY H | **`check-bun-test-env.ts` exit 2** on Bash `bun test` without both LOOM_RELAY_* unset. Wired **before** jit on Bash matcher. No command rewrite. Parse fail → exit 0. | Soft JIT cannot guarantee compliance under doc competition; hard deny on the Claude Code path. Scope claim limited to that path — not all shells/CI. | Doc `RULE-ROUTER-BUN-TEST-ENV-HARD.md`. |
 
+### §0.45.3 — herdr 0.9.5 / protocol 22 호환 — 지원 집합 {17, 22} (implemented 2026-10-23 · P5 실 카드 스모크 pending · ship 전)
+
+| # | PATCH · ref | Deviation (what we did) | 판정 |
+|---|---|---|---|
+| (1) | ⑤ 구현 순서 · 레인 분할 | **P1 · P3를 아키텍트가 red → green 두 커밋으로 나눴다**(P1 red `1e4c141` → green `e5eea8e` · P3 red `38bce6c` → green `a4c7d89`). red 커밋 = 테스트 파일만 · green 커밋 = production만. 게이트 커밋 `8223163`. | 수용(PLAN ⑤ 형 그대로) |
+| (2) | P2 · R10 · `ae8910d` | **P2는 옛 코드에서도 green**(red 없음 선언) — `herdr-protocol22-contract.test.ts`는 fixture `docs/spikes/fixtures/herdr-v0.9.5/schema.json`만 읽는다. 회귀 방지용 고정이지 red→green 증명이 아니다. | 수용(선언대로) |
+| (3) | P3 · R6 · `38bce6c` | **P3 red 중 fixture 단언은 옛 코드에서도 green** — `status.json`의 최상위 `protocol` = 22 · `version` = `"0.9.5"` 단언은 스크립트가 아니라 캡처 파일을 읽는다(R6 — 키 전제 고정). red 실패는 쌍 표 · 고정 제거 · `HERDR_PROTOCOLS_SUPPORTED` import 단언이 담당. | 수용(R6 의도 — 키 전제 고정) |
+| (4) | P3 · D3 · 라이브 읽기 전용 | 아키텍트가 로컬 herdr에 대해 `scripts/dogfood-herdr-check.sh`를 읽기 전용으로 1회 실행 → `herdr compatibility: ok (0.9.5 / protocol 22)`. 브리지 재시작 · `dogfood:up` · 실 카드 없음(D5 = P5 · 오너 yes). | 수용(비파괴 관측) |
+| (5) | 검증 Astra 0231 · Medium | Astra 0231의 Medium은 **검증 시점에 진행 중이던 P3 작업**(dogfood 게이트 — P3 범위)을 가리켰다 → P3 red/green `38bce6c` → `a4c7d89`로 해소. 별도 수정 없음. | 수용(P3로 해소) |
+| (6) | P1b · Astra 0231 · Low | `herdr-protocol-support.test.ts`의 teardown이 `LOOM_TEST_HOME` · `LOOM_SESSION` · `LOOM_NO_AUTO_HOST`를 이전 값과 무관하게 지웠다 → 파일이 건드리는 env 넷(`HOME` 포함)의 이전 값을 저장하고 teardown에서 각각 복원(이전에 없던 키만 삭제). 테스트 전용 · production 0줄. | 수용 |
+| (7) | P4 · `build:cli` | 이 레인은 dist(`build:cli`)를 다시 빌드하지 않았다 — 지정 검증 명령 밖. ship 검사(Done (d))에서 아키텍트가 돌린다. | 이월 |
+
 ### §0.45.2 — relay bind 실패 메시지가 미할당 주소를 지목 (implemented 2026-10-23 · shipped 2026-10-23)
 
 | # | PATCH · ref | Deviation (what we did) | 판정 |

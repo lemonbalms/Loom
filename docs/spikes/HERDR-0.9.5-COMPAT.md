@@ -6,7 +6,7 @@
 | **Basis** | 스키마 대조만 — `docs/spikes/fixtures/herdr-v0.7.5/schema.json`(protocol 17) vs `docs/spikes/fixtures/herdr-v0.9.5/schema.json`(protocol 22, `herdr api schema --json`). **herdr 호출·라이브 프로브 없음.** 릴리스 노트 미대조 |
 | **Local herdr** | `0.9.5` · `ping` → protocol **22** · capabilities `live_handoff`, `detached_server_daemon`, `endpoint_protocol_generation: 1`, `surface_interest`, `health_check`, `ssh_agent_registration` (아키텍트 확인) |
 | **Loom adapter** | `HERDR_PROTOCOL_EXPECTED = 17` (`packages/host/src/herdr-client.ts:26`) · 로컬 브리지 설정 `mac.json` `herdrProtocol: 16`, `mac-node.json` `17` |
-| **Verdict** | **study only — 미구현.** 스키마상 Loom이 쓰는 와이어 표면은 **사실상 불변**(아래 §1). 현재 차단 원인은 브리지의 protocol 동등 비교 하나(`bridge-runtime.ts:1039-1041`) |
+| **Verdict** | **implemented · smoke pending** (Loom v0.45.3 P1–P4, 2026-10-23 — 지원 집합 `HERDR_PROTOCOLS_SUPPORTED = [17, 22]` · 고정 없음 = 집합 · 고정 = 정확 비교 · 계약 테스트 `herdr-protocol22-contract.test.ts` · 읽기 전용 라이브 `dogfood-herdr-check.sh` → `ok (0.9.5 / protocol 22)`. 실 카드 스모크(PLAN 0.45.3 D5 · R12 · §6 기록 예정)는 오너 yes 대기 — PASS 뒤 shipped). 종전 study verdict: 스키마상 Loom이 쓰는 와이어 표면은 **사실상 불변**(아래 §1). 현재 차단 원인은 브리지의 protocol 동등 비교 하나(`bridge-runtime.ts:1039-1041`) |
 
 **권한:** 이 파일은 0.9.5 호환 판단의 스키마 근거다. PLAN·PANE-DEATH 잠금이나 `HERDR-0.7.5-COMPAT.md`(0.7.5 shipped 기록)는 수정하지 않는다.
 

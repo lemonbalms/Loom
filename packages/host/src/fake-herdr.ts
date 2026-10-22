@@ -1,5 +1,6 @@
 /**
- * Fixture-shaped fake herdr Unix NDJSON server for tests (protocol 17 / 0.7.5).
+ * Fixture-shaped fake herdr Unix NDJSON server for tests (default protocol 17 / 0.7.5;
+ * 0.9.5 / 22 via the `version` / `protocol` options — same wire for what Loom uses).
  *
  * Transport-honest per measured real herdr: every RPC gets exactly one
  * response then the server ends the connection (FIN). The one exception is
