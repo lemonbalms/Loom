@@ -653,7 +653,7 @@ bun run status
 | “relay를 다시 띄웠다” | 로그상 **bridge** 재기동인 경우가 많음 (`Bridge started (pid …)`) |
 | “Grok CLI = 구현 레인” | Grok CLI는 **아키텍트 터미널**. 워커는 **herdr pane + card** |
 | `loom run grok/codex` 화면이 깨짐 | live relay callback과 full-screen TUI가 **같은 PTY**에 출력. 아키텍트는 직접 실행하고 워커는 `dispatch_card`로 pane 생성 |
-| herdr 0.7.5 / protocol 17 또는 0.9.5 / protocol 22 (Loom **0.45.3**) | **필수:** `bun run dogfood:herdr`로 live 쌍(0.7.5/17 또는 0.9.5/22 — 버전 정확 일치) + Loom `HERDR_PROTOCOLS_SUPPORTED` 포함을 확인한 뒤 dispatch. dogfood:up은 `mac-node`의 `herdrProtocol` **고정을 지운다**(0.45.3 — 지원 집합을 받게 됨) — **config만 고쳐 지원 안 하는 protocol을 위장하는 bypass는 금지**. prompt/`send_keys`는 **exact named agent target**(pane id 아님). herdr 다운그레이드·0.7.4 병존 세션 금지. 사용자당 1회 **plugin reinstall/relink** 후 protocol 17 확인. 정본: [`HERDR-0.7.5-COMPAT`](./spikes/HERDR-0.7.5-COMPAT.md) · 표·절차 §14. |
+| herdr 0.7.5 / protocol 17 또는 0.9.5 / protocol 22 (Loom **0.45.3**) | **필수:** `bun run dogfood:herdr`로 live 쌍(0.7.5/17 또는 0.9.5/22 — 버전 정확 일치) + Loom `HERDR_PROTOCOLS_SUPPORTED` 포함을 확인한 뒤 dispatch. dogfood:up은 `mac-node`의 `herdrProtocol` **고정을 지운다**(0.45.3 — 지원 집합을 받게 됨) — **config만 고쳐 지원 안 하는 protocol을 위장하는 bypass는 금지**. prompt/`send_keys`는 **exact named agent target**(pane id 아님). herdr 다운그레이드·0.7.4 병존 세션 금지. 사용자당 1회 **plugin reinstall/relink** 후 live protocol 확인(0.7.5 → 17 · 0.9.5 → 22). 정본: [`HERDR-0.7.5-COMPAT`](./spikes/HERDR-0.7.5-COMPAT.md) · [`HERDR-0.9.5-COMPAT`](./spikes/HERDR-0.9.5-COMPAT.md) · 표·절차 §14. |
 | PID 숫자 (예: 10814 → 78818) | OS **프로세스 ID**. 재기동마다 바뀜. meta 파일의 `"pid"`와 대조 |
 
 ### 12.4 사용 사례 B — codex 무인 검증 때문에 bridge를 재기동할 때
