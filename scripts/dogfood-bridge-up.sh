@@ -28,30 +28,34 @@ loom() {
   bun run packages/cli/src/index.ts "$@"
 }
 
-# Must precede any bridge stop or room rebind. Protocol 17 can pass ping while
-# failing the old agent.start/agent.send requests on the first real card.
+# Must precede any bridge stop or room rebind. An unsupported protocol can pass
+# ping while failing the first real card.
 bash scripts/dogfood-herdr-check.sh
 
-# Sync persisted mac-node herdrProtocol to HERDR_PROTOCOL_EXPECTED after the live
-# herdr check and before any "already online" ready exit. Stale config can pin
-# an older protocol while live herdr + source expected already match.
+# Remove any persisted mac-node herdrProtocol pin after the live herdr check and
+# before any "already online" ready exit. A pin is an exact match, so any value
+# breaks one supported herdr server; without it the bridge accepts
+# HERDR_PROTOCOLS_SUPPORTED (PLAN 0.45.3 R8).
 PROTOCOL_CHANGED=no
 PROTOCOL_CHANGED="$(
   bun -e '
     import { loadBridgeConfig, saveBridgeConfig } from "./packages/host/src/bridge-config.ts";
-    import { HERDR_PROTOCOL_EXPECTED } from "./packages/host/src/herdr-client.ts";
     const cfg = loadBridgeConfig("mac-node");
-    if (cfg.herdrProtocol === HERDR_PROTOCOL_EXPECTED) {
+    if (cfg.herdrProtocol === undefined) {
       process.stdout.write("no");
     } else {
-      cfg.herdrProtocol = HERDR_PROTOCOL_EXPECTED;
+      delete cfg.herdrProtocol;
       saveBridgeConfig("mac-node", cfg);
       process.stdout.write("yes");
     }
   '
 )"
 if [[ "$PROTOCOL_CHANGED" == "yes" ]]; then
-  echo "dogfood bridge: migrated mac-node herdrProtocol to HERDR_PROTOCOL_EXPECTED"
+  SUPPORTED_PROTOCOLS="$(bun -e '
+    import { HERDR_PROTOCOLS_SUPPORTED } from "./packages/host/src/herdr-client.ts";
+    process.stdout.write(HERDR_PROTOCOLS_SUPPORTED.join(", "));
+  ')"
+  echo "dogfood bridge: removed mac-node herdrProtocol pin (bridge accepts herdr protocols $SUPPORTED_PROTOCOLS)"
 fi
 
 json_field() {

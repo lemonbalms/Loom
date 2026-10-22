@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Dogfood requires the owner's current herdr release. Fail closed until Loom's
-# committed socket adapter matches that live protocol; ping-only is not enough.
+# Dogfood requires a proven herdr release. Fail closed unless the live
+# version/protocol pair is in the table below AND Loom's committed socket
+# adapter supports that protocol; ping-only is not enough.
 set -euo pipefail
 
-REQUIRED_VERSION="0.7.5"
-REQUIRED_PROTOCOL="17"
-LOOM_PROTOCOL="$(sed -n 's/^export const HERDR_PROTOCOL_EXPECTED = \([0-9][0-9]*\);/\1/p' packages/host/src/herdr-client.ts)"
+# Exact version:protocol pairs proven for dogfood (PLAN 0.45.3 R7).
+SUPPORTED_HERDR="0.7.5:17 0.9.5:22"
+LOOM_PROTOCOLS="$(bun -e '
+  import { HERDR_PROTOCOLS_SUPPORTED } from "./packages/host/src/herdr-client.ts";
+  process.stdout.write(HERDR_PROTOCOLS_SUPPORTED.join(" "));
+')"
 
 if ! command -v herdr >/dev/null 2>&1; then
   echo "error: herdr not found on PATH" >&2
@@ -25,17 +29,23 @@ json_field() {
 SERVER_VERSION="$(json_field "$STATUS_JSON" version)"
 SERVER_PROTOCOL="$(json_field "$STATUS_JSON" protocol)"
 
-if [[ "$SERVER_VERSION" != "$REQUIRED_VERSION" || "$SERVER_PROTOCOL" != "$REQUIRED_PROTOCOL" ]]; then
-  echo "error: dogfood requires current herdr $REQUIRED_VERSION / protocol $REQUIRED_PROTOCOL" >&2
+PAIR_OK=no
+for pair in $SUPPORTED_HERDR; do
+  if [[ "$SERVER_VERSION:$SERVER_PROTOCOL" == "$pair" ]]; then
+    PAIR_OK=yes
+  fi
+done
+
+if [[ "$PAIR_OK" != "yes" ]]; then
+  echo "error: dogfood requires herdr version:protocol in: $SUPPORTED_HERDR" >&2
   echo "running: $SERVER_VERSION / protocol $SERVER_PROTOCOL" >&2
   exit 1
 fi
 
-if [[ "$LOOM_PROTOCOL" != "$REQUIRED_PROTOCOL" ]]; then
-  echo "error: herdr is current ($SERVER_VERSION / protocol $SERVER_PROTOCOL), but Loom adapter expects protocol ${LOOM_PROTOCOL:-unknown}" >&2
+if [[ " $LOOM_PROTOCOLS " != *" $SERVER_PROTOCOL "* ]]; then
+  echo "error: herdr is current ($SERVER_VERSION / protocol $SERVER_PROTOCOL), but protocol $SERVER_PROTOCOL is not in Loom's supported set (${LOOM_PROTOCOLS:-unknown})" >&2
   echo "Bridge ping can be forced green by config, but the first card will fail:" >&2
-  echo "protocol 17 replaced agent.start(argv/env/placement) and agent.send(text)." >&2
-  echo "Complete docs/spikes/HERDR-0.7.5-COMPAT.md before dogfood dispatch." >&2
+  echo "Loom supports herdr protocols ${LOOM_PROTOCOLS:-unknown}; see docs/spikes/HERDR-0.9.5-COMPAT.md." >&2
   exit 1
 fi
 
