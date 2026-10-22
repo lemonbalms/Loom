@@ -4,7 +4,13 @@
  * paneCleanup "auto" remains conv-only; card worker panes are preserved.
  */
 import { describe, expect, test, afterAll, beforeAll } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { RelayServer } from "@loom/relay";
@@ -31,6 +37,7 @@ import {
 import { convOpen, convClose } from "./conv-ops";
 import { addTask, updateTask, findTask } from "./task-board";
 import { applyCardResult } from "./card-ops";
+import { quarantinePath } from "./result-quarantine";
 
 type CardResult = {
   status?: string;
@@ -978,8 +985,12 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
       );
       expect(ready).toBe(true);
       const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
-      // The pane exists once agent.start replies, but the bridge subscribes to
-      // its status only afterwards; events pushed before that are never seen.
+      // The fake registers the pane during tab.create / pane.split and
+      // broadcasts events to every open socket, but status events pushed
+      // before the bridge registers the card flight are ignored, and those
+      // pushed while it replaces its subscription socket are lost. The
+      // per-pane events.subscribe comes after both, so waiting on it closes
+      // both windows.
       const subscribed = await waitForLocal(
         () => hasPaneStatusSubscription(paneId),
         5_000,
@@ -1075,6 +1086,21 @@ describe("PLAN 0.23.8 sendResult failure → no close (⑦)", () => {
   let tower: RelayClient | null = null;
   let session: FableSession;
   let towerSession: FableSession;
+
+  function hasPaneStatusSubscription(paneId: string): boolean {
+    return fake.calls.some((c) => {
+      if (c.method !== "events.subscribe") return false;
+      const subs = c.params.subscriptions;
+      if (!Array.isArray(subs)) return false;
+      return subs.some(
+        (s) =>
+          typeof s === "object" &&
+          s !== null &&
+          "pane_id" in s &&
+          (s as { pane_id?: string }).pane_id === paneId,
+      );
+    });
+  }
 
   beforeAll(async () => {
     mkdirSync(dir, { recursive: true });
@@ -1199,13 +1225,20 @@ describe("PLAN 0.23.8 sendResult failure → no close (⑦)", () => {
       );
       expect(ready).toBe(true);
       const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+      // Same windows as ⑥: events pushed before the flight is registered are
+      // ignored and those pushed during the subscription socket replacement
+      // are lost; the per-pane events.subscribe comes after both.
+      const subscribed = await waitFor(
+        () => hasPaneStatusSubscription(paneId),
+        { timeoutMs: 5_000 },
+      );
+      expect(subscribed).toBe(true);
       const closesBefore = closeCallsFor(fake, paneId);
 
       fake.setPaneReadText(paneId, DONE_BODY);
 
       // Kill relay so card result handoff throws → sendResult returns false.
       relay.stop();
-      await Bun.sleep(50);
 
       fake.pushEvent("pane_agent_status_changed", {
         pane_id: paneId,
@@ -1216,8 +1249,27 @@ describe("PLAN 0.23.8 sendResult failure → no close (⑦)", () => {
         agent_status: "idle",
       });
 
-      // Give finishCard time to attempt send + skip close.
-      await Bun.sleep(800);
+      // The failed send leaves a durable send_unknown record — evidence the
+      // completion path ran (it would not if both events were ignored).
+      const qPath = quarantinePath("node-sendfail");
+      const sendUnknown = await waitFor(
+        () =>
+          existsSync(qPath) &&
+          readFileSync(qPath, "utf8")
+            .split("\n")
+            .some((line) => {
+              try {
+                const r = JSON.parse(line) as { cardId?: string; state?: string };
+                return r.cardId === cardId && r.state === "send_unknown";
+              } catch {
+                return false;
+              }
+            }),
+        { timeoutMs: 10_000 },
+      );
+      expect(sendUnknown).toBe(true);
+      // Give finishCard time to skip close after the failed send.
+      await Bun.sleep(300);
       expect(closeCallsFor(fake, paneId)).toBe(closesBefore);
       fake.setPaneReadText(paneId, null);
     },
