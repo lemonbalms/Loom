@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.45.3 shipped (herdr 0.9.5/p22 · D5 smoke PASS) · **next = status-loss watchdog PATCH: PLAN + R{n}**
+> v0.45.4 watchdog PLAN **approved** (R68) · P0 TLA done · **next = P1 red (watchdog tests) → green → P2 docs**
 
 ## Current loop
 
@@ -18,18 +18,18 @@
 
 ## Current action
 
-### Per-card status-loss watchdog PATCH — PLAN draft + R{n}
+### v0.45.4 status-loss watchdog PATCH — P1 red → green → P2
 
-**Goal:** per-card status-loss watchdog (owner order: after compat — 0.45.3 shipped). Acceptance oracle = TLA spike `docs/spikes/BRIDGE-STARTUP-TLA.md`. `status_lost` fails loud and never calls `beginCardCompletion`.
-Prior: v0.45.3 shipped — herdr `[17, 22]` · D5 smoke ⓓ PASS (`HERDR-0.9.5-COMPAT.md` §6).
+**Goal:** per-card status-loss watchdog (owner order: after compat — 0.45.3 shipped). `status_lost` fails loud and never calls `beginCardCompletion`.
+**State:** PLAN §0.45.4 **`approved`** — R68 approved-with-fixes (M1 · M2 · L1–L5, `09ef503`; Astra 0240 FAIL → 0242 PASS; no R68b). **P0 done** — architect TLC `_Gap` 1,188 · `_Drop` 1,308 · `_GapReplay` 3,048 No error; expected violations hold (`BRIDGE-STARTUP-TLA.md` §8).
 
-**Next:** PLAN draft (new PATCH section) → R{n} via loom-advisor → owner pick → tests-first impl.
+**Next:** P1 red = new `status-lost-watchdog.test.ts` (R14 ①–⑰) + `fake-herdr.ts` hooks (R15) via `lane.ts impl` → architect re-runs red → P1 green (`herdr-client.ts` · `bridge-runtime.ts` only) → `lane.ts verify` → P2 docs/version/dist → loom-advisor final → ship.
 
 **Carry:** TLA+ follow-ups: F1'–F3' MINOR (`BRIDGE-STARTUP-TLA.md`) · `memorySnapshotLocked` byteLength · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** watchdog PATCH PLAN section drafted and R{n} verdict recorded in `docs/plan_review.md`.
+**Done when (this handoff):** §0.45.4 Done (b)–(f) — P1 green · ship checks · docs/version · loom-advisor final = ship · real CLI 0 (D9).
 
 **Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -39,6 +39,7 @@ Prior: v0.45.3 shipped — herdr `[17, 22]` · D5 smoke ⓓ PASS (`HERDR-0.9.5-C
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
 | Suite | **0 fail** (4323 ran / 0 fail at 0.45.3 ship) | `pane-cleanup` ⑥ flaky under load | 0.45.3 ship |
+| v0.45.4 | **approved** (R68) · P0 done · P1 next | watchdog PATCH | PLAN §0.45.4 |
 | v0.45.3 | **shipped** 2026-10-23 · D5 smoke PASS | herdr p22 compat | PLAN §0.45.3 |
 | v0.45.2 | **shipped** 2026-10-23 · no real-CLI (D4) | PATCH: relay bind message names an unassigned address | `docs/PLAN.md` §0.45.2 |
 | v0.32–0.45.1 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
@@ -88,3 +89,4 @@ Prior: v0.45.3 shipped — herdr `[17, 22]` · D5 smoke ⓓ PASS (`HERDR-0.9.5-C
 - 0.34.0 live launchd smoke (PASS 2026-10-17, macOS).
 - 0.45.0 shipped (no real-CLI, D9) · 0.45.1 shipped (no real-CLI) · 0.45.2 shipped (no real-CLI).
 - 0.45.3 D5 real-card smoke (PASS 2026-10-23).
+- 0.45.4 R68 · P0 TLC (done `09ef503`).

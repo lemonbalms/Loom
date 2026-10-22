@@ -474,6 +474,26 @@ TLC 1.8.0 (rev d2e1472) · jar sha256 `5bd7b64d…b1e2` · Java 17 · `-deadlock
 | **#4 (M)** `poll + qdirty`의 최소·필수성 미입증 | `poll`이 연속 조회와 폐기를 한꺼번에 바꿈 | `Recon = "pollraw"`(연속, 폐기 없음)·`"restart"`(취소 뒤 재조회, 폐기 없음) 추가; F24–F29 | 폐기는 안전에 필요(F25 vs F1), 연속성은 활성에 필요(F27 vs F26) — **검사한 다섯 변형 안에서**, TLC 확인(F24–F29 판정 예상 일치). §0·§5 표현을 "검사 범위에서 통과한 후보 집합"으로 변경, 최소성 주장 철회. 덤: `once`도 오래된 `idle` 스냅샷으로 가짜 완료(F24) |
 | **#5** herdr 버전 | 0.7.x 근거만 | 로컬 herdr **0.9.5** 명시(헤더·§0.1-5·§1.2·§2.3) | replay 부재(0.7.4/16)·단조 마커 부재(0.7.5 픽스처)는 **0.9.5 미확인** — 라이브 확인 목록 대상 = 0.9.5 |
 
+## 8. 0.45.4 watchdog 오라클 (P0)
+
+PLAN [§0.45.4](../PLAN.md) P0(D8 · R14 · R68-M1 · R68-M2)의 수용 오라클이다. 모델 = `docs/spikes/tla/bridge-startup/BridgeStartupWatchdog.tla` + cfg 일곱(R68 개정 `09ef503` — 요청 · 응답 분리 `WdGetReq` / `WdGetResp` · `wsnap` · `wregen` · 유예 중 `W` → `armed` · `ConsumeStatus` `WdReask`). TLC는 아키텍트가 실행했다(2026-10-23, 레인 안 Java 차단). 개정 전 판정(`015507b` — `_Gap` 891 · `_Drop` 990)은 대체된다.
+
+| cfg | 기대 | 결과 | exit | distinct |
+|---|---|---|---|---|
+| `BridgeStartupWatchdog_Gap.cfg` | No error(INV `TypeOK NoEarlyCompletion NoFalseCompletion WatchdogSound` · PROP ER) | No error | 0 | 1,188 |
+| `BridgeStartupWatchdog_Drop.cfg` | No error(같은 INV · PROP) | No error | 0 | 1,308 |
+| `BridgeStartupWatchdog_GapReplay.cfg` | No error(같은 INV · PROP — R68-M1) | No error | 0 | 3,048 |
+| `BridgeStartupWatchdog_GapCompletes.cfg` | `CompletesWhenAgentCompletes` 위반(설계대로 — watchdog는 완료가 아니라 실패로 끝낸다) | CWAC 위반 | 13 | — |
+| `BridgeStartupWatchdog_GapRun.cfg` | `AtMostOneRun` 위반(기존 C6 · F8과 같은 판정 — R14 구조 주장) | `AtMostOneRun` 위반 | 12 | — |
+| `BridgeStartupWatchdog_DropRun.cfg` | `AtMostOneRun` 위반(같음) | `AtMostOneRun` 위반 | 12 | — |
+| `BridgeStartupWatchdog_GapVerified.cfg` | ER 위반(대상 술어 = "검증 완료"면 C5 창이 남는다 — R3 근거) | ER 위반 | 13 | — |
+
+exit는 머리말 규약(0 = No error · 12 = 불변식 위반 · 13 = 활성 속성 위반)에 따른 판정 종류다. 위반 cfg의 distinct는 이 절에 기록하지 않았다.
+
+**도달 확인(공허한 통과 배제):** `wdFired`(watchdog 발화) · `wq = "get"`(조회 진행 중) · `wregen`(재조회 표지) · `wregen ∧ wq = "get"`(조회 중 재조회 표지 — R68-M2) 모두 도달함을 확인했다. 따라서 `_Gap` · `_Drop` · `_GapReplay`의 No error는 발화 · 조회 · 재조회 경로를 실제로 지난 결과다.
+
+**판정:** 일곱 판정 전부 PLAN P0 기대와 일치 → P0 done · P1 착수 가능(PLAN §0.45.4 Done (a)).
+
 ## 부록 A. Round-1 TLC 기록 (대체됨)
 
 2026-10-23, TLC 1.8.0 (`TLC2 Version 2026.10.20.183001 (rev: d2e1472)`) · `tla2tools.jar` sha256 `5bd7b64d…b1e2` · Java 17
