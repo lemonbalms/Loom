@@ -42,6 +42,36 @@
 
 ## Gate log
 
+### 0.45.4 — pane 카드 상태 유실 watchdog — 재구독 ACK마다 `agent.get` 재조정 · `failed` / `status_lost` (`approved` — R68 approved-with-fixes · no R68b · implemented (P0–P2) · ship 전)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.45.4 (`approved` — R68 approved-with-fixes, M1 · M2 · L1–L5 반영 · R3 · R8 · R14 `CONFLICT` 수용 · no R68b) · PATCH · 근거 = 오너 지시(HANDOFF — 0.45.3 뒤 per-card status-loss watchdog) · 범위 = 락 D1~D9(아키텍트 2026-10-23) |
+| **Date** | 2026-10-23 |
+| **Review** | R68 **done 2026-10-23**(loom-advisor) — approved-with-fixes · `09ef503` 반영 · Astra `0240` FAIL → `0242` PASS |
+| **Implemented** | 2026-10-23 (P0–P2) — 게이트 `2e2a128` · P0 TLC `09ef503`(`_Gap` 1,188 · `_Drop` 1,308 · `_GapReplay` 3,048 No error · 기대 위반 유지) · P1 red `2fab33b` → green `4ee465d`(18/0) · P1b `5f198ef`(Astra 0246 Low — 21/0) · P2 = 버전 0.45.4 세 줄 · README · USER_GUIDE §13 · CHANGELOG · implementation-notes §0.45.4 · PLAN · HANDOFF. 정본 `implementation-notes.md` §0.45.4 |
+| **Shipped** | — (ship 검사 Done (d) · loom-advisor 최종 대기) |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) 모든 `eventsSubscribe`는 옛 이벤트 소켓을 먼저 파괴한다 — 다른 카드의 per-pane 구독 · 재연결이 실려 있던 상태 이벤트를 잃게 한다(TLA C5 · C8). (2) `agent.get`의 `agent_status`는 0.7.5 · 0.9.5 스키마 모두에 있다(테스트 ⑫). (3) watchdog을 켠 모델은 `_Gap` · `_Drop` · `_GapReplay`에서 ER · NoEarly · NoFalse · `WatchdogSound`를 지킨다(`BRIDGE-STARTUP-TLA.md` §8). |
+| Known unknowns | **UK-1 ~ UK-6**(아래 표, 정본 = PLAN §0.45.4). |
+| Unknown knowns | ⑲의 exactly-once는 CAS(`tryAcquireFlightSideEffect`)와 카드 결과 발행자 lease가 겹쳐 지킨다 — 아키텍트 mutation probe: CAS를 지워도 ⑲ green(implementation-notes §0.45.4 (8)). |
+| Unknown unknowns | 실 herdr 0.9.5에서 재구독 · 재연결 빈도와 `agent.get` 지연(fake-herdr만으로 검증 · 실 CLI 0회 — D9). |
+
+**Unknowns 요약 (정본 = PLAN §0.45.4):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R68 판정 | 결과 |
+|---|------|-------------|----------|------|
+| UK-1 | **`state_change_seq`(17 · 22) · `completion_seq`(22만)의 증가 의미** | 비차단 — 쓰지 않는다(D3 · `agentGet`은 `agent_status`만 읽음) | 비차단 수용 | open — 미실측 · F2'(MINOR) `qdirty` 대체 후보 |
+| UK-2 | **herdr 0.9.5가 새 구독자에게 최신 상태를 재전달하는가** | 비차단 — 봉투에 seq · 시각이 없어 replay/live 구분 불가 → 재조정 유지 | M1 — 유예 중 `working` = 재질문(철회 아님) · `_GapReplay` | open(실측 없음) · 재전달돼도 안전 — `_GapReplay` No error · 테스트 ⑪ · ⑭ |
+| UK-3 | **오래된 `idle` / `working` 스냅샷 경쟁**(`agent.get`은 원자적이 아님) | 비차단 — R4 재확인 + 유예 · 조회 중 ACK = 재조회 표지 | M2 — 비원자 조회 · 재조회 1회 · 동시 ≤ 1 | **덮임(테스트)** — ⑮(보류한 옛 `working` 응답 뒤 재조회 → `status_lost` 1건 · 동시 ≤ 1) · ⑱a(보류 응답 vs 진짜 `idle` → `needs_verification` 1건) · 남는 것 = 계급 103 |
+| UK-4 | **한 유예 창 안의 다중 재구독** | 비차단 — R11 중복 제거(flight당 검사 1) | M2 — 상태 기계 ⓐ~ⓖ | **덮임(테스트)** — ⑩(결과 1건 · `agent.get` ≤ ACK 수 + 1) · ⑭(취소 뒤 재무장) |
+| UK-5 | **herdr가 구독 등록 뒤에 ACK하는가** | 비차단 — 반대 순서면 ACK와 등록 사이 `idle` 유실 가능(계급 100) | 비차단 수용 | open — 미실측 |
+| UK-6 | **권한 프롬프트에 선 claude pane의 `agent.get` status**(`idle`인가 `blocked`인가) | 비차단 — 어느 쪽이든 실패는 시끄럽다 | 비차단 수용 | open(실측 없음) · 두 갈래 모두 `agent_blocked`로 수렴(⑥ hook hint · ⑯ `blocked`) |
+
+**Current decision:** **`approved` → implemented (P0–P2).** ship 전(Done (d) · (f)).
+
 ### 0.45.3 — herdr 0.9.5 / protocol 22 호환 — 지원 집합 {17, 22} · 기동 protocol 검사 · dogfood 게이트 (`approved` — R67 approved-with-fixes · no R67b · implemented (P1–P5) · shipped 2026-10-23)
 
 | Field | Value |

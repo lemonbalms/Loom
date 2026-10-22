@@ -5,8 +5,34 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.3** — shipped 2026-10-23) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.4** — implemented 2026-10-23 · ship 검사 · 최종 리뷰 pending · 직전 shipped 0.45.3) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [HERDR-0.9.5-COMPAT](./spikes/HERDR-0.9.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.45.4 — 2026-10-23
+
+> **상태:** implemented 2026-10-23 (P0–P2) · **ship 전** — ship 검사(`build:cli` 포함)와 최종 리뷰가 남았다. **실 CLI 실행 불필요(D9)** — fake-herdr가 덮는다. 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
+
+**pane 카드가 상태 이벤트를 잃어도 영구 정체하지 않는다** — 0.45.3 pane bridge는 다른 카드의 per-pane 구독이나 재연결로 herdr 이벤트 소켓이 갈아 끼워지는 순간 그 소켓에 실려 있던 상태 이벤트(`idle` · `done` · `blocked`)를 잃을 수 있었고, 잃으면 카드는 실패 보고 없이 영원히 결과를 내지 않았다. 0.45.4는 첫 구독 뒤의 모든 events.subscribe ACK에서 작업을 시작한 것으로 관측된 in-flight pane 카드마다 herdr `agent.get`을 한 번 묻고, bridge가 보지 못한 `idle` / `done`이 보이면 유예(5초) 뒤 다시 확인해 **`failed` / `reason: "status_lost"`** 로 시끄럽게 끝낸다. 완료(`done`)를 만들지 않고 · 재주입하지 않고 · pane을 닫지 않는다. 유예 안에 진짜 이벤트가 오면 종전 경로가 이긴다.
+
+### 가능해진 것
+
+- **새 실패 reason `status_lost`** — `output` = pane 정착 스크레이프 · note `herdr agent.get status=<idle|done> after event socket re-subscribe; status event lost (no <s> observed by the bridge) — judge from output`. 디스패처는 출력으로 판단한다(USER_GUIDE §13 표).
+- **잃은 `blocked` · 살아 있는 권한 프롬프트** — watchdog이 `agent.get = blocked`를 보거나 hook sensor의 권한 프롬프트가 살아 있으면 종전 `agent_blocked`로 낸다(note 끝 `reported by the status-loss watchdog` · 텔레메트리 `agent_blocked_correction`에 `reason: "watchdog"`).
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.45.3) | 지금 (0.45.4) |
+|---------------|---------------|
+| 소켓 교체에서 잃은 `idle` → 카드 영구 정체 · 회복 = 사람이 pane을 닫음(`pane_closed`) | 재구독 ACK 뒤 `agent.get` 재조정 → 유예 5초 → `failed` / `status_lost` |
+| 실패 reason 목록에 상태 유실이 없음 | `status_lost` — 실제로 끝난 작업일 수 있다(출력 확인 · 워킹트리 검증 뒤 로컬에서 닫기) |
+
+### 불변
+
+- 완료 권위 · 와이어 · 재주입 · pane 수명 무변경 — watchdog은 `beginCardCompletion`을 부르지 않고 `done`을 만들지 않으며 pane을 닫지 않는다. 카드 전체 상한 타임아웃은 없다(건강한 장기 작업을 죽이지 않는다).
+- watchdog 대상 = 작업 시작(`working`)을 관측한 pane 카드만 · still-running 유예 중이면 물러난다 · `agent.get`이 `working` · `unknown` · 오류면 아무것도 하지 않는다(오류 · `unknown`은 로그 한 줄). 재구독 ACK 없이 생긴 유실 · conv flight · 헤드리스는 범위 밖.
+- 증명 = TLA 오라클(`BridgeStartupWatchdog` `_Gap` · `_Drop` · `_GapReplay` No error) · `status-lost-watchdog.test.ts` 21/0(①~⑲ — 소켓 교체 · 재연결 · 유예 안 이벤트 · 비원자 `agent.get` · `blocked` / `done` 갈래 · 정지 · 정확히 1건) · fake-herdr `agent.get` · 재구독 · 응답 보류 수단.
 
 ---
 

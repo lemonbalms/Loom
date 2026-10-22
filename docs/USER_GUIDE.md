@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.45.3** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.45.4** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -773,6 +773,20 @@ PY
 5. pane이 사라졌다는 이유만으로 성공 처리하지 않는다.
 
 **실패 모드:** “`card.done` 수신 = 완료”로 다음 카드를 연쇄 발행 → 미검증 작업이 done 컬럼에 쌓임.
+
+**pane 카드 결과 reason (v0.45.4).** pane bridge가 보내는 카드 결과는 `failed` + `reason`이다(tower 착지는 모두 `blocked`). 어느 reason이든 **pane은 Loom이 닫지 않는다** — 확인 뒤 사람이 닫는다.
+
+| reason | 뜻 | 할 일 |
+|--------|----|-------|
+| `agent_name_unrepresentable` | 카드의 에이전트 이름을 herdr 이름으로 표현할 수 없음 — 기동 거부 | 이름을 고쳐 다시 dispatch |
+| `herdr_spawn_failed` | herdr가 워커 pane을 띄우지 못함 | herdr 상태 확인(`dogfood:herdr`) 뒤 다시 dispatch |
+| `events_subscribe_failed` | pane 상태 이벤트 구독 실패 | herdr 상태 확인 뒤 다시 dispatch |
+| `prompt_inject_failed` | 프롬프트 전송 실패 | pane 화면 확인 · 다시 dispatch |
+| `inject_unconfirmed` | 프롬프트가 들어갔는지 확인하지 못함 | pane 화면에서 작업이 시작됐는지 확인 |
+| `agent_blocked` | 에이전트가 막힘(herdr `blocked` · 살아 있는 권한 프롬프트). **v0.45.4:** status-loss watchdog도 herdr `agent.get`이 `blocked`이거나 권한 프롬프트가 살아 있으면 이 reason으로 낸다 — note 끝 `reported by the status-loss watchdog` | pane에서 프롬프트 · 막힌 지점 처리 |
+| `pane_closed` | 결과 전에 pane이 닫힘 | 산출물 확인 · 필요하면 다시 dispatch |
+| `needs_verification` | 완료 후보 — 성공 주장이지만 완료 권위 없음(U1) | 위 1~4 절차로 워킹트리 검증 |
+| `status_lost` (v0.45.4) | herdr 이벤트 소켓이 재구독(다른 카드의 구독 · 재연결)된 뒤 `agent.get`이 `idle` / `done`을 보였는데 bridge가 그 상태 이벤트를 받지 못함(유예 5초 뒤 재확인). `output` = pane 정착 스크레이프 · note `herdr agent.get status=<s> after event socket re-subscribe; status event lost … — judge from output` | **출력으로 판단**한다 — 작업이 끝났으면 워킹트리 검증 뒤 로컬에서 닫고, 아니면 다시 dispatch. 워커가 아직 돌 수 있다(스냅샷이 오래됐을 수 있음) — pane 확인 뒤 닫는다 |
 
 ---
 
