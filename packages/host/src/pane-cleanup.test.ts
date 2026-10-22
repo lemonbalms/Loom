@@ -809,6 +809,21 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
     return pred();
   }
 
+  function hasPaneStatusSubscription(paneId: string): boolean {
+    return fake.calls.some((c) => {
+      if (c.method !== "events.subscribe") return false;
+      const subs = c.params.subscriptions;
+      if (!Array.isArray(subs)) return false;
+      return subs.some(
+        (s) =>
+          typeof s === "object" &&
+          s !== null &&
+          "pane_id" in s &&
+          (s as { pane_id?: string }).pane_id === paneId,
+      );
+    });
+  }
+
   async function awaitCardResult(
     cardId: string,
     timeoutMs = 12_000,
@@ -963,6 +978,13 @@ describe("PLAN 0.23.8 paneCleanup keep + failure-path close (⑥⑦)", () => {
       );
       expect(ready).toBe(true);
       const paneId = fake.listPaneIds().find((p) => !panesBefore.has(p))!;
+      // The pane exists once agent.start replies, but the bridge subscribes to
+      // its status only afterwards; events pushed before that are never seen.
+      const subscribed = await waitForLocal(
+        () => hasPaneStatusSubscription(paneId),
+        5_000,
+      );
+      expect(subscribed).toBe(true);
 
       fake.setPaneReadText(paneId, DONE_BODY);
       fake.pushEvent("pane_agent_status_changed", {
