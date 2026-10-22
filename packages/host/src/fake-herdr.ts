@@ -308,6 +308,15 @@ export type FakeHerdr = {
   releaseAgentGet: (paneId: string) => void;
   /** PLAN 0.45.4 R15 ⓓ: max concurrent unanswered agent.get seen for this pane. */
   agentGetMaxInFlight: (paneId: string) => number;
+  /**
+   * PLAN 0.45.4 P1b (⑲): while on, pane.read replies for this pane are held until
+   * releasePaneRead — stalls a failure send between CAS and relay send. Off by default.
+   */
+  holdPaneRead: (paneId: string, on: boolean) => void;
+  /** PLAN 0.45.4 P1b: send every held pane.read reply for this pane. */
+  releasePaneRead: (paneId: string) => void;
+  /** PLAN 0.45.4 P1b: pane.read replies currently held for this pane. */
+  paneReadHeldCount: (paneId: string) => number;
 };
 
 export async function startFakeHerdr(
@@ -377,6 +386,9 @@ export async function startFakeHerdr(
   const agentGetHeld: { paneId: string; send: () => void }[] = [];
   const agentGetInFlight = new Map<string, number>();
   const agentGetMax = new Map<string, number>();
+  /** PLAN 0.45.4 P1b: panes whose pane.read replies are held. */
+  const paneReadHold = new Set<string>();
+  const paneReadHeld: { paneId: string; send: () => void }[] = [];
 
   function ensureChain(tabId: string): { ordered: string[]; ratios: number[] } {
     let c = tabChains.get(tabId);
@@ -957,17 +969,28 @@ export async function startFakeHerdr(
           } else if (defaultPaneReadOverride !== null) {
             text = defaultPaneReadOverride;
           }
-          reply({
-            type: "pane_read",
-            read: {
-              pane_id,
-              source: params.source ?? "recent",
-              format: "text",
-              text,
-              truncated: false,
-            },
-          });
-          sock.end();
+          const sendRead = () => {
+            try {
+              reply({
+                type: "pane_read",
+                read: {
+                  pane_id,
+                  source: params.source ?? "recent",
+                  format: "text",
+                  text,
+                  truncated: false,
+                },
+              });
+              sock.end();
+            } catch {
+              /* */
+            }
+          };
+          if (paneReadHold.has(pane_id)) {
+            paneReadHeld.push({ paneId: pane_id, send: sendRead });
+            continue;
+          }
+          sendRead();
           continue;
         }
         if (method === "session.snapshot") {
@@ -1152,9 +1175,28 @@ export async function startFakeHerdr(
     agentGetMaxInFlight(paneId: string) {
       return agentGetMax.get(paneId) ?? 0;
     },
+    holdPaneRead(paneId: string, on: boolean) {
+      if (on) paneReadHold.add(paneId);
+      else paneReadHold.delete(paneId);
+    },
+    releasePaneRead(paneId: string) {
+      for (let i = 0; i < paneReadHeld.length; ) {
+        const h = paneReadHeld[i]!;
+        if (h.paneId === paneId) {
+          paneReadHeld.splice(i, 1);
+          h.send();
+        } else {
+          i += 1;
+        }
+      }
+    },
+    paneReadHeldCount(paneId: string) {
+      return paneReadHeld.filter((h) => h.paneId === paneId).length;
+    },
     async close() {
       // PLAN 0.45.4 R15 ⓓ: held agent.get replies are dropped.
       agentGetHeld.length = 0;
+      paneReadHeld.length = 0;
       for (const s of sockets) {
         try {
           s.destroy();

@@ -786,4 +786,136 @@ describe("PLAN 0.45.4 status-loss watchdog (relay + fake herdr)", () => {
     },
     TEST_TIMEOUT_MS,
   );
+
+  test(
+    "⑱a held agent.get reply released after the real idle removed the flight → one needs_verification · no status_lost · no extra agent.get (Astra 0246 L1)",
+    async () => {
+      const rig = await startRig();
+      try {
+        const a = newCardId();
+        const paneA = await startCard(rig, a);
+        rig.fake.holdAgentGet(paneA, true);
+        rig.fake.setAgentStatus(paneA, "idle"); // held reply will carry a firing-class status
+        const getsBase = agentGets(rig.fake, paneA, a).length;
+        await startCard(rig, newCardId()); // B: reconcile get for A, held
+        expect(
+          await waitFor(() => agentGets(rig.fake, paneA, a).length > getsBase, 1_000),
+        ).toBe(true);
+        await startCard(rig, newCardId()); // C: ACK during the get → re-get mark set
+        // Real idle arrives while the get is held → normal completion path.
+        rig.fake.pushEvent("pane_agent_status_changed", {
+          pane_id: paneA,
+          agent_status: "idle",
+        });
+        const first = await waitResults(a, 4_000);
+        expect(first).toHaveLength(1);
+        expect(first[0]!.reason).toBe("needs_verification");
+        await Bun.sleep(150); // removeCardFlight runs after the send
+        const getsAtRelease = agentGets(rig.fake, paneA, a).length;
+        expect(getsAtRelease).toBe(getsBase + 1);
+        rig.fake.holdAgentGet(paneA, false);
+        rig.fake.releaseAgentGet(paneA); // stale "idle" reply for a removed flight
+        await Bun.sleep(GRACE_MS * 2 + 300);
+        const rs = await results(a);
+        expect(rs).toHaveLength(1);
+        expect(rs[0]!.reason).toBe("needs_verification");
+        expect(rs.filter((r) => r.reason === "status_lost")).toHaveLength(0);
+        expect(agentGets(rig.fake, paneA, a).length).toBe(getsAtRelease);
+      } finally {
+        await rig.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "⑱b bridge stop while agent.get reply held → release → no result · no agent.get / pane.read after stop · no unhandled rejection (Astra 0246 L1)",
+    async () => {
+      const rig = await startRig();
+      const rejections: unknown[] = [];
+      const onRejection = (e: unknown) => {
+        rejections.push(e);
+      };
+      process.on("unhandledRejection", onRejection);
+      try {
+        const a = newCardId();
+        const paneA = await startCard(rig, a);
+        rig.fake.holdAgentGet(paneA, true);
+        rig.fake.setAgentStatus(paneA, "idle");
+        rig.fake.setPaneReadText(paneA, "A-SCRAPE-18B");
+        const getsBase = agentGets(rig.fake, paneA, a).length;
+        await startCard(rig, newCardId()); // B: reconcile get for A, held
+        expect(
+          await waitFor(() => agentGets(rig.fake, paneA, a).length > getsBase, 1_000),
+        ).toBe(true);
+        await rig.stopBridge();
+        const getsAtStop = agentGets(rig.fake, paneA, a).length;
+        const readsAtStop = rig.fake.paneReadCount();
+        rig.fake.holdAgentGet(paneA, false);
+        rig.fake.releaseAgentGet(paneA); // "idle" reply lands after stop
+        await Bun.sleep(GRACE_MS * 2 + 300);
+        expect(await results(a)).toHaveLength(0);
+        expect(agentGets(rig.fake, paneA, a).length).toBe(getsAtStop);
+        // A fire after stop would scrape first (finishCardFailure → settlePaneRead).
+        expect(rig.fake.paneReadCount()).toBe(readsAtStop);
+        expect(rejections).toHaveLength(0);
+      } finally {
+        process.off("unhandledRejection", onRejection);
+        await rig.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "⑲ watchdog fired, failure send held → idle · blocked · pane.closed during the send → exactly one status_lost · flight still owned · no done · no pane.close (Astra 0246 L2)",
+    async () => {
+      const rig = await startRig();
+      try {
+        const a = newCardId();
+        const paneA = await startCard(rig, a);
+        rig.fake.setPaneReadText(paneA, "A-SCRAPE-19");
+        // Lever: fake-herdr pane.read hold. fireStatusLost takes the CAS, then
+        // finishCardFailure scrapes (settlePaneRead) before composeAndSend — a held
+        // pane.read parks the send in result_sending with the flight still mapped.
+        rig.fake.holdPaneRead(paneA, true);
+        rig.fake.setAgentStatus(paneA, "idle"); // idle event lost
+        await startCard(rig, newCardId()); // B: socket replacement → get → grace → fire
+        expect(
+          await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, GRACE_MS + 4_000),
+        ).toBe(true);
+        const missBase = flightMapMiss();
+        rig.fake.pushEvent("pane_agent_status_changed", {
+          pane_id: paneA,
+          agent_status: "idle",
+        });
+        rig.fake.pushEvent("pane_agent_status_changed", {
+          pane_id: paneA,
+          agent_status: "blocked",
+        });
+        rig.fake.pushEvent("pane.closed", { pane_id: paneA });
+        await Bun.sleep(300);
+        // Send still parked; the events reached the still-mapped flight (not map misses).
+        expect(await results(a)).toHaveLength(0);
+        expect(flightMapMiss()).toBe(missBase);
+        rig.fake.holdPaneRead(paneA, false);
+        rig.fake.releasePaneRead(paneA);
+        await waitResults(a, 4_000);
+        await Bun.sleep(GRACE_MS * 2 + 300);
+        const rs = await results(a);
+        expect(rs).toHaveLength(1);
+        expect(rs[0]!.status).toBe("failed");
+        expect(rs[0]!.reason).toBe("status_lost");
+        expect(rs[0]!.note).toBe(statusLostNote("idle"));
+        expect(rs[0]!.output).toContain("A-SCRAPE-19");
+        expect(rs.filter((r) => r.status === "done")).toHaveLength(0);
+        expect(
+          rig.fake.calls.filter((c) => c.method === "pane.close" && c.params.pane_id === paneA),
+        ).toHaveLength(0);
+      } finally {
+        await rig.close();
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
 });
