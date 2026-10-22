@@ -36,7 +36,12 @@ describe("herdr protocol support set (PLAN 0.45.3 P1 · R11)", () => {
   const fakes: Fake[] = [];
   const stderrLines: string[] = [];
   const realStderr = console.error;
-  const savedHome = process.env.HOME;
+  const savedEnv: Record<string, string | undefined> = {
+    HOME: process.env.HOME,
+    LOOM_TEST_HOME: process.env.LOOM_TEST_HOME,
+    LOOM_SESSION: process.env.LOOM_SESSION,
+    LOOM_NO_AUTO_HOST: process.env.LOOM_NO_AUTO_HOST,
+  };
   let baseSession: FableSession;
   let nodeSeq = 0;
 
@@ -130,11 +135,10 @@ describe("herdr protocol support set (PLAN 0.45.3 P1 · R11)", () => {
     console.error = realStderr;
     for (const f of fakes) await f.close();
     relay.stop();
-    if (savedHome === undefined) delete process.env.HOME;
-    else process.env.HOME = savedHome;
-    delete process.env.LOOM_TEST_HOME;
-    delete process.env.LOOM_SESSION;
-    delete process.env.LOOM_NO_AUTO_HOST;
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     resetStateHomeDirCache();
     rmSync(dir, { recursive: true, force: true });
   });
