@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import * as bridgeRuntimeModule from "./bridge-runtime";
 import * as herdrClientModule from "./herdr-client";
-import { HERDR_PROTOCOL_EXPECTED, HerdrClient } from "./herdr-client";
+import { HERDR_PROTOCOLS_SUPPORTED, HerdrClient } from "./herdr-client";
 
 type CapturedCall = {
   method: string;
@@ -175,8 +175,8 @@ describe("PLAN 0.28.1 protocol-17 adapter", () => {
     expect(target("task_a023600000000009", Number.MAX_SAFE_INTEGER + 1)).toBeNull();
   });
 
-  test("client protocol cutover is 17", () => {
-    expect(HERDR_PROTOCOL_EXPECTED).toBe(17);
+  test("supported set is [17, 22]", () => {
+    expect(HERDR_PROTOCOLS_SUPPORTED).toEqual([17, 22]);
   });
 
   test("agent.start emits only name/kind/pane_id plus schema-supported optionals", async () => {
