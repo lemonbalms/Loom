@@ -14,7 +14,7 @@
 
 > **상태:** implemented 2026-10-23 · ship 전. **실 CLI 실행 불필요(D4)** — 메시지 전용 · 와이어 · 인증 · 영속 · CLI 변경 없음.
 
-**relay가 "포트 사용 중"이라고 거짓말하지 않는다** — `loom relay --host <IP>`가 그 IP가 아직 이 기계에 붙지 않은 상태(예: 부팅 직후 tailscaled보다 먼저 기동)에서 뜨면, Bun은 진짜 포트 충돌과 똑같이 `Failed to start server. Is port 7842 in use?`를 냈다. 0.45.2는 bind가 실패하면 인터페이스 목록을 보고, 와일드카드가 아닌 리터럴 IP가 어디에도 없으면 그 사실을 말한다.
+**relay가 "포트 사용 중"이라고 거짓말하지 않는다** — `loom relay --host <IP>`가 그 IP가 아직 이 기계에 붙지 않은 상태(예: 부팅 직후 tailscaled보다 먼저 기동)에서 뜨면, Bun은 진짜 포트 충돌과 똑같이 `Failed to start server. Is port 7842 in use?`를 냈다. 0.45.2는 bind가 실패하면 같은 주소에 포트 0으로 probe bind를 해 보고(되면 주소는 붙어 있으니 진짜 포트 충돌 — 원문), probe도 실패하고 그 와일드카드 아닌 리터럴 IP가 인터페이스 목록 어디에도 없을 때만 그 사실을 말한다.
 
 ### 가능해진 것
 
@@ -28,8 +28,8 @@
 
 ### 불변
 
-- 진짜 포트 충돌 · `localhost` 같은 이름 host · 와일드카드(`0.0.0.0` · `::`) bind 실패는 종전 문면 그대로. `assertBindAllowed`(토큰 없는 비루프백 거부) · 인증 · 영속 · 와이어 무변경.
-- 증명 = `packages/relay/src/server.bind-error.test.ts` 14건 — `start()` 6건(TEST-NET-1 `192.0.2.1` + 예약 포트 → 새 문면 · 진짜 포트 충돌 · 미할당 주소를 목록에 있다고 넣은 경우(원문) · 와일드카드 충돌 · 인터페이스 조회가 던지면 원래 오류 · 루프백은 조회 안 함) + 분류기 단위 8건(IPv6 동치 형태 · 펼친 와일드카드/루프백 · 이름 host · IPv4 있음/없음 · IPv4-mapped IPv6 `::ffff:…`). 실 CLI 실행 없음.
+- 진짜 포트 충돌(목록에 안 보이지만 bind되는 `127.0.0.2` · AnyIP 주소 포함) · `localhost` 같은 이름 host · 와일드카드(`0.0.0.0` · `::`) bind 실패는 종전 문면 그대로. `assertBindAllowed`(토큰 없는 비루프백 거부) · 인증 · 영속 · 와이어 무변경.
+- 증명 = `packages/relay/src/server.bind-error.test.ts` 23건(macOS 22 pass · Linux 전용 1 skip) — `start()` 6건(TEST-NET-1 `192.0.2.1` + 예약 포트 → 새 문면 · 진짜 포트 충돌 · 미할당 주소를 목록에 있다고 넣은 경우(원문) · 와일드카드 충돌 · 인터페이스 조회가 던지면 원래 오류 · 루프백 충돌은 probe가 bind해 조회 안 함) + probe 8건(probe 실패 + 목록에 없음 → 새 문면 · probe 성공 → 원문 · probe 실패 + 목록에 있음 → 원문 · 이름 host/와일드카드 → probe 안 함 · probe가 던지면 원래 오류 · 실 probe `127.0.0.1` 충돌 → 원문 · Linux 실 probe `127.0.0.2` 충돌 → 원문) + 분류기 단위 9건(IPv6 동치 형태 · 펼친 와일드카드 · 루프백은 일반 리터럴 · 이름 host · IPv4 있음/없음 · IPv4-mapped IPv6 `::ffff:…`). 실 CLI 실행 없음.
 
 ---
 

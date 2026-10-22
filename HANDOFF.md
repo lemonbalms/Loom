@@ -21,7 +21,7 @@
 ### v0.45.2 implemented · next = verify → ship
 
 **Goal:** v0.45.2 PATCH — relay bind failure on a literal IP not assigned to any local interface now says so instead of Bun's "Is port … in use?" (D1 · `cause` kept); real port conflicts keep the original text (author-close Low · `docs/PLAN.md` §0.45.2).
-Evidence: `server.bind-error.test.ts` 4/0 (old code red = (a) only) · relay suite green · typecheck · biome.
+Evidence: `server.bind-error.test.ts` 22/0 + 1 Linux-only skip (P1d probe + interface check) · relay suite green · typecheck · biome.
 
 **Next:** `lane.ts verify` → full suite → dist rebuild → ship. Then owner picks the next product step.
 
