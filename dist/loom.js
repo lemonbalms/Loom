@@ -6591,9 +6591,23 @@ function bindCheckCandidate(host) {
     return null;
   if (h === "0.0.0.0" || h === "::")
     return null;
-  if (h === "127.0.0.1" || h === "::1")
-    return null;
   return h;
+}
+function realProbeBind(host) {
+  let probe;
+  try {
+    probe = Bun.serve({
+      hostname: host,
+      port: 0,
+      fetch: () => new Response(null, { status: 503 })
+    });
+  } catch {
+    return false;
+  }
+  try {
+    probe.stop(true);
+  } catch {}
+  return true;
 }
 function hasAddress(ifaces, canonical) {
   for (const list of Object.values(ifaces)) {
@@ -6615,8 +6629,10 @@ class RelayServer {
   clients = new WeakMap;
   clientEventBodyMismatches = 0;
   interfaces;
+  probeBind;
   constructor(opts = {}) {
     this.interfaces = opts.interfaces ?? networkInterfaces;
+    this.probeBind = opts.probeBind ?? realProbeBind;
     this.host = opts.host ?? DEFAULT_RELAY_HOST;
     this.port = opts.port ?? DEFAULT_RELAY_PORT;
     this.registry = opts.registry ?? new RoomRegistry;
@@ -6651,7 +6667,7 @@ class RelayServer {
       let unassigned = false;
       try {
         const h = bindCheckCandidate(this.host);
-        unassigned = h !== null && !hasAddress(this.interfaces(), h);
+        unassigned = h !== null && !this.probeBind(this.host) && !hasAddress(this.interfaces(), h);
       } catch {
         throw e;
       }
