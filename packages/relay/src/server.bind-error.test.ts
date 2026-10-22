@@ -183,4 +183,22 @@ describe("isUnassignedLiteralIp (v0.45.2)", () => {
     expect(isUnassignedLiteralIp(TEST_NET, fakeList(TEST_NET))).toBe(false);
     expect(isUnassignedLiteralIp(TEST_NET, fakeList("127.0.0.1"))).toBe(true);
   });
+
+  test("IPv4-mapped IPv6 loopback is excluded", () => {
+    expect(isUnassignedLiteralIp("::ffff:127.0.0.1", fakeList())).toBe(false);
+  });
+
+  test("IPv4-mapped IPv6 present in an IPv4 interface list", () => {
+    expect(
+      isUnassignedLiteralIp(`::ffff:${TEST_NET}`, fakeList(TEST_NET)),
+    ).toBe(false);
+  });
+
+  test("IPv4-mapped IPv6 absent from an empty list", () => {
+    expect(isUnassignedLiteralIp(`::ffff:${TEST_NET}`, fakeList())).toBe(true);
+  });
+
+  test("IPv4-mapped IPv6 wildcard is excluded", () => {
+    expect(isUnassignedLiteralIp("::ffff:0.0.0.0", fakeList())).toBe(false);
+  });
 });
