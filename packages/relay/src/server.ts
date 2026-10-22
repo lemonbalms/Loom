@@ -43,6 +43,12 @@ export type RelayServerOptions = {
    * Production uses `os.networkInterfaces`.
    */
   interfaces?: () => ReturnType<typeof networkInterfaces>;
+  /**
+   * @internal v0.45.2 P1d test seam — kernel probe run when bind fails.
+   * True = bound `host` on port 0 and released it; false = could not bind.
+   * Production uses a real `Bun.serve` probe.
+   */
+  probeBind?: (host: string) => boolean;
 };
 
 type ClientState = {
@@ -81,15 +87,39 @@ function canonicalLiteralIp(addr: string): string | null {
 }
 
 /**
- * Canonical `host` when it is a literal IP that is neither wildcard nor
- * loopback — the only hosts whose bind failure warrants an interface check.
+ * Canonical `host` when it is a non-wildcard literal IP — the only hosts whose
+ * bind failure warrants a probe + interface check. Loopback needs no special
+ * case: the probe binds it, so the original error stands (P1d).
  */
 function bindCheckCandidate(host: string): string | null {
   const h = canonicalLiteralIp(host);
   if (h === null) return null;
   if (h === "0.0.0.0" || h === "::") return null;
-  if (h === "127.0.0.1" || h === "::1") return null;
   return h;
+}
+
+/**
+ * P1d kernel probe: can `host` be bound at all (port 0)? True when the bind
+ * succeeds — the address is assigned, so the original failure was a port
+ * conflict. The probe listener is always released; a failing stop is ignored.
+ */
+function realProbeBind(host: string): boolean {
+  let probe: ReturnType<typeof Bun.serve>;
+  try {
+    probe = Bun.serve({
+      hostname: host,
+      port: 0,
+      fetch: () => new Response(null, { status: 503 }),
+    });
+  } catch {
+    return false;
+  }
+  try {
+    probe.stop(true);
+  } catch {
+    // ignore — the probe already proved the address is bindable
+  }
+  return true;
 }
 
 function hasAddress(
@@ -107,8 +137,9 @@ function hasAddress(
 /**
  * @internal v0.45.2: Bun reports EADDRINUSE ("Is port N in use?") both for a
  * real port conflict and for a hostname not assigned to any local interface.
- * True when `host` is a non-wildcard, non-loopback literal IP absent from
- * `ifaces`. Anything not classifiable (canonicalisation throws) → false.
+ * True when `host` is a non-wildcard literal IP absent from `ifaces` (the
+ * interface half of the P1d decision; `start()` also requires a failed probe).
+ * Anything not classifiable (canonicalisation throws) → false.
  */
 export function isUnassignedLiteralIp(
   host: string,
@@ -133,9 +164,11 @@ export class RelayServer {
   /** v0.29.0: same clientEventId, different body. Fail-visible, no wire code. */
   private clientEventBodyMismatches = 0;
   private readonly interfaces: () => ReturnType<typeof networkInterfaces>;
+  private readonly probeBind: (host: string) => boolean;
 
   constructor(opts: RelayServerOptions = {}) {
     this.interfaces = opts.interfaces ?? networkInterfaces;
+    this.probeBind = opts.probeBind ?? realProbeBind;
     this.host = opts.host ?? DEFAULT_RELAY_HOST;
     this.port = opts.port ?? DEFAULT_RELAY_PORT;
     this.registry = opts.registry ?? new RoomRegistry();
@@ -181,12 +214,16 @@ export class RelayServer {
     try {
       this.server = this.serve();
     } catch (e) {
-      // Classify the host before touching interfaces; a failing classifier
-      // must never replace the original bind error.
+      // P1d: literal non-wildcard IP + kernel probe on port 0 fails + absent
+      // from the interface list. Any failure along the way (classifier,
+      // probe, interfaces) must never replace the original bind error.
       let unassigned = false;
       try {
         const h = bindCheckCandidate(this.host);
-        unassigned = h !== null && !hasAddress(this.interfaces(), h);
+        unassigned =
+          h !== null &&
+          !this.probeBind(this.host) &&
+          !hasAddress(this.interfaces(), h);
       } catch {
         throw e;
       }
