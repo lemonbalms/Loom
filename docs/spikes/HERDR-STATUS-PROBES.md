@@ -1,6 +1,7 @@
 # HERDR-STATUS-PROBES — TLA+ 가정을 확인할 라이브 herdr 프로브 설계 (대상 herdr 0.9.5 / protocol 22)
 
-> 상태: **설계 문서 전용 · 아무것도 실행하지 않았다 · 스크립트 미작성 · 제품 코드 무변경.**
+> 상태: **아무것도 실행하지 않았다 · 하니스 = `scripts/probe-herdr-status.ts`(`[herdr 전용]` S0·A·B1·C·D1·E만 구현,
+> 라이브 미실행) · B2·D2 미구현(exit 2) · 제품 코드 무변경.**
 > 대상: `docs/spikes/BRIDGE-STARTUP-TLA.md` §0 항목 5의 (a)–(e). **버전 게이트 = herdr 0.9.5 · protocol 22**(로컬 herdr,
 > Loom 0.45.3+는 {17, 22} 지원). 재타깃 근거 = `docs/spikes/HERDR-0.9.5-COMPAT.md` §4(14개 변경)·fixture
 > `docs/spikes/fixtures/herdr-v0.9.5/`(`schema.json`·`*-help.txt`·`status.json`·`version.txt`).
@@ -64,17 +65,24 @@
   `pane.agent_status_changed`, terminal은 underscore `pane_closed`(§D.8-2). 죽은 pane의 status 구독은 ACK가 영영 오지 않는다(§D.8-1).
   0.9.5에서 같은지 **미실측** — 이름은 양쪽 수용으로 기록한다.
 
-## 2. 공통 설계 — 단일 Bun 프로브 `scripts/probe-herdr-status.ts` (설계만, 미작성)
+## 2. 공통 설계 — 단일 Bun 프로브 `scripts/probe-herdr-status.ts` (구현됨 — `[herdr 전용]`만, 라이브 미실행)
 
 ### 2.1 형태
 
 ```text
-bun run scripts/probe-herdr-status.ts --probe s0|a|b1|c|d1|e|all   [--server private|shared]
-bun run scripts/probe-herdr-status.ts --probe b2|d2 --kind claude|codex|grok --real-cli   # 오너 yes 필수
+bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e|all]
+                                      [--timeout-ms N] [--reps N] [--dry-run] [--help]
+bun run probe:herdr-status …                                   # package.json 별칭
 ```
 
-- `all` = **`[herdr 전용]` 프로브만**(s0·a·c·d1·e·b1). `b2`·`d2`는 `all`에 절대 넣지 않는다. `--real-cli` 플래그가 없으면
-  즉시 exit 2(`REFUSED_REAL_CLI`). HANDOFF Must-not("real-CLI smoke without explicit owner yes")을 코드로 막는다.
+- `all`(기본) = **`[herdr 전용]` 프로브만**(step0·a·c·d1·e·b1, §9 순서). step0은 항상 먼저 돈다(나머지의 바탕).
+  **B2·D2는 구현하지 않았다:** `--probe b2|d2`·`--real-cli`·`--kind`는 즉시 exit 2("requires owner yes; not implemented").
+  HANDOFF Must-not("real-CLI smoke without explicit owner yes")을 코드로 막는다. B2·D2 구현은 오너 yes 뒤 별도 작업.
+- 출력: `T/events.ndjson`(NDJSON 원 로그) · `T/summary.json` · stdout에 `T=<경로>`와 프로브별 요약
+  `{probe, verdict: PASS|FAIL|INCONCLUSIVE|SKIPPED, code, facts, created, closed, leftover}`. exit 0 = FAIL 없음 · 1 = FAIL/중단 · 2 = 사용법/거부.
+- 안전 가드는 RPC 래퍼 한 곳(`guard`)에 있다: `focus:true`·`resume_argv` 거부, `server.stop`은 private + 소켓이 `T/` 아래일 때만,
+  `server.reload_*`·`server.live_handoff`·`integration.*`·`client_shell.*`·`agent.prompt*`·`tab/workspace/agent.focus` 거부,
+  `pane.focus`는 private만, 쓰기 RPC는 `assertOwned`(프로브 생성 집합 ∧ PROTECTED 아님).
 - `probe-pane-death.ts`의 raw `rpc()`·`openEventSubscription()`·`parseNdjsonLines()`를 복사해 쓴다(import 금지 —
   그 파일은 main()을 자동 실행한다). 구독 함수에 두 가지를 더한다:
   `allowHalfOpen: true`로 연결 · `end()`(half-close)와 `destroy()`를 별도 노출 · `'end'`(서버 FIN)·`'close'`·`'error'`
@@ -124,6 +132,14 @@ launch_pending}`(오류면 오류 원문). 모든 프로브의 **각 번호 단�
 목적: 전이당 `state_change_seq` 증가 규칙(상태 변화마다 +1인가 · 같은 상태 재보고에도 오르는가), `completion_seq`가
 `working→idle`(또는 `done`)에서만 오르는가, `revision`과의 관계, status 갱신과 원자적인가(push 수신 직후 G가 이미 새 값인가).
 쉘 pane에 `report_agent` 전 `agent.get`이 실패할 수 있다 — 그 자체를 기록한다(판정 아님).
+
+**추가 점검 (Astra 0251 M5/M6):**
+- **신선도·일치:** push 수신 **직후** `G(P)`를 1회 더 찍어 `agent.get`의 `agent_status`가 push 값과 같은가(`fresh`)·
+  push→조회 지연(ms)을 남긴다(하니스 `facts.freshness`). 다르면 이벤트와 레벨 조회가 서로 다른 시점의 상태를 보는 것 —
+  F2′의 "스냅샷 = 서버의 그 시점 `ast`" 전제를 약화한다.
+- **seq 증가·초기화·원자성:** 단계 전·후 diff(`dRev`·`dScs`·`dCs`)와 **감소(`reset`)** 여부를 기록한다. 감소가 보이면
+  (release·close·재보고 뒤 등) seq는 단조 마커로 쓸 수 없다. push 직후 G에서 `state_change_seq`가 이미 올라 있는지(`scsAdvanced`)로
+  status 갱신과 seq 갱신의 원자성을 본다. 공백(구독자 0) 중 전이에서도 seq가 오르는지(C 5단계)를 따로 본다.
 
 ### 2.5 shared 서버 안전 블록 — `[herdr 전용]` 프로브 공통
 
@@ -188,6 +204,31 @@ launch_pending}`(오류면 오류 원문). 모든 프로브의 **각 번호 단�
    증가량과 push 수를 대조(전이 4건 ↔ seq 증가).
 8. 변형 A′(같은 순서, 새 pane): 4단계에서 `end()` 대신 **아무것도 안 하고** 30 s 관찰 — 서버가 유휴 구독 연결을 스스로
    닫는 일이 없는지(A의 FIN이 EOF 때문임을 분리).
+
+**추가 점검 (Astra 0251 M5/M6)** — 위 4단계는 꼬리가 `end()` 전에 이미 소비된 실행을 배제하지 못해, 성공만으로 미독 버퍼
+보존을 주장할 수 없었다. 하니스는 다음으로 대체·보강한다:
+
+- **미독 꼬리 유지 (M5):** 4단계에서 S1을 **`pause()`**(애플리케이션이 읽지 않음)한 채 꼬리 전이 2건을 내고, **S2가 그 2건을
+  받은 것을 확인한 뒤**(herdr가 실제로 썼다는 증거) S1을 `end()`한다. EOF 뒤 전이 2건을 더 내고 1 s 뒤에야 `resume()` →
+  미독 꼬리가 S1에 순서대로 오는지 본다. 꼬리·EOF 뒤 전이는 값을 달리해(`blocked,working` / `idle,blocked`) 순서만으로 구분한다.
+  `bytesRead`를 pause·EOF·resume 시점에 기록 — pause 중 증가(`bytesReadWhilePaused > 0`)면 런타임이 꼬리를 이미 프로세스로
+  읽어 둔 것이니 "커널 버퍼 보존"이 아니라 "앱 미소비 보존"까지만 주장한다.
+- **등록→ACK 순서 (M5/M6):** (i) ACK 수신 **직후** 낸 전이가 반드시 오는가(등록이 ACK보다 늦지 않음). (ii) S2의 subscribe를
+  쓴 직후 ACK를 기다리지 않고 전이 1건 → S2에서 그 push가 ACK **앞**(`push-before-ack` — 등록이 ACK보다 먼저)인지, **뒤**인지,
+  누락인지 기록(`registrationVsAck`). 누락은 경합으로 정상일 수 있다(판정 아님).
+- **겹침 FIFO (M5):** S1·S2가 모두 열린 상태에서 전이 3건을 연달아 내고 두 소켓의 status 순서열이 **같은지** 본다(`fifo.equal`).
+- **EOF 처리 (M5):** S1의 `'end'`(서버 FIN)·`'close'`·`'error'` 시각, 그리고 S1 EOF가 S2에 영향이 없는지(EOF 뒤 전이가 S2에 옴).
+- **재구독 ≥ 2회 연쇄 (M5):** S2→S3, S3→S4 handover를 같은 방식(미독 꼬리 + EOF)으로 두 번 더 — 각 교체에서 꼬리 전달·EOF 뒤
+  0건·대조군 수신이 유지되는가(`chainOk`). TLA cfg는 다른 구독을 1회만 허용하므로, 연쇄 실패는 F1′ 모델의 범위 밖 결함이다.
+- drain 도중 연결 장애·drain 상한 만료는 라이브로 안전하게 유도할 수 없어 **모델 쪽 과제**로 남긴다(타이머 후 `destroy()`는
+  무손실 drain과 동등하지 않다 — Astra 0251 M5).
+
+| 추가 결과 | 의미 |
+|---|---|
+| `registrationVsAck = push-before-ack` | 등록이 ACK보다 먼저 — 모델 `SrvReg`(ACK 전 등록) 지지 |
+| ACK 직후 전이 누락 | 등록이 ACK 뒤 — make-before-break에도 ACK~등록 창 유실 가능, F1′ 재검토 |
+| `fifo.equal = false` | 겹침 동안 두 소켓 복사본이 다름 — Fixed 전제 붕괴(A-5에 준함) |
+| `chainOk = false` | 2회째 이후 교체에서 꼬리 유실·누수 — Drain 판정을 1회 교체로 한정 |
 
 **관측과 판정:**
 
@@ -322,6 +363,12 @@ status backlog를 먼저 보냄"이다.
 | C-4 **구독 시 응답 지연** | ACK 전후에 replay 위치가 다름 | ACK 앞/뒤 위치를 기록 — 모델 `SrvReg`(ACK 전 backlog) 전제 확인/반박 |
 | UNDETERMINED | 게이트·liveness 실패 | 판정 없음 |
 
+**분류 규칙 (Astra 0251 M6):** 3·5단계 각 관찰 창을 따로 분류한다 — **무재전달**(P status 0건) · **최신값만**(1건, 그 시점
+레벨과 같음) · **backlog**(2건 이상, 과거 전이 순서). 각 push의 **ACK 앞/뒤 위치**를 함께 남긴다(`before-ack`/`after-ack`/`mixed`).
+`latest-only`와 `backlog`는 TLA상 다른 상수다(C-3 vs C-2). 1건짜리가 "최신값"인지 "backlog의 마지막 1건"인지는 2단계 이력이
+4건이므로 1건이면 최신값으로 본다. 실제 **감지기 원천**의 replay는 이 프로브로 답하지 못한다 — B2 실행 때 같은 pane 재구독으로
+부수 관찰(아래 주의).
+
 반복 **2회**(0.7.4 관측과 같은 수). 주의: `report_agent` 원천과 감지기 원천 status가 같은 replay 규칙을 따른다는 보장은 없다 —
 결과 문서에 "report_agent 원천 한정"을 적는다. 실 CLI 원천 확인이 필요하면 B2 실행 때 같은 pane에 S2를 다시 열어 부수 관찰
 (B2 승인 범위 안 — 같은 실행). shared 모드면 다른 구독자 존재를 기록(§2.5-7).
@@ -359,6 +406,15 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 5. `pane.release_agent{pane_id:P, source:"hsprobe-d1", agent:"bash"}`(22:5999) → 감지/해제 이벤트에 `final_status`가 실리는지, 그 값.
 6. `pane.close{pane_id:P}` → close 직전·직후 status push(`done` 여부).
 
+**추가 점검 (Astra 0251 M6):**
+- **`done` ↔ 실제 종료 관계:** round 3가 요구하는 것은 "프롬프트 뒤·working 뒤 `done`"이 아니라 **"실제 작업 종료 뒤 `done`"**이다.
+  herdr 전용에서 "실제 종료" = `working` 보고 뒤의 `idle` 보고 시각. 모든 `done` push에 대해 직전 단계·마지막 `idle` 보고로부터의
+  지연(ms)·그 `idle` 앞에 `working`이 있었는지(`afterReportedWorkEnd`)를 기록한다(`facts.doneVsRealEnd`). `working` 없이 나온
+  `done`(release·close 제외)은 FAIL.
+- **실행 중 idle→working 재진입:** 2단계 뒤 `working → 1 s → idle → 300 ms → working → 1 s → idle`을 한 번 더 — 중간 `idle`에서
+  `done`이 나오는가·`completion_seq`가 오르는가(`doneAtIntermediateIdle`). 나오면 실 CLI의 작업 중간 idle(도구 대기 등)이 카드를
+  조기 완료시킬 수 있다는 근거다 — 현재 TLA 모델 밖(재진입 미모델), D2에서 실 CLI로 재확인 필요.
+
 **결과표 (D1)**
 
 | 회차 | 단계 | `working` 지속 | 일시 | 서버 모드 | push 값·시각 | 레벨 (agent.get · pane.list) | G 전→후 (rev / scs / cs) | `done`↔`completion_seq` 대조 | focused | 생성/닫음 id | 결과 코드 | 비고 |
@@ -376,6 +432,9 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
    `state_change_seq`가 push마다 오르는지, `completion_seq`가 `done`/`idle` push와 같은 시점에 오르는지.
 4. 포커스는 건드리지 않는다(브리지 pane과 같은 `focus:false`). private 서버에서만 추가로 D1 4단계 포커스 실험을 해도 된다.
 5. `agent.read{target:P, source:"detection"}`·`agent.explain{target:P}` 저장(B2와 같은 비밀 주의).
+6. **(Astra 0251 M6)** 실제 작업 종료 시각(CLI 화면·`agent.read` 기준 응답 완료)과 `done` push의 관계, `agent_prompt_stalled` 뒤
+   status, 작업 중간 `idle`(→ `working` 재진입)을 따로 기록한다. 지연은 프롬프트 전달뿐 아니라 이벤트 소비·조회 응답까지 잰다 —
+   소수 회차의 성공은 `LatencyBound`의 보편 보장이 아니다. (D2는 하니스에 미구현 — 오너 yes 뒤 작업.)
 
 **결과표 (D2)**
 
@@ -389,7 +448,7 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 |---|---|---|
 | D-1 **attention 파생** | D1에서 `working→idle`이 `done`으로 push · 포커스 시 `idle` | `done`은 **작업 종료 후에만** 생긴다 → 모델 전제("프롬프트 이후") 유지. 단 **기동 쌍(B)이 있으면 그 쌍도 `done`으로 올 수 있다** → B 결과와 합쳐 C9를 `sawWorking` 없이도 여는 경로로 기록. F3′에 `done` 포함 필수(TLA §5) |
 | D-2 **종료/해제 시에만** | D1 2–3단계는 `idle` · 5·6단계에서만 `done`/`final_status: done` | 실행 중 카드엔 `done`이 안 온다 → 현재 `ccaf5ea:…bridge-runtime.ts:3373`의 `done` 분기는 종료 신호로만 작동. 모델 범위 제외 무해 |
-| D-3 **CLI 감지 전용** | D1 전부 `idle` · D2에서만 `done` | 전제는 D2의 시각으로 판정: `done`이 `t_prompt` 뒤 `working` 뒤에만 → 전제 유지(해당 kind 한정). B2에서 기동 중 `done` 관측 → **전제 깨짐**: `done`이 `sawWorking` 없이 가짜 완료를 만든다(C9보다 넓음) → TLA에 `BootDone` 상수 추가 필요 |
+| D-3 **CLI 감지 전용** | D1 전부 `idle` · D2에서만 `done` | 전제는 D2의 시각으로 판정: `done`이 **실제 작업 종료 뒤에만**(`t_prompt` 뒤 `working` 뒤라는 것만으로는 부족 — 중간 idle·stall 이후 status와 구분, Astra 0251 M6) → 전제 유지(해당 kind 한정). B2에서 기동 중 `done` 관측 → **전제 깨짐**: `done`이 `sawWorking` 없이 가짜 완료를 만든다(C9보다 넓음) → TLA에 `BootDone` 상수 추가 필요 |
 | D-4 **`done` 미관측** | D1·D2 모두 `done` 0건 | 이 버전·이 kind에선 `done` 경로 비활성. 전제 유지, 단 "관측 없음 ≠ 계약" 표기 |
 
 `completion_seq` 대조는 판정 코드와 별도로 기록한다: "`done`/완료 `idle` ↔ `completion_seq` +1 동시" · "`completion_seq`만 증가" ·
@@ -450,6 +509,17 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 | D-1…D-4 | §2.2 `done` 범위 제외 전제의 유지·파기, 필요 시 `BootDone` 모델 추가 |
 | G-스냅샷 seq 규칙 · `done`↔`completion_seq` | §1.2 "단조 마커 없음"을 이벤트 한정으로 좁힘 · F2''(seq 정렬 스냅샷) 모델링 가부(PLAN UK-1) |
 | E-1 / E-2 | `agent.wait` 단독 F2' 대체 불가의 근거 형태(level=C9류 / edge=C5류) |
+
+**하니스 verdict 읽는 법 (`scripts/probe-herdr-status.ts`):**
+
+| 프로브 | PASS | FAIL | 
+|---|---|---|
+| step0 | 0.9.5/22 · 격리 · push 2건 → 나머지 판정 유효 | `S0-VERSION`/`S0-ISOLATION`/`S0-NOPUSH` → 나머지 SKIPPED/UNDETERMINED |
+| A | A-1 ×reps 일치 + FIFO + 연쇄 + A′ 무폐쇄 → **F1′ drain 전제(`Drain=TRUE`) 성립** | A-2/3/4/5 또는 보조 점검 실패 → F1′는 drain 전제 없이 재설계 |
+| C | C-1 + terminal 대조군 replay → **`Replay=FALSE`**, F2′ 폴링이 필요·replay발 F15/F16 위험 없음 | C-2/C-3 → replay 실재, F2′/F3′에 stale replay 귀속 대책·새 상수 필요 |
+| D1 | `done`이 보고된 작업 종료 뒤에만(또는 0건·종료/해제 시만) → **F3′ `done` 전제 유지**(herdr 원천 한정) | `working` 없는 `done` → F3′ 펜스로 못 막는 가짜 완료 경로 |
+| E | E-1/E-2 일치 → `agent.wait` 단독으로 **F2′ 대체 불가** 확인(형태 확정) | (FAIL 없음 — 미확정은 INCONCLUSIVE) |
+| B1 | herdr 고유 기동 `working` 없음 → F3′ 잔여창은 CLI 의존(B2 필요) | 가짜 바이너리에도 기동 `working` → **`MaxBoot ≥ 1`**, F3′ 펜스 뒤 기동 쌍 실재 |
 
 ## 10. 이 설계의 미확인 전제 (S0에서 먼저 깨질 수 있는 것)
 
