@@ -1,7 +1,13 @@
 # HERDR-STATUS-PROBES — TLA+ 가정을 확인할 라이브 herdr 프로브 설계 (대상 herdr 0.9.5 / protocol 22)
 
-> 상태: **아무것도 실행하지 않았다 · 하니스 = `scripts/probe-herdr-status.ts`(`[herdr 전용]` S0·A·B1·C·D1·E만 구현,
-> 라이브 미실행) · B2·D2 미구현(exit 2) · 제품 코드 무변경.**
+> 상태: **하니스 = `scripts/probe-herdr-status.ts` v2(`[herdr 전용]` S0·A·B1·C·D1·E·s 구현) · run 1(`6c0c3e`, v1, private)
+> · run 2(`dcda61`, v2, private, 2026-10-23) 완료 — 결과는 각 결과표 + §11 사실표 · run 2 뒤 A 동률 술어 수정(§4 run-2 주)
+> · B2·D2 미구현(exit 2) · 제품 코드 무변경.**
+> **(run-2 analysis)** run 1 행 = 하니스 전제 산물(쉘 pane 권한 해제), run 2 행 = herdr 사실(held pane). A의 run-2 FAIL은 같은-ms
+> 동률 술어 산물이며 herdr 사실로는 `A-1/bun-pause-loss`다.
+> **(run-1 analysis)** run 1의 공통 원인: herdr 0.9.5는 평범한 쉘 pane의 `report_agent` 권한을 ~0.1–1 s 안에 놓는다
+> (`released:true, final_status:"unknown"` 뒤 `agent.get` not found). 그래서 A·C·D1·E 판정 일부는 하니스 전제의 산물이었다.
+> v2는 A·C·D1·E·s를 **held pane**(§2.6) 위에서 돌리고 단계마다 레벨을 단언한다(`LEVEL_LOST` = INCONCLUSIVE, FAIL 아님).
 > 대상: `docs/spikes/BRIDGE-STARTUP-TLA.md` §0 항목 5의 (a)–(e). **버전 게이트 = herdr 0.9.5 · protocol 22**(로컬 herdr,
 > Loom 0.45.3+는 {17, 22} 지원). 재타깃 근거 = `docs/spikes/HERDR-0.9.5-COMPAT.md` §4(14개 변경)·fixture
 > `docs/spikes/fixtures/herdr-v0.9.5/`(`schema.json`·`*-help.txt`·`status.json`·`version.txt`).
@@ -22,6 +28,7 @@
 | D1 | `done` status를 언제 내는가 (report_agent 원천) | `done`-scope (§2.2 범위 제외 전제) | `[herdr 전용]` | `report_agent` 전이 + (private만) 포커스 |
 | D2 | 실 CLI 1회 프롬프트의 `done` 시점·지연 | `done`-scope · `LatencyBound` | `[실 CLI — 오너 yes]` | 실 CLI 1회 프롬프트 |
 | E | `agent.wait{until:[idle,done]}`은 level인가 edge인가 | F2' 대체 가능성(COMPAT §3 마지막 행) | `[herdr 전용]` | 이미 `idle`인 pane에 `agent.wait` |
+| s | `state_change_seq`는 pane별 마지막-변경 도장인가 전역 카운터인가 · 같은 상태 재보고에 오르는가 **(run-1 analysis)** | F2''(seq 정렬 스냅샷) · 세대 귀속 | `[herdr 전용]` | held pane 2개 |
 
 모든 프로브 공통 신규 관찰(TLA (e)): **각 단계 전·후 `agent.get`의 `revision`·`state_change_seq`·`completion_seq`**(§2.4 G-스냅샷).
 부산물: D2·B2는 프롬프트→첫 `working` 지연도 잰다 → `LatencyBound`(4 s) 근거 자료(판정 아님).
@@ -65,17 +72,18 @@
   `pane.agent_status_changed`, terminal은 underscore `pane_closed`(§D.8-2). 죽은 pane의 status 구독은 ACK가 영영 오지 않는다(§D.8-1).
   0.9.5에서 같은지 **미실측** — 이름은 양쪽 수용으로 기록한다.
 
-## 2. 공통 설계 — 단일 Bun 프로브 `scripts/probe-herdr-status.ts` (구현됨 — `[herdr 전용]`만, 라이브 미실행)
+## 2. 공통 설계 — 단일 Bun 프로브 `scripts/probe-herdr-status.ts` (구현됨 — `[herdr 전용]`만, v2 = run-1 분석 반영)
 
 ### 2.1 형태
 
 ```text
-bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e|all]
+bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e,s|all]
                                       [--timeout-ms N] [--reps N] [--dry-run] [--help]
 bun run probe:herdr-status …                                   # package.json 별칭
 ```
 
-- `all`(기본) = **`[herdr 전용]` 프로브만**(step0·a·c·d1·e·b1, §9 순서). step0은 항상 먼저 돈다(나머지의 바탕).
+- `all`(기본) = **`[herdr 전용]` 프로브만**(step0·a·c·d1·e·s·b1, §9 순서). step0은 항상 먼저 돈다(나머지의 바탕 —
+  v2에선 held-pane driver 점검 §2.6 포함).
   **B2·D2는 구현하지 않았다:** `--probe b2|d2`·`--real-cli`·`--kind`는 즉시 exit 2("requires owner yes; not implemented").
   HANDOFF Must-not("real-CLI smoke without explicit owner yes")을 코드로 막는다. B2·D2 구현은 오너 yes 뒤 별도 작업.
 - 출력: `T/events.ndjson`(NDJSON 원 로그) · `T/summary.json` · stdout에 `T=<경로>`와 프로브별 요약
@@ -110,8 +118,13 @@ bun run probe:herdr-status …                                   # package.json 
 - **`--server shared`:** `LOOM_HERDR_SOCKET`/기본 소켓 사용 — **오너의 사용자 herdr도 0.9.5 / 22**다(COMPAT §6 ①). shared로
   돌면 `ping` 결과가 private과 같은 버전임을 기록한다. `[herdr 전용]` 프로브는 §2.5 안전 블록을 지키는 조건에서만 shared로 돈다.
 - 실행 위치: **herdr pane 밖**(하니스 백그라운드나 일반 터미널). 워커 테스트 스위트와 동시 실행 금지(traps).
+  **(run-1 analysis)** run 1은 herdr pane 안에서 실행됐다(오염 흔적은 없었음). v2는 herdr 접촉 전에 프로브 자신의 env에서
+  상속된 `HERDR_*`(와 `LOOM_*`)를 지우고, 지운 키 **이름만** `facts.herdrEnvStripped`·`PROBE_BEGIN`·`summary.json`에 남긴다.
+  지운 뒤에도 남아 있으면 herdr 접촉 없이 exit 1. private 서버와 python 클라이언트(§4 변형 c)는 명시 env로만 띄운다.
 - 스크래치 pane: `tab.create{focus:false, label:"hsprobe-<probe>-<run>", cwd:T, env:{HOME:"T/home", LOOM_TEST_HOME:"T"}}` →
   응답의 root pane 사용. 모든 이름에 접두 `hsprobe-`. **agent CLI를 띄우지 않는 평범한 쉘 pane**이다(B2·D2 제외).
+  **(run-1 analysis)** v2의 A·C·D1·E·s는 private에서 이 pane에 `agent.start`로 **가짜 바이너리**만 띄운 held pane(§2.6)을 쓴다 —
+  실 CLI는 여전히 띄우지 않는다.
 
 ### 2.3 정리 (모든 프로브 공통, `finally`)
 
@@ -153,11 +166,31 @@ launch_pending}`(오류면 오류 원문). 모든 프로브의 **각 번호 단�
    보낸다(`assertOwned`). 읽기(`agent.get`·`pane.list`)는 허용.
 3. **포커스 금지:** 모든 생성은 `focus:false`. `pane.focus`·`tab.focus`·`workspace.focus`·`agent.focus` 호출 금지(D1 4단계 생략).
 4. **agent CLI 미기동:** `[herdr 전용]` 프로브는 쉘 pane만 쓴다. `agent.start`는 B1(PATH 가짜 바이너리)만 — 가짜 해석이 확인되지
-   않으면(§4.1 Step 0) B1은 shared에서 **실행하지 않는다**(실 CLI로 해석될 위험).
+   않으면(§4.1 Step 0) B1은 shared에서 **실행하지 않는다**(실 CLI로 해석될 위험). **(run-1 analysis)** held pane(§2.6)도 같은 이유로
+   shared에서 만들지 않는다 → shared의 C·D1·E·s = `NO_HELD_SUBSTRATE(shared …)`, A = 쉘 pane.
 5. **서버 제어 금지:** `server.stop`·`server.reload_*`·`server.live_handoff`·`integration.*`·`client_shell.*` 호출 금지.
 6. **정리·장부:** 생성한 workspace/tab/pane id와 생성 시각, 닫은 id와 닫은 시각을 `PROBE_END`에 남기고, 결과표의
    "생성/닫음 id" 열에 옮긴다. leftover가 있으면 판정과 무관하게 실행을 `DIRTY`로 표시하고 보고.
 7. 공유 서버에는 다른 구독자(브리지 등)가 있을 수 있다 — Probe C의 replay 해석에 "다른 구독자 존재"를 기록(판정 영향 가능).
+
+### 2.6 held pane — 레벨이 유지되는 바탕 (run-1 analysis)
+
+run 1에서 쉘 pane의 `report_agent{agent:"bash"}` 권한은 0.1–1 s 안에 풀렸고(`unknown` 주입 → `agent.get` not found ·
+`agent.wait` 즉시 `agent_not_found`), 반면 B1의 가짜 agent pane은 감지기가 잡은 `idle`을 30 s 동안 그대로 유지했다. v2는:
+
+- **held pane** = `tab.create{env:{PATH:T/fakebin:…}}` → `agent.start{kind:<가짜 kind>}`(B1과 같은 해석 규칙: manifests에 있고
+  T 밖 절대 경로 없음) → `pane.process_info` foreground가 `T/fakebin`인지 확인(실 CLI면 즉시 `pane.close` + `ABORTED_REAL_CLI`로
+  **실행 중단**) → `agent.get` 폴링으로 `interactive_ready ∧ idle`(≤ 12 s). `agent.start` 결과의 `state_change_seq`를 기록한다.
+- **driver 점검(S0 끝, private만):** held pane 하나에 `report_agent{agent:<가짜 kind>, working}` → `agent.get` 25 ms 간격 2 s가 **전부**
+  `working`인가 → `idle` 보고 → 1 s가 전부 `idle|done`인가. 실패하면 `agent:"bash"`로 한 번 더. 처음 성립한 `agent` 이름이 driver
+  (`facts.heldSubstrate.driverAgent`, 시도별 표본 run-length = `trials`). 둘 다 실패하면 driver 없음 — 그 자체가 결과다
+  ("이 버전에서 `report_agent` 권한을 유지하는 herdr-only 수단 없음").
+- **레벨 단언:** held pane에선 각 단계 직전 `G(P)`가 기대 레벨(보고한 `idle`은 `idle|done` 허용)인지 본다. 아니면 그 단계는
+  `LEVEL_LOST`(`facts.levelLost` 행: step·want·got·error) → 그 회차·프로브는 **INCONCLUSIVE `LEVEL_LOST`**(FAIL 아님).
+- **가용성:** shared 모드(§2.5-4)·가짜 kind 없음 → `NO_HELD_SUBSTRATE(…)`, driver 없음 → `NO_HELD_DRIVER`. 이때 C·D1·E·s는
+  INCONCLUSIVE, A만 쉘 pane으로 돈다(`facts.substrate = shell` — 레벨 미단언, 스트림 성질만 판정).
+- 한계: held pane의 `report_agent` 원천 status는 여전히 감지기 원천(B2)과 같은 규칙이라는 보장이 없다. fake 바이너리가 agent 훅을
+  직접 내는 방식은 쓰지 않는다(통합 미설치 temp HOME — §2.2).
 
 ## 3. Step 0 — 버전·격리·push 성립 · `[herdr 전용]`
 
@@ -175,11 +208,14 @@ launch_pending}`(오류면 오류 원문). 모든 프로브의 **각 번호 단�
 | S0-NOPUSH | RPC `ok`인데 push 0건 → A·C·D1 전부 `UNDETERMINED`(0.9.5에서 `report_agent` 원천 status 경로 부재 가능) |
 | S0-ISOLATION | private 기동·소켓 격리 실패 → 중단·보고(아키텍트가 shared 결정) |
 
+6. **(run-1 analysis)** push 경로가 성립하면 §2.6 driver 점검 → `facts.heldSubstrate`(S0 verdict는 바꾸지 않음).
+
 **결과표 (S0)**
 
-| 회차 | 일시 | 서버 모드 | `ping` version·protocol | 서버 pid·소켓 | agent_manifests 요약 | push 지연 (ms) | G 전→후 (rev / scs / cs) | 생성/닫음 id | 결과 코드 | 비고 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | |
+| 회차 | 일시 | 서버 모드 | `ping` version·protocol | 서버 pid·소켓 | agent_manifests 요약 | push 지연 (ms) | G 전→후 (rev / scs / cs) | stripped `HERDR_*` | held kind · driver (`agent`) · trial 요약 | 생성/닫음 id | 결과 코드 | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | run 1 `6c0c3e` | private | 0.9.5 · 22 | spawn pid = 서버 pid · `T/herdr.sock` | claude/codex/grok 언급, 절대 경로 없음 | working ~104 · idle(→`unknown` 먼저) | scs 1→3 | (v1: 경고만, pane 안 실행) | (v1: 점검 없음) | — | S0-OK | run-1 분석 §1 |
+| 2 | run 2 `dcda61` · 2026-10-23 | private | 0.9.5 · 22 | `T/` 아래 private 소켓 · cleanup `leftover:[]` · `dirty:false` | (run 1과 같음) | — | — | 지움(`herdrEnvRemaining:[]`, 다시 pane 안 실행) | fake `claude` · driver `agent:"claude"` · `working` 2 s 유지(18 표본, scs 6) → `idle` 보고가 `done`으로 publish, 1 s 유지(10 표본, scs 7 = cs 7) | leftover 없음 | S0-OK (분석에 코드 직접 기재 없음 — held driver 성립·후속 프로브 진행으로 기록) | run-2 분석 머리말 — 이후 step0/B1 외 전부 held pane |
 
 ## 4. Probe A — 구독 연결 half-close (drain 전제) · `[herdr 전용]`
 
@@ -230,6 +266,25 @@ launch_pending}`(오류면 오류 원문). 모든 프로브의 **각 번호 단�
 | `fifo.equal = false` | 겹침 동안 두 소켓 복사본이 다름 — Fixed 전제 붕괴(A-5에 준함) |
 | `chainOk = false` | 2회째 이후 교체에서 꼬리 유실·누수 — Drain 판정을 1회 교체로 한정 |
 
+**v2 개정 (run-1 analysis):** run 1의 `A-4` ×5는 herdr 사실이 아니라 하니스·런타임 혼입이었다 — herdr는 EOF→FIN 0–3 ms(15/15),
+S2 무영향, 유휴 무폐쇄, 겹침 FIFO 동일(원 로그 재계산)이었고, 꼬리 유실은 Bun `pause()`+`end()` 조합에서만 보였다(pause·EOF·resume
+`bytesRead` 불변 → 런타임이 peer EOF에 미배출로 닫았을 가능성). 그리고 판정 술어가 herdr의 `unknown` 주입·`idle→done` 재기록에
+깨졌다. v2:
+
+- **바탕:** held pane(§2.6). 단계 경계마다 레벨 단언, 회차에 `LEVEL_LOST`가 하나라도 있으면 그 회차 코드 = `LEVEL_LOST`.
+- **술어 수정:** (i) `registrationVsAck` = S2의 **첫 P status push(값 무관)**의 ACK 앞/뒤·누락. (ii) FIFO = S2(나중에 연 쪽) 순서열이
+  S2 open 이후 S1 순서열의 **접미사**인가(같은 시각 스냅샷 비교 폐기). (iii) 꼬리 전달 = 옛 소켓 순서열이 대조 소켓 순서열의
+  **접두사**이고 그 길이가 `t_eof` 전 대조 push 수(`ctlTailN`) 이상인가 — herdr가 끼운 `unknown`/`done`도 양쪽에 같이 있으므로
+  허용된다. EOF 뒤 push 수 = 옛 소켓 길이 − `ctlTailN`. 대조군 성립 = 보고한 꼬리가 대조 순서열의 부분열(`idle`↔`done` 동치).
+- **변형:** 한 회차에 같은 pane으로 4회 교체 —
+  (a) **flowing** `S1→S2`, `S2→S3`(옛 소켓은 계속 읽음, 대조가 꼬리를 본 즉시 `end()`) = 재구독 ≥ 2회 연쇄(`chainOk` = 둘 다 A-1),
+  (b) **paused** `S3→S4`(run 1 형태: pause → 꼬리 → +300 ms `end()` → EOF 뒤 전이 → +1 s `resume()`),
+  (c) **python raw 클라이언트** → `S4`(대조): `python3 -I T/py/hsprobe_halfclose.py`(stdlib `socket`만, `events.subscribe` 1건만 보냄)가
+  ACK까지 읽고 읽기 중단 → 꼬리 → 대조 확인 → `shutdown(SHUT_WR)` → EOF 뒤 전이 → 1.5 s 뒤 EOF까지 `recv`.
+- **판정:** 회차 코드 = 변형 (a) 첫 교체의 코드(아래 표 그대로). 미독 꼬리 유실 위치 `unreadTailLossSide`:
+  python(c)에 A-4 → `herdr-side` · (b)만 A-4이고 (c)가 전부 A-1 → `bun-runtime` · (b)가 A-4인데 (c)가 미결(python 없음 등) →
+  `unknown` · (b) 유실 없음 → `none`.
+
 **관측과 판정:**
 
 | 결과 | 관측 | TLA 상수 |
@@ -245,11 +300,23 @@ launch_pending}`(오류면 오류 원문). 모든 프로브의 **각 번호 단�
 
 정리: §2.3. P 닫기 전 S2 `destroy()`.
 
-**결과표 (A · A′)**
+**결과표 (A · A′)** — v2부터 변형 열 = `flow`(a) · `pause`(b) · `python`(c) · `A′`, 한 회차가 4행+A′ 1행 **(run-1 analysis)**
 
-| 회차 | 변형 | 일시 | 서버 모드 | S1 4단계 push 수 | `t_eof`→`'end'` (ms) | `t_eof`→`'close'` (ms) | EOF 뒤 S1 push 수 | S2 대조 push 수 | G 단계별 (rev / scs / cs) | 생성/닫음 id | 결과 코드 | 비고 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | |
+| 회차 | 변형 | 일시 | 서버 모드 | 바탕 (held kind·driver / shell) | 옛 소켓 순서열 | 대조 순서열 (`ctlTailN`) | 꼬리 전달 | `t_eof`→`'end'` (ms) | `t_eof`→`'close'` (ms) | EOF 뒤 옛 push 수 | `LEVEL_LOST` | G 단계별 (rev / scs / cs) | 생성/닫음 id | 결과 코드 | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1–5 | pause (v1) | run 1 `6c0c3e` | private | shell · `bash` | (bytesRead 불변, resume 후 0) | S2 꼬리 수신 15/15 | 아니오 | 0–2 | 0–3 | 0 | (v1 미단언 — 권한 해제됨) | — | — | A-4 ×5 (**하니스·런타임 혼입**) | run-1 분석 §2 |
+| 1–5 | flow h1 S1→S2 | run 2 `dcda61` · 2026-10-23 | private | held `claude` · driver `claude` | `blocked,working` (= 꼬리) | 꼬리 포함 | 예 ×5 | 0–1 | 0–1 | 0 | 0 | — | leftover 없음 | A-1 ×5 | run-2 분석 §1 |
+| 1–4 | flow h2 S2→S3 | run 2 | private | held `claude` | `working,blocked` | 꼬리 포함 | 예 ×4 | 0–1 | 0–1 | 0 | 0 | — | — | A-1 ×4 | |
+| 5 | flow h2 S2→S3 | run 2 | private | held `claude` | `working,blocked` (꼬리, EOF 14 ms 전 도착) | `ctlTailN:1` (**동률 산물** — 대조 `blocked` 693173 = `t_eof` 693173, 엄격 `<`가 제외) | 예 (`orderOk:true`) | 0 | 0 | 술어 1 · **원 `afterEof:true` 0** | 0 | — | — | A-OTHER → `chainOk=false` → 프로브 FAIL `A-1/aux-fail` (**술어 산물**, 수정 후 판정이면 PASS `A-1/bun-pause-loss`) | run-2 분석 §1 · 하니스 수정됨(아래 주) |
+| 1–5 | pause h3 S3→S4 | run 2 | private | held `claude` | `[]` (bytesRead 576 = 576 = 576 at pause/EOF/resume) | 꼬리 포함 | 아니오 | 0–1 | 0–1 | 0 | 0 | — | — | A-4 ×5 (Bun 유실) | `unreadTailLossSide:"bun-runtime"` |
+| 1–5 | python (c) → S4 | run 2 | private | held `claude` | `working,blocked` (`bytesAfterEof:254` = 꼬리 2건) | 꼬리 포함 | 예 ×5 | 1502–1505 (1.5 s linger) | — | 0 | 0 | — | — | A-1 ×5 (**herdr 무손실**) | |
+| 1–5 | A′ | run 2 | private | held `claude` | — | — | — | — | — | — | 0 | — | — | 무폐쇄 ×5 (`serverClosedIdle:false`, `stillDelivering:true`, 30 s `working` 유지) | |
+
+**run-2 주 (하니스 수정, 재실행 전):** (i) `ctlTailN`은 이제 `t_eof`와의 ms 비교가 아니라 **옛 소켓 `end()`(python은 EOF 지시) 시점의 대조
+push 도착 인덱스**로 센다(단일 스레드라 정확 — ms 비교값은 `ctlTailNByMs`로 기록만). (ii) Bun 옛 소켓의 EOF 뒤 push 수는 sink 자신의
+`afterEof` 플래그(실제로 EOF 뒤 도착한 것)로 센다 — python은 ACK 뒤 아무것도 읽지 않아 메시지별 플래그가 없으므로 종전 유도식.
+(iii) 보조 교체(h2)의 `A-OTHER`도 h1과 같이 **INCONCLUSIVE `A-OTHER/aux`**(종전엔 `chainOk` 경유 FAIL).
+FIFO(run 2): `fifo.S1 = fifo.S2 = done,working,done,working,done` 5/5 · `s2AliveAfterS1Eof` 5/5 · 20 교체 25 `SUB_CLOSE` · 등록 = `push-after-ack` ×5.
 
 ## 5. Probe B — 기동 직후·프롬프트 전 status (Boot)
 
@@ -288,7 +355,8 @@ launch_pending}`(오류면 오류 원문). 모든 프로브의 **각 번호 단�
 
 | 회차 | kind | 일시 | 서버 모드 | 해석된 cmdline | start→`interactive_ready` (ms) | 무프롬프트 30 s push (값·시각) | agent_detected (P) | G 시작→끝 (rev / scs / cs) | 대조군 | 생성/닫음 id | 결과 코드 | 비고 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | |
+| 1 | claude · codex · grok | run 1 `6c0c3e` | private | `/bin/sh …/fakebin/<kind>` (PATH 해석 확인) | 3561–3596 (`agent.start` ok 104–110 ms, `unknown`·`launch_pending`·scs 0) | 유일한 push = ready와 동시 `idle`(3605–3648) · ready 전 0 · 30 s 0건 | ~200–310 ms | scs 불변(~150 표본/kind) · start 결과 0 = 미할당 | `report working` 수신 | — | B1-NO-BOOT-WORKING | run-1 분석 §6 — herdr 자체 기동 기계 한정. 실 CLI 스피너는 B2 |
+| 2 | — | run 2 `dcda61` | private | — | — | — | — | — | — | — | (run-2 분석에 B1 기재 없음) | 미기록 — 필요 시 `T/summary.json`에서 옮긴다 |
 
 ### 5.2 B2 — 실 CLI 기동만 · `[실 CLI — 오너 yes]`
 
@@ -357,7 +425,7 @@ status backlog를 먼저 보냄"이다.
 
 | 결과 | 관측 | TLA 상수 |
 |---|---|---|
-| C-1 **replay 없음** | 3·5단계 status 0건 · 4단계 liveness 통과 · 6단계 대조군 replay 있음 | **`Replay = FALSE`** (0.7.4와 같음) → C5·C8 정체 결론 유효 |
+| C-1 **replay 없음** | 3·5단계 status 0건 · 4단계 liveness 통과 · ~~6단계 대조군 replay 있음~~ v2: S2·S3 liveness 통과 + 구독 직전 비-idle 레벨 단언 통과 **(run-1 analysis)** | **`Replay = FALSE`** (0.7.4와 같음) → C5·C8 정체 결론 유효 |
 | C-2 **backlog replay** | 3단계에 2단계 전이 다수가 순서대로 재도착 · 5단계 `idle` 재도착 | **`Replay = TRUE`** (모델과 같은 의미) → C11·C12·F15 영역. 단 replay/live 구분 불가(봉투에 seq·시각 없음, 22:6340-6382)이므로 기존 카드에 오래된 전이가 재생되는 F16류 위험을 별도 기록 |
 | C-3 **현재값 1건만 재전달** | 3·5단계에 최신 상태 1건만 | 모델에 없는 의미("스냅샷 replay"). C5 해소 관점에선 `Replay = TRUE`와 같다(잃은 `idle`이 레벨로 돌아옴). Boot·F16 관점은 다름 — **TLA에 새 상수 필요**로 보고 |
 | C-4 **구독 시 응답 지연** | ACK 전후에 replay 위치가 다름 | ACK 앞/뒤 위치를 기록 — 모델 `SrvReg`(ACK 전 backlog) 전제 확인/반박 |
@@ -369,6 +437,18 @@ status backlog를 먼저 보냄"이다.
 4건이므로 1건이면 최신값으로 본다. 실제 **감지기 원천**의 replay는 이 프로브로 답하지 못한다 — B2 실행 때 같은 pane 재구독으로
 부수 관찰(아래 주의).
 
+**v2 개정 (run-1 analysis):** run 1은 `C-1/no-control` INCONCLUSIVE였다 — (i) 대조군 전제가 낡았다: 0.9.5는 `pane_closed`를 기존
+구독자에겐 라이브로 내지만 나중 구독자에겐 **재전달하지 않았다**(2/2). (ii) 레벨 혼입: 늦은 구독 시점의 실제 레벨이 이미
+`unknown`/agent-not-found였으므로(권한 해제) "최신값 1건 replay"(C-3)였어도 0건으로 보였다. v2:
+
+- 바탕 = held pane(§2.6). 게이트 = `working, idle, working, blocked`(1.2 s) → **지속되는 비-idle 레벨 `blocked`**를 잡은 채로 늦은 구독.
+- 3단계: `S1.destroy()` → 1 s → `G(P)=blocked` 단언 **직후** S2(`levelToSubTxMs` 기록). 5단계 C-gap: 구독자 0에서 `report(blocked)`
+  (직전 레벨 `working`) → `G(P)=blocked` 단언 → **즉시** S3(`gapToSubTxMs` 기록 — `report` 반환→`SUB_TX`).
+- 분류: 0건 = 무재전달 · 1건이고 값 = `blocked` = **latest-only** · 2건 이상 = backlog · 1건인데 다른 값 = `other`.
+  코드: 둘 다 0건 → C-1 · 어느 쪽이든 backlog → C-2 · 둘 다 latest-only → C-3 · 그 밖 조합 → `C-MIXED(…)`(INCONCLUSIVE).
+- **대조군 = S2·S3 각각의 liveness**(`report(working)` → 그 소켓이 받음). 6단계 terminal replay는 **사실 기록만**
+  (`terminalReplayFact`, 판정 무관). 단언 실패 → `LEVEL_LOST`.
+
 반복 **2회**(0.7.4 관측과 같은 수). 주의: `report_agent` 원천과 감지기 원천 status가 같은 replay 규칙을 따른다는 보장은 없다 —
 결과 문서에 "report_agent 원천 한정"을 적는다. 실 CLI 원천 확인이 필요하면 B2 실행 때 같은 pane에 S2를 다시 열어 부수 관찰
 (B2 승인 범위 안 — 같은 실행). shared 모드면 다른 구독자 존재를 기록(§2.5-7).
@@ -377,9 +457,10 @@ status backlog를 먼저 보냄"이다.
 
 **결과표 (C)**
 
-| 회차 | 일시 | 서버 모드 | 게이트 push 수 | S2 20 s push (수·순서·ACK 앞/뒤) | liveness | 공백 중 G (rev / scs / cs) | S3 20 s push | 대조군 terminal replay | 생성/닫음 id | 결과 코드 | 비고 |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | |
+| 회차 | 일시 | 서버 모드 | 게이트 push 수 | S2 직전 레벨 (단언·ms) | S2 20 s push (수·순서·ACK 앞/뒤) | S2 liveness | 공백 중 G (rev / scs / cs) | gap→`SUB_TX` (ms) | S3 20 s push | S3 liveness | terminal replay (사실만) | 생성/닫음 id | 결과 코드 | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1–2 | run 1 `6c0c3e` | private | 8 | (v1 미단언 — 실제 `unknown`/not found) | 0 | 통과 | idle scs 177 | ≥ 1100 | 0 | — | 없음 (2/2) | — | C-1/no-control (INCONCLUSIVE) | run-1 분석 §3 — **C-1 vs C-3 미결** |
+| 1–2 | run 2 `dcda61` · 2026-10-23 | private | (게이트 통과) | `blocked` 단언 · `levelToSubTxMs` 0/1 · ACK +100/+106 | 0 (`seq:[]`, `class:"none"`, `positions:[]`) | 통과 (`working`) | scs 148→149 (공백 중 working→blocked, G = blocked d=206) | 104–105 (목표 ≤ 50 미달 — RPC 왕복마다 ~100 ms 틱) | 0 (`gapTransitionReplayed:false`) | 통과 | 없음 (2/2, `terminalReplayFacts` false) | — | **C-1** (PASS) | run-2 분석 §2 — C-3 배제, report_agent 원천 한정 |
 
 ## 7. Probe D — `done` status의 출현 조건
 
@@ -415,11 +496,27 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
   `done`이 나오는가·`completion_seq`가 오르는가(`doneAtIntermediateIdle`). 나오면 실 CLI의 작업 중간 idle(도구 대기 등)이 카드를
   조기 완료시킬 수 있다는 근거다 — 현재 TLA 모델 밖(재진입 미모델), D2에서 실 CLI로 재확인 필요.
 
+**v2 개정 (run-1 analysis):** run 1의 D1 `D-4`(done 0건)는 산물이었다 — 모든 `working`이 `idle` 보고 전에 이미 해제돼
+(`unknown`) 있었고 `unknown→idle`은 `done`을 낸 적이 없다(0/37). 반면 Probe A 안에서는 비포커스 pane의 보고된 `working|blocked → idle`이
+`done` 18건으로 publish됐다(working 뒤 14 · blocked 뒤 4, idle 보고 27–208 ms 뒤, `done→working` 6회). v2:
+
+- 바탕 = held pane. 각 `working → idle` 쌍에서 **`idle` 보고 직전 `G(P)=working` 단언**(`workingHeldAtIdleReport`) — 하나라도 실패하면
+  D1 전체 INCONCLUSIVE `LEVEL_LOST`.
+- `idle` 보고 뒤 **`agent.get` 25 ms 간격 2 s** 시계열(run-length `levelAfterIdle`) → `done`이 레벨로 보이는가·얼마나 가는가.
+- 포커스 단계: 먼저 비포커스 `working→idle`(1 s)로 `done`이 생길 수 있게 한 뒤 `pane.focus{P}` → 3 s 시계열(`levelOnFocus`) →
+  `done→idle`로 바뀌는가. 이어 P2 포커스 후 재실행.
+- **모든 `done` push 행**(`facts.doneVsRealEnd`): 시각 · 직전 push 값(`prevPushStatus` — working/blocked 뒤인가) · 마지막 보고 상태·단계 ·
+  마지막 `idle` 보고로부터 ms · `afterReportedWorkEnd` · 다음 보고 전까지 `agent.get`이 `done`을 보였는가(`getShowedDone`)·지속
+  (`doneLevelMs`)·무엇으로 바뀌었나 · 그 창의 `completion_seq` 값(`completionSeqSeen`). 요약 `facts.doneSummary`.
+- release는 driver `agent` 이름으로 보낸다.
+
 **결과표 (D1)**
 
-| 회차 | 단계 | `working` 지속 | 일시 | 서버 모드 | push 값·시각 | 레벨 (agent.get · pane.list) | G 전→후 (rev / scs / cs) | `done`↔`completion_seq` 대조 | focused | 생성/닫음 id | 결과 코드 | 비고 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | |
+| 회차 | 단계 | `working` 지속 | 일시 | 서버 모드 | `idle` 보고 시 `working` 유지 | push 값·시각 | `done` 직전 값 | `agent.get` `done` 지속 (ms) | 레벨 (agent.get · pane.list) | G 전→후 (rev / scs / cs) | `done`↔`completion_seq` 대조 | focused | 생성/닫음 id | 결과 코드 | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | dur200/5000/30000 | 0.2/5/30 s | run 1 `6c0c3e` | private | **아니오**(106–311 ms에 `unknown`) | working, unknown, idle | — (done 0) | — | not found | — | `completion_seq` 키 없음 | — | — | D-4 (**산물**) | run-1 분석 §4 |
+| (A 안) | — | — | run 1 | private | 예(해제 전) | … `done` 18건 | working 14 · blocked 4 | 미측정 | — | — | 키 없음 | false | — | (D-1 정황) | 비포커스 한정 |
+| 2 | dur200/5000/30000/1000 + 재진입 + 포커스 | 0.2/5/30/1 s | run 2 `dcda61` · 2026-10-23 | private | 예 ×7 (`workingHeldAtIdleReport:true`) | `done` 7건, 각 idle 보고 ~100 ms 뒤 | working 7 · blocked 0 | ≈5300–5400 (`doneLevelReplacedBy:null` — 다음 보고까지) | `done` · `done` (16–17 표본/2 s) | cs = done 전이의 scs (161/161, 163/163 … 173/173) · 작업 중·기동 idle `null` | 7/7 `completionSeqPresent` · 중간 idle도 `done`(cs 167) | 포커스 시 `idle` push · `focused:true` · scs·cs 171 불변 | — | **D-1** (PASS) | run-2 분석 §4 — 이미 포커스된 pane의 완료는 미시험 · release 뒤 레벨 미표본 |
 
 ### 7.2 D2 — 실 CLI 1회 프롬프트 · `[실 CLI — 오너 yes]`
 
@@ -479,18 +576,61 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 | E-2 **edge** | 2단계 타임아웃 · 3단계 `idle` 전이 시 반환 | 다음 전이 대기 — 호출 전 전이 유실 위험(C5류) |
 | E-3 **기타** | `working`에도 반환 · 결과 형식 이상 등 | 원문 기록, 해석 보류 |
 | UNDETERMINED | 4단계 대조군이 즉시 반환·오류 | 판정 없음 |
+| AGENT_NOT_FOUND **(run-1 analysis)** | 어느 `agent.wait`든 `agent_not_found` | 판정 없음 — `agent.wait`는 agent가 나타나길 기다리지 않는다(run 1: 2–106 ms 즉시 오류) |
 
 반복 **2회**. 정리: §2.3(대기 중인 wait 소켓 `destroy()` 포함).
 
+**v2 개정 (run-1 analysis):** run 1은 세 호출 모두 `agent_not_found`로 UNDETERMINED였다(권한 해제). v2는 held pane에서 돈다:
+**E-boot**(신규) = 아무것도 보고하지 않은 감지기 `idle`(B1 상태)에 `agent.wait{… 5000}` — C9 질문 그 자체("기동 `idle`에 즉시
+반환하는가", `bootReturn` = immediate/timeout/other, 판정 코드와 별도 기록). 이어 기존 1–4단계, 각 호출 전 레벨 단언
+(`idle|done` · E-working은 `working`). 오류 코드는 `errorCode`로 보존해 `agent_not_found`를 따로 가른다.
+
 **결과표 (E)**
 
-| 회차 | 단계 | 일시 | 서버 모드 | 호출 시 레벨 | 반환 지연 (ms) | 결과 원문 요약 | G 전→후 (rev / scs / cs) | 생성/닫음 id | 결과 코드 | 비고 |
+| 회차 | 단계 | 일시 | 서버 모드 | 호출 시 레벨 (단언) | 반환 지연 (ms) | 결과 원문 요약 | G 전→후 (rev / scs / cs) | 생성/닫음 id | 결과 코드 | 비고 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | |
+| 1–2 | level/edge/working | run 1 `6c0c3e` | private | (v1 미단언 — not found) | 2–106 | `agent_not_found` | — | — | UNDETERMINED ×2 | run-1 분석 §5 |
+| 1–2 | E-boot | run 2 `dcda61` · 2026-10-23 | private | 기동 `idle`(보고 없음) | 104 / 105 | `agent_status:"idle"`, `completion_seq` 없음 (`bootReturns` immediate ×2) | — | — | (C9 실재) | run-2 분석 §5 |
+| 1–2 | level | run 2 | private | `done` | 101–106 | 즉시 반환 | — | — | | |
+| 1–2 | edge | run 2 | private | `done` | 1 / 106 | `working` 보고(+1008 / +1109) **전에** 반환 — edge 아님 | — | — | | |
+| 1–2 | working | run 2 | private | `working` (scs 179) | 2074 / 2179 (idle 보고 2004 / 2103 뒤 ~70 ms) | `done`, scs = cs (180, 187) — 전체 `agent_info` | — | — | **E-1** (PASS) | level-triggered |
+
+### 8.1 Probe s — `state_change_seq` 의미 · `[herdr 전용]` (run-1 analysis)
+
+**질문:** run 1에서 `state_change_seq`는 서버 전역 단조였다(p2 끝 3 → p3 첫 값 4, 변화마다 +1, 무변화 30 s 동안 불변). 그런데 활성 pane이
+한 번에 하나뿐이어서 **한 pane의 값이 "그 pane의 마지막 변경 시점의 전역 seq(도장)"인지 "현재 전역 카운터"인지**는 미결이었다.
+도장이면 "스냅샷 scs > 프롬프트 뒤 기준값"이 이 pane의 변화를 증명하고, 전역 카운터면 다른 pane이 올려 아무것도 증명하지 못한다.
+
+1. held pane `H1`·`H2`(§2.6). `agent.start` 결과 scs와 첫 `agent.get` scs 기록 — run 1의 `agent.start` = 0은 **미할당이지 reset이 아님**
+   (`knownNonReset`).
+2. 회차마다 `H1`만 바꾼다(`working`↔`blocked`) → 300 ms → `G(H1)`·`G(H2)`; 이어 `H2`만 바꾸고 `H1`을 읽는다. 바뀐 쪽 `dScs > 0`이고
+   안 바꾼 쪽 status 불변일 때: 안 바꾼 쪽 `dScs = 0` → `stamp`, `> 0` → `global`(`otherEqualsChanged`도 기록).
+3. **같은 상태 재보고:** `H1`의 현재 상태를 그대로 다시 `report` → 500 ms → `dScs`(`bump`/`no-bump`) + `H1` 구독의 push(중복 push 여부).
+4. 각 단계 전·후 레벨 단언.
+
+| 결과 | 의미 |
+|---|---|
+| `S-STAMP/…` | pane별 마지막-변경 도장 → 세대 귀속에 "baseline scs보다 큰 스냅샷"을 쓸 수 있다 |
+| `S-GLOBAL/…` | 현재 전역 카운터 → 다른 pane 활동이 값을 올린다 — scs 단독으로 이 pane의 변화를 증명 못 함(`done` 레벨·`working` 관측 필요) |
+| `…/rereport-nobump` · `…/rereport-bump` | 같은 상태 재보고가 seq를 올리지 않음 / 올림(올리면 "seq 증가 = 상태 변화" 등식이 깨짐) |
+| `S-MIXED`·`rereport-mixed`·`LEVEL_LOST` | INCONCLUSIVE — 원 행 보고 |
+
+반복 **2회**(회차당 양방향 2행).
+
+**결과표 (s)**
+
+| 회차 | 일시 | 서버 모드 | 바꾼 pane · 전이 | 바꾼 쪽 dScs | 안 바꾼 쪽 dScs · status 불변 | `otherEqualsChanged` | 재보고 상태 · dScs · push | `agent.start` scs → 첫 get scs | 생성/닫음 id | 결과 코드 | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | run 2 `dcda61` · 2026-10-23 | private | P idle→working | 188→**190** | Q 189 → 189 (`dOther:0`, `otherStatusStable:true`) | — | blocked→blocked ×2 · `dScs:0` · `pushes:[]` | 0 → 188 / 189 (`knownNonReset:true`) | — | **S-STAMP/rereport-nobump** (PASS) | 전역 카운터에서 뽑은 pane별 도장(+2 도약) |
+| 1 | run 2 | private | Q 변경 | 189→**191** | P 190 → 190 | — | (위와 같음) | — | — | (같음) | 4/4 행 `class:"stamp"` |
+| 2 | run 2 | private | (양방향 2행) | > 0 | 0 | — | no-bump | — | — | (같음) | 2/2 회차 일치 |
+
+추가(run 2 D1): 포커스로 인한 `done→idle`은 `idle` **push**를 내지만 scs는 불변(171→171) — push마다 scs가 오르지는 않는다. run 1의
+"내보낸 변화마다 +1"은 보고 원천 변화에만 성립한다.
 
 ## 9. 실행 순서·결과 기록
 
-1. S0 (private 서버 기동 또는 shared 안전 블록 준비 · `ping` 0.9.5/22 확인) → A → C → D1 → E → B1. 전부 `[herdr 전용]` —
+1. S0 (private 서버 기동 또는 shared 안전 블록 준비 · `ping` 0.9.5/22 확인 · held driver 점검 §2.6) → A → C → D1 → E → s → B1. 전부 `[herdr 전용]` —
    오너 승인 없이 아키텍트가 실행 결정 가능(shared면 §2.5 전부 준수).
 2. B2·D2는 `[실 CLI — 오너 yes]` — 승인 문구에 kind 목록과 §5.4 HOME 선택·서버 모드를 함께 받는다. B2 다음 D2(같은 실행에서 B2
    관찰분을 D2 1단계로 재사용 가능).
@@ -509,17 +649,23 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 | D-1…D-4 | §2.2 `done` 범위 제외 전제의 유지·파기, 필요 시 `BootDone` 모델 추가 |
 | G-스냅샷 seq 규칙 · `done`↔`completion_seq` | §1.2 "단조 마커 없음"을 이벤트 한정으로 좁힘 · F2''(seq 정렬 스냅샷) 모델링 가부(PLAN UK-1) |
 | E-1 / E-2 | `agent.wait` 단독 F2' 대체 불가의 근거 형태(level=C9류 / edge=C5류) |
+| s: S-STAMP / S-GLOBAL | 세대 귀속에 `state_change_seq` baseline 비교를 쓸 수 있는가(도장) / 없는가(전역 — `done` 레벨·`working` 관측 필요) |
 
-**하니스 verdict 읽는 법 (`scripts/probe-herdr-status.ts`):**
+**하니스 verdict 읽는 법 (`scripts/probe-herdr-status.ts` v2 — run-1 analysis로 개정):**
 
-| 프로브 | PASS | FAIL | 
-|---|---|---|
-| step0 | 0.9.5/22 · 격리 · push 2건 → 나머지 판정 유효 | `S0-VERSION`/`S0-ISOLATION`/`S0-NOPUSH` → 나머지 SKIPPED/UNDETERMINED |
-| A | A-1 ×reps 일치 + FIFO + 연쇄 + A′ 무폐쇄 → **F1′ drain 전제(`Drain=TRUE`) 성립** | A-2/3/4/5 또는 보조 점검 실패 → F1′는 drain 전제 없이 재설계 |
-| C | C-1 + terminal 대조군 replay → **`Replay=FALSE`**, F2′ 폴링이 필요·replay발 F15/F16 위험 없음 | C-2/C-3 → replay 실재, F2′/F3′에 stale replay 귀속 대책·새 상수 필요 |
-| D1 | `done`이 보고된 작업 종료 뒤에만(또는 0건·종료/해제 시만) → **F3′ `done` 전제 유지**(herdr 원천 한정) | `working` 없는 `done` → F3′ 펜스로 못 막는 가짜 완료 경로 |
-| E | E-1/E-2 일치 → `agent.wait` 단독으로 **F2′ 대체 불가** 확인(형태 확정) | (FAIL 없음 — 미확정은 INCONCLUSIVE) |
-| B1 | herdr 고유 기동 `working` 없음 → F3′ 잔여창은 CLI 의존(B2 필요) | 가짜 바이너리에도 기동 `working` → **`MaxBoot ≥ 1`**, F3′ 펜스 뒤 기동 쌍 실재 |
+공통: `LEVEL_LOST`(held pane에서 단계 직전 레벨 불일치) · `NO_HELD_SUBSTRATE(…)` · `NO_HELD_DRIVER` · `ABORTED_REAL_CLI`(실행 중단)는
+**INCONCLUSIVE이며 herdr 사실의 FAIL이 아니다** — `facts.levelLost`/`facts.heldSubstrate`를 보고 원인을 적는다. `NO_HELD_DRIVER` 자체는
+"herdr-only로 `report_agent` 권한을 유지할 수단 없음"이라는 사실이다(S0 `trials`).
+
+| 프로브 | PASS | FAIL | INCONCLUSIVE (주요) |
+|---|---|---|---|
+| step0 | 0.9.5/22 · 격리 · push 2건 → 나머지 판정 유효. `heldSubstrate.driverAgent`가 있으면 C·D1·E·s 진행 가능 | `S0-VERSION`/`S0-ISOLATION`/`S0-NOPUSH` → 나머지 SKIPPED/UNDETERMINED | `S0-PARTIALPUSH` |
+| A | `A-1` = flowing 교체 ×reps 일치 + FIFO(접미사) + 연쇄(2회) + A′ 무폐쇄 + 미독 꼬리 유실 없음 → **`Drain=TRUE`**. `A-1/bun-pause-loss` = herdr 쪽 drain은 성립, 유실은 Bun pause+end 한정(python 무손실) → **F1′는 "옛 소켓을 pause하지 말고 `end()` 뒤 `end`/`close`까지 소비"로 구현** | `A-2/3/4/5`(flowing) · `A-4/herdr-side-unread-loss`(python도 유실 → herdr가 EOF 시 미독 바이트를 버림 → `Drain=FALSE`) · `A-1/aux-fail` | `LEVEL_LOST` · `MIXED:…` · `A-1/pause-loss-side-unknown`(python 미결) |
+| C | `C-1` = 비-idle 레벨 유지 상태의 늦은 구독 2창 모두 0건 + S2·S3 liveness → **`Replay=FALSE`** | `C-2`(backlog) · `C-3`(최신값 1건) → replay 실재, 새 상수/stale replay 대책 | `LEVEL_LOST` · `C-MIXED(…)` · 회차 불일치 |
+| D1 | `D-1`/`D-2`/`D-4` + 모든 `done`이 보고된 작업 종료 뒤 → **F3′ `done` 전제 유지**. `doneSummary`로 레벨 지속·`completion_seq` 유무를 따로 적는다 | `…/done-without-work-end` → F3′ 펜스로 못 막는 가짜 완료 경로 | `LEVEL_LOST`(`idle` 보고 때 `working`이 이미 사라짐 — run 1의 D-4 산물 차단) · `NO_HELD_*` |
+| E | `E-1`/`E-2` 일치 → `agent.wait` 단독 **F2′ 대체 불가** 확인(형태 확정). `bootReturns`(immediate면 C9 실재)는 별도 기록 | (FAIL 없음) | `AGENT_NOT_FOUND` · `LEVEL_LOST` · `E-3…` |
+| s | `S-STAMP` 또는 `S-GLOBAL` × `rereport-bump`/`rereport-nobump` 일치 → seq 의미 확정 | (FAIL 없음) | `S-MIXED`·`rereport-mixed`·`LEVEL_LOST` |
+| B1 | herdr 고유 기동 `working` 없음 → F3′ 잔여창은 CLI 의존(B2 필요) | 가짜 바이너리에도 기동 `working` → **`MaxBoot ≥ 1`**, F3′ 펜스 뒤 기동 쌍 실재 | `ABORTED_REAL_CLI` · `NOT_APPLICABLE` |
 
 ## 10. 이 설계의 미확인 전제 (S0에서 먼저 깨질 수 있는 것)
 
@@ -530,7 +676,58 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 - 0.9.5 / protocol 22에서 `pane.report_agent`가 0.7.4처럼 push를 만드는가 — A·C·D1·E 전부의 바탕. S0에 `report_agent` → push 확인이
   있고, 실패하면 A·C·D1·E 모두 `UNDETERMINED`.
 - 쉘 pane(에이전트 미감지)에서 `agent.get{target:pane_id}`가 `report_agent` 뒤 `AgentInfo`를 돌려주는가 — 아니면 G-스냅샷은
-  `pane.list` 레벨값만 남고 seq 관찰(TLA (e))은 B·D2 한정.
+  `pane.list` 레벨값만 남고 seq 관찰(TLA (e))은 B·D2 한정. **(run-1 analysis) 실측:** 돌려주지만 권한이 0.1–1 s 안에 풀린 뒤엔
+  `agent target … not found` — v2는 held pane(§2.6)으로 옮겼다.
+- **(run-1 analysis)** held pane에서 `report_agent{agent:<kind>|bash}`가 2 s 이상 레벨을 유지하는가 — 미실측(v2 S0 driver 점검이
+  답한다). 유지 수단이 없으면 C·D1·E·s는 `NO_HELD_DRIVER`로 끝나고, 남은 질문은 B2·D2 범위로 넘어간다.
 - 감지 이벤트 구독 type = `pane.agent_detected`로 **확정**(17:3856-3867 / 22:4169-4180, 전역 구독 — `pane_id` 필터 없음).
 - shared 모드에서 `workspace.create{focus:false}`가 사용자 포커스를 바꾸지 않는가 — S0에서 생성 전후 `pane.list`의 `focused` 대조로 확인,
   바뀌면 shared 중단.
+
+## 11. herdr 0.9.5 facts (measured, private server) — run 2 (`dcda61`, 2026-10-23) 기준
+
+범위: private 서버 · protocol 22 · **`report_agent` 원천 status**(held fake-agent pane). 감지기 원천(실 CLI)은 B2·D2가 답한다.
+run 1(`6c0c3e`)은 쉘 pane 권한 해제 때문에 A·C·D1·E가 하니스 전제 산물이었고, 아래 표에는 run 1 중 herdr 사실로 남는 것만
+"(+run 1)"로 합쳤다. M = 로그 실측, I = 추론. 원자료 = run-2 분석 §7(H1–H13).
+
+| # | 사실 | 증거 (회차 수 · 로그 필드) | M/I | 설계 결과 |
+|---|---|---|---|---|
+| H1 | 클라이언트 EOF → 서버 FIN+close 0–1 ms. EOF 뒤엔 아무것도 쓰지 않는다 | 20 교체 · `eofToEndMs` 0–1 · `postEofOnOld:0` (+run 1 15/15, 0–3 ms) | M | half-close가 유일한 구독 해제 수단으로 즉시 동작 — A-2/A-3 배제 |
+| H2 | EOF 전에 쓴 바이트는 half-close 뒤에도 클라이언트가 읽을 수 있다(herdr가 버리지 않음) | python (c) `bytesAfterEof:254`(= 꼬리 2건) ×5 · 1.5 s linger 뒤 `recv` | M | herdr 쪽 `Drain = TRUE` |
+| H3 | Bun은 pause된 소켓의 미독 버퍼를 peer FIN에 잃는다 | (b) `bytesRead` 576 pause·EOF·resume 불변 · `oldSeq:[]` ×5 · `end`/`close` 0–1 ms | M(증상) / I(원인) | Bun 브리지는 옛 소켓을 pause하지 않는다. flowing 중 EOF 시점 in-flight 바이트는 **미측정** |
+| H4 | 겹친 구독은 같은 순서를 받는다. 오래된 쪽이 1–14 ms 먼저. 30 s 유휴 무폐쇄 | `fifo.equal` 5/5 · A′ 5/5 (`serverClosedIdle:false`) | M ("항상 먼저"는 I) | make-before-break 성립 |
+| H5 | 등록 ≈ ACK. ACK 전 push는 관측된 적 없음. ACK 뒤 publish는 항상 새 구독자에게 도착 | `push-after-ack` ×5 · run 1: SUB_TX~ACK 사이 publish가 옛 소켓에만 | M (+run 1) | SUB_TX→ACK 창의 publish는 새 소켓이 잃을 수 있다 → 이벤트로 그 창을 메우지 않는다 |
+| H6 | 늦은 구독자에게 replay 없음 — backlog·최신값·`pane_closed` 모두 | C 2/2 (`seq:[]`, `class:"none"`, `gapTransitionReplayed:false`) + run 1 | M | `Replay = FALSE`(report_agent 원천). 놓친 전이는 스냅샷으로만 복구 |
+| H7 | `state_change_seq` = 전역 단조 카운터에서 뽑은 **pane별 마지막-변경 도장**. 같은 상태 재보고·포커스 해제는 올리지 않는다. `agent.start`의 0 = 미할당 | s 4/4 행 + 2/2 회차 (`dOther:0`, +2 도약) · `dScs:0` 재보고 · D1 포커스 171→171 · `knownNonReset:true` | M | baseline 비교(`scs > b`)가 **이 pane의** 변화를 증명한다. 0을 reset으로 읽지 않는다 |
+| H8 | 비포커스 pane의 working→idle은 레벨 `done`으로 publish되고 다음 보고까지 유지. `completion_seq` = 그 변화의 scs, 작업 중 `null`, 포커스 해제 뒤에도 유지 | D1 7/7 (`persistedInAgentGet:7`, `completionSeqPresent:7`, `doneLevelMs` ≈5.3–5.4 s) | M | 폴 사이에 끝난 작업도 레벨+cs로 잡힌다 |
+| H9 | `done`은 working→idle **간선마다** — 중간 idle 포함 | D1 재진입 `doneAtIntermediateIdle:true` (cs 167 → 169) | M | 중간 idle이 가짜 완료가 될 수 있다(실 CLI는 D2) |
+| H10 | `done` 중 포커스 → `idle` push, scs 불변 | D1 포커스 (`focused:true`, scs·cs 171) | M | push가 scs 변화와 대응하지 않을 수 있다 — 이벤트는 깨우기 전용 |
+| H11 | `agent.wait`는 level-triggered. 기동 idle에 즉시 반환. 반환값 = `agent_info` 스냅샷 | E 2/2 (`bootReturns` immediate ×2, edge 호출도 즉시) | M | `agent.wait` 단독 완료 판정 불가(C9 실재). cs 펜스와 묶으면 블로킹 폴로 쓸 수 있다 |
+| H12 | 보고한 `agent` = 감지된 kind면 권한 유지, 쉘 pane의 `bash`는 ≤ 1 s에 해제(`unknown` / not found) | run 2 `LEVEL_LOST` 0 · `unknown` push 0 (held) · step0 bash 쉘 pane `unknown` 2건 · run 1 전반 | M | `agent_not_found`/`unknown` = 권한 없음, 판정 근거로 쓰지 않음 |
+| H13 | push 봉투에 seq 없음. `agent.get`은 받은 push보다 뒤처진 적 없음. 모든 RPC가 ~100 ms 틱 위 | freshness 5/5 `scsAdvanced:true` · RPC 타이밍(run 1·2) | M (소표본) | `LatencyBound`에 홉당 ~100 ms. RPC를 이어 ≤ 50 ms 창은 못 만든다 |
+
+### 11.1 실행 세대 완료 규칙 (후보 — 설계 아님)
+
+- **baseline `b`** = 기동이 안정된 뒤 · inject **직전**에 읽은 `agent.get(P)`의 `completion_seq`/`state_change_seq`(H7).
+- **완료** = `agent_status ∈ {done, idle} ∧ completion_seq > b`. 폴 사이에 작업이 통째로 끝나도(H8), 포커스 해제 뒤에도(H10) 성립.
+  이전 실행의 stale `done`은 `cs ≤ b`로, 기동 idle은 `cs = null`로 거부된다(H11의 C9를 펜스가 막음).
+- `scs == b`가 `LatencyBound` 뒤에도 그대로 = 전달 증거 없음(재-inject 후보). `agent_not_found`/`unknown` = **권한 없음** — 폴 계속, 판정 금지(H12).
+- 이벤트는 깨우기 전용(H6·H10·H13).
+- **열린 설계 질문 — protocol 17:** `completion_seq`는 **protocol 22 전용**(22:6564-6572)이고 17에는 `state_change_seq`만 있다(17:6034-6039).
+  Loom은 {17, 22}를 지원하므로 17에서의 완료 펜스(예: `scs > b ∧ status ∈ {done, idle}` + working 관측 요구)를 따로 정해야 한다 —
+  17의 scs가 도장인지도 미측정.
+- 규칙의 미결 위험: (i) H9 중간 idle이 `cs > b`를 만든다 · (ii) 이미 포커스된 pane의 완료가 cs를 채우는가(herdr-only 시험 가능) ·
+  (iii) 감지기 원천 상태가 cs/scs를 같은 방식으로 채우는가.
+
+### 11.2 B2·D2에 남은 것 (실 CLI — 오너 yes)
+
+- 기동 `working`/`done`이 `interactive_ready` 전·후에 오는가(MaxBoot), 그리고 기동 전이가 baseline **뒤**에 떨어질 수 있는가.
+- 감지기 원천 권한이 실행 중·종료 시 떨어지는가(`unknown`/`agent_not_found`).
+- 도구 대기 등 중간 idle과 그때의 `done`(H9) vs 실제 작업 종료.
+- 감지기 원천 완료의 `completion_seq`/scs 동작.
+- 같은 pane에서 감지기 원천 vs 보고 원천 충돌.
+- 감지기 원천 status의 replay(B2 중 같은 pane 재구독).
+- 프롬프트 → 첫 `working` 지연 vs `LatencyBound`(100 ms 틱·`agent_prompt_stalled` 포함).
+
+herdr-only 후속(오너 yes 불요): A 동률 술어 수정 뒤 재실행(수정 완료, 미실행) · Bun flowing in-flight 꼬리 변형 · 이미 포커스된 pane의
+완료 · `release_agent` 뒤 `agent.get` 레벨 · herdr pane 밖에서 실행.

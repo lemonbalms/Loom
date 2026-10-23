@@ -1,12 +1,17 @@
 /**
- * HERDR-STATUS-PROBES harness — `[herdr 전용]` probes only (Step 0 · A · B1 · C · D1 · E).
+ * HERDR-STATUS-PROBES harness — `[herdr 전용]` probes only (Step 0 · A · B1 · C · D1 · E · s).
  *
  * Design SSOT: docs/spikes/HERDR-STATUS-PROBES.md §2 (form · isolation · cleanup · G-snapshots ·
  * shared safety block). Target herdr 0.9.5 / protocol 22; method names/params from
  * docs/spikes/fixtures/herdr-v0.9.5/schema.json.
  *
+ * v2 (run-1 analysis): herdr drops a `report_agent` claim on a plain shell pane within ~0.1–1 s, so
+ * A·C·D1·E·s run on "held" panes — fake-agent panes started with `agent.start` (PATH fake binary) —
+ * driven by the report_agent `agent` name Step 0 found to persist (§2.6). Every step asserts the
+ * expected level with `G(P)` first; a mismatch is recorded as `LEVEL_LOST` (INCONCLUSIVE, never FAIL).
+ *
  * Usage (repo root, OUTSIDE any herdr pane; not concurrently with worker test suites):
- *   bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e|all]
+ *   bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e,s|all]
  *                                         [--timeout-ms N] [--reps N] [--dry-run] [--help]
  *
  * B2 / D2 (`[실 CLI — 오너 yes]`) are NOT implemented: `--probe b2|d2`, `--real-cli`, `--kind`
@@ -19,7 +24,7 @@
  * `T/summary.json`; stdout = `T=<path>` + one JSON summary line per probe. T is never deleted.
  * Exit: 0 = ran (no FAIL) · 1 = some probe FAIL or run aborted · 2 = usage / refused.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
@@ -39,7 +44,7 @@ import { join, resolve, sep } from "node:path";
 // ─── types · tiny helpers ────────────────────────────────────────────────────
 
 type Rec = Record<string, unknown>;
-type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e";
+type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e" | "s";
 type ServerMode = "private" | "shared";
 type Verdict = "PASS" | "FAIL" | "INCONCLUSIVE" | "SKIPPED";
 type AgentState = "idle" | "working" | "blocked" | "unknown";
@@ -50,9 +55,9 @@ const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const now = (): number => Date.now();
 
-/** §9 execution order: S0 → A → C → D1 → E → B1. */
-const ALL_PROBES: ProbeName[] = ["step0", "a", "c", "d1", "e", "b1"];
-const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2 };
+/** §9 execution order: S0 → A → C → D1 → E → s → B1. */
+const ALL_PROBES: ProbeName[] = ["step0", "a", "c", "d1", "e", "s", "b1"];
+const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2, s: 2 };
 const EXPECTED_VERSION = "0.9.5";
 const EXPECTED_PROTOCOL = 22;
 const REAL_CLI_REFUSAL = "requires owner yes; not implemented";
@@ -78,11 +83,13 @@ const USAGE = `probe-herdr-status — HERDR-STATUS-PROBES [herdr 전용] harness
   --server private|shared   private (default): own herdr server under a temp dir (§2.2).
                             shared: the user's herdr ($LOOM_HERDR_SOCKET or ~/.config/herdr/herdr.sock)
                             under the §2.5 safety block (dedicated workspace, focus:false, no server control,
-                            B1 and D1 step 4 skipped).
-  --probe LIST              comma list of step0,a,b1,c,d1,e (alias s0) or "all" (default all).
-                            step0 always runs first — every other probe depends on it.
+                            B1 and D1 step 4 skipped; no held panes → C/D1/E/s INCONCLUSIVE,
+                            A on plain shell panes).
+  --probe LIST              comma list of step0,a,b1,c,d1,e,s (alias s0) or "all" (default all).
+                            step0 always runs first — every other probe depends on it (incl. the
+                            held-pane driver check, private only).
   --timeout-ms N            RPC / events.subscribe ACK timeout in ms (default 15000).
-  --reps N                  override per-probe repetitions (doc defaults: a=5 c=2 e=2 step0=b1=d1=1).
+  --reps N                  override per-probe repetitions (doc defaults: a=5 c=2 e=2 s=2 step0=b1=d1=1).
   --dry-run                 parse args and print the planned RPC sequence per probe; no herdr contact.
   --help                    this text.
 
@@ -157,7 +164,7 @@ export function parseArgs(argv: string[]): ParseResult {
             for (const q of ALL_PROBES) out.add(q);
           } else if (p === "s0" || p === "step0") {
             out.add("step0");
-          } else if (p === "a" || p === "b1" || p === "c" || p === "d1" || p === "e") {
+          } else if (p === "a" || p === "b1" || p === "c" || p === "d1" || p === "e" || p === "s") {
             out.add(p);
           } else {
             return bad(`unknown probe: ${p}`);
@@ -176,12 +183,18 @@ export function parseArgs(argv: string[]): ParseResult {
 function plannedSequence(p: ProbeName, mode: ServerMode, reps: number): string[] {
   const subL = 'events.subscribe{[pane.agent_status_changed{pane_id:P}, pane.closed, pane.exited]}';
   const rep = (s: string) => `${s}  (×${reps})`;
+  const held =
+    mode === "private"
+      ? "held pane H = tab.create{env:{PATH:T/fakebin:…}} → agent.start{kind:<fake kind>} → process_info = T/fakebin → agent.get until interactive_ready ∧ idle"
+      : "shared: no held panes (§2.5-4) →";
+  const lvl = "before every step: G(P) must show the expected level, else that step = LEVEL_LOST (INCONCLUSIVE)";
   switch (p) {
     case "step0":
       return [
         mode === "private"
           ? "spawn: env -i PATH=T/fakebin:/usr/bin:/bin HOME=T/home HERDR_SOCKET_PATH=T/herdr.sock herdr server (detached)"
           : "socket: $LOOM_HERDR_SOCKET or ~/.config/herdr/herdr.sock (shared — §2.5)",
+        "probe env: inherited HERDR_* (and LOOM_*) keys stripped before any herdr contact; names recorded (facts.herdrEnvStripped)",
         "ping{} → require version 0.9.5 · protocol 22 (else abort)",
         "pane.list{} → PROTECTED (+ focused set)",
         "workspace.create{focus:false, label:hsprobe-<run>, cwd:T} (shared: focused set must be unchanged)",
@@ -191,19 +204,27 @@ function plannedSequence(p: ProbeName, mode: ServerMode, reps: number): string[]
         "pane.report_agent{P0, source:hsprobe-s0, agent:bash, state:working, seq} → push ≤2 s → G (fresh?)",
         "pane.report_agent{… idle} → push → G",
         "close P0 (pane.close / tab.close)",
+        mode === "private"
+          ? `held-pane driver check: ${held}`
+          : "held-pane driver check SKIPPED(shared) — §2.5-4",
+        "  for agent in [<fake kind>, bash]: report_agent{H, agent, working} → agent.get every 25 ms for 2 s (all working?) → report idle → 1 s (idle|done held?)",
+        "  first agent whose working AND idle levels hold = driver (facts.heldSubstrate); none → C/D1/E/s INCONCLUSIVE(NO_HELD_DRIVER)",
       ];
     case "a":
       return [
-        rep("tab.create → P"),
+        rep(mode === "private" ? held : "tab.create → P (plain shell — no held panes in shared)"),
+        lvl,
         `S1 = ${subL} ACK → report(working) → S1 push (post-ACK registration + liveness)`,
-        "S2 = events.subscribe (no await) + report(idle) before ACK → push position on S2 vs ACK; S2 ACK",
-        "report(working) → S1 & S2 both (overlap) → report idle,working,idle back-to-back → FIFO equal",
-        "S1.pause() → report(blocked), report(working) → S2 sees both → S1.end() [t_eof] (unread tail)",
-        "report(idle) → +500 ms report(blocked) (post-EOF) → +1 s S1.resume() → observe ≤30 s 'end'/'close'",
+        "S2 = events.subscribe (no await) + report(idle) before ACK → first P status push on S2: before/after ACK or missed",
+        "report(working) → S1 & S2 both (overlap) → report idle,working,idle back-to-back → FIFO: S2 sequence = suffix of S1's since S2 open",
+        "(a) h1 S1→S2 flowing: tail blocked,working → S2 saw tail → S1.end() [t_eof] → post idle,blocked → 'end'/'close' ≤30 s",
         "S2 still live after S1 EOF: report(idle) → S2",
-        "chain: S3 ACK (overlap S2) → handover S2 (pause+tail+end) → S4 ACK → handover S3 (≥2 re-subscribes)",
+        "(a) h2 S2→S3 flowing (2nd re-subscribe; chainOk = h1 ∧ h2)",
+        "(b) h3 S3→S4 paused: S3.pause() → tail → S4 saw tail → +300 ms S3.end() → post → +1 s resume()",
+        "(c) h4 python3 -I raw AF_UNIX client (T/py/, stdlib socket) → subscribe ACK → stop reading → tail → S4 saw tail → shutdown(SHUT_WR) → post → 1.5 s → recv to EOF",
+        "per handover: old sequence must equal the control's prefix up to t_eof (herdr-inserted unknown/done tolerated) · post-EOF count",
         "variant A′ (new pane): S1 ACK → liveness → 30 s nothing → still open? report → S1",
-        "G(P) before/after every step; close P",
+        "close P",
       ];
     case "b1":
       if (mode === "shared") return ["SKIPPED(shared) — §2.5-4: private Step-0 fake-binary check required first"];
@@ -218,34 +239,50 @@ function plannedSequence(p: ProbeName, mode: ServerMode, reps: number): string[]
         "  close P",
       ];
     case "c":
+      if (mode === "shared") return ["INCONCLUSIVE(NO_HELD_SUBSTRATE) — needs held panes (private only)"];
       return [
-        rep("tab.create → P"),
-        `S1 = ${subL} → gate report working,idle,working,idle @1.2 s → S1 ≥1 push`,
-        "S1.destroy() → 1 s → S2 = subscribe → 20 s: P status pushes (count/order/ACK position)",
-        "liveness report(working) → S2",
-        "S2.destroy() → report(idle) with 0 subscribers → G · pane.list → 1 s → S3 → 20 s",
-        "control: tab.create → Q → pane.close{Q} → S4 = events.subscribe{[pane.closed]} → 10 s: Q replayed?",
-        "classify per window: none / latest-only / backlog; close P",
+        rep(held),
+        lvl,
+        `S1 = ${subL} → gate report working,idle,working,blocked @1.2 s → S1 ≥1 push · level held = blocked`,
+        "G(P)=blocked → S1.destroy() → 1 s → G(P)=blocked → S2 = subscribe → 20 s: P status pushes (count/order/ACK position)",
+        "liveness report(working) → S2 (control)",
+        "S2.destroy() → report(blocked) with 0 subscribers → G(P)=blocked → S3 = subscribe at once (gap→SUB_TX ms) → 20 s",
+        "liveness report(working) → S3 (control)",
+        "fact only (not a control — 0.9.5 does not replay it): tab.create → Q → pane.close{Q} → S4{[pane.closed]} → 10 s",
+        "classify per window: none / latest-only (1 push = held level) / backlog; close P",
       ];
     case "d1":
+      if (mode === "shared") return ["INCONCLUSIVE(NO_HELD_SUBSTRATE) — needs held panes (private only)"];
       return [
-        "tab.create → P · subscribe L + global pane.agent_detected",
-        "for working duration 0.2 s / 5 s / 30 s: G → report(working) → wait → report(idle) [real end] → 5 s → G",
+        held,
+        lvl,
+        "subscribe L + global pane.agent_detected",
+        "for working duration 0.2 s / 5 s / 30 s: G=idle|done → report(working) → wait → G=working (held at idle report?) → report(idle) → agent.get every 25 ms for 2 s → 3 s → G",
         "mid-run re-entry: working → 1 s → idle → 300 ms → working → 1 s → idle → 5 s (done at intermediate idle?)",
-        mode === "private"
-          ? "pane.focus{P} → 3 s → G; tab.create → P2, pane.focus{P2} → rerun 1 s working→idle on P"
-          : "step 4 (focus) SKIPPED(shared) — §2.5-3",
-        "pane.release_agent{P, source:hsprobe-d1, agent:bash} → 3 s (final_status?)",
-        "pane.close{P} → 3 s; done↔real-end and done↔completion_seq tables",
+        "pane.focus{H} after an unfocused work end (done present?) → agent.get 25 ms for 3 s; tab.create → P2, pane.focus{P2} → rerun 1 s working→idle on H",
+        "pane.release_agent{H, source:hsprobe-d1, agent:<driver>} → 3 s (final_status?)",
+        "pane.close{H} → 3 s; per done push: after what · persisted in agent.get (ms) · completion_seq present",
       ];
     case "e":
+      if (mode === "shared") return ["INCONCLUSIVE(NO_HELD_SUBSTRATE) — needs held panes (private only)"];
       return [
-        rep("tab.create → P"),
-        "report(working) → 1 s → report(idle) → 2 s → G (level idle)",
-        "E-level: agent.wait{target:P, until:[idle,done], timeout_ms:5000} on its own socket → return time",
+        rep(held),
+        lvl,
+        "E-boot: G=idle (boot) → agent.wait{target:H, until:[idle,done], timeout_ms:5000} (C9: immediate on boot idle?)",
+        "report(working) → 1 s → report(idle) → 2 s → G=idle|done",
+        "E-level: agent.wait{… timeout_ms:5000} on its own socket → return time",
         "E-edge: agent.wait{… timeout_ms:10000} → +1 s report(working) → +2 s report(idle) → return time",
-        "E-working: report(working) → agent.wait{… 5000} → +2 s report(idle) → return time (control)",
-        "close P",
+        "E-working: report(working) → G=working → agent.wait{… 5000} → +2 s report(idle) → return time (control)",
+        "any agent_not_found → code AGENT_NOT_FOUND (INCONCLUSIVE); close H",
+      ];
+    case "s":
+      if (mode === "shared") return ["INCONCLUSIVE(NO_HELD_SUBSTRATE) — needs held panes (private only)"];
+      return [
+        "two held panes H1, H2 (agent.start result state_change_seq recorded — 0 there is a known non-reset)",
+        lvl,
+        rep("change H1 only (report next state) → 300 ms → G(H1), G(H2): H2 scs unchanged = per-pane stamp · H2 scs rose = global counter; then the same with H2 changed"),
+        rep("re-report H1's current state (same status) → 500 ms → G(H1) dScs (bump?) + pushes on a H1 subscription (dedup?)"),
+        "close H1, H2",
       ];
   }
 }
@@ -278,6 +315,23 @@ interface Ctx {
   pushOk: boolean;
   seq: Map<string, number>;
   sinks: Set<Sink>;
+  /** report_agent `agent` name per pane (default "bash"); held panes use the Step-0 driver. */
+  paneAgent: Map<string, string>;
+  /** Panes started with agent.start on a fake binary whose level is asserted before each step. */
+  heldPanes: Set<string>;
+  held: HeldInfo | null;
+  herdrEnvStripped: string[];
+  children: Set<ChildProcess>;
+}
+
+/** Step-0 held-substrate result (§2.6): fake kind + the report_agent agent name whose levels persist. */
+interface HeldInfo {
+  available: boolean;
+  reason?: string;
+  kind: string | null;
+  driverAgent: string | null;
+  trials: Rec[];
+  pane?: HeldPane;
 }
 
 interface ProbeRun {
@@ -482,12 +536,13 @@ async function tryCall(
   method: string,
   params: Rec = {},
   timeoutMs?: number,
-): Promise<{ ok: true; result: Rec; t: number } | { ok: false; error: string; t: number }> {
+): Promise<{ ok: true; result: Rec; t: number } | { ok: false; error: string; code: string | null; t: number }> {
   try {
     const result = await call(ctx, probe, method, params, timeoutMs);
     return { ok: true, result, t: now() };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e), t: now() };
+    const code = e instanceof RpcError ? e.code : null;
+    return { ok: false, error: e instanceof Error ? e.message : String(e), code, t: now() };
   }
 }
 
@@ -715,6 +770,35 @@ async function waitClosed(s: Sink, ms: number): Promise<void> {
   while (s.closeAt === null && now() < until) await sleep(50);
 }
 
+/** A reported state as seen on the wire: herdr may publish a reported `idle` as `done` (run-1 analysis §4). */
+const seenAs = (reported: string, seen: string): boolean => seen === reported || (reported === "idle" && seen === "done");
+
+/** `reported` occurs in order inside `seen` (herdr-inserted `unknown`/`done` between them tolerated). */
+function isSubseq(reported: readonly string[], seen: readonly string[]): boolean {
+  let i = 0;
+  for (const s of seen) {
+    const r = reported[i];
+    if (r !== undefined && seenAs(r, s)) i++;
+  }
+  return i === reported.length;
+}
+
+function commonPrefix(a: readonly string[], b: readonly string[]): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
+/** Poll until `want` is a subsequence of the sink's P statuses from push index `base` on. */
+async function waitSeq(s: Sink, P: string, base: number, want: readonly string[], ms: number): Promise<boolean> {
+  const until = now() + ms;
+  while (now() < until) {
+    if (isSubseq(want, statusSeq(s, P, (p) => s.pushes.indexOf(p) >= base))) return true;
+    await sleep(20);
+  }
+  return isSubseq(want, statusSeq(s, P, (p) => s.pushes.indexOf(p) >= base));
+}
+
 // ─── herdr object helpers ────────────────────────────────────────────────────
 
 async function report(ctx: Ctx, pr: ProbeRun, P: string, state: AgentState): Promise<number> {
@@ -723,11 +807,78 @@ async function report(ctx: Ctx, pr: ProbeRun, P: string, state: AgentState): Pro
   await call(ctx, pr.name, "pane.report_agent", {
     pane_id: P,
     source: `hsprobe-${pr.name}`,
-    agent: "bash",
+    agent: ctx.paneAgent.get(P) ?? "bash",
     state,
     seq,
   });
   return now();
+}
+
+/** Levels a step may legitimately find after reporting `state` (`idle` may be published as `done`). */
+const levelsFor = (state: string): string[] => (state === "idle" ? ["idle", "done"] : [state]);
+
+/**
+ * Before-step level assertion (run-1 analysis §0). On held panes `G(P)` must show one of `want`;
+ * otherwise the step is recorded as LEVEL_LOST (facts.levelLost) and the caller marks it so — never
+ * FAIL. Non-held (shell) panes are not asserted (returns true; facts.levelChecksSkipped counts them).
+ */
+async function expectLevel(ctx: Ctx, pr: ProbeRun, P: string, want: readonly string[], step: string): Promise<boolean> {
+  if (!ctx.heldPanes.has(P)) {
+    pr.facts.levelChecksSkipped = Number(pr.facts.levelChecksSkipped ?? 0) + 1;
+    return true;
+  }
+  const g = await G(ctx, pr, P, `level:${step}`);
+  if (g.agent_status !== null && want.includes(g.agent_status)) return true;
+  const row = { step, pane: P, want, got: g.agent_status, error: g.error ?? null, t: g.t };
+  ev(ctx, pr.name, "LEVEL_LOST", row);
+  pushFact(pr, "levelLost", row);
+  return false;
+}
+
+const levelLostCount = (pr: ProbeRun): number => (Array.isArray(pr.facts.levelLost) ? pr.facts.levelLost.length : 0);
+
+interface LevelSample {
+  t: number;
+  status: string | null;
+  scs: number | null;
+  cs: number | null;
+  error?: string;
+}
+
+/** agent.get every `everyMs` for `ms` (logged as LEVEL_SAMPLE; not added to facts.gSnapshots). */
+async function sampleLevels(ctx: Ctx, pr: ProbeRun, P: string, ms: number, everyMs = 25): Promise<LevelSample[]> {
+  const out: LevelSample[] = [];
+  const until = now() + ms;
+  while (now() < until) {
+    const r = await tryCall(ctx, pr.name, "agent.get", { target: P });
+    const a = r.ok ? rec(r.result.agent) : {};
+    const s: LevelSample = r.ok
+      ? { t: r.t, status: str(a.agent_status), scs: num(a.state_change_seq), cs: num(a.completion_seq) }
+      : { t: r.t, status: null, scs: null, cs: null, error: r.error };
+    out.push(s);
+    ev(ctx, pr.name, "LEVEL_SAMPLE", { pane: P, ...s });
+    await sleep(everyMs);
+  }
+  return out;
+}
+
+/** Run-length view of samples: [{status, fromMs, toMs, n, scs, cs}] relative to `t0`. */
+function compressSamples(samples: LevelSample[], t0: number): Rec[] {
+  const runs: Rec[] = [];
+  let cur: Rec | null = null;
+  for (const s of samples) {
+    const key = s.status ?? `error:${s.error ?? "?"}`;
+    if (cur && cur.status === key) {
+      cur.toMs = s.t - t0;
+      cur.n = Number(cur.n) + 1;
+      cur.scsLast = s.scs;
+      cur.csLast = s.cs;
+    } else {
+      cur = { status: key, fromMs: s.t - t0, toMs: s.t - t0, n: 1, scs: s.scs, cs: s.cs, scsLast: s.scs, csLast: s.cs };
+      runs.push(cur);
+    }
+  }
+  return runs;
 }
 
 function pushFact(pr: ProbeRun, key: string, item: unknown): void {
@@ -851,6 +1002,151 @@ async function scratchPane(ctx: Ctx, pr: ProbeRun, tag: string, extraEnv: Rec = 
   ctx.owned.panes.add(paneId);
   pr.created.panes.push({ id: paneId, t });
   return paneId;
+}
+
+/** First fake kind present in server.agent_manifests with no absolute command path outside T (B1 rule). */
+function pickFakeKind(ctx: Ctx): string | null {
+  if (!ctx.manifests) return null;
+  const json = JSON.stringify(ctx.manifests);
+  for (const k of FAKE_KINDS) {
+    if (!json.includes(`"${k}"`)) continue;
+    if (manifestAbsPaths(ctx.manifests, k).some((p) => !isUnder(p, ctx.T))) continue;
+    return k;
+  }
+  return null;
+}
+
+/** pane.process_info poll ≤3 s: "fake" (cmdline under T/fakebin) · "real-or-other" · "unknown". */
+async function resolveFake(ctx: Ctx, pr: ProbeRun, P: string, kind: string): Promise<{ resolved: string; info: Rec | null }> {
+  const fakebin = join(ctx.T, "fakebin");
+  const until = now() + 3000;
+  while (now() < until) {
+    const pi = await tryCall(ctx, pr.name, "pane.process_info", { pane_id: P });
+    const j = pi.ok ? JSON.stringify(pi.result) : "";
+    if (j.includes(fakebin)) return { resolved: "fake", info: pi.ok ? pi.result : null };
+    if (j.includes(kind)) return { resolved: "real-or-other", info: pi.ok ? pi.result : null };
+    await sleep(200);
+  }
+  return { resolved: "unknown", info: null };
+}
+
+interface HeldPane {
+  P: string;
+  kind: string;
+  /** state_change_seq in the agent.start result (run 1: 0 = unassigned, not a reset). */
+  startScs: number | null;
+  startToReadyMs: number | null;
+  bootStatus: string | null;
+}
+
+/**
+ * Held pane (§2.6): fake-agent pane via agent.start on the PATH fake binary — the run-1 B1 substrate
+ * whose detector-held `idle` stayed stable for 30 s. Waits for interactive_ready ∧ idle (≤12 s). A real
+ * CLI resolution closes the pane and throws ABORTED_REAL_CLI (the run stops).
+ */
+async function heldPane(ctx: Ctx, pr: ProbeRun, tag: string, kindIn?: string): Promise<HeldPane> {
+  const kind = kindIn ?? ctx.held?.kind ?? null;
+  if (!kind) throw new Error("NO_HELD_SUBSTRATE: no fake kind available");
+  const fakebin = join(ctx.T, "fakebin");
+  const P = await scratchPane(ctx, pr, tag, { PATH: `${fakebin}:/usr/bin:/bin` });
+  const tStart = now();
+  const st = await tryCall(
+    ctx,
+    pr.name,
+    "agent.start",
+    { name: `hsprobe-${pr.name}-${tag}-${kind}-${ctx.run}`, kind, pane_id: P, timeout_ms: 10_000 },
+    ctx.timeoutMs + 10_000,
+  );
+  const res = await resolveFake(ctx, pr, P, kind);
+  if (res.resolved === "real-or-other") {
+    await closePane(ctx, pr, P);
+    throw new Error(`ABORTED_REAL_CLI: ${kind} did not resolve to T/fakebin on ${P}`);
+  }
+  if (!st.ok || res.resolved !== "fake") {
+    await closePane(ctx, pr, P);
+    throw new Error(`NO_HELD_SUBSTRATE: agent.start ${kind} ${st.ok ? "ok" : st.error} · resolved=${res.resolved}`);
+  }
+  const sa = rec(rec(st.result).agent ?? st.result);
+  let readyAt: number | null = null;
+  let bootStatus: string | null = null;
+  const until = now() + 12_000;
+  while (now() < until) {
+    const r = await tryCall(ctx, pr.name, "agent.get", { target: P });
+    const a = r.ok ? rec(r.result.agent) : {};
+    bootStatus = str(a.agent_status);
+    if (a.interactive_ready === true && bootStatus === "idle") {
+      readyAt = now();
+      break;
+    }
+    await sleep(25);
+  }
+  ctx.heldPanes.add(P);
+  const h: HeldPane = {
+    P,
+    kind,
+    startScs: num(sa.state_change_seq),
+    startToReadyMs: readyAt ? readyAt - tStart : null,
+    bootStatus,
+  };
+  if (ctx.held?.driverAgent) ctx.paneAgent.set(P, ctx.held.driverAgent);
+  ev(ctx, pr.name, "HELD_PANE", h);
+  pushFact(pr, "heldPanes", h);
+  return h;
+}
+
+/** Shared mode or no fake kind / driver → the probe cannot assert levels (INCONCLUSIVE, not FAIL). */
+function heldUnavailable(ctx: Ctx, needDriver: boolean): Outcome | null {
+  if (!ctx.held?.available) return { verdict: "INCONCLUSIVE", code: `NO_HELD_SUBSTRATE(${ctx.held?.reason ?? "unknown"})` };
+  if (needDriver && !ctx.held.driverAgent) return { verdict: "INCONCLUSIVE", code: "NO_HELD_DRIVER" };
+  return null;
+}
+
+/**
+ * Step-0 driver check (§2.6): on one held pane, try report_agent `agent` = fake kind, then `bash`.
+ * Held = every agent.get sample in 2 s shows `working`, then `idle|done` for 1 s after the idle report.
+ */
+async function discoverDriver(ctx: Ctx, pr: ProbeRun): Promise<HeldInfo> {
+  if (ctx.mode !== "private") return { available: false, reason: "shared §2.5-4", kind: null, driverAgent: null, trials: [] };
+  const kind = pickFakeKind(ctx);
+  if (!kind) return { available: false, reason: "no fake kind in agent_manifests", kind: null, driverAgent: null, trials: [] };
+  const info: HeldInfo = { available: false, kind, driverAgent: null, trials: [] };
+  let h: HeldPane;
+  try {
+    h = await heldPane(ctx, pr, "drv", kind);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.startsWith("ABORTED_REAL_CLI")) throw e;
+    info.reason = msg;
+    return info;
+  }
+  info.available = true;
+  info.pane = h;
+  for (const agent of [kind, "bash"]) {
+    ctx.paneAgent.set(h.P, agent);
+    const trial: Rec = { agent };
+    info.trials.push(trial);
+    const tW = now();
+    try {
+      await report(ctx, pr, h.P, "working");
+    } catch (e) {
+      trial.reportError = e instanceof Error ? e.message : String(e);
+      continue;
+    }
+    const sw = await sampleLevels(ctx, pr, h.P, 2000);
+    trial.working = compressSamples(sw, tW);
+    trial.workingHeld = sw.length > 0 && sw.every((s) => s.status === "working");
+    const tI = now();
+    await report(ctx, pr, h.P, "idle");
+    const si = await sampleLevels(ctx, pr, h.P, 1000);
+    trial.idle = compressSamples(si, tI);
+    trial.idleHeld = si.length > 0 && si.every((s) => s.status === "idle" || s.status === "done");
+    if (trial.workingHeld === true && trial.idleHeld === true) {
+      info.driverAgent = agent;
+      break;
+    }
+    await sleep(1500);
+  }
+  return info;
 }
 
 async function closePane(ctx: Ctx, pr: ProbeRun, P: string): Promise<void> {
@@ -1091,6 +1387,15 @@ async function probeStep0(ctx: Ctx, pr: ProbeRun, s: Setup): Promise<Outcome> {
   pr.facts.gDiffs = [gDiff(g0, g1), gDiff(g1, g2)];
   pr.facts.subscriberAckMs = S.ackAt ? S.ackAt - S.openedAt : null;
   ctx.pushOk = Boolean(pW && pI);
+  pr.facts.herdrEnvStripped = ctx.herdrEnvStripped;
+  // §2.6 held substrate: decides whether A/C/D1/E/s can assert levels (does not change the S0 verdict).
+  if (ctx.pushOk) {
+    progress("step0 held-pane driver check");
+    ctx.held = await discoverDriver(ctx, pr);
+  } else {
+    ctx.held = { available: false, reason: "S0 push path incomplete", kind: null, driverAgent: null, trials: [] };
+  }
+  pr.facts.heldSubstrate = ctx.held;
   if (!pW && !pI) return { verdict: "FAIL", code: "S0-NOPUSH" };
   if (!ctx.pushOk) return { verdict: "INCONCLUSIVE", code: "S0-PARTIALPUSH" };
   return { verdict: "PASS", code: "S0-OK" };
@@ -1128,13 +1433,52 @@ function manifestAbsPaths(root: unknown, kind: string): string[] {
   return [...found];
 }
 
-/** One handover old → new: pause old, two tail transitions, EOF while unread, resume later. */
+/**
+ * Classify one handover (doc §4 table; run-1 analysis fixes). The control socket saw every herdr
+ * emission in order, herdr-inserted `unknown`/`done` included; `ctlTailN` = control pushes that had
+ * arrived when the old socket sent EOF (arrival index, not ms — run-2 analysis §1 same-ms tie).
+ * The old socket's sequence must be a prefix of the control's: tail delivered = first `ctlTailN` equal.
+ * `postEofRaw` = old-socket pushes carrying the sink's own `afterEof` flag (Bun); null → derive (Python).
+ */
+function judgeHandover(
+  oldSeq: string[],
+  ctlSeq: string[],
+  ctlTailN: number,
+  fin: boolean,
+  control: boolean,
+  postEofRaw: number | null,
+): Rec {
+  const lcp = commonPrefix(oldSeq, ctlSeq);
+  const tailDelivered = ctlTailN > 0 && lcp >= ctlTailN;
+  const postEofOnOld = postEofRaw ?? oldSeq.length - Math.min(ctlTailN, lcp);
+  const code = !control
+    ? "UNDETERMINED"
+    : tailDelivered && fin && postEofOnOld === 0
+      ? "A-1"
+      : fin && !tailDelivered
+        ? "A-4"
+        : postEofOnOld > 0 && !fin
+          ? "A-3"
+          : postEofOnOld === 0 && !fin
+            ? "A-2"
+            : "A-OTHER";
+  return { tailDelivered, postEofOnOld, orderOk: lcp === oldSeq.length, code };
+}
+
+type HandoverMode = "flow" | "pause";
+
+/**
+ * One Bun handover old → new. `flow` (variant a): old keeps reading, `end()` right after the control saw
+ * the tail. `pause` (variant b, run-1 M5 form): old paused before the tail, `end()` +300 ms, resume 1 s
+ * after the post-EOF transitions.
+ */
 async function handover(
   ctx: Ctx,
   pr: ProbeRun,
   P: string,
   oldS: Sink,
   newS: Sink,
+  mode: HandoverMode,
   tail: [AgentState, AgentState],
   post: [AgentState, AgentState],
 ): Promise<Rec> {
@@ -1142,12 +1486,13 @@ async function handover(
   const newBase = newS.pushes.length;
   const gA = await G(ctx, pr, P, `${oldS.name}->${newS.name}:before-tail`);
   const bytesAtPause = oldS.bytesRead();
-  oldS.pause();
+  if (mode === "pause") oldS.pause();
   await report(ctx, pr, P, tail[0]);
   await report(ctx, pr, P, tail[1]);
-  const ctl = await newS.waitFor(statusIs(P, tail[1]), 2000, newBase);
-  await sleep(300);
+  const ctl = await waitSeq(newS, P, newBase, tail, 2000);
+  if (mode === "pause") await sleep(300);
   const bytesAtEof = oldS.bytesRead();
+  const ctlEofIdx = newS.pushes.length;
   oldS.end();
   const tEof = oldS.eofAt ?? now();
   await report(ctx, pr, P, post[0]);
@@ -1155,48 +1500,249 @@ async function handover(
   await report(ctx, pr, P, post[1]);
   await sleep(1000);
   const bytesBeforeResume = oldS.bytesRead();
-  oldS.resume();
+  if (mode === "pause") oldS.resume();
   await waitClosed(oldS, 30_000);
   await sleep(oldS.closeAt === null ? 0 : 500);
+  await waitSeq(newS, P, newBase, [...tail, ...post], 2000);
   const gB = await G(ctx, pr, P, `${oldS.name}->${newS.name}:after-post`);
-  const oldSeq = statusSeq(oldS, P, (p) => oldS.pushes.indexOf(p) >= oldBase);
-  const newSeq = statusSeq(newS, P, (p) => newS.pushes.indexOf(p) >= newBase);
-  const tailDelivered = oldSeq[0] === tail[0] && oldSeq[1] === tail[1];
-  const postOnOld = oldSeq.slice(2).length;
-  const row: Rec = {
+  const oldPushes = oldS.pushes.slice(oldBase).filter(statusOf(P));
+  const oldSeq = oldPushes.map((p) => p.status ?? "");
+  const ctlPushes = newS.pushes.slice(newBase).filter(statusOf(P));
+  const ctlSeq = ctlPushes.map((p) => p.status ?? "");
+  // arrival index at end() (single-threaded: exact); the ms comparison is kept as a record only
+  const ctlTailN = newS.pushes.slice(newBase, ctlEofIdx).filter(statusOf(P)).length;
+  const ctlTailNByMs = ctlPushes.filter((p) => p.t < tEof).length;
+  const postEofRaw = oldPushes.filter((p) => p.afterEof).length;
+  const fin = oldS.endAt !== null;
+  return {
+    variant: mode,
     old: oldS.name,
     new: newS.name,
     tail,
     post,
-    controlSawTail: Boolean(ctl),
-    oldSeqAfterPause: oldSeq,
-    newSeq,
-    tailDelivered,
-    postEofOnOld: postOnOld,
+    controlSawTail: ctl,
+    oldSeq,
+    ctlSeq,
+    ctlTailN,
+    ctlTailNByMs,
+    ...judgeHandover(oldSeq, ctlSeq, ctlTailN, fin, ctl, postEofRaw),
     eofToEndMs: oldS.endAt ? oldS.endAt - tEof : null,
     eofToCloseMs: oldS.closeAt ? oldS.closeAt - tEof : null,
     oldErrors: oldS.errors,
     bytesReadAtPause: bytesAtPause,
     bytesReadAtEof: bytesAtEof,
     bytesReadBeforeResume: bytesBeforeResume,
-    // > 0 → the runtime pulled tail bytes into the process while paused: the tail was unread by the
-    // application but no longer sitting in the kernel buffer (record, do not over-claim).
+    // pause variant: > 0 → the runtime pulled tail bytes into the process while paused (record only).
     bytesReadWhilePaused: bytesBeforeResume - bytesAtPause,
     gDiff: gDiff(gA, gB),
-    transitions: 4,
   };
-  return row;
+}
+
+const PY_CLIENT = "hsprobe_halfclose.py";
+
+/**
+ * Variant (c) raw-socket client — Python 3 stdlib `socket` only, run as `python3 -I`. Sends exactly one
+ * `events.subscribe` (read-only; no other method), reads until its ACK, then stops reading. On a stdin
+ * line it half-closes (SHUT_WR) with the tail unread, sleeps, then reads to EOF and prints one RESULT.
+ */
+const PY_SOURCE = `# hsprobe variant (c) — written by scripts/probe-herdr-status.ts; stdlib only, read-only subscribe
+import json, socket, sys, time
+
+def ms():
+    return int(time.time() * 1000)
+
+def out(obj):
+    sys.stdout.write(json.dumps(obj) + "\\n")
+    sys.stdout.flush()
+
+def lines(data):
+    msgs = []
+    for raw in data.split(b"\\n"):
+        if raw.strip():
+            try:
+                msgs.append(json.loads(raw))
+            except ValueError:
+                msgs.append({"malformed": raw.decode("utf-8", "replace")})
+    return msgs
+
+path, subs, req_id, linger = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3], float(sys.argv[4])
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(30)
+s.connect(path)
+s.sendall((json.dumps({"id": req_id, "method": "events.subscribe", "params": {"subscriptions": subs}}) + "\\n").encode())
+buf = b""
+pre = []
+ack_at = None
+while ack_at is None:
+    chunk = s.recv(65536)
+    if not chunk:
+        break
+    buf += chunk
+    while b"\\n" in buf and ack_at is None:
+        raw, buf = buf.split(b"\\n", 1)
+        if not raw.strip():
+            continue
+        try:
+            msg = json.loads(raw)
+        except ValueError:
+            continue
+        if msg.get("id") == req_id and "event" not in msg:
+            ack_at = ms()
+        else:
+            pre.append(msg)
+pre.extend(lines(buf.rsplit(b"\\n", 1)[0]) if b"\\n" in buf else [])
+buf = buf.rsplit(b"\\n", 1)[1] if b"\\n" in buf else buf
+out({"kind": "ACK", "t": ack_at, "preAck": len(pre)})
+sys.stdin.readline()
+s.shutdown(socket.SHUT_WR)
+eof_at = ms()
+out({"kind": "EOF_TX", "t": eof_at})
+time.sleep(linger)
+data = buf
+end_at = None
+err = None
+try:
+    while True:
+        chunk = s.recv(65536)
+        if not chunk:
+            end_at = ms()
+            break
+        data += chunk
+except Exception as e:
+    err = repr(e)
+s.close()
+out({"kind": "RESULT", "ackAt": ack_at, "eofAt": eof_at, "endAt": end_at, "error": err,
+     "bytesAfterEof": len(data), "afterEof": lines(data)})
+`;
+
+function writePyClient(ctx: Ctx): string {
+  const dir = join(ctx.T, "py");
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, PY_CLIENT);
+  writeFileSync(p, PY_SOURCE);
+  return p;
+}
+
+/** Variant (c): same half-close + unread-tail test from a Python raw AF_UNIX client (Bun vs herdr loss). */
+async function handoverPy(
+  ctx: Ctx,
+  pr: ProbeRun,
+  P: string,
+  newS: Sink,
+  tail: [AgentState, AgentState],
+  post: [AgentState, AgentState],
+): Promise<Rec> {
+  const py = Bun.which("python3");
+  if (!py) return { variant: "python", code: "UNAVAILABLE", error: "python3 not on PATH" };
+  const id = nextId();
+  const child = spawn(py, ["-I", join(ctx.T, "py", PY_CLIENT), ctx.sock, JSON.stringify(subL(P)), id, "1.5"], {
+    cwd: join(ctx.T, "py"),
+    env: { PATH: "/usr/bin:/bin", HOME: ctx.home, LOOM_TEST_HOME: ctx.T },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  ctx.children.add(child);
+  const got: Rec[] = [];
+  const buf = { text: "" };
+  let stderr = "";
+  let exited: Rec | null = null;
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (c: string) => {
+    buf.text += c;
+    parseNdjsonLines(
+      buf,
+      (m) => {
+        got.push(m);
+        ev(ctx, pr.name, "PY_LINE", { kind: m.kind, t: m.t ?? null, preAck: m.preAck ?? null, endAt: m.endAt ?? null });
+      },
+      (l) => ev(ctx, pr.name, "MALFORMED_LINE", { py: true, l }),
+    );
+  });
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (c: string) => {
+    stderr += c;
+  });
+  child.on("exit", (code, signal) => {
+    exited = { code, signal };
+  });
+  const waitKind = async (kind: string, ms: number): Promise<Rec | null> => {
+    const until = now() + ms;
+    while (now() < until) {
+      const m = got.find((x) => x.kind === kind);
+      if (m) return m;
+      if (exited) return null;
+      await sleep(20);
+    }
+    return null;
+  };
+  const stop = (): void => {
+    if (!exited) child.kill("SIGTERM");
+  };
+  const ack = await waitKind("ACK", ctx.timeoutMs);
+  if (!ack || ack.t === null) {
+    stop();
+    return { variant: "python", code: "ERROR", error: "no ACK", exited, stderr: stderr.slice(0, 2000) };
+  }
+  const newBase = newS.pushes.length;
+  await report(ctx, pr, P, tail[0]);
+  await report(ctx, pr, P, tail[1]);
+  const ctl = await waitSeq(newS, P, newBase, tail, 2000);
+  await sleep(300);
+  // the client reads nothing between ACK and EOF, so no per-push afterEof flag exists: use arrival index
+  const ctlEofIdx = newS.pushes.length;
+  child.stdin.write("EOF\n");
+  const eofLine = await waitKind("EOF_TX", 5000);
+  const tEof = now();
+  await report(ctx, pr, P, post[0]);
+  await sleep(500);
+  await report(ctx, pr, P, post[1]);
+  const result = await waitKind("RESULT", 40_000);
+  stop();
+  await waitSeq(newS, P, newBase, [...tail, ...post], 2000);
+  if (!result) return { variant: "python", code: "ERROR", error: "no RESULT", exited, stderr: stderr.slice(0, 2000) };
+  const msgs = (Array.isArray(result.afterEof) ? result.afterEof : []).map(rec);
+  const oldSeq = msgs
+    .filter((m) => (str(m.event) ?? "").includes("agent_status") && pushPaneId(m) === P)
+    .map((m) => str(rec(m.data).agent_status) ?? "");
+  const ctlPushes = newS.pushes.slice(newBase).filter(statusOf(P));
+  const ctlSeq = ctlPushes.map((p) => p.status ?? "");
+  const ctlTailN = newS.pushes.slice(newBase, ctlEofIdx).filter(statusOf(P)).length;
+  const ctlTailNByMs = ctlPushes.filter((p) => p.t < tEof).length;
+  const endAt = num(result.endAt);
+  const eofAt = num(result.eofAt) ?? num(eofLine?.t);
+  return {
+    variant: "python",
+    tail,
+    post,
+    controlSawTail: ctl,
+    oldSeq,
+    ctlSeq,
+    ctlTailN,
+    ctlTailNByMs,
+    ...judgeHandover(oldSeq, ctlSeq, ctlTailN, endAt !== null, ctl, null),
+    preAck: ack.preAck ?? null,
+    eofToEndMs: endAt !== null && eofAt !== null ? endAt - eofAt : null,
+    bytesAfterEof: result.bytesAfterEof ?? null,
+    pyError: result.error ?? null,
+    stderr: stderr.slice(0, 2000),
+  };
 }
 
 async function probeA(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
+  const useHeld = Boolean(ctx.held?.available && ctx.held.driverAgent);
+  pr.facts.substrate = useHeld
+    ? `held:${ctx.held?.kind}/agent=${ctx.held?.driverAgent}`
+    : "shell (no held driver — levels not asserted; herdr may insert unknown/release)";
+  const newPane = async (tag: string): Promise<string> => (useHeld ? (await heldPane(ctx, pr, tag)).P : scratchPane(ctx, pr, tag));
   const runs: Rec[] = [];
   const primes: Rec[] = [];
   for (let r = 1; r <= reps; r++) {
     progress(`A rep ${r}/${reps}`);
-    const P = await scratchPane(ctx, pr, `r${r}`);
+    const P = await newPane(`r${r}`);
     const row: Rec = { rep: r, pane: P };
     runs.push(row);
+    const lost0 = levelLostCount(pr);
     const g0 = await G(ctx, pr, P, `a${r}:start`);
+    await expectLevel(ctx, pr, P, ["idle"], `a${r}:boot`);
     // 1–2: S1 + post-ACK registration / liveness
     const S1 = await subscribe(ctx, pr, `a${r}.S1`, subL(P));
     await report(ctx, pr, P, "working");
@@ -1208,14 +1754,18 @@ async function probeA(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
       await closePane(ctx, pr, P);
       continue;
     }
-    // 3: S2 opened, transition fired before its ACK (registration-vs-ACK order)
+    await expectLevel(ctx, pr, P, ["working"], `a${r}:before-registration`);
+    // 3: S2 opened, transition fired before its ACK — first P status push on S2 (any value: herdr may
+    // publish the reported idle as done)
     const S2 = openSub(ctx, pr, `a${r}.S2`, subL(P));
     await sleep(5);
     await report(ctx, pr, P, "idle");
     await S2.ack;
     await sleep(1500);
-    const preAck = S2.pushes.find(statusIs(P, "idle"));
-    row.registrationVsAck = preAck ? (preAck.beforeAck ? "push-before-ack" : "push-after-ack") : "missed";
+    const first = S2.pushes.find(statusOf(P));
+    row.registrationVsAck = first ? (first.beforeAck ? "push-before-ack" : "push-after-ack") : "missed";
+    row.registrationFirstStatus = first?.status ?? null;
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `a${r}:before-overlap`);
     const s1Base = S1.pushes.length;
     const s2Base = S2.pushes.length;
     await report(ctx, pr, P, "working");
@@ -1223,72 +1773,68 @@ async function probeA(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
     const o2 = await S2.waitFor(statusIs(P, "working"), 2000, s2Base);
     row.overlapBoth = Boolean(o1 && o2);
     row.overlapS1 = Boolean(o1);
-    // FIFO: back-to-back transitions, both sockets must see the same order
-    const f1 = S1.pushes.length;
-    const f2 = S2.pushes.length;
+    // FIFO over the full overlap window: S2 (opened later) must be a suffix of S1's sequence since S2 open
     await report(ctx, pr, P, "idle");
     await report(ctx, pr, P, "working");
     await report(ctx, pr, P, "idle");
     await sleep(1500);
-    const fifo1 = statusSeq(S1, P, (p) => S1.pushes.indexOf(p) >= f1);
-    const fifo2 = statusSeq(S2, P, (p) => S2.pushes.indexOf(p) >= f2);
-    row.fifo = { S1: fifo1, S2: fifo2, equal: JSON.stringify(fifo1) === JSON.stringify(fifo2) };
+    const fifo1 = S1.pushes.filter((p) => statusOf(P)(p) && p.t >= S2.openedAt).map((p) => p.status ?? "");
+    const fifo2 = statusSeq(S2, P);
+    const suffix = fifo2.length > 0 && fifo2.length <= fifo1.length && fifo1.slice(fifo1.length - fifo2.length).join() === fifo2.join();
+    row.fifo = { S1: fifo1, S2: fifo2, equal: suffix, rule: "S2 = suffix of S1 since S2 open" };
     if (!o1) {
       row.code = "A-5";
       await closePane(ctx, pr, P);
       continue;
     }
-    // 4–6: unread tail on S1 → EOF → post-EOF transitions → resume
-    const h1 = await handover(ctx, pr, P, S1, S2, ["blocked", "working"], ["idle", "blocked"]);
-    row.handover1 = h1;
-    // EOF handling: S2 unaffected by S1 EOF
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `a${r}:before-h1`);
+    // (a) flowing variant, twice (≥2 re-subscribes): S1→S2, S2→S3
+    const h1 = await handover(ctx, pr, P, S1, S2, "flow", ["blocked", "working"], ["idle", "blocked"]);
+    await expectLevel(ctx, pr, P, ["blocked"], `a${r}:after-h1`);
     const s2b = S2.pushes.length;
     await report(ctx, pr, P, "idle");
-    row.s2AliveAfterS1Eof = Boolean(await S2.waitFor(statusIs(P, "idle"), 2000, s2b));
-    // ≥2 re-subscribe chain: S2→S3, S3→S4
+    row.s2AliveAfterS1Eof = await waitSeq(S2, P, s2b, ["idle"], 2000);
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `a${r}:before-h2`);
     const S3 = await subscribe(ctx, pr, `a${r}.S3`, subL(P));
-    const h2 = await handover(ctx, pr, P, S2, S3, ["working", "blocked"], ["idle", "working"]);
+    const h2 = await handover(ctx, pr, P, S2, S3, "flow", ["working", "blocked"], ["idle", "working"]);
+    await expectLevel(ctx, pr, P, ["working"], `a${r}:before-h3`);
+    // (b) paused + end() (run-1 form): S3→S4
     const S4 = await subscribe(ctx, pr, `a${r}.S4`, subL(P));
-    const h3 = await handover(ctx, pr, P, S3, S4, ["idle", "blocked"], ["working", "idle"]);
-    row.chain = [h2, h3];
-    row.chainOk = [h2, h3].every((h) => h.tailDelivered === true && h.postEofOnOld === 0 && h.controlSawTail === true);
+    const h3 = await handover(ctx, pr, P, S3, S4, "pause", ["idle", "blocked"], ["working", "idle"]);
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `a${r}:before-h4`);
+    // (c) python raw-socket client, S4 = control
+    const h4 = await handoverPy(ctx, pr, P, S4, ["working", "blocked"], ["idle", "working"]);
     S4.destroy();
+    row.handovers = { h1, h2, h3, h4 };
+    row.codeFlow = [h1.code, h2.code];
+    row.codePaused = h3.code;
+    row.codePython = h4.code;
+    row.chainOk = h1.code === "A-1" && h2.code === "A-1";
     row.gStartEnd = gDiff(g0, await G(ctx, pr, P, `a${r}:end`));
-    // classify on the first handover (doc §4 table)
-    const control = h1.controlSawTail === true;
-    const fin = h1.eofToEndMs !== null;
-    const tailOk = h1.tailDelivered === true;
-    const post = Number(h1.postEofOnOld);
-    row.code = !control
-      ? "UNDETERMINED"
-      : tailOk && fin && post === 0
-        ? "A-1"
-        : fin && !tailOk
-          ? "A-4"
-          : post > 0 && !fin
-            ? "A-3"
-            : post === 0 && !fin
-              ? "A-2"
-              : "A-OTHER";
+    row.levelLost = levelLostCount(pr) - lost0;
+    row.code = Number(row.levelLost) > 0 ? "LEVEL_LOST" : String(h1.code);
     await closePane(ctx, pr, P);
   }
   // A′: idle subscription — does the server close it on its own?
   for (let r = 1; r <= reps; r++) {
     progress(`A′ rep ${r}/${reps}`);
-    const P = await scratchPane(ctx, pr, `prime${r}`);
+    const P = await newPane(`prime${r}`);
+    const lost0 = levelLostCount(pr);
     const S = await subscribe(ctx, pr, `a′${r}.S1`, subL(P));
     await report(ctx, pr, P, "working");
     const live = await S.waitFor(statusIs(P, "working"), 2000);
     await sleep(30_000);
+    await expectLevel(ctx, pr, P, ["working"], `a′${r}:after-30s`);
     const base = S.pushes.length;
     await report(ctx, pr, P, "idle");
-    const still = await S.waitFor(statusIs(P, "idle"), 2000, base);
+    const still = await waitSeq(S, P, base, ["idle"], 2000);
     primes.push({
       rep: r,
       pane: P,
       liveness: Boolean(live),
       serverClosedIdle: S.closeAt !== null || S.endAt !== null,
-      stillDelivering: Boolean(still),
+      stillDelivering: still,
+      levelLost: levelLostCount(pr) - lost0,
     });
     S.destroy();
     await closePane(ctx, pr, P);
@@ -1305,12 +1851,35 @@ async function probeA(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
   pr.facts.chainOk = chainOk;
   pr.facts.primeOk = primeOk;
   pr.facts.registrationVsAck = runs.map((x) => x.registrationVsAck);
+  // unread-tail loss side: paused Bun (b) vs python raw client (c)
+  const paused = runs.map((x) => String(x.codePaused ?? "n/a"));
+  const pyc = runs.map((x) => String(x.codePython ?? "n/a"));
+  const pyDecided = pyc.every((c) => c === "A-1" || c === "A-4");
+  const lossSide = pyc.includes("A-4")
+    ? "herdr-side"
+    : paused.includes("A-4")
+      ? pyDecided
+        ? "bun-runtime"
+        : "unknown"
+      : "none";
+  pr.facts.pausedCodes = paused;
+  pr.facts.pythonCodes = pyc;
+  pr.facts.unreadTailLossSide = lossSide;
+  if (codes.includes("LEVEL_LOST") || primes.some((x) => Number(x.levelLost) > 0)) {
+    return { verdict: "INCONCLUSIVE", code: "LEVEL_LOST" };
+  }
   if (!consistent || codes.includes("UNDETERMINED") || codes.includes("A-OTHER")) {
     return { verdict: "INCONCLUSIVE", code: consistent ? (codes[0] ?? "NONE") : `MIXED:${codes.join(",")}` };
   }
-  if (codes[0] === "A-1" && fifoOk && chainOk && primeOk) return { verdict: "PASS", code: "A-1" };
-  if (codes[0] === "A-1") return { verdict: "FAIL", code: "A-1/aux-fail" };
-  return { verdict: "FAIL", code: codes[0] ?? "NONE" };
+  // A-OTHER on an aux handover (h2) is as undecided as on h1 — not a FAIL through chainOk (run-2 §1)
+  if (runs.some((x) => Array.isArray(x.codeFlow) && x.codeFlow.includes("A-OTHER"))) {
+    return { verdict: "INCONCLUSIVE", code: "A-OTHER/aux" };
+  }
+  if (codes[0] !== "A-1") return { verdict: "FAIL", code: codes[0] ?? "NONE" };
+  if (lossSide === "herdr-side") return { verdict: "FAIL", code: "A-4/herdr-side-unread-loss" };
+  if (!(fifoOk && chainOk && primeOk)) return { verdict: "FAIL", code: "A-1/aux-fail" };
+  if (lossSide === "unknown") return { verdict: "INCONCLUSIVE", code: "A-1/pause-loss-side-unknown" };
+  return { verdict: "PASS", code: lossSide === "bun-runtime" ? "A-1/bun-pause-loss" : "A-1" };
 }
 
 type WindowClass = "none" | "latest-only" | "backlog";
@@ -1320,19 +1889,38 @@ function classifyWindow(seq: string[]): WindowClass {
   return seq.length === 1 ? "latest-only" : "backlog";
 }
 
+/**
+ * Probe C v2 (run-1 analysis §3): held pane, a persistent non-idle level (`blocked`) asserted right
+ * before each late subscribe, so "no replay" (0 pushes) and "latest-only replay" (1 push = blocked)
+ * are distinguishable. Control = liveness on S2 and S3 (0.9.5 does not replay `pane_closed`; that
+ * check is kept as a fact only).
+ */
 async function probeC(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
+  const na = heldUnavailable(ctx, true);
+  if (na) return na;
   const runs: Rec[] = [];
+  const HELD: AgentState = "blocked";
+  const windowOf = (S: Sink, P: string, level: string): Rec => {
+    const w = S.pushes.filter(statusOf(P));
+    const seq = w.map((p) => p.status ?? "");
+    return {
+      seq,
+      positions: w.map((p) => (p.beforeAck ? "before-ack" : "after-ack")),
+      class: classifyWindow(seq),
+      heldLevel: level,
+      latestEqualsHeld: seq.length === 1 ? seq[0] === level : null,
+    };
+  };
   for (let r = 1; r <= reps; r++) {
     progress(`C rep ${r}/${reps}`);
-    const P = await scratchPane(ctx, pr, `r${r}`);
+    const P = (await heldPane(ctx, pr, `r${r}`)).P;
     const row: Rec = { rep: r, pane: P };
     runs.push(row);
+    const lost0 = levelLostCount(pr);
     const g0 = await G(ctx, pr, P, `c${r}:start`);
     const S1 = await subscribe(ctx, pr, `c${r}.S1`, subL(P));
-    const history: string[] = [];
-    for (const st of ["working", "idle", "working", "idle"] as const) {
+    for (const st of ["working", "idle", "working", HELD] as const) {
       await report(ctx, pr, P, st);
-      history.push(st);
       await sleep(1200);
     }
     row.gatePushes = statusSeq(S1, P).length;
@@ -1341,81 +1929,93 @@ async function probeC(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
       await closePane(ctx, pr, P);
       continue;
     }
+    await expectLevel(ctx, pr, P, [HELD], `c${r}:gate-end`);
     S1.destroy();
     await sleep(1000);
+    const okS2 = await expectLevel(ctx, pr, P, [HELD], `c${r}:before-S2`);
+    const tLvl2 = now();
     const S2 = openSub(ctx, pr, `c${r}.S2`, subL(P));
     await S2.ack;
     await sleep(20_000);
-    const w3 = S2.pushes.filter(statusOf(P));
-    row.window3 = {
-      seq: w3.map((p) => p.status),
-      positions: w3.map((p) => (p.beforeAck ? "before-ack" : "after-ack")),
-      class: classifyWindow(w3.map((p) => p.status ?? "")),
-      latestLevel: history[history.length - 1],
-    };
+    row.window3 = { ...windowOf(S2, P, HELD), levelAsserted: okS2, levelToSubTxMs: S2.openedAt - tLvl2 };
     const lb = S2.pushes.length;
     await report(ctx, pr, P, "working");
     row.liveness = Boolean(await S2.waitFor(statusIs(P, "working"), 2000, lb));
     S2.destroy();
     await sleep(200);
+    // C-gap: transition with zero subscribers, then subscribe at once
     const gGap0 = await G(ctx, pr, P, `c${r}:gap-before`);
-    await report(ctx, pr, P, "idle");
-    const gGap1 = await G(ctx, pr, P, `c${r}:gap-after`);
+    const tGap = await report(ctx, pr, P, HELD);
+    const okS3 = await expectLevel(ctx, pr, P, [HELD], `c${r}:gap-after`);
+    const S3 = openSub(ctx, pr, `c${r}.S3`, subL(P));
+    row.gapToSubTxMs = S3.openedAt - tGap;
+    await S3.ack;
+    const gGap1 = await G(ctx, pr, P, `c${r}:gap-after-ack`);
     row.gapG = gDiff(gGap0, gGap1);
     row.gapPaneList = await paneLevel(ctx, pr, P);
-    await sleep(1000);
-    const S3 = openSub(ctx, pr, `c${r}.S3`, subL(P));
-    await S3.ack;
     await sleep(20_000);
-    const w5 = S3.pushes.filter(statusOf(P));
     row.window5 = {
-      seq: w5.map((p) => p.status),
-      positions: w5.map((p) => (p.beforeAck ? "before-ack" : "after-ack")),
-      class: classifyWindow(w5.map((p) => p.status ?? "")),
-      gapIdleReplayed: w5.some((p) => p.status === "idle"),
+      ...windowOf(S3, P, HELD),
+      levelAsserted: okS3,
+      gapTransitionReplayed: S3.pushes.some(statusIs(P, HELD)),
     };
+    const lb3 = S3.pushes.length;
+    await report(ctx, pr, P, "working");
+    row.liveness3 = Boolean(await S3.waitFor(statusIs(P, "working"), 2000, lb3));
     S3.destroy();
-    // terminal replay control
+    // terminal replay — recorded fact only (run 1: 0.9.5 does not replay pane_closed, 2/2)
     const Q = await scratchPane(ctx, pr, `q${r}`);
     await closePane(ctx, pr, Q);
     await sleep(500);
     const S4 = openSub(ctx, pr, `c${r}.S4`, [{ type: "pane.closed" }]);
     await S4.ack;
     const qp = await S4.waitFor((p) => p.paneId === Q && p.event.includes("closed"), 10_000);
-    row.terminalReplayControl = qp ? { replayed: true, event: qp.event, beforeAck: qp.beforeAck } : { replayed: false };
+    row.terminalReplayFact = qp ? { replayed: true, event: qp.event, beforeAck: qp.beforeAck } : { replayed: false };
     S4.destroy();
     row.paneListEnd = await paneLevel(ctx, pr, P);
     row.gStartEnd = gDiff(g0, await G(ctx, pr, P, `c${r}:end`));
-    const c3 = String(rec(row.window3).class);
-    const c5 = String(rec(row.window5).class);
-    row.code = !row.liveness
-      ? "UNDETERMINED"
-      : c3 === "none" && c5 === "none"
-        ? "C-1"
-        : c3 === "backlog"
-          ? "C-2"
-          : "C-3";
-    const pos = [...(rec(row.window3).positions as string[]), ...(rec(row.window5).positions as string[])];
+    row.levelLost = levelLostCount(pr) - lost0;
+    const w3 = rec(row.window3);
+    const w5 = rec(row.window5);
+    const cls = (w: Rec): string =>
+      w.class === "none" ? "none" : w.class === "backlog" ? "backlog" : w.latestEqualsHeld === true ? "latest-only" : "other";
+    const c3 = cls(w3);
+    const c5 = cls(w5);
+    row.code =
+      !okS2 || !okS3
+        ? "LEVEL_LOST"
+        : !row.liveness || !row.liveness3
+          ? "UNDETERMINED"
+          : c3 === "none" && c5 === "none"
+            ? "C-1"
+            : c3 === "backlog" || c5 === "backlog"
+              ? "C-2"
+              : c3 === "latest-only" && c5 === "latest-only"
+                ? "C-3"
+                : `C-MIXED(${c3},${c5})`;
+    const pos = [...(w3.positions as string[]), ...(w5.positions as string[])];
     row.ackPosition = pos.length === 0 ? "n/a" : pos.every((x) => x === pos[0]) ? pos[0] : "mixed";
     await closePane(ctx, pr, P);
   }
   pr.facts.runs = runs;
   pr.facts.otherSubscribersPossible = ctx.mode === "shared";
-  pr.facts.sourceScope = "report_agent-sourced status only (detector-sourced replay = B2 scope)";
+  pr.facts.sourceScope = `report_agent-sourced status on a held ${ctx.held?.kind} pane (agent=${ctx.held?.driverAgent}); detector-sourced replay = B2 scope`;
+  pr.facts.terminalReplayFacts = runs.map((x) => x.terminalReplayFact ?? null);
   const codes = runs.map((x) => String(x.code));
   pr.facts.codes = codes;
   pr.facts.ackPositions = runs.map((x) => x.ackPosition);
-  if (codes.includes("UNDETERMINED") || !codes.every((c) => c === codes[0])) {
+  if (codes.includes("LEVEL_LOST")) return { verdict: "INCONCLUSIVE", code: "LEVEL_LOST" };
+  if (codes.includes("UNDETERMINED") || !codes.every((c) => c === codes[0]) || codes[0]?.startsWith("C-MIXED")) {
     return { verdict: "INCONCLUSIVE", code: codes.join(",") };
   }
-  const control = runs.every((x) => rec(x.terminalReplayControl).replayed === true);
-  pr.facts.terminalControlReplayed = control;
-  if (codes[0] === "C-1") return control ? { verdict: "PASS", code: "C-1" } : { verdict: "INCONCLUSIVE", code: "C-1/no-control" };
+  if (codes[0] === "C-1") return { verdict: "PASS", code: "C-1" };
   return { verdict: "FAIL", code: codes[0] ?? "NONE" };
 }
 
 async function probeD1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
-  const P = await scratchPane(ctx, pr, "p");
+  const na = heldUnavailable(ctx, true);
+  if (na) return na;
+  const P = (await heldPane(ctx, pr, "p")).P;
   const S = await subscribe(ctx, pr, "d1.S", subL(P));
   const D = await subscribe(ctx, pr, "d1.D", [{ type: "pane.agent_detected" }]);
   /** Reported real-work timeline (herdr-only "real end" = our idle report after a working report). */
@@ -1424,35 +2024,60 @@ async function probeD1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
     const t = await report(ctx, pr, P, st);
     timeline.push({ t, state: st, phase });
   };
+  /** Every agent.get level sample of the probe (25 ms series + G snapshots) — `done` persistence. */
+  const samples: LevelSample[] = [];
   const phases: Rec[] = [];
   let pushOk = false;
-  for (const dur of [200, 5000, 30_000]) {
-    progress(`D1 working ${dur} ms`);
-    const phase = `dur${dur}`;
+  let workingLost = false;
+  /** working → dur → (assert working still held) → idle → 2 s agent.get series → 3 s → G. */
+  const workEnd = async (phase: string, dur: number): Promise<Rec> => {
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `${phase}:before`);
     const g0 = await G(ctx, pr, P, `${phase}:before`);
     const base = S.pushes.length;
     await rep("working", phase);
     await sleep(dur);
+    const heldAtIdle = await expectLevel(ctx, pr, P, ["working"], `${phase}:pre-idle`);
+    if (!heldAtIdle) workingLost = true;
     await rep("idle", phase);
-    await sleep(5000);
+    const tIdle = now();
+    const series = await sampleLevels(ctx, pr, P, 2000);
+    samples.push(...series);
+    await sleep(3000);
     const g1 = await G(ctx, pr, P, `${phase}:after`);
     const seq = statusSeq(S, P, (p) => S.pushes.indexOf(p) >= base);
     if (seq.length) pushOk = true;
-    phases.push({ phase, pushes: seq, level: { agentGet: g1.agent_status, paneList: await paneLevel(ctx, pr, P) }, g: gDiff(g0, g1) });
+    const row: Rec = {
+      phase,
+      workingMs: dur,
+      workingHeldAtIdleReport: heldAtIdle,
+      pushes: seq,
+      levelAfterIdle: compressSamples(series, tIdle),
+      level: { agentGet: g1.agent_status, paneList: await paneLevel(ctx, pr, P) },
+      g: gDiff(g0, g1),
+    };
+    phases.push(row);
+    return row;
+  };
+  for (const dur of [200, 5000, 30_000]) {
+    progress(`D1 working ${dur} ms`);
+    await workEnd(`dur${dur}`, dur);
   }
   // mid-run idle→working re-entry
   {
     const phase = "reentry";
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `${phase}:before`);
     const g0 = await G(ctx, pr, P, `${phase}:before`);
     const base = S.pushes.length;
     await rep("working", phase);
     await sleep(1000);
+    if (!(await expectLevel(ctx, pr, P, ["working"], `${phase}:pre-mid-idle`))) workingLost = true;
     const gMid0 = await G(ctx, pr, P, `${phase}:pre-mid-idle`);
     await rep("idle", `${phase}:mid`);
     await sleep(300);
     const gMid1 = await G(ctx, pr, P, `${phase}:mid-idle`);
     await rep("working", `${phase}:resume`);
     await sleep(1000);
+    if (!(await expectLevel(ctx, pr, P, ["working"], `${phase}:pre-idle`))) workingLost = true;
     await rep("idle", phase);
     await sleep(5000);
     const g1 = await G(ctx, pr, P, `${phase}:after`);
@@ -1464,31 +2089,35 @@ async function probeD1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
       pushes: pushes.map((p) => p.status),
       doneAtIntermediateIdle: pushes.some((p) => p.status === "done" && p.t >= midT0 && p.t < resumeT + 200),
       completionSeqAtIntermediateIdle: gDiff(gMid0, gMid1),
+      midIdleLevel: gMid1.agent_status,
       g: gDiff(g0, g1),
     });
   }
-  // step 4: focus (private only)
+  // step 4: focus (private only) — focus while a `done` from an unfocused work end may be present
   if (ctx.mode === "private") {
-    const base = S.pushes.length;
+    const pre = await workEnd("focus-pre", 1000);
     const g0 = await G(ctx, pr, P, "focus:before");
+    const base = S.pushes.length;
+    const tF = now();
     const f = await tryCall(ctx, pr.name, "pane.focus", { pane_id: P });
-    await sleep(3000);
+    const focusSeries = await sampleLevels(ctx, pr, P, 3000);
+    samples.push(...focusSeries);
     const g1 = await G(ctx, pr, P, "focus:after");
     const P2 = await scratchPane(ctx, pr, "p2");
     const f2 = await tryCall(ctx, pr.name, "pane.focus", { pane_id: P2 });
     const base2 = S.pushes.length;
-    await rep("working", "unfocused-rerun");
-    await sleep(1000);
-    await rep("idle", "unfocused-rerun");
-    await sleep(5000);
+    const rerun = await workEnd("unfocused-rerun", 1000);
     const g2 = await G(ctx, pr, P, "unfocused-rerun:after");
     phases.push({
       phase: "focus",
+      doneBeforeFocus: g0.agent_status === "done",
+      focusPrePushes: pre.pushes,
       focusOk: f.ok,
       pushesOnFocus: statusSeq(S, P, (p) => S.pushes.indexOf(p) >= base && S.pushes.indexOf(p) < base2),
+      levelOnFocus: compressSamples(focusSeries, tF),
       gFocus: gDiff(g0, g1),
       focusOtherOk: f2.ok,
-      pushesUnfocusedRerun: statusSeq(S, P, (p) => S.pushes.indexOf(p) >= base2),
+      pushesUnfocusedRerun: rerun.pushes,
       gRerun: gDiff(g1, g2),
     });
   } else {
@@ -1498,7 +2127,11 @@ async function probeD1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
   {
     const base = S.pushes.length;
     const dBase = D.pushes.length;
-    const rl = await tryCall(ctx, pr.name, "pane.release_agent", { pane_id: P, source: `hsprobe-${pr.name}`, agent: "bash" });
+    const rl = await tryCall(ctx, pr.name, "pane.release_agent", {
+      pane_id: P,
+      source: `hsprobe-${pr.name}`,
+      agent: ctx.paneAgent.get(P) ?? "bash",
+    });
     timeline.push({ t: rl.t, state: "unknown", phase: "release" });
     await sleep(3000);
     const det = D.pushes.slice(dBase).filter((p) => p.paneId === P);
@@ -1526,21 +2159,47 @@ async function probeD1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
   pr.facts.agentDetectedOtherPanes = D.pushes.filter((p) => p.paneId !== P).length;
   // done ↔ real end relation
   const dones = S.pushes.filter(statusIs(P, "done"));
+  const pStatus = S.pushes.filter(statusOf(P));
+  const gSamples: LevelSample[] = ((pr.facts.gSnapshots ?? []) as GSnap[]).map((g) => ({ t: g.t, status: g.agent_status, scs: g.state_change_seq, cs: g.completion_seq }));
+  const allSamples = [...samples, ...gSamples].sort((a, b) => a.t - b.t);
   const doneRows = dones.map((p) => {
     const prior = timeline.filter((x) => x.t <= p.t);
     const last = prior[prior.length - 1];
     const lastIdle = [...prior].reverse().find((x) => x.state === "idle");
     const lastWorking = [...prior].reverse().find((x) => x.state === "working");
     const afterWork = Boolean(lastIdle && lastWorking && lastWorking.t < lastIdle.t);
+    const i = pStatus.indexOf(p);
+    const nextReport = timeline.find((x) => x.t > p.t)?.t ?? Number.POSITIVE_INFINITY;
+    const win = allSamples.filter((s) => s.t >= p.t && s.t < nextReport);
+    const firstDone = win.findIndex((s) => s.status === "done");
+    const lastDone = win.reduce((acc, s, k) => (s.status === "done" ? k : acc), -1);
+    const afterDone = firstDone >= 0 ? win.slice(firstDone).find((s) => s.status !== "done") : undefined;
     return {
       t: p.t,
       phase: last?.phase ?? "before-any-report",
+      prevPushStatus: i > 0 ? (pStatus[i - 1]?.status ?? null) : null,
+      lastReport: last ? last.state : null,
       msFromLastIdleReport: lastIdle ? p.t - lastIdle.t : null,
       afterReportedWorkEnd: afterWork,
+      // agent.get level after the push, until the next report
+      getShowedDone: firstDone >= 0,
+      doneLevelMs: firstDone >= 0 ? (win[lastDone]?.t ?? 0) - (win[firstDone]?.t ?? 0) : null,
+      doneLevelReplacedBy: afterDone?.status ?? null,
+      levelSamples: win.length,
+      completionSeqSeen: [...new Set(win.map((s) => s.cs).filter((x) => x !== null))],
     };
   });
   pr.facts.doneVsRealEnd = doneRows;
   pr.facts.doneCount = dones.length;
+  pr.facts.doneSummary = {
+    count: dones.length,
+    afterWorking: doneRows.filter((d) => d.prevPushStatus === "working").length,
+    afterBlocked: doneRows.filter((d) => d.prevPushStatus === "blocked").length,
+    persistedInAgentGet: doneRows.filter((d) => d.getShowedDone).length,
+    completionSeqPresent: doneRows.filter((d) => d.completionSeqSeen.length > 0).length,
+    completionSeqEverPresent: allSamples.some((s) => s.cs !== null),
+  };
+  pr.facts.workingLostBeforeIdle = workingLost;
   pr.facts.realEndDefinition = "herdr-only: the idle report_agent that follows a working report (B2/D2 needed for CLI runs)";
   const gs = (pr.facts.gSnapshots ?? []) as GSnap[];
   const csRises = gs.filter((g, i) => {
@@ -1549,6 +2208,8 @@ async function probeD1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
   });
   pr.facts.completionSeqRises = csRises.map((g) => g.label);
   if (!pushOk) return { verdict: "INCONCLUSIVE", code: "UNDETERMINED" };
+  // run-1 artifact guard: an idle report made after `working` was already lost tests nothing
+  if (workingLost || levelLostCount(pr) > 0) return { verdict: "INCONCLUSIVE", code: "LEVEL_LOST" };
   const terminalOnly = doneRows.every((d) => d.phase === "release" || d.phase === "close");
   const code = dones.length === 0 ? "D-4" : terminalOnly ? "D-2" : "D-1";
   const bad = doneRows.some((d) => !d.afterReportedWorkEnd && d.phase !== "release" && d.phase !== "close");
@@ -1556,27 +2217,41 @@ async function probeD1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
 }
 
 async function probeE(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
+  const na = heldUnavailable(ctx, true);
+  if (na) return na;
   const runs: Rec[] = [];
   const wait = async (P: string, timeoutMs: number): Promise<Rec> => {
     const t0 = now();
     const r = await tryCall(ctx, pr.name, "agent.wait", { target: P, until: ["idle", "done"], timeout_ms: timeoutMs }, timeoutMs + ctx.timeoutMs);
-    return { t0, ms: r.t - t0, ok: r.ok, result: r.ok ? r.result : undefined, error: r.ok ? undefined : r.error };
+    return r.ok
+      ? { t0, ms: r.t - t0, ok: true, result: r.result }
+      : { t0, ms: r.t - t0, ok: false, error: r.error, errorCode: r.code };
   };
+  const notFound = (w: Rec): boolean =>
+    w.ok !== true && (w.errorCode === "agent_not_found" || /agent_not_found|not found/.test(String(w.error ?? "")));
   for (let r = 1; r <= reps; r++) {
     progress(`E rep ${r}/${reps}`);
-    const P = await scratchPane(ctx, pr, `r${r}`);
+    const P = (await heldPane(ctx, pr, `r${r}`)).P;
     const row: Rec = { rep: r, pane: P };
     runs.push(row);
+    const lost0 = levelLostCount(pr);
+    // E-boot (C9): detector-held boot idle, nothing reported yet
+    const okBoot = await expectLevel(ctx, pr, P, ["idle"], `e${r}:boot`);
+    const boot = await wait(P, 5000);
+    row.eBoot = { ...boot, levelAsserted: okBoot };
+    row.bootReturn = boot.ok !== true ? "error" : Number(boot.ms) < 500 ? "immediate" : Number(boot.ms) >= 4500 ? "timeout" : "other";
     await report(ctx, pr, P, "working");
     await sleep(1000);
     await report(ctx, pr, P, "idle");
     await sleep(2000);
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `e${r}:level`);
     const g0 = await G(ctx, pr, P, `e${r}:level`);
     row.levelAtCall = g0.agent_status;
     const level = await wait(P, 5000);
     row.eLevel = level;
     const g1 = await G(ctx, pr, P, `e${r}:after-level`);
     // edge
+    await expectLevel(ctx, pr, P, levelsFor("idle"), `e${r}:before-edge`);
     const edgeP = wait(P, 10_000);
     await sleep(1000);
     const tW = await report(ctx, pr, P, "working");
@@ -1588,6 +2263,7 @@ async function probeE(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
     // working control
     await report(ctx, pr, P, "working");
     await sleep(300);
+    await expectLevel(ctx, pr, P, ["working"], `e${r}:before-working-wait`);
     const wk = wait(P, 5000);
     await sleep(2000);
     const tI2 = await report(ctx, pr, P, "idle");
@@ -1595,6 +2271,7 @@ async function probeE(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
     row.eWorking = { ...work, idleAtMs: tI2 - Number(work.t0) };
     const g3 = await G(ctx, pr, P, `e${r}:after-working`);
     row.g = [gDiff(g0, g1), gDiff(g1, g2), gDiff(g2, g3)];
+    row.levelLost = levelLostCount(pr) - lost0;
     const lvlMs = Number(level.ms);
     const workMs = Number(work.ms);
     const workIdle = Number(rec(row.eWorking).idleAtMs);
@@ -1602,26 +2279,142 @@ async function probeE(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
     const edgeIdle = Number(rec(row.eEdge).idleAtMs);
     const edgeWork = Number(rec(row.eEdge).workingAtMs);
     const controlOk = work.ok === true && workMs >= workIdle - 200;
-    row.code = !controlOk
-      ? "UNDETERMINED"
-      : level.ok === true && lvlMs < 500
-        ? "E-1"
-        : lvlMs >= 4500 && Math.abs(edgeMs - edgeIdle) < 700
-          ? "E-2"
-          : Math.abs(edgeMs - edgeWork) < 700
-            ? "E-3/working-edge"
-            : "E-3";
+    row.code = [boot, level, edge, work].some(notFound)
+      ? "AGENT_NOT_FOUND"
+      : Number(row.levelLost) > 0
+        ? "LEVEL_LOST"
+        : !controlOk
+          ? "UNDETERMINED"
+          : level.ok === true && lvlMs < 500
+            ? "E-1"
+            : lvlMs >= 4500 && Math.abs(edgeMs - edgeIdle) < 700
+              ? "E-2"
+              : Math.abs(edgeMs - edgeWork) < 700
+                ? "E-3/working-edge"
+                : "E-3";
     await closePane(ctx, pr, P);
   }
   pr.facts.runs = runs;
   const codes = runs.map((x) => String(x.code));
   pr.facts.codes = codes;
+  pr.facts.bootReturns = runs.map((x) => x.bootReturn);
+  if (codes.includes("AGENT_NOT_FOUND")) return { verdict: "INCONCLUSIVE", code: "AGENT_NOT_FOUND" };
+  if (codes.includes("LEVEL_LOST")) return { verdict: "INCONCLUSIVE", code: "LEVEL_LOST" };
   if (codes.includes("UNDETERMINED") || !codes.every((c) => c === codes[0])) {
     return { verdict: "INCONCLUSIVE", code: codes.join(",") };
   }
   return codes[0] === "E-1" || codes[0] === "E-2"
     ? { verdict: "PASS", code: codes[0] }
     : { verdict: "INCONCLUSIVE", code: codes[0] ?? "NONE" };
+}
+
+/**
+ * Probe s (run-1 analysis §7): `state_change_seq` semantics on two held panes — per-pane last-change
+ * stamp vs server-global counter, and whether a same-status re-report bumps it.
+ */
+async function probeS(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
+  const na = heldUnavailable(ctx, true);
+  if (na) return na;
+  const H1 = await heldPane(ctx, pr, "h1");
+  const H2 = await heldPane(ctx, pr, "h2");
+  const g1 = await G(ctx, pr, H1.P, "s:h1-first");
+  const g2 = await G(ctx, pr, H2.P, "s:h2-first");
+  pr.facts.agentStart = [H1, H2].map((h, i) => {
+    const first = (i === 0 ? g1 : g2).state_change_seq;
+    return {
+      pane: h.P,
+      startScs: h.startScs,
+      firstGetScs: first,
+      // run 1: agent.start returns 0 (unassigned) — a naive comparator sees a reset; not one.
+      knownNonReset: h.startScs === 0 && first !== null && first > 0,
+    };
+  });
+  const level = new Map<string, AgentState>([
+    [H1.P, "idle"],
+    [H2.P, "idle"],
+  ]);
+  const stampRows: Rec[] = [];
+  for (let r = 1; r <= reps; r++) {
+    for (const [chg, other] of [
+      [H1.P, H2.P],
+      [H2.P, H1.P],
+    ] as const) {
+      progress(`s rep ${r}/${reps} change ${chg}`);
+      const cur = level.get(chg) ?? "idle";
+      const okC = await expectLevel(ctx, pr, chg, levelsFor(cur), `s${r}:${chg}:before`);
+      const okO = await expectLevel(ctx, pr, other, levelsFor(level.get(other) ?? "idle"), `s${r}:${other}:before`);
+      const c0 = await G(ctx, pr, chg, `s${r}:changed:before`);
+      const o0 = await G(ctx, pr, other, `s${r}:other:before`);
+      const next: AgentState = cur === "working" ? "blocked" : "working";
+      await report(ctx, pr, chg, next);
+      level.set(chg, next);
+      await sleep(300);
+      const okC1 = await expectLevel(ctx, pr, chg, [next], `s${r}:${chg}:after`);
+      const c1 = await G(ctx, pr, chg, `s${r}:changed:after`);
+      const o1 = await G(ctx, pr, other, `s${r}:other:after`);
+      const d = (a: number | null, b: number | null): number | null => (a === null || b === null ? null : b - a);
+      const dChanged = d(c0.state_change_seq, c1.state_change_seq);
+      const dOther = d(o0.state_change_seq, o1.state_change_seq);
+      const otherStable = o0.agent_status === o1.agent_status;
+      stampRows.push({
+        rep: r,
+        changed: chg,
+        other,
+        transition: `${cur}→${next}`,
+        dChanged,
+        dOther,
+        changedScsAfter: c1.state_change_seq,
+        otherScsAfter: o1.state_change_seq,
+        otherEqualsChanged: o1.state_change_seq !== null && o1.state_change_seq === c1.state_change_seq,
+        otherStatusStable: otherStable,
+        class:
+          !okC || !okO || !okC1
+            ? "LEVEL_LOST"
+            : !otherStable
+              ? "OTHER_CHANGED"
+              : dChanged === null || dOther === null || dChanged <= 0
+                ? "UNDETERMINED"
+                : dOther === 0
+                  ? "stamp"
+                  : "global",
+      });
+    }
+  }
+  pr.facts.stampVsGlobal = stampRows;
+  // same-status re-report on H1
+  const S = await subscribe(ctx, pr, "s.S", subL(H1.P));
+  const reRows: Rec[] = [];
+  for (let r = 1; r <= reps; r++) {
+    const cur = level.get(H1.P) ?? "working";
+    const ok = await expectLevel(ctx, pr, H1.P, [cur], `s-rr${r}:before`);
+    const a = await G(ctx, pr, H1.P, `s-rr${r}:before`);
+    const base = S.pushes.length;
+    await report(ctx, pr, H1.P, cur);
+    await sleep(500);
+    const ok1 = await expectLevel(ctx, pr, H1.P, [cur], `s-rr${r}:after`);
+    const b = await G(ctx, pr, H1.P, `s-rr${r}:after`);
+    const dScs = a.state_change_seq === null || b.state_change_seq === null ? null : b.state_change_seq - a.state_change_seq;
+    reRows.push({
+      rep: r,
+      state: cur,
+      dScs,
+      pushes: statusSeq(S, H1.P, (p) => S.pushes.indexOf(p) >= base),
+      class: !ok || !ok1 ? "LEVEL_LOST" : dScs === null ? "UNDETERMINED" : dScs > 0 ? "bump" : "no-bump",
+    });
+  }
+  S.destroy();
+  pr.facts.reReport = reRows;
+  const sc = stampRows.map((x) => String(x.class));
+  const rc = reRows.map((x) => String(x.class));
+  pr.facts.codes = { stampVsGlobal: sc, reReport: rc };
+  if (sc.includes("LEVEL_LOST") || rc.includes("LEVEL_LOST")) return { verdict: "INCONCLUSIVE", code: "LEVEL_LOST" };
+  const one = (xs: string[]): string | null => (xs.length > 0 && xs.every((x) => x === xs[0]) ? (xs[0] ?? null) : null);
+  const s1 = one(sc);
+  const r1 = one(rc);
+  const sCode = s1 === "stamp" ? "S-STAMP" : s1 === "global" ? "S-GLOBAL" : `S-MIXED(${sc.join(",")})`;
+  const rCode = r1 === "bump" ? "rereport-bump" : r1 === "no-bump" ? "rereport-nobump" : `rereport-mixed(${rc.join(",")})`;
+  const decided = (s1 === "stamp" || s1 === "global") && (r1 === "bump" || r1 === "no-bump");
+  return { verdict: decided ? "PASS" : "INCONCLUSIVE", code: `${sCode}/${rCode}` };
 }
 
 function writeFakeBins(ctx: Ctx): string {
@@ -1760,6 +2553,10 @@ async function probeB1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
 async function globalCleanup(ctx: Ctx): Promise<Rec> {
   const out: Rec = {};
   for (const s of ctx.sinks) s.destroy();
+  // own python3 variant-(c) children only
+  for (const c of ctx.children) {
+    if (c.exitCode === null && c.signalCode === null) c.kill("SIGTERM");
+  }
   if (ctx.workspaceId && ctx.sock) {
     const r = await tryCall(ctx, "cleanup", "workspace.close", { workspace_id: ctx.workspaceId });
     if (r.ok) {
@@ -1848,9 +2645,11 @@ async function main(): Promise<number> {
   const home = join(T, "home");
   mkdirSync(home, { recursive: true });
   mkdirSync(join(T, "tmp"), { recursive: true });
-  // §2.2: must run outside a herdr pane — record any inherited HERDR_* keys (names only) as a hint.
+  // §2.2: should run outside a herdr pane. Inherited HERDR_* keys are stripped from this process's own
+  // env before any herdr contact (scrubEnv); names (never values) are recorded (run-1 analysis §0 note).
   const inheritedHerdrEnv = Object.keys(process.env).filter((k) => k.startsWith("HERDR_"));
   scrubEnv(home, T);
+  const herdrEnvRemaining = Object.keys(process.env).filter((k) => k.startsWith("HERDR_"));
   const ctx: Ctx = {
     run: randomBytes(3).toString("hex"),
     T,
@@ -1870,11 +2669,29 @@ async function main(): Promise<number> {
     pushOk: false,
     seq: new Map(),
     sinks: new Set(),
+    paneAgent: new Map(),
+    heldPanes: new Set(),
+    held: null,
+    herdrEnvStripped: inheritedHerdrEnv,
+    children: new Set(),
   };
   writeFakeBins(ctx);
+  writePyClient(ctx);
   console.log(`T=${T}`);
-  ev(ctx, "run", "PROBE_BEGIN", { args, run: ctx.run, pid: process.pid, inheritedHerdrEnv });
-  if (inheritedHerdrEnv.length) progress(`warning: HERDR_* env inherited (${inheritedHerdrEnv.join(",")}) — inside a pane?`);
+  ev(ctx, "run", "PROBE_BEGIN", {
+    args,
+    run: ctx.run,
+    pid: process.pid,
+    herdrEnvStripped: inheritedHerdrEnv,
+    herdrEnvRemaining,
+  });
+  if (inheritedHerdrEnv.length) {
+    progress(`warning: HERDR_* env inherited (${inheritedHerdrEnv.join(",")}) — inside a pane? stripped from the probe env`);
+  }
+  if (herdrEnvRemaining.length) {
+    console.error(`HERDR_* env still present after scrub: ${herdrEnvRemaining.join(",")}`);
+    return 1;
+  }
 
   const summaries: Summary[] = [];
   let cleanupOut: Rec | null = null;
@@ -1923,6 +2740,9 @@ async function main(): Promise<number> {
             case "e":
               outcome = await probeE(ctx, pr, reps);
               break;
+            case "s":
+              outcome = await probeS(ctx, pr, reps);
+              break;
             case "b1":
               outcome = await probeB1(ctx, pr);
               break;
@@ -1931,8 +2751,10 @@ async function main(): Promise<number> {
           const msg = e instanceof Error ? e.message : String(e);
           pr.facts.error = msg;
           ev(ctx, name, "PROBE_ERROR", msg);
-          outcome = { verdict: "INCONCLUSIVE", code: msg.startsWith("REFUSED") ? "REFUSED" : "ERROR" };
-          if (msg.startsWith("REFUSED")) aborted = true;
+          const tag = ["REFUSED", "ABORTED_REAL_CLI", "NO_HELD_SUBSTRATE"].find((x) => msg.startsWith(x));
+          outcome = { verdict: "INCONCLUSIVE", code: tag ?? "ERROR" };
+          // a refused call or a real-CLI resolution stops the run
+          if (tag === "REFUSED" || tag === "ABORTED_REAL_CLI") aborted = true;
         }
       }
       const leftover = await finishProbe(ctx, pr);
@@ -1947,7 +2769,17 @@ async function main(): Promise<number> {
   }
   const runOut = cleanupOut ?? {};
   const dirty = summaries.some((x) => x.leftover.length > 0) || ((runOut.leftover as string[] | undefined)?.length ?? 0) > 0;
-  const final = { T, run: ctx.run, server: ctx.mode, socket: ctx.sock, dirty, cleanup: runOut, probes: summaries };
+  const final = {
+    T,
+    run: ctx.run,
+    server: ctx.mode,
+    socket: ctx.sock,
+    herdrEnvStripped: ctx.herdrEnvStripped,
+    heldSubstrate: ctx.held,
+    dirty,
+    cleanup: runOut,
+    probes: summaries,
+  };
   writeFileSync(join(T, "summary.json"), `${JSON.stringify(final, null, 2)}\n`);
   console.log(JSON.stringify({ T, dirty, summary: join(T, "summary.json"), log: ctx.logPath }));
   for (const x of summaries) console.log(JSON.stringify(x));

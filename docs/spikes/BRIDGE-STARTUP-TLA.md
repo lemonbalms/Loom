@@ -496,6 +496,27 @@ exit는 머리말 규약(0 = No error · 12 = 불변식 위반 · 13 = 활성 �
 
 **판정:** 일곱 판정 전부 PLAN P0 기대와 일치 → P0 done · P1 착수 가능(PLAN §0.45.4 Done (a)).
 
+## 9. probe 결과 (2026-10-23) → 설계 입력
+
+근거 = [`HERDR-STATUS-PROBES.md` §11](./HERDR-STATUS-PROBES.md) 사실표 H1–H13(herdr 0.9.5 · protocol 22 · private 서버 · `report_agent`
+원천 — 감지기 원천은 B2·D2 미실행). §0 항목 5 (a)–(e)에 대한 답:
+
+- **Replay 없음(Probe C, H6):** 늦은 구독자에게 backlog·최신값·`pane_closed` 모두 재전달 안 됨 → `Replay = FALSE`(report_agent 원천).
+- **Drain은 herdr 쪽에서 성립, Bun 클라이언트는 pause된 꼬리를 잃는다(Probe A, H1–H5):** EOF → FIN 0–1 ms, EOF 전 바이트는
+  half-close 뒤에도 읽힘(python 무손실), 겹침 FIFO 동일, 등록 ≈ ACK. 유실은 Bun `pause()` + peer FIN 조합에서만(H3).
+  → **F1′는 안전 요건이 아니라 선택적 지연 최적화**로 강등한다 — 아래 불변식 아래에선 잃은 옛 소켓 이벤트가 깨우기를 늦출 뿐이다.
+- **pane별 seq 도장(Probe s, H7):** `state_change_seq` = 전역 카운터에서 뽑은 pane별 마지막-변경 도장, 같은 상태 재보고·포커스 해제는
+  올리지 않음 → §1.2 "단조 마커 없음"은 **이벤트 봉투 한정**으로 좁혀진다.
+- **`done`은 레벨 + `completion_seq`(D1, H8–H10):** 비포커스 working→idle = 레벨 `done`(다음 보고까지 유지), `completion_seq` = 그 변화의
+  scs, 작업 중 `null`, 포커스 해제 뒤 유지. 단 중간 idle마다 `done`(H9). `completion_seq`는 protocol 22 전용 — 17은 미결.
+- **`agent.wait`는 level-triggered(E, H11):** 기동 idle에 즉시 반환 → **C9 실재**. 단독 완료 판정 불가.
+
+**다음 단계:** round-4 모델은 아직 만들지 않는다. 먼저 단일 불변식에서 설계를 도출한다 —
+**"`agent.get` 스냅샷 = 유일한 완료·실패 권한 · 이벤트는 폴러를 깨우기만 · 판정은 실행 세대에 귀속"**. 세대 귀속 후보 규칙
+(baseline `b` → `completion_seq > b`)과 열린 위험(중간 idle · 이미 포커스된 pane · 감지기 원천 · protocol 17)은 PROBES §11.1.
+모델로 다시 확인할 지점: `Drain = FALSE` + 스냅샷 단독 권한 + cs/scs 펜스에서 F4·F18이 사라지는가(재-inject가 이벤트 경로 `W`/`I`가
+아니라 `scs == b`에만 묶이므로).
+
 ## 부록 A. Round-1 TLC 기록 (대체됨)
 
 2026-10-23, TLC 1.8.0 (`TLC2 Version 2026.10.20.183001 (rev: d2e1472)`) · `tla2tools.jar` sha256 `5bd7b64d…b1e2` · Java 17
