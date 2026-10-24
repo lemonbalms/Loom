@@ -23674,7 +23674,7 @@ function realArtifactsCliDeps() {
 }
 
 // packages/cli/src/index.ts
-var VERSION = "0.45.4";
+var VERSION = "0.46.0";
 function readBridgeView(profile, bridgeDir) {
   const statusPath = bridgeStatusPath(profile, bridgeDir);
   const lockPath = bridgeLockPath(profile, bridgeDir);
