@@ -221,6 +221,13 @@ export type FakeHerdrOptions = {
    *   carries both keys. A new pane starts at scs 0 · cs null.
    */
   seqMode?: "none" | "p22";
+  /**
+   * PLAN 0.46.0 P2 harness: status (or ordered statuses) stored on the pane at
+   * agent.start, through the same stamping path (e.g. "idle" = launched agent ·
+   * ["working", "done"] = reused pane with a stale done, cs = scs). Unset
+   * (default) = today's behaviour (status stays "unknown").
+   */
+  agentStartStatus?: string | string[];
 };
 
 export type FakeHerdr = {
@@ -323,10 +330,48 @@ export type FakeHerdr = {
    * releasePaneRead — stalls a failure send between CAS and relay send. Off by default.
    */
   holdPaneRead: (paneId: string, on: boolean) => void;
-  /** PLAN 0.45.4 P1b: send every held pane.read reply for this pane. */
-  releasePaneRead: (paneId: string) => void;
+  /**
+   * PLAN 0.45.4 P1b: send every held pane.read reply for this pane.
+   * PLAN 0.46.0 R14 (H2): `ok` false = the held reads reply with an error instead
+   * (default true) · `count` = release only the oldest N held (default all).
+   */
+  releasePaneRead: (paneId: string, ok?: boolean, count?: number) => void;
   /** PLAN 0.45.4 P1b: pane.read replies currently held for this pane. */
   paneReadHeldCount: (paneId: string) => number;
+  /**
+   * PLAN 0.46.0 R14: while on, agent.prompt / CR nudge for this pane (or "*")
+   * still succeed but drive no status change — status and scs stay as they are
+   * (H18 window held open). Text still lands unless discardInjects.
+   */
+  stallDelivery: (paneId: string, on: boolean) => void;
+  /**
+   * PLAN 0.46.0 R14: working→idle now, then idle→working after `idleMs`
+   * (default 300) — one mid-run completion edge (H9 · D11 limit). Stored only,
+   * nothing broadcast (like setAgentStatus).
+   */
+  advanceCompletionMidRun: (paneId: string, idleMs?: number) => void;
+  /** PLAN 0.46.0 R14: max concurrent unanswered agent.get across all panes. */
+  agentGetMaxInFlightGlobal: () => number;
+  /**
+   * PLAN 0.46.0 R14 (M7 · M6): agent.get replies for this pane (or "*") are
+   * built at request time and sent `ms` later (late response). null = off (default).
+   * holdAgentGet takes precedence.
+   */
+  delayAgentGet: (paneId: string, ms: number | null) => void;
+  /**
+   * PLAN 0.46.0 R14 (H5): mark the pane focused (pane info `focused: true`).
+   * `seqMode: "p22"` completion still fills cs (probe f fact).
+   */
+  focusPane: (paneId: string) => void;
+  /**
+   * PLAN 0.46.0 R14 (H5): while on, this pane's working→idle/done edges leave
+   * `completion_seq` null (a future herdr that does not fill cs). Off by default.
+   */
+  nullCsOnFocus: (paneId: string, on: boolean) => void;
+  /** PLAN 0.46.0 P2 harness: stored (status, scs, cs) for assertions. */
+  getPaneSeq: (
+    paneId: string,
+  ) => { status: string; scs: number; cs: number | null } | undefined;
 };
 
 export async function startFakeHerdr(
@@ -359,6 +404,10 @@ export async function startFakeHerdr(
     scs?: number;
     /** PLAN 0.46.0 R14 (`seqMode: "p22"`): completion_seq (unset = null). */
     cs?: number | null;
+    /** PLAN 0.46.0 R14 focusPane (unset = not focused). */
+    focused?: boolean;
+    /** PLAN 0.46.0 R14 nullCsOnFocus: completion edges leave cs null. */
+    nullCs?: boolean;
   };
   const panes = new Map<string, FakePane>();
   /** PLAN 0.46.0 R14: global monotonic seq counter (`seqMode: "p22"`). */
@@ -372,7 +421,9 @@ export async function startFakeHerdr(
     seqCounter += 1;
     p.scs = seqCounter;
     if (next === "working") p.cs = null;
-    else if (prev === "working" && (next === "idle" || next === "done")) p.cs = seqCounter;
+    else if (prev === "working" && (next === "idle" || next === "done")) {
+      p.cs = p.nullCs === true ? null : seqCounter;
+    }
   }
   /** Tabs that still appear in pane.list (dropTab removes without pane.close). */
   const liveTabs = new Set<string>();
@@ -413,9 +464,17 @@ export async function startFakeHerdr(
   const agentGetHeld: { paneId: string; send: () => void }[] = [];
   const agentGetInFlight = new Map<string, number>();
   const agentGetMax = new Map<string, number>();
+  /** PLAN 0.46.0 R14: global agent.get concurrency metering. */
+  let agentGetInFlightGlobal = 0;
+  let agentGetMaxGlobal = 0;
+  /** PLAN 0.46.0 R14: panes (paneId | "*") whose prompt delivery is stalled. */
+  const deliveryStall = new Set<string>();
   /** PLAN 0.45.4 P1b: panes whose pane.read replies are held. */
   const paneReadHold = new Set<string>();
-  const paneReadHeld: { paneId: string; send: () => void }[] = [];
+  const paneReadHeld: { paneId: string; send: () => void; fail: () => void }[] = [];
+  /** PLAN 0.46.0 R14: agent.get reply delay (paneId | "*" → ms). */
+  const agentGetDelay = new Map<string, number>();
+  const delayTimers = new Set<ReturnType<typeof setTimeout>>();
 
   function ensureChain(tabId: string): { ordered: string[]; ratios: number[] } {
     let c = tabChains.get(tabId);
@@ -601,6 +660,8 @@ export async function startFakeHerdr(
 
   /** Drive working → autoStatus events (agent.prompt atomic submit / CR nudge). */
   function scheduleAutoStatus(paneId: string, p: FakePane): void {
+    // PLAN 0.46.0 R14 stallDelivery: RPC succeeded, delivery never lands.
+    if (deliveryStall.has(paneId) || deliveryStall.has("*")) return;
     setPaneStatus(p, "working");
     const auto = opts.autoStatus ?? "done";
     if (auto === "none") return;
@@ -630,7 +691,7 @@ export async function startFakeHerdr(
       terminal_id: p.terminal_id,
       workspace_id: p.workspace_id,
       tab_id: p.tab_id,
-      focused: false,
+      focused: p.focused === true,
       agent_status: p.status,
       revision: 0,
       cwd: p.cwd ?? null,
@@ -804,6 +865,13 @@ export async function startFakeHerdr(
             p.agentArgs = params.args.map(String);
           }
           if (typeof params.name === "string") p.agentName = params.name;
+          // PLAN 0.46.0 P2 harness: launched-agent status (unset = unchanged).
+          if (opts.agentStartStatus !== undefined) {
+            const seq = Array.isArray(opts.agentStartStatus)
+              ? opts.agentStartStatus
+              : [opts.agentStartStatus];
+            for (const s of seq) setPaneStatus(p, s);
+          }
           // Conversation mapping derives from env stored on the shell pane.
           if (p.env?.LOOM_CONV) paneIdByConv.set(p.env.LOOM_CONV, pane_id);
           reply({
@@ -1013,8 +1081,16 @@ export async function startFakeHerdr(
               /* */
             }
           };
+          const failRead = () => {
+            try {
+              err("pane read failed (test hook)");
+              sock.end();
+            } catch {
+              /* */
+            }
+          };
           if (paneReadHold.has(pane_id)) {
-            paneReadHeld.push({ paneId: pane_id, send: sendRead });
+            paneReadHeld.push({ paneId: pane_id, send: sendRead, fail: failRead });
             continue;
           }
           sendRead();
@@ -1045,6 +1121,8 @@ export async function startFakeHerdr(
           const inFlight = (agentGetInFlight.get(paneId) ?? 0) + 1;
           agentGetInFlight.set(paneId, inFlight);
           agentGetMax.set(paneId, Math.max(agentGetMax.get(paneId) ?? 0, inFlight));
+          agentGetInFlightGlobal += 1;
+          agentGetMaxGlobal = Math.max(agentGetMaxGlobal, agentGetInFlightGlobal);
           // Built at request time — a held reply is a stale snapshot (R68-M2).
           const line = `${JSON.stringify({
             id,
@@ -1065,6 +1143,7 @@ export async function startFakeHerdr(
           })}\n`;
           const send = () => {
             agentGetInFlight.set(paneId, Math.max(0, (agentGetInFlight.get(paneId) ?? 1) - 1));
+            agentGetInFlightGlobal = Math.max(0, agentGetInFlightGlobal - 1);
             try {
               sock.write(line);
               sock.end();
@@ -1074,6 +1153,15 @@ export async function startFakeHerdr(
           };
           if (agentGetHold.has(paneId)) {
             agentGetHeld.push({ paneId, send });
+            continue;
+          }
+          const delayMs = agentGetDelay.get(paneId) ?? agentGetDelay.get("*");
+          if (delayMs !== undefined) {
+            const t = setTimeout(() => {
+              delayTimers.delete(t);
+              send();
+            }, delayMs);
+            delayTimers.add(t);
             continue;
           }
           send();
@@ -1210,12 +1298,15 @@ export async function startFakeHerdr(
       if (on) paneReadHold.add(paneId);
       else paneReadHold.delete(paneId);
     },
-    releasePaneRead(paneId: string) {
-      for (let i = 0; i < paneReadHeld.length; ) {
+    releasePaneRead(paneId: string, ok = true, count = Number.POSITIVE_INFINITY) {
+      let released = 0;
+      for (let i = 0; i < paneReadHeld.length && released < count; ) {
         const h = paneReadHeld[i]!;
         if (h.paneId === paneId) {
           paneReadHeld.splice(i, 1);
-          h.send();
+          released += 1;
+          if (ok) h.send();
+          else h.fail();
         } else {
           i += 1;
         }
@@ -1224,10 +1315,44 @@ export async function startFakeHerdr(
     paneReadHeldCount(paneId: string) {
       return paneReadHeld.filter((h) => h.paneId === paneId).length;
     },
+    stallDelivery(paneId: string, on: boolean) {
+      if (on) deliveryStall.add(paneId);
+      else deliveryStall.delete(paneId);
+    },
+    advanceCompletionMidRun(paneId: string, idleMs = 300) {
+      const p = panes.get(paneId);
+      if (!p) return;
+      setPaneStatus(p, "idle");
+      setTimeout(() => {
+        if (panes.get(paneId) === p) setPaneStatus(p, "working");
+      }, idleMs);
+    },
+    agentGetMaxInFlightGlobal() {
+      return agentGetMaxGlobal;
+    },
+    delayAgentGet(paneId: string, ms: number | null) {
+      if (ms === null) agentGetDelay.delete(paneId);
+      else agentGetDelay.set(paneId, Math.max(0, ms));
+    },
+    focusPane(paneId: string) {
+      const p = panes.get(paneId);
+      if (p) p.focused = true;
+    },
+    nullCsOnFocus(paneId: string, on: boolean) {
+      const p = panes.get(paneId);
+      if (p) p.nullCs = on;
+    },
+    getPaneSeq(paneId: string) {
+      const p = panes.get(paneId);
+      if (!p) return undefined;
+      return { status: p.status, scs: p.scs ?? 0, cs: p.cs ?? null };
+    },
     async close() {
       // PLAN 0.45.4 R15 ⓓ: held agent.get replies are dropped.
       agentGetHeld.length = 0;
       paneReadHeld.length = 0;
+      for (const t of delayTimers) clearTimeout(t);
+      delayTimers.clear();
       for (const s of sockets) {
         try {
           s.destroy();
