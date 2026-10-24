@@ -2928,11 +2928,16 @@ async function probeG(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
       // session restore: is the old pane (and workspace) back?
       let present = false;
       let panesAfter: Rec[] = [];
+      // "pane gone" needs a successful pane.list that omits P — a failed call is "could not observe"
+      let paneListOk = false;
+      let paneListError: string | null = null;
       const tUp = now();
       const until = tUp + 5000;
       while (now() < until) {
         const pl = await tryCall(ctx, pr.name, "pane.list", {});
+        if (!pl.ok) paneListError = pl.error;
         if (pl.ok) {
+          paneListOk = true;
           panesAfter = (Array.isArray(pl.result.panes) ? pl.result.panes : []).map(rec);
           if (panesAfter.some((x) => x.pane_id === P)) {
             present = true;
@@ -2943,6 +2948,8 @@ async function probeG(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
         await sleep(250);
       }
       row.paneRestored = present;
+      row.paneListObserved = paneListOk;
+      if (!paneListOk) row.paneListError = paneListError;
       row.panesAfter = panesAfter.map((x) => ({ pane_id: x.pane_id, agent_status: x.agent_status ?? null }));
       row.unownedAfterRestart = panesAfter
         .map((x) => str(x.pane_id) ?? "")
@@ -2982,23 +2989,46 @@ async function probeG(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
         : { ok: false, code: ag.code, error: ag.error };
       const series = await sampleSnaps(ctx, pr, P, `g:${how}:after-restart`, 3000);
       row.afterSeries = series.map((s) => snapRow(s, tUp));
+      // classify from successful agent.get replies only: the first post-restart agent.get counts when it
+      // succeeded, and failed series samples are missing evidence — never scs=null → RESET
       const okSnaps = series.filter((s) => !s.error);
-      const first = okSnaps[0] ?? null;
-      if (!ag.ok && !first) {
-        row.code = present ? `G-AGENT-GONE(${ag.code ?? "error"})` : "G-PANE-GONE";
-        if (present) {
-          await closePane(ctx, pr, P);
-        } else {
-          // the pane went down with the server — nothing left to close
+      const agFirst = ag.ok
+        ? (() => {
+            const a = rec(ag.result.agent);
+            return {
+              agent_status: str(a.agent_status),
+              state_change_seq: num(a.state_change_seq),
+              completion_seq: num(a.completion_seq),
+              revision: num(a.revision),
+            };
+          })()
+        : null;
+      const first = agFirst ?? okSnaps[0] ?? null;
+      row.okSamplesAfter = (ag.ok ? 1 : 0) + okSnaps.length;
+      if (!first) {
+        // no successful agent.get: gone only on positive evidence, otherwise could-not-observe
+        if (!present && paneListOk) {
+          row.code = "G-PANE-GONE";
+          // a successful pane.list omits the pane — it went down with the server, nothing left to close
           pr.closed.panes.push({ id: P, t: now() });
           row.paneGoneWithServer = true;
+        } else if (!present) {
+          row.code = `G-INCONCLUSIVE(observe-failed: pane.list ${String(paneListError ?? "no reply").slice(0, 80)})`;
+          await closePane(ctx, pr, P);
+        } else if (!ag.ok && ag.code) {
+          row.code = `G-AGENT-GONE(${ag.code})`;
+          await closePane(ctx, pr, P);
+        } else {
+          // timeout / connection error / code-less error: the agent was not observed, not observed gone
+          row.code = `G-INCONCLUSIVE(observe-failed: agent.get ${String(ag.ok ? "no sample" : ag.error).slice(0, 80)})`;
+          await closePane(ctx, pr, P);
         }
         continue;
       }
       const preScs = Number(pre.state_change_seq);
       const preCs = pre.completion_seq;
-      const scsA = first?.state_change_seq ?? null;
-      const csA = first?.completion_seq ?? null;
+      const scsA = first.state_change_seq;
+      const csA = first.completion_seq;
       const scsClass = scsA === null || scsA < preScs ? "RESET" : scsA === preScs ? "KEPT" : "NEWBASE";
       const csClass =
         csA === null ? "cs-null" : preCs === null ? "cs-new" : csA < preCs ? "cs-reset" : csA === preCs ? "cs-kept" : "cs-advanced";
@@ -3051,8 +3081,9 @@ async function probeG(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
   const codes = variants.map((v) => String(v.code));
   pr.facts.codes = codes;
   const code = `graceful=${codes[0]} sigkill=${codes[1]}`;
-  // PASS = the restart behaviour was measured (no FAIL: this is a fact probe like s / E)
-  return { verdict: codes.every((c) => DECIDED_G.test(c)) ? "PASS" : "INCONCLUSIVE", code };
+  // PASS = both variants measured — any G-INCONCLUSIVE / SKIPPED is INCONCLUSIVE (no FAIL: fact probe like s / E)
+  const measured = codes.length === 2 && codes.every((c) => DECIDED_G.test(c));
+  return { verdict: measured ? "PASS" : "INCONCLUSIVE", code };
 }
 
 function writeFakeBins(ctx: Ctx): string {

@@ -42,7 +42,7 @@
 ### 불변
 
 - 트리거 뒤 완료 기계의 의미(정착 스크레이프 · still-running 유예 · `hookHint` 교정 · CAS · issuer lease · U1 `needs_verification` · U3 자동 `pane.close` 없음) 무변경 — 완료 경로의 await 뒤마다 완료 시도 토큰을 다시 확인할 뿐이다. `pane_closed`는 수명 이벤트로 그대로 즉시 실패.
-- 능력 없는 herdr(`completion_seq` 키 없음 · protocol 17)는 0.45.4 경로 그대로 — 단 baseline `agent.get` 1회 · 폴백 텔레메트리 한 줄이 더해진다. conv flight · 헤드리스 무접촉.
+- 능력 없는 herdr(`completion_seq` 키 없음 · protocol 17)는 0.45.4 경로 그대로 — 단 네 가지가 다르다: baseline `agent.get` 1회 · 폴백 텔레메트리 한 줄 · 이벤트 `working` 취소 시 완료 시도 토큰 증가 · watchdog `agent.get`의 전역 동시성 상한 경유(R69 부속 2 · implementation-notes §0.46.0). conv flight · 헤드리스 무접촉.
 - 증명 = TLA 오라클(`SnapshotAuthority.tla` · 47 cfg TLC 기대 일치) · `herdr-agent-snapshot.test.ts` 13/13 · `snapshot-authority.test.ts` 49/49(①~㊻) · `status-lost-watchdog.test.ts` 21/21 · 전체 스위트 4402 pass / 0 fail / 2 skip / 2 todo.
 
 ---
