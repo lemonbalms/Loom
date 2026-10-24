@@ -196,6 +196,12 @@ author-close(Fable 사전 승인, no R41b) — verdict `pending-revision`의 M-1
 - **반영 완료 · no R69b.** M1 · M2 · L1~L3를 PLAN §0.46.0에 넣었다(각 자리 `(R69-…)` 태그 · 테스트 ㊹~㊻ · P0 `Rearm` 도달).
 - PLAN 헤더 Status → **`approved`**(R69 approved-with-fixes → M1 · M2 · L1–L3 반영, no R69b, 2026-10-24). **Next = P0 TLA**(`SnapshotAuthority.tla` · TLC = 아키텍트) → P1. **D11 = ship 차단** · 실행 전 별도 오너 `ownerDecision`(I4).
 
+### R69 부속 (2026-10-24 — P0 발 승인 뒤 PATCH · fold, no R69b)
+- **사유:** P0 TLA 검증 Astra 0272 FAIL 중 두 건이 PLAN 모호성 → PLAN을 좁혔다(PLAN line 184 "P0 기대와 다른 판정은 R69로" 규칙). Astra 0275 FAIL(도달 증인) → 0278 **PASS-with-lows** · TLC run 3 47/47 기대 일치(`docs/spikes/tla/snapshot-authority/README.md`).
+- **PATCH:** ① W 리셋 = 현재 세대 ∧ `scs > b`인 진전 스냅샷 + baseline 성공 + 재시도 소비 `undelivered` 라운드만 · 이전 세대 응답은 창 시계를 갱신하지 않는다(D4 · R10 · R11 · 테스트 ⑨ 문면 — 승인 동작의 축소 변경) ② CWAC 전건 = 최종 완료 스냅샷 + ER 환경 가정(D9 · R15) ③ D9 문면 정정 — 0.46.0엔 카드 시한이 없다(끝나지 않는 `working` 카드 = 선언된 한계 · 디스패처 · 오너 취소).
+- **판정: fold under R69 (no R69b).** 결정 위험 = 좁힌 W 규칙이 정상 카드에 거짓 `status_unavailable`을 내는가 → 아니다: 새 리셋 집합은 옛 집합의 진부분집합(만료만 빨라짐) · scs는 전역 단조 · status 변화마다 상승(H7)이라 현재 실행의 진전은 항상 `scs > b` · 버린 이전 세대 응답은 다음 2초 틱에 현재 세대로 다시 읽힘(W 10분 대비 1틱). 테스트 ㉝ · ㉞ · ㊳~㊷ · ㊺ · ㊻ 무영향 · baseline `working` · scs = b 재사용 pane = ㊳(W 만료 → `status_unavailable`, 정체 없음).
+- Advisor: opus-advisor consulted: yes (loom-advisor · Opus 5.5 high · 2026-10-24).
+
 ---
 
 ## Review R68 — Plan v0.45.4 (pane 카드 상태 유실 watchdog — 이벤트 소켓 재구독 ACK마다 `agent.get` 재조정 · 관측 못 한 비-working 상태 → `failed` / `status_lost`, PATCH)

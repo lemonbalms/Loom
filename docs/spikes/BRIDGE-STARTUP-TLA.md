@@ -535,6 +535,19 @@ n=1(PROBES §11.2).
 모델로 다시 확인할 지점: `Drain = FALSE` + 스냅샷 단독 권한 + cs/scs 펜스에서 F4·F18이 사라지는가(재-inject가 이벤트 경로 `W`/`I`가
 아니라 `scs == b`에만 묶이므로).
 
+## 10. 0.46.0 snapshot authority (P0)
+
+PLAN §0.46.0 P0(D9 · R15)의 수용 오라클이다. 모델 = `docs/spikes/tla/snapshot-authority/SnapshotAuthority.tla`(+ 도달 확인용 `SnapshotAuthorityReach.tla`) · cfg 마흔일곱(Astra 0272 개정 — 본 25 + 도달 22). TLC는 아키텍트가 실행했다(2026-10-24 run 3, TLC `2026.10.20.183001`, Java 17.0.6, `-deadlock -workers 4`, 레인 안 Java 차단). run 1은 `SnapshotAuthority.tla:307`의 연산자 우선순위 결함으로 전 cfg가 오류였고, 아키텍트가 `(IF SlowResp THEN W - wAge ELSE 0)`로 괄호를 쳐 다시 돌렸다.
+
+- 안전 — `NoFalseCompletion`: 펜스(`cs > lastConsumedCs`) 없는 완료 없음 · `NoEarlyCompletion`: 실행 중간 cs 상승으로 이른 완료 없음 · `CurrentRunAttribution` / `CardPromptAttribution`: 판정이 현재 실행(좁힌 보장 R17b에선 카드 프롬프트)에 귀속 · `NoStaleAttempt`: 낡은 완료 시도 토큰으로 판정하지 않음 · `NoMixedAuthority`: `pending`/스냅샷/`fallback` 권한이 섞이지 않음 · **`WResetAuthorized`**(B에 추가): W 리셋은 허가된 세 경우뿐 · **`NoStaleHintAfterRearm`**: Rearm을 넘어 살아남은 hookHint로 완료를 교정하지 않음(R69-M2 — `_MidRunCsRest`에서 검사).
+- 활성 — **CWAC-Final**(`CompletesWhenAgentCompletes`)이 양성 cfg의 속성이다: 선행조건 = *최종* 완료 스냅샷(에이전트 정지 · 제출 대기 없음 · 스냅샷이 여전히 pane 현재 상태)이 만료 전에 적용됨. **CWAC-Plan**(PLAN D9/R15의 종전 문자 선행조건 — *어떤* 펜스 통과 완료 스냅샷이든 `lastAuthoritativeAt + W` 전에 적용)은 `_CwacPlanLiteralBase`(취소 불가 단일 실행)에선 No error지만 `_CwacPlanLiteral`(MidRunCs)에선 **위반**된다 — 중간 완료가 적용된 뒤 `working` 스냅샷이 시도를 취소(R6 ①)하고 최종 완료 전에 W가 만료된다. 기록으로 남기고 → **PLAN D9/R15 선행조건을 CWAC-Final로 좁힌다**(Astra 0272 #1).
+- ER 환경 가정 — ER은 폴링 + W만으로 나오지 않는다. `WF(AgentFinish)`(실행 중인 카드 에이전트는 결국 working을 멈춘다)가 필요하다: `_NoAgentFinish`(`SpecNoAgentFinish`)는 **ER 위반** 기록 — 영원히 일하는 카드는 W를 계속 리셋한다(P0 밖 — 기존 카드 타임아웃 / still-running 경로 소관). 반면 herdr 응답엔 `WF`로 충분하다: `_WeakPollFair`(`SpecWeakPollFair`, `RepeatFail`)는 ER · CWAC-Final **No error**. `SF(PollOk)`는 무조건 CWAC에만 의미가 있고 그것은 어차피 위반 기록이다.
+- W 리셋 규칙(PLAN D4 · R10 · R11 개정 — Astra 0272 #3): ① baseline 성공 ② 재시도를 소모하는 `undelivered` 라운드 ③ **현재 세대** 스냅샷 적용 ∧ `scs > b` ∧ (`scs > lastAppliedScs` ∨ 상태 변화 ∨ `working`). `scs ≤ b`의 상태 변화(포커스 `done → idle`)와 옛 세대 응답은 리셋하지 않는다. 철회된 가드를 되살린 `_StatusOnlyReset`은 `WResetAuthorized` **위반**(음성).
+- 결과(47 cfg, 기대 열과 기계 대조 47건 · 불일치 0 · exit 0 ×13 · 12 ×29 · 13 ×5): **양성 13 No error** · 절제(ablation) 5 기대 불변식만 위반(`_NoFence _NoToken _PendingAsFallback _StatusOnlyReset _NoHintClear`) · 환경 경계 대조 2 기대 불변식만 위반(`_MidRunCs _LateDelivery`) · 활성 기록 5 기대 속성만 위반(`_PermFailUncond _SlowRespUncond` CWAC-Uncond · `_ResidualWOld` CWAC-Old · `_CwacPlanLiteral` CWAC-Plan · `_NoAgentFinish` ER) · **도달 22 전부 도달**. 표 = [`tla/snapshot-authority/README.md`](./tla/snapshot-authority/README.md) §TLC results (architect run 3 — 판정은 run 2와 동일). 개정 전 38 cfg 판정은 대체됨(git 이력).
+- 조여진 도달 증거 두 건(Astra 0275): `Reach_SlowRespWindow`(깊이 11 — inject 전 `pRem = 2`로 발행된 요청이 `WindowFire` 시 `pAge = 2` · `pStale` · `failed_unavail`) · `Reach_AltRoundsMix`(깊이 18 — `undelivered` → `GoDown`(`downAfterUndel`) → `unknown` → `failed_unavail`). 아키텍트가 TLC 트레이스에서 확인.
+- 경계: CWAC-Uncond · CWAC-Old · CWAC-Plan · `_NoAgentFinish` ER 위반은 결함이 아니라 기록된 한계다(class 109 · 119 · 경계 기록 · 선행조건 과약 · P0 밖 환경).
+- P0가 덮지 않는 것(P1/P2 코드 테스트 · D11 의무로 남음 — 수치 정규화 · probe hit/miss 분기 · still-running · hook 교정 전체 표 · 전역 cap/FIFO · 실 카드 증거 등)은 README §Not covered by P0에 있다.
+
 ## 부록 A. Round-1 TLC 기록 (대체됨)
 
 2026-10-23, TLC 1.8.0 (`TLC2 Version 2026.10.20.183001 (rev: d2e1472)`) · `tla2tools.jar` sha256 `5bd7b64d…b1e2` · Java 17
