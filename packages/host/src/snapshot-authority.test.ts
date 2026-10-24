@@ -1249,8 +1249,8 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
         try {
           rig.fake.failAgentGet("*", true);
           const a = newCardId();
-          const tStart = Date.now();
           const paneA = await startCard(rig, a, { prompt: false });
+          const tStart = Date.now(); // agent.start observed ≈ flight creation (W start)
           const base = agentGets(rig.fake, paneA, a).length;
           await Bun.sleep(POLL_MS * 10);
           // One baseline retry per tick (R2 · R11): ≥ half the ticks in 1 s.
@@ -1263,7 +1263,8 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           expect(rs[0]!.status).toBe("failed");
           expect(rs[0]!.reason).toBe("status_unavailable");
           expect(rs[0]!.note).toMatch(UNAVAILABLE_NOTE_RE);
-          // Window clock = flight creation (H1), not a later reset.
+          // Window clock = flight creation (H1), measured from agent.start observation — not a later reset.
+          expect(elapsed).toBeGreaterThanOrEqual(SHORT_W_MS - 400);
           expect(elapsed).toBeLessThan(SHORT_W_MS + 1_500);
           expect(prompts(rig.fake, a)).toHaveLength(0);
           expect((await results(a)).filter((r) => r.reason === "status_lost")).toHaveLength(0);
@@ -1593,8 +1594,8 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
         try {
           rig.fake.stallDelivery("*", true);
           const a = newCardId();
-          const tBase = Date.now();
           const paneA = await startCard(rig, a, { settle: 0 });
+          const tBase = Date.now(); // ≥ baseline success (W start) — the inject follows it
           await Bun.sleep(Math.floor(waitMs * 0.35)); // early half: idle · scs = b snapshots
           rig.fake.failAgentGet(paneA, true); // late half (and after): reads fail
           const rs = await waitResults(a, SHORT_W_MS + 4_000);
@@ -1604,6 +1605,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           expect(rs[0]!.reason).toBe("status_unavailable");
           expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
+          expect(elapsed).toBeGreaterThanOrEqual(SHORT_W_MS - 400);
           expect(elapsed).toBeLessThan(SHORT_W_MS + 1_500);
         } finally {
           await rig.close();
@@ -1755,8 +1757,8 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
         try {
           rig.fake.stallDelivery("*", true);
           const a = newCardId();
-          const tBase = Date.now();
           const paneA = await startCard(rig, a, { settle: 0 });
+          const tBase = Date.now(); // ≥ baseline success (W start) — the inject follows it
           const s = rig.fake.getPaneSeq(paneA)!;
           expect(s.status).toBe("working");
           const rs = await waitResults(a, SHORT_W_MS + 4_000);
@@ -1767,6 +1769,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           expect(rs[0]!.reason).toBe("status_unavailable");
           expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
+          expect(elapsed).toBeGreaterThanOrEqual(SHORT_W_MS - 400);
           expect(elapsed).toBeLessThan(SHORT_W_MS + 1_500);
         } finally {
           await rig.close();
