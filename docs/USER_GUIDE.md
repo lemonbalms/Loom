@@ -6,7 +6,7 @@
 |-------|--------|
 | **문서** | `docs/USER_GUIDE.md` |
 | **대상** | Loom을 **쓰는** 사람 (개발자·페어·에이전트 운영) |
-| **제품 버전** | CLI **v0.45.4** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
+| **제품 버전** | CLI **v0.46.0** / desktop UI **v0.12.2+** 기준 (기능 집합은 CLI 핀을 따름) |
 | **관련** | [README](../README.md) · [CHANGELOG](./CHANGELOG.md) · [TEST_PLAN](./TEST_PLAN.md) · [ADAPTERS](./ADAPTERS.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [데스크톱](../apps/desktop/README.md) · [PITCH](./PITCH.md) |
 
 ---
@@ -774,7 +774,14 @@ PY
 
 **실패 모드:** “`card.done` 수신 = 완료”로 다음 카드를 연쇄 발행 → 미검증 작업이 done 컬럼에 쌓임.
 
-**pane 카드 결과 reason (v0.45.4).** pane bridge가 보내는 카드 결과는 `failed` + `reason`이다(tower 착지는 모두 `blocked`). 어느 reason이든 **pane은 Loom이 닫지 않는다** — 확인 뒤 사람이 닫는다.
+**pane 카드 결과 reason (v0.46.0).** pane bridge가 보내는 카드 결과는 `failed` + `reason`이다(tower 착지는 모두 `blocked`). 어느 reason이든 **pane은 Loom이 닫지 않는다** — 확인 뒤 사람이 닫는다.
+
+**v0.46.0 — 스냅샷 권위.** herdr가 `agent.get`에 `state_change_seq` · `completion_seq`를 주면(herdr 0.9.5 / protocol 22) pane 카드의 완료 · 실패는 그 스냅샷이 결정한다 — inject 직전 baseline `b`를 읽고, `status ∈ {done, idle} ∧ completion_seq > b`일 때만 완료 경로에 들어간다. 이벤트는 폴러를 깨우기만 한다. 디스패처가 알아 둘 것:
+
+- **스냅샷 경로에서는 `status_lost`가 더 오지 않는다.** 잃은 완료 이벤트는 다음 폴(≤ 2초)에 정상 `needs_verification`으로 끝난다. `status_lost`는 herdr가 `completion_seq`를 주지 않을 때(폴백 — 0.45.4 경로 · protocol 17 등)만 남는다. bridge 로그 `card <id>: snapshot authority on (b=…)` / `… snapshot authority fallback (…)`로 어느 경로인지 본다.
+- **카드 시한은 없다.** 계속 `working`을 보고하는 카드는 끝나지 않는다 — 디스패처 · 오너가 취소한다.
+- **재타이핑 재주입 뒤 귀속:** 전달 확인에 실패해 프롬프트를 다시 타이핑한 카드(로그 `reinject retyped — completion attribution is per-card-prompt`)는 "원래 baseline 뒤 이 카드 프롬프트의 어느 실행"의 완료로 끝날 수 있다 — 첫 실행의 늦은 끝일 수 있으니 워킹트리로 판단한다.
+- **조절값(테스트 주입 · 설정 파일 키 없음):** `snapshotPollMs`(기본 2,000 ms — 폴 틱) · `statusUnavailableMs`(기본 600,000 ms = 10분 — W) · `agentGetConcurrency`(기본 4 — bridge 전체 동시 `agent.get` 상한).
 
 | reason | 뜻 | 할 일 |
 |--------|----|-------|
@@ -786,7 +793,8 @@ PY
 | `agent_blocked` | 에이전트가 막힘(herdr `blocked` · 살아 있는 권한 프롬프트). **v0.45.4:** status-loss watchdog도 herdr `agent.get`이 `blocked`이거나 권한 프롬프트가 살아 있으면 이 reason으로 낸다 — note 끝 `reported by the status-loss watchdog` | pane에서 프롬프트 · 막힌 지점 처리 |
 | `pane_closed` | 결과 전에 pane이 닫힘 | 산출물 확인 · 필요하면 다시 dispatch |
 | `needs_verification` | 완료 후보 — 성공 주장이지만 완료 권위 없음(U1) | 위 1~4 절차로 워킹트리 검증 |
-| `status_lost` (v0.45.4) | herdr 이벤트 소켓이 재구독(다른 카드의 구독 · 재연결)된 뒤 `agent.get`이 `idle` / `done`을 보였는데 bridge가 그 상태 이벤트를 받지 못함(유예 5초 뒤 재확인). `output` = pane 정착 스크레이프 · note `herdr agent.get status=<s> after event socket re-subscribe; status event lost … — judge from output` | **출력으로 판단**한다 — 작업이 끝났으면 워킹트리 검증 뒤 로컬에서 닫고, 아니면 다시 dispatch. 워커가 아직 돌 수 있다(스냅샷이 오래됐을 수 있음) — pane 확인 뒤 닫는다 |
+| `status_unavailable` (v0.46.0) | 실행 진전을 보이는 권위 있는 herdr `agent.get` 스냅샷이 W(기본 10분) 동안 하나도 없음 — `agent.get` 장애 · 응답 지연 · baseline 읽기 실패(이 경우 프롬프트가 한 번도 나가지 않았을 수 있다). **시끄럽고 회복 가능** — `done`을 만들지 않고 pane을 닫지 않는다. `output` = pane 정착 스크레이프 · note `no authoritative herdr agent.get snapshot for <n>s (last error: <code>) — prompt delivery and completion unknown; judge from output` | **출력으로 판단**한다 — herdr 상태 확인(`dogfood:herdr`) · pane 화면 · 워킹트리 확인 뒤 끝났으면 로컬에서 닫고, 아니면 다시 dispatch. agent가 정상으로 끝났어도 응답이 W보다 늦으면 이 reason이 먼저 올 수 있다 |
+| `status_lost` (v0.45.4 · v0.46.0부터 폴백 전용) | **herdr가 `completion_seq`를 주지 않을 때만**(폴백 경로) — herdr 이벤트 소켓이 재구독(다른 카드의 구독 · 재연결)된 뒤 `agent.get`이 `idle` / `done`을 보였는데 bridge가 그 상태 이벤트를 받지 못함(유예 5초 뒤 재확인). `output` = pane 정착 스크레이프 · note `herdr agent.get status=<s> after event socket re-subscribe; status event lost … — judge from output` | **출력으로 판단**한다 — 작업이 끝났으면 워킹트리 검증 뒤 로컬에서 닫고, 아니면 다시 dispatch. 워커가 아직 돌 수 있다(스냅샷이 오래됐을 수 있음) — pane 확인 뒤 닫는다 |
 
 ---
 

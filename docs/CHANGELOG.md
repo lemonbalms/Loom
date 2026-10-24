@@ -5,8 +5,44 @@
 | Field | Value |
 |-------|--------|
 | **문서** | `docs/CHANGELOG.md` |
-| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.45.4** — shipped 2026-10-23) |
+| **제품 버전 SSOT** | `docs/PLAN.md` + `loom --version` (현재 **0.46.0** — implemented 2026-10-24 · ship 검사 · D11 실 카드 프로브 · 최종 리뷰 pending · 직전 shipped 0.45.4) |
 | **관련** | [USER_GUIDE](./USER_GUIDE.md) · [ARCHITECTURE](./ARCHITECTURE.md) · [HERDR-0.7.5-COMPAT](./spikes/HERDR-0.7.5-COMPAT.md) · [HERDR-0.9.5-COMPAT](./spikes/HERDR-0.9.5-COMPAT.md) · [PANE-DEATH unified](./spikes/PANE-DEATH-UNIFIED-DESIGN.md) |
+
+---
+
+## 0.46.0 — 2026-10-24
+
+> **상태:** implemented 2026-10-24 (P0–P3) · **ship 전** — ship 검사(`build:cli` 포함) · **D11 실 카드 프로브(ship 차단 — 실행 전 별도 오너 `ownerDecision` 필요 · I4 실 CLI 토큰 · 아직 실행 안 함)** · 최종 리뷰가 남았다. 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
+
+**pane 카드의 완료 · 실패를 herdr `agent.get` 스냅샷이 결정한다** — 0.45.4 pane bridge는 herdr 상태 이벤트로 카드 완료를 시작했다. 이벤트 봉투엔 seq가 없어 그 `idle`이 **이번 프롬프트**의 끝인지 증명할 수 없었고(프롬프트 직후 ~180 ms의 `idle` · 기동 `idle` · 이전 실행의 stale `done`), 이벤트를 잃으면 재구독 ACK 때만 물어 `status_lost`로 실패했다. 0.46.0은 herdr가 `state_change_seq` · `completion_seq`를 주면(herdr 0.9.5 / protocol 22) inject 직전 baseline `b = state_change_seq`를 읽고, **`status ∈ {done, idle} ∧ completion_seq > b`** 스냅샷일 때만 기존 완료 경로(정착 스크레이프 · still-running 유예 · `needs_verification`)에 들어간다. 이벤트는 폴러를 깨우기만 한다 — 잃은 이벤트는 실패가 아니라 지연(≤ 폴 틱 2초)이 되고, 관측 못 한 완료도 정상 완료로 끝난다.
+
+### 가능해진 것
+
+- **가짜 완료 차단** — 프롬프트 직후 `idle`(scs = b) · 기동 `idle`(cs `null`) · 이전 실행 stale `done`(cs ≤ b)은 완료가 아니다. `blocked ∧ state_change_seq > b`만 `agent_blocked`.
+- **새 실패 reason `status_unavailable`** — 실행 진전을 보이는 권위 있는 스냅샷이 W(기본 10분) 동안 하나도 없으면 시끄럽게 실패한다(`done` 없음 · `pane.close` 없음 · `output` = 정착 스크레이프). note `no authoritative herdr agent.get snapshot for <n>s (last error: <code>) — prompt delivery and completion unknown; judge from output`. 디스패처는 출력으로 판단한다(USER_GUIDE §13 표).
+- **전달 확인도 스냅샷으로** — inject 검증 라운드는 `delivered` · `undelivered` · `unknown`으로 나뉜다. `agent.get` 장애 중(`unknown`)엔 재시도를 쓰지 않아 전달된 프롬프트가 `inject_unconfirmed`로 오실패하지 않는다.
+- **텔레메트리 한 줄** — `card <id>: snapshot authority on (b=<scs>)` · `… snapshot authority fallback (agent.get lacks state_change_seq/completion_seq)` · `… snapshot completion (cs=<cs> > <prev>)` · `… status_unavailable after <n>s` · `… reinject retyped — completion attribution is per-card-prompt (b=<b>)`.
+
+### 바뀐 습관 (깨진 가정)
+
+| 예전 (0.45.4) | 지금 (0.46.0) |
+|---------------|---------------|
+| 이벤트 `idle` · `done`이 완료를 시작 | 현재 실행 세대 스냅샷 `cs > b`만 완료를 시작 · 이벤트 = 깨우기 |
+| 잃은 완료 이벤트 → 재구독 ACK 때 `failed` / `status_lost` | 스냅샷 경로: 틱 스냅샷으로 정상 완료(`needs_verification`) · **`status_lost`를 더 받지 않는다** — herdr가 `completion_seq`를 주지 않는 폴백 경로에서만 남는다 |
+| `agent.get` 장애가 길어도 실패 reason 없음 | W(10분) 뒤 `status_unavailable` — 회복 가능(출력 · 워킹트리 확인 뒤 판단) |
+
+### 선언된 한계
+
+- **계급 107 — 재타이핑 재주입 뒤 귀속 축소:** 재주입이 프롬프트를 다시 타이핑한 카드는 "원래 baseline 뒤에 끝난 이 카드 프롬프트의 어느 실행"까지만 보장한다 — 첫 실행의 늦은 끝이 두 번째 실행의 완료로 받아들여질 수 있다(실행 세대 귀속을 주장하지 않음 · 해결로 보고하지 않음). scrape probe hit · read-fail이면 CR만 보내고, 재타이핑은 verify 호출당 최대 1회.
+- **계급 119 — 응답이 W보다 늦으면:** `agent.get` 응답이 계속 W를 넘기거나 장애가 반복되면, agent가 정상으로 끝났어도 `status_unavailable`이 먼저 확정될 수 있다.
+- **카드 시한 없음:** 끝나지 않고 `working`을 계속 보고하는 카드는 W를 계속 리셋한다 — 디스패처 · 오너가 취소한다.
+- **D11 미실행:** 도구 사용 · 이미 포커스된 pane의 실 claude 카드 프로브는 아직 돌리지 않았다(ship 차단 · 오너 `ownerDecision` 필요). 실행 중 `completion_seq` 상승(계급 106)과 감지기 원천 포커스 완료(UK-7)는 그때 기록된다.
+
+### 불변
+
+- 트리거 뒤 완료 기계의 의미(정착 스크레이프 · still-running 유예 · `hookHint` 교정 · CAS · issuer lease · U1 `needs_verification` · U3 자동 `pane.close` 없음) 무변경 — 완료 경로의 await 뒤마다 완료 시도 토큰을 다시 확인할 뿐이다. `pane_closed`는 수명 이벤트로 그대로 즉시 실패.
+- 능력 없는 herdr(`completion_seq` 키 없음 · protocol 17)는 0.45.4 경로 그대로 — 단 baseline `agent.get` 1회 · 폴백 텔레메트리 한 줄이 더해진다. conv flight · 헤드리스 무접촉.
+- 증명 = TLA 오라클(`SnapshotAuthority.tla` · 47 cfg TLC 기대 일치) · `herdr-agent-snapshot.test.ts` 13/13 · `snapshot-authority.test.ts` 49/49(①~㊻) · `status-lost-watchdog.test.ts` 21/21 · 전체 스위트 4402 pass / 0 fail / 2 skip / 2 todo.
 
 ---
 

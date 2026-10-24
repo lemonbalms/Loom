@@ -42,15 +42,15 @@
 
 ## Gate log
 
-### 0.46.0 — pane 카드 완료 · 실패 권위 = herdr `agent.get` 스냅샷 — 실행 세대 baseline · `completion_seq` 펜스 · 이벤트 = 깨우기 · `status_unavailable` (draft · `pending-review` R69)
+### 0.46.0 — pane 카드 완료 · 실패 권위 = herdr `agent.get` 스냅샷 — 실행 세대 baseline · `completion_seq` 펜스 · 이벤트 = 깨우기 · `status_unavailable` (`approved` — R69 approved-with-fixes · no R69b · implemented (P0–P3) · ship 전 · D11 미실행)
 
 | Field | Value |
 |-------|-------|
-| **PLAN** | v0.46.0 (draft · `pending-review` R69) · MINOR · 근거 = HANDOFF Carry F1'–F3' + 프로브 실측(`HERDR-STATUS-PROBES.md` §11 H1–H22 · `BRIDGE-STARTUP-TLA.md` §9) · 범위 = 락 D1~D11(아키텍트 2026-10-24 · loom-advisor 개정 D2 · D3 · D4 · D5 · D6 · D11) |
+| **PLAN** | v0.46.0 (`approved` — R69 approved-with-fixes, M1 · M2 · L1–L3 반영 · R3 · R8 `CONFLICT` 해소 수용 · no R69b) · MINOR · 근거 = HANDOFF Carry F1'–F3' + 프로브 실측(`HERDR-STATUS-PROBES.md` §11 H1–H22 · `BRIDGE-STARTUP-TLA.md` §9) · 범위 = 락 D1~D11(아키텍트 2026-10-24 · loom-advisor 개정 D2 · D3 · D4 · D5 · D6 · D11) |
 | **Date** | 2026-10-24 |
-| **Review** | R69 대기(loom-advisor) · `CONFLICT` 둘(PLAN §0.46.0 R3 · R8) · Astra 0261 FAIL(H1–H5 · M6 · M7) 반영 — PLAN §0.46.0 "Astra 0261 FAIL 반영" 고지 · Astra 0264 FAIL(#1 High · #2 · #3 Medium) 반영 — PLAN §0.46.0 "Astra 0264 FAIL 반영" 고지 · Astra 0266 FAIL(#1 High · #2 Medium) 반영 — PLAN §0.46.0 "Astra 0266 FAIL 반영" 고지 |
-| **Implemented** | — |
-| **Shipped** | — |
+| **Review** | R69 **done 2026-10-24**(loom-advisor) — approved-with-fixes · R69 addendum(P0 PLAN 좁힘 — fold, no R69b) · R69 판정 accept-with-record 넷(implementation-notes §0.46.0 (3)~(6)) · 구현 verify: Astra 0272 · 0275 FAIL → 0278 PASS-with-lows(P0) · 0281 PASS(P1) · 0284 · 0286 · 0288 FAIL → red fix · 0293 PASS(P2) · 계획 단계 이력: `CONFLICT` 둘(PLAN §0.46.0 R3 · R8) · Astra 0261 FAIL(H1–H5 · M6 · M7) 반영 — PLAN §0.46.0 "Astra 0261 FAIL 반영" 고지 · Astra 0264 FAIL(#1 High · #2 · #3 Medium) 반영 — PLAN §0.46.0 "Astra 0264 FAIL 반영" 고지 · Astra 0266 FAIL(#1 High · #2 Medium) 반영 — PLAN §0.46.0 "Astra 0266 FAIL 반영" 고지 |
+| **Implemented** | 2026-10-24 (P0–P3) — P0 TLC `437a0f1`(`SnapshotAuthority.tla` + 47 cfg · run 3 47/47 기대 일치) · P1 red `e72b445` → green `4631c4a`(13/13) · P2 red `8999a58` → red fix `820fee4` · `b59571b` · `5eddee1` · `fad6d3a` → `6ccaf7b`(⑧ R69 판정) → green `eecb423`(49/49 · 스위트 4402/0 · 2 skip · 2 todo) · P3 = 버전 0.46.0 세 줄 · README · USER_GUIDE §13 · CHANGELOG · implementation-notes §0.46.0 · PLAN. 정본 `implementation-notes.md` §0.46.0 |
+| **Shipped** | — (ship 검사 Done (d) · **D11 실 카드 프로브 = ship 차단 · 오너 `ownerDecision`(I4) 대기 · 미실행** · loom-advisor 최종 대기) |
 
 | 분면 | 내용 |
 |------|------|
@@ -63,18 +63,18 @@
 
 | # | 요지 | 출발 기본값 / 착수 영향 | R69 판정 | 결과 |
 |---|------|-------------|----------|------|
-| UK-1 | **도구 사용 중 `completion_seq`가 실행 중에 오르는가**(H9) | 비차단 — 오르면 선언된 한계(계급 106 · D11) · D3 무변경 | — | open — D11 프로브(⑦) |
-| UK-2 | **codex · grok 감지기 동작**(기동 · 완료 · cs) | 비차단 — 필드가 있으면 같은 규칙(D3 · 계급 114) | — | open |
-| UK-3 | **권한 프롬프트 → `blocked`인가 · scs가 오르는가** | 비차단 — 같은 scs 반복 무동작(R6) · M-2 ③ 교정(계급 115) | — | open(auto mode라 미시험) |
-| UK-4 | **stalled 프롬프트 · 바쁜 pane 프롬프트의 scs 동작** | 비차단 — stalled = 불확실 → verify · 증거 `scs > b`(계급 118) | — | open |
-| UK-5 | **같은 pane의 두 번째 프롬프트**(카드 = 재주입) — `working`에서 cs 해제 · 연속 실행 펜스 | 비차단 — 재주입 baseline `b'`(R2) | — | open |
-| UK-6 | **protocol 17 `state_change_seq` 의미 · 17 라이브 동작**(이 기계에 0.7.5 없음) | 비차단 — 17엔 `completion_seq` 없음 → 0.45.4 폴백(D3 · 계급 108) · 17 규칙 없음 | — | open |
-| UK-7 | **이미 포커스된 pane의 완료가 `completion_seq`를 채우는가**(H10은 `done` 중 포커스만) | **차단 항목(Astra 0261 H5)** — P0b probe f 측정 · 감지기 원천은 D11 ⑥ 필수 · ship 차단(R69 차단 아님) · cs를 비우는 herdr = 진전 없는 `idle`이 W를 리셋하지 않아 W 뒤 `status_unavailable`(R10 · 계급 113 · 테스트 ㉞) | — | **보고 원천 closed** — probe f run `rogN0W` PASS `F-CS-FILLED`(private · R1) · **감지기 원천 open** — D11 ⑥ |
-| UK-8 | **실 CLI 표본 n=1**(claude 2.1.310 · 무도구) | 비차단 — D11이 1회 더함(계급 114) | — | open |
-| UK-9 | **늦은 첫 전달 + 재주입 → 실행 1의 `done`이 실행 2에 귀속** | 비차단 · **선언된 한계(Astra 0261 H4)** — 재주입 키 직전 수신 캐시 확인(R2 — Astra 0266 · 새 RPC 없음) · 입력란에 프롬프트가 보이면 CR만(R17a)으로 줄임 · 재타이핑 flight의 보장 = 카드 프롬프트 단위로 축소(R17b · 계급 107 · TLA `_LateDelivery` `CardPromptAttribution`) · 해결로 보고하지 않음 | — | open(한계로 선언) |
-| UK-10 | **2초 폴 × 카드 수의 실 herdr 부하 · `agent.get` 지연 분포** | 비차단 — 브리지 전체 동시 상한(R11 · 계급 111 · 112) | — | open |
+| UK-1 | **도구 사용 중 `completion_seq`가 실행 중에 오르는가**(H9) | 비차단 — 오르면 선언된 한계(계급 106 · D11) · D3 무변경 | 비차단 수용 | open — D11 프로브(⑦) 미실행 · 한계 재현만 덮임(테스트 ⑳ `advanceCompletionMidRun` — 중간 지점 완료 진입 고정) |
+| UK-2 | **codex · grok 감지기 동작**(기동 · 완료 · cs) | 비차단 — 필드가 있으면 같은 규칙(D3 · 계급 114) | 비차단 수용 | open — 미실측 |
+| UK-3 | **권한 프롬프트 → `blocked`인가 · scs가 오르는가** | 비차단 — 같은 scs 반복 무동작(R6) · M-2 ③ 교정(계급 115) | 비차단 수용 | open(auto mode라 미시험) · 갈래는 덮임(테스트 ⑦ `blocked ∧ scs > b` → `agent_blocked` · ⑭ 같은 scs `working` 반복 → `hookHint` 유지) |
+| UK-4 | **stalled 프롬프트 · 바쁜 pane 프롬프트의 scs 동작** | 비차단 — stalled = 불확실 → verify · 증거 `scs > b`(계급 118) | 비차단 수용 | open — 미실측 · 전달 미확인 갈래는 덮임(테스트 ⑪ `stallDelivery` → `undelivered` → 재주입 · 소진 → `inject_unconfirmed`) |
+| UK-5 | **같은 pane의 두 번째 프롬프트**(카드 = 재주입) — `working`에서 cs 해제 · 연속 실행 펜스 | 비차단 — 재주입 baseline `b'`(R2) | 비차단 수용 | open — 실 CLI 미실측 · fake-herdr로 덮임(테스트 ⑪ 재사용 pane 재주입 baseline · ㉑ 옛 세대 응답 버림 · ㊺ stale `done/scs=b`) |
+| UK-6 | **protocol 17 `state_change_seq` 의미 · 17 라이브 동작**(이 기계에 0.7.5 없음) | 비차단 — 17엔 `completion_seq` 없음 → 0.45.4 폴백(D3 · 계급 108) · 17 규칙 없음 | 비차단 수용(17 대체 규칙 기각) | open — 라이브 미실측 · 폴백 갈래는 덮임(테스트 ⑲ `seqMode: "none"` → 0.45.4 경로 · `status_lost` 재현) |
+| UK-7 | **이미 포커스된 pane의 완료가 `completion_seq`를 채우는가**(H10은 `done` 중 포커스만) | **차단 항목(Astra 0261 H5)** — P0b probe f 측정 · 감지기 원천은 D11 ⑥ 필수 · ship 차단(R69 차단 아님) · cs를 비우는 herdr = 진전 없는 `idle`이 W를 리셋하지 않아 W 뒤 `status_unavailable`(R10 · 계급 113 · 테스트 ㉞) | D11 = ship 차단 · 실행 전 별도 `ownerDecision`(I4) | **보고 원천 closed** — probe f run `rogN0W` PASS `F-CS-FILLED`(private · R1) · 테스트 ㉜(포커스 pane 완료 → `needs_verification` 1건) · ㉞(cs `null` → W 뒤 `status_unavailable`) green · **감지기 원천(실 claude 포커스 사례) open — D11 ⑥ 미실행 · ship 차단** |
+| UK-8 | **실 CLI 표본 n=1**(claude 2.1.310 · 무도구) | 비차단 — D11이 1회 더함(계급 114) | 비차단 수용 | open — D11 미실행(n=1 그대로) |
+| UK-9 | **늦은 첫 전달 + 재주입 → 실행 1의 `done`이 실행 2에 귀속** | 비차단 · **선언된 한계(Astra 0261 H4)** — 재주입 키 직전 수신 캐시 확인(R2 — Astra 0266 · 새 RPC 없음) · 입력란에 프롬프트가 보이면 CR만(R17a)으로 줄임 · 재타이핑 flight의 보장 = 카드 프롬프트 단위로 축소(R17b · 계급 107 · TLA `_LateDelivery` `CardPromptAttribution`) · 해결로 보고하지 않음 | M1 — R17(a) probe hit · read-fail → CR · 재타이핑 verify 호출당 ≤ 1 | open(한계로 선언) · 축소된 보장 고정(테스트 ㉙ · ㉚ · ㉛ · TLA `_LateDelivery` `CurrentRunAttribution` 위반 · `CardPromptAttribution` No error) |
+| UK-10 | **2초 폴 × 카드 수의 실 herdr 부하 · `agent.get` 지연 분포** | 비차단 — 브리지 전체 동시 상한(R11 · 계급 111 · 112) | 비차단 수용 | open — 실 herdr 미실측 · 상한은 덮임(테스트 ⑰ 전역 동시 ≤ `agentGetConcurrency` · ⑱ flight당 ≤ 1) |
 
-**Current decision:** **draft → `pending-review` R69(Astra 0261 FAIL 반영본).** P0 TLC 전 코드 착수 금지 · UK-7 보고 원천은 probe f로 closed · 감지기 원천 포커스 완료는 D11 ⑥ 필수 · ship 차단(Astra 0261 H5).
+**Current decision:** **`approved` → implemented (P0–P3).** ship 전(Done (d) · (f)) · **D11 실 카드 프로브 미실행 = ship 차단** — 실행 전 별도 오너 `ownerDecision`(I4 · 범위 = 도구 사용 + 이미 포커스된 pane · claude · 횟수). UK-7 감지기 원천은 D11 ⑥에서 닫힌다.
 
 ### 0.45.4 — pane 카드 상태 유실 watchdog — 재구독 ACK마다 `agent.get` 재조정 · `failed` / `status_lost` (`approved` — R68 approved-with-fixes · no R68b · implemented (P0–P2) · ship 전)
 

@@ -271,6 +271,7 @@ above was inspected and has the required order.
 - `~SlowResp`: a response lands before the next tick. A cap-queued request (㊲) is the same as a slow response.
 - `~LateDelivery`: a submitted prompt starts before the next tick (LatencyBound analog).
 - Late-half evidence counts by **receive** time (R3 literal); a `SlowResp` response from the previous round can land in the next round's late half.
+- Implementation refinement (0.46.0 P2 · R69 ruling 4): the code additionally requires the `agent.get` **request** time ≥ the round's `t0` for undelivered evidence (R3 "no reuse of a previous round's reply"); safety carries over — the extra guard only moves rounds from `undelivered` to `unknown`.
 - Old-generation responses: discarded, window clock untouched (R11 as patched for Astra 0272 #3).
 - Scrape probe hit / miss / fail is nondeterministic regardless of the input box; retype absorbs an unsubmitted copy 1.
 - CWAC-Final antecedent `ante` = the *final* completion snapshot (agent quiet, snapshot still current) was applied; CWAC-Plan antecedent `anteP` = any fenced completion snapshot applied.

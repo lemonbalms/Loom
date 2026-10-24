@@ -202,6 +202,14 @@ author-close(Fable 사전 승인, no R41b) — verdict `pending-revision`의 M-1
 - **판정: fold under R69 (no R69b).** 결정 위험 = 좁힌 W 규칙이 정상 카드에 거짓 `status_unavailable`을 내는가 → 아니다: 새 리셋 집합은 옛 집합의 진부분집합(만료만 빨라짐) · scs는 전역 단조 · status 변화마다 상승(H7)이라 현재 실행의 진전은 항상 `scs > b` · 버린 이전 세대 응답은 다음 2초 틱에 현재 세대로 다시 읽힘(W 10분 대비 1틱). 테스트 ㉝ · ㉞ · ㊳~㊷ · ㊺ · ㊻ 무영향 · baseline `working` · scs = b 재사용 pane = ㊳(W 만료 → `status_unavailable`, 정체 없음).
 - Advisor: opus-advisor consulted: yes (loom-advisor · Opus 5.5 high · 2026-10-24).
 
+### R69 부속 2 (2026-10-24 — P2 green 판정 · accept-with-record)
+- **기존 테스트 깨짐(PLAN 규칙 — 멈추고 R69):** `status-lost-watchdog.test.ts` ⑧(0.45.4 "sawWorking 없는 flight → 재구독 시 agent.get 0") — 0.46.0 D3/R2에서 모든 flight(능력 음성 폴백 포함)가 inject 전 baseline `agent.get` 1회를 한다 · 프로토콜 번호로 baseline을 건너뛰는 것은 D3가 금지 → **(a) 테스트 조정 채택**(`base === 1` 뒤 재구독에서 증가 없음 · watchdog 의미 유지 · `6ccaf7b`) · PLAN R14 "기존 테스트 무편집" 문면의 baseline 누락 = 회계 공백으로 기록.
+- **폴백 차이 수용(기록):** baseline 읽기 1 · 폴백 텔레메트리 1줄 · 이벤트 `working` 취소 시 완료 시도 토큰 증가(R5) · watchdog `agent.get`의 전역 상한 경유(D5/R11) — P1 "바이트 동일"은 `.status` 호출 자리만을 뜻한다. 취소 로그 · `stillRunningStartedAt` 리셋은 0.45.4와 동일(아키텍트 대조).
+- **수용:** seq 필드 있는 `unknown` → `pending` 유지 · 필드 없음 → `fallback`(D3 · D4/H12 — 지속 `unknown`은 W 뒤 `status_unavailable`).
+- **수용(기록):** 미전달 증거에 요청 시각 ≥ 라운드 t0 추가(R3 "이전 라운드 응답 재사용 금지") — `undelivered`를 `unknown`으로만 옮기므로 안전 유지 · 라운드마다 t0 이후 요청이 하나 이상 있어 활성 유지(RPC 지연 > w/2이면 `status_unavailable` — ㊱ · ㊲와 같음) · TLA 모델 guard의 정밀화.
+- 증거: green `eecb423` · Astra 0293 PASS(0 findings) · 스위트 4402/0.
+- Advisor: opus-advisor consulted: yes (loom-advisor · Opus 5.5 high · 2026-10-24).
+
 ---
 
 ## Review R68 — Plan v0.45.4 (pane 카드 상태 유실 watchdog — 이벤트 소켓 재구독 ACK마다 `agent.get` 재조정 · 관측 못 한 비-working 상태 → `failed` / `status_lost`, PATCH)
