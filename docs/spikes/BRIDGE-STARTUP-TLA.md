@@ -499,7 +499,7 @@ exit는 머리말 규약(0 = No error · 12 = 불변식 위반 · 13 = 활성 �
 ## 9. probe 결과 (2026-10-23) → 설계 입력
 
 근거 = [`HERDR-STATUS-PROBES.md` §11](./HERDR-STATUS-PROBES.md) 사실표 H1–H13(herdr 0.9.5 · protocol 22 · private 서버 · `report_agent`
-원천 — 감지기 원천은 B2·D2 미실행). §0 항목 5 (a)–(e)에 대한 답:
+원천 — 감지기 원천은 아래 "실 CLI 행", H14–H22). §0 항목 5 (a)–(e)에 대한 답:
 
 - **Replay 없음(Probe C, H6):** 늦은 구독자에게 backlog·최신값·`pane_closed` 모두 재전달 안 됨 → `Replay = FALSE`(report_agent 원천).
 - **Drain은 herdr 쪽에서 성립, Bun 클라이언트는 pause된 꼬리를 잃는다(Probe A, H1–H5):** EOF → FIN 0–1 ms, EOF 전 바이트는
@@ -511,9 +511,27 @@ exit는 머리말 규약(0 = No error · 12 = 불변식 위반 · 13 = 활성 �
   scs, 작업 중 `null`, 포커스 해제 뒤 유지. 단 중간 idle마다 `done`(H9). `completion_seq`는 protocol 22 전용 — 17은 미결.
 - **`agent.wait`는 level-triggered(E, H11):** 기동 idle에 즉시 반환 → **C9 실재**. 단독 완료 판정 불가.
 
+**실 CLI 행 (B2·D2, 2026-10-24 — PROBES §11 H14–H22):** run `0ce680`(`8o37qI`) · claude 2.1.310 · Claude Max · auto mode · private ·
+§5.4 선택지 1(CLI pane만 실 HOME) · 감지기 원천 · 각 n=1. 앞선 시도 `RYi8BG`는 pane env에 `USER`/`LOGNAME`이 없어 로그인 화면에서
+멈췄다(프롬프트 미전송, 토큰 0 — 하니스 결함, 수정됨).
+
+| 프로브 | 결과 코드 | 설계 입력 |
+|---|---|---|
+| B2 기동만 (30 s) | `UNDETERMINED(control)` INCONCLUSIVE — 대조군 `report_agent`가 감지기 소유 pane에서 무효(H16) | 기동 = `unknown`/pending → `idle` push 1건 → ready, 기동 `working`/`done` 0, scs 8 불변 + 전역 카운터 7→8→9 연속(H14·H15) → claude 1종 **`MaxBoot = 0` 지지**(push 경로 liveness만 형식상 미결). 감지기 원천도 replay 없음(H17) |
+| D2 1회 프롬프트 (120 s) | `D2-DONE-AFTER-REPLY` PASS | `agent.prompt` 반환 +406(`idle`, scs = b) → `working` +587(< 4 s `LatencyBound`) → `done` +3890(응답·Stop hooks 뒤, H18·H19) · cs 11 = scs 11, 레벨 ≥116 s(H20) — **D-3 전제 유지**(claude·무도구 한정) |
+
+부작용(선택지 1): 실 HOME이라 오너의 MCP 서버가 떴고 D2에서 오너의 Stop hooks가 돌았다. 세션 파일 1개
+`~/.claude/projects/-Users-kyoungsiklee-projects-loom/7241c4b0-88d5-43e3-bd82-f18d74d0c9b5.jsonl`이 남았다(삭제하지 않음).
+
+**세대 완료 규칙 정제(PROBES §11.1):** `b` = inject 직전 **`state_change_seq`**(pre-prompt cs는 `null`) · protocol 22 완료 =
+`status ∈ {done, idle} ∧ completion_seq > b` · **펜스 필수** — D2에서 프롬프트 반환 뒤 ~180 ms 동안 `idle` & scs = b였으므로 "프롬프트 뒤 idle"
+게이트(현행 C9 경로 포함)는 거짓 완료한다 · 실 CLI pane에선 감지기가 status를 소유(`report_agent` 무시) · protocol 17 변형(cs 없음)은 열린 질문.
+미측정: codex/grok · 도구 사용 중간 idle(H9) · 권한 프롬프트/`blocked` · stalled 프롬프트 · 두 번째 프롬프트 · 포커스된 pane · 종료 경로 ·
+n=1(PROBES §11.2).
+
 **다음 단계:** round-4 모델은 아직 만들지 않는다. 먼저 단일 불변식에서 설계를 도출한다 —
 **"`agent.get` 스냅샷 = 유일한 완료·실패 권한 · 이벤트는 폴러를 깨우기만 · 판정은 실행 세대에 귀속"**. 세대 귀속 후보 규칙
-(baseline `b` → `completion_seq > b`)과 열린 위험(중간 idle · 이미 포커스된 pane · 감지기 원천 · protocol 17)은 PROBES §11.1.
+(baseline `b` = pre-inject scs → `completion_seq > b`)과 열린 위험(중간 idle · 이미 포커스된 pane · protocol 17)은 PROBES §11.1.
 모델로 다시 확인할 지점: `Drain = FALSE` + 스냅샷 단독 권한 + cs/scs 펜스에서 F4·F18이 사라지는가(재-inject가 이벤트 경로 `W`/`I`가
 아니라 `scs == b`에만 묶이므로).
 

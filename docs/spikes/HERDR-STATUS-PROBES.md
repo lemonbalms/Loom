@@ -2,7 +2,10 @@
 
 > 상태: **하니스 = `scripts/probe-herdr-status.ts` v2(`[herdr 전용]` S0·A·B1·C·D1·E·s 구현) · run 1(`6c0c3e`, v1, private)
 > · run 2(`dcda61`, v2, private, 2026-10-23) 완료 — 결과는 각 결과표 + §11 사실표 · run 2 뒤 A 동률 술어 수정(§4 run-2 주)
-> · B2·D2 미구현(exit 2) · 제품 코드 무변경.**
+> · B2·D2 하니스 구현(2026-10-23, 오너 yes: kind당 1회·`claude`만·private·§5.4 선택지 1 — `--probe b2,d2 --real-cli
+> --owner-approved` 게이트) · B2·D2 실행 2회(2026-10-24): `RYi8BG` = 로그인 화면에서 중단(pane env에 `USER`/`LOGNAME` 없음,
+> 프롬프트 미전송, 토큰 0) · `8o37qI`(run `0ce680`) = 본 실행 — claude 2.1.310 · Claude Max · auto mode · §5.4 선택지 1 → B2
+> `UNDETERMINED(control)` INCONCLUSIVE · D2 `D2-DONE-AFTER-REPLY` PASS · 사실 H14–H22(§11) · 제품 코드 무변경.**
 > **(run-2 analysis)** run 1 행 = 하니스 전제 산물(쉘 pane 권한 해제), run 2 행 = herdr 사실(held pane). A의 run-2 FAIL은 같은-ms
 > 동률 술어 산물이며 herdr 사실로는 `A-1/bun-pause-loss`다.
 > **(run-1 analysis)** run 1의 공통 원인: herdr 0.9.5는 평범한 쉘 pane의 `report_agent` 권한을 ~0.1–1 s 안에 놓는다
@@ -79,18 +82,26 @@
 ```text
 bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e,s|all]
                                       [--timeout-ms N] [--reps N] [--dry-run] [--help]
+bun run scripts/probe-herdr-status.ts --probe b2,d2 --real-cli --owner-approved [--kind claude]   # 실 CLI — 오너 yes
 bun run probe:herdr-status …                                   # package.json 별칭
 ```
 
 - `all`(기본) = **`[herdr 전용]` 프로브만**(step0·a·c·d1·e·s·b1, §9 순서). step0은 항상 먼저 돈다(나머지의 바탕 —
   v2에선 held-pane driver 점검 §2.6 포함).
-  **B2·D2는 구현하지 않았다:** `--probe b2|d2`·`--real-cli`·`--kind`는 즉시 exit 2("requires owner yes; not implemented").
-  HANDOFF Must-not("real-CLI smoke without explicit owner yes")을 코드로 막는다. B2·D2 구현은 오너 yes 뒤 별도 작업.
+  **B2·D2 (구현됨 2026-10-23 — 오너 결정 아래 §5.4 기록):** `--probe b2|d2`는 `--real-cli`와 `--owner-approved`가 **둘 다** 있을 때만
+  받는다. 그 밖의 b2/d2 요청은 전부 exit 2 — 플래그 누락 · `--server shared` · `--kind`가 `claude` 아님 · 플래그만 있고 b2/d2 없음.
+  `all`에는 들어가지 않고, 요청되면 `[herdr 전용]` 프로브 뒤에 B2 → D2 순서로 돈다. `--reps`는 적용되지 않는다(각 1회).
+  HANDOFF Must-not("real-CLI smoke without explicit owner yes")은 이 이중 플래그로 코드에서 막는다.
 - 출력: `T/events.ndjson`(NDJSON 원 로그) · `T/summary.json` · stdout에 `T=<경로>`와 프로브별 요약
   `{probe, verdict: PASS|FAIL|INCONCLUSIVE|SKIPPED, code, facts, created, closed, leftover}`. exit 0 = FAIL 없음 · 1 = FAIL/중단 · 2 = 사용법/거부.
 - 안전 가드는 RPC 래퍼 한 곳(`guard`)에 있다: `focus:true`·`resume_argv` 거부, `server.stop`은 private + 소켓이 `T/` 아래일 때만,
   `server.reload_*`·`server.live_handoff`·`integration.*`·`client_shell.*`·`agent.prompt*`·`tab/workspace/agent.focus` 거부,
   `pane.focus`는 private만, 쓰기 RPC는 `assertOwned`(프로브 생성 집합 ∧ PROTECTED 아님).
+  **유일한 예외(D2):** `agent.prompt`(정확히 이 메서드)는 승인 플래그로 실 CLI가 해석된 private 실행에서, 이번 실행이 만든
+  실 CLI pane 대상이고 `wait` 필드가 없을 때만 통과한다. `agent.read`·`agent.explain`·`pane.read`도 `assertOwned` 대상이다.
+- **비밀 위생(B2·D2):** 모든 로그 줄·`summary.json`·stdout 요약은 문자열 값에서 `/api[_-]?key|token|secret/i`에 맞는 줄을
+  `[hsprobe: line redacted]`로 바꾼다. 화면 원문(`agent.read`·`pane.read`·`agent.explain`)은 `T/<probe>-*.txt|json` 파일에만
+  (같은 가림 적용) 두고 facts에는 파일 경로·줄 수·가림 줄 수만 넣는다.
 - `probe-pane-death.ts`의 raw `rpc()`·`openEventSubscription()`·`parseNdjsonLines()`를 복사해 쓴다(import 금지 —
   그 파일은 main()을 자동 실행한다). 구독 함수에 두 가지를 더한다:
   `allowHalfOpen: true`로 연결 · `end()`(half-close)와 `destroy()`를 별도 노출 · `'end'`(서버 FIN)·`'close'`·`'error'`
@@ -122,7 +133,8 @@ bun run probe:herdr-status …                                   # package.json 
   상속된 `HERDR_*`(와 `LOOM_*`)를 지우고, 지운 키 **이름만** `facts.herdrEnvStripped`·`PROBE_BEGIN`·`summary.json`에 남긴다.
   지운 뒤에도 남아 있으면 herdr 접촉 없이 exit 1. private 서버와 python 클라이언트(§4 변형 c)는 명시 env로만 띄운다.
 - 스크래치 pane: `tab.create{focus:false, label:"hsprobe-<probe>-<run>", cwd:T, env:{HOME:"T/home", LOOM_TEST_HOME:"T"}}` →
-  응답의 root pane 사용. 모든 이름에 접두 `hsprobe-`. **agent CLI를 띄우지 않는 평범한 쉘 pane**이다(B2·D2 제외).
+  응답의 root pane 사용. 모든 이름에 접두 `hsprobe-`. **agent CLI를 띄우지 않는 평범한 쉘 pane**이다(B2·D2 제외 — B2·D2 pane은
+  §5.2 "하니스 구현" 참고: `cwd`·`env.HOME`만 실 경로).
   **(run-1 analysis)** v2의 A·C·D1·E·s는 private에서 이 pane에 `agent.start`로 **가짜 바이너리**만 띄운 held pane(§2.6)을 쓴다 —
   실 CLI는 여전히 띄우지 않는다.
 
@@ -380,11 +392,45 @@ FIFO(run 2): `fifo.S1 = fifo.S2 = done,working,done,working,done` 5/5 · `s2Aliv
 
 반복 간 불일치(예: 3회 중 1회만 `working`)는 그대로 `MaxBoot ≥ 1`로 본다(존재 증명은 1회로 충분).
 
+**하니스 구현 (2026-10-23 — 오너 yes 범위로 좁힘; 위 1–2단계의 "3 kind × 3회 · 60 s"보다 작다):**
+
+- 게이트: `--probe b2 --real-cli --owner-approved` · private만 · kind `claude`만 · **1회**. 결과마다 `facts.ownerDecision`(일자·범위·
+  §5.4 선택지 1)을 남긴다.
+- 실 CLI 해석: 프로브 프로세스가 env 정리 **전**의 원래 PATH에서(`fakebin`·temp 경로 제외) `claude`를 찾아 `facts.cli.bin`·`realpath`
+  와 `claude --version`(env `{PATH, HOME=/Users/kyoungsiklee}`)을 기록. 없으면 `NO_REAL_CLI`, manifests에 없으면 `NOT_IN_MANIFESTS`.
+- pane: `tab.create{focus:false, label:"hsprobe-b2-<run>", cwd:"/Users/kyoungsiklee/projects/loom", env:{HOME:"/Users/kyoungsiklee",
+  PATH:<claude 디렉터리>:<원래 PATH>}}` — cwd는 이미 신뢰된 폴더라 trust 화면은 예상하지 않는다. pane env의 나머지(`LOOM_TEST_HOME`·
+  `TMPDIR` 등)는 private 서버 env에서 상속될 수 있다(서버 env = `facts.serverEnv`, step0).
+- 순서: `L_B` + 전역 `pane.agent_detected` ACK → `G` → `agent.start{name:"hsprobe-b2-claude-<run>", kind:"claude", pane_id, timeout_ms:60000}` →
+  `pane.process_info` ≤5 s(`facts.resolved` = real/fake/unknown, `facts.cliPids`; fake면 `RESOLVED_FAKE`) → `G` **250 ms**마다
+  `interactive_ready`까지(≤60 s, `startToPendingClearedMs`·`startToReadyMs`) → **dialog 점검**: `agent.read{detection}` + `pane.read{visible}`에서
+  trust/login/theme/permission/press-enter/bypass-permissions 문구 → `DIALOG(<name>)` INCONCLUSIVE로 종료(**키는 절대 보내지 않는다**).
+- 무프롬프트 관찰: ready 뒤 **30 s**, `G` 250 ms마다 · 모든 push 기록 → 끝에 `agent.read{detection}`·`agent.explain` →
+  `T/b2-end-*` · 같은 pane 늦은 구독 S2 5 s(`facts.lateSubscriber` — 감지기 원천 replay, §6 주) · 대조군 `report_agent{agent:"claude",
+  working}`(`facts.control`).
+- 정리: `pane.process_info`(close 전 CLI pid) → `pane.close` → ≤5 s pid 소멸 확인 → 살아 있고 여전히 `claude`인 pid만 SIGTERM
+  (`facts.cliCleanup`).
+- 코드: `B2-BOOT-WORKING(before-ready|after-ready)`·`B2-BOOT-DONE` = FAIL(`MaxBoot ≥ 1` / BootDone) · `B2-IDLE-ONLY`·`B2-NO-PUSH` = PASS
+  (대조군 성립 시) · `DIALOG(…)`·`BOOT_NOT_READY`·`RESOLVED_FAKE`·`START_FAILED`·`UNDETERMINED(control)` = INCONCLUSIVE.
+- 결과표 열 ↔ `summary.json` B2 facts: CLI 버전 `cli.version` · 일시 `date` · 서버 모드·HOME `serverMode`·`ownerDecision.homeChoice` ·
+  start→ready `startToReadyMs` · ready 전 push `pushesBeforeReady` · ready 뒤 push `pushesAfterReady` · G `g.start`/`g.end`/`g.diff` ·
+  detection 요약 `endScreen`·`bootScreen` · 생성/닫음 `created`/`closed` + `cliCleanup` · 결과 코드 `code`.
+
 **결과표 (B2)**
 
 | 회차 | kind | CLI 버전 | 일시 | 서버 모드 · HOME 선택(§5.4) | start→`interactive_ready` (ms) | ready 전 push | ready 뒤 60 s push (값·시각) | G 시작→끝 (rev / scs / cs) | detection 요약 | 생성/닫음 id · CLI pid 정리 | 결과 코드 | 비고 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | |
+| 시도 1 `RYi8BG` | claude | — | `8o37qI` 직전 | private · 선택지 1 | — | — | — | — | 로그인 화면 "Not logged in · Run /login" | (분석에 미기록) | `UNDETERMINED(control)` (INCONCLUSIVE) | **하니스 결함:** pane env에 `USER`/`LOGNAME` 없음 → 미로그인. 프롬프트 미전송 · 토큰 0. 수정 = pane env `{HOME, USER, LOGNAME, PATH}`(`probe-herdr-status.ts` ~:2783). 이 시도의 값은 아래 사실에 쓰지 않는다 |
+| 1 `8o37qI` (run `0ce680`) | claude | 2.1.310 (Claude Code) — 화면 "Opus 5.5 with high effort · Claude Max", "⏵⏵ auto mode on" | 2026-10-24 00:39 UTC | private · herdr 0.9.5 / protocol 22 · 선택지 1(`paneHome:/Users/kyoungsiklee`, `probeHome:T/home`) | ~4335–4572 (pending 해제 +4218 → +4572 사이; `startToPendingClearedMs:null` — 하니스 결함, 아래) | `idle`@+4335 1건(유일한 status push) · `pane_agent_detected{claude}`@+308 | 0건 (관찰 창 **30 s**, 86 표본 ~355 ms 간격, 전부 `idle`) | start `unknown`·pending·0/0/null → ready 1/8/null → 끝 1/8/null | `live_prompt_box (idle, 950)` · `osc_title_idle` · working/blocked 규칙 전부 false · `visible_idle:true` · dialog 없음 | `leftover:[]` · `dirty:false` · CLI pid 전부 `gone` | `UNDETERMINED(control)` (INCONCLUSIVE) | 대조군 `report_agent{claude, working}` = `ok`인데 push·scs 할당 없음(H16) → 대조군 설계 결함. 기동 사실 자체는 스냅샷으로 결정적: ready 뒤 scs 8 불변 + 전역 카운터 7→8→9 연속(H14·H15) → 숨은 기동 `working`/`done` 없음. 늦은 구독 S2 5 s push 0(H17). 세션 `6e46a32a-…`(B2는 세션 파일 미기록) |
+
+**B2 하니스 후속 (미구현):**
+
+- **대조군 교체:** P의 `report_agent` 권한에 기대지 않는 liveness 대조군 — held fake-agent pane Q(step0 바탕, §2.6)를 **같은** 구독 S에
+  (`{type:"pane.agent_status_changed", pane_id:Q}`) 넣고, 끝에 Q에 `working`을 보고해 S에서 받는지 본다. P 보고는 별도 사실
+  `detectorOverridesReport`로 기록.
+- **`launch_pending` 술어:** herdr는 준비 뒤 `launch_pending`을 false로 두지 않고 **필드를 지운다**. `bootRealCli`의 `g.launch_pending === false`
+  (`probe-herdr-status.ts` ~:2910, B1 ~:2637 같은 술어)를 "필드 없음 또는 false"로 바꿔야 `startToPendingClearedMs`가 채워진다.
+- 관찰 창 30 s(§5.2 설계 60 s보다 짧음) · n=1.
 
 ### 5.3 정리
 
@@ -401,6 +447,11 @@ status를 낸다. 반대로 실 HOME이면 Must-not("probe without temp HOME")�
 3. shared 서버(0.9.5) + 실 HOME(운영과 동일, 격리 없음).
 
 **권고 = 1**, 단 오너 yes와 함께 선택을 명시받는다. 결과 문서엔 어느 선택으로 돌았는지 반드시 적는다.
+
+**오너 결정 (2026-10-23):** B2·D2 **각 1회, kind `claude`만**, HOME = **선택지 1** — 프로브 프로세스와 herdr 서버는 temp HOME
+(private 서버, 종전과 같음), **CLI pane env만 실 HOME**(`/Users/kyoungsiklee`). 하니스는 이 결정을 모든 B2·D2 결과의
+`facts.ownerDecision`과 `summary.json` 최상위 `ownerDecision`에 기록한다. 실 HOME pane이라 CLI 세션 파일은 실 HOME
+(`~/.claude/projects/<cwd slug>/`)에 남는다 — D2는 새로 생긴 파일 **이름만** `facts.newSessionFiles`에 남긴다.
 
 ## 6. Probe C — 새 구독자 status replay (0.9.5 / protocol 22) · `[herdr 전용]`
 
@@ -531,13 +582,40 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 5. `agent.read{target:P, source:"detection"}`·`agent.explain{target:P}` 저장(B2와 같은 비밀 주의).
 6. **(Astra 0251 M6)** 실제 작업 종료 시각(CLI 화면·`agent.read` 기준 응답 완료)과 `done` push의 관계, `agent_prompt_stalled` 뒤
    status, 작업 중간 `idle`(→ `working` 재진입)을 따로 기록한다. 지연은 프롬프트 전달뿐 아니라 이벤트 소비·조회 응답까지 잰다 —
-   소수 회차의 성공은 `LatencyBound`의 보편 보장이 아니다. (D2는 하니스에 미구현 — 오너 yes 뒤 작업.)
+   소수 회차의 성공은 `LatencyBound`의 보편 보장이 아니다.
+
+**하니스 구현 (2026-10-23 — 오너 yes: `claude` 1회, §5.4 선택지 1):**
+
+- 게이트·해석·pane·기동·dialog 점검·정리는 B2와 같다(§5.2 "하니스 구현", label `hsprobe-d2-<run>`, **새 pane**). dialog면 프롬프트를
+  보내지 않고 `DIALOG(…)` INCONCLUSIVE.
+- `interactive_ready` 뒤 10 s 기동 관찰(`G` 500 ms, `facts.bootPushes`) → `G(pre-prompt)` → `pane.read{recent, lines:200}`로 응답 줄(`OK`만 있는
+  줄) 기준선 → `t_prompt` → `agent.prompt{target:P, text:"Reply with the single word OK."}`(**`wait` 없음**) → `facts.prompt`
+  (`rpcMs`·`ok`·`errorCode`·`stalled`) → `G(post-prompt)`.
+- 관찰 **120 s**(`t_prompt`부터): 500 ms마다 `G`(rev/scs/cs → `facts.polls`) + 응답이 보일 때까지 `pane.read{recent}` — 첫 출현
+  `okAppearedMs`, 마지막 미출현 폴 `okLastMissMs`.
+- 끝: `agent.read{detection}`·`agent.explain` → `T/d2-end-*`(가림 적용).
+- 도출(Astra 0251 M6): `promptToFirstWorkingMs`(+ 4 s 초과 여부) · 모든 push `pushesAfterPrompt`(`t_prompt` 기준 ms) · `reentries`(첫 `working` 뒤
+  `idle|done`→`working` 횟수) · `completionsBeforeReply`(첫 `working` 뒤 `idle|done` push 중 **마지막 미출현 폴보다 이른** 것 — 폴 지연 500 ms로
+  인한 거짓 FAIL 방지) · `terminalPush`(+ `afterReplyMs`) · `doneCompletionSeq`(완료 push 직후 첫 폴의 cs·scs, `csEqualsScs`·`csAbovePre`) ·
+  `agentPromptStalledThenStatus`.
+- 코드: `D2-DONE-AFTER-REPLY`·`D2-IDLE-AFTER-REPLY` = PASS · `D2-COMPLETION-BEFORE-REPLY(…)` = FAIL(중간 idle/`done`이 실제 응답 전 — D-3 전제
+  위반 정황) · `D2-NO-WORKING`·`D2-NO-REPLY`·`D2-NO-COMPLETION-PUSH`·`PROMPT_ERROR(…)`·`DIALOG(…)` 등 = INCONCLUSIVE.
+- 결과표 열 ↔ `summary.json` D2 facts: CLI 버전 `cli.version` · 일시 `date` · 서버 모드·HOME `serverMode`·`ownerDecision.homeChoice` ·
+  `t_prompt`→RPC `prompt.rpcMs` · stalled `prompt.stalled` · 첫 `working` `promptToFirstWorkingMs` · 종료 push `terminalPush` ·
+  G `g.prePrompt`/`g.postPrompt`/`g.end`/`g.diffs` · `done`↔cs `doneCompletionSeq` · 생성/닫음 `created`/`closed` + `cliCleanup` · 결과 코드 `code` ·
+  비고 `reentries`·`okAppearedMs`·`completionsBeforeReply`·`newSessionFiles`.
 
 **결과표 (D2)**
 
 | 회차 | kind | CLI 버전 | 일시 | 서버 모드 · HOME 선택(§5.4) | `t_prompt`→RPC 반환 (ms) | stalled | `t_prompt`→첫 `working` (ms) | 종료 push 값·시각 | G 프롬프트 전→후→끝 (rev / scs / cs) | `done`↔`completion_seq` 대조 | 생성/닫음 id · CLI pid 정리 | 결과 코드 | 비고 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | | |
+| 시도 1 `RYi8BG` | claude | — | `8o37qI` 직전 | private · 선택지 1 | — (미전송) | — | — | — | — | — | (분석에 미기록) | `DIALOG(login)` (INCONCLUSIVE) | 로그인 화면(pane env `USER`/`LOGNAME` 없음) → 프롬프트 미전송 · 토큰 0 |
+| 1 `8o37qI` (run `0ce680`) | claude | 2.1.310 (Claude Code) · Claude Max · auto mode | 2026-10-24 00:40 UTC | private · herdr 0.9.5 / protocol 22 · 선택지 1 | **406** (RPC 반환 시 `agent_status:"idle"`, scs 9 — status가 바뀌기 **전**에 반환, H18) | `false` | **587** (push) · G 가시 +615 (< 4 s `LatencyBound`) | `working`@+587 → **`done`@+3890** (응답 첫 관측 +3727 뒤 163 ms, Stop hooks 뒤 — H19). push 정확히 2건 | 1/9/null → +509 1/9/null(`terminal_title:"◐ Claude Code"`) → +615 1/10/null → +2613 2/10/null(제목 변경) → +4118 2/11/**11** → 끝(+120 296) 2/11/11 | `csEqualsScs:true` · `csAbovePre:true` · cs 11 = done 전이의 scs · 레벨 ~116 s 유지 (H20) | `leftover:[]` · `dirty:false` · CLI pid 전부 `gone` | `D2-DONE-AFTER-REPLY` (PASS) | 기동 `idle` push 1건 · start→ready 3865 ms · `reentries:0` · `completionsBeforeReply:[]` · `unknown`/not-found 0 · 화면 "✢ Kneading… (running Stop hooks… 2/4 · 3s)" 동안 `working` 유지 · 도구 사용 없음 · `newSessionFiles` = `7241c4b0-88d5-43e3-bd82-f18d74d0c9b5.jsonl` |
+
+**실 HOME 부작용 (선택지 1의 결과 — 기록):** 실 HOME → 각 claude가 **오너의 MCP 서버를 띄웠고**(`playwright-mcp`, pencil
+`mcp-server-darwin-arm64`, `mcp@latest` — `processInfoBeforeClose`) D2에서 **오너의 Stop hooks가 돌았다**(화면 "running Stop hooks… 2/4").
+D2는 세션 파일 1개 `~/.claude/projects/<loom slug>/7241c4b0…jsonl`
+(`~/.claude/projects/-Users-kyoungsiklee-projects-loom/7241c4b0-88d5-43e3-bd82-f18d74d0c9b5.jsonl`)을 남겼다 — **삭제하지 않음**.
 
 ### 7.3 판정과 TLA 영향
 
@@ -633,7 +711,8 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 1. S0 (private 서버 기동 또는 shared 안전 블록 준비 · `ping` 0.9.5/22 확인 · held driver 점검 §2.6) → A → C → D1 → E → s → B1. 전부 `[herdr 전용]` —
    오너 승인 없이 아키텍트가 실행 결정 가능(shared면 §2.5 전부 준수).
 2. B2·D2는 `[실 CLI — 오너 yes]` — 승인 문구에 kind 목록과 §5.4 HOME 선택·서버 모드를 함께 받는다. B2 다음 D2(같은 실행에서 B2
-   관찰분을 D2 1단계로 재사용 가능).
+   관찰분을 D2 1단계로 재사용 가능). **오너 yes 2026-10-23:** `claude`만 각 1회 · private · 선택지 1 →
+   `bun run scripts/probe-herdr-status.ts --probe b2,d2 --real-cli --owner-approved`(아키텍트 실행, herdr pane 밖). 하니스는 D2에 새 pane을 쓴다.
 3. 각 프로브의 결과표는 아키텍트가 채운다. 서술 관측은 새 관측 문서 `docs/spikes/HERDR-STATUS-OBSERVATIONS.md`에(이 설계 문서의
    본문은 수정하지 않고 결과표만 채운다): herdr `ping` 버전·프로토콜(0.9.5 / 22), 서버 모드, 반복별 원 push 인용, G-스냅샷 원표,
    위 표의 결과 코드(S0…E-3), 그리고 아래 매핑으로 TLA 상수를 갱신할 근거.
@@ -666,6 +745,8 @@ G-스냅샷의 `completion_seq` 증가 시각과 대조한다(`done` 없이 `com
 | E | `E-1`/`E-2` 일치 → `agent.wait` 단독 **F2′ 대체 불가** 확인(형태 확정). `bootReturns`(immediate면 C9 실재)는 별도 기록 | (FAIL 없음) | `AGENT_NOT_FOUND` · `LEVEL_LOST` · `E-3…` |
 | s | `S-STAMP` 또는 `S-GLOBAL` × `rereport-bump`/`rereport-nobump` 일치 → seq 의미 확정 | (FAIL 없음) | `S-MIXED`·`rereport-mixed`·`LEVEL_LOST` |
 | B1 | herdr 고유 기동 `working` 없음 → F3′ 잔여창은 CLI 의존(B2 필요) | 가짜 바이너리에도 기동 `working` → **`MaxBoot ≥ 1`**, F3′ 펜스 뒤 기동 쌍 실재 | `ABORTED_REAL_CLI` · `NOT_APPLICABLE` |
+| B2 | `B2-IDLE-ONLY`/`B2-NO-PUSH` + 대조군 → `MaxBoot = 0` 지지(claude 1회 한정) | `B2-BOOT-WORKING(before-ready\|after-ready)` → **`MaxBoot ≥ 1`** · `B2-BOOT-DONE` → `BootDone` | `DIALOG(…)` · `BOOT_NOT_READY` · `RESOLVED_FAKE` · `START_FAILED` · `NO_REAL_CLI` · `UNDETERMINED(control)` |
+| D2 | `D2-DONE-AFTER-REPLY`/`D2-IDLE-AFTER-REPLY` → 완료 push가 실제 응답 뒤(D-3 전제 유지, claude 한정) | `D2-COMPLETION-BEFORE-REPLY(…)` → 응답 전 완료 계열 push(중간 idle/`done`) | `DIALOG(…)` · `D2-NO-WORKING` · `D2-NO-REPLY` · `D2-NO-COMPLETION-PUSH` · `PROMPT_ERROR(…)` |
 
 ## 10. 이 설계의 미확인 전제 (S0에서 먼저 깨질 수 있는 것)
 
@@ -706,28 +787,56 @@ run 1(`6c0c3e`)은 쉘 pane 권한 해제 때문에 A·C·D1·E가 하니스 전
 | H12 | 보고한 `agent` = 감지된 kind면 권한 유지, 쉘 pane의 `bash`는 ≤ 1 s에 해제(`unknown` / not found) | run 2 `LEVEL_LOST` 0 · `unknown` push 0 (held) · step0 bash 쉘 pane `unknown` 2건 · run 1 전반 | M | `agent_not_found`/`unknown` = 권한 없음, 판정 근거로 쓰지 않음 |
 | H13 | push 봉투에 seq 없음. `agent.get`은 받은 push보다 뒤처진 적 없음. 모든 RPC가 ~100 ms 틱 위 | freshness 5/5 `scsAdvanced:true` · RPC 타이밍(run 1·2) | M (소표본) | `LatencyBound`에 홉당 ~100 ms. RPC를 이어 ≤ 50 ms 창은 못 만든다 |
 
-### 11.1 실행 세대 완료 규칙 (후보 — 설계 아님)
+**실 CLI 행 (B2·D2, run `0ce680` = `8o37qI`, 2026-10-24 · claude 2.1.310 · Claude Max · auto mode · private · §5.4 선택지 1 · 감지기 원천):**
 
-- **baseline `b`** = 기동이 안정된 뒤 · inject **직전**에 읽은 `agent.get(P)`의 `completion_seq`/`state_change_seq`(H7).
-- **완료** = `agent_status ∈ {done, idle} ∧ completion_seq > b`. 폴 사이에 작업이 통째로 끝나도(H8), 포커스 해제 뒤에도(H10) 성립.
-  이전 실행의 stale `done`은 `cs ≤ b`로, 기동 idle은 `cs = null`로 거부된다(H11의 C9를 펜스가 막음).
-- `scs == b`가 `LatencyBound` 뒤에도 그대로 = 전달 증거 없음(재-inject 후보). `agent_not_found`/`unknown` = **권한 없음** — 폴 계속, 판정 금지(H12).
-- 이벤트는 깨우기 전용(H6·H10·H13).
+| # | 사실 | 증거 (회차 수 · 로그 필드) | M/I | 설계 결과 |
+|---|---|---|---|---|
+| H14 | claude 2.1.310 기동: `unknown`+`launch_pending:true` → `idle` push 1건 → `interactive_ready:true`. 기동 `working`/`done`/`unknown` push 없음, cs `null`. ready 뒤 30 s(B2)/10 s(D2) scs 불변. `launch_pending`은 false가 아니라 **필드 제거** | B2·D2 G·push 목록 · scs 8 / 9 불변 · `bootCompletionSeqRose:false` | M (기동 n=2) | claude 1종·이 버전 한정 `MaxBoot = 0` **지지**(증명 아님). 하니스 술어 `=== false` 수정 필요(§5.2 후속) |
+| H15 | 전역 scs 카운터 연속(7 → 8 → 9)이 폴 사이 숨은 기동 전이를 배제 | step0 held pane 7 · B2 기동 idle 8 · D2 기동 idle 9 | I (H7 + M 값) | push 경로 없이 스냅샷만으로 기동 무전이를 판정할 수 있다 |
+| H16 | 감지기가 소유한 실 claude pane에 외부 `report_agent{agent:"claude", working}` → `ok` 반환, 그러나 status 변화·push·scs 할당 없음 | B2 대조군 TX 1792802405849 · RX ok · push 0 · 다음 scs 할당 = D2 9 · `RYi8BG` 로그인 화면에서도 동일 | M (push 0, scs 0) / I (기전: 감지기 우선, `live_prompt_box` prio 950) | **실 CLI pane에선 감지기가 status를 소유** — `report_agent`는 무시된다. H12 "agent = 감지 kind면 권한 유지"는 규칙에 안 맞는 fake 화면 한정 |
+| H17 | 감지기 원천 status도 늦은 구독자에게 replay 없음 | B2 `lateSubscriber.pushes:[]` (ACK +102 ms, 5 s) | M (1 표본) | H6을 감지기 원천으로 확장 — `Replay = FALSE` |
+| H18 | `agent.prompt`는 status가 `idle`을 떠나기 **전**에 반환(~406 ms = ~100 ms 틱 + ~300 ms 서버). `working` push +587, G 가시 +615 | D2 RX `agent_prompted{idle, scs 9}` +406 · G +509 `idle` scs 9 · push +587 · G +615 scs 10 | M (n=1) | RPC 반환 ≠ 작업 시작. 반환 직후 ~180 ms의 `idle` (scs = b) 창이 실재 |
+| H19 | 감지기 `working`은 응답 렌더링과 **CLI Stop hooks** 동안 유지, `done`은 둘 다 끝난 뒤(응답 첫 관측 +163 ms) | D2 +3727 화면 "⏺ OK" + "running Stop hooks… 2/4" · `working` · +3890 `done` push | M (n=1, 도구 사용 없음) | 짧은 무도구 프롬프트에선 `done` = 실제 작업 종료 |
+| H20 | 감지기 원천 완료도 레벨 `done`(비포커스)으로 publish, `completion_seq` = 그 변화의 scs, ≥116 s 유지 | D2 cs 11 = scs 11 · `csEqualsScs:true` · `csAbovePre:true` · obs-end +120 296 `done` 2/11/11 | M (n=1) | H8과 같은 모양 — §11.1 미결 위험 (iii) 해소(claude 1회 한정) |
+| H21 | `revision`은 pane 메타데이터(세션 id·제목)와 함께 움직이고 status와 독립 | rev 0→1 세션 id·제목 출현 · 1→2 제목 변경 "OK 단어 응답 테스트" | I (2회 증가) | `revision`을 완료·세대 판정에 쓰지 않는다 |
+| H22 | `pane_agent_detected`는 `agent.start` 뒤 ~200–300 ms. herdr가 감지를 두 번 로그할 수 있다 | B2 +308 push · 서버 로그 `agent changed … agent=Some(Claude)` 00:39:25.831Z·26.544Z (둘 다 `previous_agent=None`) | M | 감지 이벤트를 1회성 간선으로 가정하지 않는다 |
+
+### 11.1 실행 세대 완료 규칙 (후보 — 설계 아님, D2 반영 정제 2026-10-24)
+
+- **baseline `b`** = 기동이 안정된 뒤 · inject **직전**에 읽은 `agent.get(P)`의 **`state_change_seq`**(H7). `completion_seq`가 아니다 —
+  기동 직후 pre-prompt cs는 `null`이라(D2: pre-prompt scs 9, cs null) `cs > null`은 정의되지 않는다. `cs > b_scs`는 이전 실행의 stale
+  `done`도 거부한다(그 cs ≤ 그 scs ≤ b).
+- **완료 (protocol 22)** = `agent_status ∈ {done, idle} ∧ completion_seq > b`. 폴 사이에 작업이 통째로 끝나도(H8·H20), 포커스 해제 뒤에도(H10)
+  성립. 기동 idle은 `cs = null`로 거부된다(H11의 C9를 펜스가 막음).
+- **펜스가 필요하다(D2 실측):** `agent.prompt` 반환(+406)과 그 직후 G(+509)에서 pane은 **`idle`, scs = b**였다(H18). 순진한 "프롬프트 뒤
+  idle" 또는 `agent.wait` 게이트는 이 ~180 ms 창에서 거짓 완료한다. cs 펜스는 이를 거부했다(cs null) — +4013/+4118에야 첫 충족(cs 11 > 9),
+  응답·Stop hooks 뒤. 조기 충족 없음(M, n=1).
+- `scs > b`(전달 증거)는 +615에 나타났다 — `LatencyBound` 안. `scs == b`가 `LatencyBound` 뒤에도 그대로 = 전달 증거 없음(재-inject 후보).
+- **실 claude pane에선 감지기가 status를 소유한다(H16)** — 브리지·하니스의 `report_agent`는 `ok`여도 효과가 없다. 규칙은 감지기 원천 스냅샷만
+  읽는다. `agent_not_found`/`unknown` = **권한 없음** — 폴 계속, 판정 금지(H12). 실 CLI에선 이 분기가 아직 한 번도 일어나지 않았다(미실측).
+- 이벤트는 깨우기 전용(H6·H10·H13·H17).
 - **열린 설계 질문 — protocol 17:** `completion_seq`는 **protocol 22 전용**(22:6564-6572)이고 17에는 `state_change_seq`만 있다(17:6034-6039).
-  Loom은 {17, 22}를 지원하므로 17에서의 완료 펜스(예: `scs > b ∧ status ∈ {done, idle}` + working 관측 요구)를 따로 정해야 한다 —
-  17의 scs가 도장인지도 미측정.
-- 규칙의 미결 위험: (i) H9 중간 idle이 `cs > b`를 만든다 · (ii) 이미 포커스된 pane의 완료가 cs를 채우는가(herdr-only 시험 가능) ·
-  (iii) 감지기 원천 상태가 cs/scs를 같은 방식으로 채우는가.
+  Loom은 {17, 22}를 지원하므로 17 변형(예: `scs > b ∧ status ∈ {done, idle}` + working 관측 요구)을 따로 정해야 한다 — H18의 `idle`/scs = b 창은
+  `scs > b`로 거부되지만, 17의 scs가 도장인지 미측정이라 **열린 질문**으로 둔다.
+- 규칙의 미결 위험: (i) H9 중간 idle이 `cs > b`를 만든다(실 CLI 도구 대기 미측정) · (ii) 이미 포커스된 pane의 완료가 cs를 채우는가 ·
+  ~~(iii) 감지기 원천 상태가 cs/scs를 같은 방식으로 채우는가~~ → H20으로 claude 1회 한정 해소.
 
-### 11.2 B2·D2에 남은 것 (실 CLI — 오너 yes)
+### 11.2 아직 미측정 (B2·D2 뒤)
 
-- 기동 `working`/`done`이 `interactive_ready` 전·후에 오는가(MaxBoot), 그리고 기동 전이가 baseline **뒤**에 떨어질 수 있는가.
-- 감지기 원천 권한이 실행 중·종료 시 떨어지는가(`unknown`/`agent_not_found`).
-- 도구 대기 등 중간 idle과 그때의 `done`(H9) vs 실제 작업 종료.
-- 감지기 원천 완료의 `completion_seq`/scs 동작.
-- 같은 pane에서 감지기 원천 vs 보고 원천 충돌.
-- 감지기 원천 status의 replay(B2 중 같은 pane 재구독).
-- 프롬프트 → 첫 `working` 지연 vs `LatencyBound`(100 ms 틱·`agent_prompt_stalled` 포함).
+실 CLI 항목은 오너 yes가 필요하다.
+
+- **다른 CLI**(`codex`, `grok`): 기동 모양·감지 규칙·완료/cs 동작.
+- **도구 사용이 있는 긴 작업**: 도구 대기마다 중간 `idle`/`done`(H9 위험) — 이번 프롬프트는 도구 없음(`reentries:0`은 도구 대기에 대해 아무것도
+  말하지 않는다). 서브에이전트·백그라운드 작업·compaction 포함.
+- **권한 프롬프트 / `blocked`**: auto mode라 권한 대화창이 억제됐다 — `blocked` 감지와 그 cs 동작 미시험.
+- **stalled 프롬프트**: `agent_prompt_stalled` 경로(`stalled:false`였음) · 바쁜 pane에 프롬프트.
+- **두 번째 프롬프트**(같은 pane): `working`에서 cs 해제 여부, 연속 실행 사이 펜스.
+- **포커스된 pane**의 완료(`idle`에 cs가 붙는가) · 감지기 `done`의 포커스 해제.
+- **종료 경로**: CLI 종료·크래시 시 감지기 권한, `pane_closed`/`pane_exited` 전달(`pane.close`에서 sink가 먼저 파괴돼 미포착).
+- **n=1**: 프로브당 1회(설계는 kind당 3회) · B2 관찰 창 30 s(설계 60 s).
+- 보고 권한에 기대지 않는 liveness 대조군(§5.2 B2 하니스 후속).
+- **protocol 17** 변형(위 §11.1).
+- shared 서버 · CLI 업데이트/MCP 실패 기동 · 실행 중 인터럽트(Esc).
 
 herdr-only 후속(오너 yes 불요): A 동률 술어 수정 뒤 재실행(수정 완료, 미실행) · Bun flowing in-flight 꼬리 변형 · 이미 포커스된 pane의
 완료 · `release_agent` 뒤 `agent.get` 레벨 · herdr pane 밖에서 실행.

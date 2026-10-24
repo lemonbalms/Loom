@@ -1,5 +1,6 @@
 /**
- * HERDR-STATUS-PROBES harness — `[herdr 전용]` probes only (Step 0 · A · B1 · C · D1 · E · s).
+ * HERDR-STATUS-PROBES harness — `[herdr 전용]` probes (Step 0 · A · B1 · C · D1 · E · s) + the owner-gated
+ * `[실 CLI — 오너 yes]` probes B2 · D2 (claude only).
  *
  * Design SSOT: docs/spikes/HERDR-STATUS-PROBES.md §2 (form · isolation · cleanup · G-snapshots ·
  * shared safety block). Target herdr 0.9.5 / protocol 22; method names/params from
@@ -13,9 +14,13 @@
  * Usage (repo root, OUTSIDE any herdr pane; not concurrently with worker test suites):
  *   bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e,s|all]
  *                                         [--timeout-ms N] [--reps N] [--dry-run] [--help]
+ *   bun run scripts/probe-herdr-status.ts --probe b2,d2 --real-cli --owner-approved [--kind claude]
  *
- * B2 / D2 (`[실 CLI — 오너 yes]`) are NOT implemented: `--probe b2|d2`, `--real-cli`, `--kind`
- * exit 2 ("requires owner yes; not implemented").
+ * B2 / D2 (`[실 CLI — 오너 yes]`, owner yes 2026-10-23: once each, kind `claude` only, HOME = §5.4
+ * option 1) run only with `--probe b2,d2 --real-cli --owner-approved` on the private server; every
+ * other request for b2/d2 (missing flag · `--server shared` · `--kind` ≠ claude) exits 2. The probe
+ * process and herdr server stay in temp HOME; only the CLI pane env gets the real HOME. Screen text
+ * (agent.read / pane.read) is stored under T only, with lines matching /api[_-]?key|token|secret/i redacted.
  *
  * Raw NDJSON socket only (no HerdrClient — its re-subscribe logic would pollute observations).
  * Helpers are copied from scripts/probe-pane-death.ts (importing it would run its main()).
@@ -39,12 +44,12 @@ import {
 } from "node:fs";
 import { createConnection, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 // ─── types · tiny helpers ────────────────────────────────────────────────────
 
 type Rec = Record<string, unknown>;
-type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e" | "s";
+type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e" | "s" | "b2" | "d2";
 type ServerMode = "private" | "shared";
 type Verdict = "PASS" | "FAIL" | "INCONCLUSIVE" | "SKIPPED";
 type AgentState = "idle" | "working" | "blocked" | "unknown";
@@ -57,11 +62,27 @@ const now = (): number => Date.now();
 
 /** §9 execution order: S0 → A → C → D1 → E → s → B1. */
 const ALL_PROBES: ProbeName[] = ["step0", "a", "c", "d1", "e", "s", "b1"];
-const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2, s: 2 };
+/** `[실 CLI — 오너 yes]` probes: never in "all"; run after the herdr-only ones, B2 then D2 (§9-2). */
+const REAL_CLI_PROBES: ProbeName[] = ["b2", "d2"];
+const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2, s: 2, b2: 1, d2: 1 };
 const EXPECTED_VERSION = "0.9.5";
 const EXPECTED_PROTOCOL = 22;
-const REAL_CLI_REFUSAL = "requires owner yes; not implemented";
+const REAL_CLI_REFUSAL =
+  "b2/d2 require --real-cli --owner-approved (owner yes 2026-10-23: once each, kind claude only, private server, HOME §5.4 option 1)";
 const FAKE_KINDS = ["claude", "codex", "grok"] as const;
+/** Owner decision 2026-10-23 — recorded in every B2/D2 result. */
+const REAL_CLI_KIND = "claude";
+const REAL_CLI_HOME = "/Users/kyoungsiklee";
+const REAL_CLI_CWD = "/Users/kyoungsiklee/projects/loom";
+const OWNER_DECISION = {
+  date: "2026-10-23",
+  scope: "B2 and D2 once each, kind claude only",
+  server: "private",
+  homeChoice:
+    "§5.4 option 1 — probe process + herdr server in temp HOME (private server); only the CLI pane env gets HOME=/Users/kyoungsiklee",
+} as const;
+const D2_PROMPT = "Reply with the single word OK.";
+const REDACT_RE = /api[_-]?key|token|secret/i;
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -72,6 +93,8 @@ interface Args {
   reps: number | null;
   dryRun: boolean;
   help: boolean;
+  realCli: boolean;
+  ownerApproved: boolean;
 }
 
 type ParseResult = { ok: true; args: Args } | { ok: false; exit: number; message: string };
@@ -85,7 +108,7 @@ const USAGE = `probe-herdr-status — HERDR-STATUS-PROBES [herdr 전용] harness
                             under the §2.5 safety block (dedicated workspace, focus:false, no server control,
                             B1 and D1 step 4 skipped; no held panes → C/D1/E/s INCONCLUSIVE,
                             A on plain shell panes).
-  --probe LIST              comma list of step0,a,b1,c,d1,e,s (alias s0) or "all" (default all).
+  --probe LIST              comma list of step0,a,b1,c,d1,e,s (alias s0) or "all" (default all; never b2/d2).
                             step0 always runs first — every other probe depends on it (incl. the
                             held-pane driver check, private only).
   --timeout-ms N            RPC / events.subscribe ACK timeout in ms (default 15000).
@@ -93,7 +116,13 @@ const USAGE = `probe-herdr-status — HERDR-STATUS-PROBES [herdr 전용] harness
   --dry-run                 parse args and print the planned RPC sequence per probe; no herdr contact.
   --help                    this text.
 
-  NOT implemented (owner yes required): --probe b2|d2, --real-cli, --kind → exit 2.
+  [실 CLI — 오너 yes] (owner yes 2026-10-23: B2·D2 once each, claude only, HOME §5.4 option 1):
+  --probe b2,d2             real claude CLI probes; never part of "all"; run after the herdr-only probes.
+  --real-cli                required for b2/d2.
+  --owner-approved          required for b2/d2.
+  --kind claude             optional; any other kind → exit 2.
+                            b2/d2 without both flags, with --server shared, or the flags without b2/d2 → exit 2.
+                            --reps does not apply to b2/d2 (once each).
 
 Output: T=<temp dir> then one JSON summary per probe:
   {probe, verdict: PASS|FAIL|INCONCLUSIVE|SKIPPED, code, facts, created, closed, leftover}
@@ -108,8 +137,11 @@ export function parseArgs(argv: string[]): ParseResult {
     reps: null,
     dryRun: false,
     help: false,
+    realCli: false,
+    ownerApproved: false,
   };
-  const refuse = (): ParseResult => ({ ok: false, exit: 2, message: REAL_CLI_REFUSAL });
+  const refuse = (why = REAL_CLI_REFUSAL): ParseResult => ({ ok: false, exit: 2, message: why });
+  let kindGiven = false;
   const bad = (m: string): ParseResult => ({ ok: false, exit: 2, message: `${m}\n\n${USAGE}` });
   for (let i = 0; i < argv.length; i++) {
     const raw = argv[i] ?? "";
@@ -132,8 +164,17 @@ export function parseArgs(argv: string[]): ParseResult {
         args.dryRun = true;
         break;
       case "--real-cli":
-      case "--kind":
-        return refuse();
+        args.realCli = true;
+        break;
+      case "--owner-approved":
+        args.ownerApproved = true;
+        break;
+      case "--kind": {
+        const v = value();
+        if (v !== REAL_CLI_KIND) return refuse(`--kind ${v}: only kind ${REAL_CLI_KIND} is owner-approved (2026-10-23)`);
+        kindGiven = true;
+        break;
+      }
       case "--server": {
         const v = value();
         if (v !== "private" && v !== "shared") return bad(`--server must be private|shared (got ${v})`);
@@ -159,8 +200,9 @@ export function parseArgs(argv: string[]): ParseResult {
         if (!v) return bad("--probe needs a value");
         const out = new Set<ProbeName>(["step0"]);
         for (const p of v.split(",").map((s) => s.trim().toLowerCase())) {
-          if (p === "b2" || p === "d2") return refuse();
-          if (p === "all") {
+          if (p === "b2" || p === "d2") {
+            out.add(p);
+          } else if (p === "all") {
             for (const q of ALL_PROBES) out.add(q);
           } else if (p === "s0" || p === "step0") {
             out.add("step0");
@@ -170,12 +212,20 @@ export function parseArgs(argv: string[]): ParseResult {
             return bad(`unknown probe: ${p}`);
           }
         }
-        args.probes = ALL_PROBES.filter((p) => out.has(p));
+        args.probes = [...ALL_PROBES.filter((p) => out.has(p)), ...REAL_CLI_PROBES.filter((p) => out.has(p))];
         break;
       }
       default:
         return bad(`unknown argument: ${raw}`);
     }
+  }
+  const wantsReal = args.probes.some((p) => REAL_CLI_PROBES.includes(p));
+  if (wantsReal && !(args.realCli && args.ownerApproved)) return refuse();
+  if (wantsReal && args.server !== "private") {
+    return refuse(`b2/d2 run on the private server only (owner yes 2026-10-23); --server ${args.server} refused`);
+  }
+  if (!wantsReal && (args.realCli || args.ownerApproved || kindGiven)) {
+    return refuse("--real-cli / --owner-approved / --kind are only valid with --probe b2|d2");
   }
   return { ok: true, args };
 }
@@ -284,6 +334,39 @@ function plannedSequence(p: ProbeName, mode: ServerMode, reps: number): string[]
         rep("re-report H1's current state (same status) → 500 ms → G(H1) dScs (bump?) + pushes on a H1 subscription (dedup?)"),
         "close H1, H2",
       ];
+    case "b2":
+    case "d2": {
+      const boot = [
+        `owner decision ${OWNER_DECISION.date}: ${OWNER_DECISION.scope} · ${OWNER_DECISION.homeChoice}`,
+        "pre-run (probe process, before env scrub): resolve real `claude` on the original PATH (Bun.which + realpath) · `claude --version` with {PATH, HOME=/Users/kyoungsiklee} · kind must be in server.agent_manifests",
+        `tab.create{focus:false, label:hsprobe-${p}-<run>, cwd:${REAL_CLI_CWD}, env:{HOME:${REAL_CLI_HOME}, PATH:<dir of real claude>:<original PATH minus fakebin/T>}} → P`,
+        "subscribe L_B = [pane.agent_status_changed{P}, pane.closed, pane.exited] + global pane.agent_detected — ACK before start · G(P)",
+        `agent.start{name:hsprobe-${p}-claude-<run>, kind:claude, pane_id:P, timeout_ms:60000}`,
+        "pane.process_info{P} poll ≤5 s: record resolved binary + CLI pids (T/fakebin → INCONCLUSIVE RESOLVED_FAKE)",
+        "G every 250 ms until interactive_ready (≤60 s) → launch_pending cleared / interactive_ready times",
+        "dialog check: agent.read{source:detection} + pane.read{visible} — trust/login/permission/theme dialog → INCONCLUSIVE DIALOG(<name>) (no keys are ever sent)",
+      ];
+      const close =
+        "close: pane.process_info{P} (CLI pids) → pane.close{P} → ≤5 s pid gone? survivor still `claude` → SIGTERM that pid only";
+      if (p === "b2") {
+        return [
+          ...boot,
+          "no prompt: 30 s after interactive_ready, G every 250 ms; every status push recorded (before/after ready)",
+          "agent.read{detection} + agent.explain{P} → T/b2-*.txt (redacted) · same-pane re-subscribe S2 5 s (detector-source replay?)",
+          "control: report_agent{P, agent:claude, working} → push on L_B (subscription liveness)",
+          close,
+        ];
+      }
+      return [
+        ...boot,
+        "boot observation 10 s after interactive_ready (G every 500 ms) → G(pre) · pane.read baseline of reply-OK lines",
+        `t_prompt → agent.prompt{target:P, text:${JSON.stringify(D2_PROMPT)}} (no wait field) → RPC return ms · error/stalled → G(post)`,
+        "observe 120 s from t_prompt: every 500 ms G (rev/scs/cs) + pane.read{recent} → first reply line `OK`; all status pushes timestamped",
+        "derive: prompt→first working · idle|done→working re-entries · completion pushes before the reply (vs last poll without OK) · terminal push · done↔completion_seq",
+        "end: agent.read{detection} + agent.explain{P} → T/d2-*.txt (redacted) · new session file names under ~/.claude/projects/<cwd slug>",
+        close,
+      ];
+    }
   }
 }
 
@@ -322,6 +405,19 @@ interface Ctx {
   held: HeldInfo | null;
   herdrEnvStripped: string[];
   children: Set<ChildProcess>;
+  /** Set only when b2/d2 were requested with --real-cli --owner-approved (resolved before the env scrub). */
+  realCli: RealCli | null;
+  /** Panes created for the real CLI — the only targets agent.prompt may reach. */
+  realCliPanes: Set<string>;
+}
+
+/** Real `claude` resolution done in the probe process before scrubEnv (owner yes 2026-10-23). */
+interface RealCli {
+  bin: string | null;
+  realpath: string | null;
+  version: string | null;
+  versionError?: string;
+  panePath: string;
 }
 
 /** Step-0 held-substrate result (§2.6): fake kind + the report_agent agent name whose levels persist. */
@@ -353,9 +449,29 @@ interface Summary {
   leftover: string[];
 }
 
+/** Credential hygiene: drop every line matching REDACT_RE (screen text from agent.read / pane.read). */
+function redactText(s: string): string {
+  if (!REDACT_RE.test(s)) return s;
+  return s
+    .split("\n")
+    .map((l) => (REDACT_RE.test(l) ? "[hsprobe: line redacted]" : l))
+    .join("\n");
+}
+
+function redactDeep(v: unknown): unknown {
+  if (typeof v === "string") return redactText(v);
+  if (Array.isArray(v)) return v.map(redactDeep);
+  if (v && typeof v === "object") {
+    const out: Rec = {};
+    for (const [k, x] of Object.entries(v as Rec)) out[k] = redactDeep(x);
+    return out;
+  }
+  return v;
+}
+
 function ev(ctx: Ctx, probe: string, kind: string, payload?: unknown): void {
   const t = now();
-  const line = { t_ms: t, rel_ms: t - ctx.start, probe, kind, payload };
+  const line = { t_ms: t, rel_ms: t - ctx.start, probe, kind, payload: redactDeep(payload) };
   try {
     appendFileSync(ctx.logPath, `${JSON.stringify(line)}\n`);
   } catch {
@@ -414,6 +530,10 @@ const OWNED_PANE_PARAM: Record<string, string> = {
   "pane.focus": "pane_id",
   "agent.start": "pane_id",
   "agent.wait": "target",
+  "agent.prompt": "target",
+  "agent.read": "target",
+  "agent.explain": "target",
+  "pane.read": "pane_id",
 };
 
 function assertOwned(ctx: Ctx, paneId: unknown): void {
@@ -430,6 +550,14 @@ function guard(ctx: Ctx, method: string, params: Rec): void {
     if (ctx.mode !== "private" || !isUnder(ctx.sock, ctx.T)) {
       throw new Error("REFUSED: server.stop outside the probe's own temp-dir server");
     }
+    return;
+  }
+  // D2 only (owner yes 2026-10-23): one agent.prompt, no `wait`, to a real-CLI pane this run created.
+  if (method === "agent.prompt" && ctx.realCli && ctx.mode === "private") {
+    if ("wait" in params) throw new Error("REFUSED: agent.prompt.wait is never sent");
+    const target = str(params.target);
+    if (!target || !ctx.realCliPanes.has(target)) throw new Error(`REFUSED: agent.prompt to non-real-CLI pane ${target}`);
+    assertOwned(ctx, target);
     return;
   }
   if (
@@ -2548,6 +2676,471 @@ async function probeB1(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
   return { verdict: "INCONCLUSIVE", code: codes.join(",") };
 }
 
+// ─── B2 · D2 — real claude CLI (`[실 CLI — 오너 yes]`, owner yes 2026-10-23) ─────
+
+/** Resolve the real CLI in the probe process (original PATH, before scrubEnv). Never uses T/fakebin. */
+function resolveRealCli(originalPath: string): RealCli {
+  const entries = originalPath.split(":").filter((e) => e && !e.includes("fakebin") && !e.includes("loom-herdr-probe-"));
+  const searchPath = entries.join(":");
+  const bin = Bun.which(REAL_CLI_KIND, { PATH: searchPath }) ?? null;
+  let real: string | null = null;
+  try {
+    real = bin ? realpathSync(bin) : null;
+  } catch {
+    real = null;
+  }
+  const panePath = [...new Set([...(bin ? [dirname(bin)] : []), ...entries])].join(":");
+  const out: RealCli = { bin, realpath: real, version: null, panePath };
+  if (!bin) return out;
+  const v = spawnSync(bin, ["--version"], {
+    encoding: "utf8",
+    timeout: 15_000,
+    env: { PATH: panePath, HOME: REAL_CLI_HOME },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (v.status === 0 && typeof v.stdout === "string") out.version = redactText(v.stdout.trim().split("\n")[0] ?? "");
+  else out.versionError = `status=${v.status} signal=${v.signal ?? ""} ${v.error ? String(v.error) : ""}`.trim();
+  return out;
+}
+
+const DIALOG_PATTERNS: Array<[string, RegExp]> = [
+  ["trust", /do you trust|trust (the|this) (files|folder|project)/i],
+  ["login", /select login method|please run \/login|log ?in to (claude|anthropic)|not logged in|invalid api key/i],
+  ["theme", /choose the text style/i],
+  ["permission", /do you want to (proceed|allow|make this edit)|allow this (tool|command)/i],
+  ["press-enter", /press enter to continue/i],
+  ["bypass-permissions", /bypass permissions mode/i],
+];
+
+function dialogIn(text: string): string | null {
+  for (const [name, re] of DIALOG_PATTERNS) if (re.test(text)) return name;
+  return null;
+}
+
+/** A line that is the reply itself: only `OK` (optionally `.`/`!`) after non-alphanumeric bullets. */
+const okLineCount = (text: string): number => text.split("\n").filter((l) => /^[^A-Za-z0-9]*OK[.!]?\s*$/.test(l)).length;
+
+function readText(r: Rec): string {
+  return str(rec(r.read).text) ?? str(r.text) ?? "";
+}
+
+/** agent.read / pane.read / agent.explain → redacted file under T (text never goes into facts). */
+async function saveRead(
+  ctx: Ctx,
+  pr: ProbeRun,
+  method: "agent.read" | "pane.read" | "agent.explain",
+  params: Rec,
+  file: string,
+): Promise<{ text: string; meta: Rec }> {
+  const r = await tryCall(ctx, pr.name, method, params);
+  const path = join(ctx.T, file);
+  if (!r.ok) {
+    writeFileSync(path, `error: ${redactText(r.error)}\n`);
+    return { text: "", meta: { file: path, error: r.error } };
+  }
+  const text = method === "agent.explain" ? JSON.stringify(r.result, null, 2) : readText(r.result);
+  const red = redactText(text);
+  writeFileSync(path, `${red}\n`);
+  return {
+    text,
+    meta: { file: path, lines: text.split("\n").length, redactedLines: red.split("\n").filter((l) => l.startsWith("[hsprobe: line redacted]")).length },
+  };
+}
+
+interface Proc {
+  pid: number;
+  name: string;
+  argv0: string | null;
+  cmdline: string | null;
+}
+
+function findProcs(v: unknown, out: Proc[] = []): Proc[] {
+  if (Array.isArray(v)) {
+    for (const x of v) findProcs(x, out);
+  } else if (v && typeof v === "object") {
+    const o = v as Rec;
+    const pid = num(o.pid);
+    const name = str(o.name);
+    if (pid !== null && name !== null) out.push({ pid, name, argv0: str(o.argv0), cmdline: str(o.cmdline) });
+    for (const x of Object.values(o)) if (x && typeof x === "object") findProcs(x, out);
+  }
+  return out;
+}
+
+const isCliProc = (p: Proc): boolean => `${p.name} ${p.argv0 ?? ""} ${p.cmdline ?? ""}`.includes(REAL_CLI_KIND);
+
+function psCommand(pid: number): string {
+  const r = spawnSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 5000 });
+  return typeof r.stdout === "string" ? r.stdout.trim() : "";
+}
+
+/** Real-CLI pane: cwd = the already-trusted repo, env = real HOME + PATH with the real claude (§5.4 option 1). */
+async function realCliPane(ctx: Ctx, pr: ProbeRun, rc: RealCli): Promise<string> {
+  const params: Rec = {
+    focus: false,
+    label: `hsprobe-${pr.name}-${ctx.run}`,
+    cwd: REAL_CLI_CWD,
+    env: { HOME: REAL_CLI_HOME, USER: "kyoungsiklee", LOGNAME: "kyoungsiklee", PATH: rc.panePath },
+  };
+  if (ctx.workspaceId) params.workspace_id = ctx.workspaceId;
+  const r = await call(ctx, pr.name, "tab.create", params);
+  const tabId = str(rec(r.tab).tab_id);
+  const paneId = str(rec(r.root_pane).pane_id);
+  const t = now();
+  if (tabId) {
+    ctx.owned.tabs.add(tabId);
+    pr.created.tabs.push({ id: tabId, t });
+  }
+  if (!paneId) throw new Error(`tab.create returned no root_pane.pane_id: ${JSON.stringify(r)}`);
+  ctx.owned.panes.add(paneId);
+  ctx.realCliPanes.add(paneId);
+  pr.created.panes.push({ id: paneId, t });
+  return paneId;
+}
+
+/** Close the real-CLI pane and confirm the CLI pid is gone; SIGTERM only a surviving pid that is still claude. */
+async function closeRealCli(ctx: Ctx, pr: ProbeRun, P: string, bootPids: number[]): Promise<Rec> {
+  const pi = await tryCall(ctx, pr.name, "pane.process_info", { pane_id: P });
+  const procs = pi.ok ? findProcs(pi.result) : [];
+  const pids = [...new Set([...bootPids, ...procs.filter(isCliProc).map((p) => p.pid)])];
+  await closePane(ctx, pr, P);
+  const until = now() + 5000;
+  while (now() < until && pids.some(pidAlive)) await sleep(100);
+  const survivors = pids.filter(pidAlive);
+  const sigtermed: number[] = [];
+  const skipped: Rec[] = [];
+  for (const pid of survivors) {
+    const cmd = psCommand(pid);
+    if (cmd.includes(REAL_CLI_KIND)) {
+      try {
+        process.kill(pid, "SIGTERM");
+        sigtermed.push(pid);
+      } catch {
+        /* */
+      }
+    } else {
+      skipped.push({ pid, reason: "pid no longer a claude process — not signalled" });
+    }
+  }
+  if (sigtermed.length) await sleep(2000);
+  const out = {
+    cliPidsBeforeClose: pids,
+    processInfoBeforeClose: pi.ok ? procs : { error: pi.error },
+    gone: pids.filter((p) => !pidAlive(p)),
+    survivorsAfterClose: survivors,
+    sigtermed,
+    skipped,
+    stillAlive: pids.filter(pidAlive),
+  };
+  ev(ctx, pr.name, "REAL_CLI_CLEANUP", out);
+  return out;
+}
+
+const pushRow = (p: Push, t0: number): Rec => ({ s: p.status, ms: p.t - t0, t: p.t });
+
+interface Boot {
+  P: string;
+  S: Sink;
+  D: Sink;
+  g0: GSnap;
+  tStart: number;
+  readyAt: number | null;
+  pendingClearedAt: number | null;
+  cliPids: number[];
+  code: string | null;
+}
+
+/** Shared B2/D2 boot (§5.2 1–3 / §7.2 1): subscribe before start, start, resolve, poll to interactive_ready, dialog check. */
+async function bootRealCli(ctx: Ctx, pr: ProbeRun, rc: RealCli, gEveryMs: number): Promise<Boot> {
+  const f = pr.facts;
+  const P = await realCliPane(ctx, pr, rc);
+  f.pane = P;
+  const S = await subscribe(ctx, pr, `${pr.name}.S`, subL(P));
+  const D = await subscribe(ctx, pr, `${pr.name}.D`, [{ type: "pane.agent_detected" }]);
+  const g0 = await G(ctx, pr, P, "before-start");
+  const tStart = now();
+  f.tStart = tStart;
+  const st = await tryCall(
+    ctx,
+    pr.name,
+    "agent.start",
+    { name: `hsprobe-${pr.name}-${REAL_CLI_KIND}-${ctx.run}`, kind: REAL_CLI_KIND, pane_id: P, timeout_ms: 60_000 },
+    ctx.timeoutMs + 60_000,
+  );
+  f.start = st.ok ? { ok: true, ms: st.t - tStart, result: st.result } : { ok: false, ms: st.t - tStart, error: st.error, code: st.code };
+  const boot: Boot = { P, S, D, g0, tStart, readyAt: null, pendingClearedAt: null, cliPids: [], code: null };
+  // resolved binary + CLI pids
+  const fakebin = join(ctx.T, "fakebin");
+  let resolved = "unknown";
+  const resUntil = now() + 5000;
+  while (now() < resUntil) {
+    const pi = await tryCall(ctx, pr.name, "pane.process_info", { pane_id: P });
+    if (pi.ok) {
+      const j = JSON.stringify(pi.result);
+      const procs = findProcs(pi.result);
+      if (j.includes(fakebin)) {
+        resolved = "fake";
+        f.processInfo = procs;
+        break;
+      }
+      const cli = procs.filter(isCliProc);
+      if (cli.length) {
+        resolved = "real";
+        boot.cliPids = cli.map((p) => p.pid);
+        f.processInfo = procs;
+        break;
+      }
+    }
+    await sleep(200);
+  }
+  f.resolved = resolved;
+  f.cliPids = boot.cliPids;
+  if (resolved === "fake") {
+    boot.code = "RESOLVED_FAKE";
+    return boot;
+  }
+  if (!st.ok && resolved !== "real") {
+    boot.code = "START_FAILED";
+    return boot;
+  }
+  // launch_pending / interactive_ready (G every gEveryMs, ≤60 s)
+  const until = now() + 60_000;
+  while (now() < until) {
+    const g = await G(ctx, pr, P, "boot");
+    if (boot.pendingClearedAt === null && g.launch_pending === false) boot.pendingClearedAt = g.t;
+    if (g.interactive_ready === true) {
+      boot.readyAt = g.t;
+      break;
+    }
+    await sleep(gEveryMs);
+  }
+  f.startToPendingClearedMs = boot.pendingClearedAt ? boot.pendingClearedAt - tStart : null;
+  f.startToReadyMs = boot.readyAt ? boot.readyAt - tStart : null;
+  const det = await saveRead(ctx, pr, "agent.read", { target: P, source: "detection" }, `${pr.name}-boot-detection.txt`);
+  const vis = await saveRead(ctx, pr, "pane.read", { pane_id: P, source: "visible" }, `${pr.name}-boot-visible.txt`);
+  const dialog = dialogIn(det.text) ?? dialogIn(vis.text);
+  const gD = await G(ctx, pr, P, "boot-dialog-check");
+  f.bootScreen = { detection: det.meta, visible: vis.meta, dialog, statusAtCheck: gD.agent_status };
+  if (dialog) {
+    ev(ctx, pr.name, "REAL_CLI_DIALOG", { dialog, status: gD.agent_status });
+    boot.code = `DIALOG(${dialog})`;
+  } else if (boot.readyAt === null) {
+    boot.code = "BOOT_NOT_READY";
+  }
+  return boot;
+}
+
+function realCliPreflight(ctx: Ctx, pr: ProbeRun): Outcome | null {
+  pr.facts.ownerDecision = OWNER_DECISION;
+  pr.facts.kind = REAL_CLI_KIND;
+  pr.facts.date = new Date().toISOString();
+  pr.facts.serverMode = ctx.mode;
+  pr.facts.paneHome = REAL_CLI_HOME;
+  pr.facts.paneCwd = REAL_CLI_CWD;
+  pr.facts.probeHome = ctx.home;
+  if (ctx.mode !== "private") return { verdict: "SKIPPED", code: "REFUSED(shared)" };
+  const rc = ctx.realCli;
+  if (!rc) return { verdict: "SKIPPED", code: "REFUSED(no owner approval flags)" };
+  pr.facts.cli = { bin: rc.bin, realpath: rc.realpath, version: rc.version, versionError: rc.versionError ?? null };
+  if (!rc.bin) return { verdict: "INCONCLUSIVE", code: "NO_REAL_CLI" };
+  if (!ctx.manifests || !JSON.stringify(ctx.manifests).includes(`"${REAL_CLI_KIND}"`)) {
+    return { verdict: "INCONCLUSIVE", code: "NOT_IN_MANIFESTS" };
+  }
+  pr.facts.manifestAbsPaths = manifestAbsPaths(ctx.manifests, REAL_CLI_KIND);
+  return null;
+}
+
+/** Newest session-file names (never content) under ~/.claude/projects/<cwd slug> — D2 records new ones. */
+function sessionFiles(): string[] {
+  const dir = join(REAL_CLI_HOME, ".claude", "projects", REAL_CLI_CWD.replace(/[/.]/g, "-"));
+  const r = spawnSync("ls", ["-1t", dir], { encoding: "utf8", timeout: 5000 });
+  return typeof r.stdout === "string" ? r.stdout.split("\n").filter(Boolean).slice(0, 50) : [];
+}
+
+async function probeB2(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
+  const pre = realCliPreflight(ctx, pr);
+  if (pre) return pre;
+  const rc = ctx.realCli as RealCli;
+  const f = pr.facts;
+  const boot = await bootRealCli(ctx, pr, rc, 250);
+  const { P, S, D, g0, tStart } = boot;
+  try {
+    if (boot.code === "RESOLVED_FAKE" || boot.code === "START_FAILED" || boot.code?.startsWith("DIALOG")) {
+      return { verdict: "INCONCLUSIVE", code: boot.code };
+    }
+    // 30 s no-prompt observation after interactive_ready, G every 250 ms
+    const obsFrom = boot.readyAt ?? now();
+    const obsEnd = obsFrom + 30_000;
+    while (now() < obsEnd) {
+      await G(ctx, pr, P, "obs");
+      await sleep(250);
+    }
+    const gEnd = await G(ctx, pr, P, "obs-end");
+    const all = S.pushes.filter(statusOf(P));
+    const readyAt = boot.readyAt;
+    const before = all.filter((p) => readyAt === null || p.t < readyAt);
+    const after = all.filter((p) => readyAt !== null && p.t >= readyAt);
+    f.pushesBeforeReady = before.map((p) => pushRow(p, tStart));
+    f.pushesAfterReady = after.map((p) => pushRow(p, tStart));
+    f.terminalEvents = S.pushes.filter((p) => p.status === null).map((p) => ({ event: p.event, ms: p.t - tStart }));
+    f.agentDetected = D.pushes.filter((p) => p.paneId === P).map((p) => ({ ms: p.t - tStart, raw: p.raw }));
+    f.agentDetectedOtherPanes = D.pushes.filter((p) => p.paneId !== P).length;
+    f.g = { start: g0, ready: readyAt, end: gEnd, diff: gDiff(g0, gEnd) };
+    f.observeMs = 30_000;
+    f.gEveryMs = 250;
+    const det = await saveRead(ctx, pr, "agent.read", { target: P, source: "detection" }, "b2-end-detection.txt");
+    const exp = await saveRead(ctx, pr, "agent.explain", { target: P }, "b2-end-explain.json");
+    f.endScreen = { detection: det.meta, explain: exp.meta, dialog: dialogIn(det.text) };
+    // same-pane late subscriber: does herdr replay the detector-source status? (§6 note)
+    const S2 = await subscribe(ctx, pr, "b2.S2", subL(P));
+    await sleep(5000);
+    f.lateSubscriber = { pushes: S2.pushes.filter(statusOf(P)).map((p) => pushRow(p, S2.ackAt ?? S2.openedAt)), levelAtOpen: gEnd.agent_status };
+    S2.destroy();
+    // control: subscription liveness
+    const cb = S.pushes.length;
+    let control = false;
+    try {
+      ctx.paneAgent.set(P, REAL_CLI_KIND);
+      await report(ctx, pr, P, "working");
+      control = Boolean(await S.waitFor(statusIs(P, "working"), 2000, cb));
+    } catch (e) {
+      f.controlError = e instanceof Error ? e.message : String(e);
+    }
+    f.control = control;
+    const sts = all.map((p) => p.status);
+    const workingBefore = before.some((p) => p.status === "working");
+    const workingAfter = after.some((p) => p.status === "working");
+    const sawDone = sts.includes("done");
+    const csRose = g0.completion_seq !== gEnd.completion_seq && gEnd.completion_seq !== null;
+    f.bootCompletionSeqRose = csRose;
+    if (boot.code === "BOOT_NOT_READY") return { verdict: "INCONCLUSIVE", code: "BOOT_NOT_READY" };
+    if (workingBefore) return { verdict: "FAIL", code: "B2-BOOT-WORKING(before-ready)" };
+    if (workingAfter) return { verdict: "FAIL", code: "B2-BOOT-WORKING(after-ready)" };
+    if (sawDone) return { verdict: "FAIL", code: "B2-BOOT-DONE" };
+    if (!control) return { verdict: "INCONCLUSIVE", code: "UNDETERMINED(control)" };
+    return { verdict: "PASS", code: all.length ? "B2-IDLE-ONLY" : "B2-NO-PUSH" };
+  } finally {
+    f.cliCleanup = await closeRealCli(ctx, pr, P, boot.cliPids);
+    S.destroy();
+    D.destroy();
+  }
+}
+
+async function probeD2(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
+  const pre = realCliPreflight(ctx, pr);
+  if (pre) return pre;
+  const rc = ctx.realCli as RealCli;
+  const f = pr.facts;
+  const sessionsBefore = sessionFiles();
+  const boot = await bootRealCli(ctx, pr, rc, 250);
+  const { P, S, D, g0, tStart } = boot;
+  try {
+    if (boot.code) return { verdict: "INCONCLUSIVE", code: boot.code };
+    // boot observation: 10 s after interactive_ready, G every 500 ms
+    const bootEnd = (boot.readyAt ?? now()) + 10_000;
+    while (now() < bootEnd) {
+      await G(ctx, pr, P, "boot-obs");
+      await sleep(500);
+    }
+    f.bootPushes = S.pushes.filter(statusOf(P)).map((p) => pushRow(p, tStart));
+    const gPre = await G(ctx, pr, P, "pre-prompt");
+    const base = await tryCall(ctx, pr.name, "pane.read", { pane_id: P, source: "recent", lines: 200 });
+    const okBaseline = base.ok ? okLineCount(readText(base.result)) : 0;
+    f.okBaseline = okBaseline;
+    // prompt (no wait field)
+    const pushBase = S.pushes.length;
+    const tPrompt = now();
+    f.tPrompt = tPrompt;
+    const pr1 = await tryCall(ctx, pr.name, "agent.prompt", { target: P, text: D2_PROMPT }, ctx.timeoutMs + 30_000);
+    const stalled = /stalled/i.test(JSON.stringify(pr1.ok ? pr1.result : { e: pr1.error, c: pr1.code }));
+    f.prompt = {
+      text: D2_PROMPT,
+      rpcMs: pr1.t - tPrompt,
+      ok: pr1.ok,
+      error: pr1.ok ? null : pr1.error,
+      errorCode: pr1.ok ? null : pr1.code,
+      stalled,
+      resultAgent: pr1.ok ? rec(pr1.result.agent) : null,
+    };
+    const gPost = await G(ctx, pr, P, "post-prompt");
+    // 120 s observation: G + pane.read every 500 ms
+    let okAt: number | null = null;
+    let lastMissAt: number | null = tPrompt;
+    const obsEnd = tPrompt + 120_000;
+    const polls: Rec[] = [];
+    while (now() < obsEnd) {
+      const tick = now();
+      const g = await G(ctx, pr, P, "obs");
+      if (okAt === null) {
+        const r = await tryCall(ctx, pr.name, "pane.read", { pane_id: P, source: "recent", lines: 200 });
+        const n = r.ok ? okLineCount(readText(r.result)) : 0;
+        if (r.ok && n > okBaseline) okAt = r.t;
+        else lastMissAt = r.t;
+      }
+      polls.push({ ms: tick - tPrompt, s: g.agent_status, rev: g.revision, scs: g.state_change_seq, cs: g.completion_seq });
+      await sleep(Math.max(0, 500 - (now() - tick)));
+    }
+    const gEnd = await G(ctx, pr, P, "obs-end");
+    const det = await saveRead(ctx, pr, "agent.read", { target: P, source: "detection" }, "d2-end-detection.txt");
+    const exp = await saveRead(ctx, pr, "agent.explain", { target: P }, "d2-end-explain.json");
+    f.endScreen = { detection: det.meta, explain: exp.meta, dialog: dialogIn(det.text) };
+    f.polls = polls;
+    // analysis (from the log-derived push list)
+    const after = S.pushes.slice(pushBase).filter(statusOf(P));
+    f.pushesAfterPrompt = after.map((p) => pushRow(p, tPrompt));
+    f.terminalEvents = S.pushes.filter((p) => p.status === null).map((p) => ({ event: p.event, ms: p.t - tPrompt }));
+    f.agentDetected = D.pushes.filter((p) => p.paneId === P).map((p) => ({ ms: p.t - tPrompt, raw: p.raw }));
+    const firstWorking = after.find((p) => p.status === "working") ?? null;
+    f.promptToFirstWorkingMs = firstWorking ? firstWorking.t - tPrompt : null;
+    f.promptToFirstWorkingOverLatencyBound4s = firstWorking ? firstWorking.t - tPrompt > 4000 : null;
+    f.okAppearedMs = okAt !== null ? okAt - tPrompt : null;
+    f.okLastMissMs = lastMissAt !== null ? lastMissAt - tPrompt : null;
+    const fromWorking = firstWorking ? after.slice(after.indexOf(firstWorking)) : [];
+    let reentries = 0;
+    for (let i = 1; i < fromWorking.length; i++) {
+      const a = fromWorking[i - 1]?.status;
+      if ((a === "idle" || a === "done") && fromWorking[i]?.status === "working") reentries++;
+    }
+    f.reentries = reentries;
+    const completions = fromWorking.filter((p) => p.status === "idle" || p.status === "done");
+    // "before the reply" = before the last pane.read that still lacked the OK line (poll-lag safe)
+    const early = okAt !== null && lastMissAt !== null ? completions.filter((p) => p.t < lastMissAt) : [];
+    f.completionsBeforeReply = early.map((p) => pushRow(p, tPrompt));
+    const terminal = completions[completions.length - 1] ?? null;
+    f.terminalPush = terminal ? { ...pushRow(terminal, tPrompt), afterReplyMs: okAt !== null ? terminal.t - okAt : null } : null;
+    f.g = { start: g0, prePrompt: gPre, postPrompt: gPost, end: gEnd, diffs: [gDiff(gPre, gPost), gDiff(gPost, gEnd)] };
+    // done ↔ completion_seq: the first poll after each completion push
+    f.doneCompletionSeq = completions.map((p) => {
+      const nxt = (f.gSnapshots as GSnap[]).find((g) => g.t >= p.t && g.label === "obs");
+      return {
+        push: p.status,
+        ms: p.t - tPrompt,
+        nextG: nxt ? { ms: nxt.t - tPrompt, s: nxt.agent_status, scs: nxt.state_change_seq, cs: nxt.completion_seq } : null,
+        csEqualsScs: nxt ? nxt.completion_seq !== null && nxt.completion_seq === nxt.state_change_seq : null,
+        csAbovePre: nxt ? (nxt.completion_seq ?? -1) > (gPre.completion_seq ?? -1) : null,
+      };
+    });
+    f.agentPromptStalledThenStatus = stalled ? after.map((p) => p.status) : null;
+    if (!pr1.ok) return { verdict: "INCONCLUSIVE", code: `PROMPT_ERROR(${pr1.code ?? "?"})` };
+    if (!firstWorking) return { verdict: "INCONCLUSIVE", code: okAt !== null ? "D2-NO-WORKING(reply seen)" : "D2-NO-WORKING" };
+    if (okAt === null) {
+      const endDialog = dialogIn(det.text);
+      return { verdict: "INCONCLUSIVE", code: endDialog ? `DIALOG(${endDialog})` : "D2-NO-REPLY" };
+    }
+    const kind = completions.some((p) => p.status === "done") ? "DONE" : completions.length ? "IDLE" : "NONE";
+    if (early.length) return { verdict: "FAIL", code: `D2-COMPLETION-BEFORE-REPLY(${early.map((p) => p.status).join(",")})` };
+    if (kind === "NONE") return { verdict: "INCONCLUSIVE", code: "D2-NO-COMPLETION-PUSH" };
+    return { verdict: "PASS", code: `D2-${kind}-AFTER-REPLY` };
+  } finally {
+    f.cliCleanup = await closeRealCli(ctx, pr, P, boot.cliPids);
+    S.destroy();
+    D.destroy();
+    const sessionsAfter = sessionFiles();
+    f.newSessionFiles = sessionsAfter.filter((x) => !sessionsBefore.includes(x));
+    f.sessionDir = join(REAL_CLI_HOME, ".claude", "projects", REAL_CLI_CWD.replace(/[/.]/g, "-"));
+  }
+}
+
 // ─── global cleanup (§2.3) ───────────────────────────────────────────────────
 
 async function globalCleanup(ctx: Ctx): Promise<Rec> {
@@ -2632,7 +3225,7 @@ async function main(): Promise<number> {
       JSON.stringify({ dryRun: true, server: args.server, probes: args.probes, timeoutMs: args.timeoutMs, reps: args.reps }),
     );
     for (const p of args.probes) {
-      const reps = args.reps ?? DEFAULT_REPS[p];
+      const reps = REAL_CLI_PROBES.includes(p) ? 1 : (args.reps ?? DEFAULT_REPS[p]);
       console.log(`\n# ${p} (reps ${reps})`);
       for (const line of plannedSequence(p, args.server, reps)) console.log(`  - ${line}`);
     }
@@ -2641,6 +3234,9 @@ async function main(): Promise<number> {
   }
 
   const realHome = homedir();
+  const wantsReal = args.probes.some((p) => REAL_CLI_PROBES.includes(p));
+  // owner yes 2026-10-23: resolve the real claude on the original PATH before the env scrub
+  const realCli = wantsReal && args.realCli && args.ownerApproved ? resolveRealCli(process.env.PATH ?? "") : null;
   const T = realpathSync(mkdtempSync(join(tmpdir(), "loom-herdr-probe-")));
   const home = join(T, "home");
   mkdirSync(home, { recursive: true });
@@ -2674,6 +3270,8 @@ async function main(): Promise<number> {
     held: null,
     herdrEnvStripped: inheritedHerdrEnv,
     children: new Set(),
+    realCli,
+    realCliPanes: new Set(),
   };
   writeFakeBins(ctx);
   writePyClient(ctx);
@@ -2684,6 +3282,8 @@ async function main(): Promise<number> {
     pid: process.pid,
     herdrEnvStripped: inheritedHerdrEnv,
     herdrEnvRemaining,
+    ownerDecision: realCli ? OWNER_DECISION : null,
+    realCli: realCli ? { bin: realCli.bin, realpath: realCli.realpath, version: realCli.version } : null,
   });
   if (inheritedHerdrEnv.length) {
     progress(`warning: HERDR_* env inherited (${inheritedHerdrEnv.join(",")}) — inside a pane? stripped from the probe env`);
@@ -2718,7 +3318,7 @@ async function main(): Promise<number> {
       let outcome: Outcome = { verdict: "INCONCLUSIVE", code: "NONE" };
       if (aborted || (!s.ok && name !== "step0")) {
         outcome = { verdict: "SKIPPED", code: `SKIPPED(${s.ok ? "aborted" : s.code})` };
-      } else if (name !== "step0" && name !== "b1" && !ctx.pushOk) {
+      } else if (name !== "step0" && name !== "b1" && !REAL_CLI_PROBES.includes(name) && !ctx.pushOk) {
         outcome = { verdict: "INCONCLUSIVE", code: "UNDETERMINED(S0-NOPUSH)" };
       } else {
         progress(`probe ${name}`);
@@ -2745,6 +3345,12 @@ async function main(): Promise<number> {
               break;
             case "b1":
               outcome = await probeB1(ctx, pr);
+              break;
+            case "b2":
+              outcome = await probeB2(ctx, pr);
+              break;
+            case "d2":
+              outcome = await probeD2(ctx, pr);
               break;
           }
         } catch (e) {
@@ -2776,13 +3382,15 @@ async function main(): Promise<number> {
     socket: ctx.sock,
     herdrEnvStripped: ctx.herdrEnvStripped,
     heldSubstrate: ctx.held,
+    ownerDecision: realCli ? OWNER_DECISION : null,
+    realCli: realCli ? { bin: realCli.bin, realpath: realCli.realpath, version: realCli.version } : null,
     dirty,
     cleanup: runOut,
     probes: summaries,
   };
-  writeFileSync(join(T, "summary.json"), `${JSON.stringify(final, null, 2)}\n`);
+  writeFileSync(join(T, "summary.json"), `${JSON.stringify(redactDeep(final), null, 2)}\n`);
   console.log(JSON.stringify({ T, dirty, summary: join(T, "summary.json"), log: ctx.logPath }));
-  for (const x of summaries) console.log(JSON.stringify(x));
+  for (const x of summaries) console.log(JSON.stringify(redactDeep(x)));
   return aborted || summaries.some((x) => x.verdict === "FAIL") ? 1 : 0;
 }
 
