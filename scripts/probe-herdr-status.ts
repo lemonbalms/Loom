@@ -1,5 +1,5 @@
 /**
- * HERDR-STATUS-PROBES harness — `[herdr 전용]` probes (Step 0 · A · B1 · C · D1 · E · s) + the owner-gated
+ * HERDR-STATUS-PROBES harness — `[herdr 전용]` probes (Step 0 · A · B1 · C · D1 · E · s · f) + the owner-gated
  * `[실 CLI — 오너 yes]` probes B2 · D2 (claude only).
  *
  * Design SSOT: docs/spikes/HERDR-STATUS-PROBES.md §2 (form · isolation · cleanup · G-snapshots ·
@@ -14,6 +14,7 @@
  * Usage (repo root, OUTSIDE any herdr pane; not concurrently with worker test suites):
  *   bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e,s|all]
  *                                         [--timeout-ms N] [--reps N] [--dry-run] [--help]
+ *   bun run scripts/probe-herdr-status.ts --probe f     (0.46.0 P0b · UK-7: private server only, never in "all")
  *   bun run scripts/probe-herdr-status.ts --probe b2,d2 --real-cli --owner-approved [--kind claude]
  *
  * B2 / D2 (`[실 CLI — 오너 yes]`, owner yes 2026-10-23: once each, kind `claude` only, HOME = §5.4
@@ -49,7 +50,7 @@ import { dirname, join, resolve, sep } from "node:path";
 // ─── types · tiny helpers ────────────────────────────────────────────────────
 
 type Rec = Record<string, unknown>;
-type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e" | "s" | "b2" | "d2";
+type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e" | "s" | "f" | "b2" | "d2";
 type ServerMode = "private" | "shared";
 type Verdict = "PASS" | "FAIL" | "INCONCLUSIVE" | "SKIPPED";
 type AgentState = "idle" | "working" | "blocked" | "unknown";
@@ -64,7 +65,12 @@ const now = (): number => Date.now();
 const ALL_PROBES: ProbeName[] = ["step0", "a", "c", "d1", "e", "s", "b1"];
 /** `[실 CLI — 오너 yes]` probes: never in "all"; run after the herdr-only ones, B2 then D2 (§9-2). */
 const REAL_CLI_PROBES: ProbeName[] = ["b2", "d2"];
-const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2, s: 2, b2: 1, d2: 1 };
+/**
+ * `[herdr 전용]` R1 probes that focus panes (0.46.0 P0b): private server only, never in "all" (an
+ * `all` run on the shared server must stay valid); run after the herdr-only ones, before b2/d2.
+ */
+const PRIVATE_ONLY_PROBES: ProbeName[] = ["f"];
+const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2, s: 2, f: 3, b2: 1, d2: 1 };
 const EXPECTED_VERSION = "0.9.5";
 const EXPECTED_PROTOCOL = 22;
 const REAL_CLI_REFUSAL =
@@ -115,7 +121,11 @@ const USAGE = `probe-herdr-status — HERDR-STATUS-PROBES [herdr 전용] harness
                             step0 always runs first — every other probe depends on it (incl. the
                             held-pane driver check, private only).
   --timeout-ms N            RPC / events.subscribe ACK timeout in ms (default 15000).
-  --reps N                  override per-probe repetitions (doc defaults: a=5 c=2 e=2 s=2 step0=b1=d1=1).
+  --reps N                  override per-probe repetitions (doc defaults: a=5 c=2 e=2 s=2 f=3 step0=b1=d1=1).
+
+  [herdr 전용 · R1 · private only] (0.46.0 P0b · UK-7 · class 113):
+  --probe f                 completion on an already-focused held pane (pane.focus on owned panes, private
+                            server only); never part of "all"; --server shared with f → exit 2.
   --dry-run                 parse args and print the planned RPC sequence per probe; no herdr contact.
   --help                    this text.
 
@@ -203,7 +213,7 @@ export function parseArgs(argv: string[]): ParseResult {
         if (!v) return bad("--probe needs a value");
         const out = new Set<ProbeName>(["step0"]);
         for (const p of v.split(",").map((s) => s.trim().toLowerCase())) {
-          if (p === "b2" || p === "d2") {
+          if (p === "b2" || p === "d2" || p === "f") {
             out.add(p);
           } else if (p === "all") {
             for (const q of ALL_PROBES) out.add(q);
@@ -215,12 +225,20 @@ export function parseArgs(argv: string[]): ParseResult {
             return bad(`unknown probe: ${p}`);
           }
         }
-        args.probes = [...ALL_PROBES.filter((p) => out.has(p)), ...REAL_CLI_PROBES.filter((p) => out.has(p))];
+        args.probes = [
+          ...ALL_PROBES.filter((p) => out.has(p)),
+          ...PRIVATE_ONLY_PROBES.filter((p) => out.has(p)),
+          ...REAL_CLI_PROBES.filter((p) => out.has(p)),
+        ];
         break;
       }
       default:
         return bad(`unknown argument: ${raw}`);
     }
+  }
+  const wantsPrivateOnly = args.probes.filter((p) => PRIVATE_ONLY_PROBES.includes(p));
+  if (wantsPrivateOnly.length && args.server !== "private") {
+    return refuse(`${wantsPrivateOnly.join(",")} run on the private server only (focus is refused on shared — §2.5-3); --server ${args.server} refused`);
   }
   const wantsReal = args.probes.some((p) => REAL_CLI_PROBES.includes(p));
   if (wantsReal && !(args.realCli && args.ownerApproved)) return refuse();
@@ -336,6 +354,21 @@ function plannedSequence(p: ProbeName, mode: ServerMode, reps: number): string[]
         rep("change H1 only (report next state) → 300 ms → G(H1), G(H2): H2 scs unchanged = per-pane stamp · H2 scs rose = global counter; then the same with H2 changed"),
         rep("re-report H1's current state (same status) → 500 ms → G(H1) dScs (bump?) + pushes on a H1 subscription (dedup?)"),
         "close H1, H2",
+      ];
+    case "f":
+      if (mode === "shared") return ["REFUSED(shared) — pane.focus is never sent on the shared server (§2.5-3)"];
+      return [
+        "two held panes P (to be focused) and Q (unfocused control) — same substrate as A/C/s (claim persists)",
+        "S = events.subscribe{[pane.agent_status_changed{P}, pane.agent_status_changed{Q}, pane.closed, pane.exited]} ACK",
+        "pane.focus{P} (owned pane, private server only) → G(P).focused must be true, G(Q).focused false; pane.list focused set recorded",
+        rep(
+          "per target in [P (focused), Q (unfocused control)]: assert focus (P true / Q false, else FOCUS_NOT_HELD) · G=idle|done before",
+        ),
+        "  report(working) → agent.get every 250 ms for 5 s {status, state_change_seq, completion_seq, revision, focused} → G=working held?",
+        "  report(idle) → agent.get every 250 ms for 5 s (same fields) → G=idle|done; all status pushes for the target per step",
+        "  per run: csBefore (G before working) vs cs over the post-idle series → filled (non-null and rose) | missing (null/unchanged while idle|done)",
+        "verdict: control not filled every rep → INCONCLUSIVE(CONTROL_NO_CS) · focused filled every rep → PASS F-CS-FILLED · focused missing every rep → FAIL F-CS-MISSING (class 113 real) · else INCONCLUSIVE",
+        "close P, Q",
       ];
     case "b2":
     case "d2": {
@@ -1032,6 +1065,14 @@ interface GSnap {
 }
 
 async function G(ctx: Ctx, pr: ProbeRun, P: string, label: string): Promise<GSnap> {
+  const snap = await fetchSnap(ctx, pr, P, label);
+  ev(ctx, pr.name, "G", { pane: P, ...snap });
+  pushFact(pr, "gSnapshots", snap);
+  return snap;
+}
+
+/** agent.get → GSnap without logging or facts (G and probe f's 250 ms series build on it). */
+async function fetchSnap(ctx: Ctx, pr: ProbeRun, P: string, label: string): Promise<GSnap> {
   const r = await tryCall(ctx, pr.name, "agent.get", { target: P });
   const base = { label, t: r.t };
   let snap: GSnap;
@@ -1061,8 +1102,6 @@ async function G(ctx: Ctx, pr: ProbeRun, P: string, label: string): Promise<GSna
       launch_pending: b(a.launch_pending),
     };
   }
-  ev(ctx, pr.name, "G", { pane: P, ...snap });
-  pushFact(pr, "gSnapshots", snap);
   return snap;
 }
 
@@ -2548,6 +2587,124 @@ async function probeS(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
   return { verdict: decided ? "PASS" : "INCONCLUSIVE", code: `${sCode}/${rCode}` };
 }
 
+/** agent.get every `everyMs` for `ms` with revision/focused too (logged as F_SAMPLE; not in gSnapshots). */
+async function sampleSnaps(ctx: Ctx, pr: ProbeRun, P: string, label: string, ms: number, everyMs = 250): Promise<GSnap[]> {
+  const out: GSnap[] = [];
+  const until = now() + ms;
+  while (now() < until) {
+    const s = await fetchSnap(ctx, pr, P, label);
+    out.push(s);
+    ev(ctx, pr.name, "F_SAMPLE", { pane: P, ...s });
+    await sleep(everyMs);
+  }
+  return out;
+}
+
+const snapRow = (s: GSnap, t0: number): Rec => ({
+  ms: s.t - t0,
+  status: s.agent_status,
+  scs: s.state_change_seq,
+  cs: s.completion_seq,
+  rev: s.revision,
+  focused: s.focused,
+  ...(s.error ? { error: s.error } : {}),
+});
+
+/**
+ * Probe f (0.46.0 P0b · UK-7 · class 113): does a run that ends on an ALREADY-focused held pane fill
+ * `completion_seq` like an unfocused one (H10/D1)? Private server only — pane.focus on owned panes.
+ */
+async function probeF(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
+  if (ctx.mode !== "private") return { verdict: "SKIPPED", code: "REFUSED(shared)" };
+  const na = heldUnavailable(ctx, true);
+  if (na) return na;
+  const P = (await heldPane(ctx, pr, "focused")).P;
+  const Q = (await heldPane(ctx, pr, "control")).P;
+  const S = await subscribe(ctx, pr, "f.S", [
+    { type: "pane.agent_status_changed", pane_id: P },
+    { type: "pane.agent_status_changed", pane_id: Q },
+    { type: "pane.closed" },
+    { type: "pane.exited" },
+  ]);
+  const f = await tryCall(ctx, pr.name, "pane.focus", { pane_id: P });
+  pr.facts.focusCall = f.ok ? { ok: true, t: f.t } : { ok: false, error: f.error };
+  pr.facts.focusedSetAfterFocus = focusedSet(await listPanes(ctx, pr.name));
+  const runs: Rec[] = [];
+  /** One working → idle run on `T`; `wantFocused` is the focus state the run must hold throughout. */
+  const run = async (r: number, T: string, role: "focused" | "control", wantFocused: boolean): Promise<Rec> => {
+    const row: Rec = { rep: r, role, pane: T };
+    const lost0 = levelLostCount(pr);
+    if (role === "focused") {
+      // re-focus each rep (idempotent) so a rep never depends on the previous one's focus state
+      const rf = await tryCall(ctx, pr.name, "pane.focus", { pane_id: P });
+      row.refocusOk = rf.ok;
+    }
+    await expectLevel(ctx, pr, T, levelsFor("idle"), `f${r}:${role}:before`);
+    const g0 = await G(ctx, pr, T, `f${r}:${role}:before`);
+    const other = await G(ctx, pr, T === P ? Q : P, `f${r}:${role}:other-before`);
+    row.focusBefore = { target: g0.focused, other: other.focused };
+    const base = S.pushes.length;
+    const tW = await report(ctx, pr, T, "working");
+    const sw = await sampleSnaps(ctx, pr, T, `f${r}:${role}:working`, 5000);
+    const heldWorking = await expectLevel(ctx, pr, T, ["working"], `f${r}:${role}:pre-idle`);
+    const baseIdle = S.pushes.length;
+    const tI = await report(ctx, pr, T, "idle");
+    const si = await sampleSnaps(ctx, pr, T, `f${r}:${role}:idle`, 5000);
+    const heldIdle = await expectLevel(ctx, pr, T, levelsFor("idle"), `f${r}:${role}:after`);
+    const g1 = await G(ctx, pr, T, `f${r}:${role}:after`);
+    row.working = sw.map((s) => snapRow(s, tW));
+    row.idle = si.map((s) => snapRow(s, tI));
+    row.pushesWorking = statusSeq(S, T, (p) => {
+      const i = S.pushes.indexOf(p);
+      return i >= base && i < baseIdle;
+    });
+    row.pushesIdle = statusSeq(S, T, (p) => S.pushes.indexOf(p) >= baseIdle);
+    row.g = gDiff(g0, g1);
+    const csBefore = g0.completion_seq;
+    const csAfter = [...si, g1].map((s) => s.completion_seq).filter((x): x is number => x !== null);
+    const csMax = csAfter.length ? Math.max(...csAfter) : null;
+    row.csBefore = csBefore;
+    row.csMaxAfterIdle = csMax;
+    const filled = csMax !== null && (csBefore === null || csMax > csBefore);
+    const idleShown = g1.agent_status === "idle" || g1.agent_status === "done";
+    const focusSeries = [g0, ...sw, ...si, g1].map((s) => s.focused);
+    row.focusHeld = focusSeries.every((x) => x === wantFocused);
+    row.levelLost = levelLostCount(pr) - lost0;
+    row.class = !heldWorking || !heldIdle || Number(row.levelLost) > 0
+      ? "LEVEL_LOST"
+      : !row.focusHeld
+        ? "FOCUS_NOT_HELD"
+        : filled
+          ? "filled"
+          : idleShown
+            ? "missing"
+            : "UNDETERMINED";
+    runs.push(row);
+    return row;
+  };
+  for (let r = 1; r <= reps; r++) {
+    progress(`f rep ${r}/${reps} focused`);
+    await run(r, P, "focused", true);
+    progress(`f rep ${r}/${reps} control`);
+    await run(r, Q, "control", false);
+  }
+  S.destroy();
+  await closePane(ctx, pr, P);
+  await closePane(ctx, pr, Q);
+  pr.facts.runs = runs;
+  const cls = (role: string): string[] => runs.filter((x) => x.role === role).map((x) => String(x.class));
+  const fc = cls("focused");
+  const cc = cls("control");
+  pr.facts.codes = { focused: fc, control: cc };
+  if (!f.ok) return { verdict: "INCONCLUSIVE", code: "FOCUS_CALL_FAILED" };
+  if ([...fc, ...cc].includes("LEVEL_LOST")) return { verdict: "INCONCLUSIVE", code: "LEVEL_LOST" };
+  if ([...fc, ...cc].includes("FOCUS_NOT_HELD")) return { verdict: "INCONCLUSIVE", code: "FOCUS_NOT_HELD" };
+  if (!cc.every((c) => c === "filled")) return { verdict: "INCONCLUSIVE", code: `CONTROL_NO_CS(${cc.join(",")})` };
+  if (fc.every((c) => c === "filled")) return { verdict: "PASS", code: "F-CS-FILLED" };
+  if (fc.every((c) => c === "missing")) return { verdict: "FAIL", code: "F-CS-MISSING" };
+  return { verdict: "INCONCLUSIVE", code: `F-MIXED(${fc.join(",")})` };
+}
+
 function writeFakeBins(ctx: Ctx): string {
   const dir = join(ctx.T, "fakebin");
   mkdirSync(dir, { recursive: true });
@@ -3345,6 +3502,9 @@ async function main(): Promise<number> {
               break;
             case "s":
               outcome = await probeS(ctx, pr, reps);
+              break;
+            case "f":
+              outcome = await probeF(ctx, pr, reps);
               break;
             case "b1":
               outcome = await probeB1(ctx, pr);

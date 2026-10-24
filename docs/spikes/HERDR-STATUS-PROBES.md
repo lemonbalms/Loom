@@ -5,6 +5,7 @@
 > | 프로브 | 등급 | 근거 |
 > |---|---|---|
 > | Step 0 · A · B1 · C · D1 · E · s | R1 | `[herdr 전용]` · temp HOME · private 서버 |
+> | f (0.46.0 P0b · UK-7) | R1 | `[herdr 전용]` · temp HOME · **private 서버만**(소유 pane에만 `pane.focus` — `--server shared`면 exit 2) · `all`에 안 들어감 |
 > | B2 · D2 | I4 | `[실 CLI — 오너 yes]` · 토큰 소비 · `--real-cli --owner-approved` |
 > | shared 서버 모드 (`[herdr 전용]`) | R2 상당 (주의) | §2.5 안전 블록 의무 |
 >
@@ -42,6 +43,7 @@
 | D2 | 실 CLI 1회 프롬프트의 `done` 시점·지연 | `done`-scope · `LatencyBound` | `[실 CLI — 오너 yes]` | 실 CLI 1회 프롬프트 |
 | E | `agent.wait{until:[idle,done]}`은 level인가 edge인가 | F2' 대체 가능성(COMPAT §3 마지막 행) | `[herdr 전용]` | 이미 `idle`인 pane에 `agent.wait` |
 | s | `state_change_seq`는 pane별 마지막-변경 도장인가 전역 카운터인가 · 같은 상태 재보고에 오르는가 **(run-1 analysis)** | F2''(seq 정렬 스냅샷) · 세대 귀속 | `[herdr 전용]` | held pane 2개 |
+| f | 이미 포커스된 pane에서 끝난 실행도 `completion_seq`를 채우는가 **(0.46.0 P0b · UK-7 · class 113)** | 0.46.0 완료 권위(`completion_seq > lastConsumedCs`) | `[herdr 전용]` (private만) | held pane 2개(포커스 P · 대조 Q) + `pane.focus` |
 
 모든 프로브 공통 신규 관찰(TLA (e)): **각 단계 전·후 `agent.get`의 `revision`·`state_change_seq`·`completion_seq`**(§2.4 G-스냅샷).
 부산물: D2·B2는 프롬프트→첫 `working` 지연도 잰다 → `LatencyBound`(4 s) 근거 자료(판정 아님).
@@ -716,6 +718,42 @@ D2는 세션 파일 1개 `~/.claude/projects/<loom slug>/7241c4b0…jsonl`
 추가(run 2 D1): 포커스로 인한 `done→idle`은 `idle` **push**를 내지만 scs는 불변(171→171) — push마다 scs가 오르지는 않는다. run 1의
 "내보낸 변화마다 +1"은 보고 원천 변화에만 성립한다.
 
+### 8.2 Probe f — 이미 포커스된 pane의 완료 · `[herdr 전용]` · R1 · private만 (0.46.0 P0b · UK-7 · class 113)
+
+**질문:** 0.46.0은 `agent.get`의 `completion_seq > lastConsumedCs`를 완료 권위로 삼는다. H10/D1은 **포커스되지 않은** pane에서
+`completion_seq`가 채워짐을 쟀다. 실행이 끝나는 순간 pane이 **이미 포커스되어 있으면** herdr가 `done` 대신 `idle`만 내고
+`completion_seq`를 채우지 않을 수 있다(class 113) — 그러면 포커스된 pane의 완료는 스냅샷 권위로 영영 보이지 않는다.
+
+실행: `bun run scripts/probe-herdr-status.ts --probe f` (아키텍트 실행, herdr pane 밖). `all`에 들어가지 않는다 — shared 서버의
+`all` 실행이 계속 유효하도록. `--probe f --server shared`는 exit 2(포커스는 shared에서 금지 — §2.5-3 유지). 포커스 수단은 D1 4단계와
+같은 `pane.focus`이며 하니스 가드가 private·소유 pane으로 한정한다(`tab.focus`·`agent.focus`·`workspace.focus`는 종전대로 거부).
+
+1. held pane `P`(포커스 대상)·`Q`(비포커스 대조) — A·C·s와 같은 바탕(권한 유지, §2.6). 두 pane의 status push를 한 구독 `S`로 받는다.
+2. `pane.focus{P}` → `pane.list` 포커스 집합 기록(`facts.focusedSetAfterFocus`).
+3. 회차마다(기본 **3회**) `P` 먼저, 이어 `Q`:
+   - `P`는 매 회차 `pane.focus{P}` 재호출(멱등). 시작 전 `G(대상)`·`G(상대)`의 `focused` 기록, 레벨 `idle|done` 단언.
+   - `report(working)` → 250 ms 간격 5 s `agent.get`(`status`·`state_change_seq`·`completion_seq`·`revision`·`focused`) → `working` 유지 단언.
+   - `report(idle)` → 같은 250 ms × 5 s → `idle|done` 단언 → `G` 뒤. 단계별 대상 pane push 전부.
+   - 회차 분류: `filled` = idle 뒤 표본의 최대 `completion_seq`가 non-null이고 직전 `G`(`csBefore`)보다 큼(또는 `csBefore` null) ·
+     `missing` = 그렇지 않으면서 끝 status가 `idle|done` · `FOCUS_NOT_HELD` = 표본 중 `focused`가 기대값(P=true, Q=false)과 다름 ·
+     `LEVEL_LOST` · `UNDETERMINED`.
+4. `P`·`Q` 닫기.
+
+**읽는 법:**
+
+| 결과 | 의미 |
+|---|---|
+| `F-CS-FILLED` (PASS) | 포커스된 pane의 완료도 비포커스와 같이 `completion_seq`를 채움 → class 113 비실재(0.9.5 · herdr-only 원천 한정) — 스냅샷 완료 권위 유지 |
+| `F-CS-MISSING` (FAIL) | 대조 Q는 채우는데 포커스된 P는 `completion_seq`가 null/불변인 채 `idle\|done` → **class 113 실재** — 0.46.0 완료 권위에 포커스 경로 보완 필요 |
+| `CONTROL_NO_CS(…)` (INCONCLUSIVE) | 대조 Q가 채우지 않음 → 이 바탕에선 비교 불가(H10/D1 재현 실패부터 본다) |
+| `FOCUS_NOT_HELD` · `FOCUS_CALL_FAILED` · `LEVEL_LOST` · `F-MIXED(…)` (INCONCLUSIVE) | 포커스가 기대대로 유지 안 됨 / `pane.focus` 실패 / 레벨 소실 / 회차 불일치 — 원 행(`facts.runs`) 보고 |
+
+**결과표 (f)**
+
+| 회차 | 일시 | run id | 역할 · pane | `focused`(전→표본) | `csBefore` → idle 뒤 최대 cs | 끝 status | idle 뒤 push | scs·rev 변화 | 생성/닫음 id | 회차 분류 | 결과 코드 | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| | | | | | | | | | | | | |
+
 ## 9. 실행 순서·결과 기록
 
 1. S0 (private 서버 기동 또는 shared 안전 블록 준비 · `ping` 0.9.5/22 확인 · held driver 점검 §2.6) → A → C → D1 → E → s → B1. 전부 `[herdr 전용]` —
@@ -754,6 +792,7 @@ D2는 세션 파일 1개 `~/.claude/projects/<loom slug>/7241c4b0…jsonl`
 | D1 | `D-1`/`D-2`/`D-4` + 모든 `done`이 보고된 작업 종료 뒤 → **F3′ `done` 전제 유지**. `doneSummary`로 레벨 지속·`completion_seq` 유무를 따로 적는다 | `…/done-without-work-end` → F3′ 펜스로 못 막는 가짜 완료 경로 | `LEVEL_LOST`(`idle` 보고 때 `working`이 이미 사라짐 — run 1의 D-4 산물 차단) · `NO_HELD_*` |
 | E | `E-1`/`E-2` 일치 → `agent.wait` 단독 **F2′ 대체 불가** 확인(형태 확정). `bootReturns`(immediate면 C9 실재)는 별도 기록 | (FAIL 없음) | `AGENT_NOT_FOUND` · `LEVEL_LOST` · `E-3…` |
 | s | `S-STAMP` 또는 `S-GLOBAL` × `rereport-bump`/`rereport-nobump` 일치 → seq 의미 확정 | (FAIL 없음) | `S-MIXED`·`rereport-mixed`·`LEVEL_LOST` |
+| f | `F-CS-FILLED` = 대조·포커스 모두 매 회차 `completion_seq` 채움 → class 113 비실재(§8.2) | `F-CS-MISSING` = 대조는 채우고 포커스 P는 null/불변인 채 `idle\|done` → class 113 실재 | `CONTROL_NO_CS(…)` · `FOCUS_NOT_HELD` · `FOCUS_CALL_FAILED` · `LEVEL_LOST` · `F-MIXED(…)` |
 | B1 | herdr 고유 기동 `working` 없음 → F3′ 잔여창은 CLI 의존(B2 필요) | 가짜 바이너리에도 기동 `working` → **`MaxBoot ≥ 1`**, F3′ 펜스 뒤 기동 쌍 실재 | `ABORTED_REAL_CLI` · `NOT_APPLICABLE` |
 | B2 | `B2-IDLE-ONLY`/`B2-NO-PUSH` + 대조군 → `MaxBoot = 0` 지지(claude 1회 한정) | `B2-BOOT-WORKING(before-ready\|after-ready)` → **`MaxBoot ≥ 1`** · `B2-BOOT-DONE` → `BootDone` | `DIALOG(…)` · `BOOT_NOT_READY` · `RESOLVED_FAKE` · `START_FAILED` · `NO_REAL_CLI` · `UNDETERMINED(control)` |
 | D2 | `D2-DONE-AFTER-REPLY`/`D2-IDLE-AFTER-REPLY` → 완료 push가 실제 응답 뒤(D-3 전제 유지, claude 한정) | `D2-COMPLETION-BEFORE-REPLY(…)` → 응답 전 완료 계열 push(중간 idle/`done`) | `DIALOG(…)` · `D2-NO-WORKING` · `D2-NO-REPLY` · `D2-NO-COMPLETION-PUSH` · `PROMPT_ERROR(…)` |
