@@ -2910,7 +2910,7 @@ async function startLockedBridgeRuntime(
     }
     flight.statusLostCheck = "get";
     herdr.agentGet(paneId).then(
-      (status) => onStatusLostGetReply(paneId, flight, status),
+      (snap) => onStatusLostGetReply(paneId, flight, snap.status),
       (e: unknown) => onStatusLostGetReply(paneId, flight, null, e),
     );
   }

@@ -37,6 +37,21 @@ const EVENT_RECONNECT_MAX_MS = 5_000;
 /** Schema-backed agent status enum (request + response AgentStatus). */
 export type HerdrAgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
+/**
+ * PLAN 0.46.0 R13: one normalized `agent.get` read. `stateChangeSeq` = finite
+ * integer ≥ 0 or `null`. `completionSeq`: key absent → `undefined` · JSON `null`
+ * → `null` · finite integer ≥ 0 → value · anything else → `undefined`.
+ */
+export type HerdrAgentSnapshot = {
+  status: HerdrAgentStatus;
+  stateChangeSeq: number | null;
+  completionSeq: number | null | undefined;
+};
+
+function isSeq(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+
 export type HerdrPingResult = {
   version: string;
   protocol: number;
@@ -425,26 +440,38 @@ export class HerdrClient {
   }
 
   /**
-   * PLAN 0.45.4 R2: one `agent.get` for `target` (pane id), normalized to the
-   * schema enum. Reads only `agent.agent_status` (present in protocol 17 and 22);
-   * seq/revision fields are ignored (D3). Lower-cased; missing or out-of-set →
-   * `"unknown"`. RPC errors propagate.
+   * PLAN 0.46.0 R13: one `agent.get` for `target` (pane id), normalized to a
+   * `HerdrAgentSnapshot`. `status` keeps the 0.45.4 R2 rule (lower-cased
+   * `agent.agent_status`; missing or out-of-set → `"unknown"`). Seqs per
+   * `HerdrAgentSnapshot`. Baseline, poll and the 0.45.4 watchdog all read
+   * through here. RPC errors propagate.
    */
-  async agentGet(target: string): Promise<HerdrAgentStatus> {
+  async agentGet(target: string): Promise<HerdrAgentSnapshot> {
     const result = (await this.request("agent.get", { target })) as {
-      agent?: { agent_status?: unknown };
+      agent?: Record<string, unknown>;
     };
-    const raw = result?.agent?.agent_status;
+    const agent = result?.agent;
+    const raw = agent?.agent_status;
     const s = typeof raw === "string" ? raw.toLowerCase() : "";
+    let status: HerdrAgentStatus;
     switch (s) {
       case "idle":
       case "working":
       case "blocked":
       case "done":
-        return s;
+        status = s;
+        break;
       default:
-        return "unknown";
+        status = "unknown";
     }
+    const scs = agent?.state_change_seq;
+    const stateChangeSeq = isSeq(scs) ? scs : null;
+    let completionSeq: number | null | undefined;
+    if (agent && typeof agent === "object" && "completion_seq" in agent) {
+      const cs = agent.completion_seq;
+      completionSeq = cs === null ? null : isSeq(cs) ? cs : undefined;
+    }
+    return { status, stateChangeSeq, completionSeq };
   }
 
   /**
