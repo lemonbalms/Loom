@@ -6,7 +6,7 @@
 | **Role** | 미지 템플릿 + 게이트별 **짧은** 표 |
 | **SSOT** | **아님** — 제품 계획 SSOT는 `docs/PLAN.md` |
 | **Workflow** | `docs/WORKFLOW.md` **§3.5** |
-| **Last updated** | 2026-10-18 |
+| **Last updated** | 2026-10-24 |
 
 ---
 
@@ -41,6 +41,40 @@
 ---
 
 ## Gate log
+
+### 0.46.0 — pane 카드 완료 · 실패 권위 = herdr `agent.get` 스냅샷 — 실행 세대 baseline · `completion_seq` 펜스 · 이벤트 = 깨우기 · `status_unavailable` (draft · `pending-review` R69)
+
+| Field | Value |
+|-------|-------|
+| **PLAN** | v0.46.0 (draft · `pending-review` R69) · MINOR · 근거 = HANDOFF Carry F1'–F3' + 프로브 실측(`HERDR-STATUS-PROBES.md` §11 H1–H22 · `BRIDGE-STARTUP-TLA.md` §9) · 범위 = 락 D1~D11(아키텍트 2026-10-24 · loom-advisor 개정 D2 · D3 · D4 · D5 · D6 · D11) |
+| **Date** | 2026-10-24 |
+| **Review** | R69 대기(loom-advisor) · `CONFLICT` 둘(PLAN §0.46.0 R3 · R8) |
+| **Implemented** | — |
+| **Shipped** | — |
+
+| 분면 | 내용 |
+|------|------|
+| Known knowns | (1) protocol 22 `state_change_seq` = 전역 카운터에서 뽑은 pane별 마지막-변경 도장 · 같은 상태 재보고 · 포커스 해제는 올리지 않음(H7). (2) 비포커스 완료 = 레벨 `done` + `completion_seq` = 그 변화의 scs · 작업 중 `null` · 유지(H8 · 실 claude H20 ≥116초). (3) `agent.prompt` 반환 직후 ~180 ms `idle` · scs = b 창이 실재(H18 — 펜스 필요). (4) 늦은 구독자 replay 없음(H6 · H17) · 이벤트 봉투에 seq 없음(H13). (5) 실 CLI pane에선 감지기가 status를 소유 · `report_agent` 무시(H16). (6) `completion_seq`는 protocol 22 전용 · 17엔 `state_change_seq`만(PROBES §11.1). (7) `request()`는 호출마다 연결 하나(`herdr-client.ts:317-318`). |
+| Known unknowns | **UK-1 ~ UK-10**(아래 표, 정본 = PLAN §0.46.0). |
+| Unknown knowns | 오늘 `pane_closed` 이벤트는 그 하나로 카드를 실패시킨다(`bridge-runtime.ts:3297-3325`) — D8 "이벤트 단독 실패 없음"과 충돌(R8 `CONFLICT`). 오늘 verify는 4초 × (retries + 1) 시계로 `inject_unconfirmed`를 낸다(`:2766-2788`) — D4 W 창과 같은 원인에 경쟁(R3 `CONFLICT`). |
+| Unknown unknowns | 실 herdr에서 도구 사용 · 서브에이전트 · compaction · 인터럽트(Esc) · CLI 크래시 중 감지기 전이 · 공유 서버 부하 아래 `agent.get` 지연 꼬리. |
+
+**Unknowns 요약 (정본 = PLAN §0.46.0):**
+
+| # | 요지 | 출발 기본값 / 착수 영향 | R69 판정 | 결과 |
+|---|------|-------------|----------|------|
+| UK-1 | **도구 사용 중 `completion_seq`가 실행 중에 오르는가**(H9) | 비차단 — 오르면 선언된 한계(계급 106 · D11) · D3 무변경 | — | open — D11 프로브(⑦) |
+| UK-2 | **codex · grok 감지기 동작**(기동 · 완료 · cs) | 비차단 — 필드가 있으면 같은 규칙(D3 · 계급 114) | — | open |
+| UK-3 | **권한 프롬프트 → `blocked`인가 · scs가 오르는가** | 비차단 — 같은 scs 반복 무동작(R6) · M-2 ③ 교정(계급 115) | — | open(auto mode라 미시험) |
+| UK-4 | **stalled 프롬프트 · 바쁜 pane 프롬프트의 scs 동작** | 비차단 — stalled = 불확실 → verify · 증거 `scs > b`(계급 118) | — | open |
+| UK-5 | **같은 pane의 두 번째 프롬프트**(카드 = 재주입) — `working`에서 cs 해제 · 연속 실행 펜스 | 비차단 — 재주입 baseline `b'`(R2) | — | open |
+| UK-6 | **protocol 17 `state_change_seq` 의미 · 17 라이브 동작**(이 기계에 0.7.5 없음) | 비차단 — 17엔 `completion_seq` 없음 → 0.45.4 폴백(D3 · 계급 108) · 17 규칙 없음 | — | open |
+| UK-7 | **이미 포커스된 pane의 완료가 `completion_seq`를 채우는가**(H10은 `done` 중 포커스만) | **차단 후보** — 안 채우면 권위 있는 `idle`(cs ≤ b)이 이어져 완료 · `status_unavailable` 모두 안 남(계급 113 정체) · P0b herdr 전용 프로브 제안(오너 yes 불요) | — | open |
+| UK-8 | **실 CLI 표본 n=1**(claude 2.1.310 · 무도구) | 비차단 — D11이 1회 더함(계급 114) | — | open |
+| UK-9 | **늦은 첫 전달 + 재주입 → 실행 1의 `done`이 실행 2에 귀속** | 비차단 — 같은 프롬프트 · 피해 유계(계급 107 · TLA `_LateDelivery`) | — | open |
+| UK-10 | **2초 폴 × 카드 수의 실 herdr 부하 · `agent.get` 지연 분포** | 비차단 — 브리지 전체 동시 상한(R11 · 계급 111 · 112) | — | open |
+
+**Current decision:** **draft → `pending-review` R69.** P0 TLC 전 코드 착수 금지 · UK-7은 R69가 차단 여부를 판정.
 
 ### 0.45.4 — pane 카드 상태 유실 watchdog — 재구독 ACK마다 `agent.get` 재조정 · `failed` / `status_lost` (`approved` — R68 approved-with-fixes · no R68b · implemented (P0–P2) · ship 전)
 
