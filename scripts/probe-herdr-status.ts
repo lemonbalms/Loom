@@ -2854,6 +2854,10 @@ const DECIDED_G = /^G-(SCS-(KEPT|RESET|NEWBASE)|PANE-GONE|AGENT-GONE)/;
  * stop → restart on the same socket/HOME → is the pane restored, what does agent.get answer, and are
  * scs / cs kept, reset or rebased? Private server only; restarts nothing but the probe's own T/ server.
  */
+// herdr RPC error codes that prove the agent is absent — extend only from measured herdr codes. Any other
+// code (the probe's own `timeout`, connection errors, unknown codes) is a failed observation, not absence.
+const G_AGENT_GONE_CODES: readonly string[] = ["agent_not_found", "pane_not_found"];
+
 async function probeG(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
   if (ctx.mode !== "private") return { verdict: "SKIPPED", code: "REFUSED(shared)" };
   const na = heldUnavailable(ctx, true);
@@ -3015,12 +3019,13 @@ async function probeG(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
         } else if (!present) {
           row.code = `G-INCONCLUSIVE(observe-failed: pane.list ${String(paneListError ?? "no reply").slice(0, 80)})`;
           await closePane(ctx, pr, P);
-        } else if (!ag.ok && ag.code) {
+        } else if (!ag.ok && ag.code && G_AGENT_GONE_CODES.includes(ag.code)) {
           row.code = `G-AGENT-GONE(${ag.code})`;
           await closePane(ctx, pr, P);
         } else {
-          // timeout / connection error / code-less error: the agent was not observed, not observed gone
-          row.code = `G-INCONCLUSIVE(observe-failed: agent.get ${String(ag.ok ? "no sample" : ag.error).slice(0, 80)})`;
+          // timeout / connection error / unknown or missing code: the agent was not observed, not observed gone
+          const why = ag.ok ? "no sample" : `${ag.code ?? "no code"}: ${ag.error}`;
+          row.code = `G-INCONCLUSIVE(observe-failed: agent.get ${String(why).slice(0, 80)})`;
           await closePane(ctx, pr, P);
         }
         continue;
