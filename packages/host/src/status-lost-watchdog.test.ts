@@ -533,10 +533,13 @@ describe("PLAN 0.45.4 status-loss watchdog (relay + fake herdr)", () => {
       try {
         const a = newCardId();
         const paneA = await startCard(rig, a, { working: false });
+        // 0.46.0 D3/R2: one baseline agent.get precedes inject on every flight (R69 ruling).
+        const base = agentGets(rig.fake, paneA, a).length;
+        expect(base).toBe(1);
         rig.fake.setAgentStatus(paneA, "idle");
         await startCard(rig, newCardId(), { working: false });
         await Bun.sleep(GRACE_MS + 300);
-        expect(agentGets(rig.fake, paneA, a)).toHaveLength(0);
+        expect(agentGets(rig.fake, paneA, a)).toHaveLength(base);
       } finally {
         await rig.close();
       }
