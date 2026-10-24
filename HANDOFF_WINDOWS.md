@@ -287,6 +287,7 @@ git pull --ff-only origin main
 # §5 체크 업데이트 후
 git add HANDOFF_WINDOWS.md
 git commit -m "docs(handoff-windows): team Tailscale relay online"
+# push = I1 — 오너 승인 뒤에만 (docs/GATE-POLICY.md · ownerDecision 기록)
 git push origin main
 ```
 
