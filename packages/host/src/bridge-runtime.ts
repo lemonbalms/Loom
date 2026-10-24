@@ -73,6 +73,7 @@ import {
   HerdrRpcError,
   stripAnsi,
   HERDR_PROTOCOLS_SUPPORTED,
+  type HerdrAgentSnapshot,
   type HerdrAgentStarted,
   type HerdrAgentStatus,
 } from "./herdr-client";
@@ -289,6 +290,21 @@ export type StartBridgeRuntimeOptions = {
    */
   statusLostGraceMs?: number;
   /**
+   * PLAN 0.46.0 D5 / R11 snapshot poll tick (ms).
+   * Test injection — production default 2_000. Real timers only.
+   */
+  snapshotPollMs?: number;
+  /**
+   * PLAN 0.46.0 D4 / R10 `status_unavailable` window W (ms).
+   * Test injection — production default 600_000. Real timers only.
+   */
+  statusUnavailableMs?: number;
+  /**
+   * PLAN 0.46.0 D5 / R11 bridge-wide concurrent `agent.get` cap.
+   * Test injection — production default 4. Real timers only.
+   */
+  agentGetConcurrency?: number;
+  /**
    * Test injection. Replaces the config-file agent path for the argv the
    * worker execs. Not read from the config file. Still passes the
    * agent-argv dangerous-flag scan.
@@ -329,6 +345,27 @@ const STILL_RUNNING_MAX_MS = 5 * 60_000;
  * win. Not a correctness bound (trigger R1 + target R3 + R4 predicate are).
  */
 const STATUS_LOST_GRACE_MS = 5_000;
+/** PLAN 0.46.0 D5 / R11: snapshot poll tick (one bridge-wide interval). */
+const SNAPSHOT_POLL_MS = 2_000;
+/** PLAN 0.46.0 D4 / R10: no progress-showing authoritative snapshot for W → `status_unavailable`. */
+const STATUS_UNAVAILABLE_MS = 600_000;
+/** PLAN 0.46.0 D5 / R11: bridge-wide concurrent `agent.get` cap (`request()` = one connection). */
+const AGENT_GET_CONCURRENCY = 4;
+
+/**
+ * PLAN 0.46.0 D3 ② capability: a numeric `state_change_seq` and a `completion_seq` key.
+ * Judged once per flight on the baseline snapshot (R1).
+ */
+function snapshotCapable(s: HerdrAgentSnapshot): boolean {
+  return s.stateChangeSeq !== null && s.completionSeq !== undefined;
+}
+
+/** PLAN 0.46.0 ② note `<code>`: HerdrRpcError.code · timeout · unknown. */
+function snapshotErrorCode(e: unknown): string {
+  if (e instanceof HerdrRpcError) return e.code;
+  if (e instanceof Error && /timed out/i.test(e.message)) return "timeout";
+  return "unknown";
+}
 /**
  * PLAN 0.23.7: conservative still-running indicator patterns (tail match only).
  * Real TUI status line observed live: "1 command still running" / "N commands…".
@@ -640,7 +677,39 @@ type Flight = {
   statusLostRecheck?: boolean;
   /** R68-M1: non-working status the agent.get reply saw (fire reason · note). */
   statusLostSeen?: "idle" | "done" | "blocked";
+  /**
+   * PLAN 0.46.0 D3 / R1: completion/failure authority. `pending` until the baseline
+   * snapshot decides `snapshot` (fields present) or `fallback` (0.45.4 event path).
+   */
+  snapMode?: SnapMode;
+  /** R5 / H2: completion attempt token — every await in the completion path re-checks it. */
+  completionAttempt?: number;
+  /** R17(b): a retype reinject happened — attribution is per card prompt (class 107). */
+  reinjectRetyped?: boolean;
+  /** R3: the open verify round (`evidenceScs` = late-half undelivered evidence scs = b'). */
+  verifyRound?: { t0: number; lateReq?: number; evidenceScs?: number };
+  /** R2: run generation (bumped by the reinject switch); replies of an old one are dropped. */
+  runGen?: number;
+  /** D2: baseline `b` (state_change_seq read before the inject). */
+  runBaseline?: number;
+  /** D3: completion fence — `cs > lastConsumedCs` re-arms (initial = b). */
+  lastConsumedCs?: number;
+  /** R6 / R10: last applied authoritative scs + status (progress test). */
+  lastAppliedScs?: number;
+  lastAppliedStatus?: HerdrAgentStatus;
+  /** R4: an authoritative current-generation snapshot with `scs > runBaseline` was applied. */
+  deliveredSeen?: boolean;
+  /** R10: W clock — last progress-showing authoritative snapshot (initial = flight creation). */
+  lastAuthoritativeAt?: number;
+  /** ② note `<code>`: last non-authoritative reply reason. */
+  lastSnapError?: string;
+  /** R11: per-flight poller state (≤ 1 agent.get in flight) + re-query mark. */
+  snapGet?: "queued" | "inflight";
+  snapDirty?: boolean;
 };
+
+/** PLAN 0.46.0 ② flight authority mode (Astra 0261 H1). */
+type SnapMode = "pending" | "snapshot" | "fallback";
 
 /**
  * PLAN 0.23.7: detect "N command(s) still running" in the last 10 non-empty
@@ -947,8 +1016,20 @@ async function startLockedBridgeRuntime(
   const stillRunningPollMs = opts?.stillRunningPollMs ?? STILL_RUNNING_POLL_MS;
   const stillRunningMaxMs = opts?.stillRunningMaxMs ?? STILL_RUNNING_MAX_MS;
   const statusLostGraceMs = opts?.statusLostGraceMs ?? STATUS_LOST_GRACE_MS;
+  const snapshotPollMs = opts?.snapshotPollMs ?? SNAPSHOT_POLL_MS;
+  const statusUnavailableMs = opts?.statusUnavailableMs ?? STATUS_UNAVAILABLE_MS;
+  const agentGetConcurrency = Math.max(1, Math.floor(opts?.agentGetConcurrency ?? AGENT_GET_CONCURRENCY));
 
   const flights = new Map<string, Flight>(); // paneId → flight
+  /** PLAN 0.46.0 R11: the one bridge-wide poll tick (set once herdr is up · cleared on stop). */
+  let snapshotTickTimer: ReturnType<typeof setInterval> | null = null;
+  /** R11: bridge-wide agent.get slots — running count + FIFO of waiting starts. */
+  let agentGetActive = 0;
+  const agentGetWaiters: { flight?: Flight; start: () => void }[] = [];
+  /** R5: bridge-wide monotonic completion-attempt counter. */
+  let completionAttemptCounter = 0;
+  /** R2: runCard waits here for the baseline decision (resolved on decision or teardown). */
+  const baselineWaiters = new Map<Flight, () => void>();
   // PLAN 0.33.0 D2: stop state is declared before any await so an early RPC stop / signal
   // never hits a temporal dead zone.
   const stopBoundMs = opts.stopBoundMs ?? STOP_BOUND_MS;
@@ -1431,6 +1512,12 @@ async function startLockedBridgeRuntime(
     startedAt: new Date().toISOString(),
   };
   writeBridgeMeta(meta);
+
+  // PLAN 0.46.0 R11: one bridge-wide snapshot tick — before the initial inbox drain, whose
+  // cards may wait on a baseline retry. Pane backend only; cleared in runStop.
+  if (!herdrSkipped) {
+    snapshotTickTimer = setInterval(() => onSnapshotTick(), snapshotPollMs);
+  }
 
   // PLAN 0.33.0 D5: relay joined + startup recovery registered → running; attach the
   // heartbeat sampler (the timer itself runs since `starting`).
@@ -2061,6 +2148,11 @@ async function startLockedBridgeRuntime(
       startedAt,
       sawWorking: false,
       hookListener: pendingHookListener,
+      // PLAN 0.46.0 D3 / R1: pending until the baseline snapshot decides · R10 W clock
+      // starts at registration (H1).
+      snapMode: "pending",
+      runGen: 0,
+      lastAuthoritativeAt: Date.now(),
       ...(hookSensorActive
         ? {
             hookSensorActive: true,
@@ -2097,6 +2189,18 @@ async function startLockedBridgeRuntime(
       return;
     }
 
+    // PLAN 0.46.0 D2 / R2: no inject without a baseline decision. The read goes through
+    // the poller (cap · R11); a failed read stays `pending` and the tick retries it.
+    // W runs meanwhile (R10) — its fire, pane_closed or stop resolve the wait too.
+    await waitForBaseline(agent.pane_id, flight);
+    if (
+      flights.get(agent.pane_id) !== flight ||
+      flight.flightSideEffectOwner ||
+      flight.snapMode === "pending"
+    ) {
+      return;
+    }
+
     // PLAN 0.28.1: cache exact inject string before send (stalled path reuses it)
     const prompt = wrapDispatchedPrompt(payload.prompt);
     try {
@@ -2123,6 +2227,12 @@ async function startLockedBridgeRuntime(
         removeCardFlight(agent.pane_id, flight);
         return;
       }
+    }
+
+    // PLAN 0.46.0 R3: snapshot-authority flights verify by verify rounds (scs > b).
+    if (flight.snapMode === "snapshot") {
+      await verifySnapshotInject({ paneId: agent.pane_id, flight, agentTarget, prompt });
+      return;
     }
 
     // PLAN 0.23.5: pass the exact inject cache string (no re-derive — R30 L-1)
@@ -2802,6 +2912,477 @@ async function startLockedBridgeRuntime(
     }
   }
 
+  // --- PLAN 0.46.0 snapshot authority (D2–D6 · D8 · R1–R12 · R17) -----------
+
+  /**
+   * R2: runCard waits for the baseline decision (`snapshot` / `fallback`). Resolved by the
+   * decision or by teardown (W fire · pane_closed · stop — clearStillRunningState).
+   */
+  function waitForBaseline(paneId: string, flight: Flight): Promise<void> {
+    if (
+      stopPromise ||
+      flight.snapMode !== "pending" ||
+      flights.get(paneId) !== flight ||
+      flight.flightSideEffectOwner
+    ) {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      baselineWaiters.set(flight, resolve);
+      requestSnapshot(paneId, flight);
+    });
+  }
+
+  function resolveBaselineWaiter(flight: Flight): void {
+    const resolve = baselineWaiters.get(flight);
+    if (!resolve) return;
+    baselineWaiters.delete(flight);
+    resolve();
+  }
+
+  /** R11: take a bridge-wide agent.get slot now, or wait FIFO behind the cap. */
+  function acquireAgentGetSlot(start: () => void, flight?: Flight): void {
+    if (stopPromise) return;
+    if (agentGetActive < agentGetConcurrency) {
+      agentGetActive += 1;
+      start();
+      return;
+    }
+    agentGetWaiters.push({ flight, start });
+  }
+
+  function releaseAgentGetSlot(): void {
+    agentGetActive = Math.max(0, agentGetActive - 1);
+    while (!stopPromise && agentGetActive < agentGetConcurrency && agentGetWaiters.length > 0) {
+      const next = agentGetWaiters.shift()!;
+      agentGetActive += 1;
+      next.start();
+    }
+  }
+
+  /** R11 / D5: the 0.45.4 watchdog agent.get (fallback flights) passes the same cap. */
+  function cappedAgentGet(paneId: string, flight: Flight): Promise<HerdrAgentSnapshot> {
+    return new Promise<HerdrAgentSnapshot>((resolve, reject) => {
+      acquireAgentGetSlot(() => {
+        herdr.agentGet(paneId).then(
+          (snap) => {
+            releaseAgentGetSlot();
+            resolve(snap);
+          },
+          (e: unknown) => {
+            releaseAgentGetSlot();
+            reject(e);
+          },
+        );
+      }, flight);
+    });
+  }
+
+  /**
+   * R11: poller trigger. none → `queued` (FIFO behind the cap) · `queued` → unchanged ·
+   * `inflight` → one re-query after the reply. Pending flights read only once runCard
+   * waits for the baseline (after the per-pane subscribe — R2).
+   */
+  function requestSnapshot(paneId: string, flight: Flight): void {
+    if (stopPromise || flights.get(paneId) !== flight || flight.flightSideEffectOwner) return;
+    if (flight.snapMode === "pending") {
+      if (!baselineWaiters.has(flight)) return;
+    } else if (flight.snapMode !== "snapshot") {
+      return;
+    }
+    if (flight.snapGet === "inflight") {
+      flight.snapDirty = true;
+      return;
+    }
+    if (flight.snapGet === "queued") return;
+    flight.snapGet = "queued";
+    acquireAgentGetSlot(() => startSnapshotGet(paneId, flight), flight);
+  }
+
+  /** R47-H1 / R11: event · ACK triggers only schedule (`armStatusLostCheck` precedent). */
+  function scheduleSnapshot(paneId: string, flight: Flight): void {
+    setTimeout(() => requestSnapshot(paneId, flight), 0);
+  }
+
+  function startSnapshotGet(paneId: string, flight: Flight): void {
+    if (
+      stopPromise ||
+      flights.get(paneId) !== flight ||
+      flight.flightSideEffectOwner ||
+      flight.snapGet !== "queued"
+    ) {
+      if (flight.snapGet === "queued") flight.snapGet = undefined;
+      releaseAgentGetSlot();
+      return;
+    }
+    flight.snapGet = "inflight";
+    flight.snapDirty = false;
+    const gen = flight.runGen ?? 0;
+    const reqAt = Date.now();
+    herdr.agentGet(paneId).then(
+      (snap) => {
+        releaseAgentGetSlot();
+        onSnapshotReply(paneId, flight, gen, reqAt, snap, undefined);
+      },
+      (e: unknown) => {
+        releaseAgentGetSlot();
+        onSnapshotReply(paneId, flight, gen, reqAt, null, e);
+      },
+    );
+  }
+
+  /**
+   * R11: reply guard (stop · flight replaced) → apply → re-query if marked. The snapshot is
+   * applied before the flight's next agent.get is queued (response-then-requeue).
+   */
+  function onSnapshotReply(
+    paneId: string,
+    flight: Flight,
+    gen: number,
+    reqAt: number,
+    snap: HerdrAgentSnapshot | null,
+    err: unknown,
+  ): void {
+    try {
+      if (stopPromise || flights.get(paneId) !== flight) return;
+      if (flight.snapGet === "inflight") flight.snapGet = undefined;
+      const dirty = flight.snapDirty === true;
+      flight.snapDirty = false;
+      if (!flight.flightSideEffectOwner) applySnapshotReply(paneId, flight, gen, reqAt, snap, err);
+      if (dirty) requestSnapshot(paneId, flight);
+    } catch (e) {
+      log(`card ${flight.cardId}: snapshot apply error:`, e);
+    }
+  }
+
+  function applySnapshotReply(
+    paneId: string,
+    flight: Flight,
+    gen: number,
+    reqAt: number,
+    snap: HerdrAgentSnapshot | null,
+    err: unknown,
+  ): void {
+    const now = Date.now();
+    if (flight.snapMode === "pending") {
+      // R1 · R2: an RPC error or `unknown` is not a judgment — stay pending (the tick retries).
+      if (snap === null) {
+        flight.lastSnapError = snapshotErrorCode(err);
+        return;
+      }
+      if (!snapshotCapable(snap)) {
+        // D3: an explicit capability-negative reply (fields absent) → 0.45.4 path, fixed.
+        flight.snapMode = "fallback";
+        log(
+          `card ${flight.cardId}: snapshot authority fallback (agent.get lacks state_change_seq/completion_seq)`,
+        );
+        resolveBaselineWaiter(flight);
+        return;
+      }
+      if (snap.status === "unknown") {
+        flight.lastSnapError = "unknown";
+        return;
+      }
+      // D2 / R69-L1: baseline success — b · fence · applied scs/status · W reset.
+      const b = snap.stateChangeSeq as number;
+      flight.snapMode = "snapshot";
+      flight.runBaseline = b;
+      flight.lastConsumedCs = b;
+      flight.lastAppliedScs = b;
+      flight.lastAppliedStatus = snap.status;
+      flight.deliveredSeen = false;
+      flight.lastAuthoritativeAt = now;
+      log(`card ${flight.cardId}: snapshot authority on (b=${b})`);
+      resolveBaselineWaiter(flight);
+      return;
+    }
+    if (flight.snapMode !== "snapshot") return;
+    // R2 / R11: a reply requested before the reinject switch is dropped (clocks untouched).
+    if (gen !== (flight.runGen ?? 0)) return;
+    if (snap === null) {
+      flight.lastSnapError = snapshotErrorCode(err);
+      return;
+    }
+    // R1: a reply that lost the fields is non-authoritative only — never a demotion.
+    if (!snapshotCapable(snap) || snap.status === "unknown") {
+      flight.lastSnapError = "unknown";
+      return;
+    }
+    applyAuthoritativeSnapshot(paneId, flight, snap, reqAt, now);
+  }
+
+  /** R3–R7 · R10 · R69-M2: one authoritative current-generation snapshot. */
+  function applyAuthoritativeSnapshot(
+    paneId: string,
+    flight: Flight,
+    snap: HerdrAgentSnapshot,
+    reqAt: number,
+    now: number,
+  ): void {
+    const scs = snap.stateChangeSeq as number;
+    const cs = snap.completionSeq;
+    const status = snap.status;
+    const b = flight.runBaseline ?? 0;
+    const prevScs = flight.lastAppliedScs ?? b;
+    const prevStatus = flight.lastAppliedStatus;
+    const consumed = flight.lastConsumedCs ?? b;
+
+    // R3 (R69-L2): late-half undelivered evidence — a reply this round requested and
+    // received in [t0 + waitMs/2, t0 + waitMs]. Earlier rounds' replies never count.
+    const round = flight.verifyRound;
+    if (
+      round &&
+      (status === "idle" || status === "done") &&
+      scs === b &&
+      reqAt >= round.t0 &&
+      now >= round.t0 + submitVerify.waitMs / 2 &&
+      now <= round.t0 + submitVerify.waitMs
+    ) {
+      round.evidenceScs = scs;
+    }
+
+    if (scs > b) {
+      // R4: delivery evidence for this generation.
+      flight.deliveredSeen = true;
+      // R10 (Astra 0264 #1 · 0272 #3): W resets on current-generation progress only.
+      if (scs > prevScs || status !== prevStatus || status === "working") {
+        flight.lastAuthoritativeAt = now;
+      }
+    }
+    if (scs >= prevScs) {
+      flight.lastAppliedScs = scs;
+      flight.lastAppliedStatus = status;
+    }
+
+    if (status === "working") {
+      // R6: a new transition only — same-scs repeats keep a live hint (UK-3).
+      if (scs > prevScs) {
+        if (flight.stillRunningDeferral) cancelCompletionAttempt(flight);
+        if (scs > consumed) flight.hookHint = clearHookHintOnWorking();
+      }
+      return;
+    }
+    if (status === "blocked") {
+      // R7: `scs ≤ b` blocked is a previous run's residue — no authority.
+      if (scs > b) enterCardBlocked(flight, paneId);
+      return;
+    }
+    if ((status === "done" || status === "idle") && typeof cs === "number" && cs > consumed) {
+      if (flight.stillRunningDeferral) {
+        // R69-M2: a new cs during an attempt / deferral is a missed working re-entry —
+        // R6 ① (cancel · token) and ② (hint clear) first, then re-enter with the new cs.
+        cancelCompletionAttempt(flight);
+        flight.hookHint = clearHookHintOnWorking();
+      }
+      flight.lastConsumedCs = cs;
+      log(`card ${flight.cardId}: snapshot completion (cs=${cs} > ${consumed})`);
+      enterCardCompletion(flight, paneId);
+    }
+  }
+
+  /**
+   * R5 / R6 ① (0.23.7 working re-entry): cancel the deferral or in-progress attempt and
+   * invalidate its token — a pending scrape's success or failure yields nothing.
+   */
+  function cancelCompletionAttempt(flight: Flight): void {
+    clearStillRunningTimers(flight);
+    flight.stillRunningDeferral = false;
+    flight.stillRunningStartedAt = undefined;
+    completionAttemptCounter += 1;
+    flight.completionAttempt = completionAttemptCounter;
+    log(`card ${flight.cardId}: still-running deferral cancelled (working re-entry)`);
+  }
+
+  /** R10 · R11: the bridge-wide tick — W check, then one poll per pending/snapshot flight. */
+  function onSnapshotTick(): void {
+    if (stopPromise) return;
+    try {
+      const now = Date.now();
+      for (const [paneId, flight] of flights) {
+        if (flight.snapMode !== "pending" && flight.snapMode !== "snapshot") continue;
+        if (!guardFlightCompletion(paneId, flight)) continue;
+        // R10: the still-running deferral owns its own cap — the window yields to it.
+        if (
+          !flight.stillRunningDeferral &&
+          now - (flight.lastAuthoritativeAt ?? now) >= statusUnavailableMs
+        ) {
+          fireStatusUnavailable(paneId, flight, now);
+          continue;
+        }
+        requestSnapshot(paneId, flight);
+      }
+    } catch (e) {
+      log("snapshot tick error:", e);
+    }
+  }
+
+  /**
+   * R10 / D4: loud, recoverable failure through the existing family (`fireStatusLost`
+   * shape). Never `done`, never pane.close (U1 · U3).
+   */
+  function fireStatusUnavailable(paneId: string, flight: Flight, now: number): void {
+    if (!tryAcquireFlightSideEffect(flight)) return;
+    const secs = Math.max(0, Math.round((now - (flight.lastAuthoritativeAt ?? now)) / 1000));
+    const note = `no authoritative herdr agent.get snapshot for ${secs}s (last error: ${flight.lastSnapError ?? "unknown"}) — prompt delivery and completion unknown; judge from output`;
+    disposeCardFlight(paneId, flight);
+    herdr.eventsPrune(paneId);
+    if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+      // R10 (0.45.4 R8 form): the M-2 ③ correction wins; source tag.
+      appendHookTelemetry({ type: "agent_blocked_correction", reason: "snapshot_unavailable" });
+      scheduleOwnedCardResult(paneId, flight, () =>
+        finishCardFailure(flight, "agent_blocked", { note }),
+      );
+      return;
+    }
+    log(`card ${flight.cardId}: status_unavailable after ${secs}s`);
+    scheduleOwnedCardResult(paneId, flight, () =>
+      finishCardFailure(flight, "status_unavailable", { note }),
+    );
+  }
+
+  /**
+   * PLAN 0.46.0 R3 / R2 / R17: inject verify for a snapshot-authority card. Each round
+   * `[t0, t0 + waitMs]` wakes the poller at t0 and once more at t0 + waitMs/2, then closes:
+   * `delivered` (scs > b seen) ends verify · `undelivered` (late-half idle|done ∧ scs == b)
+   * consumes a retry, resets W and reinjects from the round's own evidence (no extra RPC) ·
+   * `unknown` consumes nothing and lets W flow. Exhaustion → `inject_unconfirmed` (as today).
+   */
+  async function verifySnapshotInject(opts: {
+    paneId: string;
+    flight: Flight;
+    agentTarget: string;
+    prompt: string;
+  }): Promise<void> {
+    const { paneId, flight, agentTarget, prompt } = opts;
+    const waitMs = submitVerify.waitMs;
+    const pollMs = Math.max(10, Math.min(250, Math.floor(waitMs / 8) || 10));
+    const alive = () =>
+      !stopPromise && flights.get(paneId) === flight && !flight.flightSideEffectOwner;
+
+    async function runRound(): Promise<
+      | { outcome: "delivered" }
+      | { outcome: "unknown" }
+      | { outcome: "gone" }
+      | { outcome: "undelivered"; evidenceScs: number }
+    > {
+      const round: NonNullable<Flight["verifyRound"]> = { t0: Date.now() };
+      flight.verifyRound = round;
+      requestSnapshot(paneId, flight);
+      const lateTimer = setTimeout(() => {
+        if (flight.verifyRound !== round) return;
+        round.lateReq = Date.now();
+        requestSnapshot(paneId, flight);
+      }, Math.floor(waitMs / 2));
+      try {
+        const deadline = round.t0 + waitMs;
+        do {
+          if (!alive()) return { outcome: "gone" };
+          if (flight.deliveredSeen) return { outcome: "delivered" };
+          const left = deadline - Date.now();
+          await new Promise((r) => setTimeout(r, Math.max(1, Math.min(pollMs, left))));
+        } while (Date.now() < deadline);
+        if (!alive()) return { outcome: "gone" };
+        if (flight.deliveredSeen) return { outcome: "delivered" };
+        if (round.evidenceScs !== undefined) {
+          return { outcome: "undelivered", evidenceScs: round.evidenceScs };
+        }
+        return { outcome: "unknown" };
+      } finally {
+        clearTimeout(lateTimer);
+        // Close: later replies are no evidence for this round.
+        if (flight.verifyRound === round) flight.verifyRound = undefined;
+      }
+    }
+
+    // M-2: reinject budget is per verify call (inject attempt), not per flight
+    let reinjectUsed = false;
+    let attempt = 0;
+    /** Last observed probe this verify call; "none" if exhausted before any paneRead. */
+    let lastProbe: "hit" | "miss" | "read-fail" | "none" = "none";
+
+    for (;;) {
+      const r = await runRound();
+      if (r.outcome === "gone" || r.outcome === "delivered") return;
+      if (r.outcome === "unknown") continue;
+      if (attempt >= submitVerify.retries) break;
+      // R3 / R10 (Astra 0266 #1): the undelivered close consumes a retry and resets W.
+      attempt++;
+      flight.lastAuthoritativeAt = Date.now();
+
+      // R17(a): existing scrape probe — hit / read-fail → CR · miss → retype once per call.
+      let probe: "hit" | "miss" | "read-fail" = "read-fail";
+      try {
+        // paneId only — pane.read coordinate, not submission target
+        const scrape = await herdr.paneRead(paneId, {
+          source: "recent",
+          lines: 60,
+        });
+        probe = isInjectProbeHit(scrape, prompt) ? "hit" : "miss";
+      } catch {
+        probe = "read-fail";
+      }
+      lastProbe = probe;
+      const action: "reinject" | "cr" = probe === "miss" && !reinjectUsed ? "reinject" : "cr";
+      if (action === "reinject") reinjectUsed = true;
+
+      // R2 (Astra 0266): pre-key check on the received-snapshot cache only — no RPC.
+      if (!alive()) return;
+      // Delivered after the close → cancel the reinject (no retry refund) · keep this generation.
+      if (flight.deliveredSeen) return;
+      // Generation switch in the same synchronous section as the key: b' = round evidence.
+      flight.runGen = (flight.runGen ?? 0) + 1;
+      flight.runBaseline = r.evidenceScs;
+      flight.deliveredSeen = false;
+
+      if (action === "reinject") {
+        // R17(b): attribution is per card prompt from here on (class 107).
+        flight.reinjectRetyped = true;
+        log(
+          `card ${flight.cardId}: reinject retyped — completion attribution is per-card-prompt (b=${r.evidenceScs})`,
+        );
+        try {
+          // Same cached string only — no re-derive (R30 L-1); one atomic prompt
+          await herdr.agentPrompt({ target: agentTarget, text: prompt });
+        } catch (e) {
+          log(
+            `verify reinject attempt ${attempt} failed: ${e instanceof HerdrRpcError ? e.code : "unknown"}`,
+          );
+        }
+      } else {
+        try {
+          // Bounded Enter nudge only — never prompt text; not primary inject path
+          await herdr.agentSendKeys({
+            target: agentTarget,
+            keys: AGENT_SEND_KEYS_CR_NUDGE,
+          });
+        } catch (e) {
+          log(
+            `verify CR attempt ${attempt} failed: ${e instanceof HerdrRpcError ? e.code : "unknown"}`,
+          );
+        }
+      }
+      // Observability: branch only — never log prompt body or probe string
+      log(`verify round ${attempt}: probe=${probe} action=${action}`);
+    }
+
+    // (c) exhausted — fail-visible (card tear-down), same as the event-path verify.
+    if (!alive()) return;
+    log(`verify round ${Math.max(attempt, 1)}: probe=${lastProbe} action=fail`);
+    if (!tryAcquireFlightSideEffect(flight)) return;
+    disposeCardFlight(paneId, flight);
+    herdr.eventsPrune(paneId);
+    await sendFailedResult({
+      cardId: flight.cardId,
+      fromPeerId: flight.fromPeerId,
+      dispatchHandoffId: flight.dispatchHandoffId,
+      reason: "inject_unconfirmed",
+      paneId,
+      flight,
+    });
+    removeCardFlight(paneId, flight);
+    // PLAN 0.28.0 U3: card auto pane.close removed (inject_unconfirmed).
+  }
+
   function onHerdrEvent(event: string, data: unknown): void {
     const ev = event.replace(/\./g, "_"); // normalize dotted/underscore (C2)
     const d = data as Record<string, unknown>;
@@ -2856,6 +3437,14 @@ async function startLockedBridgeRuntime(
     closeHookListener(flight);
     // PLAN 0.45.4 R5 ⓖ / R10: watchdog teardown (clearStillRunningTimers stays untouched).
     clearStatusLostState(flight);
+    // PLAN 0.46.0 R11: poller teardown — off the queue · no re-query · baseline wait released.
+    flight.snapGet = undefined;
+    flight.snapDirty = false;
+    flight.verifyRound = undefined;
+    for (let i = agentGetWaiters.length - 1; i >= 0; i--) {
+      if (agentGetWaiters[i]!.flight === flight) agentGetWaiters.splice(i, 1);
+    }
+    resolveBaselineWaiter(flight);
   }
 
   function clearStatusLostState(flight: Flight): void {
@@ -2888,6 +3477,12 @@ async function startLockedBridgeRuntime(
   function onEventsSubscribeAck(): void {
     if (stopPromise) return;
     for (const [paneId, flight] of flights) {
+      // PLAN 0.46.0 R12: pending / snapshot flights take the ACK as a poller trigger only
+      // (pending = baseline read) — the 0.45.4 state machine is fallback-only.
+      if (flight.snapMode === "pending" || flight.snapMode === "snapshot") {
+        scheduleSnapshot(paneId, flight);
+        continue;
+      }
       if (flight.statusLostCheck === undefined) {
         armStatusLostCheck(paneId, flight);
       } else if (flight.statusLostCheck === "get" || flight.statusLostCheck === "grace") {
@@ -2909,7 +3504,8 @@ async function startLockedBridgeRuntime(
       return;
     }
     flight.statusLostCheck = "get";
-    herdr.agentGet(paneId).then(
+    // PLAN 0.46.0 R11 / D5: the fallback watchdog's agent.get passes the bridge-wide cap.
+    cappedAgentGet(paneId, flight).then(
       (snap) => onStatusLostGetReply(paneId, flight, snap.status),
       (e: unknown) => onStatusLostGetReply(paneId, flight, null, e),
     );
@@ -3066,6 +3662,23 @@ async function startLockedBridgeRuntime(
     return true;
   }
 
+  /**
+   * PLAN 0.46.0 R5 (Astra 0261 H2): after every await of a completion attempt — still the
+   * mapped flight, same run generation, same attempt token. Mismatch = stop silently.
+   */
+  function completionAttemptCurrent(
+    paneId: string,
+    flight: Flight,
+    token: number,
+    gen: number,
+  ): boolean {
+    return (
+      flights.get(paneId) === flight &&
+      (flight.runGen ?? 0) === gen &&
+      flight.completionAttempt === token
+    );
+  }
+
   function enterPresenceUnknown(args: {
     cardId: string;
     dispatchHandoffId: string;
@@ -3093,11 +3706,14 @@ async function startLockedBridgeRuntime(
    * finish immediately or enter still-running poll deferral.
    * Ownership of completion is the poll path while stillRunningDeferral is set.
    */
-  async function beginCardCompletion(flight: Flight, paneId: string): Promise<void> {
+  async function beginCardCompletion(flight: Flight, paneId: string, token: number): Promise<void> {
+    const gen = flight.runGen ?? 0;
     let scrape: string;
     try {
       scrape = await settlePaneRead(paneId);
     } catch {
+      // PLAN 0.46.0 R5 (H2): a cancelled / superseded attempt yields nothing — silently.
+      if (!completionAttemptCurrent(paneId, flight, token, gen)) return;
       // Settle failed — fall through to proposeCardVerification which re-reads
       // (read failure still yields needs_verification with error body).
       // PLAN 0.27.0 guard site (~:2003): CAS ownership + flight map check
@@ -3120,6 +3736,8 @@ async function startLockedBridgeRuntime(
       return;
     }
 
+    // PLAN 0.46.0 R5 (H2): token re-check after the settle await.
+    if (!completionAttemptCurrent(paneId, flight, token, gen)) return;
     // M-1 / PLAN 0.27.0 guard site (~:2019 beginCardCompletion main): CAS + deferral
     if (!guardFlightCompletion(paneId, flight, { requireDeferral: true })) {
       return;
@@ -3171,6 +3789,9 @@ async function startLockedBridgeRuntime(
         if (!guardFlightCompletion(paneId, flight, { requireDeferral: true })) {
           return;
         }
+        // PLAN 0.46.0 R5 (H2): this poll belongs to the attempt current at fire time.
+        const token = flight.completionAttempt ?? 0;
+        const gen = flight.runGen ?? 0;
 
         const startedAt = flight.stillRunningStartedAt ?? Date.now();
         const elapsed = Date.now() - startedAt;
@@ -3181,6 +3802,7 @@ async function startLockedBridgeRuntime(
         try {
           scrape = await settlePaneRead(paneId);
         } catch {
+          if (!completionAttemptCurrent(paneId, flight, token, gen)) return;
           // Read fail mid-poll: if cap not reached, retry next interval; else exhaust.
           // PLAN 0.27.0 guard site (~:2080)
           if (!guardFlightCompletion(paneId, flight, { requireDeferral: true })) {
@@ -3201,6 +3823,7 @@ async function startLockedBridgeRuntime(
           return;
         }
 
+        if (!completionAttemptCurrent(paneId, flight, token, gen)) return;
         // PLAN 0.27.0 guard site (~:2096)
         if (!guardFlightCompletion(paneId, flight, { requireDeferral: true })) {
           return;
@@ -3324,6 +3947,14 @@ async function startLockedBridgeRuntime(
       return;
     }
 
+    // PLAN 0.46.0 D5 / D8 / R1 / R12: on a pending or snapshot-authority flight any herdr
+    // event only wakes the poller (pending = baseline read) — no completion, no failure,
+    // no watchdog, no sawWorking (pending events are never replayed after a fallback).
+    if (flight.snapMode === "pending" || flight.snapMode === "snapshot") {
+      scheduleSnapshot(paneId, flight);
+      return;
+    }
+
     if (ev !== "pane_agent_status_changed" && event !== "pane.agent_status_changed") {
       return;
     }
@@ -3335,10 +3966,8 @@ async function startLockedBridgeRuntime(
       // to normal event flow (next idle re-evaluates).
       if (flight.stillRunningDeferral) {
         // Cancel poll timers only — keep hook listener for subsequent hints.
-        clearStillRunningTimers(flight);
-        flight.stillRunningDeferral = false;
-        flight.stillRunningStartedAt = undefined;
-        log(`card ${flight.cardId}: still-running deferral cancelled (working re-entry)`);
+        // PLAN 0.46.0 R5: the attempt token is invalidated too (pending scrape yields nothing).
+        cancelCompletionAttempt(flight);
       }
       // PLAN 0.26.0 M-2 ②: herdr working re-entry clears stale hook markers
       // (approval grant fires none of the 3 wired events — stale permission_prompt
@@ -3352,54 +3981,73 @@ async function startLockedBridgeRuntime(
 
     // C1: done may arrive from detection; also accept idle after working, blocked → failed
     if (status === "blocked") {
-      // PLAN 0.27.0: latch check on blocked branch too (was missing stillRunningDeferral-only).
-      if (flight.flightSideEffectOwner || flight.resultPhase === "result_sending") {
-        latchTerminalPending(flight, "blocked");
-        clearStillRunningTimers(flight);
-        return;
-      }
-      if (flight.terminalPending) return;
-      if (!tryAcquireFlightSideEffect(flight)) {
-        latchTerminalPending(flight, "blocked");
-        return;
-      }
-      // M-1: blocked during deferral → clear poll timers then immediate failed.
-      // hookHint absence → same path as 0.25.0 (D5 fail-open).
-      disposeCardFlight(paneId, flight);
-      herdr.eventsPrune(paneId);
-      scheduleOwnedCardResult(paneId, flight, () => finishCardFailure(flight, "agent_blocked"));
+      enterCardBlocked(flight, paneId);
       return;
     }
     if (status === "done" || (status === "idle" && flight.sawWorking)) {
-      // During result_sending, completion-class is no-op (ownership already held).
-      if (flight.flightSideEffectOwner || flight.resultPhase === "result_sending") {
-        return;
-      }
-      // PLAN 0.26.0 M-2 ③: live permission_prompt corrects completion-class
-      // judgment to agent_blocked (stale/cleared markers → no intervention).
-      if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
-        if (flight.stillRunningDeferral) {
-          // Poll path owns completion while deferral set — leave to poll
-          // correction at indicator-clear / exhaust (same decision table).
-          return;
-        }
-        if (!tryAcquireFlightSideEffect(flight)) return;
-        disposeCardFlight(paneId, flight);
-        herdr.eventsPrune(paneId);
-        appendHookTelemetry({ type: "agent_blocked_correction" });
-        scheduleOwnedCardResult(paneId, flight, () => finishCardFailure(flight, "agent_blocked"));
-        return;
-      }
-      // M-1: while deferral flag is set, completion-class events are no-ops —
-      // ownership of the finish decision is the poll path alone.
-      if (flight.stillRunningDeferral) {
-        return;
-      }
-      // Set ownership flag synchronously *before* any await so concurrent
-      // done/idle events cannot re-enter beginCardCompletion.
-      flight.stillRunningDeferral = true;
-      void beginCardCompletion(flight, paneId);
+      enterCardCompletion(flight, paneId);
     }
+  }
+
+  /**
+   * PLAN 0.46.0 R7: `blocked` entry shared by the 0.45.4 event path (fallback) and the
+   * snapshot path (`blocked ∧ scs > runBaseline`).
+   */
+  function enterCardBlocked(flight: Flight, paneId: string): void {
+    // PLAN 0.27.0: latch check on blocked branch too (was missing stillRunningDeferral-only).
+    if (flight.flightSideEffectOwner || flight.resultPhase === "result_sending") {
+      latchTerminalPending(flight, "blocked");
+      clearStillRunningTimers(flight);
+      return;
+    }
+    if (flight.terminalPending) return;
+    if (!tryAcquireFlightSideEffect(flight)) {
+      latchTerminalPending(flight, "blocked");
+      return;
+    }
+    // M-1: blocked during deferral → clear poll timers then immediate failed.
+    // hookHint absence → same path as 0.25.0 (D5 fail-open).
+    disposeCardFlight(paneId, flight);
+    herdr.eventsPrune(paneId);
+    scheduleOwnedCardResult(paneId, flight, () => finishCardFailure(flight, "agent_blocked"));
+  }
+
+  /**
+   * PLAN 0.46.0 R5: completion-class entry shared by the 0.45.4 event path (fallback) and
+   * the snapshot path (`cs > lastConsumedCs`). Same decision table as before; the entry
+   * issues the completion-attempt token that every later await re-checks (H2).
+   */
+  function enterCardCompletion(flight: Flight, paneId: string): void {
+    // During result_sending, completion-class is no-op (ownership already held).
+    if (flight.flightSideEffectOwner || flight.resultPhase === "result_sending") {
+      return;
+    }
+    // PLAN 0.26.0 M-2 ③: live permission_prompt corrects completion-class
+    // judgment to agent_blocked (stale/cleared markers → no intervention).
+    if (shouldCorrectCompletionToBlocked(flight.hookHint)) {
+      if (flight.stillRunningDeferral) {
+        // Poll path owns completion while deferral set — leave to poll
+        // correction at indicator-clear / exhaust (same decision table).
+        return;
+      }
+      if (!tryAcquireFlightSideEffect(flight)) return;
+      disposeCardFlight(paneId, flight);
+      herdr.eventsPrune(paneId);
+      appendHookTelemetry({ type: "agent_blocked_correction" });
+      scheduleOwnedCardResult(paneId, flight, () => finishCardFailure(flight, "agent_blocked"));
+      return;
+    }
+    // M-1: while deferral flag is set, completion-class events are no-ops —
+    // ownership of the finish decision is the poll path alone.
+    if (flight.stillRunningDeferral) {
+      return;
+    }
+    // Set ownership flag synchronously *before* any await so concurrent
+    // done/idle events cannot re-enter beginCardCompletion.
+    flight.stillRunningDeferral = true;
+    completionAttemptCounter += 1;
+    flight.completionAttempt = completionAttemptCounter;
+    void beginCardCompletion(flight, paneId, completionAttemptCounter);
   }
 
   /**
@@ -3777,6 +4425,12 @@ async function startLockedBridgeRuntime(
     } catch {
       /* stop requested before the poll timer existed (initial inbox drain) */
     }
+    // PLAN 0.46.0 R11: release the tick and every queued agent.get start.
+    if (snapshotTickTimer !== null) {
+      clearInterval(snapshotTickTimer);
+      snapshotTickTimer = null;
+    }
+    agentGetWaiters.length = 0;
     life.status.stopHeartbeat();
     let lastError: string | undefined;
     try {
