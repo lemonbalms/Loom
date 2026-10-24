@@ -1067,10 +1067,12 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           await waitFor(() => reinjectKeys(rig.fake, a) >= 1, 2_000, 10),
           "reinject key sent (generation switched)",
         );
-        // Observed key time: the new round's t0 is at/before it (t0 ≤ tKey), so
-        // sentAt − tKey ≥ w/2 bounds the early side exactly; the late side gets
-        // ≥ 400 ms slack (0.6w = 960 vs w − 100 = 1500 → 540 ms) for tKey − t0 lag
-        // plus scheduling (Astra 0286 #3).
+        // Observed key time is a proxy for the new round's t0, not a bound: the
+        // fake sees the key before the bridge's RPC completes and its next verify
+        // round starts, so t0 may follow tKey (Astra 0288 #2). Delivering at
+        // tKey + 0.6w leaves 0.1w = 160 ms for that lag on the early side; the late
+        // side keeps ≥ 400 ms slack (0.6w = 960 vs w − 100 = 1500 → 540 ms) for
+        // scheduling (Astra 0286 #3).
         const tKey = Date.now();
         // Deliver the stale reply inside the new round's late half [t0 + w/2, t0 + w).
         await Bun.sleep(Math.max(0, tKey + Math.floor(waitMs * 0.6) - Date.now()));
@@ -1821,10 +1823,13 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
     test(
       "㊵ W resets at the undelivered round close, not at the late-half idle/scs = b receipt — outage after that snapshot → status_unavailable at close + W (R3 · R10 · Astra 0284 #2)",
       async () => {
-        const waitMs = 1_600;
-        const wMs = 2_400; // > one round: the baseline W cannot expire before round-1 close
+        const waitMs = 2_000;
+        const wMs = 3_000; // > one round: the baseline W cannot expire before round-1 close
         // Short tick: W expiry is checked on the bridge tick (R10 · R11) — bounds
         // widened by one POLL_MS. Tick reads after the receipt fail (no authority).
+        // Genuine late half (R3): receipt ≥ t0 + w/2, plus one tick of margin since
+        // the tick phase is unrelated to the round (Astra 0288 #1).
+        const lateFromMs = waitMs * 0.5 + POLL_MS;
         const rig = await startRig({
           pollMs: POLL_MS,
           wMs,
@@ -1851,7 +1856,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
                       e.callIndex > promptIdx &&
                       !e.failed &&
                       e.sentAt !== null &&
-                      e.sentAt - tPrompt >= waitMs * 0.45,
+                      e.sentAt - tPrompt >= lateFromMs,
                   );
                 return receipt !== undefined;
               },
@@ -1860,7 +1865,13 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
             ),
             "round-1 late-half reply received",
           );
+          // Only now cut agent.get: the selected reply is round 1's late-half evidence.
           rig.fake.failAgentGet(paneA, true); // outage after the last idle/scs = b snapshot
+          const receiptAt = receipt!.sentAt! - tPrompt;
+          must(
+            receiptAt >= waitMs * 0.5 && receiptAt < waitMs,
+            `selected reply inside round 1's late half (at +${receiptAt} ms)`,
+          );
           expect(receipt!.status).toBe("idle");
           expect(receipt!.scs).toBe(b);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
@@ -1879,9 +1890,9 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
             "undelivered round 1 sent its reinject key",
           );
           const gap = tClose - receipt!.sentAt!;
-          // ≥ 0.4w = 640 ms keeps a receipt-reset expiry (≤ W − 640 + tick + result
-          // poll) below the lower bound W − 250 − tick.
-          must(gap >= waitMs * 0.4, `receipt and round-close classification apart (${gap} ms)`);
+          // ≥ 640 ms keeps a receipt-reset expiry (≤ W − 640 + tick + result poll)
+          // below the lower bound W − 250 − tick.
+          must(gap >= 640, `receipt and round-close classification apart (${gap} ms)`);
           const rs = await waitResults(a, wMs + 4_000);
           const sinceClose = Date.now() - tClose;
           await Bun.sleep(300);
@@ -1889,7 +1900,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           expect(rs[0]!.reason).toBe("status_unavailable");
           expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
           expect(reinjectKeys(rig.fake, a)).toBe(1);
-          // A reset at receipt would expire `gap` (≈ w/2 = 800 ms, ≥ 640 ms) earlier.
+          // A reset at receipt would expire `gap` (≈ w/2 − tick = 800–900 ms, ≥ 640 ms) earlier.
           expect(sinceClose).toBeGreaterThanOrEqual(wMs - 250 - POLL_MS);
           expect(sinceClose).toBeLessThan(wMs + 700 + POLL_MS);
         } finally {
