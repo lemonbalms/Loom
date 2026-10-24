@@ -97,6 +97,46 @@ async function waitFor(pred: () => boolean, timeoutMs: number, stepMs = 25): Pro
   return pred();
 }
 
+/** Fail loudly when the interleaving a case depends on did not happen (Astra 0284 #5). */
+function must(cond: boolean, what: string): void {
+  if (!cond) throw new Error(`intended interleaving not reached: ${what}`);
+}
+
+/** Production pane.read sizes: completion settle scrape vs R17 inject probe. */
+const SETTLE_LINES = 200;
+const PROBE_LINES = 60;
+
+/** PLAN ② telemetry lines `card <id>: snapshot completion (cs=…`. */
+function completionLines(lines: string[], cardId: string): number {
+  return lines.filter((l) => l.includes(`card ${cardId}: snapshot completion (cs=`)).length;
+}
+
+type AgentGetLogEntry = ReturnType<FakeHerdr["agentGetLog"]>[number];
+
+/**
+ * Snapshot-applied milestone: an agent.get reply matching `pred` was sent and
+ * the bridge issued another agent.get for the pane after it — per-flight
+ * agent.get ≤ 1 (R11), so that reply has been processed.
+ */
+async function waitSnapshotApplied(
+  fake: FakeHerdr,
+  paneId: string,
+  pred: (e: AgentGetLogEntry) => boolean,
+  timeoutMs: number,
+): Promise<boolean> {
+  return waitFor(
+    () => {
+      const log = fake.agentGetLog(paneId);
+      const i = log.findIndex((e) => !e.failed && e.sentAt !== null && pred(e));
+      if (i < 0) return false;
+      const sentAt = log[i]!.sentAt!;
+      return log.slice(i + 1).some((e) => e.requestedAt >= sentAt);
+    },
+    timeoutMs,
+    10,
+  );
+}
+
 function agentName(cardId: string): string {
   return `loom-${cardId}-1`;
 }
@@ -671,24 +711,57 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
   );
 
   test(
-    "⑪ after a reinject the new generation (b' = evidence scs = b) still accepts the later cs > b completion",
+    "⑪ after a reinject the new generation (b' = evidence scs = b) still accepts the later cs > b completion · the stale done/cs = b between rounds neither completes nor counts as delivered (b' not below b)",
     async () => {
       const waitMs = 600;
-      const rig = await startRig({ submitVerify: { waitMs, retries: 2 } });
+      // Reused pane: baseline = stale done with cs = scs = b (R69-L2 evidence shape).
+      const rig = await startRig({
+        agentStartStatus: ["working", "done"],
+        submitVerify: { waitMs, retries: 3 },
+      });
       try {
-        rig.fake.stallDelivery("*", true);
-        const a = newCardId();
-        const paneA = await startCard(rig, a, { settle: 0 });
-        expect(await waitFor(() => reinjectKeys(rig.fake, a) >= 1, waitMs * 3 + 2_000)).toBe(true);
-        rig.fake.stallDelivery("*", false);
-        rig.fake.setAgentStatus(paneA, "working");
-        await Bun.sleep(300);
-        rig.fake.setAgentStatus(paneA, "idle");
-        const rs = await waitResults(a, 4_000);
-        await Bun.sleep(300);
-        expect(await results(a)).toHaveLength(1);
-        expect(rs[0]!.reason).toBe("needs_verification");
-        expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
+        await withStderr(async (lines) => {
+          rig.fake.stallDelivery("*", true);
+          const a = newCardId();
+          const paneA = await startCard(rig, a, { settle: 0 });
+          const s0 = rig.fake.getPaneSeq(paneA)!;
+          const b = s0.scs;
+          expect(s0.status).toBe("done");
+          expect(s0.cs).toBe(b);
+          expect(
+            lines.filter((l) => l.includes(`card ${a}: snapshot authority on (b=${b})`)),
+          ).toHaveLength(1);
+          // Round 1 undelivered → key 1 · b' = round evidence scs = b.
+          expect(await waitFor(() => reinjectKeys(rig.fake, a) >= 1, waitMs * 3 + 2_000, 10)).toBe(
+            true,
+          );
+          // Round 2 is judged against b': the same done/scs = b must be undelivered
+          // again (key 2). A b' below b would read scs = b as delivered (no key 2) and
+          // a cs > b' completion check would complete on the stale done/cs = b.
+          expect(await waitFor(() => reinjectKeys(rig.fake, a) >= 2, waitMs * 3 + 2_000, 10)).toBe(
+            true,
+          );
+          expect(await results(a)).toHaveLength(0);
+          rig.fake.stallDelivery("*", false);
+          rig.fake.setAgentStatus(paneA, "working");
+          const scsW = rig.fake.getPaneSeq(paneA)!.scs;
+          must(
+            await waitSnapshotApplied(
+              rig.fake,
+              paneA,
+              (e) => e.status === "working" && e.scs >= scsW,
+              2_000,
+            ),
+            "working/scs > b snapshot applied before the completion",
+          );
+          rig.fake.setAgentStatus(paneA, "idle");
+          const rs = await waitResults(a, 4_000);
+          await Bun.sleep(300);
+          expect(await results(a)).toHaveLength(1);
+          expect(rs[0]!.reason).toBe("needs_verification");
+          expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
+          expect(reinjectKeys(rig.fake, a)).toBe(2);
+        });
       } finally {
         await rig.close();
       }
@@ -721,22 +794,45 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
     async () => {
       const rig = await startRig();
       try {
-        const a = newCardId();
-        const paneA = await startCard(rig, a);
-        rig.fake.setPaneReadText(paneA, "working on it\n1 command still running");
-        rig.fake.setAgentStatus(paneA, "idle"); // cs1 > b → completion → indicator → deferral
-        await Bun.sleep(600);
-        expect(await results(a)).toHaveLength(0);
-        rig.fake.setAgentStatus(paneA, "working"); // new transition, scs > cs1
-        await Bun.sleep(400);
-        rig.fake.setPaneReadText(paneA, "SCRAPE-13 final answer");
-        rig.fake.setAgentStatus(paneA, "idle"); // cs2 > cs1
-        // Deferral poll is 60s: a result now proves cancel + re-entry.
-        const rs = await waitResults(a, 4_000);
-        await Bun.sleep(300);
-        expect(await results(a)).toHaveLength(1);
-        expect(rs[0]!.reason).toBe("needs_verification");
-        expect(rs[0]!.output).toContain("SCRAPE-13");
+        await withStderr(async (lines) => {
+          const a = newCardId();
+          const paneA = await startCard(rig, a);
+          rig.fake.setPaneReadText(paneA, "working on it\n1 command still running");
+          rig.fake.setAgentStatus(paneA, "idle"); // cs1 > b → completion → indicator → deferral
+          must(
+            await waitFor(
+              () =>
+                completionLines(lines, a) === 1 &&
+                lines.some((l) =>
+                  l.includes(`card ${a}: still-running indicator — deferring completion`),
+                ),
+              3_000,
+              10,
+            ),
+            "snapshot completion entered and still-running deferral started",
+          );
+          expect(await results(a)).toHaveLength(0);
+          rig.fake.setAgentStatus(paneA, "working"); // new transition, scs > cs1
+          const scsW = rig.fake.getPaneSeq(paneA)!.scs;
+          must(
+            await waitSnapshotApplied(
+              rig.fake,
+              paneA,
+              (e) => e.status === "working" && e.scs >= scsW,
+              2_000,
+            ),
+            "working ∧ scs > lastConsumedCs snapshot applied during the deferral",
+          );
+          rig.fake.setPaneReadText(paneA, "SCRAPE-13 final answer");
+          rig.fake.setAgentStatus(paneA, "idle"); // cs2 > cs1
+          // Deferral poll is 60s: a result now proves cancel + re-entry.
+          const rs = await waitResults(a, 4_000);
+          await Bun.sleep(300);
+          expect(await results(a)).toHaveLength(1);
+          expect(rs[0]!.reason).toBe("needs_verification");
+          expect(rs[0]!.output).toContain("SCRAPE-13");
+          expect(completionLines(lines, a)).toBe(2);
+        });
       } finally {
         await rig.close();
       }
@@ -897,7 +993,14 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
         const a = newCardId();
         const paneA = await startCard(rig, a);
         rig.fake.setPaneReadText(paneA, "SCRAPE-20 partial tool output");
-        rig.fake.advanceCompletionMidRun(paneA, 600); // idle (cs > b) for 600ms, then working
+        const b = rig.fake.getPaneSeq(paneA)!.scs;
+        // Nonfocused pane: the mid-run edge publishes level done (cs = that edge's scs
+        // — H8 · H9 · H20) for 600 ms, then working.
+        rig.fake.advanceCompletionMidRun(paneA, 600);
+        const edge = rig.fake.getPaneSeq(paneA)!;
+        expect(edge.status).toBe("done");
+        expect(edge.cs).toBe(edge.scs);
+        expect(edge.cs!).toBeGreaterThan(b);
         const rs = await waitResults(a, 4_000);
         await Bun.sleep(300);
         expect(await results(a)).toHaveLength(1);
@@ -913,29 +1016,50 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
   test(
     "㉑ old-generation agent.get reply (sent before the reinject switch) is dropped (runGen) — it does not classify the next round",
     async () => {
-      const waitMs = 800;
+      const waitMs = 1_200;
       const rig = await startRig({ pollMs: NO_TICK_MS, submitVerify: { waitMs, retries: 2 } });
       try {
         rig.fake.stallDelivery("*", true);
         const a = newCardId();
         const paneA = await startCard(rig, a, { settle: 0 });
+        const b = rig.fake.getPaneSeq(paneA)!.scs;
         // Park the R17 probe scrape: classification done, key not yet sent.
         rig.fake.holdPaneRead(paneA, true);
-        expect(await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, waitMs * 3)).toBe(true);
+        must(
+          await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, waitMs * 3, 10),
+          "R17 probe scrape parked after the undelivered round close",
+        );
+        expect(rig.fake.paneReadHeldLines(paneA)).toEqual([PROBE_LINES]);
+        expect(reinjectKeys(rig.fake, a)).toBe(0);
         // Old-generation snapshot (idle · scs = b) requested now, held.
         rig.fake.holdAgentGet(paneA, true);
-        const base = agentGets(rig.fake, paneA, a).length;
         rig.fake.pushEvent("pane_agent_status_changed", { pane_id: paneA, agent_status: "idle" });
-        expect(await waitFor(() => agentGets(rig.fake, paneA, a).length > base, 1_000)).toBe(true);
+        must(
+          await waitFor(() => rig.fake.agentGetHeldCount(paneA) >= 1, 1_000, 10),
+          "old-generation agent.get in flight (held) before the switch",
+        );
+        const staleIdx = rig.fake.agentGetLog(paneA).length - 1;
+        const stale = rig.fake.agentGetLog(paneA)[staleIdx]!;
+        expect(stale.status).toBe("idle");
+        expect(stale.scs).toBe(b);
         // Every later read fails (fail is checked before hold — the parked one stays).
         rig.fake.failAgentGet(paneA, true);
         rig.fake.holdPaneRead(paneA, false);
         rig.fake.releasePaneRead(paneA);
-        expect(await waitFor(() => reinjectKeys(rig.fake, a) >= 1, 2_000)).toBe(true);
-        // Deliver the stale reply inside the new round's late half.
-        await Bun.sleep(Math.floor(waitMs * 0.75));
+        must(
+          await waitFor(() => reinjectKeys(rig.fake, a) >= 1, 2_000, 10),
+          "reinject key sent (generation switched)",
+        );
+        const tKey = Date.now(); // ≈ new round t0 (≤ 10 ms poll)
+        // Deliver the stale reply inside the new round's late half [t0 + w/2, t0 + w).
+        await Bun.sleep(Math.max(0, tKey + Math.floor(waitMs * 0.65) - Date.now()));
         rig.fake.holdAgentGet(paneA, false);
         rig.fake.releaseAgentGet(paneA);
+        const sentAt = rig.fake.agentGetLog(paneA)[staleIdx]!.sentAt;
+        must(
+          sentAt !== null && sentAt - tKey >= waitMs * 0.5 && sentAt - tKey < waitMs - 100,
+          `stale reply delivered in the new round's late half (at +${sentAt === null ? "?" : sentAt - tKey} ms)`,
+        );
         await Bun.sleep(waitMs * 3);
         expect(reinjectKeys(rig.fake, a)).toBe(1);
         expect(await results(a)).toHaveLength(0);
@@ -947,9 +1071,9 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
   );
 
   test(
-    "㉒ bridge stop → tick and queue released · no agent.get / pane.read after stop · no result · no unhandled rejection",
+    "㉒ bridge stop with A's agent.get in flight and B's read queued (cap 1) → tick and queue released · the late reply is ignored · no agent.get / pane.read after stop · no result · no unhandled rejection",
     async () => {
-      const rig = await startRig();
+      const rig = await startRig({ concurrency: 1 });
       const rejections: unknown[] = [];
       const onRejection = (e: unknown) => {
         rejections.push(e);
@@ -958,20 +1082,39 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       try {
         const a = newCardId();
         const paneA = await startCard(rig, a);
+        const b = newCardId();
+        const paneB = await startCard(rig, b);
         rig.fake.holdAgentGet(paneA, true);
-        expect(
-          await waitFor(() => rig.fake.agentGetMaxInFlight(paneA) >= 1, POLL_MS * 5),
-        ).toBe(true);
-        await rig.stopBridge();
-        const getsAtStop = agentGets(rig.fake, paneA, a).length;
+        must(
+          await waitFor(() => rig.fake.agentGetHeldCount(paneA) >= 1, POLL_MS * 10, 10),
+          "A's agent.get in flight (held) — the only slot",
+        );
+        const bGetsAtHold = agentGets(rig.fake, paneB, b).length;
+        await Bun.sleep(POLL_MS * 4); // ≥ 3 of B's ticks
+        must(
+          agentGets(rig.fake, paneB, b).length === bGetsAtHold,
+          "B's tick read queued behind A's held one",
+        );
+        const stopped = await Promise.race([
+          rig.stopBridge().then(() => true),
+          Bun.sleep(5_000).then(() => false),
+        ]);
+        must(stopped, "bridge.stop() returned with an agent.get in flight");
+        const getsAtStopA = agentGets(rig.fake, paneA, a).length;
+        const getsAtStopB = agentGets(rig.fake, paneB, b).length;
         const readsAtStop = rig.fake.paneReadCount();
+        expect(rig.fake.agentGetHeldCount(paneA)).toBe(1);
         rig.fake.setAgentStatus(paneA, "idle");
+        rig.fake.setAgentStatus(paneB, "idle");
+        // The in-flight reply (built at request time) now arrives after stop.
         rig.fake.holdAgentGet(paneA, false);
         rig.fake.releaseAgentGet(paneA);
         await Bun.sleep(POLL_MS * 8);
-        expect(agentGets(rig.fake, paneA, a).length).toBe(getsAtStop);
+        expect(agentGets(rig.fake, paneA, a).length).toBe(getsAtStopA);
+        expect(agentGets(rig.fake, paneB, b).length).toBe(getsAtStopB); // queue released, never run
         expect(rig.fake.paneReadCount()).toBe(readsAtStop);
         expect(await results(a)).toHaveLength(0);
+        expect(await results(b)).toHaveLength(0);
         expect(rejections).toHaveLength(0);
       } finally {
         process.off("unhandledRejection", onRejection);
@@ -1014,7 +1157,9 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
   /**
    * Part B (cases ㉔–㊻). Same rig. Extra fake-herdr hooks (PLAN R14 names,
    * default off): `releasePaneRead(pane, ok, count)` · `delayAgentGet` ·
-   * `focusPane` · `nullCsOnFocus`. Scrape probe hit = the pane's accumulated
+   * `focusPane` · `nullCsOnFocus` · (Astra 0284 evidence) `holdPaneRead(pane, on,
+   * minLines)` · `paneReadHeldLines` · `agentGetHeldCount` · `agentGetLog`.
+   * Scrape probe hit = the pane's accumulated
    * inject text (default) · miss = `setPaneReadText(pane, "READY\n")`.
    */
   describe("part B — pending · completion token · reinject · verify rounds · W (㉔–㊻)", () => {
@@ -1022,6 +1167,57 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       return fake.calls.filter(
         (c) => c.method === "agent.send_keys" && c.params.target === agentName(cardId),
       ).length;
+    }
+
+    /**
+     * ㉕–㉗ (Astra 0284 #1): hold only the 200-line completion settle scrape (the
+     * 60-line inject probe replies at once), then `idle` (cs > lastConsumedCs).
+     * Proves snapshot completion was entered (② telemetry) and that the held read
+     * is its settle scrape — all before the test makes the pane `working`.
+     */
+    async function enterHeldCompletion(
+      fake: FakeHerdr,
+      paneId: string,
+      cardId: string,
+      lines: string[],
+      attempt: number,
+    ): Promise<void> {
+      fake.holdPaneRead(paneId, true, SETTLE_LINES);
+      fake.setAgentStatus(paneId, "idle");
+      must(
+        await waitFor(
+          () =>
+            completionLines(lines, cardId) === attempt &&
+            fake.paneReadHeldCount(paneId) >= attempt,
+          3_000,
+          10,
+        ),
+        `snapshot completion (cs=…) entered with its settle scrape held (attempt ${attempt})`,
+      );
+      expect(fake.paneReadHeldLines(paneId)).toEqual(
+        Array.from({ length: attempt }, () => SETTLE_LINES),
+      );
+    }
+
+    /** The cancelling `working` snapshot is applied while `held` settle reads stay parked. */
+    async function workingAppliedWhileHeld(
+      fake: FakeHerdr,
+      paneId: string,
+      held: number,
+    ): Promise<void> {
+      const scsW = fake.getPaneSeq(paneId)!.scs;
+      must(
+        await waitSnapshotApplied(
+          fake,
+          paneId,
+          (e) => e.status === "working" && e.scs >= scsW,
+          3_000,
+        ),
+        "working snapshot applied before the scrape release",
+      );
+      expect(fake.paneReadHeldLines(paneId)).toEqual(
+        Array.from({ length: held }, () => SETTLE_LINES),
+      );
     }
 
     test(
@@ -1061,18 +1257,19 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       async () => {
         const rig = await startRig();
         try {
-          const a = newCardId();
-          const paneA = await startCard(rig, a);
-          rig.fake.setPaneReadText(paneA, "SCRAPE-25 stale partial");
-          rig.fake.holdPaneRead(paneA, true);
-          rig.fake.setAgentStatus(paneA, "idle"); // cs > b → completion attempt
-          expect(await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, 3_000)).toBe(true);
-          rig.fake.setAgentStatus(paneA, "working"); // scs > lastAppliedScs → cancel
-          await Bun.sleep(POLL_MS * 4);
-          rig.fake.holdPaneRead(paneA, false);
-          rig.fake.releasePaneRead(paneA, true);
-          await Bun.sleep(800);
-          expect(await results(a)).toHaveLength(0);
+          await withStderr(async (lines) => {
+            const a = newCardId();
+            const paneA = await startCard(rig, a);
+            rig.fake.setPaneReadText(paneA, "SCRAPE-25 stale partial");
+            await enterHeldCompletion(rig.fake, paneA, a, lines, 1);
+            rig.fake.setAgentStatus(paneA, "working"); // scs > lastAppliedScs → cancel
+            await workingAppliedWhileHeld(rig.fake, paneA, 1);
+            rig.fake.holdPaneRead(paneA, false);
+            rig.fake.releasePaneRead(paneA, true);
+            await Bun.sleep(800);
+            expect(await results(a)).toHaveLength(0);
+            expect(completionLines(lines, a)).toBe(1);
+          });
         } finally {
           await rig.close();
         }
@@ -1085,19 +1282,20 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       async () => {
         const rig = await startRig();
         try {
-          const a = newCardId();
-          const paneA = await startCard(rig, a);
-          rig.fake.holdPaneRead(paneA, true);
-          rig.fake.setAgentStatus(paneA, "idle");
-          expect(await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, 3_000)).toBe(true);
-          rig.fake.setAgentStatus(paneA, "working");
-          await Bun.sleep(POLL_MS * 4);
-          rig.fake.holdPaneRead(paneA, false);
-          rig.fake.releasePaneRead(paneA, false);
-          await Bun.sleep(800);
-          const rs = await results(a);
-          expect(rs).toHaveLength(0);
-          expect(rs.filter((r) => r.reason === "needs_verification")).toHaveLength(0);
+          await withStderr(async (lines) => {
+            const a = newCardId();
+            const paneA = await startCard(rig, a);
+            await enterHeldCompletion(rig.fake, paneA, a, lines, 1);
+            rig.fake.setAgentStatus(paneA, "working");
+            await workingAppliedWhileHeld(rig.fake, paneA, 1);
+            rig.fake.holdPaneRead(paneA, false);
+            rig.fake.releasePaneRead(paneA, false);
+            await Bun.sleep(800);
+            const rs = await results(a);
+            expect(rs).toHaveLength(0);
+            expect(rs.filter((r) => r.reason === "needs_verification")).toHaveLength(0);
+            expect(completionLines(lines, a)).toBe(1);
+          });
         } finally {
           await rig.close();
         }
@@ -1110,29 +1308,38 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       async () => {
         const rig = await startRig();
         try {
-          const a = newCardId();
-          const paneA = await startCard(rig, a);
-          rig.fake.setPaneReadText(paneA, "SCRAPE-27-OLD");
-          rig.fake.holdPaneRead(paneA, true);
-          rig.fake.setAgentStatus(paneA, "idle"); // cs1 → attempt 1 (scrape held)
-          expect(await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, 3_000)).toBe(true);
-          rig.fake.setAgentStatus(paneA, "working"); // cancel
-          await Bun.sleep(POLL_MS * 4);
-          rig.fake.setPaneReadText(paneA, "SCRAPE-27-NEW");
-          rig.fake.setAgentStatus(paneA, "idle"); // cs2 > cs1 → attempt 2 (scrape held)
-          expect(await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 2, 3_000)).toBe(true);
-          rig.fake.holdPaneRead(paneA, false);
-          // Release only the oldest (attempt 1) — attempt 2 stays parked.
-          rig.fake.releasePaneRead(paneA, true, 1);
-          await Bun.sleep(800);
-          expect(await results(a)).toHaveLength(0);
-          rig.fake.releasePaneRead(paneA, true);
-          const rs = await waitResults(a, 4_000);
-          await Bun.sleep(300);
-          expect(await results(a)).toHaveLength(1);
-          expect(rs[0]!.reason).toBe("needs_verification");
-          expect(rs[0]!.output).toContain("SCRAPE-27-NEW");
-          expect(rs[0]!.output ?? "").not.toContain("SCRAPE-27-OLD");
+          await withStderr(async (lines) => {
+            const a = newCardId();
+            const paneA = await startCard(rig, a);
+            rig.fake.setPaneReadText(paneA, "SCRAPE-27-OLD");
+            await enterHeldCompletion(rig.fake, paneA, a, lines, 1); // attempt 1 (cs1)
+            rig.fake.setAgentStatus(paneA, "working"); // cancel
+            await workingAppliedWhileHeld(rig.fake, paneA, 1);
+            rig.fake.setPaneReadText(paneA, "SCRAPE-27-NEW");
+            rig.fake.setAgentStatus(paneA, "idle"); // cs2 > cs1 → attempt 2 (scrape held)
+            must(
+              await waitFor(
+                () => completionLines(lines, a) === 2 && rig.fake.paneReadHeldCount(paneA) >= 2,
+                3_000,
+                10,
+              ),
+              "re-armed snapshot completion (attempt 2) with its settle scrape held",
+            );
+            expect(rig.fake.paneReadHeldLines(paneA)).toEqual([SETTLE_LINES, SETTLE_LINES]);
+            rig.fake.holdPaneRead(paneA, false);
+            // Release only the oldest (attempt 1) — attempt 2 stays parked.
+            rig.fake.releasePaneRead(paneA, true, 1);
+            await Bun.sleep(800);
+            expect(await results(a)).toHaveLength(0);
+            expect(rig.fake.paneReadHeldLines(paneA)).toEqual([SETTLE_LINES]);
+            rig.fake.releasePaneRead(paneA, true);
+            const rs = await waitResults(a, 4_000);
+            await Bun.sleep(300);
+            expect(await results(a)).toHaveLength(1);
+            expect(rs[0]!.reason).toBe("needs_verification");
+            expect(rs[0]!.output).toContain("SCRAPE-27-NEW");
+            expect(rs[0]!.output ?? "").not.toContain("SCRAPE-27-OLD");
+          });
         } finally {
           await rig.close();
         }
@@ -1141,7 +1348,10 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
     );
 
     test(
-      "㉘ undelivered classified · probe scrape held · poller applies current-gen scs > b → pre-key cache check cancels reinject · no key · completes in the current generation",
+      // Narrowed (Astra 0284 #6): "no retry refund" is not observable here — the
+      // cancelled reinject continues as a delivered verify, which runs no further
+      // round that could exhaust. This case pins the cancel + current-generation path.
+      "㉘ undelivered classified · R17 probe scrape (60 lines) held · poller applies current-gen working/scs > b → pre-key cache check cancels reinject · no key · completes in the current generation",
       async () => {
         const waitMs = 600;
         const rig = await startRig({ submitVerify: { waitMs, retries: 1 } });
@@ -1151,10 +1361,25 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           const paneA = await startCard(rig, a, { settle: 0 });
           rig.fake.holdPaneRead(paneA, true);
           // Round 1 closes `undelivered` (retry consumed) → R17 probe parked.
-          expect(await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, waitMs * 3)).toBe(true);
+          must(
+            await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, waitMs * 3, 10),
+            "R17 probe scrape parked after the undelivered round close",
+          );
+          expect(rig.fake.paneReadHeldLines(paneA)).toEqual([PROBE_LINES]);
+          expect(reinjectKeys(rig.fake, a)).toBe(0);
           rig.fake.stallDelivery("*", false);
           rig.fake.setAgentStatus(paneA, "working"); // late first delivery · scs > b
-          await Bun.sleep(POLL_MS * 4); // applied → deliveredSeen
+          const scsW = rig.fake.getPaneSeq(paneA)!.scs;
+          must(
+            await waitSnapshotApplied(
+              rig.fake,
+              paneA,
+              (e) => e.status === "working" && e.scs >= scsW,
+              2_000,
+            ),
+            "current-gen working/scs > b applied (deliveredSeen) before the key",
+          );
+          expect(rig.fake.paneReadHeldLines(paneA)).toEqual([PROBE_LINES]);
           rig.fake.holdPaneRead(paneA, false);
           rig.fake.releasePaneRead(paneA, true);
           await Bun.sleep(400);
@@ -1362,29 +1587,63 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       "㊱ the late-half read reply arrives after the round close (delayAgentGet) → unknown · no reinject key · W not reset (M7 · 0264 #2)",
       async () => {
         const waitMs = 800;
+        const wMs = 2_500;
+        const delayMs = Math.floor(waitMs * 0.75);
         const rig = await startRig({
           pollMs: NO_TICK_MS,
-          wMs: 2_500,
+          wMs,
           submitVerify: { waitMs, retries: 1 },
         });
         try {
           rig.fake.stallDelivery("*", true);
           const a = newCardId();
-          const tBase = Date.now();
-          const paneA = await startCard(rig, a, { settle: 0 }); // ≈ t0 (round 1 wake read returns at once)
-          await Bun.sleep(Math.floor(waitMs * 0.25));
-          // Late-half read (sent t0 + w/2) lands at t0 + 1.25w — after round 1 closes.
-          rig.fake.delayAgentGet(paneA, Math.floor(waitMs * 0.75));
-          await Bun.sleep(Math.floor(waitMs * 0.45)); // ≈ t0 + 0.7w: late read in flight
-          rig.fake.failAgentGet(paneA, true); // later rounds: no qualifying evidence
-          await Bun.sleep(waitMs * 2);
+          const paneA = await startCard(rig, a, { settle: 0 });
+          const tPrompt = Date.now(); // ≈ baseline success (W start) ≈ round 1 t0
+          const b = rig.fake.getPaneSeq(paneA)!.scs;
+          const promptIdx = rig.fake.calls.findIndex(
+            (c) => c.method === "agent.prompt" && c.params.target === agentName(a),
+          );
+          const postInject = () =>
+            rig.fake.agentGetLog(paneA).filter((e) => e.callIndex > promptIdx);
+          // Round 1 wake read answered undelayed (early half) before the hook goes on.
+          must(
+            await waitFor(() => postInject().some((e) => e.sentAt !== null), waitMs * 0.4, 10),
+            "round-1 early-half read answered before delayAgentGet",
+          );
+          rig.fake.delayAgentGet(paneA, delayMs);
+          const nBefore = postInject().length;
+          must(
+            await waitFor(() => postInject().length > nBefore, waitMs, 10),
+            "round-1 late-half read requested",
+          );
+          rig.fake.failAgentGet(paneA, true); // later reads: no qualifying evidence
+          const late = postInject()[nBefore]!;
+          must(
+            late.requestedAt - tPrompt >= waitMs * 0.4 && !late.failed,
+            `late-half read sent in the late half (at +${late.requestedAt - tPrompt} ms)`,
+          );
+          expect(late.status).toBe("idle");
+          expect(late.scs).toBe(b);
+          must(
+            await waitFor(() => postInject()[nBefore]!.sentAt !== null, waitMs * 2, 10),
+            "delayed late-half reply sent",
+          );
+          const lateSent = postInject()[nBefore]!.sentAt!;
+          must(
+            lateSent - tPrompt >= waitMs,
+            `delayed reply arrived after round-1 close (at +${lateSent - tPrompt} ms)`,
+          );
+          await Bun.sleep(waitMs);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
           expect((await results(a)).filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
-          const rs = await waitResults(a, 4_000);
-          const elapsed = Date.now() - tBase;
+          const rs = await waitResults(a, wMs + 4_000);
+          const elapsed = Date.now() - tPrompt;
           expect(rs).toHaveLength(1);
           expect(rs[0]!.reason).toBe("status_unavailable");
-          expect(elapsed).toBeLessThan(2_500 + 1_500);
+          // W runs from the baseline; a reset at the late arrival (≈ +1.0 s) would
+          // expire ≈ +3.5 s — rejected by the upper bound.
+          expect(elapsed).toBeGreaterThanOrEqual(wMs - 400);
+          expect(elapsed).toBeLessThan(wMs + 600);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
         } finally {
           await rig.close();
@@ -1394,7 +1653,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
     );
 
     test(
-      "㊲ the late-half read is stuck behind the agentGetConcurrency queue (no reply before close) → unknown · no reinject key (M7)",
+      "㊲ the late-half read is stuck behind the agentGetConcurrency queue (no reply before close) → unknown · no reinject key · no result while blocked · after release no retry was consumed (one key, then inject_unconfirmed) (M7)",
       async () => {
         const waitMs = 800;
         const rig = await startRig({ concurrency: 1, submitVerify: { waitMs, retries: 1 } });
@@ -1404,12 +1663,38 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           paneB = await startCard(rig, b); // delivered · working
           rig.fake.stallDelivery("*", true);
           const a = newCardId();
-          await startCard(rig, a, { settle: 0 }); // baseline read before the slot is taken
+          const paneA = await startCard(rig, a, { settle: 0 }); // baseline read before the slot is taken
+          const tPrompt = Date.now();
           rig.fake.holdAgentGet(paneB, true); // B's next tick read occupies the only slot
-          await Bun.sleep(waitMs * 3);
+          must(
+            await waitFor(() => rig.fake.agentGetHeldCount(paneB) >= 1, waitMs * 0.4, 10),
+            "B's tick read holds the only slot before A's round-1 late half",
+          );
+          must(
+            Date.now() - tPrompt < waitMs * 0.5,
+            `slot taken before A's late-half read (at +${Date.now() - tPrompt} ms)`,
+          );
+          const aGetsAtBlock = agentGets(rig.fake, paneA, a).length;
+          await Bun.sleep(waitMs * 3); // ≥ 2 full A rounds blocked
+          // A's reads (incl. every late-half read) are queued, never sent.
+          expect(agentGets(rig.fake, paneA, a).length).toBe(aGetsAtBlock);
+          expect(rig.fake.agentGetHeldCount(paneB)).toBe(1);
           expect(rig.fake.agentGetMaxInFlightGlobal()).toBeLessThanOrEqual(1);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
-          expect((await results(a)).filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
+          expect(await results(a)).toHaveLength(0); // no premature result of any kind
+          // Release: A's queued read runs. Blocked rounds were `unknown` (no retry
+          // consumed) → still exactly one reinject (retries 1) before exhaustion.
+          rig.fake.holdAgentGet(paneB, false);
+          rig.fake.releaseAgentGet(paneB);
+          must(
+            await waitFor(() => agentGets(rig.fake, paneA, a).length > aGetsAtBlock, 1_000, 10),
+            "A's queued read issued after the slot frees",
+          );
+          const rs = await waitResults(a, waitMs * 4 + 3_000);
+          await Bun.sleep(300);
+          expect(await results(a)).toHaveLength(1);
+          expect(rs[0]!.reason).toBe("inject_unconfirmed");
+          expect(reinjectKeys(rig.fake, a)).toBe(1);
         } finally {
           if (paneB) {
             rig.fake.holdAgentGet(paneB, false);
@@ -1499,23 +1784,118 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
     );
 
     test(
-      "㊶ every round's idle/scs = b reply arrives only after the close (delayAgentGet > W) → unknown rounds · W not reset → one status_unavailable · no inject_unconfirmed",
+      "㊵ W resets at the undelivered round close, not at the late-half idle/scs = b receipt — outage after that snapshot → status_unavailable at close + W (R3 · R10 · Astra 0284 #2)",
       async () => {
-        const waitMs = 500;
-        const rig = await startRig({ wMs: SHORT_W_MS, submitVerify: { waitMs, retries: 1 } });
+        const waitMs = 1_600;
+        const wMs = 2_400; // > one round: the baseline W cannot expire before round-1 close
+        const rig = await startRig({
+          pollMs: NO_TICK_MS,
+          wMs,
+          submitVerify: { waitMs, retries: 2 },
+        });
         try {
           rig.fake.stallDelivery("*", true);
           const a = newCardId();
-          const tBase = Date.now();
           const paneA = await startCard(rig, a, { settle: 0 });
-          rig.fake.delayAgentGet(paneA, 5_000);
-          const rs = await waitResults(a, SHORT_W_MS + 4_000);
-          const elapsed = Date.now() - tBase;
+          const tPrompt = Date.now(); // ≈ round 1 t0
+          const b = rig.fake.getPaneSeq(paneA)!.scs;
+          const promptIdx = rig.fake.calls.findIndex(
+            (c) => c.method === "agent.prompt" && c.params.target === agentName(a),
+          );
+          // Round 1's late-half reply (receipt ≥ t0 + w/2), then cut agent.get.
+          let receipt: AgentGetLogEntry | undefined;
+          must(
+            await waitFor(
+              () => {
+                receipt = rig.fake
+                  .agentGetLog(paneA)
+                  .find(
+                    (e) =>
+                      e.callIndex > promptIdx &&
+                      !e.failed &&
+                      e.sentAt !== null &&
+                      e.sentAt - tPrompt >= waitMs * 0.45,
+                  );
+                return receipt !== undefined;
+              },
+              waitMs,
+              10,
+            ),
+            "round-1 late-half reply received",
+          );
+          rig.fake.failAgentGet(paneA, true); // outage after the last idle/scs = b snapshot
+          expect(receipt!.status).toBe("idle");
+          expect(receipt!.scs).toBe(b);
+          expect(reinjectKeys(rig.fake, a)).toBe(0);
+          must(
+            await waitFor(() => reinjectKeys(rig.fake, a) >= 1, waitMs, 10),
+            "round 1 classified undelivered at its close (key)",
+          );
+          const tClose = Date.now(); // ≈ classification (the 60-line probe precedes the key)
+          const gap = tClose - receipt!.sentAt!;
+          must(gap >= waitMs * 0.3, `receipt and round-close classification apart (${gap} ms)`);
+          const rs = await waitResults(a, wMs + 4_000);
+          const sinceClose = Date.now() - tClose;
+          await Bun.sleep(300);
+          expect(await results(a)).toHaveLength(1);
+          expect(rs[0]!.reason).toBe("status_unavailable");
+          expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
+          expect(reinjectKeys(rig.fake, a)).toBe(1);
+          // A reset at receipt would expire `gap` (≈ w/2 = 800 ms) earlier.
+          expect(sinceClose).toBeGreaterThanOrEqual(wMs - 250);
+          expect(sinceClose).toBeLessThan(wMs + 700);
+        } finally {
+          await rig.close();
+        }
+      },
+      TEST_TIMEOUT_MS,
+    );
+
+    test(
+      "㊶ every round's idle/scs = b reply arrives after its round closed but while the flight is active (round < delay < W) → not evidence for the next round · W not reset → unknown rounds · one status_unavailable · no inject_unconfirmed",
+      async () => {
+        const waitMs = 500;
+        const delayMs = 700; // > round length: each reply lands after its round's close
+        const wMs = 3_500;
+        const rig = await startRig({ wMs, submitVerify: { waitMs, retries: 1 } });
+        try {
+          rig.fake.stallDelivery("*", true);
+          const a = newCardId();
+          const paneA = await startCard(rig, a, { settle: 0 });
+          const tPrompt = Date.now(); // ≈ baseline success (W start)
+          const b = rig.fake.getPaneSeq(paneA)!.scs;
+          const promptIdx = rig.fake.calls.findIndex(
+            (c) => c.method === "agent.prompt" && c.params.target === agentName(a),
+          );
+          rig.fake.delayAgentGet(paneA, delayMs);
+          const rs = await waitResults(a, wMs + 4_000);
+          const elapsed = Date.now() - tPrompt;
+          // Replies requested inside a round (length w) and sent ≥ delay > w later
+          // arrived after that round's close; those sent well before the expiry
+          // arrived while the flight was active — a wrong cross-round attribution
+          // would classify the next round undelivered (key) · a reset would push W.
+          const lateArrivals = rig.fake
+            .agentGetLog(paneA)
+            .filter(
+              (e) =>
+                e.callIndex > promptIdx &&
+                !e.failed &&
+                e.sentAt !== null &&
+                e.sentAt - e.requestedAt >= delayMs - 20 &&
+                e.sentAt - tPrompt < wMs - 300,
+            );
+          must(lateArrivals.length >= 3, `≥ 3 late arrivals while active (got ${lateArrivals.length})`);
+          for (const e of lateArrivals) {
+            expect(e.status).toBe("idle");
+            expect(e.scs).toBe(b);
+          }
           expect(rs).toHaveLength(1);
           expect(rs[0]!.reason).toBe("status_unavailable");
           expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
-          expect(elapsed).toBeLessThan(SHORT_W_MS + 1_500);
+          // Last active arrival ≈ +2.5–3.2 s: a reset there would expire ≥ W later.
+          expect(elapsed).toBeGreaterThanOrEqual(wMs - 400);
+          expect(elapsed).toBeLessThan(wMs + 700);
         } finally {
           await rig.close();
         }
