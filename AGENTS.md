@@ -112,8 +112,8 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 **Skip this section** for Template **S** / **A** (read-only). After those templates, stop.
 
 1. After the status table, **immediately execute** the next gate action from HANDOFF/`bun run status`.
-2. Chain within the wave without re-asking: e.g. PLAN PATCH → tests → docs → commit/push when that is the natural end of the wave (see Standing rules).
-3. Only pause for **true blockers** (below). Precise one-shot commands (“커밋하고 푸시해”) still run immediately without a long ritual.
+2. Chain within the wave without re-asking: e.g. PLAN PATCH → tests → docs → local commit when that is the natural end of the wave (see Standing rules). Push is a separate owner-approved step (`docs/GATE-POLICY.md` I1).
+3. Only pause for **true blockers** (below). Precise one-shot commands (“커밋하고 푸시해”) still run immediately without a long ritual — that utterance is itself the I1 approval for that one push.
 
 ---
 
@@ -128,14 +128,15 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 | Author-close | Low only + label `(author-close, Low backlog)` + Changelog provenance |
 | Deviations | `implementation-notes.md` → **Deviations** (pick conservative option) |
 | Unknowns | `docs/WORKFLOW.md` §3.5 + `docs/UNKNOWNS.md` — MINOR/new surface before R{n}; not a PLAN SSOT |
-| **Autonomy (default)** | **Do not ask permission between steps.** Brief → execute next gate → verify → docs → ship when wave complete. Report progress after work, not before each click. |
+| **Autonomy (default)** | **Do not ask permission between steps.** Brief → execute next gate → verify → docs → local commit when wave complete. Report progress after work, not before each click. Reversible work (R0–R2) is automatic; irreversible/outward work (I1–I4) needs owner approval — `docs/GATE-POLICY.md`. |
+| **Gate policy** | SSOT `docs/GATE-POLICY.md` (owner 2026-10-24). **R0–R2 automatic** — read · local edit/test · temp-HOME herdr-only probe (private server) · local commit. **I1–I4 owner approval per scope** — push/merge · deploy · live launchd/systemd · DB write · customer/PM send · data delete · canonical re-collect · real-CLI tokens · paid API; record the approved scope as `ownerDecision` (date · scope · source) in the result file + HANDOFF. **Done = evidence only** — commit SHA · diff scope · test command + counts · verify-lane `meta.json` · probe `summary.json`; partial evidence = "완료(제한: …)". herdr status is never done-evidence. |
 | **Next-action test** | When **self-choosing** the next action, first answer *"if this fails, what do I newly learn?"* An action that **cannot fail** (already-green re-run, owner-blocked wait, doc-sync paperwork) is **disqualified** as a next action. Cross-check HANDOFF's "don't redo / already shipped" list, then pick the **scariest still-verifiable** check. Before deferring to an owner blocker, state in one line what is verifiable **without** that blocker — and do that first. |
 | “진행해” / “단계적으로” / “자율적으로” / “이어서” | **Full current wave**, no mid-wave approval — see `docs/WORKFLOW.md` §3 |
 | Verify | `bun test` green before claiming done; related smoke when the gate touches that surface |
 | **Inject ops** | Default = **all nine HANDOFF axes + traps** in state inject. Concision = HANDOFF diet (tables/bullets), not permanent slim-delete. While drafting: `bun run handoff:budget`. After HANDOFF/traps edits: `bun run session-context:lint` — **omitted must be (none)**; prefer raw ≤ `STATE_TARGET` 7500 (warn). Owner brief = `bun run status` only. Guide: `docs/HANDOFF-AUTHORING.md` · design: `docs/spikes/SESSION-INJECT-VIEW-DESIGN.md` |
 | **HANDOFF ship check** | Before claiming handoff/docs wave done: `bun run handoff:check` (= `handoff:lint` + `session-context:lint`). Draft with `bun run handoff:budget`. |
 | Remote | `https://github.com/lemonbalms/Loom.git` (user lemonbalms) |
-| Commit/push | **Default at end of a completed gate wave** (green tests + docs sync). Do not ask “커밋할까요?” — do it. Exception: user said “커밋 금지” / dry-run only. |
+| Commit/push | **Local commit = default at end of a completed gate wave** (green tests + docs sync) — do not ask “커밋할까요?”. Exception: user said “커밋 금지” / dry-run only. **Push = I1 — owner approval per push** (“커밋하고 푸시해” / an explicit push yes counts; record it as `ownerDecision`), and under topology `full` only with verify-lane PASS evidence (`docs/GATE-POLICY.md`). |
 | Env (0.10+) | **`LOOM_*` only** — `FABLE_*` env is not read (warn only) |
 | Dogfood | **`docs/DOGFOOD_LOOP.md`** — Grok/Claude/Codex impl lanes · Claude/Codex review lanes via Loom room |
 | Claude R{n} | **Must** consult the **`loom-advisor`** subagent (Opus 5.5 high — CLAUDE.md rule 8) before writing R{n} |
@@ -145,6 +146,7 @@ Owner wants **stepwise autonomous progress** through the current gate wave.
 
 - **Ambiguous product direction** that changes MAJOR scope (not recoverable by PLAN defaults)
 - **Irreversible shared damage** outside normal ship (force-push, drop prod data, secrets publish)
+- **I1–I4 action next** (push/merge · deploy · live service registration · DB write · external send · data delete · canonical re-collect · real-CLI tokens · paid API) without a recorded `ownerDecision` covering it — `docs/GATE-POLICY.md`
 - **External human-only** dependency (Owner key, paid account) with no documented default
 - User explicitly: “멈춰”, “계획만”, “커밋 금지”
 

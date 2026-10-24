@@ -1,5 +1,15 @@
 # HERDR-STATUS-PROBES — TLA+ 가정을 확인할 라이브 herdr 프로브 설계 (대상 herdr 0.9.5 / protocol 22)
 
+> **게이트 등급 (`docs/GATE-POLICY.md` §1.1):**
+>
+> | 프로브 | 등급 | 근거 |
+> |---|---|---|
+> | Step 0 · A · B1 · C · D1 · E · s | R1 | `[herdr 전용]` · temp HOME · private 서버 |
+> | B2 · D2 | I4 | `[실 CLI — 오너 yes]` · 토큰 소비 · `--real-cli --owner-approved` |
+> | shared 서버 모드 (`[herdr 전용]`) | R2 상당 (주의) | §2.5 안전 블록 의무 |
+>
+> 각 결과표 행(run id · verdict · code · leftover · I4면 `ownerDecision`)이 `docs/GATE-POLICY.md` §3의 완료 증거 형식이다.
+
 > 상태: **하니스 = `scripts/probe-herdr-status.ts` v2(`[herdr 전용]` S0·A·B1·C·D1·E·s 구현) · run 1(`6c0c3e`, v1, private)
 > · run 2(`dcda61`, v2, private, 2026-10-23) 완료 — 결과는 각 결과표 + §11 사실표 · run 2 뒤 A 동률 술어 수정(§4 run-2 주)
 > · B2·D2 하니스 구현(2026-10-23, 오너 yes: kind당 1회·`claude`만·private·§5.4 선택지 1 — `--probe b2,d2 --real-cli

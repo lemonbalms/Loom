@@ -29,9 +29,9 @@
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** owner pick → PLAN + R{n} for the chosen item.
+**Done when (this handoff):** owner pick → PLAN + R{n} for the chosen item — declared only with `docs/GATE-POLICY.md` §3 evidence (commit SHA · diff scope · test cmd + counts · verify `meta.json` · probe `summary.json`).
 
-**Must not:** run any further live launchd/systemd registration or real-CLI smoke (e.g. `smoke:policy --real-cli` · `smoke:memory-write --real-cli`) without explicit owner yes · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
+**Must not:** any I1–I4 action (`docs/GATE-POLICY.md` — push/merge · live launchd/systemd · deploy · DB write · external send · data delete · real-CLI tokens e.g. `smoke:*:--real-cli` · paid API) without an owner yes recorded as `ownerDecision` · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
 ## Active checks
 

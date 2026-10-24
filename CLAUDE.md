@@ -71,6 +71,15 @@
      **검증엔 폴백이 없다:** lane.ts verify가 안 되면 같은 벤더(Claude) `Agent`로 대신하지 말고 막힘으로 보고한다.
    - `fable-advisor:fable-advisor` 에이전트는 이 프로젝트에서 배제(전역 CLAUDE.md의 fable-advisor 자문·최종 리뷰
      지시도 위 자문으로 대체). 해제·변경은 오너만.
+9. **검증·승인 게이트 (오너 지시 2026-10-24 — 이경식님) — SSOT `docs/GATE-POLICY.md`.**
+   - **되돌릴 수 있는 일(R0–R2)은 묻지 않고 한다:** 읽기 · 로컬 편집·테스트 · temp HOME + `LOOM_TEST_HOME` 프로브
+     (`[herdr 전용]`, private 서버) · 로컬 커밋.
+   - **되돌릴 수 없거나 밖으로 나가는 일(I1–I4)만 오너 승인:** push·병합 · 배포 · 라이브 launchd/systemd · DB 쓰기 ·
+     고객·PM 발송 · 데이터 삭제 · 정본 재수집 · 실 CLI 토큰 · 유료 API. 승인은 범위(무엇·몇 회·어디)가 있고, 결과 파일과
+     HANDOFF에 `ownerDecision`(일자·범위·원문)으로 남긴다. 범위 밖·재실행은 새 승인. 거절·만료는 최종 — 다른 경로로 우회 금지.
+     종전 "웨이브 끝 push 기본"(AGENTS Commit/push)은 이 규칙으로 대체 — 웨이브 끝 기본은 **로컬 커밋**까지다.
+   - **완료는 증거로만:** 커밋 SHA · diff 범위 · 테스트 명령과 통과 수 · verify 레인 `meta.json` · 프로브 `summary.json`.
+     빠진 증거가 있으면 "완료(제한: …)". herdr 상태값(`idle`/`done`)은 완료 증거가 아니다(규칙 7과 같은 뜻).
 
 ## On session start
 

@@ -76,6 +76,9 @@ const REAL_CLI_HOME = "/Users/kyoungsiklee";
 const REAL_CLI_CWD = "/Users/kyoungsiklee/projects/loom";
 const OWNER_DECISION = {
   date: "2026-10-23",
+  source:
+    "owner AskUserQuestion answers 2026-10-23: \"yes — claude만 (권장)\" + \"1: CLI pane만 실 HOME (권장)\"; re-run 2026-10-24: \"yes — 같은 조건으로 1회 재실행\"",
+  recordedIn: ["<T>/summary.json ownerDecision", "<T>/events.ndjson PROBE_BEGIN", "docs/spikes/HERDR-STATUS-PROBES.md B2/D2 result rows"],
   scope: "B2 and D2 once each, kind claude only",
   server: "private",
   homeChoice:

@@ -117,7 +117,7 @@
 
 1. 현재 게이트의 **다음 단계부터 웨이브를 끝까지** 실행한다 (리뷰 대기면 리뷰 요청·본문, 블로커면 수정, approved면 구현…).
 2. 단계마다 **사용자 승인 질문을 하지 않는다** (“해도 될까요?”, “커밋할까요?” 금지가 기본).
-3. 한 웨이브 종료: **`bun test` (관련 시 smoke) → 문서 동기화 → 커밋·푸시(`main`)** 까지 기본 수행.
+3. 한 웨이브 종료: **`bun test` (관련 시 smoke) → 문서 동기화 → 로컬 커밋(`main`)** 까지 기본 수행. **push는 I1 — 오너 승인 회차마다**(`docs/GATE-POLICY.md`, 2026-10-24 오너 지시 — 종전 "커밋·푸시 기본" 대체).
 4. 세션 시작 브리핑(상태 표)은 하되, 브리핑 직후 **바로 다음 액션에 착수**한다.
 5. **새 MINOR/보안 Med+** 를 열 때는 먼저 PLAN을 올리고 리뷰 게이트를 탄다.  
    (가능하면 PLAN `pending-review` 전·또는 R{n} 직전에 **§3.5 Unknowns**.)
@@ -361,7 +361,7 @@ bun run loom --version   # PLAN 버전과 일치
 | 원격 | `https://github.com/lemonbalms/Loom.git` (`origin`) |
 | 기본 브랜치 | `main` |
 | 커밋 | 웨이브 완료 후; 메시지에 버전·finding ID 포함 권장 (`fix(0.9.4): L-4 …`) |
-| 푸시 | Owner/사용자가 푸시를 원하거나 「커밋하고 푸시해」「단계적으로 진행」으로 ship까지 포함한 경우 |
+| 푸시 | **I1 — 오너 승인 회차마다**(`docs/GATE-POLICY.md`). 「커밋하고 푸시해」·명시적 push yes = 그 1회 승인 · `ownerDecision`으로 기록. 「단계적으로 진행」 같은 넓은 지시는 push 승인이 아니다(2026-10-24 대체). topology `full`이면 verify 레인 PASS 증거 필수 |
 | 시크릿 | `~/.loom`, `.env`, session, peerSecret **커밋 금지** (`.gitignore`) |
 | force-push main | 금지 (명시 승인 없이) |
 

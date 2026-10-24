@@ -85,7 +85,7 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
 | 토폴로지 | 동작 |
 |----------|------|
 | `full` | 이 세션 = orchestrator(또는 line 정의상 한 역할). **구현·검증 lane을 다른 피어/CLI에 위임**할 수 있음 |
-| `single` | **추가 Grok/워커 디스패치 없이** 이 세션이 구현 → 직접 검증 명령 → docs → commit/push |
+| `single` | **추가 Grok/워커 디스패치 없이** 이 세션이 구현 → 직접 검증 명령 → docs → 로컬 commit (push = I1 오너 승인 — `docs/GATE-POLICY.md`) |
 
 #### 승격 / 강등
 
@@ -114,7 +114,7 @@ When the `fable-advisor` plugin updates, bump these pins here so cache drift sta
   범위·Done 고정
   → 구현 (같은 세션이 구현 벤더면 직접; 아니면 한 implementer lane만)
   → 세션이 검증 명령 직접 실행
-  → green → docs/HANDOFF → commit/push
+  → green → docs/HANDOFF → 로컬 commit → (오너 승인 시) push — `docs/GATE-POLICY.md` I1
   → red/모호/계약 충돌 → 재시도 또는 topology=full 승격
 ```
 
