@@ -211,6 +211,16 @@ export type FakeHerdrOptions = {
    * autoStatus.
    */
   discardInjects?: boolean;
+  /**
+   * PLAN 0.46.0 R14: agent.get seq fields.
+   * - "none" (default): today's reply bytes — neither `state_change_seq` nor
+   *   `completion_seq` (every existing test stays on the fallback path).
+   * - "p22": one global monotonic counter; a pane's `state_change_seq` is
+   *   stamped only when its status actually changes (H7); working→idle/done sets
+   *   `completion_seq` to that stamp, `working` sets it to null (H8). agent.get
+   *   carries both keys. A new pane starts at scs 0 · cs null.
+   */
+  seqMode?: "none" | "p22";
 };
 
 export type FakeHerdr = {
@@ -345,8 +355,25 @@ export async function startFakeHerdr(
     agentKind?: string;
     agentArgs?: string[];
     agentName?: string;
+    /** PLAN 0.46.0 R14 (`seqMode: "p22"`): state_change_seq stamp (unset = 0). */
+    scs?: number;
+    /** PLAN 0.46.0 R14 (`seqMode: "p22"`): completion_seq (unset = null). */
+    cs?: number | null;
   };
   const panes = new Map<string, FakePane>();
+  /** PLAN 0.46.0 R14: global monotonic seq counter (`seqMode: "p22"`). */
+  let seqCounter = 0;
+
+  /** Every stored status change goes through here (R14 — stamps only in "p22"). */
+  function setPaneStatus(p: FakePane, next: string): void {
+    const prev = p.status;
+    p.status = next;
+    if (opts.seqMode !== "p22" || prev === next) return;
+    seqCounter += 1;
+    p.scs = seqCounter;
+    if (next === "working") p.cs = null;
+    else if (prev === "working" && (next === "idle" || next === "done")) p.cs = seqCounter;
+  }
   /** Tabs that still appear in pane.list (dropTab removes without pane.close). */
   const liveTabs = new Set<string>();
   const closedPanes = new Set<string>();
@@ -574,7 +601,7 @@ export async function startFakeHerdr(
 
   /** Drive working → autoStatus events (agent.prompt atomic submit / CR nudge). */
   function scheduleAutoStatus(paneId: string, p: FakePane): void {
-    p.status = "working";
+    setPaneStatus(p, "working");
     const auto = opts.autoStatus ?? "done";
     if (auto === "none") return;
     const delay = opts.autoStatusDelayMs ?? 30;
@@ -588,7 +615,7 @@ export async function startFakeHerdr(
       agent_status: "working",
     });
     setTimeout(() => {
-      p.status = auto === "idle" ? "idle" : auto;
+      setPaneStatus(p, auto === "idle" ? "idle" : auto);
       const finalStatus = auto === "idle" ? "idle" : auto;
       broadcast(event, {
         pane_id: paneId,
@@ -1029,6 +1056,10 @@ export async function startFakeHerdr(
                 name: p.agentName,
                 agent_status: p.status,
                 interactive_ready: true,
+                // PLAN 0.46.0 R14: seq keys only in "p22" ("none" = today's bytes).
+                ...(opts.seqMode === "p22"
+                  ? { state_change_seq: p.scs ?? 0, completion_seq: p.cs ?? null }
+                  : {}),
               },
             },
           })}\n`;
@@ -1151,7 +1182,7 @@ export async function startFakeHerdr(
     },
     setAgentStatus(paneId: string, status: string) {
       const p = panes.get(paneId);
-      if (p) p.status = status;
+      if (p) setPaneStatus(p, status);
     },
     failAgentGet(paneId: string, on: boolean) {
       if (on) agentGetFail.add(paneId);
