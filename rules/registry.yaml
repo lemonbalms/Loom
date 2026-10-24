@@ -11,23 +11,23 @@ policy_version: "2026-07-26.p1"
 
 sources:
   - file: "AGENTS.md"
-    sha8: "c17de366"
+    sha8: "5991dee5"
     triage:
-      for_sha8: "c17de366"
-      note: "신규 유닛 없음 — 2026-10-17 headless lanes P3: Impl delegation 행이 lane.ts impl/verify + meta.json 증거로 바뀜; agents.impl-delegation 다이제스트만 갱신; advisor fix-first 반영(rule-8 in-harness 경로 허용 · Codex note 7 superseded) (이전 receipt: 레인 모델 고정; Phase 1 최초 등록 2026-07-26 — 13건)"
-      at: "2026-10-17"
+      for_sha8: "5991dee5"
+      note: "신규 유닛 없음(보류) — 2026-10-24 게이트 정책(오너 지시, docs/GATE-POLICY.md): Autonomy·Commit/push·Pause only when 문구 갱신(웨이브 끝 = 로컬 커밋, push = I1 회차 승인), Gate policy 행 신설 — 라우팅 유닛 등록은 Phase 3 soft close 동안 보류; 기존 유닛 agents.autonomy·agents.commit-push·agents.pause-blockers 다이제스트만 갱신 (이전 receipt: 신규 유닛 없음 — 2026-10-17 headless lanes P3: Impl delegation 행이 …)"
+      at: "2026-10-24"
   - file: "CLAUDE.md"
-    sha8: "a6b34cdf"
+    sha8: "3fc82505"
     triage:
-      for_sha8: "a6b34cdf"
-      note: "신규 유닛 없음(보류) — 2026-10-17 headless lanes P4: 규칙 8 폴백 문장만 갱신(레인 실전 검증 완료, 등록 유닛 무변경). 이전 P3: 규칙 3(Workflow는 읽기 전용 팬아웃) · 규칙 5(Claude 레인 표면 = lane.ts) · 규칙 8(실행 = lane.ts, meta.json 증거, 훅 목록) 갱신. 규칙 2(orch.model-explicit, PREREG 3.0 봉인)는 원문 유지. 규칙 8 라우팅 유닛 등록은 Phase 3 soft close 동안 보류. advisor fix-first 반영(규칙 5 lane.ts claim 범위 · 규칙 8 verify 무폴백 · --cwd 범위). 기존 유닛 orch.parallel·orch.lane-placement 다이제스트만 갱신 (Phase 1 최초 등록 2026-07-26 — 7건)"
-      at: "2026-10-17"
+      for_sha8: "3fc82505"
+      note: "신규 유닛 없음(보류) — 2026-10-24 규칙 9(검증·승인 게이트 — docs/GATE-POLICY.md) 신설; 규칙 2(orch.model-explicit, PREREG 3.0 봉인)는 바이트 동일; 라우팅 유닛 등록은 Phase 3 soft close 동안 보류 (이전 receipt: 신규 유닛 없음(보류) — 2026-10-17 headless lanes P4: 규칙 8 폴백 문장만 갱신(…)"
+      at: "2026-10-24"
   - file: "docs/SESSION-START.md"
-    sha8: "5ef7c5f4"
+    sha8: "de8a25d2"
     triage:
-      for_sha8: "5ef7c5f4"
-      note: "Phase 1 최초 등록 — 신규 유닛 1건 등록"
-      at: "2026-07-26"
+      for_sha8: "de8a25d2"
+      note: "신규 유닛 없음 — 2026-10-24 게이트 정책: 트리거 표 R행 commit ✓* · push ✗†(별도 I1 승인) + † 각주; sessionstart.triggers 다이제스트만 갱신 (이전 receipt: Phase 1 최초 등록 — 신규 유닛 1건 등록…)"
+      at: "2026-10-24"
   - file: "tasks/traps.md"
     sha8: "939c9475"
     triage:
@@ -96,14 +96,14 @@ units:
     pin: false
     cost_chars: 594
   - id: "agents.autonomy"
-    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Autonomy (default)", sha8: "c7f0f1c1" }
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Autonomy (default)", sha8: "51c1c70d" }
     grade: "J"   # 웨이브 진행 판단
     layer: ["L5"]
     surface: ["gate", "session-start"]
     triggers: ["이어서", "진행해", "자율", "단계적"]
     pin: true
     pin_source: "grade-J"
-    cost_chars: 189
+    cost_chars: 315
   - id: "agents.next-action"
     source: { file: "AGENTS.md", anchor: "row:## Standing rules|Next-action test", sha8: "5588b050" }
     grade: "J"   # 실패 가능성 판단은 의미 판단
@@ -122,14 +122,14 @@ units:
     pin: false
     cost_chars: 100
   - id: "agents.commit-push"
-    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Commit/push", sha8: "b93b1cf6" }
+    source: { file: "AGENTS.md", anchor: "row:## Standing rules|Commit/push", sha8: "65b10882" }
     grade: "J"   # 웨이브 종료 판단
     layer: ["L5"]
     surface: ["ship"]
     triggers: ["커밋", "commit", "푸시", "push", "ship"]
     pin: true
     pin_source: "grade-J"
-    cost_chars: 162
+    cost_chars: 371
   - id: "agents.impl-delegation"
     source: { file: "AGENTS.md", anchor: "row:## Standing rules|Impl delegation", sha8: "e37c2dd7" }
     grade: "G"   # 라우팅 SSOT는 부분 중개
@@ -201,14 +201,14 @@ units:
     pin: false
     cost_chars: 75
   - id: "agents.pause-blockers"
-    source: { file: "AGENTS.md", anchor: "heading:### Pause only when (true blockers)", sha8: "6bed2a84" }
+    source: { file: "AGENTS.md", anchor: "heading:### Pause only when (true blockers)", sha8: "f3da66ba" }
     grade: "J"   # 정지 조건은 사람 판단
     layer: ["L5"]
     surface: ["gate", "delegation"]
     triggers: ["멈춰", "계획만", "커밋 금지", "블로커", "blocker"]
     pin: true
     pin_source: "grade-J"
-    cost_chars: 515
+    cost_chars: 753
   - id: "traps.dispatch-marker"
     source: { file: "tasks/traps.md", anchor: "bullet:## 활성 함정 (상세 `tasks/lessons.md` — 재확인 금지)|dispatch wrap 마커", sha8: "c6e9f2df" }
     grade: "A"   # 마커 오탐은 사후 탐지
@@ -299,10 +299,10 @@ units:
     pin_source: "grade-J"
     cost_chars: 165
   - id: "sessionstart.triggers"
-    source: { file: "docs/SESSION-START.md", anchor: "heading:## Triggers + precedence", sha8: "ec2b127c" }
+    source: { file: "docs/SESSION-START.md", anchor: "heading:## Triggers + precedence", sha8: "7b54c925" }
     grade: "G"   # classifyOwnerUtterance가 부분 중개 (session-start-triggers.ts)
     layer: ["L1"]
     surface: ["session-start", "gate"]
     triggers: ["상태", "핸드오프", "이어서", "진행해", "멈춰", "계획만", "커밋 금지"]
     pin: false
-    cost_chars: 1463
+    cost_chars: 1607
