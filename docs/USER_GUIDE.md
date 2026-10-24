@@ -778,7 +778,8 @@ PY
 
 **v0.46.0 — 스냅샷 권위.** herdr가 `agent.get`에 `state_change_seq` · `completion_seq`를 주면(herdr 0.9.5 / protocol 22) pane 카드의 완료 · 실패는 그 스냅샷이 결정한다 — inject 직전 baseline `b`를 읽고, `status ∈ {done, idle} ∧ completion_seq > b`일 때만 완료 경로에 들어간다. 이벤트는 폴러를 깨우기만 한다. 디스패처가 알아 둘 것:
 
-- **스냅샷 경로에서는 `status_lost`가 더 오지 않는다.** 잃은 완료 이벤트는 다음 폴(≤ 2초)에 정상 `needs_verification`으로 끝난다. `status_lost`는 herdr가 `completion_seq`를 주지 않을 때(폴백 — 0.45.4 경로 · protocol 17 등)만 남는다. bridge 로그 `card <id>: snapshot authority on (b=…)` / `… snapshot authority fallback (…)`로 어느 경로인지 본다.
+- **스냅샷 경로에서는 `status_lost`가 더 오지 않는다.** 잃은 완료 이벤트는 다음 폴 틱 뒤에(전역 상한 대기 · 정착 스크레이프 · still-running 유예만큼 늦어질 수 있다) 정상 `needs_verification`으로 끝난다. `status_lost`는 herdr가 `completion_seq`를 주지 않을 때(폴백 — 0.45.4 경로 · protocol 17 등)만 남는다. bridge 로그 `card <id>: snapshot authority on (b=…)` / `… snapshot authority fallback (…)`로 어느 경로인지 본다.
+- **herdr 서버 재시작:** herdr 서버가 카드 실행 중 재시작되면 그 카드는 W(기본 10분) 뒤 `status_unavailable`로 끝날 수 있다(probe g `311f63` 실측: 재시작 뒤 옛 pane의 agent는 `agent_not_found`이거나 pane이 사라지고, seq 카운터는 초기화된다 — 거짓 완료가 아니라 W 뒤 `status_unavailable`).
 - **카드 시한은 없다.** 계속 `working`을 보고하는 카드는 끝나지 않는다 — 디스패처 · 오너가 취소한다.
 - **재타이핑 재주입 뒤 귀속:** 전달 확인에 실패해 프롬프트를 다시 타이핑한 카드(로그 `reinject retyped — completion attribution is per-card-prompt`)는 "원래 baseline 뒤 이 카드 프롬프트의 어느 실행"의 완료로 끝날 수 있다 — 첫 실행의 늦은 끝일 수 있으니 워킹트리로 판단한다.
 - **조절값(테스트 주입 · 설정 파일 키 없음):** `snapshotPollMs`(기본 2,000 ms — 폴 틱) · `statusUnavailableMs`(기본 600,000 ms = 10분 — W) · `agentGetConcurrency`(기본 4 — bridge 전체 동시 `agent.get` 상한).

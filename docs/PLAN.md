@@ -195,6 +195,7 @@
 | 하네스 | `scripts/probe-herdr-status.ts` D2 형 · private herdr 0.9.5 · claude(2.1.310 또는 그때 설치본 — 기록) · PROBES §5.4 선택지 1(CLI pane만 실 HOME) · 임시 HOME + `LOOM_TEST_HOME` · 오너 yes 1회 |
 | 프롬프트 | 도구 사용을 강제하는 짧은 작업(예: 작업 트리 밖 임시 디렉터리에서 파일 하나 읽고 한 줄 답) · 실행 중 G 스냅샷 (status, scs, cs) 연속 기록(~100 ms) |
 | 결과표 | **①** 실행 끝까지 cs `null` 유지 · 끝에 한 번 `cs > b` → **PASS**(D3 규칙 지지 · 계급 106 미관측) **②** 도구 대기에서 `idle`/`done` + `cs > b`가 실행 중에 나타남 → **선언된 한계 확정**(계급 106 활성 · USER_GUIDE 문장 · ship 여부는 오너 판단 — D3 변경 아님) **③** `blocked` 출현 → 기록(UK-3) **④** `unknown` / not found 출현 → 기록(H12 실 CLI 첫 관측) **⑤** 실 HOME 밖 부작용(세션 파일 외) → ship 보류 · 오너 판단 **⑥ (필수 — Astra 0261 H5)** **이미 포커스된 pane**에서 같은 카드 1회 · 완료 뒤 cs가 `> b`로 채워지면 PASS · `null` / 불변인 채 `idle`이면 **ship 차단**(감지기 원천 계급 113 실재 → D3 보강 PLAN) · 이 사례가 오너 승인 "1회" 범위 밖이면 별도 오너 승인(`ownerDecision`)을 받는다 |
+| 보강 (최종 리뷰 2026-10-24 — loom-advisor ship-with-D11) | **⑦** 같은 카드를 빌드된 `dist/loom.js` bridge로도 1회 끝까지 돌린다(임시 HOME · private herdr) — bridge 로그 `snapshot authority on (b=…)` · `snapshot completion (cs=…)`와 최종 reason을 기록 **⑧** 같은 pane에 두 번째 프롬프트 1회 — 실행 세대 귀속(D10 미결 UK)을 실측: 두 번째 카드는 자기 `cs > b'`로만 끝나야 한다 **⑨** baseline 읽기와 inject 사이에 scs가 움직였는지 기록(무관한 상승은 `deliveredSeen` 위양성 원천) **⑩** 승인 요청에 카드 수를 명시한다(예: "claude × 4 카드 — ① 도구 사용 · ⑥ 포커스 · ⑦ dist bridge · ⑧ 두 번째 프롬프트") — ⑥이 별도 승인을 요구하지 않게 한 묶음으로 |
 | 기록 | `HERDR-STATUS-PROBES.md` 새 행(H23~) · `BRIDGE-STARTUP-TLA.md` §9 뒤 한 줄 · implementation-notes §0.46.0 |
 
 **Unknowns (§3.5 — 새 MINOR이므로 UK-1부터 매긴다. 정본 요약 표 = `docs/UNKNOWNS.md` 0.46.0):**

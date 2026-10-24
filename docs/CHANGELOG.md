@@ -14,7 +14,7 @@
 
 > **상태:** implemented 2026-10-24 (P0–P3) · **ship 전** — ship 검사(`build:cli` 포함) · **D11 실 카드 프로브(ship 차단 — 실행 전 별도 오너 `ownerDecision` 필요 · I4 실 CLI 토큰 · 아직 실행 안 함)** · 최종 리뷰가 남았다. 와이어 · `packages/protocol` · relay · 워커 · 프롬프트 · fingerprint 변경 없음.
 
-**pane 카드의 완료 · 실패를 herdr `agent.get` 스냅샷이 결정한다** — 0.45.4 pane bridge는 herdr 상태 이벤트로 카드 완료를 시작했다. 이벤트 봉투엔 seq가 없어 그 `idle`이 **이번 프롬프트**의 끝인지 증명할 수 없었고(프롬프트 직후 ~180 ms의 `idle` · 기동 `idle` · 이전 실행의 stale `done`), 이벤트를 잃으면 재구독 ACK 때만 물어 `status_lost`로 실패했다. 0.46.0은 herdr가 `state_change_seq` · `completion_seq`를 주면(herdr 0.9.5 / protocol 22) inject 직전 baseline `b = state_change_seq`를 읽고, **`status ∈ {done, idle} ∧ completion_seq > b`** 스냅샷일 때만 기존 완료 경로(정착 스크레이프 · still-running 유예 · `needs_verification`)에 들어간다. 이벤트는 폴러를 깨우기만 한다 — 잃은 이벤트는 실패가 아니라 지연(≤ 폴 틱 2초)이 되고, 관측 못 한 완료도 정상 완료로 끝난다.
+**pane 카드의 완료 · 실패를 herdr `agent.get` 스냅샷이 결정한다** — 0.45.4 pane bridge는 herdr 상태 이벤트로 카드 완료를 시작했다. 이벤트 봉투엔 seq가 없어 그 `idle`이 **이번 프롬프트**의 끝인지 증명할 수 없었고(프롬프트 직후 ~180 ms의 `idle` · 기동 `idle` · 이전 실행의 stale `done`), 이벤트를 잃으면 재구독 ACK 때만 물어 `status_lost`로 실패했다. 0.46.0은 herdr가 `state_change_seq` · `completion_seq`를 주면(herdr 0.9.5 / protocol 22) inject 직전 baseline `b = state_change_seq`를 읽고, **`status ∈ {done, idle} ∧ completion_seq > b`** 스냅샷일 때만 기존 완료 경로(정착 스크레이프 · still-running 유예 · `needs_verification`)에 들어간다. 이벤트는 폴러를 깨우기만 한다 — 잃은 이벤트는 실패가 아니라 지연(다음 폴 틱 뒤 — 상한 대기 · 정착 스크레이프만큼 더)이 되고, 관측 못 한 완료도 정상 완료로 끝난다(계급 106 — 실행 중간 완료 — 은 D11 전 미확인).
 
 ### 가능해진 것
 
@@ -35,6 +35,7 @@
 
 - **계급 107 — 재타이핑 재주입 뒤 귀속 축소:** 재주입이 프롬프트를 다시 타이핑한 카드는 "원래 baseline 뒤에 끝난 이 카드 프롬프트의 어느 실행"까지만 보장한다 — 첫 실행의 늦은 끝이 두 번째 실행의 완료로 받아들여질 수 있다(실행 세대 귀속을 주장하지 않음 · 해결로 보고하지 않음). scrape probe hit · read-fail이면 CR만 보내고, 재타이핑은 verify 호출당 최대 1회.
 - **계급 119 — 응답이 W보다 늦으면:** `agent.get` 응답이 계속 W를 넘기거나 장애가 반복되면, agent가 정상으로 끝났어도 `status_unavailable`이 먼저 확정될 수 있다.
+- **herdr 서버 재시작:** herdr 서버가 카드 실행 중 재시작되면 그 카드는 W(기본 10분) 뒤 `status_unavailable`로 끝날 수 있다(probe g `311f63` 실측: 재시작 뒤 옛 pane의 agent는 `agent_not_found`이거나 pane이 사라지고, seq 카운터는 초기화된다 — 거짓 완료가 아니라 W 뒤 `status_unavailable`).
 - **카드 시한 없음:** 끝나지 않고 `working`을 계속 보고하는 카드는 W를 계속 리셋한다 — 디스패처 · 오너가 취소한다.
 - **D11 미실행:** 도구 사용 · 이미 포커스된 pane의 실 claude 카드 프로브는 아직 돌리지 않았다(ship 차단 · 오너 `ownerDecision` 필요). 실행 중 `completion_seq` 상승(계급 106)과 감지기 원천 포커스 완료(UK-7)는 그때 기록된다.
 

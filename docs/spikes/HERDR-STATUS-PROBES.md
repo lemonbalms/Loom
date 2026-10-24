@@ -754,6 +754,60 @@ D2는 세션 파일 1개 `~/.claude/projects/<loom slug>/7241c4b0…jsonl`
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 요약 (전 회차) | 2026-10-24 | `rogN0W` · private | 포커스 P · 대조 Q(보고 원천 가짜 agent pane) | 기대값 유지(`FOCUS_NOT_HELD` 없음) | 포커스 · 대조 모두 채움 | `idle\|done` | 원 행 = 하니스 `facts.runs` | 원 행 참조 | 원 행 참조 | 매 회차 `filled` | **`F-CS-FILLED` (PASS)** | 보고 원천 class 113 비실재 · **감지기 원천(실 CLI) 포커스 완료는 미측정 → PLAN §0.46.0 D11 ⑥ 필수 · ship 차단** (Astra 0261 H5) · 회차별 수치는 이 요약 행에 옮기지 않았다(원 출력 · `a4791c7`) |
 
+### 8.3 Probe g — 카드 실행 중 herdr 서버 재시작 · `[herdr 전용]` · R1 · private만 (0.46.0 최종 리뷰)
+
+**질문:** 0.46.0은 `agent.get`의 `state_change_seq`(scs)·`completion_seq`(cs)를 기준값과 비교해 카드 완료를 판정한다. 카드가 도는 중
+herdr 서버가 재시작되면 브리지는 무엇을 보는가 — 옛 pane id가 세션 복원으로 돌아오는가, `agent.get <옛 id>`는 결과인가 오류(어느
+코드)인가, 돌아온다면 scs·cs는 유지(KEPT)·초기화(RESET)·새 기준(NEWBASE) 중 무엇이고, 재시작 뒤 첫 상태 변화의 scs가 재시작 전 값보다
+큰가. scs가 작은 값부터 다시 세면 "스냅샷 scs > 기준값"이 다시 성립할 때까지 완료가 보이지 않는다 → 카드는 W(기본 10분) 뒤
+`status_unavailable`로 끝난다(USER_GUIDE·CHANGELOG의 "probe g 전까지 미확인" 문장이 가리키는 측정).
+
+실행: `bun run scripts/probe-herdr-status.ts --probe g` (아키텍트 실행, herdr pane 밖, 워커 스위트와 동시 실행 금지). `all`에 들어가지
+않는다. `--probe g --server shared`는 exit 2(§2.5-5 서버 제어 금지 유지), `g`와 `b2`/`d2`를 함께 요청해도 exit 2(오너 승인 실 CLI 실행이
+재시작 뒤 서버에 얹히지 않게). 서버 정지·재시작은 **프로브 자신의 `T/` 소켓 서버만**이다 — `server.stop`은 종전 가드(private ∧ 소켓이
+`T/` 아래)를 그대로 지나고, SIGKILL은 `lsof(T/herdr.sock)` ∩ 기동 시 기록한 서버 pid ∩ `ps` 명령에 `herdr`인 pid에만 보낸다(하나도 없으면
+그 변형은 `SKIPPED`). 실 CLI 없음(held pane = 가짜 바이너리, §2.6), 오너의 herdr pane 무접촉.
+
+변형마다(`graceful` → `sigkill`, 각 1회 · `--reps` 미적용) 새 held pane `P`에서:
+
+1. `report(working)` → 300 ms → `report(idle)` → 300 ms ×3 → `G(P)` = `pre`(status·scs·cs·rev). scs > 0 ∧ cs non-null ∧ `idle|done`이
+   아니면 `G-INCONCLUSIVE(pre-not-filled)`로 그 변형 종료. `pane.list`·`workspace.list` 기록, `P` 구독 `S` ACK.
+2. 정지 — `graceful`: `server.stop{}`(하니스 teardown과 같은 경로) → ≤5 s 서버 pid 소멸(남으면 그 pid만 SIGTERM, 기록) · `sigkill`: 위 검증
+   pid에만 SIGKILL. 공통: `ping` 실패 확인(`down`), `S`의 `end`/`close` 시각과 정지 뒤 push(브리지 구독이 보는 것), 남은 소켓 파일(아무도
+   안 잡고 있고 `T/` 아래일 때만 unlink), 남은 `T/fakebin` 가짜 agent 프로세스(기록 후 그 pid만 SIGTERM).
+3. 재시작 — Step 0과 같은 env(`HOME=T/home` · `HERDR_SOCKET_PATH=T/herdr.sock`)로 다시 띄우고 `ping` 0.9.5/22(≤5 s 재시도). 실패하면
+   `G-INCONCLUSIVE(restart-failed)`이고 다음 변형은 `SKIPPED`.
+4. 복원 관찰 — `pane.list` ≤5 s 폴링: 옛 `P` 존재(`paneRestored`, 출현 ms) · 프로브 소유가 아닌 새 pane id(`unownedAfterRestart`) ·
+   옛 워크스페이스 존재(`workspaceRestored` — 없으면 뒤 변형용으로 `workspace.create{focus:false}`). `agent.get{P}` 1회(결과 또는 RPC
+   `code`) + 250 ms × 3 s 계열.
+5. 복원되고 `agent.get`이 답하면: `P` 재구독 `S2` → `report(working)` → 500 ms → `G` → `report(idle)` → 500 ms → `G` — 재시작 뒤 첫 변화의
+   scs(`drive-above` = 재시작 전 scs보다 큼 · `drive-below` = 같거나 작음)와 cs(`driveCs`). `P`가 남아 있으면 닫는다.
+
+**결과 코드 (변형별 — 하니스 code = `graceful=<…> sigkill=<…>`):**
+
+| 결과 | 의미 |
+|---|---|
+| `G-PANE-GONE` | 옛 pane id가 복원되지 않고 `agent.get`도 실패 → 브리지는 pane 소실 경로를 본다(scs 비교 자체가 불가) |
+| `G-AGENT-GONE(<code>)` | pane id는 돌아왔으나 `agent.get`이 오류(`code` 원문) — agent 권한이 재시작을 넘지 못함 |
+| `G-SCS-KEPT/…` | 복원 직후 scs = 재시작 전 값 → 기준값 비교가 재시작을 넘어 유효(뒤 `drive-above`면 다음 변화도 보임) |
+| `G-SCS-RESET/…` | 복원 직후 scs < 재시작 전 값(또는 null) → 카운터 초기화. `…/drive-below`면 재시작 뒤 완료가 기준값을 넘지 못해 W 뒤 `status_unavailable` |
+| `G-SCS-NEWBASE/…` | 복원 직후 scs > 재시작 전 값(새 기준에서 출발) |
+| `…/cs-kept\|cs-reset\|cs-null\|cs-new\|cs-advanced` · `…/drive-above\|drive-below\|drive-failed` | cs 복원 분류 · 재시작 뒤 첫 변화의 scs 위치 |
+| `G-INCONCLUSIVE(pre-not-filled\|server-not-down\|restart-failed\|error: …)` · `SKIPPED(…)` | INCONCLUSIVE — `facts.variants` 원 행 보고 |
+
+판정: 두 변형 모두 `G-PANE-GONE`·`G-AGENT-GONE`·`G-SCS-*` 중 하나면 **PASS(측정됨)**, 아니면 INCONCLUSIVE. **FAIL 없음**(s·E와 같은 사실
+프로브 — 결과의 제품 함의는 아키텍트가 적는다). `summary.json`: run id · `facts.variants`(변형별 `pre`·`stop`·`subscriptionAtStop`·
+`restart`·`paneRestored`·`panesAfter`·`agentGetAfter`·`afterSeries`·`after`·`drive`·`code`) · `facts.fakeAgentsAtEnd` · 프로브·전역 `leftover`.
+
+**결과표 (g)** — 아키텍트 실행 2026-10-24 · 판정 **PASS**(두 변형 측정) · 오너 herdr pane 13개 전후 동일.
+
+**결론(0.46.0):** 재시작 뒤 옛 pane의 `agent.get`은 결과 없이 `agent_not_found`(graceful) 또는 pane 자체가 없음(SIGKILL) → bridge는 권위 스냅샷을 못 얻어 W 뒤 `status_unavailable`(시끄럽고 회복 가능). 카운터가 초기화되므로 재시작 뒤 같은 pane에 agent가 다시 붙더라도 scs는 `≤ b`에서 시작한다 — 거짓 완료 귀속은 카운터가 b를 다시 넘을 때만 가능하고 그 경우도 `needs_verification` 상한(최종 리뷰 지적 · 이 run에선 agent 재바인딩 없음 — 미관측).
+
+| 변형 | 일시 | run id | 정지 방식 · `down` · 소멸 ms | 정지 뒤 구독 `S`(end/close ms · push) | 재시작 `ping` | 옛 pane 복원 · 워크스페이스 복원 | `agent.get` 옛 id (결과 / code) | `pre` scs·cs → 복원 직후 scs·cs | 재시작 뒤 첫 변화 scs·cs | 생성/닫음 id · leftover | 결과 코드 | 비고 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| graceful | 2026-10-24 | `311f63` | `server.stop` · down · 409 ms | end 307 ms · push 0 | 0.9.5 / 22 · 432 ms | **복원** (pane `w1:p4` · workspace) · status `unknown` | **`agent_not_found`**(3 s 내내) | 15 · 15 → — (agent 없음) | — | own panes closed · leftover `[]` | **`G-AGENT-GONE(agent_not_found)`** | pane은 돌아오지만 agent 바인딩은 사라진다 |
+| sigkill | 2026-10-24 | `311f63` | SIGKILL(검증된 own pid 1개) · down · 336 ms | end 236 ms · push 0 | 0.9.5 / 22 · 468 ms | **pane 없음** · workspace 복원 | `agent_not_found` | 7 · 7 → — | — | leftover `[]` | **`G-PANE-GONE`** | 이 변형의 `pre` scs 7 < graceful `pre` 15 → **전역 seq 카운터는 서버 재시작 때 초기화된다** |
+
 ## 9. 실행 순서·결과 기록
 
 1. S0 (private 서버 기동 또는 shared 안전 블록 준비 · `ping` 0.9.5/22 확인 · held driver 점검 §2.6) → A → C → D1 → E → s → B1. 전부 `[herdr 전용]` —
@@ -793,6 +847,7 @@ D2는 세션 파일 1개 `~/.claude/projects/<loom slug>/7241c4b0…jsonl`
 | E | `E-1`/`E-2` 일치 → `agent.wait` 단독 **F2′ 대체 불가** 확인(형태 확정). `bootReturns`(immediate면 C9 실재)는 별도 기록 | (FAIL 없음) | `AGENT_NOT_FOUND` · `LEVEL_LOST` · `E-3…` |
 | s | `S-STAMP` 또는 `S-GLOBAL` × `rereport-bump`/`rereport-nobump` 일치 → seq 의미 확정 | (FAIL 없음) | `S-MIXED`·`rereport-mixed`·`LEVEL_LOST` |
 | f | `F-CS-FILLED` = 대조·포커스 모두 매 회차 `completion_seq` 채움 → class 113 비실재(§8.2) | `F-CS-MISSING` = 대조는 채우고 포커스 P는 null/불변인 채 `idle\|done` → class 113 실재 | `CONTROL_NO_CS(…)` · `FOCUS_NOT_HELD` · `FOCUS_CALL_FAILED` · `LEVEL_LOST` · `F-MIXED(…)` |
+| g | 두 변형(graceful · sigkill) 모두 `G-PANE-GONE` / `G-AGENT-GONE(…)` / `G-SCS-KEPT\|RESET\|NEWBASE/…` → 재시작 뒤 scs 의미 측정됨(§8.3) | (FAIL 없음) | `G-INCONCLUSIVE(pre-not-filled\|server-not-down\|restart-failed\|error: …)` · `SKIPPED(…)` |
 | B1 | herdr 고유 기동 `working` 없음 → F3′ 잔여창은 CLI 의존(B2 필요) | 가짜 바이너리에도 기동 `working` → **`MaxBoot ≥ 1`**, F3′ 펜스 뒤 기동 쌍 실재 | `ABORTED_REAL_CLI` · `NOT_APPLICABLE` |
 | B2 | `B2-IDLE-ONLY`/`B2-NO-PUSH` + 대조군 → `MaxBoot = 0` 지지(claude 1회 한정) | `B2-BOOT-WORKING(before-ready\|after-ready)` → **`MaxBoot ≥ 1`** · `B2-BOOT-DONE` → `BootDone` | `DIALOG(…)` · `BOOT_NOT_READY` · `RESOLVED_FAKE` · `START_FAILED` · `NO_REAL_CLI` · `UNDETERMINED(control)` |
 | D2 | `D2-DONE-AFTER-REPLY`/`D2-IDLE-AFTER-REPLY` → 완료 push가 실제 응답 뒤(D-3 전제 유지, claude 한정) | `D2-COMPLETION-BEFORE-REPLY(…)` → 응답 전 완료 계열 push(중간 idle/`done`) | `DIALOG(…)` · `D2-NO-WORKING` · `D2-NO-REPLY` · `D2-NO-COMPLETION-PUSH` · `PROMPT_ERROR(…)` |

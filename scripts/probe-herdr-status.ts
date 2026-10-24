@@ -15,6 +15,8 @@
  *   bun run scripts/probe-herdr-status.ts [--server private|shared] [--probe step0,a,b1,c,d1,e,s|all]
  *                                         [--timeout-ms N] [--reps N] [--dry-run] [--help]
  *   bun run scripts/probe-herdr-status.ts --probe f     (0.46.0 P0b · UK-7: private server only, never in "all")
+ *   bun run scripts/probe-herdr-status.ts --probe g     (0.46.0 final review: herdr restart mid-card — private only,
+ *                                                        never in "all"; stops/restarts the probe's own T/ server)
  *   bun run scripts/probe-herdr-status.ts --probe b2,d2 --real-cli --owner-approved [--kind claude]
  *
  * B2 / D2 (`[실 CLI — 오너 yes]`, owner yes 2026-10-23: once each, kind `claude` only, HOME = §5.4
@@ -41,6 +43,7 @@ import {
   mkdtempSync,
   openSync,
   realpathSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createConnection, type Socket } from "node:net";
@@ -50,7 +53,7 @@ import { dirname, join, resolve, sep } from "node:path";
 // ─── types · tiny helpers ────────────────────────────────────────────────────
 
 type Rec = Record<string, unknown>;
-type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e" | "s" | "f" | "b2" | "d2";
+type ProbeName = "step0" | "a" | "b1" | "c" | "d1" | "e" | "s" | "f" | "g" | "b2" | "d2";
 type ServerMode = "private" | "shared";
 type Verdict = "PASS" | "FAIL" | "INCONCLUSIVE" | "SKIPPED";
 type AgentState = "idle" | "working" | "blocked" | "unknown";
@@ -66,11 +69,12 @@ const ALL_PROBES: ProbeName[] = ["step0", "a", "c", "d1", "e", "s", "b1"];
 /** `[실 CLI — 오너 yes]` probes: never in "all"; run after the herdr-only ones, B2 then D2 (§9-2). */
 const REAL_CLI_PROBES: ProbeName[] = ["b2", "d2"];
 /**
- * `[herdr 전용]` R1 probes that focus panes (0.46.0 P0b): private server only, never in "all" (an
- * `all` run on the shared server must stay valid); run after the herdr-only ones, before b2/d2.
+ * `[herdr 전용]` R1 probes that focus panes (f, 0.46.0 P0b) or stop/restart the probe's own server (g, 0.46.0
+ * final review): private server only, never in "all" (an `all` run on the shared server must stay valid);
+ * run after the herdr-only ones, before b2/d2.
  */
-const PRIVATE_ONLY_PROBES: ProbeName[] = ["f"];
-const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2, s: 2, f: 3, b2: 1, d2: 1 };
+const PRIVATE_ONLY_PROBES: ProbeName[] = ["f", "g"];
+const DEFAULT_REPS: Record<ProbeName, number> = { step0: 1, a: 5, b1: 1, c: 2, d1: 1, e: 2, s: 2, f: 3, g: 1, b2: 1, d2: 1 };
 const EXPECTED_VERSION = "0.9.5";
 const EXPECTED_PROTOCOL = 22;
 const REAL_CLI_REFUSAL =
@@ -126,7 +130,13 @@ const USAGE = `probe-herdr-status — HERDR-STATUS-PROBES [herdr 전용] harness
   [herdr 전용 · R1 · private only] (0.46.0 P0b · UK-7 · class 113):
   --probe f                 completion on an already-focused held pane (pane.focus on owned panes, private
                             server only); never part of "all"; --server shared with f → exit 2.
-  --dry-run                 parse args and print the planned RPC sequence per probe; no herdr contact.
+
+  [herdr 전용 · R1 · private only] (0.46.0 final review — herdr restart mid-card):
+  --probe g                 held pane with scs/cs filled → stop the probe's OWN T/ server (graceful server.stop,
+                            then a SIGKILL variant on a verified own pid) → restart on the same socket/HOME →
+                            pane restored? agent.get / scs / cs vs before. Never part of "all"; --server shared
+                            with g → exit 2. --reps does not apply (each variant once).
+  --dry-run                parse args and print the planned RPC sequence per probe; no herdr contact.
   --help                    this text.
 
   [실 CLI — 오너 yes] (owner yes 2026-10-23: B2·D2 once each, claude only, HOME §5.4 option 1):
@@ -213,7 +223,7 @@ export function parseArgs(argv: string[]): ParseResult {
         if (!v) return bad("--probe needs a value");
         const out = new Set<ProbeName>(["step0"]);
         for (const p of v.split(",").map((s) => s.trim().toLowerCase())) {
-          if (p === "b2" || p === "d2" || p === "f") {
+          if (p === "b2" || p === "d2" || p === "f" || p === "g") {
             out.add(p);
           } else if (p === "all") {
             for (const q of ALL_PROBES) out.add(q);
@@ -238,9 +248,14 @@ export function parseArgs(argv: string[]): ParseResult {
   }
   const wantsPrivateOnly = args.probes.filter((p) => PRIVATE_ONLY_PROBES.includes(p));
   if (wantsPrivateOnly.length && args.server !== "private") {
-    return refuse(`${wantsPrivateOnly.join(",")} run on the private server only (focus is refused on shared — §2.5-3); --server ${args.server} refused`);
+    return refuse(
+      `${wantsPrivateOnly.join(",")} run on the private server only (focus / server control are refused on shared — §2.5-3 · §2.5-5); --server ${args.server} refused`,
+    );
   }
   const wantsReal = args.probes.some((p) => REAL_CLI_PROBES.includes(p));
+  if (wantsReal && args.probes.includes("g")) {
+    return refuse("g restarts the probe's own server — run it without b2/d2 (an owner-approved real-CLI run must not follow a restart)");
+  }
   if (wantsReal && !(args.realCli && args.ownerApproved)) return refuse();
   if (wantsReal && args.server !== "private") {
     return refuse(`b2/d2 run on the private server only (owner yes 2026-10-23); --server ${args.server} refused`);
@@ -369,6 +384,22 @@ function plannedSequence(p: ProbeName, mode: ServerMode, reps: number): string[]
         "  per run: csBefore (G before working) vs cs over the post-idle series → filled (non-null and rose) | missing (null/unchanged while idle|done)",
         "verdict: control not filled every rep → INCONCLUSIVE(CONTROL_NO_CS) · focused filled every rep → PASS F-CS-FILLED · focused missing every rep → FAIL F-CS-MISSING (class 113 real) · else INCONCLUSIVE",
         "close P, Q",
+      ];
+    case "g":
+      if (mode === "shared") return ["REFUSED(shared) — server.stop / restart is never sent to the shared server (§2.5-5)"];
+      return [
+        "per variant in [graceful, sigkill] (once each, on a fresh held pane P):",
+        "  held pane P → report working/idle ×3 (300 ms apart) → G(P): scs > 0 and cs non-null required (else G-INCONCLUSIVE(pre-not-filled))",
+        "  pane.list · workspace.list · tab.list (pre) · S = events.subscribe{pane.agent_status_changed{P}, pane.closed, pane.exited} ACK",
+        "  graceful: server.stop{} (own T/ socket only) → ≤5 s server pids gone (survivor → SIGTERM, recorded)",
+        "  sigkill:  pids = lsof(T/herdr.sock) ∩ recorded server pids, `ps` command contains herdr → SIGKILL those only (none → SKIPPED)",
+        "  S end/close/pushes after the stop · stale socket file? (unlinked only when under T and no pid holds it) · T/fakebin processes left (SIGTERM, recorded)",
+        "  restart: same env (HOME=T/home, HERDR_SOCKET_PATH=T/herdr.sock) → socket → ping 0.9.5/22 (retry ≤5 s)",
+        "  pane.list poll ≤5 s: old P present (session restore)? · workspace.list (old workspace present? else workspace.create{focus:false} for later probes)",
+        "  agent.get{P} every 250 ms for 3 s → result or RPC error code · scs/cs vs pre-restart",
+        "  restored + agent.get ok: report working → 500 ms → G → report idle → 500 ms → G (new scs vs pre-restart scs)",
+        "  close P if present",
+        "verdict: G-PANE-GONE · G-AGENT-GONE(<code>) · G-SCS-KEPT · G-SCS-RESET · G-SCS-NEWBASE (+ /cs-… /drive-above|below) · G-INCONCLUSIVE(…) — PASS = measured, no FAIL",
       ];
     case "b2":
     case "d2": {
@@ -1392,7 +1423,7 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-async function startPrivateServer(ctx: Ctx, facts: Rec): Promise<boolean> {
+async function startPrivateServer(ctx: Ctx, facts: Rec, probe = "step0"): Promise<boolean> {
   const herdrBin = Bun.which("herdr");
   if (!herdrBin) {
     facts.isolationError = "herdr binary not found on PATH";
@@ -1424,7 +1455,7 @@ async function startPrivateServer(ctx: Ctx, facts: Rec): Promise<boolean> {
   facts.herdrBin = herdrBin;
   facts.spawnPid = child.pid ?? null;
   facts.serverEnv = env;
-  ev(ctx, "step0", "SERVER_SPAWN", { herdrBin, pid: child.pid, env });
+  ev(ctx, probe, "SERVER_SPAWN", { herdrBin, pid: child.pid, env });
   const until = now() + 15_000;
   let found: string | null = null;
   while (now() < until && !found) {
@@ -1452,7 +1483,7 @@ async function startPrivateServer(ctx: Ctx, facts: Rec): Promise<boolean> {
   ctx.serverPids = [...pids];
   facts.serverPids = ctx.serverPids;
   facts.detached = exitInfo !== null;
-  ev(ctx, "step0", "SERVER_SOCKET", { socket: found, pids: ctx.serverPids, spawnExit: exitInfo });
+  ev(ctx, probe, "SERVER_SOCKET", { socket: found, pids: ctx.serverPids, spawnExit: exitInfo });
   return true;
 }
 
@@ -2705,6 +2736,325 @@ async function probeF(ctx: Ctx, pr: ProbeRun, reps: number): Promise<Outcome> {
   return { verdict: "INCONCLUSIVE", code: `F-MIXED(${fc.join(",")})` };
 }
 
+// ─── probe g — herdr restart mid-card (0.46.0 final review) ──────────────────
+
+/** Own-server pids for a hard kill: alive ∧ holding the T/ socket ∧ recorded at spawn ∧ `ps` says herdr. */
+function verifiedServerPids(ctx: Ctx): number[] {
+  if (ctx.mode !== "private" || !ctx.sock || !isUnder(ctx.sock, ctx.T)) return [];
+  const onSock = new Set(pidsOnSocket(ctx.sock));
+  return ctx.serverPids.filter((pid) => onSock.has(pid) && pidAlive(pid) && psCommand(pid).includes("herdr"));
+}
+
+/** Fake-agent processes this run started (command line under T/fakebin) — `[{pid, command}]`. */
+function fakeAgentProcs(ctx: Ctx): Rec[] {
+  const dir = join(ctx.T, "fakebin");
+  const r = spawnSync("pgrep", ["-f", dir], { encoding: "utf8", timeout: 5000 });
+  const pids = typeof r.stdout === "string" ? r.stdout.split(/\s+/).map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
+  return pids
+    .filter((pid) => pid !== process.pid)
+    .map((pid) => ({ pid, command: psCommand(pid) }))
+    .filter((p) => p.command.includes(dir));
+}
+
+/**
+ * Stop the probe's OWN private server (socket under T only — never the user's herdr). `graceful` = the
+ * teardown path (server.stop → ≤5 s pids gone → SIGTERM survivors); `sigkill` = SIGKILL verified own pids.
+ * Leaves no stale socket (unlinked only when under T and no process holds it) and SIGTERMs leftover
+ * T/fakebin agents so the restart starts from herdr's own persisted state only.
+ */
+async function stopOwnServer(ctx: Ctx, pr: ProbeRun, how: "graceful" | "sigkill"): Promise<Rec> {
+  const out: Rec = { how, socket: ctx.sock, serverPidsBefore: [...ctx.serverPids] };
+  if (ctx.mode !== "private" || !ctx.sock || !isUnder(ctx.sock, ctx.T)) {
+    out.refused = "not the probe's own T/ server";
+    return out;
+  }
+  const tStop = now();
+  out.t = tStop;
+  if (how === "graceful") {
+    const st = await tryCall(ctx, pr.name, "server.stop", {}, 5000);
+    out.serverStop = st.ok ? "ok" : st.error;
+  } else {
+    const pids = verifiedServerPids(ctx);
+    out.killed = pids;
+    if (!pids.length) {
+      out.skipped = "no verified own server pid (lsof ∩ spawn record ∩ ps herdr)";
+      return out;
+    }
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch (e) {
+        pushFact(pr, "killErrors", { pid, error: String(e) });
+      }
+    }
+  }
+  ev(ctx, pr.name, "G_SERVER_STOP", { how, t: tStop });
+  const until = now() + 5000;
+  while (now() < until && ctx.serverPids.some(pidAlive)) await sleep(100);
+  const survivors = ctx.serverPids.filter(pidAlive);
+  out.goneMs = survivors.length ? null : now() - tStop;
+  out.survivors = survivors;
+  for (const pid of survivors) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      /* */
+    }
+  }
+  if (survivors.length) {
+    await sleep(1000);
+    out.stillAlive = survivors.filter(pidAlive);
+  }
+  const ping = await tryCall(ctx, pr.name, "ping", {}, 2000);
+  out.pingAfterStop = ping.ok ? "still-answering" : ping.error;
+  out.down = !ping.ok && !(Array.isArray(out.stillAlive) && out.stillAlive.length > 0);
+  out.socketLeft = existsSync(ctx.sock);
+  if (out.socketLeft && out.down && pidsOnSocket(ctx.sock).length === 0) {
+    unlinkSync(ctx.sock);
+    out.socketUnlinked = true;
+  }
+  const fakes = fakeAgentProcs(ctx);
+  out.fakeAgentsAfterStop = fakes;
+  for (const f of fakes) {
+    try {
+      process.kill(Number(f.pid), "SIGTERM");
+    } catch {
+      /* */
+    }
+  }
+  return out;
+}
+
+/** Restart on the same socket path / HOME / env as Step 0; ping must answer 0.9.5 / 22 within 5 s. */
+async function restartOwnServer(ctx: Ctx, pr: ProbeRun): Promise<{ ok: boolean; facts: Rec }> {
+  const facts: Rec = {};
+  const tStart = now();
+  if (!(await startPrivateServer(ctx, facts, pr.name))) return { ok: false, facts };
+  let ping = await tryCall(ctx, pr.name, "ping", {}, 2000);
+  const until = now() + 5000;
+  while (!ping.ok && now() < until) {
+    await sleep(200);
+    ping = await tryCall(ctx, pr.name, "ping", {}, 2000);
+  }
+  if (!ping.ok) {
+    facts.pingError = ping.error;
+    return { ok: false, facts };
+  }
+  facts.version = ping.result.version;
+  facts.protocol = ping.result.protocol;
+  facts.startToPingMs = ping.t - tStart;
+  return { ok: ping.result.version === EXPECTED_VERSION && ping.result.protocol === EXPECTED_PROTOCOL, facts };
+}
+
+const DECIDED_G = /^G-(SCS-(KEPT|RESET|NEWBASE)|PANE-GONE|AGENT-GONE)/;
+
+/**
+ * Probe g (0.46.0 final review): when the herdr server restarts while a card is in flight, what does the
+ * bridge see? Per variant (graceful stop · SIGKILL) on a fresh held pane with scs > 0 and cs filled:
+ * stop → restart on the same socket/HOME → is the pane restored, what does agent.get answer, and are
+ * scs / cs kept, reset or rebased? Private server only; restarts nothing but the probe's own T/ server.
+ */
+async function probeG(ctx: Ctx, pr: ProbeRun): Promise<Outcome> {
+  if (ctx.mode !== "private") return { verdict: "SKIPPED", code: "REFUSED(shared)" };
+  const na = heldUnavailable(ctx, true);
+  if (na) return na;
+  const variants: Rec[] = [];
+  let serverUp = true;
+  for (const how of ["graceful", "sigkill"] as const) {
+    const row: Rec = { variant: how };
+    variants.push(row);
+    if (!serverUp) {
+      row.code = "SKIPPED(server not restarted after the previous variant)";
+      continue;
+    }
+    try {
+      progress(`g ${how}: held pane + fill`);
+      const P = (await heldPane(ctx, pr, how)).P;
+      row.pane = P;
+      for (let i = 0; i < 3; i++) {
+        await report(ctx, pr, P, "working");
+        await sleep(300);
+        await report(ctx, pr, P, "idle");
+        await sleep(300);
+      }
+      const pre = await G(ctx, pr, P, `g:${how}:pre`);
+      row.pre = { status: pre.agent_status, scs: pre.state_change_seq, cs: pre.completion_seq, rev: pre.revision };
+      const filled =
+        pre.state_change_seq !== null && pre.state_change_seq > 0 && pre.completion_seq !== null &&
+        (pre.agent_status === "idle" || pre.agent_status === "done");
+      if (!filled) {
+        row.code = "G-INCONCLUSIVE(pre-not-filled)";
+        continue;
+      }
+      const plPre = await tryCall(ctx, pr.name, "pane.list", {});
+      row.paneIdsPre = plPre.ok ? (Array.isArray(plPre.result.panes) ? plPre.result.panes : []).map((x) => str(rec(x).pane_id)) : plPre.error;
+      const wlPre = await tryCall(ctx, pr.name, "workspace.list", {});
+      row.workspacePresentPre = wlPre.ok && JSON.stringify(wlPre.result).includes(`"${ctx.workspaceId}"`);
+      const S = await subscribe(ctx, pr, `g.${how}.S`, subL(P));
+      const sBase = S.pushes.length;
+
+      progress(`g ${how}: stop own server`);
+      const stop = await stopOwnServer(ctx, pr, how);
+      row.stop = stop;
+      if (stop.refused || stop.skipped) {
+        row.code = `SKIPPED(${String(stop.refused ?? stop.skipped)})`;
+        S.destroy();
+        await closePane(ctx, pr, P);
+        continue;
+      }
+      await waitClosed(S, 2000);
+      const tStop = Number(stop.t);
+      row.subscriptionAtStop = {
+        endMs: S.endAt === null ? null : S.endAt - tStop,
+        closeMs: S.closeAt === null ? null : S.closeAt - tStop,
+        errors: S.errors,
+        pushesAfterStop: S.pushes.slice(sBase).map((p) => ({ event: p.event, status: p.status, ms: p.t - tStop })),
+      };
+      S.destroy();
+      if (!stop.down) {
+        serverUp = true;
+        row.code = "G-INCONCLUSIVE(server-not-down)";
+        continue;
+      }
+
+      progress(`g ${how}: restart on the same socket`);
+      const rs = await restartOwnServer(ctx, pr);
+      row.restart = rs.facts;
+      if (!rs.ok) {
+        serverUp = false;
+        row.code = "G-INCONCLUSIVE(restart-failed)";
+        continue;
+      }
+      // session restore: is the old pane (and workspace) back?
+      let present = false;
+      let panesAfter: Rec[] = [];
+      const tUp = now();
+      const until = tUp + 5000;
+      while (now() < until) {
+        const pl = await tryCall(ctx, pr.name, "pane.list", {});
+        if (pl.ok) {
+          panesAfter = (Array.isArray(pl.result.panes) ? pl.result.panes : []).map(rec);
+          if (panesAfter.some((x) => x.pane_id === P)) {
+            present = true;
+            row.paneSeenAfterMs = now() - tUp;
+            break;
+          }
+        }
+        await sleep(250);
+      }
+      row.paneRestored = present;
+      row.panesAfter = panesAfter.map((x) => ({ pane_id: x.pane_id, agent_status: x.agent_status ?? null }));
+      row.unownedAfterRestart = panesAfter
+        .map((x) => str(x.pane_id) ?? "")
+        .filter((id) => id && !ctx.owned.panes.has(id) && !ctx.protectedPanes.has(id));
+      const wl = await tryCall(ctx, pr.name, "workspace.list", {});
+      const wsKept = wl.ok && JSON.stringify(wl.result).includes(`"${ctx.workspaceId}"`);
+      row.workspaceRestored = wsKept;
+      if (!wsKept) {
+        // later variants / probes need a workspace of this run
+        const wc = await tryCall(ctx, pr.name, "workspace.create", { focus: false, label: `hsprobe-${ctx.run}-g${how}`, cwd: ctx.T });
+        const w = wc.ok ? str(rec(wc.result.workspace).workspace_id) : null;
+        row.workspaceRecreated = w ?? (wc.ok ? "no id" : wc.error);
+        if (w) {
+          ctx.workspaceId = w;
+          ctx.owned.workspaces.add(w);
+          ctx.runCreated.workspaces.push({ id: w, t: wc.t });
+          const tab = str(rec(wc.ok ? wc.result.tab : {}).tab_id);
+          const pane = str(rec(wc.ok ? wc.result.root_pane : {}).pane_id);
+          if (tab) {
+            ctx.owned.tabs.add(tab);
+            ctx.runCreated.tabs.push({ id: tab, t: wc.t });
+          }
+          if (pane) {
+            ctx.owned.panes.add(pane);
+            ctx.runCreated.panes.push({ id: pane, t: wc.t });
+          }
+        }
+      }
+
+      // agent.get on the old pane id: result or the RPC error code
+      const ag = await tryCall(ctx, pr.name, "agent.get", { target: P });
+      row.agentGetAfter = ag.ok
+        ? (() => {
+            const a = rec(ag.result.agent);
+            return { ok: true, status: a.agent_status ?? null, scs: a.state_change_seq ?? null, cs: a.completion_seq ?? null, rev: a.revision ?? null };
+          })()
+        : { ok: false, code: ag.code, error: ag.error };
+      const series = await sampleSnaps(ctx, pr, P, `g:${how}:after-restart`, 3000);
+      row.afterSeries = series.map((s) => snapRow(s, tUp));
+      const okSnaps = series.filter((s) => !s.error);
+      const first = okSnaps[0] ?? null;
+      if (!ag.ok && !first) {
+        row.code = present ? `G-AGENT-GONE(${ag.code ?? "error"})` : "G-PANE-GONE";
+        if (present) {
+          await closePane(ctx, pr, P);
+        } else {
+          // the pane went down with the server — nothing left to close
+          pr.closed.panes.push({ id: P, t: now() });
+          row.paneGoneWithServer = true;
+        }
+        continue;
+      }
+      const preScs = Number(pre.state_change_seq);
+      const preCs = pre.completion_seq;
+      const scsA = first?.state_change_seq ?? null;
+      const csA = first?.completion_seq ?? null;
+      const scsClass = scsA === null || scsA < preScs ? "RESET" : scsA === preScs ? "KEPT" : "NEWBASE";
+      const csClass =
+        csA === null ? "cs-null" : preCs === null ? "cs-new" : csA < preCs ? "cs-reset" : csA === preCs ? "cs-kept" : "cs-advanced";
+      row.after = { status: first?.agent_status ?? null, scs: scsA, cs: csA, rev: first?.revision ?? null };
+
+      // one status change on the restored pane: where does scs land relative to the pre-restart value?
+      let drive = "drive-failed";
+      const S2 = openSub(ctx, pr, `g.${how}.S2`, subL(P));
+      try {
+        await S2.ack;
+        row.resubscribe = "ack";
+      } catch (e) {
+        row.resubscribe = e instanceof Error ? e.message : String(e);
+      }
+      const g0 = await G(ctx, pr, P, `g:${how}:drive-before`);
+      try {
+        await report(ctx, pr, P, "working");
+        await sleep(500);
+        const gw = await G(ctx, pr, P, `g:${how}:drive-working`);
+        await report(ctx, pr, P, "idle");
+        await sleep(500);
+        const gi = await G(ctx, pr, P, `g:${how}:drive-idle`);
+        row.drive = {
+          before: { status: g0.agent_status, scs: g0.state_change_seq, cs: g0.completion_seq },
+          working: { status: gw.agent_status, scs: gw.state_change_seq, cs: gw.completion_seq },
+          idle: { status: gi.agent_status, scs: gi.state_change_seq, cs: gi.completion_seq },
+          pushes: statusSeq(S2, P),
+        };
+        const scsD = gi.state_change_seq ?? gw.state_change_seq;
+        if (scsD !== null && gw.agent_status === "working") drive = scsD > preScs ? "drive-above" : "drive-below";
+        const csD = gi.completion_seq;
+        row.driveCs = csD === null ? "cs-null" : preCs === null || csD > preCs ? "cs-above" : "cs-below";
+      } catch (e) {
+        row.driveError = e instanceof Error ? e.message : String(e);
+      }
+      S2.destroy();
+      row.code = `G-SCS-${scsClass}/${csClass}/${drive}`;
+      if (present) await closePane(ctx, pr, P);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.startsWith("REFUSED") || msg.startsWith("ABORTED_REAL_CLI")) throw e;
+      row.code = `G-INCONCLUSIVE(error: ${msg.slice(0, 120)})`;
+      // an error mid-variant may leave the server down — do not start the next variant blind
+      const ping = await tryCall(ctx, pr.name, "ping", {}, 2000);
+      serverUp = ping.ok;
+    }
+  }
+  pr.facts.variants = variants;
+  pr.facts.fakeAgentsAtEnd = fakeAgentProcs(ctx);
+  const codes = variants.map((v) => String(v.code));
+  pr.facts.codes = codes;
+  const code = `graceful=${codes[0]} sigkill=${codes[1]}`;
+  // PASS = the restart behaviour was measured (no FAIL: this is a fact probe like s / E)
+  return { verdict: codes.every((c) => DECIDED_G.test(c)) ? "PASS" : "INCONCLUSIVE", code };
+}
+
 function writeFakeBins(ctx: Ctx): string {
   const dir = join(ctx.T, "fakebin");
   mkdirSync(dir, { recursive: true });
@@ -3505,6 +3855,9 @@ async function main(): Promise<number> {
               break;
             case "f":
               outcome = await probeF(ctx, pr, reps);
+              break;
+            case "g":
+              outcome = await probeG(ctx, pr);
               break;
             case "b1":
               outcome = await probeB1(ctx, pr);

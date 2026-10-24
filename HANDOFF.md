@@ -5,7 +5,7 @@
 
 ## One-line resume
 
-> v0.46.0 snapshot authority **approved** (R69) · P0 · P1 **done** · **next = P2 red → green**
+> v0.46.0 **code complete** (P0–P3 local) · **next = owner: D11 real-card probe (I4) → push (I1)**
 
 ## Current loop
 
@@ -18,18 +18,18 @@
 
 ## Current action
 
-### v0.46.0 approved (R69) · P0 · P1 done · next = P2
+### v0.46.0 code complete · D11 + push = owner
 
 **Goal:** pane card done/fail authority = herdr `agent.get` snapshot (baseline `state_change_seq` · `completion_seq` fence · events wake only · `status_unavailable` window) — PLAN §0.46.0.
 **State:** PLAN §0.46.0 **approved** 2026-10-24 — Astra 0261 · 0264 · 0266 FAIL → 0268 PASS-with-lows (`a300667`) · P0b probe f PASS (`rogN0W`) · R69 approved-with-fixes → M1 · M2 · L1–L3 folded (no R69b).
 
-**P0 done:** `docs/spikes/tla/snapshot-authority/` 47 cfgs · TLC run 3 47/47 match · Astra 0272/0275 FAIL → 0278 PASS-with-lows · PLAN W-reset + CWAC narrowed (R69 addendum, fold). **P1 done:** `e72b445` red (13 tests · fake-herdr `seqMode`) → `4631c4a` green (`HerdrAgentSnapshot`) · Astra 0281 PASS · suite 4353/0. **Next:** P2 red → green → P3. **D11** real-card probe (claude · tool-use + focused-pane variants) = ship blocker · needs a **separate owner `ownerDecision` before running** (I4).
+**Done (local, not pushed):** P0 `437a0f1` (TLC 47/47 · Astra 0278) · P1 `e72b445`→`4631c4a` (Astra 0281 PASS) · P2 red `8999a58`…`fad6d3a` + ⑧ adjust `6ccaf7b` (R69 addendum 2) → green `eecb423` (Astra 0293 PASS · suite 4402/0) · P3 `968c98f` · dist `7de0586` · final review loom-advisor = **ship, D11 first** · probe g `311f63` PASS (restart → `agent_not_found`/pane gone · seq counter resets → W then `status_unavailable`). **Next (owner):** D11 per PLAN ⑦ + 보강 row — proposed scope **claude × 4 cards** (① tool-use · ⑥ focused · ⑦ dist bridge · ⑧ second prompt) · private herdr · CLI pane real HOME only → then push (I1).
 
 **Carry:** `memorySnapshotLocked` byteLength · `history-scan.ts:365` comment · 0.43 UK-1 · UK-6/UK-7 · Linux/Windows live unverified · `pane-cleanup.test.ts` ⑥ flaky
 
 **Line:** topology **`full`** · execution **`delegated`** · verify **`independent`** · chain Claude→Opus 5.5 medium impl (`lane.ts impl`)→GPT-6 Astra high verify (`lane.ts verify`) + loom-advisor Opus 5.5 high (promoted from `single` 2026-10-15 — `DOGFOOD_LOOP.md` §0.5.3)
 
-**Done when (this handoff):** P2 red → green (snapshot authority in `bridge-runtime.ts`) with Astra verify PASS + full suite green — declared only with `docs/GATE-POLICY.md` §3 evidence (commit SHA · diff scope · test cmd + counts · verify `meta.json` · probe `summary.json`).
+**Done when (this handoff):** D11 run under an owner `ownerDecision` with result rows recorded (PROBES H23~ · implementation-notes) → ship decision → push only on owner yes — `docs/GATE-POLICY.md` §3 evidence.
 
 **Must not:** any I1–I4 action (`docs/GATE-POLICY.md` — push/merge · live launchd/systemd · deploy · DB write · external send · data delete · real-CLI tokens e.g. `smoke:*:--real-cli` · paid API) without an owner yes recorded as `ownerDecision` · test/probe without temp HOME + `LOOM_TEST_HOME` · start next-step code before owner pick + review · inherit bridge env into workers (R48-H1) · sync lock on WS receive path (R47-H1) · demote to `single` without owner · remeasure 3.3–3.4b · default-on JIT.
 
@@ -39,7 +39,7 @@
 |---|---|---|---|
 | Headless lanes | **P1–P4 done** · live smoke 7/7 | dev-process | `HEADLESS-LANES-DESIGN.md` |
 | Suite | numbers in 0.45.4 ship commit | `pane-cleanup` ⑥ · `headless-0300-verify` "3 local/adopted leader" flaky under load (isolated 46/0 ×2) | 0.45.4 ship |
-| v0.46.0 | **approved** R69 · P0 next · D11 ship blocker | snapshot authority MINOR | PLAN §0.46.0 |
+| v0.46.0 | **code complete** (P0–P3 local) · D11 ship blocker (owner) | snapshot authority MINOR | PLAN §0.46.0 |
 | v0.32–0.45.4 | **shipped** | 0.34 live (macOS) · 0.36–0.39 · 0.43 real-CLI PASS | `docs/PLAN.md` |
 | P3 soft close | **closed** · 3.0–3.2 opt-in · 3.3–3.4b false | freeze new surfaces | `PHASE3-SOFT-CLOSE.md` |
 | `smoke:uc` · B-4 pin | **OK** | prior | check:mem-header |
@@ -50,7 +50,8 @@
 | Decision | Why | Safe default | Evidence |
 |---|---|---|---|
 | MBP relay — **live since 2026-10-18** (`ws://100.119.218.93:7842/ws`, systemd `loom-relay` enabled; lg99 Task Disabled, originals kept) | 9b deferred → **review 2026-10-25** (re-propose after 1 week stable; lg99 `LoomRelayTeam` stays Disabled) · mac profile left as is (owner 2026-10-18) | lg99 rollback = Task Enable+Start, `systemctl disable --now loom-relay`, restore `mac.json.pre-mbp` | runbook |
-| 0.46.0 D11 real-card probe (claude · tool-use + focused) | I4 real-CLI tokens · ship blocker | **do not run** until owner `ownerDecision` | PLAN §0.46.0 ⑦ |
+| 0.46.0 D11 real-card probe — proposed **claude × 4 cards** (tool-use · focused · dist bridge · second prompt) | I4 real-CLI tokens · ship blocker | **do not run** until owner `ownerDecision` | PLAN §0.46.0 ⑦ + 보강 |
+| 0.46.0 push (`94ae9ad..HEAD`) | I1 · after D11 | **do not push** until owner yes | GATE-POLICY §1 |
 | P3 reopen / default-on | risk | **off** · new SPEC only | SOFT-CLOSE |
 | B-7 issue/PR | optional | defer | platform lessons |
 
