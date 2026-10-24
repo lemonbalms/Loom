@@ -752,7 +752,7 @@ D2는 세션 파일 1개 `~/.claude/projects/<loom slug>/7241c4b0…jsonl`
 
 | 회차 | 일시 | run id | 역할 · pane | `focused`(전→표본) | `csBefore` → idle 뒤 최대 cs | 끝 status | idle 뒤 push | scs·rev 변화 | 생성/닫음 id | 회차 분류 | 결과 코드 | 비고 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| | | | | | | | | | | | | |
+| 요약 (전 회차) | 2026-10-24 | `rogN0W` · private | 포커스 P · 대조 Q(보고 원천 가짜 agent pane) | 기대값 유지(`FOCUS_NOT_HELD` 없음) | 포커스 · 대조 모두 채움 | `idle\|done` | 원 행 = 하니스 `facts.runs` | 원 행 참조 | 원 행 참조 | 매 회차 `filled` | **`F-CS-FILLED` (PASS)** | 보고 원천 class 113 비실재 · **감지기 원천(실 CLI) 포커스 완료는 미측정 → PLAN §0.46.0 D11 ⑥ 필수 · ship 차단** (Astra 0261 H5) · 회차별 수치는 이 요약 행에 옮기지 않았다(원 출력 · `a4791c7`) |
 
 ## 9. 실행 순서·결과 기록
 
