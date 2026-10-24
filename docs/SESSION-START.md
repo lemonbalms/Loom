@@ -64,7 +64,7 @@ Higher wins.
 |---------|----------|:----:|:----------:|:-----------:|
 | **상태** / status | **S** | ✓ | ✗ | ✗ |
 | **핸드오프 확인해** | **A** | ✓ | ✗ | ✗ |
-| **이어서** / **진행해** / **자율적으로** / **단계적으로** | **R** | ✓ | ✓* | ✓* |
+| **이어서** / **진행해** / **자율적으로** / **단계적으로** | **R** | ✓ | ✓* | commit ✓* · push ✗† |
 | **계획만** | plan/docs | ✓ | docs only | ✗ |
 | **커밋 금지** | work ok | ✓ | ✓ | ✗ |
 | **멈춰** | pause | ✓ | ✗ | ✗ |
@@ -72,6 +72,7 @@ Higher wins.
 | **락 스펙 구현** | impl lane | ✓ | impl lane | ship rules |
 
 \* write/commit only if N/S evidence allows and no higher mask.
+† push = I1 — separate owner approval per push (`docs/GATE-POLICY.md`); “커밋하고 푸시해” / an explicit push yes = that one approval.
 
 ### Composite utterances (acceptance #12)
 

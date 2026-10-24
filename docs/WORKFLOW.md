@@ -109,7 +109,7 @@
 └──────┬──────┘
        ▼
 ┌─────────────┐
-│ 6. Ship     │  commit + push (main); 원격: lemonbalms/Loom
+│ 6. Ship     │  로컬 commit (main) · push = I1 오너 승인 회차마다(GATE-POLICY); 원격: lemonbalms/Loom
 └─────────────┘
 ```
 
@@ -415,7 +415,7 @@ blocking 없을 때 기본 순서:
 - [ ] PLAN 버전·changelog 일치  
 - [ ] plan_review Open/follow-up 갱신 (해당 시)  
 - [ ] 이탈 시 Deviations 기록  
-- [ ] (ship 시) commit + push, 워킹트리 clean  
+- [ ] (ship 시) 로컬 commit, 워킹트리 clean · push는 오너 승인(I1 · `ownerDecision`) 뒤에만  
 
 ---
 

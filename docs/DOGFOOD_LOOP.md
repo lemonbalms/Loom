@@ -225,7 +225,7 @@ can interleave with the agent TUI redraw and corrupt the screen.
    marker and the shared worktree before independent verification. A `card.done`
    handoff by itself is not proof of success.
 5. Corrections are new explicit cards. After verification, dispatch a separate
-   `[SHIP]` card to commit/push the already-reviewed diff and return the SHA; Codex
+   `[SHIP]` card to commit the already-reviewed diff (push only with an owner I1 approval — `docs/GATE-POLICY.md`) and return the SHA; Codex
    confirms the remote and updates gate bookkeeping.
 
 ```jsonc
@@ -369,7 +369,7 @@ peer identity for this session is `claude-impl`.
 
 - Draft new PLAN.md versions (bump version, write user journey / pillars /
   acceptance per WORKFLOW §5 shape) — same as Grok's PLAN-author role.
-- Write product code in `packages/`, run tests, commit, push.
+- Write product code in `packages/`, run tests, commit locally; push only with an owner I1 approval (`docs/GATE-POLICY.md`).
 - Apply PATCH lock rows requested by an `[R-RESULT] pending-revision` from
   `@claude-review` / `@codex-review` (mirror the Grok PATCH-then-author-close
   flow — see `HANDOFF.md` playbook for the current PATCH).
@@ -395,7 +395,7 @@ reviewer. On start:
 1) check_handoffs + board list_tasks. Skip any task already "doing" under
    a different implementer assignee (grok-impl/codex-impl).
 2) Claim your task: update_task status=doing, assignee=claude-impl.
-3) Draft PLAN / apply PATCH locks / write code / test / commit / push.
+3) Draft PLAN / apply PATCH locks / write code / test / local commit (push = owner I1 approval, `docs/GATE-POLICY.md`).
 4) Handoff [R-REQUEST] to @claude-review (+ @codex-review if security-
    relevant) for new or patched PLAN. Send [VERIFY] after implementing.
 Never write docs/plan_review.md R{n} verdicts — that's claude-rev's job.
@@ -421,7 +421,7 @@ Never write docs/plan_review.md R{n} verdicts — that's claude-rev's job.
 - Verify `LOOM_PROFILE=codex-impl`, then check handoffs and the shared board.
 - Skip any task already `doing` under another implementer; claim the selected
   task as `doing` / assignee `codex-impl` before editing.
-- Implement the locked PLAN/PATCH, write tests, sync docs, commit, and push.
+- Implement the locked PLAN/PATCH, write tests, sync docs, and commit locally; push only with an owner I1 approval (`docs/GATE-POLICY.md`).
 - Send `[R-REQUEST]` to `@claude-review`; add `@codex-review` only when an
   independent adversarial pass is useful. Never write the R{n} verdict for its
   own work.
@@ -434,7 +434,7 @@ Never write docs/plan_review.md R{n} verdicts — that's claude-rev's job.
 You are codex-impl in the Loom dogfood room: implementer, not reviewer.
 Verify LOOM_PROFILE, check handoffs + board, and claim one unclaimed task as
 doing/codex-impl before editing. Do not duplicate another implementer's work.
-Follow PLAN → review gate → implement → bun test → docs → commit/push. Never
+Follow PLAN → review gate → implement → bun test → docs → local commit → push only with an owner I1 approval (`docs/GATE-POLICY.md`). Never
 author your own docs/plan_review.md R{n} verdict.
 ```
 
