@@ -102,9 +102,16 @@ function must(cond: boolean, what: string): void {
   if (!cond) throw new Error(`intended interleaving not reached: ${what}`);
 }
 
-/** Production pane.read sizes: completion settle scrape vs R17 inject probe. */
-const SETTLE_LINES = 200;
-const PROBE_LINES = 60;
+/**
+ * pane.read line counts actually requested for a pane, in call order (fake log).
+ * Settle scrape vs R17 inject probe is told apart by observed counts (settle >
+ * probe), not by today's literal sizes (Astra 0286 #4).
+ */
+function paneReadLines(fake: FakeHerdr, paneId: string): number[] {
+  return fake.calls
+    .filter((c) => c.method === "pane.read" && c.params.pane_id === paneId)
+    .map((c) => (typeof c.params.lines === "number" ? c.params.lines : 0));
+}
 
 /** PLAN ② telemetry lines `card <id>: snapshot completion (cs=…`. */
 function completionLines(lines: string[], cardId: string): number {
@@ -115,8 +122,14 @@ type AgentGetLogEntry = ReturnType<FakeHerdr["agentGetLog"]>[number];
 
 /**
  * Snapshot-applied milestone: an agent.get reply matching `pred` was sent and
- * the bridge issued another agent.get for the pane after it — per-flight
- * agent.get ≤ 1 (R11), so that reply has been processed.
+ * the bridge issued another agent.get for the pane after it.
+ *
+ * Assumption (Astra 0286 #2 — for green review to check): "next agent.get after
+ * the reply ⇒ reply handled" holds only if (a) per-flight agent.get ≤ 1 (R11)
+ * and (b) the poller applies a reply's snapshot (state change · cancels) before
+ * it requeues/issues the flight's next agent.get — response-then-requeue order.
+ * A green that requeues before applying would make this milestone early; such a
+ * green must replace it with a direct applied-state observation.
  */
 async function waitSnapshotApplied(
   fake: FakeHerdr,
@@ -799,6 +812,9 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           const paneA = await startCard(rig, a);
           rig.fake.setPaneReadText(paneA, "working on it\n1 command still running");
           rig.fake.setAgentStatus(paneA, "idle"); // cs1 > b → completion → indicator → deferral
+          // The `still-running indicator — deferring completion` line is existing
+          // 0.23.7 telemetry, relied on here only as a milestone (deferral started) —
+          // not a 0.46.0 contract; a green may reword it if it keeps a marker.
           must(
             await waitFor(
               () =>
@@ -1016,7 +1032,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
   test(
     "㉑ old-generation agent.get reply (sent before the reinject switch) is dropped (runGen) — it does not classify the next round",
     async () => {
-      const waitMs = 1_200;
+      const waitMs = 1_600;
       const rig = await startRig({ pollMs: NO_TICK_MS, submitVerify: { waitMs, retries: 2 } });
       try {
         rig.fake.stallDelivery("*", true);
@@ -1029,7 +1045,8 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, waitMs * 3, 10),
           "R17 probe scrape parked after the undelivered round close",
         );
-        expect(rig.fake.paneReadHeldLines(paneA)).toEqual([PROBE_LINES]);
+        // Only one read parked (the probe — no settle scrape on an undelivered card).
+        expect(rig.fake.paneReadHeldLines(paneA)).toHaveLength(1);
         expect(reinjectKeys(rig.fake, a)).toBe(0);
         // Old-generation snapshot (idle · scs = b) requested now, held.
         rig.fake.holdAgentGet(paneA, true);
@@ -1050,9 +1067,13 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           await waitFor(() => reinjectKeys(rig.fake, a) >= 1, 2_000, 10),
           "reinject key sent (generation switched)",
         );
-        const tKey = Date.now(); // ≈ new round t0 (≤ 10 ms poll)
+        // Observed key time: the new round's t0 is at/before it (t0 ≤ tKey), so
+        // sentAt − tKey ≥ w/2 bounds the early side exactly; the late side gets
+        // ≥ 400 ms slack (0.6w = 960 vs w − 100 = 1500 → 540 ms) for tKey − t0 lag
+        // plus scheduling (Astra 0286 #3).
+        const tKey = Date.now();
         // Deliver the stale reply inside the new round's late half [t0 + w/2, t0 + w).
-        await Bun.sleep(Math.max(0, tKey + Math.floor(waitMs * 0.65) - Date.now()));
+        await Bun.sleep(Math.max(0, tKey + Math.floor(waitMs * 0.6) - Date.now()));
         rig.fake.holdAgentGet(paneA, false);
         rig.fake.releaseAgentGet(paneA);
         const sentAt = rig.fake.agentGetLog(paneA)[staleIdx]!.sentAt;
@@ -1170,10 +1191,11 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
     }
 
     /**
-     * ㉕–㉗ (Astra 0284 #1): hold only the 200-line completion settle scrape (the
-     * 60-line inject probe replies at once), then `idle` (cs > lastConsumedCs).
-     * Proves snapshot completion was entered (② telemetry) and that the held read
-     * is its settle scrape — all before the test makes the pane `working`.
+     * ㉕–㉗ (Astra 0284 #1): hold the pane's reads, then `idle` (cs >
+     * lastConsumedCs). Proves snapshot completion was entered (② telemetry) and
+     * that each held read is its settle scrape — the card was delivered, so no
+     * verify retry round ran (no CR key · one agent.prompt) and no R17 inject
+     * probe can be among them — all before the test makes the pane `working`.
      */
     async function enterHeldCompletion(
       fake: FakeHerdr,
@@ -1182,7 +1204,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       lines: string[],
       attempt: number,
     ): Promise<void> {
-      fake.holdPaneRead(paneId, true, SETTLE_LINES);
+      fake.holdPaneRead(paneId, true);
       fake.setAgentStatus(paneId, "idle");
       must(
         await waitFor(
@@ -1194,9 +1216,9 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
         ),
         `snapshot completion (cs=…) entered with its settle scrape held (attempt ${attempt})`,
       );
-      expect(fake.paneReadHeldLines(paneId)).toEqual(
-        Array.from({ length: attempt }, () => SETTLE_LINES),
-      );
+      expect(fake.paneReadHeldLines(paneId)).toHaveLength(attempt);
+      expect(sendKeys(fake, cardId)).toBe(0);
+      expect(prompts(fake, cardId)).toHaveLength(1);
     }
 
     /** The cancelling `working` snapshot is applied while `held` settle reads stay parked. */
@@ -1215,9 +1237,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
         ),
         "working snapshot applied before the scrape release",
       );
-      expect(fake.paneReadHeldLines(paneId)).toEqual(
-        Array.from({ length: held }, () => SETTLE_LINES),
-      );
+      expect(fake.paneReadHeldLines(paneId)).toHaveLength(held);
     }
 
     test(
@@ -1325,13 +1345,13 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
               ),
               "re-armed snapshot completion (attempt 2) with its settle scrape held",
             );
-            expect(rig.fake.paneReadHeldLines(paneA)).toEqual([SETTLE_LINES, SETTLE_LINES]);
+            expect(rig.fake.paneReadHeldLines(paneA)).toHaveLength(2);
             rig.fake.holdPaneRead(paneA, false);
             // Release only the oldest (attempt 1) — attempt 2 stays parked.
             rig.fake.releasePaneRead(paneA, true, 1);
             await Bun.sleep(800);
             expect(await results(a)).toHaveLength(0);
-            expect(rig.fake.paneReadHeldLines(paneA)).toEqual([SETTLE_LINES]);
+            expect(rig.fake.paneReadHeldLines(paneA)).toHaveLength(1);
             rig.fake.releasePaneRead(paneA, true);
             const rs = await waitResults(a, 4_000);
             await Bun.sleep(300);
@@ -1351,7 +1371,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       // Narrowed (Astra 0284 #6): "no retry refund" is not observable here — the
       // cancelled reinject continues as a delivered verify, which runs no further
       // round that could exhaust. This case pins the cancel + current-generation path.
-      "㉘ undelivered classified · R17 probe scrape (60 lines) held · poller applies current-gen working/scs > b → pre-key cache check cancels reinject · no key · completes in the current generation",
+      "㉘ undelivered classified · R17 probe scrape held · poller applies current-gen working/scs > b → pre-key cache check cancels reinject · no key · completes in the current generation (settle read lines > probe lines)",
       async () => {
         const waitMs = 600;
         const rig = await startRig({ submitVerify: { waitMs, retries: 1 } });
@@ -1365,7 +1385,9 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
             await waitFor(() => rig.fake.paneReadHeldCount(paneA) >= 1, waitMs * 3, 10),
             "R17 probe scrape parked after the undelivered round close",
           );
-          expect(rig.fake.paneReadHeldLines(paneA)).toEqual([PROBE_LINES]);
+          expect(rig.fake.paneReadHeldLines(paneA)).toHaveLength(1);
+          const probeLines = rig.fake.paneReadHeldLines(paneA)[0]!;
+          const readsAtProbe = paneReadLines(rig.fake, paneA).length;
           expect(reinjectKeys(rig.fake, a)).toBe(0);
           rig.fake.stallDelivery("*", false);
           rig.fake.setAgentStatus(paneA, "working"); // late first delivery · scs > b
@@ -1379,7 +1401,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
             ),
             "current-gen working/scs > b applied (deliveredSeen) before the key",
           );
-          expect(rig.fake.paneReadHeldLines(paneA)).toEqual([PROBE_LINES]);
+          expect(rig.fake.paneReadHeldLines(paneA)).toEqual([probeLines]);
           rig.fake.holdPaneRead(paneA, false);
           rig.fake.releasePaneRead(paneA, true);
           await Bun.sleep(400);
@@ -1392,6 +1414,11 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           expect(rs[0]!.reason).toBe("needs_verification");
           expect(rs[0]!.output).toContain("SCRAPE-28");
           expect(reinjectKeys(rig.fake, a)).toBe(0);
+          // Settlement read (the completion's scrape, after the probe) requests
+          // more lines than the inject probe — both observed from the fake.
+          const settleReads = paneReadLines(rig.fake, paneA).slice(readsAtProbe);
+          expect(settleReads.length).toBeGreaterThanOrEqual(1);
+          for (const n of settleReads) expect(n).toBeGreaterThan(probeLines);
         } finally {
           await rig.close();
         }
@@ -1589,8 +1616,11 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
         const waitMs = 800;
         const wMs = 2_500;
         const delayMs = Math.floor(waitMs * 0.75);
+        // Short tick: W expiry is checked on the bridge tick (R10 · R11), so the
+        // expiry bounds below are widened by one POLL_MS. The extra tick reads
+        // are made non-authoritative (failAgentGet — no authority, never reset W).
         const rig = await startRig({
-          pollMs: NO_TICK_MS,
+          pollMs: POLL_MS,
           wMs,
           submitVerify: { waitMs, retries: 1 },
         });
@@ -1598,20 +1628,25 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           rig.fake.stallDelivery("*", true);
           const a = newCardId();
           const paneA = await startCard(rig, a, { settle: 0 });
-          const tPrompt = Date.now(); // ≈ baseline success (W start) ≈ round 1 t0
+          const tPrompt = Date.now(); // ≥ baseline success (W start) · ≥ round 1 t0
           const b = rig.fake.getPaneSeq(paneA)!.scs;
           const promptIdx = rig.fake.calls.findIndex(
             (c) => c.method === "agent.prompt" && c.params.target === agentName(a),
           );
           const postInject = () =>
             rig.fake.agentGetLog(paneA).filter((e) => e.callIndex > promptIdx);
-          // Round 1 wake read answered undelayed (early half) before the hook goes on.
+          // Round 1 early-half read answered undelayed, then the rest of the early
+          // half sees only failed (non-authoritative) tick reads.
           must(
             await waitFor(() => postInject().some((e) => e.sentAt !== null), waitMs * 0.4, 10),
-            "round-1 early-half read answered before delayAgentGet",
+            "round-1 early-half read answered before the outage",
           );
+          rig.fake.failAgentGet(paneA, true);
+          await Bun.sleep(Math.max(0, tPrompt + Math.floor(waitMs * 0.55) - Date.now()));
+          // Late half: exactly one delayed read (per-flight ≤ 1 holds the rest back).
           rig.fake.delayAgentGet(paneA, delayMs);
           const nBefore = postInject().length;
+          rig.fake.failAgentGet(paneA, false);
           must(
             await waitFor(() => postInject().length > nBefore, waitMs, 10),
             "round-1 late-half read requested",
@@ -1619,7 +1654,7 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           rig.fake.failAgentGet(paneA, true); // later reads: no qualifying evidence
           const late = postInject()[nBefore]!;
           must(
-            late.requestedAt - tPrompt >= waitMs * 0.4 && !late.failed,
+            late.requestedAt - tPrompt >= waitMs * 0.5 && !late.failed,
             `late-half read sent in the late half (at +${late.requestedAt - tPrompt} ms)`,
           );
           expect(late.status).toBe("idle");
@@ -1640,10 +1675,10 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           const elapsed = Date.now() - tPrompt;
           expect(rs).toHaveLength(1);
           expect(rs[0]!.reason).toBe("status_unavailable");
-          // W runs from the baseline; a reset at the late arrival (≈ +1.0 s) would
-          // expire ≈ +3.5 s — rejected by the upper bound.
-          expect(elapsed).toBeGreaterThanOrEqual(wMs - 400);
-          expect(elapsed).toBeLessThan(wMs + 600);
+          // W runs from the baseline; a reset at the late arrival (≥ +1.04 s) would
+          // expire ≥ +3.54 s — rejected by the upper bound (W + 600 + one tick).
+          expect(elapsed).toBeGreaterThanOrEqual(wMs - 400 - POLL_MS);
+          expect(elapsed).toBeLessThan(wMs + 600 + POLL_MS);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
         } finally {
           await rig.close();
@@ -1788,8 +1823,10 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
       async () => {
         const waitMs = 1_600;
         const wMs = 2_400; // > one round: the baseline W cannot expire before round-1 close
+        // Short tick: W expiry is checked on the bridge tick (R10 · R11) — bounds
+        // widened by one POLL_MS. Tick reads after the receipt fail (no authority).
         const rig = await startRig({
-          pollMs: NO_TICK_MS,
+          pollMs: POLL_MS,
           wMs,
           submitVerify: { waitMs, retries: 2 },
         });
@@ -1827,13 +1864,24 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           expect(receipt!.status).toBe("idle");
           expect(receipt!.scs).toBe(b);
           expect(reinjectKeys(rig.fake, a)).toBe(0);
+          // Reference = the round-close classification moment, observed as the R17
+          // probe pane.read: it is issued right after classification with no
+          // agent.get between (⑪), so tClose (≤ 10 ms poll after the request) ≥
+          // classification. The key may lag the probe; it is not the reference.
+          const readsBefore = paneReadLines(rig.fake, paneA).length;
           must(
-            await waitFor(() => reinjectKeys(rig.fake, a) >= 1, waitMs, 10),
-            "round 1 classified undelivered at its close (key)",
+            await waitFor(() => paneReadLines(rig.fake, paneA).length > readsBefore, waitMs, 10),
+            "round 1 classified undelivered at its close (probe read)",
           );
-          const tClose = Date.now(); // ≈ classification (the 60-line probe precedes the key)
+          const tClose = Date.now();
+          must(
+            await waitFor(() => reinjectKeys(rig.fake, a) >= 1, 2_000, 10),
+            "undelivered round 1 sent its reinject key",
+          );
           const gap = tClose - receipt!.sentAt!;
-          must(gap >= waitMs * 0.3, `receipt and round-close classification apart (${gap} ms)`);
+          // ≥ 0.4w = 640 ms keeps a receipt-reset expiry (≤ W − 640 + tick + result
+          // poll) below the lower bound W − 250 − tick.
+          must(gap >= waitMs * 0.4, `receipt and round-close classification apart (${gap} ms)`);
           const rs = await waitResults(a, wMs + 4_000);
           const sinceClose = Date.now() - tClose;
           await Bun.sleep(300);
@@ -1841,9 +1889,9 @@ describe("PLAN 0.46.0 snapshot authority (relay + fake herdr p22)", () => {
           expect(rs[0]!.reason).toBe("status_unavailable");
           expect(rs.filter((r) => r.reason === "inject_unconfirmed")).toHaveLength(0);
           expect(reinjectKeys(rig.fake, a)).toBe(1);
-          // A reset at receipt would expire `gap` (≈ w/2 = 800 ms) earlier.
-          expect(sinceClose).toBeGreaterThanOrEqual(wMs - 250);
-          expect(sinceClose).toBeLessThan(wMs + 700);
+          // A reset at receipt would expire `gap` (≈ w/2 = 800 ms, ≥ 640 ms) earlier.
+          expect(sinceClose).toBeGreaterThanOrEqual(wMs - 250 - POLL_MS);
+          expect(sinceClose).toBeLessThan(wMs + 700 + POLL_MS);
         } finally {
           await rig.close();
         }
